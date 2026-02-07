@@ -1,7 +1,7 @@
 """
 Pydantic Schemas - Request and Response models for the API
 """
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -26,7 +26,7 @@ class ProductWithPrice(ProductBase):
     """Product with price data"""
     price: Optional[float] = Field(None, description="Product price")
     currency: str = Field("BHD", description="Currency code")
-    source: str = Field(..., description="Price source: live, cached, or estimated")
+    source: str = Field("unknown", description="Price source: live, cached, or estimated")
     confidence: Optional[str] = Field(None, description="Price confidence level")
     retailer: Optional[str] = Field(None, description="Retailer where price was found")
     note: Optional[str] = Field(None, description="Additional notes")
@@ -44,14 +44,17 @@ class ComparisonRequest(BaseModel):
 
 class ComparisonResponse(BaseModel):
     """Response model for product comparison"""
-    success: bool
-    products: List[ProductWithPrice] = Field(default_factory=list)
+    success: bool = True
+    products: List[Dict[str, Any]] = Field(default_factory=list)
     winner_index: int = Field(0, description="Index of winning product (0-based)")
     recommendation: str = Field("", description="Recommendation text")
     key_differences: List[str] = Field(default_factory=list)
     total_cost: float = Field(0.0, description="Total API cost in USD")
     data_freshness: str = Field("unknown", description="Data source: live, cached, mixed, or estimated")
     errors: Optional[List[str]] = Field(None, description="Any errors encountered")
+
+    class Config:
+        extra = "allow"  # Allow extra fields
 
 
 class ComparisonError(BaseModel):
@@ -139,7 +142,7 @@ class HealthResponse(BaseModel):
     """Health check response"""
     status: str
     version: str = "1.0.0"
-    services: dict[str, ServiceHealth]
+    services: Dict[str, ServiceHealth]
 
 
 # ============================================
@@ -149,17 +152,20 @@ class HealthResponse(BaseModel):
 class ComparisonHistoryItem(BaseModel):
     """Single comparison history item"""
     id: str
-    products: List[ProductWithPrice]
-    winner_index: int
-    recommendation: str
-    data_source: str
-    total_cost: float
+    products: List[Dict[str, Any]]
+    winner_index: Optional[int] = None
+    recommendation: Optional[str] = None
+    data_source: Optional[str] = None
+    total_cost: Optional[float] = None
     created_at: datetime
+
+    class Config:
+        extra = "allow"
 
 
 class ComparisonHistoryResponse(BaseModel):
     """Comparison history list response"""
-    comparisons: List[ComparisonHistoryItem]
+    comparisons: List[Dict[str, Any]]
     total: int
     page: int = 1
     per_page: int = 20
