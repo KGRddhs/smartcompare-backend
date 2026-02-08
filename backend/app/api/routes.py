@@ -1,9 +1,10 @@
 """
-API Routes - Main endpoints for SmartCompare (with database integration)
+API Routes - Main endpoints for SmartCompare (with mobile upload fixes)
 """
 import os
 import uuid
 import logging
+import traceback
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
@@ -87,102 +88,139 @@ async def get_or_create_dev_user():
     }
 
 
-@router.post("/compare", response_model=ComparisonResponse)
+@router.post("/compare")
 async def compare_endpoint(
     images: List[UploadFile] = File(..., description="2-4 product images"),
     country: str = Query("Bahrain", description="Country for price search")
 ):
     """
     Compare 2-4 products from uploaded images.
-    
-    - Upload 2-4 product images (JPEG, PNG)
-    - AI identifies products and finds current prices
-    - Returns comparison with winner recommendation
-    
-    **Rate Limits:**
-    - Free tier: 5 comparisons/day
-    - Premium: Unlimited
     """
     
-    logger.info(f"Received comparison request with {len(images)} images")
+    logger.info(f"=== COMPARISON REQUEST START ===")
+    logger.info(f"Received {len(images)} images")
     
-    # Get current user
-    user = await get_or_create_dev_user()
-    is_premium = user["subscription_tier"] == "premium"
+    # Log image details
+    for i, img in enumerate(images):
+        logger.info(f"  Image {i+1}: filename={img.filename}, content_type={img.content_type}, size={img.size}")
     
-    # Check rate limit
-    rate_status = check_rate_limit(user["id"], is_premium)
-    if not rate_status["allowed"]:
-        logger.warning(f"Rate limit exceeded for user {user['id']}")
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "error": "Daily limit reached",
-                "limit": rate_status["daily_limit"],
-                "current": rate_status["current_usage"],
-                "message": "Upgrade to Premium for unlimited comparisons"
-            }
-        )
-    
-    # Check monthly budget
-    budget_status = check_monthly_budget(100.0)
-    if not budget_status["allowed"]:
-        logger.error("Monthly budget exceeded!")
-        raise HTTPException(
-            status_code=503,
-            detail="Service temporarily unavailable due to high demand. Please try again later."
-        )
-    
-    # Validate number of images
-    if len(images) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="Please upload at least 2 product images"
-        )
-    if len(images) > 4:
-        raise HTTPException(
-            status_code=400,
-            detail="Maximum 4 product images allowed"
-        )
-    
-    # Validate image types
-    allowed_types = ["image/jpeg", "image/png", "image/jpg"]
-    for img in images:
-        if img.content_type not in allowed_types:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid image type: {img.content_type}. Allowed: JPEG, PNG"
-            )
-    
-    # Prepare images for processing
-    image_data_list = []
     temp_files = []
     
     try:
-        for img in images:
-            # Read image bytes
-            content = await img.read()
-            
-            # Validate image size (max 10MB)
-            if len(content) > 10 * 1024 * 1024:
+        # Get current user
+        user = await get_or_create_dev_user()
+        is_premium = user["subscription_tier"] == "premium"
+        logger.info(f"User: {user['id']}, premium={is_premium}")
+        
+        # Check rate limit
+        rate_status = check_rate_limit(user["id"], is_premium)
+        if not rate_status["allowed"]:
+            logger.warning(f"Rate limit exceeded for user {user['id']}")
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "Daily limit reached",
+                    "limit": rate_status["daily_limit"],
+                    "current": rate_status["current_usage"],
+                    "message": "Upgrade to Premium for unlimited comparisons"
+                }
+            )
+        
+        # Check monthly budget
+        budget_status = check_monthly_budget(100.0)
+        if not budget_status["allowed"]:
+            logger.error("Monthly budget exceeded!")
+            raise HTTPException(
+                status_code=503,
+                detail="Service temporarily unavailable due to high demand."
+            )
+        
+        # Validate number of images
+        if len(images) < 2:
+            logger.warning(f"Not enough images: {len(images)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Please upload at least 2 product images. Received: {len(images)}"
+            )
+        if len(images) > 4:
+            logger.warning(f"Too many images: {len(images)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Maximum 4 product images allowed. Received: {len(images)}"
+            )
+        
+        # Process images
+        image_data_list = []
+        
+        for i, img in enumerate(images):
+            try:
+                # Read image content
+                content = await img.read()
+                logger.info(f"  Image {i+1} read: {len(content)} bytes")
+                
+                if len(content) == 0:
+                    logger.error(f"  Image {i+1} is empty!")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Image {i+1} is empty. Please upload valid images."
+                    )
+                
+                # Validate image size (max 10MB)
+                if len(content) > 10 * 1024 * 1024:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Image {i+1} too large ({len(content)} bytes). Maximum size is 10MB."
+                    )
+                
+                # Determine content type
+                content_type = img.content_type or "image/jpeg"
+                
+                # Check if it's actually an image by looking at magic bytes
+                if content[:2] == b'\xff\xd8':
+                    content_type = "image/jpeg"
+                elif content[:8] == b'\x89PNG\r\n\x1a\n':
+                    content_type = "image/png"
+                elif content[:4] == b'RIFF' and content[8:12] == b'WEBP':
+                    content_type = "image/webp"
+                
+                logger.info(f"  Image {i+1} detected type: {content_type}")
+                
+                # Validate content type
+                allowed_types = ["image/jpeg", "image/png", "image/jpg", "image/webp", "image/heic", "image/heif"]
+                if content_type not in allowed_types:
+                    logger.warning(f"  Image {i+1} has invalid type: {content_type}")
+                    # Don't reject, try to process anyway
+                    content_type = "image/jpeg"
+                
+                # Save to temp file
+                ext = ".jpg"
+                if "png" in content_type:
+                    ext = ".png"
+                elif "webp" in content_type:
+                    ext = ".webp"
+                
+                temp_path = TEMP_DIR / f"{uuid.uuid4()}{ext}"
+                temp_path.write_bytes(content)
+                temp_files.append(temp_path)
+                logger.info(f"  Image {i+1} saved to: {temp_path}")
+                
+                # Prepare image data for processing
+                image_data_list.append({
+                    "bytes": content,
+                    "mime_type": content_type
+                })
+                
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"  Error processing image {i+1}: {str(e)}")
+                logger.error(traceback.format_exc())
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Image too large: {img.filename}. Maximum size is 10MB."
+                    detail=f"Error processing image {i+1}: {str(e)}"
                 )
-            
-            # Save to temp file (for debugging/logging if needed)
-            ext = ".jpg" if "jpeg" in img.content_type else ".png"
-            temp_path = TEMP_DIR / f"{uuid.uuid4()}{ext}"
-            temp_path.write_bytes(content)
-            temp_files.append(temp_path)
-            
-            # Prepare image data for processing
-            image_data_list.append({
-                "bytes": content,
-                "mime_type": img.content_type
-            })
-            
-            logger.info(f"Processed image: {img.filename} ({len(content)} bytes)")
+        
+        logger.info(f"All {len(image_data_list)} images processed successfully")
         
         # Run comparison
         logger.info("Starting AI comparison...")
@@ -208,16 +246,20 @@ async def compare_endpoint(
             except Exception as e:
                 logger.error(f"Failed to save comparison to DB: {e}")
             
-            logger.info(f"Comparison successful. Winner: Product {result['winner_index'] + 1}, Cost: ${result['total_cost']:.6f}")
+            logger.info(f"=== COMPARISON SUCCESS ===")
+            logger.info(f"Winner: Product {result['winner_index'] + 1}, Cost: ${result['total_cost']:.6f}")
         else:
-            logger.error(f"Comparison failed: {result.get('error')}")
+            logger.error(f"=== COMPARISON FAILED ===")
+            logger.error(f"Error: {result.get('error')}")
         
         return result
     
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error in comparison: {e}")
+        logger.error(f"=== UNEXPECTED ERROR ===")
+        logger.error(f"Error: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Comparison failed: {str(e)}"
@@ -237,17 +279,6 @@ async def quick_compare_endpoint(request: ComparisonRequest):
     """
     Quick comparison when products are already known.
     No image upload required.
-    
-    **Request body:**
-    ```json
-    {
-        "products": [
-            {"brand": "Nido", "name": "Full Cream Milk Powder", "size": "2.5kg"},
-            {"brand": "Almarai", "name": "Milk Powder", "size": "2.5kg"}
-        ],
-        "country": "Bahrain"
-    }
-    ```
     """
     
     logger.info(f"Quick comparison request: {len(request.products)} products")
@@ -410,4 +441,27 @@ async def services_health():
             "openai": {"status": openai_status},
             "serper": {"status": serper_status}
         }
+    }
+
+
+@router.post("/debug/upload")
+async def debug_upload(
+    images: List[UploadFile] = File(...)
+):
+    """Debug endpoint to test image uploads"""
+    results = []
+    
+    for i, img in enumerate(images):
+        content = await img.read()
+        results.append({
+            "index": i,
+            "filename": img.filename,
+            "content_type": img.content_type,
+            "size_bytes": len(content),
+            "first_bytes": content[:20].hex() if content else "empty"
+        })
+    
+    return {
+        "images_received": len(images),
+        "details": results
     }
