@@ -48,9 +48,30 @@ export interface CapturedImage {
   height: number;
 }
 
+// Auth types
+export interface User {
+  id: string;
+  email: string;
+  subscription_tier?: 'free' | 'premium';
+}
+
+export interface AuthSession {
+  access_token: string;
+  refresh_token: string;
+  expires_at?: number;
+}
+
+// Navigation types
 export type RootStackParamList = {
   Home: undefined;
   Camera: undefined;
   Results: { result: ComparisonResult };
   History: undefined;
+  Profile: undefined;
+};
+
+export type AuthStackParamList = {
+  Login: undefined;
+  Register: undefined;
+  ForgotPassword: undefined;
 };

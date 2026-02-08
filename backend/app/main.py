@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routes after env vars are loaded
-from app.api.routes import router
+from app.api.routes import router as api_router
+from app.api.auth_routes import router as auth_router
 
 # Create FastAPI app
 app = FastAPI(
@@ -29,8 +30,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routes
-app.include_router(router)
+# Include routers
+app.include_router(api_router)
+app.include_router(auth_router)
 
 
 @app.get("/")
