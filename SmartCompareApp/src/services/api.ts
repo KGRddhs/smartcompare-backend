@@ -8,7 +8,7 @@ import { ComparisonResult, RateLimitStatus, SubscriptionStatus } from '../types'
 
 // IMPORTANT: Change this to your computer's local IP
 // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
-const API_BASE_URL = 'http://192.168.100.13:8000';
+const API_BASE_URL = 'https://smartcompare-backend-production.up.railway.app';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

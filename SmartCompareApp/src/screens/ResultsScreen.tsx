@@ -1,6 +1,6 @@
 /**
  * SmartCompare - Results Screen
- * Display comparison results with winner
+ * Display comparison results with winner and share option
  */
 
 import React from 'react';
@@ -11,6 +11,8 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
+  Share,
+  Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -45,20 +47,73 @@ export default function ResultsScreen({ navigation, route }: ResultsScreenProps)
     return `${product.price.toFixed(2)} ${product.currency || 'BHD'}`;
   };
 
+  const handleShare = async () => {
+    try {
+      const winner = products[winner_index];
+      
+      // Build share message
+      let message = `🏆 SmartCompare Results\n\n`;
+      message += `Winner: ${winner?.brand} ${winner?.name}\n`;
+      message += `Best Price: ${formatPrice(winner)}\n\n`;
+      
+      message += `📊 Compared Products:\n`;
+      products.forEach((product: Product, index: number) => {
+        const isWinner = index === winner_index;
+        message += `${isWinner ? '✅' : '•'} ${product.brand} ${product.name}: ${formatPrice(product)}\n`;
+      });
+      
+      message += `\n💡 ${recommendation}\n`;
+      
+      if (key_differences && key_differences.length > 0) {
+        message += `\n📋 Key Differences:\n`;
+        key_differences.slice(0, 3).forEach((diff: string) => {
+          message += `• ${diff}\n`;
+        });
+      }
+      
+      message += `\n---\nCompared with SmartCompare 📱`;
+
+      await Share.share({
+        message: message,
+        title: 'SmartCompare Results',
+      });
+    } catch (error: any) {
+      if (error.message !== 'User dismissed the dialog') {
+        Alert.alert('Error', 'Could not share results');
+      }
+    }
+  };
+
+  const handleCopyToClipboard = async () => {
+    try {
+      const winner = products[winner_index];
+      let text = `Winner: ${winner?.brand} ${winner?.name} - ${formatPrice(winner)}`;
+      
+      // Note: For full clipboard support, you'd need expo-clipboard
+      // For now, we'll just use share
+      await Share.share({ message: text });
+    } catch (error) {
+      console.error('Copy failed:', error);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Comparison Results</Text>
-          <View style={styles.freshnessContainer}>
+          <View style={styles.headerActions}>
             <View style={[styles.freshnessBadge, { backgroundColor: getSourceBadgeColor(data_freshness) }]}>
               <Text style={styles.freshnessText}>
-                {data_freshness === 'live' ? '🔴 Live Prices' : 
+                {data_freshness === 'live' ? '🔴 Live' : 
                  data_freshness === 'cached' ? '📦 Cached' : 
-                 data_freshness === 'mixed' ? '🔄 Mixed' : '📊 Estimated'}
+                 data_freshness === 'mixed' ? '🔄 Mixed' : '📊 Est.'}
               </Text>
             </View>
+            <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+              <Text style={styles.shareButtonText}>📤 Share</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -72,7 +127,15 @@ export default function ResultsScreen({ navigation, route }: ResultsScreenProps)
           <Text style={styles.winnerPrice}>
             {formatPrice(products[winner_index])}
           </Text>
+          {products[winner_index]?.size && (
+            <Text style={styles.winnerSize}>{products[winner_index]?.size}</Text>
+          )}
         </View>
+
+        {/* Quick Share Banner */}
+        <TouchableOpacity style={styles.quickShareBanner} onPress={handleShare}>
+          <Text style={styles.quickShareText}>📱 Share this comparison with friends</Text>
+        </TouchableOpacity>
 
         {/* Products Comparison */}
         <View style={styles.productsSection}>
@@ -166,6 +229,22 @@ export default function ResultsScreen({ navigation, route }: ResultsScreenProps)
             <Text style={styles.newCompareButtonText}>📷 New Comparison</Text>
           </TouchableOpacity>
           
+          <View style={styles.secondaryActions}>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleShare}
+            >
+              <Text style={styles.secondaryButtonText}>📤 Share</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => navigation.navigate('History')}
+            >
+              <Text style={styles.secondaryButtonText}>📜 History</Text>
+            </TouchableOpacity>
+          </View>
+          
           <TouchableOpacity
             style={styles.homeButton}
             onPress={() => navigation.navigate('Home')}
@@ -188,6 +267,8 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
   headerTitle: {
@@ -195,15 +276,28 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1A1A1A',
   },
-  freshnessContainer: {
-    marginTop: 8,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   freshnessBadge: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
   freshnessText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  shareButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  shareButtonText: {
     color: '#FFF',
     fontSize: 12,
     fontWeight: '600',
@@ -214,7 +308,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   winnerEmoji: {
     fontSize: 48,
@@ -239,6 +333,24 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFF',
     marginTop: 8,
+  },
+  winnerSize: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
+  },
+  quickShareBanner: {
+    backgroundColor: '#E3F2FD',
+    marginHorizontal: 20,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  quickShareText: {
+    color: '#1976D2',
+    fontSize: 14,
+    fontWeight: '500',
   },
   productsSection: {
     paddingHorizontal: 20,
@@ -408,17 +520,36 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  homeButton: {
+  secondaryActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  secondaryButton: {
+    flex: 1,
     backgroundColor: '#FFF',
-    paddingVertical: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#DDD',
+  },
+  secondaryButtonText: {
+    color: '#333',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  homeButton: {
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#DDD',
   },
   homeButtonText: {
-    color: '#333',
-    fontSize: 16,
+    color: '#666',
+    fontSize: 14,
     fontWeight: '600',
   },
 });
