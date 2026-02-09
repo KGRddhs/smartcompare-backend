@@ -1,23 +1,43 @@
 """
 SmartCompare Backend - Main Application
-With structured text comparison
+Professional product comparison API with multiple input methods
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 # Load environment variables FIRST
-load_dotenv()
+load_dotenv(override=True)
 
 # Import routes after env vars are loaded
-from app.api.routes import router as api_router
-from app.api.auth_routes import router as auth_router
-from app.api.text_routes import router as text_router
+from app.api.routes import router as api_router          # Image comparison
+from app.api.auth_routes import router as auth_router    # Authentication
+from app.api.text_routes import router as text_router    # Text comparison
+from app.api.url_routes import router as url_router      # URL comparison
 
 # Create FastAPI app
 app = FastAPI(
     title="SmartCompare API",
-    description="AI-powered product comparison API with structured data extraction",
+    description="""
+    AI-powered product comparison API with multiple input methods.
+    
+    ## Input Methods
+    
+    - **📷 Image** - Take photos of products, AI identifies and compares
+    - **⌨️ Text** - Type "iPhone 15 vs Galaxy S24" for instant comparison  
+    - **🔗 URL** - Paste product URLs from Amazon, Noon, Carrefour, etc.
+    
+    ## Features
+    
+    - Structured data extraction (specs, prices, reviews)
+    - GCC regional pricing (Bahrain, Saudi, UAE, Kuwait, Qatar, Oman)
+    - Intelligent caching for fast responses
+    - User authentication and history
+    
+    ## Supported Retailers
+    
+    Amazon, Noon, Carrefour, Sharaf DG, Lulu Hypermarket, Extra, Jarir, Xcite
+    """,
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -33,23 +53,33 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(api_router)       # /api/v1/compare, /api/v1/history, etc.
-app.include_router(auth_router)      # /api/v1/auth/login, /api/v1/auth/register, etc.
-app.include_router(text_router)      # /api/v1/text/compare - NEW structured comparison
+app.include_router(api_router)       # /api/v1/compare (image)
+app.include_router(auth_router)      # /api/v1/auth/*
+app.include_router(text_router)      # /api/v1/text/*
+app.include_router(url_router)       # /api/v1/url/*
 
 
 @app.get("/")
 async def root():
-    """Health check endpoint"""
+    """Health check and API info"""
     return {
         "status": "healthy",
         "app": "SmartCompare API",
         "version": "2.0.0",
-        "features": [
-            "Image comparison (Vision AI)",
-            "Text comparison (Structured extraction)",
-            "GCC regional pricing",
-            "User authentication"
+        "endpoints": {
+            "image_compare": "/api/v1/compare",
+            "text_compare": "/api/v1/text/compare",
+            "url_compare": "/api/v1/url/compare",
+            "auth": "/api/v1/auth/*",
+            "docs": "/docs"
+        },
+        "input_methods": [
+            {"type": "image", "description": "Upload product photos"},
+            {"type": "text", "description": "Natural language comparison"},
+            {"type": "url", "description": "Product URLs from retailers"}
+        ],
+        "supported_regions": [
+            "bahrain", "saudi_arabia", "uae", "kuwait", "qatar", "oman"
         ]
     }
 
