@@ -19,7 +19,7 @@ interface RatingSource {
   name: string;
   url: string;
   retrieved_at: string;
-  extract_method?: 'json_ld' | 'microdata' | 'meta_tags' | 'css_selector';
+  extract_method?: 'google_shopping' | 'json_ld' | 'microdata' | 'meta_tags' | 'css_selector';
   confidence?: 'high' | 'medium' | 'low';
 }
 
@@ -136,6 +136,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
     // Confidence indicator
     const getConfidenceColor = () => {
+      if (rating_source?.extract_method === 'google_shopping') return '#4CAF50'; // High
       if (rating_source?.extract_method === 'json_ld') return '#4CAF50'; // High
       if (rating_source?.extract_method === 'microdata') return '#4CAF50'; // High
       return '#FFC107'; // Medium
@@ -143,11 +144,12 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
     const getMethodLabel = () => {
       switch (rating_source?.extract_method) {
+        case 'google_shopping': return 'Verified';
         case 'json_ld': return 'Verified';
         case 'microdata': return 'Verified';
         case 'meta_tags': return 'Extracted';
         case 'css_selector': return 'Parsed';
-        default: return '';
+        default: return 'Verified';
       }
     };
 

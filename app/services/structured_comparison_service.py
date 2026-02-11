@@ -3,9 +3,11 @@ Structured Comparison Service - Main orchestrator for product comparisons
 Handles caching, parallel fetching, and assembling complete product data
 """
 import os
+import re
 import json
 import asyncio
 import logging
+import httpx
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 
@@ -23,6 +25,8 @@ from app.services.extraction_service import (
 )
 from app.services.serper_service import search_product_prices, search_web
 from app.services.cache_service import get_cached, set_cached
+
+SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
 logger = logging.getLogger(__name__)
 
@@ -188,10 +192,21 @@ class StructuredComparisonService:
             result["best_price"] = result["price"].get("amount")
             result["currency"] = result["price"].get("currency", "BHD")
             result["retailer"] = result["price"].get("retailer")
-        
+
+        # Clean specs: remove meta keys, flatten additional_specs
+        if result.get("specs"):
+            result["specs"] = self._clean_specs(result["specs"])
+
+        # Extract verified rating from Google Shopping
+        rating_data = await self._get_verified_rating(full_name)
+        result["rating"] = rating_data.get("rating")
+        result["review_count"] = rating_data.get("review_count")
+        result["rating_verified"] = rating_data.get("rating_verified", False)
+        result["rating_source"] = rating_data.get("rating_source")
+
         # Calculate data freshness
         result["data_freshness"] = self._calculate_freshness(result)
-        
+
         return result
     
     async def _get_specs(
@@ -377,6 +392,135 @@ class StructuredComparisonService:
         """Track API costs."""
         self.total_cost += cost
         self.api_calls += 1
+
+    async def _get_verified_rating(self, full_name: str) -> Dict[str, Any]:
+        """
+        Get verified rating from Google Shopping data via Serper.
+        Returns real ratings from retailer listings - NO AI generation.
+        """
+        if not SERPER_API_KEY:
+            return {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
+
+        logger.info(f"[RATING] Searching Google Shopping for: {full_name}")
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    "https://google.serper.dev/shopping",
+                    headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
+                    json={"q": full_name, "num": 15}
+                )
+
+                if response.status_code != 200:
+                    logger.error(f"[RATING] Serper shopping search failed: {response.status_code}")
+                    return {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
+
+                shopping_items = response.json().get("shopping", [])
+                self._track_cost(0.001)
+
+            return self._extract_rating_from_shopping(full_name, shopping_items)
+
+        except Exception as e:
+            logger.error(f"[RATING] Shopping search error: {e}")
+            return {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
+
+    def _extract_rating_from_shopping(self, product_name: str, shopping_items: List[Dict]) -> Dict[str, Any]:
+        """Extract best matching rating from Serper Shopping results."""
+        empty = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
+
+        if not shopping_items:
+            return empty
+
+        p_words = set(product_name.lower().split())
+        candidates = []
+
+        for item in shopping_items:
+            rating = item.get("rating")
+            if not rating:
+                continue
+            try:
+                rating_val = float(rating)
+            except (ValueError, TypeError):
+                continue
+            if not (0 < rating_val <= 5):
+                continue
+
+            title = item.get("title", "")
+            t_words = set(title.lower().split())
+            match_score = len(p_words & t_words) / len(p_words) if p_words else 0
+
+            if match_score < 0.4:
+                continue
+
+            review_count = None
+            for key in ["ratingCount", "reviewCount", "reviews"]:
+                raw = item.get(key)
+                if raw is not None:
+                    try:
+                        review_count = int(str(raw).replace(",", "").replace("+", ""))
+                        break
+                    except (ValueError, TypeError):
+                        continue
+
+            candidates.append({
+                "rating": rating_val,
+                "review_count": review_count,
+                "source": item.get("source", "Google Shopping"),
+                "link": item.get("link", ""),
+                "title": title,
+                "match_score": match_score,
+            })
+
+        if not candidates:
+            return empty
+
+        candidates.sort(key=lambda c: (c["review_count"] or 0, c["match_score"]), reverse=True)
+        best = candidates[0]
+
+        logger.info(f"[RATING] ✓ VERIFIED: {best['rating']}/5 ({best['review_count']} reviews) from {best['source']}")
+
+        return {
+            "rating": round(best["rating"], 1),
+            "review_count": best["review_count"],
+            "rating_verified": True,
+            "rating_source": {
+                "name": f"{best['source']} via Google Shopping",
+                "url": best["link"],
+                "retrieved_at": datetime.now().isoformat() + "Z",
+                "extract_method": "google_shopping",
+                "confidence": "high"
+            }
+        }
+
+    @staticmethod
+    def _clean_specs(specs: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean specs for display: remove meta keys, flatten additional_specs, handle arrays."""
+        if not specs or not isinstance(specs, dict):
+            return {}
+
+        # Keys that are metadata, not actual specs
+        meta_keys = {"brand", "model", "variant", "category", "_cached", "error"}
+
+        cleaned = {}
+        for key, value in specs.items():
+            if key in meta_keys:
+                continue
+            if value is None:
+                continue
+
+            if key == "additional_specs" and isinstance(value, dict):
+                # Flatten additional_specs into main specs
+                for sub_key, sub_val in value.items():
+                    if sub_val is not None:
+                        cleaned[sub_key] = str(sub_val) if not isinstance(sub_val, str) else sub_val
+            elif isinstance(value, list):
+                cleaned[key] = ", ".join(str(v) for v in value)
+            elif isinstance(value, dict):
+                cleaned[key] = json.dumps(value)
+            else:
+                cleaned[key] = value
+
+        return cleaned
 
 
 # ============================================
