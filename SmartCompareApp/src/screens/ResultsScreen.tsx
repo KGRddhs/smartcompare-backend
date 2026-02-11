@@ -286,12 +286,12 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         const orderB = SPEC_DISPLAY_CONFIG[b]?.order ?? 999;
         return orderA - orderB;
       })
-      // Filter out rows where BOTH products have N/A or missing
+      // Only show rows where BOTH products have real data
       .filter((key) => {
         const val0 = products[0]?.specs?.[key];
         const val1 = products[1]?.specs?.[key];
         const isNA = (v: any) => !v || v === 'N/A' || v === '-';
-        return !(isNA(val0) && isNA(val1));
+        return !isNA(val0) && !isNA(val1);
       });
 
     const getLabel = (key: string) =>

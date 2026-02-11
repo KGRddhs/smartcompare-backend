@@ -115,7 +115,9 @@ RULES:
 - Be precise with numbers and units
 - Include ONLY the fields listed above, no additional_specs or extra keys
 - Include only verified information from search results
-- For list values (connectivity, ingredients, allergens), return a comma-separated string"""
+- For list values (connectivity, ingredients, allergens), return a comma-separated string
+- ONLY functional specs that affect daily use — NO launch price, MSRP, release date, marketing names, or sales info
+- Focus on what helps a buyer compare real-world performance and usability"""
 
 
 PRICE_EXTRACTION_PROMPT = """You are a price extraction expert for GCC markets.
