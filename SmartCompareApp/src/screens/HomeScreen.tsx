@@ -1,33 +1,46 @@
 /**
- * SmartCompare - Home Screen (with Auth)
+ * SmartCompare - Home Screen
+ * Multi-input: Camera, Text, URL
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
+  TextInput,
   ActivityIndicator,
   Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
-import { RootStackParamList, SubscriptionStatus } from '../types';
-import { getSubscriptionStatus, healthCheck } from '../services/api';
+import { RootStackParamList } from '../types';
+import { healthCheck } from '../services/api';
 import { logout, getSavedUser, User } from '../services/authService';
+import api from '../services/api';
 
 type HomeScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
   onLogout: () => void;
 };
 
+type InputMethod = 'camera' | 'text' | 'url';
+
 export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
-  const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [serverOnline, setServerOnline] = useState(false);
+  const [loading, setLoading] = useState(false);
+  
+  // Input states
+  const [inputMethod, setInputMethod] = useState<InputMethod>('camera');
+  const [textQuery, setTextQuery] = useState('');
+  const [url1, setUrl1] = useState('');
+  const [url2, setUrl2] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -42,169 +55,286 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
   };
 
   const checkServer = async () => {
-    setLoading(true);
     try {
       const isHealthy = await healthCheck();
       setServerOnline(isHealthy);
-
-      if (isHealthy) {
-        const subStatus = await getSubscriptionStatus();
-        setStatus(subStatus);
-      }
     } catch (error) {
-      console.log('Server check failed:', error);
       setServerOnline(false);
+    }
+  };
+
+  // Camera comparison
+  const handleCameraCompare = () => {
+    if (!serverOnline) {
+      Alert.alert('Server Offline', 'Please check your connection.');
+      return;
+    }
+    navigation.navigate('Camera');
+  };
+
+  // Text comparison
+  const handleTextCompare = async () => {
+    if (!textQuery.trim()) {
+      Alert.alert('Enter Products', 'Example: "iPhone 15 vs Galaxy S24"');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const response = await api.get('/api/v1/text/compare', {
+        params: {
+          q: textQuery.trim(),
+          region: 'bahrain',
+        }
+      });
+      
+      if (response.data.success) {
+        navigation.navigate('Results', { result: response.data });
+      } else {
+        Alert.alert('Error', response.data.error || 'Comparison failed');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.detail || 'Comparison failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCompare = () => {
-    if (!serverOnline) {
-      Alert.alert('Server Offline', 'Please check your internet connection and try again.');
+  // URL comparison
+  const handleUrlCompare = async () => {
+    if (!url1.trim() || !url2.trim()) {
+      Alert.alert('Enter URLs', 'Paste product URLs from Amazon, Noon, etc.');
       return;
     }
-
-    if (status && status.remaining_comparisons === 0) {
-      Alert.alert(
-        'Daily Limit Reached',
-        'You\'ve used all your free comparisons today. Upgrade to Premium for unlimited access!',
-        [
-          { text: 'OK', style: 'cancel' },
-          { text: 'Upgrade', onPress: () => Alert.alert('Coming Soon', 'Premium subscriptions coming soon!') }
-        ]
-      );
+    
+    if (!url1.startsWith('http') || !url2.startsWith('http')) {
+      Alert.alert('Invalid URL', 'URLs must start with http:// or https://');
       return;
     }
-
-    navigation.navigate('Camera');
+    
+    setLoading(true);
+    try {
+      const response = await api.post('/api/v1/url/compare', {
+        url1: url1.trim(),
+        url2: url2.trim(),
+        region: 'bahrain',
+      });
+      
+      if (response.data.success) {
+        navigation.navigate('Results', { result: response.data });
+      } else {
+        Alert.alert('Error', response.data.error || 'Comparison failed');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.detail || 'Comparison failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-            onLogout();
-          }
+    Alert.alert('Logout', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          onLogout();
         }
-      ]
-    );
+      }
+    ]);
+  };
+
+  const renderInputMethod = () => {
+    switch (inputMethod) {
+      case 'camera':
+        return (
+          <View style={styles.inputSection}>
+            <Text style={styles.inputDescription}>
+              Take photos of 2-4 products to compare
+            </Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleCameraCompare}
+              disabled={!serverOnline || loading}
+            >
+              <Text style={styles.primaryButtonText}>📷 Open Camera</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      
+      case 'text':
+        return (
+          <View style={styles.inputSection}>
+            <Text style={styles.inputDescription}>
+              Type products to compare
+            </Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder='e.g., "iPhone 15 vs Galaxy S24"'
+              placeholderTextColor="#999"
+              value={textQuery}
+              onChangeText={setTextQuery}
+              editable={!loading}
+            />
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              onPress={handleTextCompare}
+              disabled={!serverOnline || loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>⚡ Compare</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        );
+      
+      case 'url':
+        return (
+          <View style={styles.inputSection}>
+            <Text style={styles.inputDescription}>
+              Paste product URLs from any store
+            </Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Product 1 URL (Amazon, Noon, etc.)"
+              placeholderTextColor="#999"
+              value={url1}
+              onChangeText={setUrl1}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!loading}
+            />
+            <TextInput
+              style={styles.textInput}
+              placeholder="Product 2 URL"
+              placeholderTextColor="#999"
+              value={url2}
+              onChangeText={setUrl2}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!loading}
+            />
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              onPress={handleUrlCompare}
+              disabled={!serverOnline || loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>🔗 Compare URLs</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        );
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        {/* Header with user info */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>SmartCompare</Text>
-            <Text style={styles.subtitle}>AI-Powered Shopping Intelligence</Text>
-          </View>
-          <TouchableOpacity style={styles.profileButton} onPress={handleLogout}>
-            <Text style={styles.profileEmoji}>👤</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* User Card */}
-        {user && (
-          <View style={styles.userCard}>
-            <View style={styles.userInfo}>
-              <Text style={styles.userEmail}>{user.email}</Text>
-              <View style={styles.tierBadge}>
-                <Text style={styles.tierText}>
-                  {status?.subscription_tier === 'premium' ? '⭐ Premium' : '🆓 Free'}
-                </Text>
-              </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.title}>SmartCompare</Text>
+              <Text style={styles.subtitle}>AI-Powered Product Comparison</Text>
             </View>
-            <TouchableOpacity onPress={handleLogout}>
-              <Text style={styles.logoutText}>Logout</Text>
+            <TouchableOpacity style={styles.profileButton} onPress={handleLogout}>
+              <Text style={styles.profileEmoji}>👤</Text>
             </TouchableOpacity>
           </View>
-        )}
 
-        {/* Status Card */}
-        <View style={styles.statusCard}>
-          {loading ? (
-            <ActivityIndicator size="small" color="#007AFF" />
-          ) : serverOnline ? (
-            <>
-              <View style={styles.statusRow}>
-                <Text style={styles.statusLabel}>Server</Text>
-                <Text style={[styles.statusValue, styles.online]}>● Online</Text>
-              </View>
-              <View style={styles.statusRow}>
-                <Text style={styles.statusLabel}>Today's Usage</Text>
-                <Text style={styles.statusValue}>
-                  {status?.daily_usage || 0} / {status?.daily_limit || '∞'}
-                </Text>
-              </View>
-              {status?.remaining_comparisons !== null && (
-                <View style={styles.statusRow}>
-                  <Text style={styles.statusLabel}>Remaining</Text>
-                  <Text style={[
-                    styles.statusValue,
-                    status?.remaining_comparisons === 0 && styles.warning
-                  ]}>
-                    {status?.remaining_comparisons} comparisons
-                  </Text>
-                </View>
-              )}
-            </>
-          ) : (
-            <View style={styles.offlineContainer}>
-              <Text style={[styles.statusValue, styles.offline]}>● Server Offline</Text>
-              <Text style={styles.offlineHint}>
-                Check your internet connection
+          {/* Status */}
+          <View style={styles.statusBar}>
+            <Text style={[styles.statusDot, serverOnline ? styles.online : styles.offline]}>●</Text>
+            <Text style={styles.statusText}>
+              {serverOnline ? 'Online' : 'Offline'}
+            </Text>
+            {user && (
+              <Text style={styles.userEmail}> • {user.email}</Text>
+            )}
+          </View>
+
+          {/* Input Method Selector */}
+          <View style={styles.methodSelector}>
+            <TouchableOpacity
+              style={[styles.methodTab, inputMethod === 'camera' && styles.methodTabActive]}
+              onPress={() => setInputMethod('camera')}
+            >
+              <Text style={[styles.methodTabText, inputMethod === 'camera' && styles.methodTabTextActive]}>
+                📷 Camera
               </Text>
-              <TouchableOpacity style={styles.retryButton} onPress={checkServer}>
-                <Text style={styles.retryText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.methodTab, inputMethod === 'text' && styles.methodTabActive]}
+              onPress={() => setInputMethod('text')}
+            >
+              <Text style={[styles.methodTabText, inputMethod === 'text' && styles.methodTabTextActive]}>
+                ⌨️ Text
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.methodTab, inputMethod === 'url' && styles.methodTabActive]}
+              onPress={() => setInputMethod('url')}
+            >
+              <Text style={[styles.methodTabText, inputMethod === 'url' && styles.methodTabTextActive]}>
+                🔗 URL
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* Main Action Button */}
-        <TouchableOpacity
-          style={[styles.compareButton, !serverOnline && styles.buttonDisabled]}
-          onPress={handleCompare}
-          disabled={!serverOnline}
-        >
-          <Text style={styles.compareButtonText}>📷 Compare Products</Text>
-        </TouchableOpacity>
+          {/* Input Area */}
+          <View style={styles.inputCard}>
+            {renderInputMethod()}
+          </View>
 
-        {/* Secondary Actions */}
-        <View style={styles.secondaryActions}>
+          {/* Examples */}
+          <View style={styles.examplesCard}>
+            <Text style={styles.examplesTitle}>
+              {inputMethod === 'camera' && '📷 How Camera Works:'}
+              {inputMethod === 'text' && '⌨️ Text Examples:'}
+              {inputMethod === 'url' && '🔗 Supported Stores:'}
+            </Text>
+            {inputMethod === 'camera' && (
+              <>
+                <Text style={styles.exampleItem}>1. Point at 2-4 products</Text>
+                <Text style={styles.exampleItem}>2. AI identifies them automatically</Text>
+                <Text style={styles.exampleItem}>3. Get comparison with prices</Text>
+              </>
+            )}
+            {inputMethod === 'text' && (
+              <>
+                <Text style={styles.exampleItem}>• "iPhone 15 vs Galaxy S24"</Text>
+                <Text style={styles.exampleItem}>• "MacBook Air vs Dell XPS 13"</Text>
+                <Text style={styles.exampleItem}>• "Nido milk vs Almarai milk"</Text>
+              </>
+            )}
+            {inputMethod === 'url' && (
+              <>
+                <Text style={styles.exampleItem}>• Amazon (amazon.ae, amazon.sa)</Text>
+                <Text style={styles.exampleItem}>• Noon (noon.com)</Text>
+                <Text style={styles.exampleItem}>• Carrefour, Sharaf DG, Lulu</Text>
+              </>
+            )}
+          </View>
+
+          {/* History Button */}
           <TouchableOpacity
-            style={styles.secondaryButton}
+            style={styles.historyButton}
             onPress={() => navigation.navigate('History')}
           >
-            <Text style={styles.secondaryButtonText}>📜 History</Text>
+            <Text style={styles.historyButtonText}>📜 View History</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* Instructions */}
-        <View style={styles.instructions}>
-          <Text style={styles.instructionsTitle}>How it works:</Text>
-          <Text style={styles.instructionStep}>1. Take photos of 2-4 products</Text>
-          <Text style={styles.instructionStep}>2. AI identifies products & finds prices</Text>
-          <Text style={styles.instructionStep}>3. Get instant comparison & winner</Text>
-        </View>
-
-        {/* Premium Upsell */}
-        {status?.subscription_tier !== 'premium' && (
-          <TouchableOpacity style={styles.premiumBanner}>
-            <Text style={styles.premiumText}>⭐ Upgrade to Premium</Text>
-            <Text style={styles.premiumSubtext}>Unlimited comparisons • Coming Soon</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -214,31 +344,31 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
-  content: {
-    flex: 1,
+  scrollContent: {
     padding: 20,
+    paddingBottom: 40,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginTop: 20,
-    marginBottom: 20,
+    marginTop: 10,
+    marginBottom: 16,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#1A1A1A',
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
-    marginTop: 4,
+    marginTop: 2,
   },
   profileButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#FFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -249,74 +379,16 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   profileEmoji: {
-    fontSize: 20,
+    fontSize: 18,
   },
-  userCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+  statusBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: 20,
   },
-  userInfo: {
-    flex: 1,
-  },
-  userEmail: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-  tierBadge: {
-    backgroundColor: '#E3F2FD',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    marginTop: 4,
-  },
-  tierText: {
+  statusDot: {
     fontSize: 12,
-    color: '#1976D2',
-    fontWeight: '600',
-  },
-  logoutText: {
-    color: '#FF3B30',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  statusCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  statusLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  statusValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    marginRight: 4,
   },
   online: {
     color: '#34C759',
@@ -324,97 +396,120 @@ const styles = StyleSheet.create({
   offline: {
     color: '#FF3B30',
   },
-  warning: {
-    color: '#FF9500',
-  },
-  offlineContainer: {
-    alignItems: 'center',
-    padding: 10,
-  },
-  offlineHint: {
-    fontSize: 12,
+  statusText: {
+    fontSize: 13,
     color: '#666',
-    textAlign: 'center',
-    marginTop: 8,
   },
-  retryButton: {
-    marginTop: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#007AFF',
+  userEmail: {
+    fontSize: 13,
+    color: '#666',
+  },
+  methodSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#E5E5EA',
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 16,
+  },
+  methodTab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
     borderRadius: 8,
   },
-  retryText: {
-    color: '#FFF',
+  methodTabActive: {
+    backgroundColor: '#FFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  methodTabText: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '500',
+  },
+  methodTabTextActive: {
+    color: '#007AFF',
     fontWeight: '600',
   },
-  compareButton: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 18,
-    borderRadius: 12,
-    alignItems: 'center',
+  inputCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 20,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  inputSection: {
+    alignItems: 'center',
+  },
+  inputDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  textInput: {
+    width: '100%',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 15,
+    color: '#1A1A1A',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  primaryButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 10,
+    width: '100%',
+    alignItems: 'center',
   },
   buttonDisabled: {
-    backgroundColor: '#CCC',
+    opacity: 0.6,
   },
-  compareButtonText: {
+  primaryButtonText: {
     color: '#FFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
   },
-  secondaryActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  secondaryButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    backgroundColor: '#FFF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#DDD',
-  },
-  secondaryButtonText: {
-    color: '#333',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  instructions: {
+  examplesCard: {
     backgroundColor: '#FFF',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
   },
-  instructionsTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    color: '#1A1A1A',
-  },
-  instructionStep: {
+  examplesTitle: {
     fontSize: 14,
-    color: '#666',
+    fontWeight: '600',
+    color: '#333',
     marginBottom: 8,
+  },
+  exampleItem: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 4,
     paddingLeft: 8,
   },
-  premiumBanner: {
-    backgroundColor: '#FFF9C4',
-    borderRadius: 12,
-    padding: 16,
+  historyButton: {
+    backgroundColor: '#FFF',
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#FFE082',
+    borderColor: '#E0E0E0',
   },
-  premiumText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#F57C00',
-  },
-  premiumSubtext: {
-    fontSize: 12,
-    color: '#FF8F00',
-    marginTop: 4,
+  historyButtonText: {
+    color: '#333',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

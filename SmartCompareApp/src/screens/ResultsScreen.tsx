@@ -1,259 +1,396 @@
 /**
- * SmartCompare - Results Screen
- * Display comparison results with winner and share option
+ * ResultsScreen - Comparison results with verified ratings
+ * Shows "No verified rating available" if rating is null
+ * Includes link to source when rating is verified
  */
-
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Share,
-  Alert,
+  Linking,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RouteProp } from '@react-navigation/native';
-import { RootStackParamList, Product } from '../types';
+import { Ionicons } from '@expo/vector-icons';
 
-type ResultsScreenProps = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'Results'>;
-  route: RouteProp<RootStackParamList, 'Results'>;
-};
+interface RatingSource {
+  name: string;
+  url: string;
+  retrieved_at: string;
+  extract_method?: 'json_ld' | 'microdata' | 'meta_tags' | 'css_selector';
+  confidence?: 'high' | 'medium' | 'low';
+}
 
-export default function ResultsScreen({ navigation, route }: ResultsScreenProps) {
-  const { result } = route.params;
-  const { products, winner_index, recommendation, key_differences, data_freshness, total_cost } = result;
-
-  const getSourceBadgeColor = (source: string) => {
-    switch (source) {
-      case 'live':
-        return '#34C759';
-      case 'cached':
-        return '#FF9500';
-      case 'estimated':
-        return '#FF3B30';
-      default:
-        return '#999';
-    }
+interface Product {
+  name: string;
+  brand: string;
+  full_name?: string;
+  category?: string;
+  price?: {
+    amount: number | null;
+    currency: string;
+    retailer?: string;
+    estimated?: boolean;
+    note?: string;
+    unavailable?: boolean;
   };
+  specs?: Record<string, any>;
+  rating?: number | null;
+  review_count?: number | null;
+  rating_verified?: boolean;
+  rating_source?: RatingSource | null;
+  pros?: string[];
+  cons?: string[];
+  confidence?: number;
+  _rating_debug?: any;
+}
 
-  const formatPrice = (product: Product) => {
-    if (product.price === null || product.price === undefined) {
-      return 'Price unavailable';
+interface Comparison {
+  winner_index: number;
+  winner_reason: string;
+  recommendation: string;
+  key_differences: string[];
+  value_scores?: number[];
+  best_for?: Record<string, number>;
+  price_comparison?: {
+    cheaper_index: number | null;
+    price_difference: string;
+    better_value_index: number;
+  };
+  specs_comparison?: {
+    product_0_advantages: string[];
+    product_1_advantages: string[];
+    similar_features: string[];
+  };
+}
+
+interface ResultsScreenProps {
+  route: {
+    params: {
+      result: {
+        success: boolean;
+        products: Product[];
+        comparison: Comparison;
+        winner_index: number;
+        recommendation: string;
+        key_differences: string[];
+        metadata?: {
+          elapsed_seconds: number;
+          total_cost: number;
+          api_calls: number;
+          cache_hits: number;
+        };
+      };
+    };
+  };
+  navigation: any;
+}
+
+type TabType = 'overview' | 'specs' | 'reviews';
+
+export default function ResultsScreen({ route, navigation }: ResultsScreenProps) {
+  const { result } = route.params;
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
+
+  const { products, comparison, winner_index, recommendation, key_differences, metadata } = result;
+
+  const formatPrice = (price?: Product['price']) => {
+    if (!price || price.unavailable || price.amount === null) {
+      return 'Price N/A';
     }
-    return `${product.price.toFixed(2)} ${product.currency || 'BHD'}`;
+    return `${price.currency} ${price.amount.toLocaleString()}`;
   };
 
   const handleShare = async () => {
     try {
-      const winner = products[winner_index];
-      
-      // Build share message
-      let message = `🏆 SmartCompare Results\n\n`;
-      message += `Winner: ${winner?.brand} ${winner?.name}\n`;
-      message += `Best Price: ${formatPrice(winner)}\n\n`;
-      
-      message += `📊 Compared Products:\n`;
-      products.forEach((product: Product, index: number) => {
-        const isWinner = index === winner_index;
-        message += `${isWinner ? '✅' : '•'} ${product.brand} ${product.name}: ${formatPrice(product)}\n`;
-      });
-      
-      message += `\n💡 ${recommendation}\n`;
-      
-      if (key_differences && key_differences.length > 0) {
-        message += `\n📋 Key Differences:\n`;
-        key_differences.slice(0, 3).forEach((diff: string) => {
-          message += `• ${diff}\n`;
-        });
-      }
-      
-      message += `\n---\nCompared with SmartCompare 📱`;
-
-      await Share.share({
-        message: message,
-        title: 'SmartCompare Results',
-      });
-    } catch (error: any) {
-      if (error.message !== 'User dismissed the dialog') {
-        Alert.alert('Error', 'Could not share results');
-      }
-    }
-  };
-
-  const handleCopyToClipboard = async () => {
-    try {
-      const winner = products[winner_index];
-      let text = `Winner: ${winner?.brand} ${winner?.name} - ${formatPrice(winner)}`;
-      
-      // Note: For full clipboard support, you'd need expo-clipboard
-      // For now, we'll just use share
-      await Share.share({ message: text });
+      const message = `Comparing ${products[0]?.name} vs ${products[1]?.name}\n\nWinner: ${products[winner_index]?.name}\n\n${recommendation}`;
+      await Share.share({ message });
     } catch (error) {
-      console.error('Copy failed:', error);
+      console.error('Share error:', error);
     }
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Comparison Results</Text>
-          <View style={styles.headerActions}>
-            <View style={[styles.freshnessBadge, { backgroundColor: getSourceBadgeColor(data_freshness) }]}>
-              <Text style={styles.freshnessText}>
-                {data_freshness === 'live' ? '🔴 Live' : 
-                 data_freshness === 'cached' ? '📦 Cached' : 
-                 data_freshness === 'mixed' ? '🔄 Mixed' : '📊 Est.'}
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-              <Text style={styles.shareButtonText}>📤 Share</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+  const openRatingSource = (source: RatingSource | null | undefined) => {
+    if (source?.url) {
+      Linking.openURL(source.url);
+    }
+  };
 
-        {/* Winner Banner */}
-        <View style={styles.winnerBanner}>
-          <Text style={styles.winnerEmoji}>🏆</Text>
-          <Text style={styles.winnerTitle}>Best Value</Text>
-          <Text style={styles.winnerName}>
-            {products[winner_index]?.brand} {products[winner_index]?.name}
+  // Rating display component with provenance
+  const RatingDisplay = ({ product }: { product: Product }) => {
+    const { rating, review_count, rating_verified, rating_source } = product;
+
+    // If no rating or not verified, show "No verified rating"
+    if (rating === null || rating === undefined || !rating_verified || !rating_source?.url) {
+      return (
+        <View style={styles.ratingContainer}>
+          <Text style={styles.noRatingText}>No verified rating</Text>
+          <Text style={styles.noRatingSubtext}>
+            Rating could not be verified from retailers
           </Text>
-          <Text style={styles.winnerPrice}>
-            {formatPrice(products[winner_index])}
-          </Text>
-          {products[winner_index]?.size && (
-            <Text style={styles.winnerSize}>{products[winner_index]?.size}</Text>
+        </View>
+      );
+    }
+
+    // Confidence indicator
+    const getConfidenceColor = () => {
+      if (rating_source?.extract_method === 'json_ld') return '#4CAF50'; // High
+      if (rating_source?.extract_method === 'microdata') return '#4CAF50'; // High
+      return '#FFC107'; // Medium
+    };
+
+    const getMethodLabel = () => {
+      switch (rating_source?.extract_method) {
+        case 'json_ld': return 'Verified';
+        case 'microdata': return 'Verified';
+        case 'meta_tags': return 'Extracted';
+        case 'css_selector': return 'Parsed';
+        default: return '';
+      }
+    };
+
+    // Show verified rating with source
+    return (
+      <View style={styles.ratingContainer}>
+        <View style={styles.ratingRow}>
+          <Ionicons name="star" size={16} color="#FFD700" />
+          <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
+          {review_count && review_count > 0 && (
+            <Text style={styles.reviewCount}>({review_count.toLocaleString()} reviews)</Text>
           )}
         </View>
-
-        {/* Quick Share Banner */}
-        <TouchableOpacity style={styles.quickShareBanner} onPress={handleShare}>
-          <Text style={styles.quickShareText}>📱 Share this comparison with friends</Text>
-        </TouchableOpacity>
-
-        {/* Products Comparison */}
-        <View style={styles.productsSection}>
-          <Text style={styles.sectionTitle}>Products Compared</Text>
-          
-          {products.map((product: Product, index: number) => (
-            <View 
-              key={index} 
-              style={[
-                styles.productCard,
-                index === winner_index && styles.productCardWinner
-              ]}
-            >
-              {index === winner_index && (
-                <View style={styles.winnerTag}>
-                  <Text style={styles.winnerTagText}>WINNER</Text>
-                </View>
-              )}
-              
-              <View style={styles.productHeader}>
-                <Text style={styles.productNumber}>#{index + 1}</Text>
-                <View 
-                  style={[
-                    styles.sourceBadge, 
-                    { backgroundColor: getSourceBadgeColor(product.source || 'unknown') }
-                  ]}
-                >
-                  <Text style={styles.sourceBadgeText}>{product.source || 'unknown'}</Text>
-                </View>
-              </View>
-              
-              <Text style={styles.productBrand}>{product.brand}</Text>
-              <Text style={styles.productName}>{product.name}</Text>
-              
-              {product.size && (
-                <Text style={styles.productSize}>Size: {product.size}</Text>
-              )}
-              
-              <View style={styles.priceRow}>
-                <Text style={styles.priceLabel}>Price:</Text>
-                <Text style={styles.priceValue}>{formatPrice(product)}</Text>
-              </View>
-              
-              {product.retailer && (
-                <Text style={styles.retailer}>From: {product.retailer}</Text>
-              )}
-              
-              {product.note && (
-                <Text style={styles.note}>{product.note}</Text>
-              )}
-            </View>
-          ))}
-        </View>
-
-        {/* Recommendation */}
-        <View style={styles.recommendationSection}>
-          <Text style={styles.sectionTitle}>💡 AI Recommendation</Text>
-          <View style={styles.recommendationCard}>
-            <Text style={styles.recommendationText}>{recommendation}</Text>
+        
+        {/* Source attribution with link */}
+        <TouchableOpacity 
+          onPress={() => openRatingSource(rating_source)}
+          style={styles.sourceLink}
+        >
+          <View style={[styles.verifiedBadge, { backgroundColor: getConfidenceColor() }]}>
+            <Text style={styles.verifiedBadgeText}>{getMethodLabel()}</Text>
           </View>
-        </View>
+          <Text style={styles.sourceText}>
+            {rating_source.name}
+          </Text>
+          <Ionicons name="open-outline" size={12} color="#2196F3" />
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
-        {/* Key Differences */}
-        {key_differences && key_differences.length > 0 && (
-          <View style={styles.differencesSection}>
-            <Text style={styles.sectionTitle}>📋 Key Differences</Text>
-            <View style={styles.differencesList}>
-              {key_differences.map((diff: string, index: number) => (
-                <View key={index} style={styles.differenceItem}>
-                  <Text style={styles.differenceBullet}>•</Text>
-                  <Text style={styles.differenceText}>{diff}</Text>
-                </View>
-              ))}
-            </View>
+  // Product card component
+  const ProductCard = ({ product, index }: { product: Product; index: number }) => {
+    const isWinner = index === winner_index;
+    const valueScore = comparison.value_scores?.[index];
+
+    return (
+      <View style={[styles.productCard, isWinner && styles.winnerCard]}>
+        {isWinner && (
+          <View style={styles.winnerBadge}>
+            <Text style={styles.winnerBadgeText}>🏆 WINNER</Text>
           </View>
         )}
+        
+        <Text style={styles.brandText}>{product.brand}</Text>
+        <Text style={styles.productName}>{product.name}</Text>
+        
+        {/* Price */}
+        <Text style={[
+          styles.priceText,
+          product.price?.unavailable && styles.priceUnavailable
+        ]}>
+          {formatPrice(product.price)}
+        </Text>
+        {product.price?.estimated && (
+          <Text style={styles.priceNote}>*Converted price</Text>
+        )}
+        {product.price?.retailer && !product.price?.unavailable && (
+          <Text style={styles.retailerText}>{product.price.retailer}</Text>
+        )}
+        
+        {/* Rating with source */}
+        <RatingDisplay product={product} />
+        
+        {/* Value Score */}
+        {valueScore !== undefined && (
+          <View style={styles.valueScoreContainer}>
+            <Text style={styles.valueScoreLabel}>Value Score</Text>
+            <Text style={styles.valueScoreText}>{valueScore}/10</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
-        {/* Cost Info */}
-        <View style={styles.costSection}>
-          <Text style={styles.costText}>
-            API Cost: ${total_cost.toFixed(6)} (~{(total_cost * 100).toFixed(3)}¢)
-          </Text>
+  // Specs comparison tab
+  const SpecsTab = () => (
+    <View style={styles.tabContent}>
+      {products.map((product, index) => (
+        <View key={index} style={styles.specsCard}>
+          <Text style={styles.specsCardTitle}>{product.name}</Text>
+          {product.specs && Object.entries(product.specs).map(([key, value]) => (
+            value && (
+              <View key={key} style={styles.specRow}>
+                <Text style={styles.specKey}>{key.replace(/_/g, ' ')}</Text>
+                <Text style={styles.specValue}>{String(value)}</Text>
+              </View>
+            )
+          ))}
         </View>
-
-        {/* Actions */}
-        <View style={styles.actionsSection}>
-          <TouchableOpacity
-            style={styles.newCompareButton}
-            onPress={() => navigation.navigate('Camera')}
-          >
-            <Text style={styles.newCompareButtonText}>📷 New Comparison</Text>
-          </TouchableOpacity>
+      ))}
+      
+      {/* Advantages comparison */}
+      {comparison.specs_comparison && (
+        <View style={styles.advantagesSection}>
+          <Text style={styles.sectionTitle}>Advantages</Text>
           
-          <View style={styles.secondaryActions}>
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={handleShare}
-            >
-              <Text style={styles.secondaryButtonText}>📤 Share</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={() => navigation.navigate('History')}
-            >
-              <Text style={styles.secondaryButtonText}>📜 History</Text>
-            </TouchableOpacity>
+          {comparison.specs_comparison.product_0_advantages?.length > 0 && (
+            <View style={styles.advantageCard}>
+              <Text style={styles.advantageTitle}>{products[0]?.name}</Text>
+              {comparison.specs_comparison.product_0_advantages.map((adv, i) => (
+                <Text key={i} style={styles.advantageItem}>✓ {adv}</Text>
+              ))}
+            </View>
+          )}
+          
+          {comparison.specs_comparison.product_1_advantages?.length > 0 && (
+            <View style={styles.advantageCard}>
+              <Text style={styles.advantageTitle}>{products[1]?.name}</Text>
+              {comparison.specs_comparison.product_1_advantages.map((adv, i) => (
+                <Text key={i} style={styles.advantageItem}>✓ {adv}</Text>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+
+  // Reviews tab (pros/cons)
+  const ReviewsTab = () => (
+    <View style={styles.tabContent}>
+      {products.map((product, index) => (
+        <View key={index} style={styles.reviewCard}>
+          <Text style={styles.reviewCardTitle}>{product.name}</Text>
+          
+          {/* Rating info */}
+          <View style={styles.reviewRatingSection}>
+            <RatingDisplay product={product} />
           </View>
           
-          <TouchableOpacity
-            style={styles.homeButton}
-            onPress={() => navigation.navigate('Home')}
-          >
-            <Text style={styles.homeButtonText}>🏠 Back to Home</Text>
-          </TouchableOpacity>
+          {/* Pros */}
+          {product.pros && product.pros.length > 0 && (
+            <View style={styles.prosConsSection}>
+              <Text style={styles.prosTitle}>👍 Pros</Text>
+              {product.pros.map((pro, i) => (
+                <Text key={i} style={styles.proItem}>• {pro}</Text>
+              ))}
+            </View>
+          )}
+          
+          {/* Cons */}
+          {product.cons && product.cons.length > 0 && (
+            <View style={styles.prosConsSection}>
+              <Text style={styles.consTitle}>👎 Cons</Text>
+              {product.cons.map((con, i) => (
+                <Text key={i} style={styles.conItem}>• {con}</Text>
+              ))}
+            </View>
+          )}
         </View>
+      ))}
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#FFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Comparison</Text>
+        <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
+          <Text style={styles.shareText}>Share</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabBar}>
+        {(['overview', 'specs', 'reviews'] as TabType[]).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tab, activeTab === tab && styles.activeTab]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <ScrollView style={styles.content}>
+        {activeTab === 'overview' && (
+          <>
+            {/* Product Cards */}
+            <View style={styles.productsRow}>
+              {products.map((product, index) => (
+                <ProductCard key={index} product={product} index={index} />
+              ))}
+            </View>
+
+            {/* Recommendation */}
+            <View style={styles.recommendationSection}>
+              <Text style={styles.sectionTitle}>💡 Recommendation</Text>
+              <Text style={styles.recommendationText}>{recommendation}</Text>
+            </View>
+
+            {/* Key Differences */}
+            <View style={styles.differencesSection}>
+              <Text style={styles.sectionTitle}>🔍 Key Differences</Text>
+              {key_differences?.map((diff, index) => (
+                <Text key={index} style={styles.differenceItem}>• {diff}</Text>
+              ))}
+            </View>
+
+            {/* Best For */}
+            {comparison.best_for && (
+              <View style={styles.bestForSection}>
+                <Text style={styles.sectionTitle}>Best For</Text>
+                <View style={styles.bestForGrid}>
+                  {Object.entries(comparison.best_for).map(([category, winnerIdx]) => (
+                    <View key={category} style={styles.bestForItem}>
+                      <Text style={styles.bestForCategory}>
+                        {category.charAt(0).toUpperCase() + category.slice(1)}
+                      </Text>
+                      <Text style={styles.bestForWinner}>
+                        {products[winnerIdx]?.name || 'N/A'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Metadata */}
+            {metadata && (
+              <View style={styles.metadataSection}>
+                <Text style={styles.metadataText}>
+                  Comparison took {metadata.elapsed_seconds?.toFixed(1)}s • 
+                  Cost: ${metadata.total_cost?.toFixed(4)} • 
+                  {metadata.cache_hits > 0 ? `${metadata.cache_hits} cached` : 'Fresh data'}
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+
+        {activeTab === 'specs' && <SpecsTab />}
+        {activeTab === 'reviews' && <ReviewsTab />}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -262,294 +399,347 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
-  scrollView: {
-    flex: 1,
-  },
   header: {
-    padding: 20,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#2196F3',
+    paddingTop: 50,
+    paddingBottom: 15,
+    paddingHorizontal: 15,
+  },
+  backButton: {
+    padding: 5,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#1A1A1A',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  freshnessBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  freshnessText: {
     color: '#FFF',
-    fontSize: 11,
-    fontWeight: '600',
   },
   shareButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    padding: 5,
   },
-  shareButtonText: {
+  shareText: {
     color: '#FFF',
-    fontSize: 12,
+    fontSize: 16,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#2196F3',
+  },
+  tabText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  activeTabText: {
+    color: '#2196F3',
     fontWeight: '600',
   },
-  winnerBanner: {
-    backgroundColor: '#34C759',
-    marginHorizontal: 20,
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 12,
+  content: {
+    flex: 1,
   },
-  winnerEmoji: {
-    fontSize: 48,
-    marginBottom: 8,
-  },
-  winnerTitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  winnerName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFF',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  winnerPrice: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFF',
-    marginTop: 8,
-  },
-  winnerSize: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 4,
-  },
-  quickShareBanner: {
-    backgroundColor: '#E3F2FD',
-    marginHorizontal: 20,
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  quickShareText: {
-    color: '#1976D2',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  productsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginBottom: 12,
+  productsRow: {
+    flexDirection: 'row',
+    padding: 10,
+    gap: 10,
   },
   productCard: {
+    flex: 1,
     backgroundColor: '#FFF',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
-  productCardWinner: {
+  winnerCard: {
+    borderColor: '#4CAF50',
     borderWidth: 2,
-    borderColor: '#34C759',
   },
-  winnerTag: {
-    position: 'absolute',
-    top: -10,
-    right: 10,
-    backgroundColor: '#34C759',
-    paddingHorizontal: 10,
+  winnerBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 10,
-  },
-  winnerTagText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  productHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    borderRadius: 4,
+    alignSelf: 'flex-start',
     marginBottom: 8,
   },
-  productNumber: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#999',
-  },
-  sourceBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  sourceBadgeText: {
+  winnerBadgeText: {
     color: '#FFF',
     fontSize: 10,
-    fontWeight: '600',
-    textTransform: 'uppercase',
+    fontWeight: 'bold',
   },
-  productBrand: {
-    fontSize: 14,
+  brandText: {
+    fontSize: 12,
     color: '#666',
-    fontWeight: '600',
+    marginBottom: 2,
   },
   productName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  priceText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginBottom: 4,
+    color: '#2196F3',
+    marginBottom: 2,
   },
-  productSize: {
+  priceUnavailable: {
+    color: '#999',
     fontSize: 14,
+  },
+  priceNote: {
+    fontSize: 10,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  retailerText: {
+    fontSize: 11,
     color: '#666',
     marginBottom: 8,
   },
-  priceRow: {
+  
+  // Rating styles
+  ratingContainer: {
+    marginVertical: 8,
+  },
+  ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    gap: 4,
   },
-  priceLabel: {
+  ratingText: {
     fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  reviewCount: {
+    fontSize: 12,
     color: '#666',
   },
-  priceValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    marginLeft: 8,
-  },
-  retailer: {
+  noRatingText: {
     fontSize: 12,
     color: '#999',
-    marginTop: 4,
-  },
-  note: {
-    fontSize: 12,
-    color: '#FF9500',
-    marginTop: 4,
     fontStyle: 'italic',
   },
-  recommendationSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
+  noRatingSubtext: {
+    fontSize: 10,
+    color: '#BBB',
   },
-  recommendationCard: {
+  sourceLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  sourceText: {
+    fontSize: 11,
+    color: '#2196F3',
+    fontWeight: '500',
+  },
+  verifiedBadge: {
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+    marginRight: 4,
+  },
+  verifiedBadgeText: {
+    fontSize: 9,
+    color: '#FFF',
+    fontWeight: 'bold',
+  },
+  
+  valueScoreContainer: {
+    marginTop: 8,
+  },
+  valueScoreLabel: {
+    fontSize: 11,
+    color: '#666',
+  },
+  valueScoreText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  
+  // Sections
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  recommendationSection: {
     backgroundColor: '#FFF',
+    margin: 10,
+    padding: 15,
     borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#007AFF',
   },
   recommendationText: {
-    fontSize: 15,
-    color: '#333',
+    fontSize: 14,
+    color: '#555',
     lineHeight: 22,
   },
   differencesSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  differencesList: {
     backgroundColor: '#FFF',
+    margin: 10,
+    padding: 15,
     borderRadius: 12,
-    padding: 16,
   },
   differenceItem: {
-    flexDirection: 'row',
+    fontSize: 13,
+    color: '#555',
     marginBottom: 8,
-  },
-  differenceBullet: {
-    fontSize: 14,
-    color: '#007AFF',
-    marginRight: 8,
-    fontWeight: 'bold',
-  },
-  differenceText: {
-    fontSize: 14,
-    color: '#333',
-    flex: 1,
     lineHeight: 20,
   },
-  costSection: {
-    alignItems: 'center',
-    marginBottom: 20,
+  bestForSection: {
+    backgroundColor: '#FFF',
+    margin: 10,
+    padding: 15,
+    borderRadius: 12,
   },
-  costText: {
+  bestForGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  bestForItem: {
+    backgroundColor: '#F5F5F5',
+    padding: 10,
+    borderRadius: 8,
+    minWidth: '45%',
+  },
+  bestForCategory: {
     fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  bestForWinner: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+  },
+  metadataSection: {
+    padding: 15,
+    alignItems: 'center',
+  },
+  metadataText: {
+    fontSize: 11,
     color: '#999',
   },
-  actionsSection: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+  
+  // Specs tab
+  tabContent: {
+    padding: 10,
   },
-  newCompareButton: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 16,
+  specsCard: {
+    backgroundColor: '#FFF',
     borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 12,
+    padding: 15,
+    marginBottom: 10,
   },
-  newCompareButtonText: {
-    color: '#FFF',
+  specsCardTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  secondaryActions: {
-    flexDirection: 'row',
-    gap: 12,
+    color: '#333',
     marginBottom: 12,
   },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: '#FFF',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#DDD',
+  specRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
   },
-  secondaryButtonText: {
-    color: '#333',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  homeButton: {
-    backgroundColor: '#F5F5F5',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#DDD',
-  },
-  homeButtonText: {
+  specKey: {
+    fontSize: 13,
     color: '#666',
+    textTransform: 'capitalize',
+  },
+  specValue: {
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '500',
+    maxWidth: '60%',
+    textAlign: 'right',
+  },
+  advantagesSection: {
+    marginTop: 10,
+  },
+  advantageCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 10,
+  },
+  advantageTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  advantageItem: {
+    fontSize: 13,
+    color: '#4CAF50',
+    marginBottom: 4,
+  },
+  
+  // Reviews tab
+  reviewCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 10,
+  },
+  reviewCardTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  reviewRatingSection: {
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  prosConsSection: {
+    marginBottom: 15,
+  },
+  prosTitle: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#4CAF50',
+    marginBottom: 8,
+  },
+  consTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F44336',
+    marginBottom: 8,
+  },
+  proItem: {
+    fontSize: 13,
+    color: '#555',
+    marginBottom: 4,
+    marginLeft: 8,
+  },
+  conItem: {
+    fontSize: 13,
+    color: '#555',
+    marginBottom: 4,
+    marginLeft: 8,
   },
 });

@@ -1,243 +1,276 @@
 /**
- * SmartCompare - Auth Service
- * Handles authentication with Supabase via our backend
+ * Authentication Service - Supabase Auth
+ * Handles login, register, logout, and session management
  */
 
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
-
-const TOKEN_KEY = 'smartcompare_access_token';
-const REFRESH_KEY = 'smartcompare_refresh_token';
-const USER_KEY = 'smartcompare_user';
 
 export interface User {
   id: string;
   email: string;
-  subscription_tier?: string;
-}
-
-export interface AuthSession {
-  access_token: string;
-  refresh_token: string;
-  expires_at?: number;
+  created_at?: string;
 }
 
 export interface AuthResponse {
   success: boolean;
   user?: User;
-  session?: AuthSession;
-  message?: string;
+  token?: string;
   error?: string;
 }
 
-// ============================================
-// Token Storage
-// ============================================
+const USER_STORAGE_KEY = '@smartcompare_user';
+const TOKEN_STORAGE_KEY = '@smartcompare_token';
 
-export async function saveTokens(session: AuthSession): Promise<void> {
+/**
+ * Register a new user
+ */
+export async function register(email: string, password: string): Promise<AuthResponse> {
   try {
-    if (session.access_token) {
-      await SecureStore.setItemAsync(TOKEN_KEY, session.access_token);
+    const response = await api.post('/api/v1/auth/register', {
+      email,
+      password,
+    });
+
+    if (response.data.user) {
+      await saveUser(response.data.user);
+      if (response.data.session?.access_token) {
+        await saveToken(response.data.session.access_token);
+      }
+      return {
+        success: true,
+        user: response.data.user,
+        token: response.data.session?.access_token,
+      };
     }
-    if (session.refresh_token) {
-      await SecureStore.setItemAsync(REFRESH_KEY, session.refresh_token);
+
+    return {
+      success: false,
+      error: response.data.error || 'Registration failed',
+    };
+  } catch (error: any) {
+    console.error('Register error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.detail || error.message || 'Registration failed',
+    };
+  }
+}
+
+/**
+ * Login existing user
+ */
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  try {
+    const response = await api.post('/api/v1/auth/login', {
+      email,
+      password,
+    });
+
+    if (response.data.user) {
+      await saveUser(response.data.user);
+      if (response.data.session?.access_token) {
+        await saveToken(response.data.session.access_token);
+      }
+      return {
+        success: true,
+        user: response.data.user,
+        token: response.data.session?.access_token,
+      };
+    }
+
+    return {
+      success: false,
+      error: response.data.error || 'Login failed',
+    };
+  } catch (error: any) {
+    console.error('Login error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.detail || error.message || 'Login failed',
+    };
+  }
+}
+
+/**
+ * Logout user
+ */
+export async function logout(): Promise<void> {
+  try {
+    const token = await getToken();
+    if (token) {
+      // Try to logout on server, but don't fail if it doesn't work
+      try {
+        await api.post('/api/v1/auth/logout', {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } catch (e) {
+        // Ignore server logout errors
+        console.log('Server logout failed, clearing local session');
+      }
     }
   } catch (error) {
-    console.error('Error saving tokens:', error);
+    console.error('Logout error:', error);
+  } finally {
+    // Always clear local storage
+    await clearSession();
   }
 }
 
-export async function getAccessToken(): Promise<string | null> {
+/**
+ * Refresh session - with graceful error handling
+ */
+export async function refreshSession(): Promise<AuthResponse> {
   try {
-    return await SecureStore.getItemAsync(TOKEN_KEY);
+    const token = await getToken();
+    if (!token) {
+      return { success: false, error: 'No token found' };
+    }
+
+    const response = await api.post('/api/v1/auth/refresh', {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (response.data.user) {
+      await saveUser(response.data.user);
+      if (response.data.session?.access_token) {
+        await saveToken(response.data.session.access_token);
+      }
+      return {
+        success: true,
+        user: response.data.user,
+        token: response.data.session?.access_token,
+      };
+    }
+
+    return { success: false, error: 'Refresh failed' };
+  } catch (error: any) {
+    console.log('Session refresh failed:', error.message);
+    
+    // If 401, session is invalid - clear it silently
+    if (error.response?.status === 401) {
+      await clearSession();
+      return { success: false, error: 'Session expired' };
+    }
+    
+    // For other errors, don't clear session (might be network issue)
+    return {
+      success: false,
+      error: error.response?.data?.detail || error.message || 'Refresh failed',
+    };
+  }
+}
+
+/**
+ * Check if user is logged in (local check)
+ */
+export async function isLoggedIn(): Promise<boolean> {
+  try {
+    const user = await getSavedUser();
+    const token = await getToken();
+    return !!(user && token);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get current user from storage
+ */
+export async function getSavedUser(): Promise<User | null> {
+  try {
+    const userJson = await AsyncStorage.getItem(USER_STORAGE_KEY);
+    if (userJson) {
+      return JSON.parse(userJson);
+    }
   } catch (error) {
-    console.error('Error getting access token:', error);
-    return null;
+    console.error('Error getting saved user:', error);
   }
+  return null;
 }
 
-export async function getRefreshToken(): Promise<string | null> {
+/**
+ * Save user to storage
+ */
+async function saveUser(user: User): Promise<void> {
   try {
-    return await SecureStore.getItemAsync(REFRESH_KEY);
-  } catch (error) {
-    console.error('Error getting refresh token:', error);
-    return null;
-  }
-}
-
-export async function clearTokens(): Promise<void> {
-  try {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_KEY);
-    await SecureStore.deleteItemAsync(USER_KEY);
-  } catch (error) {
-    console.error('Error clearing tokens:', error);
-  }
-}
-
-export async function saveUser(user: User): Promise<void> {
-  try {
-    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+    await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
   } catch (error) {
     console.error('Error saving user:', error);
   }
 }
 
-export async function getSavedUser(): Promise<User | null> {
+/**
+ * Get token from storage
+ */
+export async function getToken(): Promise<string | null> {
   try {
-    const userJson = await SecureStore.getItemAsync(USER_KEY);
-    return userJson ? JSON.parse(userJson) : null;
+    return await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
   } catch (error) {
-    console.error('Error getting saved user:', error);
+    console.error('Error getting token:', error);
     return null;
   }
 }
 
-// ============================================
-// Auth API Calls
-// ============================================
-
-export async function register(email: string, password: string): Promise<AuthResponse> {
+/**
+ * Save token to storage
+ */
+async function saveToken(token: string): Promise<void> {
   try {
-    const response = await api.post<AuthResponse>('/api/v1/auth/register', {
-      email,
-      password,
-    });
-
-    if (response.data.success && response.data.session) {
-      await saveTokens(response.data.session);
-      if (response.data.user) {
-        await saveUser(response.data.user);
-      }
-    }
-
-    return response.data;
-  } catch (error: any) {
-    const message = error.response?.data?.detail || error.message || 'Registration failed';
-    return { success: false, error: message };
-  }
-}
-
-export async function login(email: string, password: string): Promise<AuthResponse> {
-  try {
-    const response = await api.post<AuthResponse>('/api/v1/auth/login', {
-      email,
-      password,
-    });
-
-    if (response.data.success && response.data.session) {
-      await saveTokens(response.data.session);
-      if (response.data.user) {
-        await saveUser(response.data.user);
-      }
-    }
-
-    return response.data;
-  } catch (error: any) {
-    const message = error.response?.data?.detail || error.message || 'Login failed';
-    return { success: false, error: message };
-  }
-}
-
-export async function logout(): Promise<void> {
-  try {
-    const token = await getAccessToken();
-    if (token) {
-      await api.post('/api/v1/auth/logout', {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-    }
+    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, token);
   } catch (error) {
-    console.error('Logout API error:', error);
-  } finally {
-    await clearTokens();
+    console.error('Error saving token:', error);
   }
 }
 
-export async function refreshSession(): Promise<boolean> {
+/**
+ * Clear session (logout locally)
+ */
+async function clearSession(): Promise<void> {
   try {
-    const refreshToken = await getRefreshToken();
-    if (!refreshToken) return false;
-
-    const response = await api.post<AuthResponse>('/api/v1/auth/refresh', {
-      refresh_token: refreshToken,
-    });
-
-    if (response.data.success && response.data.session) {
-      await saveTokens(response.data.session);
-      return true;
-    }
-
-    return false;
+    await AsyncStorage.multiRemove([USER_STORAGE_KEY, TOKEN_STORAGE_KEY]);
   } catch (error) {
-    console.error('Session refresh error:', error);
-    return false;
+    console.error('Error clearing session:', error);
   }
 }
 
-export async function verifyAuth(): Promise<User | null> {
+/**
+ * Initialize auth - check and refresh session on app start
+ * Returns user if valid session exists, null otherwise
+ */
+export async function initializeAuth(): Promise<User | null> {
   try {
-    const token = await getAccessToken();
-    if (!token) return null;
-
-    const response = await api.get('/api/v1/auth/verify', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (response.data.success && response.data.user) {
-      await saveUser(response.data.user);
-      return response.data.user;
+    const user = await getSavedUser();
+    const token = await getToken();
+    
+    if (!user || !token) {
+      return null;
     }
-
-    return null;
-  } catch (error: any) {
-    // Token might be expired, try to refresh
-    if (error.response?.status === 401) {
-      const refreshed = await refreshSession();
-      if (refreshed) {
-        return verifyAuth(); // Retry with new token
-      }
+    
+    // Try to refresh, but don't fail if it doesn't work
+    const refreshResult = await refreshSession();
+    
+    if (refreshResult.success && refreshResult.user) {
+      return refreshResult.user;
     }
-    return null;
-  }
-}
-
-export async function getCurrentUser(): Promise<User | null> {
-  try {
-    const token = await getAccessToken();
-    if (!token) return null;
-
-    const response = await api.get('/api/v1/auth/me', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (response.data.success && response.data.user) {
-      return response.data.user;
+    
+    // If refresh failed with 401, session is invalid
+    if (refreshResult.error === 'Session expired') {
+      return null;
     }
-
-    return null;
+    
+    // For other errors (network), return cached user
+    return user;
   } catch (error) {
-    console.error('Get current user error:', error);
+    console.error('Auth initialization error:', error);
     return null;
   }
 }
 
-export async function requestPasswordReset(email: string): Promise<AuthResponse> {
-  try {
-    const response = await api.post<AuthResponse>('/api/v1/auth/password-reset', {
-      email,
-    });
-    return response.data;
-  } catch (error: any) {
-    return { success: true, message: 'If an account exists, a reset link has been sent.' };
-  }
-}
-
-// ============================================
-// Auth Header Helper
-// ============================================
-
-export async function getAuthHeader(): Promise<{ Authorization: string } | {}> {
-  const token = await getAccessToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+/**
+ * Verify auth status - alias for isLoggedIn
+ * Used by App.tsx to check auth state
+ */
+export async function verifyAuth(): Promise<boolean> {
+  return await isLoggedIn();
 }
