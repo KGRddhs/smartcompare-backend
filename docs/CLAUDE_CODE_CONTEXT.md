@@ -1,8 +1,8 @@
 # SmartCompare - Complete Project Knowledge Transfer
 
 > **Purpose:** This document contains EVERYTHING needed to continue development without context loss.
-> **Last Updated:** February 11, 2025, ~6:30 PM GST
-> **Author:** Transferred from Claude.ai conversation (Days 1-7)
+> **Last Updated:** February 11, 2026
+> **Author:** Transferred from Claude.ai conversation (Days 1-7), updated by Claude Code sessions
 
 ---
 
@@ -679,35 +679,19 @@ Query params:
 
 # 10. CURRENT ISSUES
 
-## CRITICAL: Ratings Not Working
+## FIXED: Ratings (previously broken)
+Ratings now work via Serper Shopping API (`_get_verified_rating()` in `app/services/structured_comparison_service.py`). Shows verified ratings with review count and source link.
 
-**Symptom:** All products show "No verified rating"
+## KNOWN ISSUE: Prices from low-quality sellers
+Tier 1 (Serper Shopping extraction) picks the best title-match then lowest price. This sometimes picks eBay resellers or grey-market sellers instead of official retailers. Example: iPhone 15 shows BHD 135.32 from "eBay - supplytronics" instead of a proper retailer price.
 
-**Expected behavior:**
-1. Find product page on Amazon/Newegg
-2. Fetch HTML
-3. Parse JSON-LD for AggregateRating
-4. Show: ⭐ 4.6 (12,543 reviews) via Amazon US [link]
+**Possible fix:** Add a retailer reputation filter or prefer known GCC retailers (eXtra, Jarir, Carrefour, Lulu) over eBay/random sources.
 
-**What's happening:**
-- `rating_extractor.py` returns `ExtractedRating()` (empty)
-- All products have `rating: null`, `rating_verified: false`
+## KNOWN ISSUE: Stale cache
+Old cached data (7-day TTL for specs) can serve outdated formats after schema changes. Use `?nocache=true` to bypass. Consider adding a cache version key or flushing on deploy.
 
-**Debug steps needed:**
-1. Check Railway logs for `[RATING]` lines
-2. Is `find_product_page()` finding URLs?
-3. Is `fetch_page_content()` getting HTML?
-4. Is `extract_from_json_ld()` parsing correctly?
-
-**Possible causes:**
-- Serper search not returning product pages
-- Bot protection blocking page fetch
-- JSON-LD structure different than expected
-- BeautifulSoup parsing issue
-
-**Files to check:**
-- `backend/app/services/rating_extractor.py`
-- `backend/app/services/comparison_service_v3.py` (lines ~1440-1480)
+## LOW PRIORITY: Pros/cons reference old cached data
+Pros/cons generation can reference stale spec data from cache (e.g. "512 GB storage" when base model is 128 GB). Cleared naturally as caches expire.
 
 ---
 
@@ -916,6 +900,88 @@ Help me debug and fix the rating extraction.
 5. **LOG EVERYTHING** - Use `[RATING]` prefix for rating logs
 6. **CACHE APPROPRIATELY** - Prices 24h, specs 7d, ratings 24h
 7. **DEPLOY VIA GIT** - Push to origin main, Railway auto-deploys
+
+---
+
+---
+
+# SESSION LOG: February 11, 2026
+
+## What We Fixed
+
+### 1. Prices — Serper Shopping direct extraction (3-tier fallback)
+**Files:** `app/services/structured_comparison_service.py`, `app/services/extraction_service.py`
+- **Tier 1:** Parse structured price data directly from Serper Shopping results (most accurate)
+- **Tier 2:** GPT extraction from search result text (fallback)
+- **Tier 3:** GPT training data estimate, marked `estimated: true` with `confidence: 0.5` (last resort)
+- Added `_extract_price_from_shopping()` — title matching with 40% word overlap threshold
+- Added `_parse_price_string()` — handles "$699.99", "BHD 339", "SAR 2,499" formats
+- Goal: **always show a price**, either real retailer or clearly labeled estimate
+
+### 2. Specs — Fixed schema per category (no freeform fields)
+**File:** `app/services/extraction_service.py`
+- Added `CATEGORY_SPEC_SCHEMAS` dict with exactly 11 fields per category:
+  - **electronics:** display, processor, ram, storage, battery, rear_camera, front_camera, os, connectivity, weight, water_resistance
+  - **grocery:** size, ingredients, nutrition_calories, nutrition_protein, nutrition_fat, nutrition_carbs, origin, organic, allergens, shelf_life, halal
+  - **other:** dimensions, weight, material, color, warranty, power, features, included, compatibility, origin, certifications
+- Replaced static `SPECS_EXTRACTION_PROMPT` with `_build_specs_prompt()` — generates category-specific prompt
+- Enforced schema server-side: only allowed fields kept, null/empty → "N/A"
+- No more `additional_specs` field
+
+### 3. Specs — Single value per field, no variant lists
+**File:** `app/services/extraction_service.py`
+- Prompt forces GPT to extract ONE config (base model or specified variant)
+- Prevents "128, 256, 512 GB" — now always "128 GB"
+
+### 4. Specs — All fields filled for known products
+**File:** `app/services/extraction_service.py`
+- Prompt allows GPT to use training knowledge when search results are incomplete
+- null only acceptable if spec truly doesn't exist (e.g. water resistance on a product without it)
+- Well-known products (iPhone, Galaxy, Pixel) always have all fields filled
+
+### 5. Specs table — Fixed order, only matching rows
+**File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+- Added `SPEC_DISPLAY_CONFIG` mapping key → {label, order} for human-readable display
+- Rows sorted by fixed order, not insertion order
+- Only shows rows where BOTH products have real data (either is N/A → row hidden)
+- N/A values styled in gray italic
+
+### 6. Simplified `_clean_specs()`
+**File:** `app/services/structured_comparison_service.py`
+- Removed `additional_specs` flattening (no longer exists)
+- Replaces None/empty with "N/A"
+
+### 7. Added `nocache` query parameter
+**Files:** `app/api/text_routes.py`, `app/services/structured_comparison_service.py`
+- `GET /api/v1/text/compare?nocache=true` bypasses Redis cache for fresh data
+- Threaded through all data fetch methods (_get_specs, _get_price, _get_reviews)
+
+## What's Still Broken
+- **Prices from low-quality sellers:** Tier 1 sometimes picks eBay resellers over official retailers
+- **Stale cache:** Old format data served until TTL expires (7 days for specs). Use `?nocache=true` to bypass
+- **Price accuracy:** iPhone 15 showing BHD 135 from eBay (likely used/refurb) instead of ~BHD 250 retail
+
+## New Decisions Made
+| Decision | Reasoning |
+|----------|-----------|
+| Fixed 11-field spec schema per category | Prevents inconsistent freeform fields between products |
+| GPT can use training knowledge for specs | "Don't guess" was too conservative — known products had N/A for basic fields |
+| 3-tier price fallback with guaranteed result | Users always see a price; estimated prices clearly labeled |
+| Both-products-must-have-data filter for specs table | No point showing a spec row if only one product has it |
+| nocache query param | Allows testing fresh data without waiting for cache expiry |
+
+## Current Feature Status
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Ratings | Working | Via Serper Shopping API, verified with source links |
+| Prices | Working (with caveats) | 3-tier fallback, but sometimes picks low-quality sellers |
+| Specs | Working | Fixed 11-field schema, consistent across products |
+| Specs table (frontend) | Working | Fixed order, labels, both-must-match filter |
+| Pros/Cons | Working | Generated from specs + reviews |
+| Comparison/Winner | Working | GPT comparison with value scores and best-for |
+| Cache bypass | Working | `?nocache=true` query param |
+| Camera input | Not started | |
+| URL input | Partial | Old code, untested with new architecture |
 
 ---
 
