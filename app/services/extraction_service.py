@@ -68,7 +68,32 @@ RULES:
 - Return valid JSON only"""
 
 
-SPECS_EXTRACTION_PROMPT = """You are a product specifications expert. Extract detailed specs for this product.
+CATEGORY_SPEC_SCHEMAS = {
+    "electronics": [
+        "display", "processor", "ram", "storage", "battery",
+        "rear_camera", "front_camera", "os", "connectivity",
+        "weight", "water_resistance"
+    ],
+    "grocery": [
+        "size", "ingredients", "nutrition_calories", "nutrition_protein",
+        "nutrition_fat", "nutrition_carbs", "origin", "organic",
+        "allergens", "shelf_life", "halal"
+    ],
+    "other": [
+        "dimensions", "weight", "material", "color", "warranty",
+        "power", "features", "included", "compatibility", "origin",
+        "certifications"
+    ],
+}
+
+
+def _build_specs_prompt(brand: str, name: str, variant: str, category: str, search_context: str) -> str:
+    schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
+    fields = CATEGORY_SPEC_SCHEMAS[schema_key]
+
+    fields_json = ",\n    ".join(f'"{f}": "value or null"' for f in fields)
+
+    return f"""You are a product specifications expert. Extract detailed specs for this product.
 
 PRODUCT: {brand} {name} {variant}
 CATEGORY: {category}
@@ -76,32 +101,21 @@ CATEGORY: {category}
 Search results for context:
 {search_context}
 
-Return ONLY valid JSON (no markdown):
+Return ONLY valid JSON (no markdown) with EXACTLY these fields:
 {{
     "brand": "{brand}",
     "model": "{name}",
     "variant": "{variant}",
     "category": "{category}",
-    "weight": "weight with unit or null",
-    "dimensions": "LxWxH or null",
-    "display": "display specs or null",
-    "processor": "CPU/chip info or null",
-    "ram": "RAM amount or null",
-    "storage": "storage amount or null",
-    "battery": "battery capacity or null",
-    "camera": "camera specs or null",
-    "os": "operating system or null",
-    "connectivity": ["WiFi", "5G", "Bluetooth", ...] or null,
-    "size": "size/volume for grocery or null",
-    "additional_specs": {{"key": "value"}} for other important specs
+    {fields_json}
 }}
 
 RULES:
 - Use null for unknown specs, don't guess
 - Be precise with numbers and units
-- For electronics: focus on display, processor, RAM, storage, battery, camera
-- For grocery: focus on size, weight, ingredients
-- Include only verified information from search results"""
+- Include ONLY the fields listed above, no additional_specs or extra keys
+- Include only verified information from search results
+- For list values (connectivity, ingredients, allergens), return a comma-separated string"""
 
 
 PRICE_EXTRACTION_PROMPT = """You are a price extraction expert for GCC markets.
@@ -128,6 +142,28 @@ RULES:
 - Confidence: 1.0 = exact match from retailer, 0.5 = estimated, 0.0 = not found
 - Return null for amount if no reliable price found
 - Prefer official retailers over resellers"""
+
+
+PRICE_FALLBACK_PROMPT = """You are a price estimation expert. The product below could NOT be found in any current retailer listing.
+Provide your BEST ESTIMATE of its current retail price from your training data.
+
+PRODUCT: {brand} {name} {variant}
+REGION: {region} ({currency})
+
+Return ONLY valid JSON:
+{{
+    "amount": numeric_estimated_price,
+    "currency": "{currency}",
+    "retailer": "estimated",
+    "confidence": 0.5,
+    "note": "Estimated from training data"
+}}
+
+RULES:
+- Give your best estimate of the current retail price in {currency}
+- This is a LAST RESORT — clearly mark confidence as 0.5
+- Use reasonable market prices for the region
+- NEVER return null for amount — always provide an estimate"""
 
 
 REVIEWS_EXTRACTION_PROMPT = """You are a review analysis expert. Summarize reviews for this product.
@@ -284,32 +320,48 @@ async def extract_specs(
     category: str,
     search_context: str
 ) -> Dict[str, Any]:
-    """Extract structured specifications for a product."""
+    """Extract structured specifications for a product, enforcing a fixed schema."""
     try:
         client = get_client()
-        prompt = SPECS_EXTRACTION_PROMPT.format(
-            brand=brand,
-            name=name,
-            variant=variant or "",
-            category=category,
-            search_context=search_context[:3000]  # Limit context size
+        prompt = _build_specs_prompt(
+            brand, name, variant or "", category,
+            search_context[:3000]
         )
-        
+
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=800,
             temperature=0.1,
         )
-        
+
         result = response.choices[0].message.content.strip()
         if result.startswith("```"):
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
-        
-        return json.loads(result)
-    
+
+        raw = json.loads(result)
+
+        # Enforce schema: only keep fields in the category schema + meta keys
+        schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
+        allowed_fields = set(CATEGORY_SPEC_SCHEMAS[schema_key])
+        meta_keys = {"brand", "model", "variant", "category"}
+
+        cleaned = {}
+        for key in list(meta_keys) + CATEGORY_SPEC_SCHEMAS[schema_key]:
+            val = raw.get(key)
+            if key in meta_keys:
+                cleaned[key] = val
+            elif val is None or val == "" or val == "null":
+                cleaned[key] = "N/A"
+            elif isinstance(val, list):
+                cleaned[key] = ", ".join(str(v) for v in val)
+            else:
+                cleaned[key] = str(val)
+
+        return cleaned
+
     except Exception as e:
         logger.error(f"Specs extraction error: {e}")
         return {"brand": brand, "model": name, "error": str(e)}
@@ -353,6 +405,40 @@ async def extract_price(
     
     except Exception as e:
         logger.error(f"Price extraction error: {e}")
+        return {"amount": None, "currency": region_info["currency"], "error": str(e)}
+
+
+async def extract_price_from_training_data(
+    brand: str,
+    name: str,
+    variant: Optional[str],
+    region: str,
+) -> Dict[str, Any]:
+    """Last-resort: ask GPT for an estimated price from training data."""
+    region_info = GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])
+    try:
+        client = get_client()
+        prompt = PRICE_FALLBACK_PROMPT.format(
+            brand=brand,
+            name=name,
+            variant=variant or "",
+            region=region,
+            currency=region_info["currency"],
+        )
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.2,
+        )
+        result = response.choices[0].message.content.strip()
+        if result.startswith("```"):
+            result = result.split("```")[1]
+            if result.startswith("json"):
+                result = result[4:]
+        return json.loads(result)
+    except Exception as e:
+        logger.error(f"Price fallback error: {e}")
         return {"amount": None, "currency": region_info["currency"], "error": str(e)}
 
 

@@ -90,6 +90,44 @@ interface ResultsScreenProps {
 
 type TabType = 'overview' | 'specs' | 'reviews';
 
+// Fixed display order and labels for spec keys
+const SPEC_DISPLAY_CONFIG: Record<string, { label: string; order: number }> = {
+  // Electronics
+  display: { label: 'Display', order: 1 },
+  processor: { label: 'Processor', order: 2 },
+  ram: { label: 'RAM', order: 3 },
+  storage: { label: 'Storage', order: 4 },
+  battery: { label: 'Battery', order: 5 },
+  rear_camera: { label: 'Rear Camera', order: 6 },
+  front_camera: { label: 'Front Camera', order: 7 },
+  os: { label: 'OS', order: 8 },
+  connectivity: { label: 'Connectivity', order: 9 },
+  weight: { label: 'Weight', order: 10 },
+  water_resistance: { label: 'Water Resistance', order: 11 },
+  // Grocery
+  size: { label: 'Size', order: 1 },
+  ingredients: { label: 'Ingredients', order: 2 },
+  nutrition_calories: { label: 'Calories', order: 3 },
+  nutrition_protein: { label: 'Protein', order: 4 },
+  nutrition_fat: { label: 'Fat', order: 5 },
+  nutrition_carbs: { label: 'Carbs', order: 6 },
+  origin: { label: 'Origin', order: 7 },
+  organic: { label: 'Organic', order: 8 },
+  allergens: { label: 'Allergens', order: 9 },
+  shelf_life: { label: 'Shelf Life', order: 10 },
+  halal: { label: 'Halal', order: 11 },
+  // Other
+  dimensions: { label: 'Dimensions', order: 1 },
+  material: { label: 'Material', order: 3 },
+  color: { label: 'Color', order: 4 },
+  warranty: { label: 'Warranty', order: 5 },
+  power: { label: 'Power', order: 6 },
+  features: { label: 'Features', order: 7 },
+  included: { label: 'Included', order: 8 },
+  compatibility: { label: 'Compatibility', order: 9 },
+  certifications: { label: 'Certifications', order: 11 },
+};
+
 export default function ResultsScreen({ route, navigation }: ResultsScreenProps) {
   const { result } = route.params;
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -211,7 +249,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           {formatPrice(product.price)}
         </Text>
         {product.price?.estimated && (
-          <Text style={styles.priceNote}>*Converted price</Text>
+          <Text style={styles.priceNote}>*Estimated price</Text>
         )}
         {product.price?.retailer && !product.price?.unavailable && (
           <Text style={styles.retailerText}>{product.price.retailer}</Text>
@@ -231,21 +269,33 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     );
   };
 
-  // Specs comparison tab - unified table with both products side by side
+  // Specs comparison tab - unified table with fixed order
   const SpecsTab = () => {
-    // Merge all spec keys from both products, preserving order
-    const allKeys: string[] = [];
-    const seen = new Set<string>();
+    // Merge all spec keys from both products
+    const allKeysSet = new Set<string>();
     products.forEach((product) => {
       if (product.specs) {
-        Object.keys(product.specs).forEach((key) => {
-          if (!seen.has(key)) {
-            seen.add(key);
-            allKeys.push(key);
-          }
-        });
+        Object.keys(product.specs).forEach((key) => allKeysSet.add(key));
       }
     });
+
+    // Sort keys by SPEC_DISPLAY_CONFIG order; unknown keys go to the end
+    const sortedKeys = Array.from(allKeysSet)
+      .sort((a, b) => {
+        const orderA = SPEC_DISPLAY_CONFIG[a]?.order ?? 999;
+        const orderB = SPEC_DISPLAY_CONFIG[b]?.order ?? 999;
+        return orderA - orderB;
+      })
+      // Filter out rows where BOTH products have N/A or missing
+      .filter((key) => {
+        const val0 = products[0]?.specs?.[key];
+        const val1 = products[1]?.specs?.[key];
+        const isNA = (v: any) => !v || v === 'N/A' || v === '-';
+        return !(isNA(val0) && isNA(val1));
+      });
+
+    const getLabel = (key: string) =>
+      SPEC_DISPLAY_CONFIG[key]?.label ?? key.replace(/_/g, ' ');
 
     return (
       <View style={styles.tabContent}>
@@ -266,7 +316,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           </View>
 
           {/* Table rows */}
-          {allKeys.map((key, rowIndex) => (
+          {sortedKeys.map((key, rowIndex) => (
             <View
               key={key}
               style={[
@@ -275,14 +325,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               ]}
             >
               <View style={styles.specsTableLabel}>
-                <Text style={styles.specKey}>{key.replace(/_/g, ' ')}</Text>
+                <Text style={styles.specKey}>{getLabel(key)}</Text>
               </View>
               {products.map((product, colIndex) => {
                 const val = product.specs?.[key];
+                const isNA = !val || val === 'N/A' || val === '-';
                 return (
                   <View key={colIndex} style={styles.specsTableCell}>
-                    <Text style={val ? styles.specValue : styles.specMissing}>
-                      {val ? String(val) : '-'}
+                    <Text style={isNA ? styles.specNA : styles.specValue}>
+                      {isNA ? 'N/A' : String(val)}
                     </Text>
                   </View>
                 );
@@ -762,6 +813,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#CCC',
     textAlign: 'center',
+  },
+  specNA: {
+    fontSize: 12,
+    color: '#BDBDBD',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   advantagesSection: {
     marginTop: 10,

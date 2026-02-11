@@ -15,6 +15,7 @@ from app.services.extraction_service import (
     parse_product_query,
     extract_specs,
     extract_price,
+    extract_price_from_training_data,
     extract_reviews,
     generate_pros_cons,
     generate_comparison,
@@ -253,38 +254,135 @@ class StructuredComparisonService:
         region: str,
         search_query: str
     ) -> Dict[str, Any]:
-        """Get price with caching."""
+        """
+        Get price with 3-tier strategy to guarantee a price:
+        1. Direct Serper Shopping extraction (structured data, most accurate)
+        2. GPT extraction from search results text
+        3. GPT training data fallback (estimated, confidence 0.5)
+        """
         cache_key = get_price_cache_key(brand, name, variant, region)
-        
+
         # Check cache
         cached = get_cached(cache_key)
         if cached:
             logger.info(f"Price cache hit: {cache_key}")
             cached["_cached"] = True
             return cached
-        
-        # Fetch from search
+
         region_info = GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])
-        logger.info(f"Fetching price for: {brand} {name} in {region}")
-        
-        search_results = await search_product_prices(
-            f"{search_query}",
-            region_info["code"]
-        )
-        self._track_cost(0.001)  # Serper cost
-        
-        search_context = self._format_search_results(search_results)
-        
-        # Extract price
-        price = await extract_price(brand, name, variant, region, search_context)
-        self._track_cost(0.0003)  # ~300 tokens
-        
-        # Cache result (only if we found a price)
+        currency = region_info["currency"]
+        full_name = f"{brand} {name} {variant or ''}".strip()
+        logger.info(f"Fetching price for: {full_name} in {region}")
+
+        # Fetch shopping + organic results from Serper
+        search_results = await search_product_prices(search_query, region_info["code"])
+        self._track_cost(0.001)
+
+        # --- Tier 1: Direct Serper Shopping extraction ---
+        shopping_items = search_results.get("shopping", [])
+        price = self._extract_price_from_shopping(full_name, shopping_items, currency)
         if price and price.get("amount"):
+            logger.info(f"[PRICE] Tier 1 (Shopping): {currency} {price['amount']} from {price.get('retailer')}")
             set_cached(cache_key, price, PRICE_CACHE_TTL)
-        
-        price["_cached"] = False
-        return price
+            price["_cached"] = False
+            return price
+
+        # --- Tier 2: GPT extraction from search context ---
+        search_context = self._format_search_results(search_results)
+        price = await extract_price(brand, name, variant, region, search_context)
+        self._track_cost(0.0003)
+        if price and price.get("amount"):
+            logger.info(f"[PRICE] Tier 2 (GPT search): {currency} {price['amount']}")
+            set_cached(cache_key, price, PRICE_CACHE_TTL)
+            price["_cached"] = False
+            return price
+
+        # --- Tier 3: GPT training data fallback ---
+        logger.info(f"[PRICE] Tiers 1-2 failed, falling back to GPT estimate for {full_name}")
+        price = await extract_price_from_training_data(brand, name, variant, region)
+        self._track_cost(0.0003)
+        if price and price.get("amount"):
+            price["estimated"] = True
+            logger.info(f"[PRICE] Tier 3 (estimated): {currency} {price['amount']}")
+            # Cache estimates for shorter time
+            set_cached(cache_key, price, PRICE_CACHE_TTL // 2)
+            price["_cached"] = False
+            return price
+
+        # All tiers failed
+        logger.warning(f"[PRICE] All tiers failed for {full_name}")
+        return {"amount": None, "currency": currency, "_cached": False}
+
+    def _extract_price_from_shopping(
+        self,
+        product_name: str,
+        shopping_items: List[Dict],
+        currency: str
+    ) -> Optional[Dict[str, Any]]:
+        """Extract best matching price from Serper Shopping results (structured data)."""
+        if not shopping_items:
+            return None
+
+        p_words = set(product_name.lower().split())
+        candidates = []
+
+        for item in shopping_items:
+            price_str = item.get("price", "")
+            if not price_str:
+                continue
+
+            amount = self._parse_price_string(price_str)
+            if amount is None or amount <= 0:
+                continue
+
+            title = item.get("title", "")
+            t_words = set(title.lower().split())
+            match_score = len(p_words & t_words) / len(p_words) if p_words else 0
+
+            if match_score < 0.4:
+                continue
+
+            candidates.append({
+                "amount": round(amount, 2),
+                "currency": currency,
+                "retailer": item.get("source", ""),
+                "url": item.get("link", ""),
+                "in_stock": True,
+                "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
+                "match_score": match_score,
+                "title": title,
+            })
+
+        if not candidates:
+            return None
+
+        # Sort: best title match first, then lowest price
+        candidates.sort(key=lambda c: (-c["match_score"], c["amount"]))
+        best = candidates[0]
+
+        # Remove internal fields
+        best.pop("match_score", None)
+        best.pop("title", None)
+        return best
+
+    @staticmethod
+    def _parse_price_string(price_str: str) -> Optional[float]:
+        """Parse price strings like '$699.99', 'BHD 339.000', 'SAR 2,499'."""
+        if not price_str:
+            return None
+        # Strip currency symbols and codes
+        cleaned = re.sub(r'[A-Z]{2,3}\s*', '', price_str)  # Remove currency codes
+        cleaned = re.sub(r'[$£€¥]', '', cleaned)            # Remove currency symbols
+        cleaned = cleaned.replace(',', '')                    # Remove thousands separators
+        cleaned = cleaned.strip()
+        try:
+            return float(cleaned)
+        except (ValueError, TypeError):
+            # Try to find first number-like pattern
+            match = re.search(r'(\d+(?:\.\d+)?)', cleaned)
+            if match:
+                return float(match.group(1))
+            return None
     
     async def _get_reviews(
         self,
@@ -494,31 +592,24 @@ class StructuredComparisonService:
 
     @staticmethod
     def _clean_specs(specs: Dict[str, Any]) -> Dict[str, Any]:
-        """Clean specs for display: remove meta keys, flatten additional_specs, handle arrays."""
+        """Clean specs for display: remove meta keys, replace None with N/A."""
         if not specs or not isinstance(specs, dict):
             return {}
 
-        # Keys that are metadata, not actual specs
         meta_keys = {"brand", "model", "variant", "category", "_cached", "error"}
 
         cleaned = {}
         for key, value in specs.items():
             if key in meta_keys:
                 continue
-            if value is None:
-                continue
-
-            if key == "additional_specs" and isinstance(value, dict):
-                # Flatten additional_specs into main specs
-                for sub_key, sub_val in value.items():
-                    if sub_val is not None:
-                        cleaned[sub_key] = str(sub_val) if not isinstance(sub_val, str) else sub_val
+            if value is None or value == "" or value == "null":
+                cleaned[key] = "N/A"
             elif isinstance(value, list):
                 cleaned[key] = ", ".join(str(v) for v in value)
             elif isinstance(value, dict):
                 cleaned[key] = json.dumps(value)
             else:
-                cleaned[key] = value
+                cleaned[key] = str(value) if not isinstance(value, str) else value
 
         return cleaned
 
