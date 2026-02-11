@@ -84,25 +84,27 @@ async def text_compare_get(
     region: str = Query("bahrain", description="GCC region for pricing"),
     specs: bool = Query(True, description="Include specifications"),
     reviews: bool = Query(True, description="Include reviews"),
-    pros_cons: bool = Query(True, description="Include pros/cons")
+    pros_cons: bool = Query(True, description="Include pros/cons"),
+    nocache: bool = Query(False, description="Bypass cache for fresh data")
 ):
     """GET version of text comparison for easy testing."""
     service = get_comparison_service()
-    
+
     result = await service.compare_from_text(
         query=q,
         region=region,
         include_specs=specs,
         include_reviews=reviews,
-        include_pros_cons=pros_cons
+        include_pros_cons=pros_cons,
+        nocache=nocache
     )
-    
+
     if not result.get("success"):
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Comparison failed")
         )
-    
+
     return result
 
 

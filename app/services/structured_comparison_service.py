@@ -62,7 +62,8 @@ class StructuredComparisonService:
         region: str = "bahrain",
         include_specs: bool = True,
         include_reviews: bool = True,
-        include_pros_cons: bool = True
+        include_pros_cons: bool = True,
+        nocache: bool = False
     ) -> Dict[str, Any]:
         """
         Main entry point for text-based comparisons.
@@ -91,8 +92,8 @@ class StructuredComparisonService:
             
             # Step 2: Fetch data for each product (parallel)
             product_data = await asyncio.gather(
-                self._fetch_product_data(products[0], region, include_specs, include_reviews),
-                self._fetch_product_data(products[1], region, include_specs, include_reviews)
+                self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
+                self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache)
             )
             
             # Step 3: Generate pros/cons if requested
@@ -146,7 +147,8 @@ class StructuredComparisonService:
         product_info: Dict,
         region: str,
         include_specs: bool,
-        include_reviews: bool
+        include_reviews: bool,
+        nocache: bool = False
     ) -> Dict[str, Any]:
         """Fetch all data for a single product."""
         brand = product_info.get("brand", "")
@@ -154,9 +156,9 @@ class StructuredComparisonService:
         variant = product_info.get("variant")
         category = product_info.get("category", "other")
         search_query = product_info.get("search_query", f"{brand} {name} {variant or ''}")
-        
+
         full_name = f"{brand} {name} {variant or ''}".strip()
-        
+
         result = {
             "brand": brand,
             "name": name,
@@ -165,17 +167,17 @@ class StructuredComparisonService:
             "category": category,
             "query": search_query,
         }
-        
+
         # Parallel fetch: specs, price, reviews
         tasks = []
-        
+
         if include_specs:
-            tasks.append(("specs", self._get_specs(brand, name, variant, category, search_query)))
-        
-        tasks.append(("price", self._get_price(brand, name, variant, region, search_query)))
-        
+            tasks.append(("specs", self._get_specs(brand, name, variant, category, search_query, nocache)))
+
+        tasks.append(("price", self._get_price(brand, name, variant, region, search_query, nocache)))
+
         if include_reviews:
-            tasks.append(("reviews", self._get_reviews(brand, name, variant, search_query)))
+            tasks.append(("reviews", self._get_reviews(brand, name, variant, search_query, nocache)))
         
         # Execute all tasks
         task_results = await asyncio.gather(*[t[1] for t in tasks], return_exceptions=True)
@@ -216,13 +218,14 @@ class StructuredComparisonService:
         name: str,
         variant: Optional[str],
         category: str,
-        search_query: str
+        search_query: str,
+        nocache: bool = False
     ) -> Dict[str, Any]:
         """Get specs with caching."""
         cache_key = get_specs_cache_key(brand, name, variant)
-        
+
         # Check cache
-        cached = get_cached(cache_key)
+        cached = get_cached(cache_key) if not nocache else None
         if cached:
             logger.info(f"Specs cache hit: {cache_key}")
             cached["_cached"] = True
@@ -252,7 +255,8 @@ class StructuredComparisonService:
         name: str,
         variant: Optional[str],
         region: str,
-        search_query: str
+        search_query: str,
+        nocache: bool = False
     ) -> Dict[str, Any]:
         """
         Get price with 3-tier strategy to guarantee a price:
@@ -263,7 +267,7 @@ class StructuredComparisonService:
         cache_key = get_price_cache_key(brand, name, variant, region)
 
         # Check cache
-        cached = get_cached(cache_key)
+        cached = get_cached(cache_key) if not nocache else None
         if cached:
             logger.info(f"Price cache hit: {cache_key}")
             cached["_cached"] = True
@@ -389,13 +393,14 @@ class StructuredComparisonService:
         brand: str,
         name: str,
         variant: Optional[str],
-        search_query: str
+        search_query: str,
+        nocache: bool = False
     ) -> Dict[str, Any]:
         """Get reviews with caching."""
         cache_key = get_reviews_cache_key(brand, name, variant)
-        
+
         # Check cache
-        cached = get_cached(cache_key)
+        cached = get_cached(cache_key) if not nocache else None
         if cached:
             logger.info(f"Reviews cache hit: {cache_key}")
             cached["_cached"] = True
