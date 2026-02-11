@@ -116,12 +116,13 @@ CRITICAL RULES:
 - Extract specs for ONE specific unit — the base/standard model unless a variant is specified
 - Each field must be a SINGLE value, NEVER a list of options (e.g. storage: "128 GB" NOT "128, 256, 512 GB")
 - If the user specified a variant like "512GB", use that config. Otherwise use the base/entry-level config
-- Use null for unknown specs, don't guess
+- EVERY field MUST have a value. Use search results first, then your training knowledge. null is ONLY acceptable if the spec truly does not exist for this product (e.g. water_resistance for a budget phone that has none)
 - Be precise with numbers and units
 - Include ONLY the fields listed above, no extra keys
 - ONLY functional specs — NO launch price, MSRP, release date, or marketing names
 - For connectivity: list supported standards (e.g. "Wi-Fi 6, 5G, Bluetooth 5.3, NFC")
-- Keep each value short and factual (e.g. "6.1-inch Super Retina XDR OLED" not a paragraph)"""
+- Keep each value short and factual (e.g. "6.1-inch Super Retina XDR OLED" not a paragraph)
+- For well-known products (iPhones, Galaxy, Pixel, etc.) you KNOW the specs — do NOT return null for basic fields like os, weight, or water_resistance"""
 
 
 PRICE_EXTRACTION_PROMPT = """You are a price extraction expert for GCC markets.
