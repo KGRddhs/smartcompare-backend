@@ -112,8 +112,14 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     }
   };
 
-  const openRatingSource = (source: RatingSource | null | undefined) => {
-    if (source?.url) {
+  const openRatingSource = (source: RatingSource | null | undefined, product?: Product) => {
+    // Build a clean Google Shopping search URL instead of using the
+    // internal redirect URL which crashes Chrome on Android
+    const productName = product?.full_name || product?.name || '';
+    if (productName) {
+      const query = encodeURIComponent(productName);
+      Linking.openURL(`https://www.google.com/search?q=${query}&tbm=shop`);
+    } else if (source?.url) {
       Linking.openURL(source.url);
     }
   };
@@ -165,8 +171,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         </View>
         
         {/* Source attribution with link */}
-        <TouchableOpacity 
-          onPress={() => openRatingSource(rating_source)}
+        <TouchableOpacity
+          onPress={() => openRatingSource(rating_source, product)}
           style={styles.sourceLink}
         >
           <View style={[styles.verifiedBadge, { backgroundColor: getConfidenceColor() }]}>
@@ -225,49 +231,93 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     );
   };
 
-  // Specs comparison tab
-  const SpecsTab = () => (
-    <View style={styles.tabContent}>
-      {products.map((product, index) => (
-        <View key={index} style={styles.specsCard}>
-          <Text style={styles.specsCardTitle}>{product.name}</Text>
-          {product.specs && Object.entries(product.specs).map(([key, value]) => (
-            value && (
-              <View key={key} style={styles.specRow}>
-                <Text style={styles.specKey}>{key.replace(/_/g, ' ')}</Text>
-                <Text style={styles.specValue}>{String(value)}</Text>
+  // Specs comparison tab - unified table with both products side by side
+  const SpecsTab = () => {
+    // Merge all spec keys from both products, preserving order
+    const allKeys: string[] = [];
+    const seen = new Set<string>();
+    products.forEach((product) => {
+      if (product.specs) {
+        Object.keys(product.specs).forEach((key) => {
+          if (!seen.has(key)) {
+            seen.add(key);
+            allKeys.push(key);
+          }
+        });
+      }
+    });
+
+    return (
+      <View style={styles.tabContent}>
+        {/* Unified specs comparison table */}
+        <View style={styles.specsCard}>
+          {/* Table header */}
+          <View style={styles.specsTableHeader}>
+            <View style={styles.specsTableHeaderLabel}>
+              <Text style={styles.specsTableHeaderText}>Spec</Text>
+            </View>
+            {products.map((product, index) => (
+              <View key={index} style={styles.specsTableHeaderCell}>
+                <Text style={styles.specsTableHeaderText} numberOfLines={1}>
+                  {product.name}
+                </Text>
               </View>
-            )
+            ))}
+          </View>
+
+          {/* Table rows */}
+          {allKeys.map((key, rowIndex) => (
+            <View
+              key={key}
+              style={[
+                styles.specsTableRow,
+                rowIndex % 2 === 0 && styles.specsTableRowAlt,
+              ]}
+            >
+              <View style={styles.specsTableLabel}>
+                <Text style={styles.specKey}>{key.replace(/_/g, ' ')}</Text>
+              </View>
+              {products.map((product, colIndex) => {
+                const val = product.specs?.[key];
+                return (
+                  <View key={colIndex} style={styles.specsTableCell}>
+                    <Text style={val ? styles.specValue : styles.specMissing}>
+                      {val ? String(val) : '-'}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
           ))}
         </View>
-      ))}
-      
-      {/* Advantages comparison */}
-      {comparison.specs_comparison && (
-        <View style={styles.advantagesSection}>
-          <Text style={styles.sectionTitle}>Advantages</Text>
-          
-          {comparison.specs_comparison.product_0_advantages?.length > 0 && (
-            <View style={styles.advantageCard}>
-              <Text style={styles.advantageTitle}>{products[0]?.name}</Text>
-              {comparison.specs_comparison.product_0_advantages.map((adv, i) => (
-                <Text key={i} style={styles.advantageItem}>✓ {adv}</Text>
-              ))}
-            </View>
-          )}
-          
-          {comparison.specs_comparison.product_1_advantages?.length > 0 && (
-            <View style={styles.advantageCard}>
-              <Text style={styles.advantageTitle}>{products[1]?.name}</Text>
-              {comparison.specs_comparison.product_1_advantages.map((adv, i) => (
-                <Text key={i} style={styles.advantageItem}>✓ {adv}</Text>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
-    </View>
-  );
+
+        {/* Advantages comparison */}
+        {comparison.specs_comparison && (
+          <View style={styles.advantagesSection}>
+            <Text style={styles.sectionTitle}>Advantages</Text>
+
+            {comparison.specs_comparison.product_0_advantages?.length > 0 && (
+              <View style={styles.advantageCard}>
+                <Text style={styles.advantageTitle}>{products[0]?.name}</Text>
+                {comparison.specs_comparison.product_0_advantages.map((adv, i) => (
+                  <Text key={i} style={styles.advantageItem}>+ {adv}</Text>
+                ))}
+              </View>
+            )}
+
+            {comparison.specs_comparison.product_1_advantages?.length > 0 && (
+              <View style={styles.advantageCard}>
+                <Text style={styles.advantageTitle}>{products[1]?.name}</Text>
+                {comparison.specs_comparison.product_1_advantages.map((adv, i) => (
+                  <Text key={i} style={styles.advantageItem}>+ {adv}</Text>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   // Reviews tab (pros/cons)
   const ReviewsTab = () => (
@@ -658,24 +708,60 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 12,
   },
-  specRow: {
+  specsTableHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    borderBottomWidth: 2,
+    borderBottomColor: '#2196F3',
+    paddingBottom: 8,
+    marginBottom: 4,
+  },
+  specsTableHeaderLabel: {
+    flex: 1,
+  },
+  specsTableHeaderCell: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  specsTableHeaderText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#2196F3',
+  },
+  specsTableRow: {
+    flexDirection: 'row',
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
+  specsTableRowAlt: {
+    backgroundColor: '#FAFAFA',
+  },
+  specsTableLabel: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingRight: 4,
+  },
+  specsTableCell: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
   specKey: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666',
     textTransform: 'capitalize',
   },
   specValue: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#333',
     fontWeight: '500',
-    maxWidth: '60%',
-    textAlign: 'right',
+    textAlign: 'center',
+  },
+  specMissing: {
+    fontSize: 12,
+    color: '#CCC',
+    textAlign: 'center',
   },
   advantagesSection: {
     marginTop: 10,
