@@ -93,9 +93,11 @@ def _build_specs_prompt(brand: str, name: str, variant: str, category: str, sear
 
     fields_json = ",\n    ".join(f'"{f}": "value or null"' for f in fields)
 
-    return f"""You are a product specifications expert. Extract detailed specs for this product.
+    variant_note = f'(variant: {variant})' if variant else '(base model)'
 
-PRODUCT: {brand} {name} {variant}
+    return f"""You are a product specifications expert. Extract specs for ONE specific configuration of this product.
+
+PRODUCT: {brand} {name} {variant_note}
 CATEGORY: {category}
 
 Search results for context:
@@ -110,14 +112,16 @@ Return ONLY valid JSON (no markdown) with EXACTLY these fields:
     {fields_json}
 }}
 
-RULES:
+CRITICAL RULES:
+- Extract specs for ONE specific unit — the base/standard model unless a variant is specified
+- Each field must be a SINGLE value, NEVER a list of options (e.g. storage: "128 GB" NOT "128, 256, 512 GB")
+- If the user specified a variant like "512GB", use that config. Otherwise use the base/entry-level config
 - Use null for unknown specs, don't guess
 - Be precise with numbers and units
-- Include ONLY the fields listed above, no additional_specs or extra keys
-- Include only verified information from search results
-- For list values (connectivity, ingredients, allergens), return a comma-separated string
-- ONLY functional specs that affect daily use — NO launch price, MSRP, release date, marketing names, or sales info
-- Focus on what helps a buyer compare real-world performance and usability"""
+- Include ONLY the fields listed above, no extra keys
+- ONLY functional specs — NO launch price, MSRP, release date, or marketing names
+- For connectivity: list supported standards (e.g. "Wi-Fi 6, 5G, Bluetooth 5.3, NFC")
+- Keep each value short and factual (e.g. "6.1-inch Super Retina XDR OLED" not a paragraph)"""
 
 
 PRICE_EXTRACTION_PROMPT = """You are a price extraction expert for GCC markets.
