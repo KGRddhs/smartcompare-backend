@@ -1427,16 +1427,18 @@ async def compare_v3(query: str, region: str = "bahrain") -> Dict[str, Any]:
         extracted.pop("rating", None)
         extracted.pop("review_count", None)
         
-        # Fetch verified rating using DETERMINISTIC extraction
-        # This fetches actual product pages and parses JSON-LD/schema.org
+        # Fetch verified rating from Google Shopping data
+        # Uses pre-fetched shopping results first, then falls back to dedicated search
         logger.info(f"[RATING] Extracting verified rating for: {product_name}")
-        
+
         try:
             from app.services.rating_extractor import get_verified_rating, validate_rating_for_api, ExtractedRating
-            
-            rating_result = await get_verified_rating(product_name)
-            total_cost += 0.002  # Rating search cost
-            api_calls += 2
+
+            # Pass pre-fetched shopping data to avoid extra API calls
+            shopping_data = search_results.get("shopping", [])
+            rating_result = await get_verified_rating(product_name, shopping_data=shopping_data)
+            total_cost += 0.001  # Only costs extra if fallback search needed
+            api_calls += 1
             
             # Add rating data with full provenance
             rating_data = rating_result.to_api_response()
