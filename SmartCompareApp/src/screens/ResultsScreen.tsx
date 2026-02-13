@@ -23,6 +23,21 @@ interface RatingSource {
   confidence?: 'high' | 'medium' | 'low';
 }
 
+interface ReviewData {
+  average_rating?: number | null;
+  total_reviews?: number | null;
+  positive_percentage?: number | null;
+  summary?: string | null;
+  rating_distribution?: Record<string, number> | null;
+  category_scores?: Record<string, number> | null;
+  source_ratings?: Array<{ source: string; rating: number; review_count?: number | null }>;
+  detailed_praises?: Array<{ text: string; frequency?: string; quote?: string }>;
+  detailed_complaints?: Array<{ text: string; frequency?: string; quote?: string }>;
+  user_quotes?: Array<{ text: string; sentiment?: string; source?: string; aspect?: string }>;
+  common_praises?: string[];
+  common_complaints?: string[];
+}
+
 interface Product {
   name: string;
   brand: string;
@@ -37,6 +52,7 @@ interface Product {
     unavailable?: boolean;
   };
   specs?: Record<string, any>;
+  reviews?: ReviewData | null;
   rating?: number | null;
   review_count?: number | null;
   rating_verified?: boolean;
@@ -370,39 +386,151 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     );
   };
 
-  // Reviews tab (pros/cons)
+  // Score bar for category scores
+  const ScoreBar = ({ label, score }: { label: string; score: number }) => (
+    <View style={styles.scoreBarRow}>
+      <Text style={styles.scoreBarLabel}>{label}</Text>
+      <View style={styles.scoreBarTrack}>
+        <View style={[styles.scoreBarFill, { width: `${Math.min(score * 10, 100)}%` }]} />
+      </View>
+      <Text style={styles.scoreBarValue}>{score}/10</Text>
+    </View>
+  );
+
+  // Star distribution bar
+  const StarBar = ({ stars, pct }: { stars: string; pct: number }) => (
+    <View style={styles.starBarRow}>
+      <Text style={styles.starBarLabel}>{stars.replace('_star', '')}</Text>
+      <Ionicons name="star" size={10} color="#FFD700" />
+      <View style={styles.starBarTrack}>
+        <View style={[styles.starBarFill, { width: `${Math.min(pct, 100)}%` }]} />
+      </View>
+      <Text style={styles.starBarPct}>{Math.round(pct)}%</Text>
+    </View>
+  );
+
+  // Reviews tab — full enhanced layout
   const ReviewsTab = () => (
     <View style={styles.tabContent}>
-      {products.map((product, index) => (
-        <View key={index} style={styles.reviewCard}>
-          <Text style={styles.reviewCardTitle}>{product.name}</Text>
-          
-          {/* Rating info */}
-          <View style={styles.reviewRatingSection}>
-            <RatingDisplay product={product} />
+      {products.map((product, index) => {
+        const reviews = product.reviews;
+        return (
+          <View key={index} style={styles.reviewCard}>
+            <Text style={styles.reviewCardTitle}>{product.name}</Text>
+
+            {/* Rating info */}
+            <View style={styles.reviewRatingSection}>
+              <RatingDisplay product={product} />
+            </View>
+
+            {/* Summary */}
+            {reviews?.summary ? (
+              <View style={styles.reviewSummarySection}>
+                <Text style={styles.reviewSummaryText}>{reviews.summary}</Text>
+              </View>
+            ) : null}
+
+            {/* Category Scores */}
+            {reviews?.category_scores && Object.keys(reviews.category_scores).length > 0 ? (
+              <View style={styles.categoryScoresSection}>
+                <Text style={styles.reviewSubTitle}>Category Scores</Text>
+                {Object.entries(reviews.category_scores)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([cat, score]) => (
+                    <ScoreBar
+                      key={cat}
+                      label={cat.replace(/_/g, ' ')}
+                      score={typeof score === 'number' ? score : 0}
+                    />
+                  ))}
+              </View>
+            ) : null}
+
+            {/* Rating Distribution */}
+            {reviews?.rating_distribution && Object.keys(reviews.rating_distribution).length > 0 ? (
+              <View style={styles.ratingDistSection}>
+                <Text style={styles.reviewSubTitle}>Rating Breakdown</Text>
+                {['5_star', '4_star', '3_star', '2_star', '1_star'].map((key) => {
+                  const pct = reviews.rating_distribution?.[key];
+                  return pct !== undefined ? (
+                    <StarBar key={key} stars={key} pct={pct} />
+                  ) : null;
+                })}
+              </View>
+            ) : null}
+
+            {/* Source Ratings */}
+            {reviews?.source_ratings && reviews.source_ratings.length > 0 ? (
+              <View style={styles.sourceRatingsSection}>
+                <Text style={styles.reviewSubTitle}>Ratings by Source</Text>
+                {reviews.source_ratings.map((sr, i) => (
+                  <View key={i} style={styles.sourceRatingRow}>
+                    <Text style={styles.sourceRatingName}>{sr.source}</Text>
+                    <View style={styles.sourceRatingRight}>
+                      <Ionicons name="star" size={12} color="#FFD700" />
+                      <Text style={styles.sourceRatingVal}>{sr.rating}</Text>
+                      {sr.review_count ? (
+                        <Text style={styles.sourceRatingCount}>
+                          ({sr.review_count.toLocaleString()})
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {/* User Quotes */}
+            {reviews?.user_quotes && reviews.user_quotes.length > 0 ? (
+              <View style={styles.userQuotesSection}>
+                <Text style={styles.reviewSubTitle}>What Users Say</Text>
+                {reviews.user_quotes.map((q, i) => (
+                  <View key={i} style={styles.quoteCard}>
+                    <Text style={styles.quoteText}>"{q.text}"</Text>
+                    <View style={styles.quoteMeta}>
+                      {q.sentiment ? (
+                        <View style={[
+                          styles.sentimentBadge,
+                          { backgroundColor: q.sentiment === 'positive' ? '#E8F5E9' : q.sentiment === 'negative' ? '#FFEBEE' : '#FFF3E0' }
+                        ]}>
+                          <Text style={[
+                            styles.sentimentText,
+                            { color: q.sentiment === 'positive' ? '#4CAF50' : q.sentiment === 'negative' ? '#F44336' : '#FF9800' }
+                          ]}>
+                            {q.sentiment}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {q.source ? <Text style={styles.quoteSource}>{q.source}</Text> : null}
+                      {q.aspect ? <Text style={styles.quoteAspect}>{q.aspect}</Text> : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {/* Pros */}
+            {product.pros && product.pros.length > 0 && (
+              <View style={styles.prosConsSection}>
+                <Text style={styles.prosTitle}>Pros</Text>
+                {product.pros.map((pro, i) => (
+                  <Text key={i} style={styles.proItem}>+ {pro}</Text>
+                ))}
+              </View>
+            )}
+
+            {/* Cons */}
+            {product.cons && product.cons.length > 0 && (
+              <View style={styles.prosConsSection}>
+                <Text style={styles.consTitle}>Cons</Text>
+                {product.cons.map((con, i) => (
+                  <Text key={i} style={styles.conItem}>- {con}</Text>
+                ))}
+              </View>
+            )}
           </View>
-          
-          {/* Pros */}
-          {product.pros && product.pros.length > 0 && (
-            <View style={styles.prosConsSection}>
-              <Text style={styles.prosTitle}>👍 Pros</Text>
-              {product.pros.map((pro, i) => (
-                <Text key={i} style={styles.proItem}>• {pro}</Text>
-              ))}
-            </View>
-          )}
-          
-          {/* Cons */}
-          {product.cons && product.cons.length > 0 && (
-            <View style={styles.prosConsSection}>
-              <Text style={styles.consTitle}>👎 Cons</Text>
-              {product.cons.map((con, i) => (
-                <Text key={i} style={styles.conItem}>• {con}</Text>
-              ))}
-            </View>
-          )}
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 
@@ -860,6 +988,186 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
+  reviewSummarySection: {
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  reviewSummaryText: {
+    fontSize: 14,
+    color: '#444',
+    lineHeight: 22,
+    fontStyle: 'italic',
+  },
+  reviewSubTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+
+  // Category scores
+  categoryScoresSection: {
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  scoreBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  scoreBarLabel: {
+    width: 90,
+    fontSize: 12,
+    color: '#666',
+    textTransform: 'capitalize',
+  },
+  scoreBarTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 4,
+    marginHorizontal: 8,
+    overflow: 'hidden',
+  },
+  scoreBarFill: {
+    height: '100%',
+    backgroundColor: '#2196F3',
+    borderRadius: 4,
+  },
+  scoreBarValue: {
+    width: 40,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'right',
+  },
+
+  // Rating distribution
+  ratingDistSection: {
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  starBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  starBarLabel: {
+    width: 14,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    textAlign: 'right',
+    marginRight: 2,
+  },
+  starBarTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 4,
+    marginHorizontal: 8,
+    overflow: 'hidden',
+  },
+  starBarFill: {
+    height: '100%',
+    backgroundColor: '#FFD700',
+    borderRadius: 4,
+  },
+  starBarPct: {
+    width: 36,
+    fontSize: 11,
+    color: '#999',
+    textAlign: 'right',
+  },
+
+  // Source ratings
+  sourceRatingsSection: {
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  sourceRatingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FAFAFA',
+  },
+  sourceRatingName: {
+    fontSize: 13,
+    color: '#555',
+    flex: 1,
+  },
+  sourceRatingRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  sourceRatingVal: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+  },
+  sourceRatingCount: {
+    fontSize: 11,
+    color: '#999',
+  },
+
+  // User quotes
+  userQuotesSection: {
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  quoteCard: {
+    backgroundColor: '#F9F9F9',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#2196F3',
+  },
+  quoteText: {
+    fontSize: 13,
+    color: '#444',
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+  quoteMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  sentimentBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  sentimentText: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  quoteSource: {
+    fontSize: 11,
+    color: '#999',
+  },
+  quoteAspect: {
+    fontSize: 11,
+    color: '#2196F3',
+  },
+
+  // Pros/cons
   prosConsSection: {
     marginBottom: 15,
   },
@@ -877,13 +1185,13 @@ const styles = StyleSheet.create({
   },
   proItem: {
     fontSize: 13,
-    color: '#555',
+    color: '#4CAF50',
     marginBottom: 4,
     marginLeft: 8,
   },
   conItem: {
     fontSize: 13,
-    color: '#555',
+    color: '#F44336',
     marginBottom: 4,
     marginLeft: 8,
   },
