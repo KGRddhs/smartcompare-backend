@@ -957,9 +957,7 @@ Help me debug and fix the rating extraction.
 - Threaded through all data fetch methods (_get_specs, _get_price, _get_reviews)
 
 ## What's Still Broken
-- **Prices from low-quality sellers:** Tier 1 sometimes picks eBay resellers over official retailers
 - **Stale cache:** Old format data served until TTL expires (7 days for specs). Use `?nocache=true` to bypass
-- **Price accuracy:** iPhone 15 showing BHD 135 from eBay (likely used/refurb) instead of ~BHD 250 retail
 
 ## New Decisions Made
 | Decision | Reasoning |
@@ -974,7 +972,7 @@ Help me debug and fix the rating extraction.
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Ratings | Working | Via Serper Shopping API, verified with source links |
-| Prices | Working (with caveats) | 3-tier fallback, but sometimes picks low-quality sellers |
+| Prices | Working | 3-tier fallback + retailer quality scoring (prefers official retailers) |
 | Specs | Working | Fixed 11-field schema, consistent across products |
 | Specs table (frontend) | Working | Fixed order, labels, both-must-match filter |
 | Pros/Cons | Working | Generated from specs + reviews |
@@ -982,6 +980,25 @@ Help me debug and fix the rating extraction.
 | Cache bypass | Working | `?nocache=true` query param |
 | Camera input | Not started | |
 | URL input | Partial | Old code, untested with new architecture |
+
+---
+
+# SESSION LOG: February 13, 2026
+
+## What We Fixed
+
+### 1. Price quality — Retailer quality scoring system
+**File:** `app/services/structured_comparison_service.py`
+- Added `RETAILER_TIERS` dict with 3-tier retailer scoring:
+  - **Tier 1 (1.0):** Amazon, Apple, Samsung, Best Buy, Walmart, Target, Noon, Jarir, eXtra, Lulu, Carrefour, Sharaf DG, Virgin Megastore, brand stores
+  - **Tier 2 (0.7):** Newegg, B&H Photo, Adorama, Costco, Ubuy, Micro Center, John Lewis, Currys
+  - **Tier 3 (0.3):** eBay, AliExpress, Alibaba, Temu, Wish, DHgate, Back Market, Swappa, refurbished sellers
+  - **Unknown (0.5):** Any retailer not in the list gets benefit of the doubt
+- Added `_get_retailer_score()` — case-insensitive substring matching against Serper `source` field
+- Updated `_extract_price_from_shopping()` sort key: `(-match_score, -retailer_score, amount)`
+  - Previously: best title match → cheapest price (eBay at BHD 135 won over Amazon at BHD 250)
+  - Now: best title match → best retailer quality → cheapest price (Amazon wins)
+- Added logging: `[PRICE] Selected: Amazon.com (tier 1.0) at BHD 249.99 for 'iPhone 15' (5 candidates)`
 
 ---
 
