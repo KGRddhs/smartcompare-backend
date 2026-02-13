@@ -196,9 +196,6 @@ Return ONLY valid JSON:
     "category_scores": {{
         "aspect_name": score_out_of_10
     }},
-    "source_ratings": [
-        {{"source": "retailer/site name", "rating": 4.5, "review_count": 1234}}
-    ],
     "common_praises": ["praise 1", "praise 2", "praise 3"],
     "common_complaints": ["complaint 1", "complaint 2", "complaint 3"],
     "detailed_praises": [
@@ -214,13 +211,13 @@ Return ONLY valid JSON:
 }}
 
 RULES:
-- Aggregate from ALL sources shown (search results + retailer ratings)
+- Aggregate from ALL sources shown in the search results
 - category_scores: pick 4-6 aspects relevant to the product category (e.g. for phones: camera, battery, display, performance, value, build quality)
 - Score each aspect 1-10 based on review consensus
 - common_praises/common_complaints: keep as simple string lists (3-5 items each)
 - detailed_praises/detailed_complaints: structured versions with frequency and real quotes
 - user_quotes: extract 3-5 real user quotes/phrases from the search snippets — actual words people used, not your paraphrasing
-- source_ratings: combine ratings from both search results and the retailer data section
+- DO NOT generate source_ratings — retailer ratings are injected separately from real data
 - rating_distribution: estimate percentages based on available data (must sum to ~100)
 - summary: be SPECIFIC and opinionated (e.g. "The camera system is class-leading but battery life disappoints power users" not "This is a good phone")
 - Return null/empty for fields without reliable data"""
@@ -499,7 +496,7 @@ async def extract_reviews(
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=800,
+            max_tokens=1000,
             temperature=0.2,
         )
 

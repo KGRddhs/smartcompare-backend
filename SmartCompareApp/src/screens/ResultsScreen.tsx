@@ -36,6 +36,12 @@ interface ReviewData {
   user_quotes?: Array<{ text: string; sentiment?: string; source?: string; aspect?: string }>;
   common_praises?: string[];
   common_complaints?: string[];
+  verified_rating?: {
+    rating: number;
+    review_count?: number | null;
+    source?: string | null;
+    verified?: boolean;
+  } | null;
 }
 
 interface Product {
@@ -460,10 +466,33 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             ) : null}
 
             {/* Source Ratings */}
-            {reviews?.source_ratings && reviews.source_ratings.length > 0 ? (
+            {(reviews?.verified_rating || (reviews?.source_ratings && reviews.source_ratings.length > 0)) ? (
               <View style={styles.sourceRatingsSection}>
                 <Text style={styles.reviewSubTitle}>Ratings by Source</Text>
-                {reviews.source_ratings.map((sr, i) => (
+                {/* Verified primary rating — matches Overview */}
+                {reviews?.verified_rating ? (
+                  <View style={[styles.sourceRatingRow, styles.verifiedRatingRow]}>
+                    <View style={styles.sourceRatingNameRow}>
+                      <Text style={styles.sourceRatingNameBold}>{reviews.verified_rating.source || 'Primary'}</Text>
+                      {reviews.verified_rating.verified ? (
+                        <View style={styles.verifiedMini}>
+                          <Text style={styles.verifiedMiniText}>Verified</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <View style={styles.sourceRatingRight}>
+                      <Ionicons name="star" size={12} color="#FFD700" />
+                      <Text style={styles.sourceRatingVal}>{reviews.verified_rating.rating}</Text>
+                      {reviews.verified_rating.review_count ? (
+                        <Text style={styles.sourceRatingCount}>
+                          ({reviews.verified_rating.review_count.toLocaleString()})
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : null}
+                {/* Other retailer ratings from shopping data */}
+                {reviews?.source_ratings?.map((sr, i) => (
                   <View key={i} style={styles.sourceRatingRow}>
                     <Text style={styles.sourceRatingName}>{sr.source}</Text>
                     <View style={styles.sourceRatingRight}>
@@ -1105,6 +1134,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#555',
     flex: 1,
+  },
+  sourceRatingNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 6,
+  },
+  sourceRatingNameBold: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+  },
+  verifiedRatingRow: {
+    backgroundColor: '#F8FFF8',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    marginBottom: 4,
+    borderBottomColor: '#E8F5E9',
+  },
+  verifiedMini: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  verifiedMiniText: {
+    fontSize: 9,
+    color: '#FFF',
+    fontWeight: 'bold',
   },
   sourceRatingRight: {
     flexDirection: 'row',

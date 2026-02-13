@@ -290,6 +290,15 @@ class StructuredComparisonService:
         result["rating_verified"] = rating_data.get("rating_verified", False)
         result["rating_source"] = rating_data.get("rating_source")
 
+        # Inject verified rating into reviews so frontend has a single source of truth
+        if result.get("reviews") and isinstance(result["reviews"], dict) and rating_data.get("rating"):
+            result["reviews"]["verified_rating"] = {
+                "rating": rating_data["rating"],
+                "review_count": rating_data.get("review_count"),
+                "source": rating_data.get("rating_source", {}).get("name"),
+                "verified": rating_data.get("rating_verified", False),
+            }
+
         # Pass through expert pros/cons if available (from Tier 0 review scrape)
         if rating_data.get("expert_pros"):
             result["expert_pros"] = rating_data["expert_pros"]
@@ -735,6 +744,10 @@ class StructuredComparisonService:
         # Extract reviews with category awareness
         reviews = await extract_reviews(brand, name, variant, search_context, category=category)
         self._track_cost(0.0005)  # ~500 tokens (increased from 400)
+
+        # Inject REAL retailer ratings as source_ratings (replaces any GPT-hallucinated data)
+        if retailer_ratings:
+            reviews["source_ratings"] = retailer_ratings
 
         # Cache result
         if reviews and not reviews.get("error"):

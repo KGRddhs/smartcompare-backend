@@ -93,6 +93,7 @@ class ReviewSummary(BaseModel):
     detailed_complaints: Optional[List[Dict[str, Any]]] = None  # [{text, frequency, quote}]
     user_quotes: Optional[List[Dict[str, Any]]] = None  # [{text, sentiment, source, aspect}]
     summary: Optional[str] = None  # 2-3 sentence opinionated summary
+    verified_rating: Optional[Dict[str, Any]] = None  # {rating, review_count, source, verified}
 
 
 class ProsCons(BaseModel):
