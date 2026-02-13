@@ -727,41 +727,45 @@ class StructuredComparisonService:
 
                 results = search_resp.json().get("organic", [])
 
-                # Find first result from a review site
-                review_url = None
-                review_site = None
+                # Collect all matching review site URLs (try up to 3)
+                review_candidates = []
                 for item in results:
                     link = item.get("link", "")
                     for site in self.REVIEW_SITES:
                         if site in link:
-                            review_url = link
-                            review_site = site
+                            review_candidates.append((link, site))
                             break
-                    if review_url:
-                        break
 
-                if not review_url:
+                if not review_candidates:
                     logger.info(f"[RATING] Tier 0: No review site found in search results")
                     return empty
 
-                logger.info(f"[RATING] Tier 0: Found review at {review_site}: {review_url}")
+                # Step 2: Try scraping each candidate until one yields a rating
+                for review_url, review_site in review_candidates[:3]:
+                    logger.info(f"[RATING] Tier 0: Trying {review_site}: {review_url}")
 
-                # Step 2: Scrape the review page (2 credits)
-                scrape_resp = await client.post(
-                    "https://google.serper.dev/scrape",
-                    headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
-                    json={"url": review_url}
-                )
-                self._track_cost(0.002)
+                    scrape_resp = await client.post(
+                        "https://google.serper.dev/scrape",
+                        headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
+                        json={"url": review_url}
+                    )
+                    self._track_cost(0.002)
 
-                if scrape_resp.status_code != 200:
-                    logger.error(f"[RATING] Tier 0: Scrape failed: {scrape_resp.status_code}")
-                    return empty
+                    if scrape_resp.status_code != 200:
+                        logger.info(f"[RATING] Tier 0: Scrape failed ({scrape_resp.status_code}), trying next")
+                        continue
 
-                scrape_data = scrape_resp.json()
+                    scrape_data = scrape_resp.json()
 
-                # Step 3: Parse JSON-LD for rating
-                return self._parse_review_jsonld(scrape_data, review_url, review_site)
+                    # Step 3: Parse JSON-LD for rating
+                    result = self._parse_review_jsonld(scrape_data, review_url, review_site)
+                    if result and result.get("rating"):
+                        return result
+
+                    logger.info(f"[RATING] Tier 0: No rating in JSON-LD from {review_site}, trying next")
+
+                logger.info(f"[RATING] Tier 0: All review sites exhausted, no rating found")
+                return empty
 
         except Exception as e:
             logger.error(f"[RATING] Tier 0: Error: {e}")
