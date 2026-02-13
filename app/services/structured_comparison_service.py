@@ -412,6 +412,23 @@ class StructuredComparisonService:
         key_words = [w for w in product_name.lower().split() if len(w) > 2]
         return all(w in title_lower for w in key_words)
 
+    # Only accept ratings from retailers that show PRODUCT ratings (not seller feedback)
+    RATING_TRUSTED_RETAILERS = {
+        "amazon", "apple", "samsung", "best buy", "bestbuy", "walmart",
+        "target", "noon", "jarir", "extra", "newegg", "b&h", "bhphoto",
+        "adorama", "costco", "carrefour", "sharaf dg", "virgin megastore",
+        "google store", "microsoft", "dell", "hp store", "lenovo",
+        "currys", "john lewis",
+    }
+
+    @staticmethod
+    def _is_trusted_rating_source(source: str) -> bool:
+        """Check if a retailer shows real product ratings (not seller feedback)."""
+        if not source:
+            return False
+        source_lower = source.lower()
+        return any(r in source_lower for r in StructuredComparisonService.RATING_TRUSTED_RETAILERS)
+
     @staticmethod
     def _get_retailer_score(retailer_name: str) -> float:
         """Score a retailer by quality tier. Higher = more trustworthy."""
@@ -680,13 +697,19 @@ class StructuredComparisonService:
             return {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
 
     def _extract_rating_from_shopping(self, product_name: str, shopping_items: List[Dict]) -> Dict[str, Any]:
-        """Extract best matching rating from Serper Shopping results."""
+        """Extract best matching rating from Serper Shopping results.
+
+        Filters: accessories, untrusted retailers (eBay/AliExpress show seller
+        ratings not product ratings), strict title match for high-value items.
+        Returns null if no trusted source found — better than fake data.
+        """
         empty = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
 
         if not shopping_items:
             return empty
 
         p_words = set(product_name.lower().split())
+        is_high_value = self._is_high_value_query(product_name)
         candidates = []
 
         for item in shopping_items:
@@ -701,6 +724,24 @@ class StructuredComparisonService:
                 continue
 
             title = item.get("title", "")
+            source = item.get("source", "")
+
+            # FILTER 1: Reject accessories
+            if self._is_accessory(title):
+                logger.debug(f"[RATING] Skipped accessory: '{title}'")
+                continue
+
+            # FILTER 2: Only accept trusted retailers (eBay/AliExpress = seller ratings, not product)
+            if not self._is_trusted_rating_source(source):
+                logger.debug(f"[RATING] Skipped untrusted source: '{source}' for '{title}'")
+                continue
+
+            # FILTER 3: Strict title match for high-value products
+            if is_high_value and not self._strict_title_match(product_name, title):
+                logger.debug(f"[RATING] Skipped weak title match: '{title}' for '{product_name}'")
+                continue
+
+            # Standard word-overlap score
             t_words = set(title.lower().split())
             match_score = len(p_words & t_words) / len(p_words) if p_words else 0
 
@@ -720,15 +761,17 @@ class StructuredComparisonService:
             candidates.append({
                 "rating": rating_val,
                 "review_count": review_count,
-                "source": item.get("source", "Google Shopping"),
+                "source": source,
                 "link": item.get("link", ""),
                 "title": title,
                 "match_score": match_score,
             })
 
         if not candidates:
+            logger.info(f"[RATING] No trusted rating found for '{product_name}'")
             return empty
 
+        # Sort: highest review count first (from trusted retailers only now)
         candidates.sort(key=lambda c: (c["review_count"] or 0, c["match_score"]), reverse=True)
         best = candidates[0]
 

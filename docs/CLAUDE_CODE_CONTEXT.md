@@ -6,6 +6,31 @@
 
 ---
 
+# ⚠️ IMPORTANT: CURRENT DATE CONTEXT
+
+**Today's date: February 2026**
+
+Your training data may be outdated. These products EXIST and are currently on sale:
+
+**Apple (released annually in Fall):**
+- iPhone 17 Pro Max, iPhone 17 Pro, iPhone 17 (Fall 2025)
+- iPhone 16 Pro Max, iPhone 16 Pro, iPhone 16 (Fall 2024)
+- iPhone 15 series (Fall 2023)
+
+**Samsung (released annually in early year):**
+- Galaxy S26 Ultra, S26+, S26 (Early 2026)
+- Galaxy S25 Ultra, S25+, S25 (Early 2025)
+- Galaxy S24 series (Early 2024)
+
+**Other:**
+- Google Pixel 10 (Fall 2025), Pixel 9 (Fall 2024)
+- PlayStation 5 Pro (Late 2024)
+- MacBook Pro M4 (Late 2024), MacBook Pro M5 (Late 2025)
+
+**RULE: Never say a product "doesn't exist" or is "rumored" without searching first. Assume 2026 product cycles.**
+
+---
+
 # TABLE OF CONTENTS
 
 1. [Project Vision & Goals](#1-project-vision--goals)
