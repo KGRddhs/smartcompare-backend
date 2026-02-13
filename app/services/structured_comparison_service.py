@@ -223,28 +223,27 @@ class StructuredComparisonService:
             "query": search_query,
         }
 
-        # Parallel fetch: specs, price, reviews
-        tasks = []
+        # === Phase 1: specs + price (parallel) ===
+        # Price must run first so _shopping_items_cache is populated for reviews
+        phase1_tasks = []
+        phase1_keys = []
 
         if include_specs:
-            tasks.append(("specs", self._get_specs(brand, name, variant, category, search_query, nocache)))
+            phase1_tasks.append(self._get_specs(brand, name, variant, category, search_query, nocache))
+            phase1_keys.append("specs")
 
-        tasks.append(("price", self._get_price(brand, name, variant, region, search_query, nocache)))
+        phase1_tasks.append(self._get_price(brand, name, variant, region, search_query, nocache))
+        phase1_keys.append("price")
 
-        if include_reviews:
-            tasks.append(("reviews", self._get_reviews(brand, name, variant, search_query, nocache)))
-        
-        # Execute all tasks
-        task_results = await asyncio.gather(*[t[1] for t in tasks], return_exceptions=True)
-        
-        # Assign results
-        for i, (key, _) in enumerate(tasks):
-            if isinstance(task_results[i], Exception):
-                logger.error(f"Error fetching {key}: {task_results[i]}")
+        phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
+
+        for i, key in enumerate(phase1_keys):
+            if isinstance(phase1_results[i], Exception):
+                logger.error(f"Error fetching {key}: {phase1_results[i]}")
                 result[key] = None
             else:
-                result[key] = task_results[i]
-        
+                result[key] = phase1_results[i]
+
         # Extract best price
         if result.get("price"):
             result["best_price"] = result["price"].get("amount")
@@ -255,8 +254,37 @@ class StructuredComparisonService:
         if result.get("specs"):
             result["specs"] = self._clean_specs(result["specs"])
 
-        # Extract verified rating (Tier 0 expert review → Tier 1-3 Shopping fallback)
-        rating_data = await self._get_verified_rating(full_name)
+        # === Phase 2: reviews + verified rating (parallel) ===
+        # Reviews can now use retailer ratings from shopping data
+        retailer_ratings = self._collect_retailer_ratings(full_name)
+
+        phase2_tasks = []
+        phase2_keys = []
+
+        if include_reviews:
+            phase2_tasks.append(self._get_reviews(
+                brand, name, variant, search_query, nocache,
+                category=category, retailer_ratings=retailer_ratings
+            ))
+            phase2_keys.append("reviews")
+
+        phase2_tasks.append(self._get_verified_rating(full_name))
+        phase2_keys.append("_rating_data")
+
+        phase2_results = await asyncio.gather(*phase2_tasks, return_exceptions=True)
+
+        rating_data = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
+        for i, key in enumerate(phase2_keys):
+            if isinstance(phase2_results[i], Exception):
+                logger.error(f"Error fetching {key}: {phase2_results[i]}")
+                if key != "_rating_data":
+                    result[key] = None
+            else:
+                if key == "_rating_data":
+                    rating_data = phase2_results[i]
+                else:
+                    result[key] = phase2_results[i]
+
         result["rating"] = rating_data.get("rating")
         result["review_count"] = rating_data.get("review_count")
         result["rating_verified"] = rating_data.get("rating_verified", False)
@@ -592,15 +620,98 @@ class StructuredComparisonService:
                 return float(match.group(1))
             return None
     
+    # Category-specific review search terms for richer snippets
+    CATEGORY_REVIEW_TERMS = {
+        "electronics": "user reviews pros cons battery camera performance display",
+        "grocery": "user reviews taste quality ingredients value",
+        "beauty": "user reviews results skin ingredients effectiveness",
+        "fashion": "user reviews fit quality comfort sizing",
+        "home": "user reviews quality durability assembly value",
+        "sports": "user reviews performance comfort durability",
+    }
+
+    def _collect_retailer_ratings(self, full_name: str) -> List[Dict[str, Any]]:
+        """Extract per-retailer rating data from shopping cache for review enrichment."""
+        shopping_items = self._shopping_items_cache.get(full_name, [])
+        ratings = []
+        seen = set()
+
+        for item in shopping_items:
+            rating = item.get("rating")
+            source = item.get("source", "")
+            if not rating or not source:
+                continue
+            # Deduplicate by source name
+            source_key = source.lower().strip()
+            if source_key in seen:
+                continue
+            seen.add(source_key)
+
+            review_count = None
+            for key in ("ratingCount", "reviewCount", "reviews"):
+                raw = item.get(key)
+                if raw is not None:
+                    try:
+                        review_count = int(str(raw).replace(",", "").replace("+", ""))
+                        break
+                    except (ValueError, TypeError):
+                        continue
+
+            try:
+                ratings.append({
+                    "source": source,
+                    "rating": round(float(rating), 1),
+                    "review_count": review_count,
+                })
+            except (ValueError, TypeError):
+                continue
+
+        return ratings
+
+    def _format_review_search_results(self, results: Dict, retailer_ratings: List[Dict]) -> str:
+        """Format search results for review extraction — uses all 10 organic results with source attribution."""
+        if not results:
+            return "No search results available."
+
+        formatted = []
+
+        # All organic results (up to 10) with domain prefix
+        organic = results.get("organic", [])[:10]
+        for i, r in enumerate(organic):
+            title = r.get("title", "")
+            snippet = r.get("snippet", "")
+            link = r.get("link", "")
+            # Extract domain for attribution
+            domain = ""
+            if link:
+                try:
+                    from urllib.parse import urlparse
+                    domain = urlparse(link).netloc.replace("www.", "")
+                except Exception:
+                    pass
+            prefix = f"[{domain}] " if domain else ""
+            formatted.append(f"{i+1}. {prefix}{title}\n   {snippet}")
+
+        # Append retailer ratings from shopping data
+        if retailer_ratings:
+            formatted.append("\n--- Retailer Ratings (from shopping data) ---")
+            for r in retailer_ratings:
+                count_str = f" ({r['review_count']} reviews)" if r.get("review_count") else ""
+                formatted.append(f"- {r['source']}: {r['rating']}/5{count_str}")
+
+        return "\n".join(formatted)
+
     async def _get_reviews(
         self,
         brand: str,
         name: str,
         variant: Optional[str],
         search_query: str,
-        nocache: bool = False
+        nocache: bool = False,
+        category: str = "other",
+        retailer_ratings: Optional[List[Dict]] = None
     ) -> Dict[str, Any]:
-        """Get reviews with caching."""
+        """Get reviews with caching. Uses category-aware search and retailer ratings."""
         cache_key = get_reviews_cache_key(brand, name, variant)
 
         # Check cache
@@ -609,22 +720,26 @@ class StructuredComparisonService:
             logger.info(f"Reviews cache hit: {cache_key}")
             cached["_cached"] = True
             return cached
-        
-        # Fetch from search
-        logger.info(f"Fetching reviews for: {brand} {name}")
-        search_results = await search_web(f"{search_query} review rating user feedback")
+
+        # Category-aware search query
+        review_terms = self.CATEGORY_REVIEW_TERMS.get(category, "user reviews pros cons rating")
+        logger.info(f"Fetching reviews for: {brand} {name} (category: {category})")
+        search_results = await search_web(f"{search_query} {review_terms}")
         self._track_cost(0.001)  # Serper cost
-        
-        search_context = self._format_search_results(search_results)
-        
-        # Extract reviews
-        reviews = await extract_reviews(brand, name, variant, search_context)
-        self._track_cost(0.0004)  # ~400 tokens
-        
+
+        # Use enhanced formatter with retailer ratings
+        search_context = self._format_review_search_results(
+            search_results, retailer_ratings or []
+        )
+
+        # Extract reviews with category awareness
+        reviews = await extract_reviews(brand, name, variant, search_context, category=category)
+        self._track_cost(0.0005)  # ~500 tokens (increased from 400)
+
         # Cache result
         if reviews and not reviews.get("error"):
             set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
-        
+
         reviews["_cached"] = False
         return reviews
     

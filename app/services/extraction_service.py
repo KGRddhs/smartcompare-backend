@@ -173,11 +173,12 @@ RULES:
 - NEVER return null for amount — always provide an estimate"""
 
 
-REVIEWS_EXTRACTION_PROMPT = """You are a review analysis expert. Summarize reviews for this product.
+REVIEWS_EXTRACTION_PROMPT = """You are a review analysis expert. Provide a COMPREHENSIVE review analysis for this product.
 
 PRODUCT: {brand} {name} {variant}
+CATEGORY: {category}
 
-Search results:
+Search results and retailer data:
 {search_context}
 
 Return ONLY valid JSON:
@@ -185,16 +186,44 @@ Return ONLY valid JSON:
     "average_rating": 0.0-5.0 or null,
     "total_reviews": estimated_count or null,
     "positive_percentage": 0-100 or null,
+    "rating_distribution": {{
+        "5_star": percentage,
+        "4_star": percentage,
+        "3_star": percentage,
+        "2_star": percentage,
+        "1_star": percentage
+    }},
+    "category_scores": {{
+        "aspect_name": score_out_of_10
+    }},
+    "source_ratings": [
+        {{"source": "retailer/site name", "rating": 4.5, "review_count": 1234}}
+    ],
     "common_praises": ["praise 1", "praise 2", "praise 3"],
     "common_complaints": ["complaint 1", "complaint 2", "complaint 3"],
-    "summary": "1-2 sentence review summary"
+    "detailed_praises": [
+        {{"text": "specific praise", "frequency": "how often mentioned", "quote": "actual user words if available"}}
+    ],
+    "detailed_complaints": [
+        {{"text": "specific complaint", "frequency": "how often mentioned", "quote": "actual user words if available"}}
+    ],
+    "user_quotes": [
+        {{"text": "exact or near-exact user quote from snippets", "sentiment": "positive|negative|mixed", "source": "where from", "aspect": "what aspect it covers"}}
+    ],
+    "summary": "2-3 sentence specific, opinionated summary"
 }}
 
 RULES:
-- Aggregate from multiple sources if available
-- List top 3-5 praises and complaints
-- Be specific (not "good quality" but "excellent battery life")
-- Return null for metrics without reliable data"""
+- Aggregate from ALL sources shown (search results + retailer ratings)
+- category_scores: pick 4-6 aspects relevant to the product category (e.g. for phones: camera, battery, display, performance, value, build quality)
+- Score each aspect 1-10 based on review consensus
+- common_praises/common_complaints: keep as simple string lists (3-5 items each)
+- detailed_praises/detailed_complaints: structured versions with frequency and real quotes
+- user_quotes: extract 3-5 real user quotes/phrases from the search snippets — actual words people used, not your paraphrasing
+- source_ratings: combine ratings from both search results and the retailer data section
+- rating_distribution: estimate percentages based on available data (must sum to ~100)
+- summary: be SPECIFIC and opinionated (e.g. "The camera system is class-leading but battery life disappoints power users" not "This is a good phone")
+- Return null/empty for fields without reliable data"""
 
 
 PROS_CONS_PROMPT = """You are a product analyst. Generate pros and cons for this product.
@@ -453,36 +482,61 @@ async def extract_reviews(
     brand: str,
     name: str,
     variant: Optional[str],
-    search_context: str
+    search_context: str,
+    category: str = "other"
 ) -> Dict[str, Any]:
-    """Extract and summarize reviews."""
+    """Extract and summarize reviews with enhanced structured data."""
     try:
         client = get_client()
         prompt = REVIEWS_EXTRACTION_PROMPT.format(
             brand=brand,
             name=name,
             variant=variant or "",
-            search_context=search_context[:3000]
+            category=category,
+            search_context=search_context[:4000]
         )
-        
+
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=500,
+            max_tokens=800,
             temperature=0.2,
         )
-        
+
         result = response.choices[0].message.content.strip()
         if result.startswith("```"):
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
-        
-        return json.loads(result)
-    
+
+        data = json.loads(result)
+        return _normalize_review_response(data)
+
     except Exception as e:
         logger.error(f"Reviews extraction error: {e}")
         return {"average_rating": None, "error": str(e)}
+
+
+def _normalize_review_response(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize review response for backward compatibility and field presence."""
+    # Ensure common_praises/common_complaints stay as List[str]
+    for key in ("common_praises", "common_complaints"):
+        val = data.get(key)
+        if isinstance(val, list):
+            data[key] = [str(item) if not isinstance(item, str) else item for item in val]
+        else:
+            data[key] = []
+
+    # Ensure all enhanced fields exist with defaults
+    data.setdefault("rating_distribution", None)
+    data.setdefault("category_scores", None)
+    data.setdefault("source_ratings", [])
+    data.setdefault("detailed_praises", [])
+    data.setdefault("detailed_complaints", [])
+    data.setdefault("user_quotes", [])
+    data.setdefault("summary", data.get("summary"))
+
+    return data
 
 
 async def generate_pros_cons(

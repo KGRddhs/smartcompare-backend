@@ -76,14 +76,23 @@ class ReviewSummary(BaseModel):
     average_rating: Optional[float] = Field(None, ge=0, le=5)
     total_reviews: Optional[int] = None
     rating_breakdown: Optional[Dict[str, int]] = None  # {"5": 100, "4": 50, ...}
-    
+
     # Sentiment analysis
     positive_percentage: Optional[float] = None
-    common_praises: Optional[List[str]] = None
-    common_complaints: Optional[List[str]] = None
-    
+    common_praises: Optional[List[str]] = None  # Simple string list (backward compat)
+    common_complaints: Optional[List[str]] = None  # Simple string list (backward compat)
+
     # Source breakdown
     sources: Optional[List[Dict[str, Any]]] = None  # [{"source": "Amazon", "rating": 4.5, "count": 1000}]
+
+    # Enhanced review fields
+    rating_distribution: Optional[Dict[str, float]] = None  # {"5_star": 45.0, "4_star": 25.0, ...}
+    category_scores: Optional[Dict[str, float]] = None  # {"camera": 9.0, "battery": 7.5, ...}
+    source_ratings: Optional[List[Dict[str, Any]]] = None  # [{source, rating, review_count}]
+    detailed_praises: Optional[List[Dict[str, Any]]] = None  # [{text, frequency, quote}]
+    detailed_complaints: Optional[List[Dict[str, Any]]] = None  # [{text, frequency, quote}]
+    user_quotes: Optional[List[Dict[str, Any]]] = None  # [{text, sentiment, source, aspect}]
+    summary: Optional[str] = None  # 2-3 sentence opinionated summary
 
 
 class ProsCons(BaseModel):
