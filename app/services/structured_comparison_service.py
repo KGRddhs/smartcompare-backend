@@ -254,12 +254,18 @@ class StructuredComparisonService:
         if result.get("specs"):
             result["specs"] = self._clean_specs(result["specs"])
 
-        # Extract verified rating from Google Shopping
+        # Extract verified rating (Tier 0 expert review → Tier 1-3 Shopping fallback)
         rating_data = await self._get_verified_rating(full_name)
         result["rating"] = rating_data.get("rating")
         result["review_count"] = rating_data.get("review_count")
         result["rating_verified"] = rating_data.get("rating_verified", False)
         result["rating_source"] = rating_data.get("rating_source")
+
+        # Pass through expert pros/cons if available (from Tier 0 review scrape)
+        if rating_data.get("expert_pros"):
+            result["expert_pros"] = rating_data["expert_pros"]
+        if rating_data.get("expert_cons"):
+            result["expert_cons"] = rating_data["expert_cons"]
 
         # Calculate data freshness
         result["data_freshness"] = self._calculate_freshness(result)
