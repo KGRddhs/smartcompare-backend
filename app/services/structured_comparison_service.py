@@ -1019,6 +1019,32 @@ class StructuredComparisonService:
                 else:
                     logger.debug(f"[RATING] Skipped low-count marketplace: '{source}' ({review_count} reviews)")
 
+        # Check for Google aggregate consensus: if the same rating+reviewCount appears
+        # across 3+ different sellers, it's Google's product-level aggregate — trustworthy
+        all_candidates = tier1_candidates + tier2_candidates + tier3_candidates
+        if not tier1_candidates and not tier2_candidates and all_candidates:
+            from collections import Counter
+            rating_counts = Counter((c["rating"], c["review_count"]) for c in all_candidates if c["review_count"])
+            most_common, count = rating_counts.most_common(1)[0] if rating_counts else ((None, None), 0)
+            if count >= 3:
+                # Same rating across 3+ sellers = Google product aggregate, promote to verified
+                consensus = [c for c in all_candidates if (c["rating"], c["review_count"]) == most_common]
+                consensus.sort(key=lambda c: c["match_score"], reverse=True)
+                best = consensus[0]
+                logger.info(f"[RATING] ✓ CONSENSUS ({count} sellers): {best['rating']}/5 ({best['review_count']} reviews)")
+                return {
+                    "rating": round(best["rating"], 1),
+                    "review_count": best["review_count"],
+                    "rating_verified": True,
+                    "rating_source": {
+                        "name": "Google Shopping (product aggregate)",
+                        "url": best["link"],
+                        "retrieved_at": datetime.now().isoformat() + "Z",
+                        "extract_method": "google_shopping_consensus",
+                        "confidence": "high"
+                    }
+                }
+
         # Tiered fallback: try Tier 1 first, then 2, then 3
         chosen_tier = None
         candidates = []
