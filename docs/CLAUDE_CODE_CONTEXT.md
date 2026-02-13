@@ -996,7 +996,7 @@ Help me debug and fix the rating extraction.
 ## Current Feature Status
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Ratings | Working | Via Serper Shopping API, verified with source links |
+| Ratings | Working | Tier 0 expert reviews (PCMag/CNET JSON-LD) → Tier 1-3 Shopping fallback |
 | Prices | Working | 3-tier fallback + retailer quality scoring (prefers official retailers) |
 | Specs | Working | Fixed 11-field schema, consistent across products |
 | Specs table (frontend) | Working | Fixed order, labels, both-must-match filter |
@@ -1024,6 +1024,40 @@ Help me debug and fix the rating extraction.
   - Previously: best title match → cheapest price (eBay at BHD 135 won over Amazon at BHD 250)
   - Now: best title match → best retailer quality → cheapest price (Amazon wins)
 - Added logging: `[PRICE] Selected: Amazon.com (tier 1.0) at BHD 249.99 for 'iPhone 15' (5 candidates)`
+
+### 2. Price accessory/min-price filters
+**File:** `app/services/structured_comparison_service.py`
+- Accessory filter: rejects "case", "cover", "charger", etc. from price results
+- Min price BHD 100 for phones/laptops/consoles
+- Strict title match: ALL key words must appear for high-value products
+- Tier 3 purge: remove eBay/AliExpress when Tier 1/2 retailers exist
+
+### 3. Rating system — 4-tier fallback
+**File:** `app/services/structured_comparison_service.py`
+
+**Tier 0 (Expert):** Scrape editorial review sites for JSON-LD ratings
+- Search: `"{product} review site:pcmag.com OR site:cnet.com OR ..."` (1 credit)
+- Scrape: Serper `/scrape` endpoint on review URL (2 credits)
+- Parse: JSON-LD `reviewRating` → rating + author + pros/cons
+- Sites: PCMag, CNET, TechRadar, Tom's Guide, The Verge, Wired, LaptopMag, Tom's Hardware
+- Tries up to 3 review URLs until one yields a parseable rating
+- Label: `"Pcmag Expert Review (Eric Zeman)"`, confidence: `"expert"`
+- Bonus: extracts `positiveNotes`/`negativeNotes` as `expert_pros`/`expert_cons`
+
+**Tier 1 (High):** Serper Shopping from trusted retailers (Amazon, Best Buy, Walmart, etc.)
+**Tier 2 (Medium):** Known retailers, .com/.ae stores
+**Tier 3 (Low):** Marketplace (eBay/AliExpress) only if review_count > 1000, labeled "marketplace rating"
+
+### 4. Added 2026 product date context
+**File:** `docs/CLAUDE_CODE_CONTEXT.md`
+- Added current product release dates so AI doesn't flag iPhone 17 / Galaxy S26 as "rumored"
+
+## Cost Impact
+| Before | After |
+|--------|-------|
+| ~$0.008/comparison | ~$0.022/comparison |
+| Ratings: 1 Shopping call | Ratings: 1 search + up to 3 scrapes + 1 Shopping fallback |
+| Inaccurate Google Shopping aggregates | Real editorial ratings from review sites |
 
 ---
 
