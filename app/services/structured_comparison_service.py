@@ -426,6 +426,18 @@ class StructuredComparisonService:
         "ebay", "aliexpress", "alibaba", "temu", "wish",
     }
 
+    # Review sites for Tier 0 expert ratings — these have JSON-LD with reviewRating
+    REVIEW_SITES = [
+        "pcmag.com",
+        "cnet.com",
+        "techradar.com",
+        "tomsguide.com",
+        "theverge.com",
+        "wired.com",
+        "laptopmag.com",
+        "tomshardware.com",
+    ]
+
     @staticmethod
     def _get_rating_tier(source: str) -> int:
         """Classify a retailer into rating trust tiers. Returns 1, 2, or 3."""
@@ -679,15 +691,211 @@ class StructuredComparisonService:
         self.total_cost += cost
         self.api_calls += 1
 
+    async def _get_expert_review(self, product_name: str) -> Dict[str, Any]:
+        """Tier 0: Fetch editorial review rating from trusted review sites via Serper /scrape.
+
+        1. Search for "{product} review" on review sites (1 credit)
+        2. Scrape the best result with /scrape (2 credits)
+        3. Parse JSON-LD for reviewRating + author + pros/cons
+
+        Returns rating data dict, or empty dict if not found.
+        """
+        empty = {}
+
+        if not SERPER_API_KEY:
+            return empty
+
+        # Build site filter query
+        site_filter = " OR ".join(f"site:{s}" for s in self.REVIEW_SITES)
+        query = f"{product_name} review {site_filter}"
+
+        logger.info(f"[RATING] Tier 0: Searching review sites for: {product_name}")
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                # Step 1: Search for review articles (1 credit)
+                search_resp = await client.post(
+                    "https://google.serper.dev/search",
+                    headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
+                    json={"q": query, "num": 5}
+                )
+                self._track_cost(0.001)
+
+                if search_resp.status_code != 200:
+                    logger.error(f"[RATING] Tier 0: Search failed: {search_resp.status_code}")
+                    return empty
+
+                results = search_resp.json().get("organic", [])
+
+                # Find first result from a review site
+                review_url = None
+                review_site = None
+                for item in results:
+                    link = item.get("link", "")
+                    for site in self.REVIEW_SITES:
+                        if site in link:
+                            review_url = link
+                            review_site = site
+                            break
+                    if review_url:
+                        break
+
+                if not review_url:
+                    logger.info(f"[RATING] Tier 0: No review site found in search results")
+                    return empty
+
+                logger.info(f"[RATING] Tier 0: Found review at {review_site}: {review_url}")
+
+                # Step 2: Scrape the review page (2 credits)
+                scrape_resp = await client.post(
+                    "https://google.serper.dev/scrape",
+                    headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
+                    json={"url": review_url}
+                )
+                self._track_cost(0.002)
+
+                if scrape_resp.status_code != 200:
+                    logger.error(f"[RATING] Tier 0: Scrape failed: {scrape_resp.status_code}")
+                    return empty
+
+                scrape_data = scrape_resp.json()
+
+                # Step 3: Parse JSON-LD for rating
+                return self._parse_review_jsonld(scrape_data, review_url, review_site)
+
+        except Exception as e:
+            logger.error(f"[RATING] Tier 0: Error: {e}")
+            return empty
+
+    def _parse_review_jsonld(self, scrape_data: Dict, review_url: str, review_site: str) -> Dict[str, Any]:
+        """Parse JSON-LD from a scraped review page for rating, author, pros/cons."""
+        empty = {}
+        jsonld = scrape_data.get("jsonld")
+
+        if not jsonld:
+            logger.info(f"[RATING] Tier 0: No JSON-LD in scraped page")
+            return empty
+
+        # JSON-LD can be a dict or list
+        items = [jsonld] if isinstance(jsonld, dict) else jsonld if isinstance(jsonld, list) else []
+
+        for item in items:
+            rating_data = self._extract_rating_from_jsonld_item(item, review_url, review_site)
+            if rating_data:
+                return rating_data
+
+        # Also check nested items (some sites wrap in @graph)
+        if isinstance(jsonld, dict) and "@graph" in jsonld:
+            for item in jsonld["@graph"]:
+                rating_data = self._extract_rating_from_jsonld_item(item, review_url, review_site)
+                if rating_data:
+                    return rating_data
+
+        logger.info(f"[RATING] Tier 0: No reviewRating found in JSON-LD")
+        return empty
+
+    def _extract_rating_from_jsonld_item(self, item: Dict, review_url: str, review_site: str) -> Optional[Dict[str, Any]]:
+        """Extract rating from a single JSON-LD item (Product or Review type)."""
+        if not isinstance(item, dict):
+            return None
+
+        # Find the review object — could be top-level or nested under "review"
+        review = None
+        if item.get("@type") == "Review" and item.get("reviewRating"):
+            review = item
+        elif item.get("review") and isinstance(item["review"], dict):
+            review = item["review"]
+
+        if not review:
+            return None
+
+        review_rating = review.get("reviewRating", {})
+        rating_val_raw = review_rating.get("ratingValue")
+        if not rating_val_raw:
+            return None
+
+        try:
+            rating_val = float(rating_val_raw)
+        except (ValueError, TypeError):
+            return None
+
+        # Normalize to /5 scale if bestRating is 10
+        best_rating = float(review_rating.get("bestRating", 5))
+        if best_rating == 10:
+            rating_val = round(rating_val / 2, 1)
+        elif best_rating != 5 and best_rating > 0:
+            rating_val = round((rating_val / best_rating) * 5, 1)
+
+        if not (0 < rating_val <= 5):
+            return None
+
+        # Extract author
+        author_name = None
+        author_data = review.get("author")
+        if isinstance(author_data, dict):
+            author_name = author_data.get("name")
+        elif isinstance(author_data, list) and author_data:
+            author_name = author_data[0].get("name") if isinstance(author_data[0], dict) else None
+        elif isinstance(author_data, str):
+            author_name = author_data
+
+        # Extract pros/cons from positiveNotes/negativeNotes
+        expert_pros = []
+        expert_cons = []
+        for notes_key, target_list in [("positiveNotes", expert_pros), ("negativeNotes", expert_cons)]:
+            notes = review.get(notes_key, {})
+            if isinstance(notes, dict):
+                for li in notes.get("itemListElement", []):
+                    name = li.get("name", "").strip()
+                    if name:
+                        target_list.append(name)
+
+        # Build display label
+        site_name = review_site.replace(".com", "").replace(".co.uk", "").capitalize()
+        label = f"{site_name} Expert Review"
+        if author_name:
+            label += f" ({author_name})"
+
+        logger.info(f"[RATING] ✓ EXPERT: {rating_val}/5 from {site_name}" +
+                     (f" by {author_name}" if author_name else "") +
+                     (f" | {len(expert_pros)} pros, {len(expert_cons)} cons" if expert_pros else ""))
+
+        result = {
+            "rating": round(rating_val, 1),
+            "review_count": None,
+            "rating_verified": True,
+            "rating_source": {
+                "name": label,
+                "url": review_url,
+                "retrieved_at": datetime.now().isoformat() + "Z",
+                "extract_method": "expert_review_jsonld",
+                "confidence": "expert"
+            }
+        }
+
+        # Attach pros/cons if found (bonus data for the frontend)
+        if expert_pros or expert_cons:
+            result["expert_pros"] = expert_pros
+            result["expert_cons"] = expert_cons
+
+        return result
+
     async def _get_verified_rating(self, full_name: str) -> Dict[str, Any]:
         """
-        Get verified rating from Google Shopping data via Serper.
-        Returns real ratings from retailer listings - NO AI generation.
+        Get verified rating with tiered fallback:
+        Tier 0: Expert review sites (PCMag, CNET, etc.) via /scrape
+        Tier 1-3: Google Shopping data via /shopping
         """
         if not SERPER_API_KEY:
             return {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
 
-        logger.info(f"[RATING] Searching Google Shopping for: {full_name}")
+        # Tier 0: Try expert review sites first
+        expert = await self._get_expert_review(full_name)
+        if expert and expert.get("rating"):
+            return expert
+
+        # Tier 1-3: Fall back to Google Shopping
+        logger.info(f"[RATING] Tier 0 failed, falling back to Google Shopping for: {full_name}")
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
