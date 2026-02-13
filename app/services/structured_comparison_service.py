@@ -895,20 +895,48 @@ class StructuredComparisonService:
 
     async def _get_verified_rating(self, full_name: str) -> Dict[str, Any]:
         """
-        Get verified rating — reuses shopping data already fetched by _get_price().
-        Zero extra API calls. Tier 1-3 filtering applied to existing data.
+        Get verified rating with minimal cost:
+        1. Reuse shopping data from price fetch (FREE — Bahrain results)
+        2. If no Tier 1/2 rating, ONE US shopping search for Amazon/BestBuy (1 credit)
         """
         empty = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
 
-        # Reuse shopping items already fetched during price extraction (FREE)
+        # Step 1: Reuse shopping items already fetched during price extraction (FREE)
         shopping_items = self._shopping_items_cache.get(full_name, [])
         if shopping_items:
-            logger.info(f"[RATING] Reusing {len(shopping_items)} shopping items from price fetch for: {full_name}")
+            logger.info(f"[RATING] Reusing {len(shopping_items)} shopping items from price fetch")
             result = self._extract_rating_from_shopping(full_name, shopping_items)
-            if result and result.get("rating"):
+            if result and result.get("rating") and result.get("rating_source", {}).get("confidence") != "low":
                 return result
+            logger.info(f"[RATING] Bahrain data had no Tier 1/2 rating, trying US search")
 
-        logger.info(f"[RATING] No rating found in shopping data for: {full_name}")
+        # Step 2: One US shopping search for better retailer ratings (1 credit)
+        if not SERPER_API_KEY:
+            return empty
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    "https://google.serper.dev/shopping",
+                    headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
+                    json={"q": full_name, "gl": "us", "num": 10}
+                )
+                self._track_cost(0.001)
+
+                if response.status_code != 200:
+                    logger.error(f"[RATING] US shopping search failed: {response.status_code}")
+                    return empty
+
+                us_items = response.json().get("shopping", [])
+                if us_items:
+                    result = self._extract_rating_from_shopping(full_name, us_items)
+                    if result and result.get("rating"):
+                        return result
+
+        except Exception as e:
+            logger.error(f"[RATING] US shopping search error: {e}")
+
+        logger.info(f"[RATING] No rating found across all sources for: {full_name}")
         return empty
 
     def _extract_rating_from_shopping(self, product_name: str, shopping_items: List[Dict]) -> Dict[str, Any]:
