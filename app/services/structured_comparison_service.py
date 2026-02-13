@@ -412,22 +412,36 @@ class StructuredComparisonService:
         key_words = [w for w in product_name.lower().split() if len(w) > 2]
         return all(w in title_lower for w in key_words)
 
-    # Only accept ratings from retailers that show PRODUCT ratings (not seller feedback)
-    RATING_TRUSTED_RETAILERS = {
+    # Rating retailer tiers — determines confidence label
+    RATING_TIER_1 = {  # "Verified" — official/authorized, real product ratings
         "amazon", "apple", "samsung", "best buy", "bestbuy", "walmart",
         "target", "noon", "jarir", "extra", "newegg", "b&h", "bhphoto",
-        "adorama", "costco", "carrefour", "sharaf dg", "virgin megastore",
-        "google store", "microsoft", "dell", "hp store", "lenovo",
-        "currys", "john lewis",
+    }
+    RATING_TIER_2 = {  # "Verified" — known retailers, real product ratings
+        "costco", "carrefour", "sharaf dg", "virgin megastore", "currys",
+        "john lewis", "adorama", "micro center", "google store", "microsoft",
+        "dell", "hp store", "lenovo", "fnac",
+    }
+    RATING_TIER_3 = {  # "Marketplace rating" — only if review_count > 1000
+        "ebay", "aliexpress", "alibaba", "temu", "wish",
     }
 
     @staticmethod
-    def _is_trusted_rating_source(source: str) -> bool:
-        """Check if a retailer shows real product ratings (not seller feedback)."""
+    def _get_rating_tier(source: str) -> int:
+        """Classify a retailer into rating trust tiers. Returns 1, 2, or 3."""
         if not source:
-            return False
+            return 3
         source_lower = source.lower()
-        return any(r in source_lower for r in StructuredComparisonService.RATING_TRUSTED_RETAILERS)
+        for r in StructuredComparisonService.RATING_TIER_1:
+            if r in source_lower:
+                return 1
+        for r in StructuredComparisonService.RATING_TIER_2:
+            if r in source_lower:
+                return 2
+        # Check for .com or .ae domains — likely a real retailer site
+        if ".com" in source_lower or ".ae" in source_lower:
+            return 2
+        return 3
 
     @staticmethod
     def _get_retailer_score(retailer_name: str) -> float:
@@ -699,9 +713,8 @@ class StructuredComparisonService:
     def _extract_rating_from_shopping(self, product_name: str, shopping_items: List[Dict]) -> Dict[str, Any]:
         """Extract best matching rating from Serper Shopping results.
 
-        Filters: accessories, untrusted retailers (eBay/AliExpress show seller
-        ratings not product ratings), strict title match for high-value items.
-        Returns null if no trusted source found — better than fake data.
+        Tiered fallback: Tier 1 (trusted) -> Tier 2 (known) -> Tier 3 (marketplace, >1000 reviews).
+        Accessories and weak title matches are always rejected.
         """
         empty = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
 
@@ -710,7 +723,9 @@ class StructuredComparisonService:
 
         p_words = set(product_name.lower().split())
         is_high_value = self._is_high_value_query(product_name)
-        candidates = []
+        tier1_candidates = []
+        tier2_candidates = []
+        tier3_candidates = []
 
         for item in shopping_items:
             rating = item.get("rating")
@@ -731,12 +746,7 @@ class StructuredComparisonService:
                 logger.debug(f"[RATING] Skipped accessory: '{title}'")
                 continue
 
-            # FILTER 2: Only accept trusted retailers (eBay/AliExpress = seller ratings, not product)
-            if not self._is_trusted_rating_source(source):
-                logger.debug(f"[RATING] Skipped untrusted source: '{source}' for '{title}'")
-                continue
-
-            # FILTER 3: Strict title match for high-value products
+            # FILTER 2: Strict title match for high-value products
             if is_high_value and not self._strict_title_match(product_name, title):
                 logger.debug(f"[RATING] Skipped weak title match: '{title}' for '{product_name}'")
                 continue
@@ -758,35 +768,71 @@ class StructuredComparisonService:
                     except (ValueError, TypeError):
                         continue
 
-            candidates.append({
+            candidate = {
                 "rating": rating_val,
                 "review_count": review_count,
                 "source": source,
                 "link": item.get("link", ""),
                 "title": title,
                 "match_score": match_score,
-            })
+            }
+
+            # Sort into tier buckets
+            tier = self._get_rating_tier(source)
+            if tier == 1:
+                tier1_candidates.append(candidate)
+            elif tier == 2:
+                tier2_candidates.append(candidate)
+            else:
+                # Tier 3: only keep if review_count > 1000 (real product, not single seller)
+                if review_count and review_count > 1000:
+                    tier3_candidates.append(candidate)
+                else:
+                    logger.debug(f"[RATING] Skipped low-count marketplace: '{source}' ({review_count} reviews)")
+
+        # Tiered fallback: try Tier 1 first, then 2, then 3
+        chosen_tier = None
+        candidates = []
+        if tier1_candidates:
+            candidates = tier1_candidates
+            chosen_tier = "tier1"
+        elif tier2_candidates:
+            candidates = tier2_candidates
+            chosen_tier = "tier2"
+        elif tier3_candidates:
+            candidates = tier3_candidates
+            chosen_tier = "tier3"
 
         if not candidates:
-            logger.info(f"[RATING] No trusted rating found for '{product_name}'")
+            logger.info(f"[RATING] No rating found across all tiers for '{product_name}'")
             return empty
 
-        # Sort: highest review count first (from trusted retailers only now)
+        # Sort: highest review count first
         candidates.sort(key=lambda c: (c["review_count"] or 0, c["match_score"]), reverse=True)
         best = candidates[0]
 
-        logger.info(f"[RATING] ✓ VERIFIED: {best['rating']}/5 ({best['review_count']} reviews) from {best['source']}")
+        # Confidence label based on tier
+        if chosen_tier == "tier3":
+            confidence = "low"
+            label = f"{best['source']} (marketplace rating)"
+            verified = False
+            logger.info(f"[RATING] ~ MARKETPLACE: {best['rating']}/5 ({best['review_count']} reviews) from {best['source']}")
+        else:
+            confidence = "high" if chosen_tier == "tier1" else "medium"
+            label = f"{best['source']} via Google Shopping"
+            verified = True
+            logger.info(f"[RATING] ✓ VERIFIED: {best['rating']}/5 ({best['review_count']} reviews) from {best['source']}")
 
         return {
             "rating": round(best["rating"], 1),
             "review_count": best["review_count"],
-            "rating_verified": True,
+            "rating_verified": verified,
             "rating_source": {
-                "name": f"{best['source']} via Google Shopping",
+                "name": label,
                 "url": best["link"],
                 "retrieved_at": datetime.now().isoformat() + "Z",
                 "extract_method": "google_shopping",
-                "confidence": "high"
+                "confidence": confidence
             }
         }
 
