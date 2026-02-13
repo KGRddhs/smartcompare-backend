@@ -109,6 +109,7 @@ class StructuredComparisonService:
     def __init__(self):
         self.total_cost = 0.0
         self.api_calls = 0
+        self._shopping_items_cache = {}  # Reuse shopping data between price and rating
     
     async def compare_from_text(
         self,
@@ -344,6 +345,8 @@ class StructuredComparisonService:
 
         # --- Tier 1: Direct Serper Shopping extraction ---
         shopping_items = search_results.get("shopping", [])
+        # Store for reuse by rating extraction (avoids duplicate API call)
+        self._shopping_items_cache[full_name] = shopping_items
         price = self._extract_price_from_shopping(full_name, shopping_items, currency)
         if price and price.get("amount"):
             logger.info(f"[PRICE] Tier 1 (Shopping): {currency} {price['amount']} from {price.get('retailer')}")
@@ -892,41 +895,21 @@ class StructuredComparisonService:
 
     async def _get_verified_rating(self, full_name: str) -> Dict[str, Any]:
         """
-        Get verified rating with tiered fallback:
-        Tier 0: Expert review sites (PCMag, CNET, etc.) via /scrape
-        Tier 1-3: Google Shopping data via /shopping
+        Get verified rating — reuses shopping data already fetched by _get_price().
+        Zero extra API calls. Tier 1-3 filtering applied to existing data.
         """
-        if not SERPER_API_KEY:
-            return {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
+        empty = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
 
-        # Tier 0: Try expert review sites first
-        expert = await self._get_expert_review(full_name)
-        if expert and expert.get("rating"):
-            return expert
+        # Reuse shopping items already fetched during price extraction (FREE)
+        shopping_items = self._shopping_items_cache.get(full_name, [])
+        if shopping_items:
+            logger.info(f"[RATING] Reusing {len(shopping_items)} shopping items from price fetch for: {full_name}")
+            result = self._extract_rating_from_shopping(full_name, shopping_items)
+            if result and result.get("rating"):
+                return result
 
-        # Tier 1-3: Fall back to Google Shopping
-        logger.info(f"[RATING] Tier 0 failed, falling back to Google Shopping for: {full_name}")
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    "https://google.serper.dev/shopping",
-                    headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
-                    json={"q": full_name, "num": 15}
-                )
-
-                if response.status_code != 200:
-                    logger.error(f"[RATING] Serper shopping search failed: {response.status_code}")
-                    return {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
-
-                shopping_items = response.json().get("shopping", [])
-                self._track_cost(0.001)
-
-            return self._extract_rating_from_shopping(full_name, shopping_items)
-
-        except Exception as e:
-            logger.error(f"[RATING] Shopping search error: {e}")
-            return {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
+        logger.info(f"[RATING] No rating found in shopping data for: {full_name}")
+        return empty
 
     def _extract_rating_from_shopping(self, product_name: str, shopping_items: List[Dict]) -> Dict[str, Any]:
         """Extract best matching rating from Serper Shopping results.
