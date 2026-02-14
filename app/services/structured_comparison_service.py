@@ -446,11 +446,15 @@ class StructuredComparisonService:
 
     @staticmethod
     def _sanitize_gpt_price(price: Optional[Dict]) -> None:
-        """Fix GPT returning the string 'null' instead of JSON null for optional fields."""
+        """Fix GPT returning the string 'null' or echoing prompt templates for optional fields."""
         if not price:
             return
         for key in ("retailer", "url"):
-            if isinstance(price.get(key), str) and price[key].lower() == "null":
+            val = price.get(key)
+            if not isinstance(val, str):
+                continue
+            # Catch: "null", "store name or null", "product url or null", etc.
+            if val.lower() == "null" or "or null" in val.lower():
                 price[key] = None
 
     @staticmethod
@@ -459,15 +463,23 @@ class StructuredComparisonService:
         name_lower = product_name.lower()
         return any(kw in name_lower for kw in StructuredComparisonService.HIGH_VALUE_KEYWORDS)
 
+    # Manufacturer names that AIB partners replace in product titles
+    # (e.g. "NVIDIA RTX 3070" → "EVGA GeForce RTX 3070", "MSI RTX 3070")
+    MANUFACTURER_BRAND_WORDS = {"nvidia", "amd", "intel"}
+
     @staticmethod
     def _strict_title_match(product_name: str, title: str) -> bool:
-        """For high-value products, ALL key words from the query must appear in the title.
+        """For high-value products, key words from the query must appear in the title.
 
         'iPhone 16 Pro Max' → title must contain 'iphone' AND '16' AND 'pro' AND 'max'.
         Small words (<=2 chars) like 'vs', 'of' are skipped.
+        Manufacturer brands (nvidia, amd, intel) are skipped since AIB partners rebrand.
         """
         title_lower = title.lower()
-        key_words = [w for w in product_name.lower().split() if len(w) > 2]
+        key_words = [
+            w for w in product_name.lower().split()
+            if len(w) > 2 and w not in StructuredComparisonService.MANUFACTURER_BRAND_WORDS
+        ]
         return all(w in title_lower for w in key_words)
 
     # Rating retailer tiers — determines confidence label
