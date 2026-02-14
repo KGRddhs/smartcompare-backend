@@ -283,7 +283,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         {/* Value Score */}
         {valueScore !== undefined && (
           <View style={styles.valueScoreContainer}>
-            <Text style={styles.valueScoreLabel}>Value Score</Text>
+            <Text style={styles.valueScoreLabel}>Comparative Value</Text>
             <Text style={styles.valueScoreText}>{valueScore}/10</Text>
           </View>
         )}

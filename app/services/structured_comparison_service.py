@@ -395,6 +395,7 @@ class StructuredComparisonService:
         search_context = self._format_search_results(search_results)
         price = await extract_price(brand, name, variant, region, search_context)
         self._track_cost(0.0003)
+        self._sanitize_gpt_price(price)
         if price and price.get("amount"):
             logger.info(f"[PRICE] Tier 2 (GPT search): {currency} {price['amount']}")
             set_cached(cache_key, price, PRICE_CACHE_TTL)
@@ -405,6 +406,7 @@ class StructuredComparisonService:
         logger.info(f"[PRICE] Tiers 1-2 failed, falling back to GPT estimate for {full_name}")
         price = await extract_price_from_training_data(brand, name, variant, region)
         self._track_cost(0.0003)
+        self._sanitize_gpt_price(price)
         if price and price.get("amount"):
             price["estimated"] = True
             logger.info(f"[PRICE] Tier 3 (estimated): {currency} {price['amount']}")
@@ -430,6 +432,7 @@ class StructuredComparisonService:
     HIGH_VALUE_KEYWORDS = {
         "iphone", "galaxy", "pixel", "samsung", "oneplus", "huawei", "xiaomi",
         "macbook", "ipad", "laptop", "playstation", "xbox", "nintendo",
+        "rtx", "nvidia", "geforce", "radeon", "amd", "gpu",
     }
 
     @staticmethod
@@ -440,6 +443,15 @@ class StructuredComparisonService:
             if re.search(r'\b' + re.escape(kw) + r'\b', title_lower):
                 return True
         return False
+
+    @staticmethod
+    def _sanitize_gpt_price(price: Optional[Dict]) -> None:
+        """Fix GPT returning the string 'null' instead of JSON null for optional fields."""
+        if not price:
+            return
+        for key in ("retailer", "url"):
+            if isinstance(price.get(key), str) and price[key].lower() == "null":
+                price[key] = None
 
     @staticmethod
     def _is_high_value_query(product_name: str) -> bool:
@@ -541,6 +553,20 @@ class StructuredComparisonService:
             if amount is None or amount <= 0:
                 continue
 
+            # Detect original currency and convert to target if needed
+            detected_currency = self._detect_currency(price_str)
+            if detected_currency and detected_currency != currency:
+                original_amount = amount
+                amount = _convert_to_bhd(amount, detected_currency)
+                if currency != "BHD":
+                    # Convert from BHD to target currency (reverse lookup)
+                    bhd_rate = _convert_to_bhd(1.0, currency)
+                    if bhd_rate > 0:
+                        amount = amount / bhd_rate
+                logger.debug(
+                    f"[PRICE] Converted {detected_currency} {original_amount} -> {currency} {round(amount, 2)}"
+                )
+
             title = item.get("title", "")
 
             # FILTER 1: Reject accessories
@@ -610,9 +636,36 @@ class StructuredComparisonService:
         best.pop("title", None)
         return best
 
+    # Currency detection patterns — order matters (check specific codes before generic strip)
+    CURRENCY_SYMBOLS = {
+        "$": "USD", "£": "GBP", "€": "EUR", "¥": "JPY",
+    }
+    CURRENCY_CODES = {
+        "USD": "USD", "GBP": "GBP", "EUR": "EUR", "JPY": "JPY",
+        "AED": "AED", "SAR": "SAR", "BHD": "BHD", "KWD": "KWD",
+        "QAR": "QAR", "OMR": "OMR", "INR": "INR",
+    }
+
+    @staticmethod
+    def _detect_currency(price_str: str) -> Optional[str]:
+        """Detect original currency from a price string before stripping."""
+        if not price_str:
+            return None
+        # Check symbols first
+        for sym, code in StructuredComparisonService.CURRENCY_SYMBOLS.items():
+            if sym in price_str:
+                return code
+        # Check currency codes (e.g. "BHD 200", "SAR 2,499")
+        upper = price_str.upper()
+        for code in StructuredComparisonService.CURRENCY_CODES:
+            if code in upper:
+                return code
+        return None
+
     @staticmethod
     def _parse_price_string(price_str: str) -> Optional[float]:
-        """Parse price strings like '$699.99', 'BHD 339.000', 'SAR 2,499'."""
+        """Parse price strings like '$699.99', 'BHD 339.000', 'SAR 2,499'.
+        Returns the numeric amount only. Use _detect_currency() to get the original currency."""
         if not price_str:
             return None
         # Strip currency symbols and codes
