@@ -1111,6 +1111,31 @@ Current status (Feb 14, 2026):
 
 ---
 
+# SESSION LOG: February 14, 2026 — Price Currency Fixes & Sanity Check
+
+## Price Fixes
+- Added currency detection in Tier 1 Shopping ($ → USD, £ → GBP, € → EUR)
+- Added currency conversion to BHD after detection
+- Added GPU keywords to HIGH_VALUE_KEYWORDS (rtx, nvidia, geforce, radeon, amd, gpu)
+- Sanitized GPT "null" strings → Python None
+- Added HIGH price sanity check: if Tier 2 > 2x Tier 3 estimate → use Tier 3
+- Renamed "Value Score" → "Comparative Value" in Overview
+
+## Results
+| Product | Before | After |
+|---------|--------|-------|
+| RTX 3070 | BHD 541 (wrong) | BHD 188.50 ✅ |
+| RTX 3090 | BHD 815 → 206 | BHD 206 (still suspicious) |
+
+## Still Broken
+- RTX 3090 BHD 206 is TOO LOW (real price ~BHD 377-565)
+- Need LOW price sanity check: if price < 0.5x estimate → reject
+
+## Cost
+- ~$0.012/comparison (under $0.015 target ✅)
+
+---
+
 **END OF KNOWLEDGE TRANSFER**
 
 *Keep this document updated as the project evolves.*
