@@ -1165,9 +1165,39 @@ Current status (Feb 14, 2026):
 ## Sanity Check Summary (current state)
 | Tier | HIGH check (> 2x est) | LOW check (< 0.5x est) | Scope |
 |------|----------------------|------------------------|-------|
-| Tier 1 (Shopping) | ✅ Reject → Tier 2 | ✅ Reject → Tier 2 | High-value only |
+| Tier 1 (Shopping) | ✅ Reject → Tier 2 | ✅ Reject → Tier 2 | High-value + untrusted retailer only |
 | Tier 2 (GPT) | ✅ Use Tier 3 | ✅ Use Tier 3 | High-value only |
 | Tier 3 (Estimate) | N/A (last resort) | N/A (last resort) | — |
+
+---
+
+# SESSION LOG: February 14, 2026 (Night) — Price Sanity Cost Optimization
+
+## What We Fixed
+
+### 1. Skip sanity check for trusted retailers (Tier 1 score >= 1.0)
+**File:** `app/services/structured_comparison_service.py` — `_get_price()` method
+
+Amazon, Best Buy, eXtra, Noon, etc. (retailer_score=1.0) now skip the Tier 3 estimate call entirely. Only untrusted retailers (Ubuy=0.7, unknown=0.5) get sanity checked. Saves $0.0003/product in the common case.
+
+**Bug found & fixed:** `retailer_score` was being `.pop()`d from the price dict inside `_extract_price_from_shopping()` before returning, so the sanity check always saw `0` and ran for every retailer. Fixed by keeping `retailer_score` in dict, popping it only after sanity check passes.
+
+### 2. Cache Tier 3 estimate within `_get_price()`
+If Tier 1 sanity fails → falls to Tier 2 → Tier 2 also needs sanity check: the `tier3_estimate` is now reused instead of calling `extract_price_from_training_data` again. Also reused for Tier 3 final fallback.
+
+### 3. Tier 0 expert review is dead code
+`_get_expert_review()` is defined but never called from `_get_verified_rating()`. No cost impact — already not running.
+
+## Results
+| Test | Before | After |
+|------|--------|-------|
+| iPhone/Galaxy (trusted retailers) | 22 calls, $0.0126 | 16 calls, $0.011 ✅ |
+| RTX 3090/3070 (untrusted, sanity active) | 22 calls, $0.0126 | 18 calls, $0.0123 ✅ |
+
+RTX 3090 still correctly shows BHD 490 (not BHD 206 scam price).
+
+## Known Issue: Concurrent request cost double-counting
+Running two comparisons simultaneously on Railway inflates `total_cost` in metadata (e.g., shows $0.023 instead of $0.011). This is because `self.total_cost` is tracked per-service-instance but Railway may share state across concurrent requests. Does NOT affect real per-request costs — only the metadata number is wrong. Solo requests report accurate costs.
 
 ---
 
