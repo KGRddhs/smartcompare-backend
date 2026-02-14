@@ -385,27 +385,31 @@ class StructuredComparisonService:
         # Store for reuse by rating extraction (avoids duplicate API call)
         self._shopping_items_cache[full_name] = shopping_items
 
+        # Cached Tier 3 estimate — reused across sanity checks and final fallback
+        tier3_estimate = None
+
         price = self._extract_price_from_shopping(full_name, shopping_items, currency)
         if price and price.get("amount"):
-            # Sanity check Tier 1 for high-value products (catch scam/wrong-product listings)
-            if self._is_high_value_query(full_name):
-                estimate = await extract_price_from_training_data(brand, name, variant, region)
+            # Sanity check Tier 1 only for high-value products from untrusted retailers
+            # Trusted retailers (score >= 1.0: Amazon, Best Buy, etc.) are accepted directly
+            if self._is_high_value_query(full_name) and price.get("retailer_score", 0) < 1.0:
+                tier3_estimate = await extract_price_from_training_data(brand, name, variant, region)
                 self._track_cost(0.0003)
-                self._sanitize_gpt_price(estimate)
-                self._convert_gpt_price_currency(estimate, currency)
-                if estimate and estimate.get("amount"):
+                self._sanitize_gpt_price(tier3_estimate)
+                self._convert_gpt_price_currency(tier3_estimate, currency)
+                if tier3_estimate and tier3_estimate.get("amount"):
                     tier1_bhd = _convert_to_bhd(price["amount"], currency)
-                    tier3_bhd = _convert_to_bhd(estimate["amount"], currency)
+                    tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
                     if tier1_bhd > tier3_bhd * 2:
                         logger.info(
                             f"[PRICE] Tier 1 too HIGH: {currency} {price['amount']} from {price.get('retailer')} "
-                            f"vs estimate {currency} {estimate['amount']} — falling through"
+                            f"vs estimate {currency} {tier3_estimate['amount']} — falling through"
                         )
                         price = None
                     elif tier1_bhd < tier3_bhd * 0.5:
                         logger.info(
                             f"[PRICE] Tier 1 too LOW: {currency} {price['amount']} from {price.get('retailer')} "
-                            f"vs estimate {currency} {estimate['amount']} — falling through"
+                            f"vs estimate {currency} {tier3_estimate['amount']} — falling through"
                         )
                         price = None
             if price and price.get("amount"):
@@ -423,26 +427,28 @@ class StructuredComparisonService:
         if price and price.get("amount"):
             # Sanity check Tier 2 for high-value products (too high OR too low)
             if self._is_high_value_query(full_name):
-                estimate = await extract_price_from_training_data(brand, name, variant, region)
-                self._track_cost(0.0003)
-                self._sanitize_gpt_price(estimate)
-                self._convert_gpt_price_currency(estimate, currency)
-                if estimate and estimate.get("amount"):
+                # Reuse Tier 3 estimate if already fetched during Tier 1 check
+                if tier3_estimate is None:
+                    tier3_estimate = await extract_price_from_training_data(brand, name, variant, region)
+                    self._track_cost(0.0003)
+                    self._sanitize_gpt_price(tier3_estimate)
+                    self._convert_gpt_price_currency(tier3_estimate, currency)
+                if tier3_estimate and tier3_estimate.get("amount"):
                     tier2_bhd = _convert_to_bhd(price["amount"], currency)
-                    tier3_bhd = _convert_to_bhd(estimate["amount"], currency)
+                    tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
                     if tier2_bhd > tier3_bhd * 2:
                         logger.info(
                             f"[PRICE] Tier 2 too HIGH: {currency} {price['amount']} "
-                            f"vs estimate {currency} {estimate['amount']} — using Tier 3"
+                            f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
                         )
-                        price = estimate
+                        price = tier3_estimate
                         price["estimated"] = True
                     elif tier2_bhd < tier3_bhd * 0.5:
                         logger.info(
                             f"[PRICE] Tier 2 too LOW: {currency} {price['amount']} "
-                            f"vs estimate {currency} {estimate['amount']} — using Tier 3"
+                            f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
                         )
-                        price = estimate
+                        price = tier3_estimate
                         price["estimated"] = True
             logger.info(f"[PRICE] Tier 2 (GPT search): {currency} {price['amount']}")
             set_cached(cache_key, price, PRICE_CACHE_TTL)
@@ -451,10 +457,13 @@ class StructuredComparisonService:
 
         # --- Tier 3: GPT training data fallback ---
         logger.info(f"[PRICE] Tiers 1-2 failed, falling back to GPT estimate for {full_name}")
-        price = await extract_price_from_training_data(brand, name, variant, region)
-        self._track_cost(0.0003)
-        self._sanitize_gpt_price(price)
-        self._convert_gpt_price_currency(price, currency)
+        # Reuse Tier 3 estimate if already fetched during sanity checks
+        if tier3_estimate is None:
+            tier3_estimate = await extract_price_from_training_data(brand, name, variant, region)
+            self._track_cost(0.0003)
+            self._sanitize_gpt_price(tier3_estimate)
+            self._convert_gpt_price_currency(tier3_estimate, currency)
+        price = tier3_estimate
         if price and price.get("amount"):
             price["estimated"] = True
             logger.info(f"[PRICE] Tier 3 (estimated): {currency} {price['amount']}")
