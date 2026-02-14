@@ -179,6 +179,40 @@ async def get_gcc_prices(
     }
 
 
+@router.delete("/cache")
+async def flush_product_cache(
+    q: str = Query(..., description="Product query, e.g., 'rtx 3090'")
+):
+    """
+    Flush cached price/specs/reviews for a product.
+    Useful after fixing pricing bugs to clear stale data.
+    """
+    from app.services.extraction_service import (
+        parse_product_query, get_price_cache_key, get_specs_cache_key, get_reviews_cache_key
+    )
+    from app.services.cache_service import delete_cached
+
+    parsed = await parse_product_query(q + " vs placeholder")
+    products = parsed.get("products", [])
+    if not products:
+        return {"success": False, "error": "Could not parse product name"}
+
+    p = products[0]
+    brand, name, variant = p["brand"], p["name"], p.get("variant")
+
+    keys = {
+        "price": get_price_cache_key(brand, name, variant, "bahrain"),
+        "specs": get_specs_cache_key(brand, name, variant),
+        "reviews": get_reviews_cache_key(brand, name, variant),
+    }
+
+    deleted = {}
+    for label, key in keys.items():
+        deleted[label] = {"key": key, "deleted": delete_cached(key)}
+
+    return {"success": True, "product": f"{brand} {name}", "flushed": deleted}
+
+
 @router.get("/parse")
 async def parse_query(
     q: str = Query(..., description="Query to parse, e.g., 'iPhone 15 vs S24'")
