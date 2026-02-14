@@ -1128,11 +1128,46 @@ Current status (Feb 14, 2026):
 | RTX 3090 | BHD 815 → 206 | BHD 206 (still suspicious) |
 
 ## Still Broken
-- RTX 3090 BHD 206 is TOO LOW (real price ~BHD 377-565)
-- Need LOW price sanity check: if price < 0.5x estimate → reject
+- ~~RTX 3090 BHD 206 is TOO LOW~~ → Fixed in next session (see below)
 
 ## Cost
 - ~$0.012/comparison (under $0.015 target ✅)
+
+---
+
+# SESSION LOG: February 14, 2026 (Evening) — LOW Price Sanity Check
+
+## What We Fixed
+
+### LOW price sanity check for Tier 1 and Tier 2
+**File:** `app/services/structured_comparison_service.py` — `_get_price()` method
+
+**Problem:** RTX 3090 showing BHD 206 (~$546 USD) from Ubuy — a scam/wrong-product listing. Real price: $1000-1500 USD (BHD 377-565). Tier 1 Shopping had ZERO sanity check, and Tier 2's HIGH check only ran when shopping was empty.
+
+**Fix:** Added symmetric sanity checks for high-value products:
+- **Tier 1:** If price > 2x Tier 3 estimate → reject (too HIGH), fall through to Tier 2
+- **Tier 1:** If price < 0.5x Tier 3 estimate → reject (too LOW), fall through to Tier 2
+- **Tier 2:** If price > 2x Tier 3 estimate → use Tier 3 (too HIGH)
+- **Tier 2:** If price < 0.5x Tier 3 estimate → use Tier 3 (too LOW)
+- Only for high-value products (`_is_high_value_query`) — cheap items unaffected
+- Removed old `if not shopping_items` gate on Tier 2 check — now always validates
+
+## Results
+| Product | Before | After |
+|---------|--------|-------|
+| RTX 3090 | BHD 206 (Ubuy scam) | BHD 490 (Sharaf DG) ✅ |
+| RTX 3070 | BHD 188.50 | BHD 188.50 (estimated) ✅ |
+
+## Cost
+- ~$0.0126/comparison (under $0.015 target ✅)
+- Added 1 GPT estimate call ($0.0003) for Tier 1 high-value products
+
+## Sanity Check Summary (current state)
+| Tier | HIGH check (> 2x est) | LOW check (< 0.5x est) | Scope |
+|------|----------------------|------------------------|-------|
+| Tier 1 (Shopping) | ✅ Reject → Tier 2 | ✅ Reject → Tier 2 | High-value only |
+| Tier 2 (GPT) | ✅ Use Tier 3 | ✅ Use Tier 3 | High-value only |
+| Tier 3 (Estimate) | N/A (last resort) | N/A (last resort) | — |
 
 ---
 
