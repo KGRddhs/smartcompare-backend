@@ -414,6 +414,7 @@ class StructuredComparisonService:
                         price = None
             if price and price.get("amount"):
                 logger.info(f"[PRICE] Tier 1 (Shopping): {currency} {price['amount']} from {price.get('retailer')}")
+                price.pop("retailer_score", None)  # Clean internal field before cache/return
                 set_cached(cache_key, price, PRICE_CACHE_TTL)
                 price["_cached"] = False
                 return price
@@ -722,9 +723,8 @@ class StructuredComparisonService:
             f"({len(candidates)} candidates)"
         )
 
-        # Remove internal fields
+        # Remove internal fields (keep retailer_score for sanity check in _get_price)
         best.pop("match_score", None)
-        best.pop("retailer_score", None)
         best.pop("title", None)
         return best
 
