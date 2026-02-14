@@ -387,10 +387,32 @@ class StructuredComparisonService:
 
         price = self._extract_price_from_shopping(full_name, shopping_items, currency)
         if price and price.get("amount"):
-            logger.info(f"[PRICE] Tier 1 (Shopping): {currency} {price['amount']} from {price.get('retailer')}")
-            set_cached(cache_key, price, PRICE_CACHE_TTL)
-            price["_cached"] = False
-            return price
+            # Sanity check Tier 1 for high-value products (catch scam/wrong-product listings)
+            if self._is_high_value_query(full_name):
+                estimate = await extract_price_from_training_data(brand, name, variant, region)
+                self._track_cost(0.0003)
+                self._sanitize_gpt_price(estimate)
+                self._convert_gpt_price_currency(estimate, currency)
+                if estimate and estimate.get("amount"):
+                    tier1_bhd = _convert_to_bhd(price["amount"], currency)
+                    tier3_bhd = _convert_to_bhd(estimate["amount"], currency)
+                    if tier1_bhd > tier3_bhd * 2:
+                        logger.info(
+                            f"[PRICE] Tier 1 too HIGH: {currency} {price['amount']} from {price.get('retailer')} "
+                            f"vs estimate {currency} {estimate['amount']} — falling through"
+                        )
+                        price = None
+                    elif tier1_bhd < tier3_bhd * 0.5:
+                        logger.info(
+                            f"[PRICE] Tier 1 too LOW: {currency} {price['amount']} from {price.get('retailer')} "
+                            f"vs estimate {currency} {estimate['amount']} — falling through"
+                        )
+                        price = None
+            if price and price.get("amount"):
+                logger.info(f"[PRICE] Tier 1 (Shopping): {currency} {price['amount']} from {price.get('retailer')}")
+                set_cached(cache_key, price, PRICE_CACHE_TTL)
+                price["_cached"] = False
+                return price
 
         # --- Tier 2: GPT extraction from search context ---
         search_context = self._format_search_results(search_results)
@@ -399,8 +421,8 @@ class StructuredComparisonService:
         self._sanitize_gpt_price(price)
         self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
-            # Sanity check: when Shopping had no results, validate Tier 2 against Tier 3 estimate
-            if not shopping_items:
+            # Sanity check Tier 2 for high-value products (too high OR too low)
+            if self._is_high_value_query(full_name):
                 estimate = await extract_price_from_training_data(brand, name, variant, region)
                 self._track_cost(0.0003)
                 self._sanitize_gpt_price(estimate)
@@ -410,8 +432,15 @@ class StructuredComparisonService:
                     tier3_bhd = _convert_to_bhd(estimate["amount"], currency)
                     if tier2_bhd > tier3_bhd * 2:
                         logger.info(
-                            f"[PRICE] Tier 2 ({currency} {price['amount']}) inflated vs Tier 3 estimate "
-                            f"({currency} {estimate['amount']}) — using Tier 3"
+                            f"[PRICE] Tier 2 too HIGH: {currency} {price['amount']} "
+                            f"vs estimate {currency} {estimate['amount']} — using Tier 3"
+                        )
+                        price = estimate
+                        price["estimated"] = True
+                    elif tier2_bhd < tier3_bhd * 0.5:
+                        logger.info(
+                            f"[PRICE] Tier 2 too LOW: {currency} {price['amount']} "
+                            f"vs estimate {currency} {estimate['amount']} — using Tier 3"
                         )
                         price = estimate
                         price["estimated"] = True
