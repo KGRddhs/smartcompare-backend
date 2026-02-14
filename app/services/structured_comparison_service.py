@@ -399,6 +399,22 @@ class StructuredComparisonService:
         self._sanitize_gpt_price(price)
         self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
+            # Sanity check: when Shopping had no results, validate Tier 2 against Tier 3 estimate
+            if not shopping_items:
+                estimate = await extract_price_from_training_data(brand, name, variant, region)
+                self._track_cost(0.0003)
+                self._sanitize_gpt_price(estimate)
+                self._convert_gpt_price_currency(estimate, currency)
+                if estimate and estimate.get("amount"):
+                    tier2_bhd = _convert_to_bhd(price["amount"], currency)
+                    tier3_bhd = _convert_to_bhd(estimate["amount"], currency)
+                    if tier2_bhd > tier3_bhd * 2:
+                        logger.info(
+                            f"[PRICE] Tier 2 ({currency} {price['amount']}) inflated vs Tier 3 estimate "
+                            f"({currency} {estimate['amount']}) — using Tier 3"
+                        )
+                        price = estimate
+                        price["estimated"] = True
             logger.info(f"[PRICE] Tier 2 (GPT search): {currency} {price['amount']}")
             set_cached(cache_key, price, PRICE_CACHE_TTL)
             price["_cached"] = False
