@@ -396,6 +396,7 @@ class StructuredComparisonService:
         price = await extract_price(brand, name, variant, region, search_context)
         self._track_cost(0.0003)
         self._sanitize_gpt_price(price)
+        self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
             logger.info(f"[PRICE] Tier 2 (GPT search): {currency} {price['amount']}")
             set_cached(cache_key, price, PRICE_CACHE_TTL)
@@ -407,6 +408,7 @@ class StructuredComparisonService:
         price = await extract_price_from_training_data(brand, name, variant, region)
         self._track_cost(0.0003)
         self._sanitize_gpt_price(price)
+        self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
             price["estimated"] = True
             logger.info(f"[PRICE] Tier 3 (estimated): {currency} {price['amount']}")
@@ -456,6 +458,29 @@ class StructuredComparisonService:
             # Catch: "null", "store name or null", "product url or null", etc.
             if val.lower() == "null" or "or null" in val.lower():
                 price[key] = None
+
+    @staticmethod
+    def _convert_gpt_price_currency(price: Optional[Dict], target_currency: str) -> None:
+        """Convert GPT-returned price from original_currency to target currency using _convert_to_bhd rates."""
+        if not price or not price.get("amount"):
+            return
+        original = price.get("original_currency", "").upper()
+        if not original or original == target_currency:
+            return
+        # Convert: original → BHD → target
+        amount = price["amount"]
+        amount_bhd = _convert_to_bhd(amount, original)
+        if target_currency == "BHD":
+            converted = amount_bhd
+        else:
+            # BHD → target: divide by the target's BHD rate
+            target_bhd_rate = _convert_to_bhd(1.0, target_currency)
+            converted = amount_bhd / target_bhd_rate if target_bhd_rate > 0 else amount_bhd
+        logger.info(
+            f"[PRICE] GPT currency convert: {original} {amount} -> {target_currency} {round(converted, 2)}"
+        )
+        price["amount"] = round(converted, 2)
+        price["currency"] = target_currency
 
     @staticmethod
     def _is_high_value_query(product_name: str) -> bool:
@@ -1364,8 +1389,10 @@ def _convert_to_bhd(amount: float, currency: str) -> float:
         "QAR": 0.1,      # 1 QAR ≈ 0.10 BHD
         "OMR": 0.98,     # 1 OMR ≈ 0.98 BHD
         "USD": 0.377,    # 1 USD ≈ 0.377 BHD
+        "EUR": 0.41,     # 1 EUR ≈ 0.41 BHD
+        "GBP": 0.47,     # 1 GBP ≈ 0.47 BHD
     }
-    return amount * rates.get(currency, 1.0)
+    return amount * rates.get(currency.upper(), 1.0)
 
 
 # ============================================

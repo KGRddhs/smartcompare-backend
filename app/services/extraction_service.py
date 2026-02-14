@@ -136,18 +136,22 @@ Search results:
 Return ONLY valid JSON:
 {{
     "amount": numeric_price_or_null,
+    "original_currency": "USD",
     "currency": "{currency}",
-    "retailer": "store name or null",
-    "url": "product url or null",
-    "in_stock": true|false|null,
-    "confidence": 0.0-1.0
+    "retailer": null,
+    "url": null,
+    "in_stock": true,
+    "confidence": 0.0
 }}
 
 RULES:
 - Extract the most reliable/recent price
-- Convert to {currency} if in different currency
+- Do NOT convert currencies — return the exact price as shown in the source
+- original_currency: the ACTUAL currency of the price you found (detect from symbols: $ = USD, £ = GBP, € = EUR, BHD/BD = BHD, SAR/SR = SAR, AED = AED, KWD = KWD)
+- currency: always set to "{currency}" (the target currency — conversion happens later)
 - Confidence: 1.0 = exact match from retailer, 0.5 = estimated, 0.0 = not found
 - Return null for amount if no reliable price found
+- retailer: the actual store name, or null if unknown. Do NOT return placeholder text
 - Prefer official retailers over resellers"""
 
 
@@ -160,16 +164,19 @@ REGION: {region} ({currency})
 Return ONLY valid JSON:
 {{
     "amount": numeric_estimated_price,
+    "original_currency": "USD",
     "currency": "{currency}",
-    "retailer": "estimated",
+    "retailer": null,
     "confidence": 0.5,
     "note": "Estimated from training data"
 }}
 
 RULES:
-- Give your best estimate of the current retail price in {currency}
+- Give your best estimate of the current retail price in USD (most training data uses USD)
+- original_currency: set to the currency you are estimating in (usually "USD")
+- currency: always set to "{currency}" (the target currency — conversion happens later)
+- Do NOT attempt to convert currencies yourself — just report the price and original_currency
 - This is a LAST RESORT — clearly mark confidence as 0.5
-- Use reasonable market prices for the region
 - NEVER return null for amount — always provide an estimate"""
 
 
