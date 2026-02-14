@@ -147,6 +147,7 @@ Return ONLY valid JSON:
 RULES:
 - Compare ALL prices shown in the results and extract the LOWEST reasonable new retail price
 - Ignore clearly inflated/scalper prices — if one price is 2-3x higher than others, skip it
+- PRICE SANITY CHECK: Convert the price you found to USD (BHD ÷ 0.377, SAR ÷ 3.75, AED ÷ 3.67, EUR × 1.1, GBP × 1.27). If the USD equivalent is more than 2x the product's typical US retail price, the listing is inflated — return null for amount instead. Better no price than a misleading one.
 - Do NOT convert currencies — return the exact price as shown in the source
 - original_currency: the ACTUAL currency of the price you found (detect from symbols: $ = USD, £ = GBP, € = EUR, BHD/BD = BHD, SAR/SR = SAR, AED = AED, KWD = KWD)
 - currency: always set to "{currency}" (the target currency — conversion happens later)
