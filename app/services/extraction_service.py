@@ -145,7 +145,8 @@ Return ONLY valid JSON:
 }}
 
 RULES:
-- Extract the most reliable/recent price
+- Compare ALL prices shown in the results and extract the LOWEST reasonable new retail price
+- Ignore clearly inflated/scalper prices — if one price is 2-3x higher than others, skip it
 - Do NOT convert currencies — return the exact price as shown in the source
 - original_currency: the ACTUAL currency of the price you found (detect from symbols: $ = USD, £ = GBP, € = EUR, BHD/BD = BHD, SAR/SR = SAR, AED = AED, KWD = KWD)
 - currency: always set to "{currency}" (the target currency — conversion happens later)

@@ -384,9 +384,6 @@ class StructuredComparisonService:
         shopping_items = search_results.get("shopping", [])
         # Store for reuse by rating extraction (avoids duplicate API call)
         self._shopping_items_cache[full_name] = shopping_items
-        # DEBUG: Log raw Serper shopping prices to diagnose currency issues
-        for _i, _item in enumerate(shopping_items[:5]):
-            logger.info(f"[DEBUG-PRICE] Raw shopping[{_i}]: price='{_item.get('price','')}' title='{_item.get('title','')[:60]}' source='{_item.get('source','')}'")
 
         price = self._extract_price_from_shopping(full_name, shopping_items, currency)
         if price and price.get("amount"):
