@@ -81,13 +81,21 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
     
     setLoading(true);
     try {
+      // nocache until Feb 15 to let stale 24h cache entries expire (created ~Feb 14 evening)
+      const needsCacheBust = new Date() < new Date('2026-02-16');
       const response = await api.get('/api/v1/text/compare', {
         params: {
           q: textQuery.trim(),
           region: 'bahrain',
+          ...(needsCacheBust && { nocache: true }),
         }
       });
-      
+
+      // Debug: log price data from API response
+      (response.data?.products || []).forEach((p: any) => {
+        console.log(`[PRICE DEBUG] ${p.name}: ${p.price?.currency} ${p.price?.amount} from ${p.price?.retailer}`);
+      });
+
       if (response.data.success) {
         navigation.navigate('Results', { result: response.data });
       } else {

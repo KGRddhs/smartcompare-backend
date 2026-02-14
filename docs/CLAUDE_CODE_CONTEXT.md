@@ -1111,81 +1111,66 @@ Current status (Feb 14, 2026):
 
 ---
 
-# SESSION LOG: February 14, 2026 — Price Currency Fixes & Sanity Check
+# SESSION LOG: February 14, 2026 — Complete Price Fix Session
 
-## Price Fixes
-- Added currency detection in Tier 1 Shopping ($ → USD, £ → GBP, € → EUR)
-- Added currency conversion to BHD after detection
-- Added GPU keywords to HIGH_VALUE_KEYWORDS (rtx, nvidia, geforce, radeon, amd, gpu)
-- Sanitized GPT "null" strings → Python None
-- Added HIGH price sanity check: if Tier 2 > 2x Tier 3 estimate → use Tier 3
-- Renamed "Value Score" → "Comparative Value" in Overview
+## Fixes Completed
 
-## Results
-| Product | Before | After |
-|---------|--------|-------|
-| RTX 3070 | BHD 541 (wrong) | BHD 188.50 ✅ |
-| RTX 3090 | BHD 815 → 206 | BHD 206 (still suspicious) |
+### 1. Currency Conversion (Prices)
+- Added currency detection from Serper price strings ($ → USD, £ → GBP, € → EUR)
+- Added conversion to BHD after detection
+- Fixed: $541 USD was showing as BHD 541 (now correctly converts)
 
-## Still Broken
-- ~~RTX 3090 BHD 206 is TOO LOW~~ → Fixed in next session (see below)
+### 2. GPU Support
+- Added GPU keywords to HIGH_VALUE_KEYWORDS: rtx, nvidia, geforce, radeon, amd, gpu
+- GPUs now get min-price filter and strict-title matching
 
-## Cost
-- ~$0.012/comparison (under $0.015 target ✅)
-
----
-
-# SESSION LOG: February 14, 2026 (Part 2) — Price Sanity Check Complete
-
-## What We Fixed
+### 3. Price Sanity Checks
 **File:** `app/services/structured_comparison_service.py` — `_get_price()` method
-
-### 1. Added LOW price sanity check
-- If Tier 1/2 price < 0.5x Tier 3 estimate → reject as too LOW (catches scam listings)
-- Matches existing HIGH check (> 2x estimate → reject as inflated)
+- HIGH check: if price > 2x Tier 3 estimate → reject (catches inflated prices)
+- LOW check: if price < 0.5x Tier 3 estimate → reject (catches scam listings)
+- Fixed retailer_score being `.pop()`d before sanity check could read it
 - Only for high-value products (`_is_high_value_query`) — cheap items unaffected
 
-### 2. Fixed retailer_score being popped before sanity check
-- `retailer_score` was `.pop()`d from price dict inside `_extract_price_from_shopping()` before returning
-- Sanity check always saw score=0 → ran for every retailer including trusted ones
-- Fixed: keep `retailer_score` in dict, pop only after sanity check passes
-
-### 3. Optimized: skip sanity for trusted retailers
-- Amazon, Best Buy, eXtra, Noon, etc. (retailer_score=1.0) skip Tier 3 estimate entirely
-- Only untrusted retailers (Ubuy=0.7, unknown=0.5) get sanity checked
-- Saves $0.0003/product in the common case
-
-### 4. Optimized: cache Tier 3 estimate to avoid duplicate calls
-- `tier3_estimate` stored as local variable, reused across Tier 1 → Tier 2 → Tier 3 fallback
-- Also reused for Tier 3 final fallback (avoids calling `extract_price_from_training_data` twice)
-
-### 5. Tier 0 expert review is dead code
-- `_get_expert_review()` defined but never called from `_get_verified_rating()`. No cost impact.
-
-## Results
-| Product | Before | After |
-|---------|--------|-------|
-| RTX 3090 | BHD 206 (scam) | BHD 490 (Sharaf DG) ✅ |
-| RTX 3070 | BHD 541 (inflated) | BHD 188.5 (estimated) ✅ |
-
-## Cost
-- $0.011/comparison (trusted retailers) to $0.012 (untrusted)
-- Under $0.015 target ✅
-
-## Sanity Check Summary (final state)
 | Tier | HIGH check (> 2x est) | LOW check (< 0.5x est) | Scope |
 |------|----------------------|------------------------|-------|
-| Tier 1 (Shopping) | ✅ Reject → Tier 2 | ✅ Reject → Tier 2 | High-value + untrusted retailer only |
-| Tier 2 (GPT) | ✅ Use Tier 3 | ✅ Use Tier 3 | High-value only |
+| Tier 1 (Shopping) | Reject → Tier 2 | Reject → Tier 2 | High-value + untrusted retailer only |
+| Tier 2 (GPT) | Use Tier 3 | Use Tier 3 | High-value only |
 | Tier 3 (Estimate) | N/A (last resort) | N/A (last resort) | — |
 
-## Commits
-- `46a7c81` — Add LOW price sanity check for Tier 1 and Tier 2
-- `c85a172` — Optimize: skip sanity for trusted retailers, cache Tier 3 estimate
-- `47e1b39` — Fix: retailer_score was popped before sanity check could read it
+### 4. Cost Optimization
+- Skip sanity check for trusted retailers (retailer_score >= 1.0: Amazon, Best Buy, eXtra, Noon, etc.)
+- Cache Tier 3 estimate within `_get_price()` to avoid duplicate calls
+- Tier 0 expert review (`_get_expert_review()`) is dead code — defined but never called
+- Cost: $0.011 (trusted) to $0.012 (untrusted) — under $0.015 target
 
-## Known Issue: Concurrent request cost double-counting
-Running two comparisons simultaneously on Railway inflates `total_cost` in metadata. Solo requests report accurate costs.
+### 5. UI & Cache Fixes
+- Sanitized GPT "null" strings → Python None (no more "null" text in UI)
+- Renamed "Value Score" → "Comparative Value" in Overview
+- Added `DELETE /api/v1/text/cache?q=product` endpoint for flushing stale cache
+- Added temporary `nocache` in app until Feb 16 to bypass stale Redis entries (auto-disables)
+
+## Final Results
+| Product | Before | After |
+|---------|--------|-------|
+| RTX 3090 | BHD 206 (scam listing) | BHD 490 (Sharaf DG) |
+| RTX 3070 | BHD 541 (inflated USD) | BHD 188.5 (estimated) |
+
+## Known Issues
+- **Concurrent request cost double-counting:** Running two comparisons simultaneously on Railway inflates `total_cost` in metadata. Solo requests report accurate costs.
+- **GPT parse non-determinism:** Different runs can produce different brand/name splits, leading to different cache keys for the same product.
+
+## Current Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices | Working (currency conversion + sanity checks) |
+| Ratings | Working (4-tier fallback) |
+| Reviews | Working (category scores, user quotes, etc.) |
+| Specs | Working (fixed schema) |
+| Camera input | Not started — NEXT PRIORITY |
+| URL input | Partial (untested with new architecture) |
+
+## Next Priority
+- Camera input feature
 
 ---
 
