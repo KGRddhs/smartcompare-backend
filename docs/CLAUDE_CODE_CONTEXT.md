@@ -1,7 +1,7 @@
 # SmartCompare - Complete Project Knowledge Transfer
 
 > **Purpose:** This document contains EVERYTHING needed to continue development without context loss.
-> **Last Updated:** February 11, 2026
+> **Last Updated:** February 13, 2026
 > **Author:** Transferred from Claude.ai conversation (Days 1-7), updated by Claude Code sessions
 
 ---
@@ -138,12 +138,12 @@ SmartCompare must provide COMPLETE, ACTIONABLE product comparisons with:
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│              RATING EXTRACTION (Deterministic)                       │
-│  1. Find product page on Amazon/Newegg/BestBuy                       │
-│  2. Fetch actual HTML page                                           │
-│  3. Parse JSON-LD/schema.org AggregateRating                         │
-│  4. Return rating + source_url (REQUIRED)                            │
-│  ** CURRENTLY BROKEN - Returns null **                               │
+│              RATING EXTRACTION (4-tier fallback)                     │
+│  Tier 0: Expert review JSON-LD (PCMag/CNET/TechRadar)               │
+│  Tier 1: Serper Shopping — trusted retailers (Amazon/BestBuy)        │
+│  Tier 2: Serper Shopping — known retailers (.com/.ae)                │
+│  Tier 3: Marketplace (eBay/AliExpress) if review_count > 1000       │
+│  ** WORKING — verified Feb 14 2026 **                               │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -300,56 +300,25 @@ CURRENCY_TO_BHD = {
 }
 ```
 
-## 4.3 Rating Extractor (rating_extractor.py) - BROKEN
+## 4.3 Rating System - 4-tier fallback (WORKING)
 
-### Design Intent
-```python
-async def extract_rating_deterministic(product_name: str) -> ExtractedRating:
-    """
-    1. Find product page on supported retailers
-    2. Fetch actual HTML page
-    3. Parse JSON-LD schema.org/AggregateRating
-    4. Return rating + review_count + source_url
-    """
-```
+Implemented in `_get_verified_rating()` in `app/services/structured_comparison_service.py`.
 
-### Supported Retailers
-```python
-SUPPORTED_RETAILERS = {
-    "amazon.com": {"name": "Amazon US", "search_query": "{product} site:amazon.com"},
-    "amazon.ae": {"name": "Amazon UAE", "search_query": "{product} site:amazon.ae"},
-    "newegg.com": {"name": "Newegg", "search_query": "{product} site:newegg.com"},
-    "bestbuy.com": {"name": "Best Buy", "search_query": "{product} site:bestbuy.com"},
-    "walmart.com": {"name": "Walmart", "search_query": "{product} site:walmart.com"},
-    "bhphotovideo.com": {"name": "B&H Photo", "search_query": "{product} site:bhphotovideo.com"},
-    "noon.com": {"name": "Noon", "search_query": "{product} site:noon.com"},
-    "ubuy.com.bh": {"name": "Ubuy Bahrain", "search_query": "{product} site:ubuy.com.bh"},
-}
-```
+### Tier 0 (Expert)
+- Scrapes editorial review sites (PCMag, CNET, TechRadar, Tom's Guide, The Verge, Wired, LaptopMag, Tom's Hardware)
+- Parses JSON-LD `reviewRating` for rating + author + pros/cons
+- Label: `"Pcmag Expert Review (Author Name)"`, confidence: `"expert"`
 
-### Extraction Methods (in order)
-1. **JSON-LD** - `<script type="application/ld+json">` containing AggregateRating
-2. **Microdata** - `itemprop="ratingValue"` attributes
-3. **Meta tags** - `<meta property="product:rating:value">`
-4. **CSS Selectors** - Site-specific patterns
+### Tier 1 (High)
+- Serper Shopping results from trusted retailers (Amazon, Best Buy, Walmart, etc.)
 
-### CURRENT PROBLEM
-The rating extractor returns null for all products. Possible causes:
-- Product pages not being found (search issue)
-- Pages fetched but blocked (bot protection)
-- JSON-LD not being parsed correctly
-- BeautifulSoup parsing issue
+### Tier 2 (Medium)
+- Known retailers, .com/.ae stores
 
-### Required Fix
-Debug by checking Railway logs for `[RATING]` messages:
-```
-[RATING] Starting deterministic extraction for: iPhone 15
-[RATING] Trying Amazon US...
-[RATING] Found product page: https://...  (or "No product page found")
-[RATING] Fetching page...
-[RATING] Parsing JSON-LD...
-[RATING] ✓ SUCCESS or ✗ Failed
-```
+### Tier 3 (Low)
+- Marketplace (eBay/AliExpress) only if review_count > 1000, labeled "marketplace rating"
+
+All tiers produce: `rating`, `review_count`, `rating_verified`, `rating_source` (with name, url, extract_method, confidence).
 
 ## 4.4 Cost Structure
 
@@ -357,8 +326,8 @@ Debug by checking Railway logs for `[RATING]` messages:
 |-----------|------|
 | Serper search (per call) | $0.001 |
 | GPT-4o-mini extraction | $0.001 |
-| Full v3 comparison (2 products) | $0.005-0.008 |
-| With global fallbacks | +$0.003 |
+| Full comparison (2 products, enhanced reviews) | $0.009-0.011 |
+| With US rating fallback | +$0.001 |
 | Cache hit | $0.000 |
 
 ---
@@ -423,9 +392,27 @@ const RatingDisplay = ({ product }: { product: Product }) => {
 
 ### Expected API Response Structure
 ```typescript
+interface ReviewData {
+  average_rating?: number | null;
+  total_reviews?: number | null;
+  positive_percentage?: number | null;
+  summary?: string | null;              // 2-3 sentence opinionated summary
+  rating_distribution?: Record<string, number> | null;  // {5_star: 60, 4_star: 25, ...}
+  category_scores?: Record<string, number> | null;      // {performance: 9, value: 7, ...}
+  source_ratings?: Array<{source: string; rating: number; review_count?: number}>;  // REAL Serper data
+  detailed_praises?: Array<{text: string; frequency?: string; quote?: string}>;
+  detailed_complaints?: Array<{text: string; frequency?: string; quote?: string}>;
+  user_quotes?: Array<{text: string; sentiment?: string; source?: string; aspect?: string}>;
+  common_praises?: string[];            // Simple list (backward compat)
+  common_complaints?: string[];         // Simple list (backward compat)
+  verified_rating?: {rating: number; review_count?: number; source?: string; verified?: boolean};
+}
+
 interface Product {
   name: string;
   brand: string;
+  full_name?: string;
+  category?: string;
   price: {
     amount: number | null;
     currency: string;
@@ -434,17 +421,21 @@ interface Product {
     note?: string;
   };
   specs: Record<string, any>;
+  reviews?: ReviewData | null;     // Enhanced review data (Feb 13 2026)
   rating: number | null;           // 1-5 or null
   review_count: number | null;
   rating_verified: boolean;        // true only if source_url exists
   rating_source: {
-    name: string;                  // "Amazon US"
-    url: string;                   // "https://amazon.com/dp/..."
-    extract_method: string;        // "json_ld", "microdata", etc.
+    name: string;                  // "Best Buy via Google Shopping"
+    url: string;                   // Google Shopping link
+    extract_method: string;        // "google_shopping", "expert_review_jsonld", etc.
     retrieved_at: string;          // ISO timestamp
+    confidence: string;            // "high", "medium", "low", "expert"
   } | null;
   pros: string[];
   cons: string[];
+  expert_pros?: string[];          // From Tier 0 expert review scrape
+  expert_cons?: string[];          // From Tier 0 expert review scrape
 }
 ```
 
@@ -707,16 +698,21 @@ Query params:
 ## FIXED: Ratings (previously broken)
 Ratings now work via Serper Shopping API (`_get_verified_rating()` in `app/services/structured_comparison_service.py`). Shows verified ratings with review count and source link.
 
-## KNOWN ISSUE: Prices from low-quality sellers
-Tier 1 (Serper Shopping extraction) picks the best title-match then lowest price. This sometimes picks eBay resellers or grey-market sellers instead of official retailers. Example: iPhone 15 shows BHD 135.32 from "eBay - supplytronics" instead of a proper retailer price.
+## FIXED: Prices from low-quality sellers
+Added `RETAILER_TIERS` scoring system — prefers official retailers over eBay/marketplace sellers. Tier 3 purge removes low-quality sellers when better options exist.
 
-**Possible fix:** Add a retailer reputation filter or prefer known GCC retailers (eXtra, Jarir, Carrefour, Lulu) over eBay/random sources.
+## FIXED: Enhanced Reviews Tab
+**Backend:** Returns rich review data (category_scores, rating_distribution, user_quotes, source_ratings, summary, verified_rating). Tested via curl Feb 14 2026 — all fields present for both products (RTX 3070 vs RTX 3090 test).
+
+**Frontend:** `ResultsScreen.tsx` ReviewsTab renders all new fields (score bars, star distribution, user quotes with sentiment badges, source ratings with verified badge). Code audited — all conditional rendering uses safe optional chaining and null checks.
+
+**Key architecture:** `source_ratings` come from REAL Serper shopping data (injected post-GPT-extraction). GPT is explicitly told NOT to generate source_ratings to prevent hallucinated review counts. `verified_rating` is injected into reviews to match Overview tab rating.
 
 ## KNOWN ISSUE: Stale cache
-Old cached data (7-day TTL for specs) can serve outdated formats after schema changes. Use `?nocache=true` to bypass. Consider adding a cache version key or flushing on deploy.
+Old cached data (7-day TTL for specs/reviews) can serve outdated formats after schema changes. Use `?nocache=true` to bypass. Consider adding a cache version key or flushing on deploy.
 
 ## LOW PRIORITY: Pros/cons reference old cached data
-Pros/cons generation can reference stale spec data from cache (e.g. "512 GB storage" when base model is 128 GB). Cleared naturally as caches expire.
+Pros/cons generation can reference stale spec data from cache. Cleared naturally as caches expire.
 
 ---
 
@@ -899,19 +895,17 @@ If broken:
 When starting Claude Code, say:
 
 ```
-Read docs/CLAUDE_CODE_CONTEXT.md completely. This is SmartCompare - a product 
-comparison app for GCC region. 
+Read docs/CLAUDE_CODE_CONTEXT.md completely. This is SmartCompare - a product
+comparison app for GCC region.
 
-Current status:
-- Backend: Running on Railway ✅
-- Prices: Working ✅  
-- Specs: Working ✅
-- Ratings: BROKEN ❌ (shows "No verified rating" for everything)
-
-The rating_extractor.py should fetch real product pages and parse JSON-LD 
-AggregateRating, but it's returning null.
-
-Help me debug and fix the rating extraction.
+Current status (Feb 14, 2026):
+- Backend: Running on Railway
+- Prices: Working (3-tier fallback + retailer quality scoring)
+- Specs: Working (fixed 11-field schema per category)
+- Ratings: Working (4-tier fallback: expert JSON-LD, shopping tiers 1-3)
+- Enhanced Reviews: Working (category_scores, rating_distribution, user_quotes, source_ratings, verified_rating)
+- Camera input: Not started
+- URL input: Partial (untested with new architecture)
 ```
 
 ---
@@ -1002,6 +996,8 @@ Help me debug and fix the rating extraction.
 | Specs table (frontend) | Working | Fixed order, labels, both-must-match filter |
 | Pros/Cons | Working | Generated from specs + reviews |
 | Comparison/Winner | Working | GPT comparison with value scores and best-for |
+| Enhanced Reviews (backend) | Working | category_scores, rating_distribution, user_quotes, source_ratings, summary, verified_rating |
+| Enhanced Reviews (frontend) | Working | ReviewsTab renders all fields; code audited Feb 14 2026, curl-verified both products return full data |
 | Cache bypass | Working | `?nocache=true` query param |
 | Camera input | Not started | |
 | URL input | Partial | Old code, untested with new architecture |
@@ -1058,6 +1054,60 @@ Help me debug and fix the rating extraction.
 | ~$0.008/comparison | ~$0.022/comparison |
 | Ratings: 1 Shopping call | Ratings: 1 search + up to 3 scrapes + 1 Shopping fallback |
 | Inaccurate Google Shopping aggregates | Real editorial ratings from review sites |
+
+---
+
+# SESSION LOG: February 13, 2026 (Evening) — Enhanced Reviews System
+
+## What We Built
+
+### 1. Enhanced Reviews — Rich structured data from same API calls
+**Files:** `app/services/extraction_service.py`, `app/services/structured_comparison_service.py`, `app/models/product_schema.py`
+
+**Architecture change:** Split `_fetch_product_data` into Phase 1 (specs + price parallel) → Phase 2 (reviews + rating parallel). This lets shopping data from Phase 1 feed into review extraction in Phase 2.
+
+**New review fields (all Optional, backward-compatible):**
+- `rating_distribution` — `{5_star: %, 4_star: %, ...}` estimated by GPT
+- `category_scores` — `{performance: 9, value: 7, ...}` scored 1-10, category-aware
+- `source_ratings` — REAL retailer ratings from Serper shopping data (NOT GPT)
+- `detailed_praises`/`detailed_complaints` — `[{text, frequency, quote}]`
+- `user_quotes` — `[{text, sentiment, source, aspect}]` from search snippets
+- `summary` — 2-3 sentence opinionated summary
+- `verified_rating` — `{rating, review_count, source, verified}` matches Overview tab exactly
+
+**Key design decisions:**
+- GPT is explicitly told NOT to generate `source_ratings` — was hallucinating review counts
+- Real retailer ratings injected post-extraction from `_collect_retailer_ratings()`
+- `verified_rating` injected into reviews so frontend can show consistent data between Overview and Reviews tabs
+- `max_tokens` increased 500→800→1000 to prevent JSON truncation (GPT sometimes cuts off mid-JSON)
+
+### 2. Frontend — Reviews tab with full data rendering
+**File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+
+- Added `ReviewData` interface with all new fields
+- `ReviewsTab` now renders: summary, category score bars, star distribution bars, source ratings with verified badge, user quotes with sentiment badges, pros/cons
+- Code audited Feb 14 2026: all conditional rendering correct (safe optional chaining, null checks). Backend curl-verified: all enhanced fields present for both products.
+
+### 3. Bugs found and fixed
+- **GPT JSON truncation:** 800 max_tokens sometimes too low → "Unterminated string" JSON parse error → one product gets data, other doesn't (random). Fixed by removing `source_ratings` from GPT prompt (saves ~100 tokens) + increasing to 1000
+- **Hallucinated source_ratings:** GPT was fabricating review counts (e.g. "bestbuy.com 4.5, 1,234 reviews"). Fixed by injecting real Serper shopping data post-extraction
+- **Rating mismatch:** Overview showed one rating, Reviews tab showed different one. Fixed by injecting `verified_rating` into reviews
+
+## Commits
+1. `5a1ddf6` — Initial enhanced reviews (Phase 1/2 reorder, rich GPT prompt, new schema fields)
+2. `97468ec` — Frontend: ReviewsTab renders all new fields
+3. `7717db0` — Bug fixes: stop GPT hallucinating, fix truncation, inject verified_rating
+
+## What's Still Needed
+- **source_ratings can be empty** for some products if Bahrain shopping results lack `rating` fields — correct behavior but means "Ratings by Source" section may be empty
+- **Cost crept to ~$0.011** from ~$0.009 due to max_tokens increase — still under $0.015 target
+
+## Lessons Learned
+| Lesson | Detail |
+|--------|--------|
+| Never let GPT generate data you already have | GPT hallucinated review counts; always inject real data post-extraction |
+| max_tokens truncation is silent | GPT stops mid-JSON, causing intermittent parse errors — one product fails randomly |
+| Frontend needs device testing | curl verification is necessary but not sufficient for React Native apps |
 
 ---
 
