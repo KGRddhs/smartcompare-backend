@@ -1135,69 +1135,57 @@ Current status (Feb 14, 2026):
 
 ---
 
-# SESSION LOG: February 14, 2026 (Evening) — LOW Price Sanity Check
+# SESSION LOG: February 14, 2026 (Part 2) — Price Sanity Check Complete
 
 ## What We Fixed
-
-### LOW price sanity check for Tier 1 and Tier 2
 **File:** `app/services/structured_comparison_service.py` — `_get_price()` method
 
-**Problem:** RTX 3090 showing BHD 206 (~$546 USD) from Ubuy — a scam/wrong-product listing. Real price: $1000-1500 USD (BHD 377-565). Tier 1 Shopping had ZERO sanity check, and Tier 2's HIGH check only ran when shopping was empty.
-
-**Fix:** Added symmetric sanity checks for high-value products:
-- **Tier 1:** If price > 2x Tier 3 estimate → reject (too HIGH), fall through to Tier 2
-- **Tier 1:** If price < 0.5x Tier 3 estimate → reject (too LOW), fall through to Tier 2
-- **Tier 2:** If price > 2x Tier 3 estimate → use Tier 3 (too HIGH)
-- **Tier 2:** If price < 0.5x Tier 3 estimate → use Tier 3 (too LOW)
+### 1. Added LOW price sanity check
+- If Tier 1/2 price < 0.5x Tier 3 estimate → reject as too LOW (catches scam listings)
+- Matches existing HIGH check (> 2x estimate → reject as inflated)
 - Only for high-value products (`_is_high_value_query`) — cheap items unaffected
-- Removed old `if not shopping_items` gate on Tier 2 check — now always validates
+
+### 2. Fixed retailer_score being popped before sanity check
+- `retailer_score` was `.pop()`d from price dict inside `_extract_price_from_shopping()` before returning
+- Sanity check always saw score=0 → ran for every retailer including trusted ones
+- Fixed: keep `retailer_score` in dict, pop only after sanity check passes
+
+### 3. Optimized: skip sanity for trusted retailers
+- Amazon, Best Buy, eXtra, Noon, etc. (retailer_score=1.0) skip Tier 3 estimate entirely
+- Only untrusted retailers (Ubuy=0.7, unknown=0.5) get sanity checked
+- Saves $0.0003/product in the common case
+
+### 4. Optimized: cache Tier 3 estimate to avoid duplicate calls
+- `tier3_estimate` stored as local variable, reused across Tier 1 → Tier 2 → Tier 3 fallback
+- Also reused for Tier 3 final fallback (avoids calling `extract_price_from_training_data` twice)
+
+### 5. Tier 0 expert review is dead code
+- `_get_expert_review()` defined but never called from `_get_verified_rating()`. No cost impact.
 
 ## Results
 | Product | Before | After |
 |---------|--------|-------|
-| RTX 3090 | BHD 206 (Ubuy scam) | BHD 490 (Sharaf DG) ✅ |
-| RTX 3070 | BHD 188.50 | BHD 188.50 (estimated) ✅ |
+| RTX 3090 | BHD 206 (scam) | BHD 490 (Sharaf DG) ✅ |
+| RTX 3070 | BHD 541 (inflated) | BHD 188.5 (estimated) ✅ |
 
 ## Cost
-- ~$0.0126/comparison (under $0.015 target ✅)
-- Added 1 GPT estimate call ($0.0003) for Tier 1 high-value products
+- $0.011/comparison (trusted retailers) to $0.012 (untrusted)
+- Under $0.015 target ✅
 
-## Sanity Check Summary (current state)
+## Sanity Check Summary (final state)
 | Tier | HIGH check (> 2x est) | LOW check (< 0.5x est) | Scope |
 |------|----------------------|------------------------|-------|
 | Tier 1 (Shopping) | ✅ Reject → Tier 2 | ✅ Reject → Tier 2 | High-value + untrusted retailer only |
 | Tier 2 (GPT) | ✅ Use Tier 3 | ✅ Use Tier 3 | High-value only |
 | Tier 3 (Estimate) | N/A (last resort) | N/A (last resort) | — |
 
----
-
-# SESSION LOG: February 14, 2026 (Night) — Price Sanity Cost Optimization
-
-## What We Fixed
-
-### 1. Skip sanity check for trusted retailers (Tier 1 score >= 1.0)
-**File:** `app/services/structured_comparison_service.py` — `_get_price()` method
-
-Amazon, Best Buy, eXtra, Noon, etc. (retailer_score=1.0) now skip the Tier 3 estimate call entirely. Only untrusted retailers (Ubuy=0.7, unknown=0.5) get sanity checked. Saves $0.0003/product in the common case.
-
-**Bug found & fixed:** `retailer_score` was being `.pop()`d from the price dict inside `_extract_price_from_shopping()` before returning, so the sanity check always saw `0` and ran for every retailer. Fixed by keeping `retailer_score` in dict, popping it only after sanity check passes.
-
-### 2. Cache Tier 3 estimate within `_get_price()`
-If Tier 1 sanity fails → falls to Tier 2 → Tier 2 also needs sanity check: the `tier3_estimate` is now reused instead of calling `extract_price_from_training_data` again. Also reused for Tier 3 final fallback.
-
-### 3. Tier 0 expert review is dead code
-`_get_expert_review()` is defined but never called from `_get_verified_rating()`. No cost impact — already not running.
-
-## Results
-| Test | Before | After |
-|------|--------|-------|
-| iPhone/Galaxy (trusted retailers) | 22 calls, $0.0126 | 16 calls, $0.011 ✅ |
-| RTX 3090/3070 (untrusted, sanity active) | 22 calls, $0.0126 | 18 calls, $0.0123 ✅ |
-
-RTX 3090 still correctly shows BHD 490 (not BHD 206 scam price).
+## Commits
+- `46a7c81` — Add LOW price sanity check for Tier 1 and Tier 2
+- `c85a172` — Optimize: skip sanity for trusted retailers, cache Tier 3 estimate
+- `47e1b39` — Fix: retailer_score was popped before sanity check could read it
 
 ## Known Issue: Concurrent request cost double-counting
-Running two comparisons simultaneously on Railway inflates `total_cost` in metadata (e.g., shows $0.023 instead of $0.011). This is because `self.total_cost` is tracked per-service-instance but Railway may share state across concurrent requests. Does NOT affect real per-request costs — only the metadata number is wrong. Solo requests report accurate costs.
+Running two comparisons simultaneously on Railway inflates `total_cost` in metadata. Solo requests report accurate costs.
 
 ---
 
