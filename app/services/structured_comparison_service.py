@@ -601,6 +601,32 @@ class StructuredComparisonService:
     MANUFACTURER_BRAND_WORDS = {"nvidia", "amd", "intel"}
 
     @staticmethod
+    def _normalize_words(text: str) -> set:
+        """Normalize words for matching: lowercase, remove hyphens.
+
+        'Vitamin D-3' → {'vitamin', 'd3'}
+        'Vitamin D3'  → {'vitamin', 'd3'}
+        """
+        return set(w.replace("-", "") for w in text.lower().split())
+
+    @staticmethod
+    def _numbers_match(product_name: str, title: str) -> bool:
+        """Check that significant numbers in product name appear in title.
+
+        'NOW Vitamin D-3 360 Softgels' → title must contain '360'.
+        Ignores small numbers (<=9) which are often model suffixes like 'D-3'.
+        Only checks standalone numbers (not embedded in words).
+        """
+        # Extract standalone numbers > 9 from product name
+        product_numbers = set(re.findall(r'\b(\d{2,})\b', product_name))
+        if not product_numbers:
+            return True  # No significant numbers to enforce
+
+        title_numbers = set(re.findall(r'\b(\d{2,})\b', title))
+        # At least one product number must appear in title
+        return bool(product_numbers & title_numbers)
+
+    @staticmethod
     def _strict_title_match(product_name: str, title: str) -> bool:
         """For high-value products, key words from the query must appear in the title.
 
@@ -694,7 +720,7 @@ class StructuredComparisonService:
         if not shopping_items:
             return None
 
-        p_words = set(product_name.lower().split())
+        p_words = self._normalize_words(product_name)
         is_high_value = self._is_high_value_query(product_name)
         min_price = 100.0 if is_high_value else 0
         candidates = []
@@ -739,8 +765,13 @@ class StructuredComparisonService:
                 logger.debug(f"[PRICE] Skipped weak title match: '{title}' for '{product_name}'")
                 continue
 
+            # FILTER 4: Number preservation — quantity must match (360 softgels ≠ 120 softgels)
+            if not self._numbers_match(product_name, title):
+                logger.debug(f"[PRICE] Skipped number mismatch: '{title}' for '{product_name}'")
+                continue
+
             # Standard word-overlap score (still used for sorting)
-            t_words = set(title.lower().split())
+            t_words = self._normalize_words(title)
             match_score = len(p_words & t_words) / len(p_words) if p_words else 0
 
             if match_score < 0.4:
@@ -1285,7 +1316,7 @@ class StructuredComparisonService:
         if not shopping_items:
             return empty
 
-        p_words = set(product_name.lower().split())
+        p_words = self._normalize_words(product_name)
         is_high_value = self._is_high_value_query(product_name)
         tier1_candidates = []
         tier2_candidates = []
@@ -1315,8 +1346,13 @@ class StructuredComparisonService:
                 logger.debug(f"[RATING] Skipped weak title match: '{title}' for '{product_name}'")
                 continue
 
+            # FILTER 3: Number preservation — quantity must match
+            if not self._numbers_match(product_name, title):
+                logger.debug(f"[RATING] Skipped number mismatch: '{title}' for '{product_name}'")
+                continue
+
             # Standard word-overlap score
-            t_words = set(title.lower().split())
+            t_words = self._normalize_words(title)
             match_score = len(p_words & t_words) / len(p_words) if p_words else 0
 
             if match_score < 0.4:

@@ -75,14 +75,13 @@ CATEGORY_SPEC_SCHEMAS = {
         "weight", "water_resistance"
     ],
     "grocery": [
-        "size", "ingredients", "nutrition_calories", "nutrition_protein",
+        "count", "size", "ingredients", "nutrition_calories", "nutrition_protein",
         "nutrition_fat", "nutrition_carbs", "origin", "organic",
-        "allergens", "shelf_life", "halal"
+        "allergens", "shelf_life"
     ],
     "other": [
-        "dimensions", "weight", "material", "color", "warranty",
-        "power", "features", "included", "compatibility", "origin",
-        "certifications"
+        "count", "dimensions", "weight", "material", "color", "warranty",
+        "power", "features", "included", "compatibility", "origin"
     ],
 }
 
@@ -116,6 +115,7 @@ CRITICAL RULES:
 - Extract specs for ONE specific unit — the base/standard model unless a variant is specified
 - Each field must be a SINGLE value, NEVER a list of options (e.g. storage: "128 GB" NOT "128, 256, 512 GB")
 - If the user specified a variant like "512GB", use that config. Otherwise use the base/entry-level config
+- If the product name or variant contains a count/quantity (e.g. "360 Softgels", "120 tablets", "1000mg"), use EXACTLY that number for the "count" field. Do NOT substitute a different count
 - EVERY field MUST have a value. Use search results first, then your training knowledge. null is ONLY acceptable if the spec truly does not exist for this product (e.g. water_resistance for a budget phone that has none)
 - Be precise with numbers and units
 - Include ONLY the fields listed above, no extra keys
