@@ -1159,17 +1159,18 @@ Current status (Feb 14, 2026):
 - **Concurrent request cost double-counting:** Running two comparisons simultaneously on Railway inflates `total_cost` in metadata. Solo requests report accurate costs.
 - **GPT parse non-determinism:** Different runs can produce different brand/name splits, leading to different cache keys for the same product.
 
-## Current Feature Status
+## Current Feature Status (Feb 15 2026)
 | Feature | Status |
 |---------|--------|
 | Prices | Working (currency conversion + sanity checks) |
-| Ratings | Working (4-tier fallback) |
+| Ratings | Working (4-tier + retailer URLs fixed) |
 | Reviews | Working (category scores, user quotes, etc.) |
-| Specs | Working (fixed schema) |
-| Camera input | Working (GPT-4o-mini vision + v3 pipeline) |
-| URL input | Partial (untested with new architecture) |
+| Specs | Partially working (variant hint added, needs more testing) |
+| Camera input | Working (vision + comparison flow) |
+| URL input | Not tested with new architecture |
 
 ## Next Priority
+- Verify specs accuracy with camera input (variant hints)
 - URL input (update to use v3 pipeline)
 - Apply Figma UI design
 - Premium tier with Stripe
@@ -1239,18 +1240,59 @@ Current status (Feb 14, 2026):
 | `detail: "low"` for vision | ~$0.003 regardless of 1-4 images; sufficient for text-on-packaging |
 | Separate images, not combined | Accuracy > $0.0004 savings |
 
-## FIXED: Specs ignore image data (Feb 15 2026)
-- **Was:** Vision identified "NOW Vitamin D-3 360 Softgels" but specs showed 180 count — vision data discarded at text boundary
-- **Fix:** Added `vision_products` parameter to `compare_from_text()`. Camera input now skips `parse_product_query()` and passes vision-identified products directly, preserving exact names with variant details.
-- **Files:** `structured_comparison_service.py` (new `vision_products` param), `image_routes.py` (passes `vision_products=products`)
-- **Bonus:** Saves $0.0003/comparison by skipping redundant GPT parse call
+---
 
-## FIXED: Rating source URLs were Google redirects (Feb 15 2026)
+# SESSION LOG: February 15, 2026 (Evening) — Camera Bug Fixes
+
+## Bugs Fixed
+
+### 1. Rating source URLs were Google redirects
 - **Was:** `rating_source.url` was `https://www.google.com/search?ibp=oshop&q=...` — clicking opened Google, not retailer
-- **Fix:** Added `RETAILER_SEARCH_URLS` map and `_build_retailer_url()` method. URLs now go to actual retailer search pages (e.g., `bestbuy.com/site/searchpage.jsp?st=Apple+iPhone+16`)
+- **Fix:** Added `RETAILER_SEARCH_URLS` map (16 retailers) and `_build_retailer_url()` method. URLs now go to actual retailer search pages (e.g., `bestbuy.com/site/searchpage.jsp?st=Apple+iPhone+16`)
 - **File:** `structured_comparison_service.py` — constant + method + 3 usage sites (consensus rating, tiered rating, price)
 - **Fallback:** Unknown retailers → Google Shopping search (`google.com/search?tbm=shop&q=...`)
 - **Tested:** curl verified — "Best Buy via Google Shopping" now links to bestbuy.com
+
+### 2. Vision data discarded at text boundary
+- **Was:** `image_routes.py` built plain text query, `compare_from_text()` re-parsed it with GPT, losing variant info like "360 Softgels"
+- **Fix:** Added `vision_products` parameter to `compare_from_text()`. Camera input now skips `parse_product_query()` and passes vision-identified products directly
+- **Files:** `structured_comparison_service.py` (new `vision_products` param), `image_routes.py` (passes `vision_products=products`)
+- **Bonus:** Saves $0.0003/comparison by skipping redundant GPT parse call
+
+### 3. UnboundLocalError crash on camera comparison
+- **Was:** `parsed` variable referenced at line 211 (`parsed.get("comparison_type")`) but only assigned in text path — camera path crashed
+- **Fix:** `parsed.get(...) if not vision_products else "value"`
+
+### 4. Vision variant hint for specs extraction
+- **Was:** `variant=None` caused GPT specs prompt to show "(base model)", defaulting to 180-count instead of 360-count
+- **Fix:** Vision name passed as `variant` field so prompt shows `(variant: Vitamin D-3 360 Softgels)`. Added `_vision` flag for proper `full_name`/`display_name` handling without doubling
+
+### 5. Brand missing from specs/reviews headers
+- **Was:** Frontend used `product.name` (no brand) for specs table header and reviews card title
+- **Fix:** Changed to `product.full_name || product.name` with `numberOfLines={2}`
+- **File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+
+## Commits
+1. `469b537` — Build retailer URLs for ratings (RETAILER_SEARCH_URLS + _build_retailer_url)
+2. `81e71ca` — Context update
+3. `595a5dc` — Fix parsed UnboundLocalError crash in vision path
+4. `c3f94f3` — Vision variant hint + _vision flag for display names
+5. `4e81337` — Frontend: full_name in specs/reviews headers
+
+## Still Broken (For Tomorrow)
+1. Specs still showing wrong variant sometimes (180 vs 360 softgels) — variant hint helps but GPT non-determinism can override
+2. NOW Vitamin D-3 sometimes shows "No verified rating" — depends on Serper shopping data availability
+3. Price accuracy needs verification for camera-identified products
+
+## Current Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices | Working (currency conversion + sanity checks) |
+| Ratings | Working (4-tier + retailer URLs fixed) |
+| Reviews | Working (category scores, user quotes, etc.) |
+| Specs | Partially working (variant hint added, needs testing) |
+| Camera input | Working (vision + comparison flow) |
+| URL input | Not tested with new architecture |
 
 ---
 
