@@ -120,7 +120,7 @@ async def identify_and_compare(
 
     try:
         service = StructuredComparisonService()
-        result = await service.compare_from_text(query, region=region)
+        result = await service.compare_from_text(query, region=region, vision_products=products)
 
         # Inject vision metadata
         if result.get("metadata"):

@@ -91,6 +91,27 @@ RETAILER_TIERS = {
 }
 DEFAULT_RETAILER_SCORE = 0.5  # Unknown retailers get benefit of the doubt
 
+# Retailer search URL templates — maps retailer name (lowercase) to search page URL
+# Used instead of Serper's "link" field which is a Google Shopping redirect
+RETAILER_SEARCH_URLS = {
+    "amazon": "https://www.amazon.com/s?k={query}",
+    "amazon.ae": "https://www.amazon.ae/s?k={query}",
+    "amazon.sa": "https://www.amazon.sa/s?k={query}",
+    "walmart": "https://www.walmart.com/search?q={query}",
+    "best buy": "https://www.bestbuy.com/site/searchpage.jsp?st={query}",
+    "bestbuy": "https://www.bestbuy.com/site/searchpage.jsp?st={query}",
+    "target": "https://www.target.com/s?searchTerm={query}",
+    "noon": "https://www.noon.com/search?q={query}",
+    "newegg": "https://www.newegg.com/p/pl?d={query}",
+    "iherb": "https://www.iherb.com/search?kw={query}",
+    "ebay": "https://www.ebay.com/sch/i.html?_nkw={query}",
+    "jarir": "https://www.jarir.com/sa-en/catalogsearch/result/?q={query}",
+    "extra": "https://www.extra.com/en-sa/search/?q={query}",
+    "sharaf dg": "https://uae.sharafdg.com/search/?q={query}",
+    "costco": "https://www.costco.com/CatalogSearch?dept=All&keyword={query}",
+    "b&h": "https://www.bhphotovideo.com/c/search?q={query}",
+}
+
 
 class StructuredComparisonService:
     """
@@ -118,32 +139,54 @@ class StructuredComparisonService:
         include_specs: bool = True,
         include_reviews: bool = True,
         include_pros_cons: bool = True,
-        nocache: bool = False
+        nocache: bool = False,
+        vision_products: Optional[List[Dict]] = None
     ) -> Dict[str, Any]:
         """
         Main entry point for text-based comparisons.
-        
+
+        Args:
+            vision_products: If provided (from camera input), skip parse_product_query
+                             and use these directly. Each dict has brand, name, visible_price, confidence.
+
         Example: compare_from_text("iPhone 15 vs Galaxy S24", "bahrain")
         """
         start_time = datetime.now()
         self.total_cost = 0.0
         self.api_calls = 0
-        
+
         try:
-            # Step 1: Parse the query
-            logger.info(f"Parsing query: {query}")
-            parsed = await parse_product_query(query)
-            self._track_cost(0.0003)  # ~300 tokens
-            
-            if not parsed.get("products") or len(parsed["products"]) < 2:
-                return {
-                    "success": False,
-                    "error": "Could not identify two products to compare. Try: 'iPhone 15 vs Galaxy S24'",
-                    "parsed": parsed
-                }
-            
-            products = parsed["products"][:2]  # Limit to 2 products
-            logger.info(f"Identified products: {products}")
+            # Step 1: Parse the query (or use vision products directly)
+            if vision_products and len(vision_products) >= 2:
+                # Camera input: use vision-identified products directly — no re-parsing
+                # This preserves exact product names (e.g., "Vitamin D-3 360 Softgels")
+                products = []
+                for vp in vision_products[:2]:
+                    brand = vp.get("brand", "Unknown")
+                    name = vp.get("name", "Unknown Product")
+                    full = f"{brand} {name}".strip()
+                    products.append({
+                        "brand": brand,
+                        "name": name,
+                        "variant": None,  # name already includes variant details
+                        "category": "other",
+                        "search_query": full,
+                    })
+                logger.info(f"[VISION] Using vision-identified products directly: {[p['search_query'] for p in products]}")
+            else:
+                logger.info(f"Parsing query: {query}")
+                parsed = await parse_product_query(query)
+                self._track_cost(0.0003)  # ~300 tokens
+
+                if not parsed.get("products") or len(parsed["products"]) < 2:
+                    return {
+                        "success": False,
+                        "error": "Could not identify two products to compare. Try: 'iPhone 15 vs Galaxy S24'",
+                        "parsed": parsed
+                    }
+
+                products = parsed["products"][:2]  # Limit to 2 products
+                logger.info(f"Identified products: {products}")
             
             # Step 2: Fetch data for each product (parallel)
             product_data = await asyncio.gather(
@@ -617,6 +660,16 @@ class StructuredComparisonService:
                 return score
         return DEFAULT_RETAILER_SCORE
 
+    def _build_retailer_url(self, source: str, product_name: str) -> str:
+        """Build a retailer search URL from the source name and product name.
+        Falls back to Google Shopping search for unknown retailers."""
+        from urllib.parse import quote_plus
+        source_lower = source.lower().strip()
+        for key, template in RETAILER_SEARCH_URLS.items():
+            if key in source_lower:
+                return template.format(query=quote_plus(product_name))
+        return f"https://www.google.com/search?tbm=shop&q={quote_plus(product_name)}"
+
     def _extract_price_from_shopping(
         self,
         product_name: str,
@@ -691,7 +744,7 @@ class StructuredComparisonService:
                 "amount": round(amount, 2),
                 "currency": currency,
                 "retailer": retailer,
-                "url": item.get("link", ""),
+                "url": self._build_retailer_url(retailer, product_name),
                 "in_stock": True,
                 "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
                 "match_score": match_score,
@@ -1274,7 +1327,6 @@ class StructuredComparisonService:
                 "rating": rating_val,
                 "review_count": review_count,
                 "source": source,
-                "link": item.get("link", ""),
                 "title": title,
                 "match_score": match_score,
             }
@@ -1311,7 +1363,7 @@ class StructuredComparisonService:
                     "rating_verified": True,
                     "rating_source": {
                         "name": "Google Shopping (product aggregate)",
-                        "url": best["link"],
+                        "url": self._build_retailer_url(best["source"], product_name),
                         "retrieved_at": datetime.now().isoformat() + "Z",
                         "extract_method": "google_shopping_consensus",
                         "confidence": "high"
@@ -1357,7 +1409,7 @@ class StructuredComparisonService:
             "rating_verified": verified,
             "rating_source": {
                 "name": label,
-                "url": best["link"],
+                "url": self._build_retailer_url(best["source"], product_name),
                 "retrieved_at": datetime.now().isoformat() + "Z",
                 "extract_method": "google_shopping",
                 "confidence": confidence
