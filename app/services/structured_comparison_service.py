@@ -163,14 +163,15 @@ class StructuredComparisonService:
                 products = []
                 for vp in vision_products[:2]:
                     brand = vp.get("brand", "Unknown")
-                    name = vp.get("name", "Unknown Product")
-                    full = f"{brand} {name}".strip()
+                    vname = vp.get("name", "Unknown Product")
+                    full = f"{brand} {vname}".strip()
                     products.append({
                         "brand": brand,
-                        "name": name,
-                        "variant": None,  # name already includes variant details
+                        "name": vname,               # GPT prompt: "{brand} {name}" = "NOW Vitamin D-3 360 Softgels"
+                        "variant": vname,             # Forces GPT "(variant: Vitamin D-3 360 Softgels)" not "(base model)"
                         "category": "other",
-                        "search_query": full,
+                        "search_query": full,         # Serper search: "NOW Vitamin D-3 360 Softgels"
+                        "_vision": True,              # Flag for display name override
                     })
                 logger.info(f"[VISION] Using vision-identified products directly: {[p['search_query'] for p in products]}")
             else:
@@ -254,12 +255,20 @@ class StructuredComparisonService:
         variant = product_info.get("variant")
         category = product_info.get("category", "other")
         search_query = product_info.get("search_query", f"{brand} {name} {variant or ''}")
+        is_vision = product_info.get("_vision", False)
 
-        full_name = f"{brand} {name} {variant or ''}".strip()
+        if is_vision:
+            # Vision path: name=product name, variant=same (for GPT hint)
+            # full_name = "Brand ProductName" (no doubling with variant)
+            full_name = search_query  # already "Brand ProductName"
+            display_name = full_name  # include brand for frontend display
+        else:
+            full_name = f"{brand} {name} {variant or ''}".strip()
+            display_name = name
 
         result = {
             "brand": brand,
-            "name": name,
+            "name": display_name,
             "full_name": full_name,
             "variant": variant,
             "category": category,
