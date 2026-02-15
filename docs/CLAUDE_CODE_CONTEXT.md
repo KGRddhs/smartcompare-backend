@@ -191,7 +191,7 @@ smartcompare/
 │   │   │   ├── __init__.py
 │   │   │   ├── text_routes.py           # /api/v1/text/* endpoints
 │   │   │   ├── url_routes.py            # /api/v1/url/* endpoints
-│   │   │   ├── image_routes.py          # /api/v1/compare (camera)
+│   │   │   ├── image_routes.py          # /api/v1/compare (camera) [LEGACY]
 │   │   │   └── auth_routes.py           # /api/v1/auth/* endpoints
 │   │   └── services/
 │   │       ├── __init__.py
@@ -999,7 +999,7 @@ Current status (Feb 14, 2026):
 | Enhanced Reviews (backend) | Working | category_scores, rating_distribution, user_quotes, source_ratings, summary, verified_rating |
 | Enhanced Reviews (frontend) | Working | ReviewsTab renders all fields; code audited Feb 14 2026, curl-verified both products return full data |
 | Cache bypass | Working | `?nocache=true` query param |
-| Camera input | Not started | |
+| Camera input | Working | GPT-4o-mini vision → auto-compare via v3 pipeline, $0.007-0.014/comparison |
 | URL input | Partial | Old code, untested with new architecture |
 
 ---
@@ -1166,11 +1166,78 @@ Current status (Feb 14, 2026):
 | Ratings | Working (4-tier fallback) |
 | Reviews | Working (category scores, user quotes, etc.) |
 | Specs | Working (fixed schema) |
-| Camera input | Not started — NEXT PRIORITY |
+| Camera input | Working (GPT-4o-mini vision + v3 pipeline) |
 | URL input | Partial (untested with new architecture) |
 
 ## Next Priority
-- Camera input feature
+- URL input (update to use v3 pipeline)
+- Apply Figma UI design
+- Premium tier with Stripe
+
+---
+
+# SESSION LOG: February 15, 2026 — Camera Input Feature
+
+## What We Built
+
+### 1. Camera Identification Endpoint
+**File:** `app/api/image_routes.py` (NEW)
+- `POST /api/v1/image/identify` — accepts 1-4 images + region
+- GPT-4o-mini vision identifies products from photos (single API call for all images)
+- **2+ products found**: auto-builds query string, calls `StructuredComparisonService.compare_from_text()` — reuses full v3 pipeline (specs, prices, ratings, reviews, comparison)
+- **1 product found**: returns `action: "need_second_product"` with identified product
+- **0 products**: returns error
+- Injects `input_method: "camera"`, `vision_cost`, `identified_products` into metadata
+
+### 2. Improved Vision Prompt
+**File:** `app/services/openai_service.py`
+- Replaced grocery-focused prompt with electronics-aware identification
+- Added `confidence` field (high/medium/low) replacing `size`
+- Handles: product boxes, bare products (by shape/logo/design), screenshots, shelf photos, price tags
+- Multi-product: identifies ALL products in a single image (up to 4 total)
+- Normalization: ensures every product has brand/name/visible_price/confidence
+- Uses `detail: "low"` for cost control (~$0.003 per call regardless of image count)
+
+### 3. Frontend Camera Flow
+**Files:** `SmartCompareApp/src/screens/CameraScreen.tsx`, `src/services/api.ts`, `src/types/types.ts`, `src/types/index.ts`
+- `CameraScreen`: MIN_IMAGES=2, calls `identifyFromImages()` instead of old `compareProducts()`
+- `action: "comparison"` → navigates to ResultsScreen with full comparison
+- `action: "need_second_product"` (edge case) → shows green banner with detected product name + "Take Another Photo" button
+- `action: "error"` → Alert dialog
+- New `identifyFromImages()` API function with same iOS/HEIC handling as old `compareProducts()`
+- New `ImageIdentifyResult` discriminated union type, `IdentifiedProduct` type
+- Added `index.ts` barrel export for types
+
+### 4. Router Registration
+**File:** `app/main.py`
+- Registered `image_router` at `/api/v1/image/*`
+- Old `/api/v1/compare` (legacy image endpoint) preserved for backward compatibility
+
+## Cost Analysis
+| Scenario | Vision | Pipeline | Total |
+|----------|--------|----------|-------|
+| Cache hit (popular products) | $0.003 | $0.001 | **$0.004** |
+| Partial cache (specs cached) | $0.003 | $0.005 | **$0.008** |
+| Full cache miss | $0.003 | $0.011 | **$0.014** |
+| Single product identify only | $0.003 | $0.000 | **$0.003** |
+
+## Test Results (curl verified on Railway)
+- **Single image** (iPhone 16 Pro text): `action: "need_second_product"`, confidence: "high", price extracted
+- **Two separate images** (iPhone + Galaxy): `action: "comparison"`, full specs/prices/ratings/reviews, cost $0.0074 (iPhone cached), 37s elapsed
+- All responses include `confidence` field in identified products
+
+## Commits
+1. `87217d6` — Backend: image_routes.py, improved vision prompt, main.py router
+2. `2e68a87` — Frontend: types, api, CameraScreen flow
+
+## Architecture Decision
+| Decision | Reasoning |
+|----------|-----------|
+| Single endpoint, not identify+compare | Eliminates round-trip for 2+ products case |
+| Keep MIN_IMAGES=2 | No text input for second product; camera-only flow |
+| Reuse StructuredComparisonService | No pipeline duplication; cache/ratings/reviews all work automatically |
+| `detail: "low"` for vision | ~$0.003 regardless of 1-4 images; sufficient for text-on-packaging |
+| Separate images, not combined | Accuracy > $0.0004 savings |
 
 ---
 
