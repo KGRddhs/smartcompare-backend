@@ -208,7 +208,7 @@ class StructuredComparisonService:
                 product_data[0],
                 product_data[1],
                 region,
-                parsed.get("comparison_type", "value")
+                parsed.get("comparison_type", "value") if not vision_products else "value"
             )
             self._track_cost(0.0008)  # ~800 tokens
             
