@@ -10,10 +10,11 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 # Import routes after env vars are loaded
-from app.api.routes import router as api_router          # Image comparison
+from app.api.routes import router as api_router          # Image comparison (legacy)
 from app.api.auth_routes import router as auth_router    # Authentication
 from app.api.text_routes import router as text_router    # Text comparison
 from app.api.url_routes import router as url_router      # URL comparison
+from app.api.image_routes import router as image_router  # Camera identification + comparison
 
 # Create FastAPI app
 app = FastAPI(
@@ -53,10 +54,11 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(api_router)       # /api/v1/compare (image)
+app.include_router(api_router)       # /api/v1/compare (legacy image)
 app.include_router(auth_router)      # /api/v1/auth/*
 app.include_router(text_router)      # /api/v1/text/*
 app.include_router(url_router)       # /api/v1/url/*
+app.include_router(image_router)     # /api/v1/image/* (camera)
 
 
 @app.get("/")
@@ -67,7 +69,8 @@ async def root():
         "app": "SmartCompare API",
         "version": "2.0.0",
         "endpoints": {
-            "image_compare": "/api/v1/compare",
+            "image_identify": "/api/v1/image/identify",
+            "image_compare_legacy": "/api/v1/compare",
             "text_compare": "/api/v1/text/compare",
             "url_compare": "/api/v1/url/compare",
             "auth": "/api/v1/auth/*",

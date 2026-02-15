@@ -40,45 +40,49 @@ def clean_json_response(raw_content: str) -> str:
 async def identify_products(image_data_list: List[Dict]) -> Dict:
     """
     Use OpenAI Vision to identify products from images.
-    
+
     Args:
         image_data_list: List of dicts with either:
             - {"path": "/path/to/image.jpg"} for file paths
             - {"bytes": b"...", "mime_type": "image/jpeg"} for raw bytes
-    
+
     Returns:
         {
             "products": [
-                {"brand": "Nido", "name": "Full Cream Milk Powder", "size": "2.5kg", "visible_price": "8.50 BD"},
+                {"brand": "Apple", "name": "iPhone 16 Pro", "visible_price": "BHD 449", "confidence": "high"},
                 ...
             ],
             "tokens_used": 1234,
             "cost": 0.00056
         }
     """
-    
+
     # Build message content with images
     content = [
         {
             "type": "text",
-            "text": """Analyze these product images and identify each product. For EACH product image, extract:
+            "text": """You are a product identification expert. Analyze these images and identify EVERY distinct product visible.
 
-- brand: The brand name (e.g., "Nido", "Tide", "Almarai")
-- name: The product name (e.g., "Full Cream Milk Powder", "Liquid Detergent")
-- size: Size/weight/volume if visible (e.g., "2.5kg", "1L", "500ml")
-- visible_price: Any price shown on the label or shelf tag (e.g., "8.50 BD", "$12.99")
-
-Return ONLY a valid JSON array. Example:
-[
-  {"brand": "Nido", "name": "Full Cream Milk Powder", "size": "2.5kg", "visible_price": "8.50 BD"},
-  {"brand": "Almarai", "name": "Fresh Milk Full Fat", "size": "1L", "visible_price": null}
-]
+For EACH product found, extract:
+- brand: Manufacturer/brand name. Use logo, packaging text, or product design to identify.
+- name: SPECIFIC model name, not generic. "MX Master 3S" not "wireless mouse". "iPhone 16 Pro" not "smartphone". Include model number if visible.
+- visible_price: Any price shown in the image (shelf tag, screen, label). Include currency symbol. null if no price visible.
+- confidence: "high" (brand+model clearly readable), "medium" (brand clear, model inferred from design), "low" (best guess from shape/context)
 
 RULES:
-- Return one object per product image
-- Use null for any field you cannot determine
+- One image may contain MULTIPLE products — identify ALL (up to 4 total across all images)
+- Identify products even WITHOUT packaging: use shape, color, logo, ports, design cues
+- For screenshots of retailer pages: extract the product name exactly as shown
+- If you see a price tag next to a product, associate it with that product
+- Generic unidentifiable items: brand="Unknown", name="[descriptive name]", confidence="low"
 - Do NOT include markdown code blocks
-- Return ONLY the JSON array, nothing else"""
+- Return ONLY a valid JSON array, nothing else
+
+EXAMPLES:
+[
+  {"brand": "Apple", "name": "iPhone 16 Pro", "visible_price": "BHD 449", "confidence": "high"},
+  {"brand": "Samsung", "name": "Galaxy S25 Ultra", "visible_price": null, "confidence": "medium"}
+]"""
         }
     ]
     
@@ -124,16 +128,26 @@ RULES:
             "tokens_used": response.usage.total_tokens if response.usage else 0,
             "cost": 0
         }
-    
+
+    # Normalize: ensure each product has all expected fields
+    normalized = []
+    for p in (products if isinstance(products, list) else []):
+        normalized.append({
+            "brand": p.get("brand") or "Unknown",
+            "name": p.get("name") or "Unknown Product",
+            "visible_price": p.get("visible_price"),
+            "confidence": p.get("confidence", "medium"),
+        })
+
     # Calculate cost (gpt-4o-mini pricing)
     # Input: $0.15 per 1M tokens, Output: $0.60 per 1M tokens
     usage = response.usage
     input_cost = (usage.prompt_tokens * 0.15) / 1_000_000
     output_cost = (usage.completion_tokens * 0.60) / 1_000_000
     total_cost = input_cost + output_cost
-    
+
     return {
-        "products": products,
+        "products": normalized,
         "tokens_used": usage.total_tokens,
         "cost": round(total_cost, 6)
     }
