@@ -330,8 +330,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             </View>
             {products.map((product, index) => (
               <View key={index} style={styles.specsTableHeaderCell}>
-                <Text style={styles.specsTableHeaderText} numberOfLines={1}>
-                  {product.name}
+                <Text style={styles.specsTableHeaderText} numberOfLines={2}>
+                  {product.full_name || product.name}
                 </Text>
               </View>
             ))}
@@ -422,7 +422,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         const reviews = product.reviews;
         return (
           <View key={index} style={styles.reviewCard}>
-            <Text style={styles.reviewCardTitle}>{product.name}</Text>
+            <Text style={styles.reviewCardTitle}>{product.full_name || product.name}</Text>
 
             {/* Rating info */}
             <View style={styles.reviewRatingSection}>
