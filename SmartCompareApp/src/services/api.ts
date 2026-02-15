@@ -4,7 +4,7 @@
  */
 
 import axios from 'axios';
-import { ComparisonResult, RateLimitStatus, SubscriptionStatus } from '../types';
+import { ComparisonResult, ImageIdentifyResult, RateLimitStatus, SubscriptionStatus } from '../types';
 
 // IMPORTANT: Change this to your computer's local IP
 // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
@@ -99,6 +99,58 @@ export async function compareProducts(
     
     throw error;
   }
+}
+
+/**
+ * Identify products from images via GPT-4o-mini vision, then auto-compare if 2+.
+ * Uses the new /api/v1/image/identify endpoint.
+ */
+export async function identifyFromImages(
+  imageUris: string[],
+  region: string = 'bahrain'
+): Promise<ImageIdentifyResult> {
+  console.log('=== IDENTIFY FROM IMAGES ===');
+  console.log(`${imageUris.length} image(s), region=${region}`);
+
+  const formData = new FormData();
+
+  for (let i = 0; i < imageUris.length; i++) {
+    const uri = imageUris[i];
+
+    // Get file name and extension
+    const uriParts = uri.split('/');
+    let fileName = uriParts[uriParts.length - 1];
+    if (uri.includes('ph://')) {
+      fileName = `photo_${i + 1}.jpg`;
+    }
+
+    const extensionMatch = fileName.match(/\.([^.]+)$/);
+    let extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'jpg';
+    if (extension === 'jpeg') extension = 'jpg';
+    if (extension === 'heic' || extension === 'heif') extension = 'jpg';
+
+    let mimeType = 'image/jpeg';
+    if (extension === 'png') mimeType = 'image/png';
+    else if (extension === 'webp') mimeType = 'image/webp';
+
+    formData.append('images', {
+      uri,
+      type: mimeType,
+      name: `product_${i + 1}.${extension}`,
+    } as any);
+  }
+
+  const response = await api.post<ImageIdentifyResult>(
+    `/api/v1/image/identify?region=${encodeURIComponent(region)}`,
+    formData,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      transformRequest: (data) => data,
+    }
+  );
+
+  console.log('Identify response action:', (response.data as any).action);
+  return response.data;
 }
 
 /**

@@ -140,6 +140,44 @@ export interface CapturedImage {
   height: number;
 }
 
+export interface IdentifiedProduct {
+  brand: string;
+  name: string;
+  visible_price?: string | null;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export type ImageIdentifyResult =
+  | {
+      success: true;
+      action: 'comparison';
+      products: Product[];
+      comparison: Comparison;
+      winner_index: number;
+      recommendation: string;
+      key_differences: string[];
+      metadata?: ComparisonResult['metadata'] & {
+        input_method: 'camera';
+        vision_cost: number;
+        identified_products: IdentifiedProduct[];
+      };
+    }
+  | {
+      success: true;
+      action: 'need_second_product';
+      products: IdentifiedProduct[];
+      message: string;
+      vision_cost: number;
+    }
+  | {
+      success: false;
+      action: 'error' | 'comparison_failed';
+      error: string;
+      products?: IdentifiedProduct[];
+      vision_cost?: number;
+      message?: string;
+    };
+
 // --- Auth types ---
 
 export interface User {

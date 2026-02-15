@@ -1,6 +1,6 @@
 /**
  * SmartCompare - Camera Screen
- * Capture 2-4 product images for comparison
+ * Capture 2-4 product images for comparison via GPT-4o-mini vision
  */
 
 import React, { useState, useRef } from 'react';
@@ -18,8 +18,8 @@ import {
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, CapturedImage } from '../types';
-import { compareProducts } from '../services/api';
+import { RootStackParamList, CapturedImage, IdentifiedProduct } from '../types';
+import { identifyFromImages } from '../services/api';
 
 type CameraScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Camera'>;
@@ -30,6 +30,7 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
   const [capturedImages, setCapturedImages] = useState<CapturedImage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [facing, setFacing] = useState<CameraType>('back');
+  const [detectedProduct, setDetectedProduct] = useState<IdentifiedProduct | null>(null);
   const cameraRef = useRef<CameraView>(null);
 
   const MIN_IMAGES = 2;
@@ -75,8 +76,12 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
           exif: false,
           imageType: 'jpg',
         });
-        
+
         if (photo) {
+          // Clear any previous "detected product" state when capturing new photos
+          if (detectedProduct) {
+            setDetectedProduct(null);
+          }
           setCapturedImages([
             ...capturedImages,
             {
@@ -109,6 +114,9 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
     });
 
     if (!result.canceled && result.assets) {
+      if (detectedProduct) {
+        setDetectedProduct(null);
+      }
       const newImages: CapturedImage[] = result.assets.map((asset) => ({
         uri: asset.uri,
         width: asset.width,
@@ -119,10 +127,11 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
   };
 
   const removeImage = (index: number) => {
+    setDetectedProduct(null);
     setCapturedImages(capturedImages.filter((_, i) => i !== index));
   };
 
-  const handleCompare = async () => {
+  const handleIdentifyAndCompare = async () => {
     if (capturedImages.length < MIN_IMAGES) {
       Alert.alert(
         'Need More Products',
@@ -132,28 +141,36 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
     }
 
     setIsProcessing(true);
+    setDetectedProduct(null);
 
     try {
       const imageUris = capturedImages.map((img) => img.uri);
-      const result = await compareProducts(imageUris, 'Bahrain');
+      const result = await identifyFromImages(imageUris, 'bahrain');
 
-      if (result.success) {
+      if (result.action === 'comparison' && result.success) {
+        // Full comparison returned — navigate to results
         navigation.replace('Results', { result });
+      } else if (result.action === 'need_second_product' && result.success) {
+        // Edge case: vision only found 1 product in 2+ images
+        setDetectedProduct(result.products[0]);
       } else {
-        Alert.alert('Comparison Failed', result.errors?.[0] || 'Please try again.');
+        // Error
+        const errorMsg = ('error' in result && result.error)
+          || 'Could not identify products. Try clearer photos.';
+        Alert.alert('Identification Failed', errorMsg);
       }
     } catch (error: any) {
-      console.error('Comparison error:', error);
-      
+      console.error('Identify error:', error);
+
       if (error.response?.status === 429) {
         Alert.alert(
           'Daily Limit Reached',
-          'You\'ve used all your free comparisons today. Upgrade to Premium for unlimited access!'
+          "You've used all your free comparisons today. Upgrade to Premium for unlimited access!"
         );
       } else if (error.message?.includes('Network')) {
         Alert.alert(
           'Connection Error',
-          'Could not connect to server. Make sure the backend is running.'
+          'Could not connect to server. Check your connection.'
         );
       } else {
         Alert.alert('Error', error.message || 'Comparison failed. Please try again.');
@@ -161,6 +178,11 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleRetakeForSecondProduct = () => {
+    // Keep existing images, clear detected product banner, let user take more
+    setDetectedProduct(null);
   };
 
   const toggleCameraFacing = () => {
@@ -171,9 +193,9 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
     <SafeAreaView style={styles.container}>
       {/* Camera View */}
       <View style={styles.cameraContainer}>
-        <CameraView 
-          ref={cameraRef} 
-          style={styles.camera} 
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
           facing={facing}
         >
           {/* Overlay with instructions */}
@@ -187,8 +209,26 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
         </CameraView>
       </View>
 
+      {/* Detected Product Banner (edge case: only 1 product found in 2+ images) */}
+      {detectedProduct && (
+        <View style={styles.detectedBanner}>
+          <Text style={styles.detectedTitle}>
+            Found: {detectedProduct.brand} {detectedProduct.name}
+          </Text>
+          <Text style={styles.detectedSubtitle}>
+            Only 1 product identified. Take another photo of a different product.
+          </Text>
+          <TouchableOpacity
+            style={styles.retakeButton}
+            onPress={handleRetakeForSecondProduct}
+          >
+            <Text style={styles.retakeButtonText}>Take Another Photo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Captured Images Preview */}
-      {capturedImages.length > 0 && (
+      {capturedImages.length > 0 && !detectedProduct && (
         <View style={styles.previewContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {capturedImages.map((image, index) => (
@@ -208,66 +248,70 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
       )}
 
       {/* Progress Indicator */}
-      <View style={styles.progressContainer}>
-        <Text style={styles.progressText}>
-          {capturedImages.length} / {MAX_IMAGES} products captured
-          {capturedImages.length < MIN_IMAGES && ` (min ${MIN_IMAGES})`}
-        </Text>
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${(capturedImages.length / MAX_IMAGES) * 100}%` },
-            ]}
-          />
+      {!detectedProduct && (
+        <View style={styles.progressContainer}>
+          <Text style={styles.progressText}>
+            {capturedImages.length} / {MAX_IMAGES} products captured
+            {capturedImages.length < MIN_IMAGES && ` (min ${MIN_IMAGES})`}
+          </Text>
+          <View style={styles.progressBar}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${(capturedImages.length / MAX_IMAGES) * 100}%` },
+              ]}
+            />
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Action Buttons */}
-      <View style={styles.controls}>
-        {isProcessing ? (
-          <View style={styles.processingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.processingText}>Analyzing products...</Text>
-            <Text style={styles.processingHint}>This may take 30-60 seconds</Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.buttonRow}>
-              {/* Gallery Button */}
-              <TouchableOpacity style={styles.sideButton} onPress={pickFromGallery}>
-                <Text style={styles.sideButtonText}>🖼️</Text>
-              </TouchableOpacity>
-
-              {/* Capture Button */}
-              <TouchableOpacity
-                style={[
-                  styles.captureButton,
-                  capturedImages.length >= MAX_IMAGES && styles.captureButtonDisabled,
-                ]}
-                onPress={takePicture}
-                disabled={capturedImages.length >= MAX_IMAGES}
-              >
-                <View style={styles.captureButtonInner} />
-              </TouchableOpacity>
-
-              {/* Flip Camera Button */}
-              <TouchableOpacity style={styles.sideButton} onPress={toggleCameraFacing}>
-                <Text style={styles.sideButtonText}>🔄</Text>
-              </TouchableOpacity>
+      {!detectedProduct && (
+        <View style={styles.controls}>
+          {isProcessing ? (
+            <View style={styles.processingContainer}>
+              <ActivityIndicator size="large" color="#007AFF" />
+              <Text style={styles.processingText}>Identifying products...</Text>
+              <Text style={styles.processingHint}>This may take 30-60 seconds</Text>
             </View>
+          ) : (
+            <>
+              <View style={styles.buttonRow}>
+                {/* Gallery Button */}
+                <TouchableOpacity style={styles.sideButton} onPress={pickFromGallery}>
+                  <Text style={styles.sideButtonText}>🖼️</Text>
+                </TouchableOpacity>
 
-            {/* Compare Button */}
-            {capturedImages.length >= MIN_IMAGES && (
-              <TouchableOpacity style={styles.compareButton} onPress={handleCompare}>
-                <Text style={styles.compareButtonText}>
-                  Compare {capturedImages.length} Products →
-                </Text>
-              </TouchableOpacity>
-            )}
-          </>
-        )}
-      </View>
+                {/* Capture Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.captureButton,
+                    capturedImages.length >= MAX_IMAGES && styles.captureButtonDisabled,
+                  ]}
+                  onPress={takePicture}
+                  disabled={capturedImages.length >= MAX_IMAGES}
+                >
+                  <View style={styles.captureButtonInner} />
+                </TouchableOpacity>
+
+                {/* Flip Camera Button */}
+                <TouchableOpacity style={styles.sideButton} onPress={toggleCameraFacing}>
+                  <Text style={styles.sideButtonText}>🔄</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Compare Button */}
+              {capturedImages.length >= MIN_IMAGES && (
+                <TouchableOpacity style={styles.compareButton} onPress={handleIdentifyAndCompare}>
+                  <Text style={styles.compareButtonText}>
+                    Compare {capturedImages.length} Products
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -298,6 +342,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
+  },
+  detectedBanner: {
+    backgroundColor: '#1C1C1E',
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  detectedTitle: {
+    color: '#34C759',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+  detectedSubtitle: {
+    color: '#AAA',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retakeButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 10,
+  },
+  retakeButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   previewContainer: {
     height: 100,
