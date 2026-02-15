@@ -1239,20 +1239,18 @@ Current status (Feb 14, 2026):
 | `detail: "low"` for vision | ~$0.003 regardless of 1-4 images; sufficient for text-on-packaging |
 | Separate images, not combined | Accuracy > $0.0004 savings |
 
-## Known Bugs (discovered during testing)
+## FIXED: Specs ignore image data (Feb 15 2026)
+- **Was:** Vision identified "NOW Vitamin D-3 360 Softgels" but specs showed 180 count — vision data discarded at text boundary
+- **Fix:** Added `vision_products` parameter to `compare_from_text()`. Camera input now skips `parse_product_query()` and passes vision-identified products directly, preserving exact names with variant details.
+- **Files:** `structured_comparison_service.py` (new `vision_products` param), `image_routes.py` (passes `vision_products=products`)
+- **Bonus:** Saves $0.0003/comparison by skipping redundant GPT parse call
 
-### BUG 1: Specs ignore image data
-- Vision identifies "NOW Vitamin D-3 360 Softgels" correctly
-- But specs come from Serper/GPT extraction which may return different variant (e.g. "180 softgels")
-- Root cause: `image_routes.py` builds query string `"Brand Name vs Brand Name"` and passes to `compare_from_text()` — vision data (size, visible_price) is discarded
-- Fix needed: pass vision-extracted details (size, visible_price) into the pipeline so specs/price can prefer image data
-
-### BUG 2: Rating source URLs are Google search links, not product pages
-- `rating_source.url` contains URLs like `https://www.google.com/search?ibp=oshop&q=...`
-- Clicking "Walmart via Google Shopping" opens a Google search page, not Walmart
-- Root cause: Serper Shopping API returns Google Shopping redirect URLs, not direct retailer links
-- `_extract_rating_from_shopping()` stores `item.get("link")` which is a Google Shopping URL
-- Fix needed: either follow redirects to get final URL, or use `item.get("productLink")` if available
+## FIXED: Rating source URLs were Google redirects (Feb 15 2026)
+- **Was:** `rating_source.url` was `https://www.google.com/search?ibp=oshop&q=...` — clicking opened Google, not retailer
+- **Fix:** Added `RETAILER_SEARCH_URLS` map and `_build_retailer_url()` method. URLs now go to actual retailer search pages (e.g., `bestbuy.com/site/searchpage.jsp?st=Apple+iPhone+16`)
+- **File:** `structured_comparison_service.py` — constant + method + 3 usage sites (consensus rating, tiered rating, price)
+- **Fallback:** Unknown retailers → Google Shopping search (`google.com/search?tbm=shop&q=...`)
+- **Tested:** curl verified — "Best Buy via Google Shopping" now links to bestbuy.com
 
 ---
 
