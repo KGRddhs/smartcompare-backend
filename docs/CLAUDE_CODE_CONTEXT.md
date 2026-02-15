@@ -1296,6 +1296,65 @@ Current status (Feb 14, 2026):
 
 ---
 
+# SESSION LOG: February 15, 2026 (Evening) — Vitamin Matching Fixes
+
+## What We Fixed
+
+### 1. Number Preservation in Matching (Critical)
+**File:** `app/services/structured_comparison_service.py`
+- Added `_numbers_match()` static method — extracts standalone 2+ digit numbers from product name and requires at least one to appear in the shopping result title
+- "NOW Vitamin D-3 360 Softgels" now rejects "NOW Vitamin D-3 120 Softgels" (360 ≠ 120)
+- Single-digit numbers (e.g., "3" in "D-3") are ignored — too aggressive, would reject "Vitamin D3"
+- Applied as FILTER 4 in `_extract_price_from_shopping()` and FILTER 3 in `_extract_rating_from_shopping()`
+
+### 2. Hyphen Normalization (High)
+**File:** `app/services/structured_comparison_service.py`
+- Added `_normalize_words()` static method — lowercase + strip hyphens: "D-3" → "d3", "D3" → "d3"
+- Replaced `set(text.lower().split())` with `self._normalize_words(text)` in 4 places (p_words and t_words in both price and rating extraction)
+- Fixes match score dropping from 100% to 80% when product uses "D-3" but shopping result uses "D3"
+
+### 3. Count Field Added to Spec Schemas (Medium)
+**File:** `app/services/extraction_service.py`
+- Added `"count"` as first field in `grocery` schema (replaced `"halal"`) and `other` schema (replaced `"certifications"`)
+- Both schemas remain at 11 fields (fixed constraint)
+- Added explicit GPT instruction: "If the product name or variant contains a count/quantity (e.g. '360 Softgels'), use EXACTLY that number for the 'count' field"
+- GPT now has both a slot AND a directive for count/quantity
+
+## Test Results (3 runs, nocache=true, all consistent)
+| Product | Count | Rating | Price |
+|---------|-------|--------|-------|
+| NOW Vitamin D-3 360 | 360 ✅ | 4.8-4.9 ✅ | BHD 4.39 |
+| Nature Made D3 2000 | 250 ✅ | 4.5-4.7 ✅ | BHD 4-12 |
+
+### Electronics Regression — PASSED ✅
+- iPhone 16: 4.6 rating, BHD 310
+- Galaxy S25: 4.7 rating, BHD 407
+
+### Cost: $0.012/comparison (under $0.015 ✅)
+
+## Commits
+- `b4d6f4a` — Fix vitamin matching: number preservation, hyphen normalization, count field
+
+## Current Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices | ✅ Working |
+| Ratings | ✅ Working (consistent across runs) |
+| Reviews | ✅ Working |
+| Specs | ✅ Working (count field added for supplements) |
+| Camera | ✅ Working |
+| URL input | ❌ Not started |
+
+## Key Technical Details
+| Method | Purpose | Location |
+|--------|---------|----------|
+| `_normalize_words(text)` | Lowercase + strip hyphens for word matching | `structured_comparison_service.py:604` |
+| `_numbers_match(product, title)` | Reject titles missing key quantities | `structured_comparison_service.py:612` |
+| `CATEGORY_SPEC_SCHEMAS["grocery"]` | Now includes `count` field | `extraction_service.py:77` |
+| `CATEGORY_SPEC_SCHEMAS["other"]` | Now includes `count` field | `extraction_service.py:82` |
+
+---
+
 **END OF KNOWLEDGE TRANSFER**
 
 *Keep this document updated as the project evolves.*
