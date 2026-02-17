@@ -1481,6 +1481,71 @@ Current status (Feb 17, 2026):
 
 ---
 
+# SESSION LOG: February 17, 2026 (Evening) — Specs, Ratings, Cost Fixes
+
+## Fixes Deployed
+
+### 1. Specs "value or null" — 6-layer fix
+**Files:** `extraction_service.py`, `structured_comparison_service.py`, `ResultsScreen.tsx`
+- **Root cause:** GPT prompt template used `"value or null"` as placeholder (line 93). GPT echoed it literally for fields it had no data for. Nothing downstream caught the string.
+- **Fix 1:** Changed prompt placeholder from `"value or null"` to JSON `null` — GPT now returns actual null
+- **Fix 2:** Added `"supplements"` category to `CATEGORY_SPEC_SCHEMAS` with relevant fields: count, serving_size, active_ingredient, dosage, form, allergens, certifications, origin, organic, shelf_life, nutrition_calories
+- **Fix 3:** Added `"supplements"` to `PRODUCT_PARSER_PROMPT` category options
+- **Fix 4+5:** Added `"or null"` string catch in both `extract_specs()` and `_clean_specs()` sanitizers
+- **Fix 6:** Frontend `isNA()` now catches `"or null"` strings as safety net
+- **Result:** Vitamins now show supplement-specific specs, zero "value or null" strings
+
+### 2. Unverified ratings fallback
+**File:** `structured_comparison_service.py`
+- **Root cause:** When `_get_verified_rating()` returned null (no shopping source passed strict filters), frontend showed "No verified rating" — even though GPT reviews had extracted an `average_rating`
+- **Fix:** After `_get_verified_rating()` returns null, check `reviews.average_rating`. If valid (1.0-5.0), use it as unverified rating with source "Aggregated from reviews", confidence "low"
+- **Result:** Vitamins now show gray "Unverified" badge with GPT-aggregated rating instead of blank
+
+### 3. Cost optimization — conditional organic + merged pros/cons
+**Files:** `serper_service.py`, `extraction_service.py`, `structured_comparison_service.py`
+- **Opt A:** Split `search_product_prices()` into shopping-only + `search_price_organic()`. Organic search only called when Tier 1 shopping fails. Saves $0.002/comparison in common case.
+- **Opt B:** Merged `generate_pros_cons()` into `generate_comparison()` prompt. Pros/cons now extracted from comparison result (`product_0_pros`, `product_0_cons`, etc.) instead of 2 separate GPT calls. Saves $0.0008.
+- **Result:** Cost dropped from $0.0174 to ~$0.014
+
+### 4. Price sanity check extended to all products
+**File:** `structured_comparison_service.py`
+- **Root cause:** Tier 2 GPT price sanity check only ran for high-value products (phones, GPUs). For vitamins, GPT hallucinated BHD 24 (USD misinterpreted as BHD) and it went unchecked.
+- **Fix:** Removed `_is_high_value_query()` gate from Tier 2 sanity check — all products now checked against Tier 3 estimate
+- **Result:** NOW D-3 went from BHD 24 → BHD 9.43 (estimated). Still too high — needs further work.
+
+## Still Broken (For Next Session)
+1. **Vitamin prices still wrong** — NOW D-3 shows BHD 9.43 (estimated) but iHerb Bahrain sells it for ~BHD 3. Serper shopping returns ZERO results for vitamins/supplements in Bahrain AND US. Tier 3 GPT estimate overshoots. Need to either: add iHerb as a direct price source, or improve the GPT estimate prompt for low-cost items.
+2. **Nature Made D3 price** — BHD 4.06, no retailer, no URL. Needs verification.
+3. **Cost at $0.0145** — close to target but the extra Tier 3 sanity check call adds ~$0.001. Could cache Tier 3 estimates more aggressively.
+
+## Commits
+1. `deafd88` — Fix specs: sanitize 'value or null', add supplements schema
+2. `af38a90` — Fix ratings: fallback to GPT average_rating when shopping fails
+3. `4906c4a` — Optimize cost: conditional organic search, merge pros_cons
+4. `6890e06` — Fix price: extend Tier 2 sanity check to all products
+
+## Current Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices | ⚠️ Partial (sanity check helps, but vitamins still overpriced — Serper returns 0 shopping results) |
+| Ratings | ✅ Working (GPT review fallback for products without shopping data) |
+| Reviews | ✅ Working |
+| Specs | ✅ Working (supplements schema, no more "value or null") |
+| Camera | ✅ Working |
+| URL input | ❌ Not started |
+
+## Key Technical Changes
+| Change | Location |
+|--------|----------|
+| `CATEGORY_SPEC_SCHEMAS["supplements"]` added | `extraction_service.py:79` |
+| Prompt placeholder `null` instead of `"value or null"` | `extraction_service.py:95` |
+| GPT review average fallback for ratings | `structured_comparison_service.py:~380` |
+| `search_price_organic()` new function | `serper_service.py` |
+| `generate_comparison()` now includes pros/cons | `extraction_service.py:275` |
+| Tier 2 sanity check for ALL products | `structured_comparison_service.py:~535` |
+
+---
+
 **END OF KNOWLEDGE TRANSFER**
 
 *Keep this document updated as the project evolves.*
