@@ -61,6 +61,9 @@ RETAILER_TIERS = {
     "dell": 1.0,
     "hp store": 1.0,
     "lenovo": 1.0,
+    "iherb": 1.0,
+    "vitacost": 1.0,
+    "gnc": 1.0,
     # Tier 2: Reputable specialty retailers (score 0.7)
     "newegg": 0.7,
     "b&h": 0.7,
@@ -523,6 +526,17 @@ class StructuredComparisonService:
         # Fetch organic results on-demand (only when Tier 1 shopping failed)
         organic_results = await search_price_organic(search_query, region_info["code"])
         self._track_cost(0.001)
+
+        # For supplements: augment with iHerb-specific search (iHerb has real BHD/USD prices)
+        if self._is_supplement_query(full_name):
+            iherb_results = await search_web(f"{search_query} site:iherb.com", num_results=5, country="us")
+            self._track_cost(0.001)
+            iherb_organic = iherb_results.get("organic", [])
+            if iherb_organic:
+                logger.info(f"[PRICE] iHerb search returned {len(iherb_organic)} results for {full_name}")
+            # Prepend iHerb results so GPT sees them first (higher priority)
+            organic_results["organic"] = iherb_organic + organic_results.get("organic", [])
+
         # Merge organic into search_results for context formatting
         search_results["organic"] = organic_results.get("organic", [])
         search_results["knowledge_graph"] = organic_results.get("knowledge_graph")
@@ -654,6 +668,19 @@ class StructuredComparisonService:
         """Check if the query is for a high-value product (phone, laptop, console)."""
         name_lower = product_name.lower()
         return any(kw in name_lower for kw in StructuredComparisonService.HIGH_VALUE_KEYWORDS)
+
+    SUPPLEMENT_KEYWORDS = {
+        "vitamin", "supplement", "softgel", "capsule", "tablet", "mineral",
+        "omega", "probiotic", "protein", "magnesium", "zinc", "calcium",
+        "fish oil", "collagen", "biotin", "melatonin", "turmeric", "creatine",
+        "multivitamin", "iron", "folic", "coq10", "glucosamine",
+    }
+
+    @staticmethod
+    def _is_supplement_query(product_name: str) -> bool:
+        """Check if the query is for a supplement/vitamin product."""
+        name_lower = product_name.lower()
+        return any(kw in name_lower for kw in StructuredComparisonService.SUPPLEMENT_KEYWORDS)
 
     # Manufacturer names that AIB partners replace in product titles
     # (e.g. "NVIDIA RTX 3070" → "EVGA GeForce RTX 3070", "MSI RTX 3070")
