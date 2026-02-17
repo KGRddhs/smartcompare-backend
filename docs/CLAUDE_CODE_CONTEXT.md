@@ -368,17 +368,22 @@ const TOKEN_STORAGE_KEY = '@smartcompare_token';
 const RatingDisplay = ({ product }: { product: Product }) => {
   const { rating, review_count, rating_verified, rating_source } = product;
 
-  // If no rating or not verified, show "No verified rating"
-  if (rating === null || rating === undefined || !rating_verified || !rating_source?.url) {
+  // If no rating data at all
+  if (rating === null || rating === undefined) {
+    return <Text>No verified rating</Text>;
+  }
+
+  // If rating exists but unverified — show in gray with "Unverified" badge
+  if (!rating_verified) {
     return (
       <View>
-        <Text>No verified rating</Text>
-        <Text>Rating could not be verified from retailers</Text>
+        <StarOutline /> {rating.toFixed(1)} ({review_count} reviews)
+        [Unverified] {rating_source?.name}
       </View>
     );
   }
 
-  // Show verified rating with source
+  // Verified rating with source link
   return (
     <View>
       <Star /> {rating.toFixed(1)} ({review_count} reviews)
@@ -898,14 +903,14 @@ When starting Claude Code, say:
 Read docs/CLAUDE_CODE_CONTEXT.md completely. This is SmartCompare - a product
 comparison app for GCC region.
 
-Current status (Feb 14, 2026):
+Current status (Feb 17, 2026):
 - Backend: Running on Railway
-- Prices: Working (3-tier fallback + retailer quality scoring)
-- Specs: Working (fixed 11-field schema per category)
-- Ratings: Working (4-tier fallback: expert JSON-LD, shopping tiers 1-3)
+- Prices: Working (3-tier fallback + retailer quality scoring + clickable URLs)
+- Specs: Partially working (count works, other fields show "value or null" for vitamins)
+- Ratings: Partially working (brand-aware matching, unverified display needs testing)
 - Enhanced Reviews: Working (category_scores, rating_distribution, user_quotes, source_ratings, verified_rating)
-- Camera input: Not started
-- URL input: Partial (untested with new architecture)
+- Camera input: Working (OCR prompt, detail:auto, size_or_count field)
+- URL input: Not started
 ```
 
 ---
@@ -1402,6 +1407,77 @@ Current status (Feb 14, 2026):
 | Specs | ✅ Working (count field correct for supplements) |
 | Camera | ✅ Working (OCR prompt, detail:auto, size_or_count field) |
 | URL input | ❌ Not started |
+
+---
+
+# SESSION LOG: February 17, 2026 — Price URLs & Rating Brand Fix
+
+## Fixes Deployed
+
+### 1. Price URLs clickable (Tier 2/3 backfill)
+**File:** `app/services/structured_comparison_service.py`
+- Tier 2 (GPT) and Tier 3 (estimate) prices always had `url: null` — only Tier 1 (Shopping) set URLs
+- Added URL backfill: after Tier 2/3 returns, if `retailer` exists but `url` is null, call `_build_retailer_url(retailer, full_name)`
+- Added "nasser pharmacy" to `RETAILER_SEARCH_URLS` map
+
+**File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+- Added `url?: string` to price type
+- Made retailer name clickable with `TouchableOpacity` + `Linking.openURL(price.url)` when URL exists
+- Non-URL retailers still show as plain text
+
+### 2. Brand-aware matching for ALL products
+**File:** `app/services/structured_comparison_service.py`
+- **Root cause:** `_strict_title_match()` only ran for HIGH_VALUE_KEYWORDS (phones, GPUs, consoles). For vitamins, only word-overlap matching was used — "HealthAid Vitamin D3 1000 IU" matched ANY "Vitamin D3 1000 IU" at 80% overlap, so Target's generic D3 was incorrectly shown as HealthAid's rating
+- **Fix:** Apply `_strict_title_match()` to ALL products, not just high-value
+- **Fix:** Added hyphen normalization to `_strict_title_match()` — "D-3" matches "D3" (same as `_normalize_words()`)
+- Removed unused `is_high_value` variable from `_extract_rating_from_shopping()`
+
+### 3. Show unverified ratings with disclaimer
+**File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+- Previously: any rating with `rating_verified=false` was completely hidden as "No verified rating"
+- Now: unverified ratings show in gray with star-outline icon and "Unverified" badge + source name
+- Only `rating === null` shows "No verified rating" now
+
+### 4. Vision OCR improvements (from Feb 16 session)
+**File:** `app/services/openai_service.py`
+- `detail: "low"` → `detail: "auto"` for better text reading
+- Rewrote prompt for OCR emphasis with category-specific rules
+- Added `size_or_count` field for quantities
+
+## Still Broken (For Next Session)
+1. **Ratings show null for vitamins** — Serper doesn't return HealthAid/NOW from Tier 1/2 retailers. Brand-aware matching correctly rejects wrong products, but no correct match found either. Need to investigate if broader search or fallback can help
+2. **Specs show "value or null" for many fields** — Dimensions, Material, Color, Warranty, Power, Origin, Compatibility, Weight — these fields don't apply to vitamins. Need category-specific schema cleanup
+3. **Cost at $0.015** — slightly over target, acceptable for complex queries
+
+## Test Results (verified on Railway)
+| Test | Rating Before | Rating After | Price URL |
+|------|-------------|-------------|-----------|
+| HealthAid D3 1000 IU | 5.0 from Target (WRONG) | null (correct — no HealthAid products on Tier 1/2) | nasserpharmacy.com ✅ |
+| NOW D-3 360 Softgels | "No verified rating" | null (correct — niche count) | null (no retailer) |
+| iPhone 16 Pro | 4.4 verified ✅ | 4.4 verified ✅ | google.com |
+| Galaxy S25 Ultra | 4.8 verified ✅ | 4.8 verified ✅ | extra.com ✅ |
+
+## Commits
+- `5e07365` — Fix price URLs: backfill Tier 2/3, make retailer clickable
+- `21816aa` — Fix ratings: brand-aware matching for all products, show unverified with disclaimer
+
+## Current Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices | ✅ Working (URLs clickable) |
+| Ratings | ⚠️ Partial (brand-aware matching works, but vitamins get null — no Tier 1/2 coverage) |
+| Reviews | ✅ Working |
+| Specs | ⚠️ Partial (count works, other fields show "value or null" for non-electronics) |
+| Camera | ✅ Working (OCR reads correctly) |
+| URL input | ❌ Not started |
+
+## Key Technical Changes
+| Method | Change | Location |
+|--------|--------|----------|
+| `_strict_title_match()` | Now normalizes hyphens, applies to ALL products | `structured_comparison_service.py:663` |
+| `_extract_rating_from_shopping()` | Removed `is_high_value` gate on strict match | `structured_comparison_service.py:1384` |
+| `RatingDisplay` | 3-state: null → "No verified rating", unverified → gray + badge, verified → green + link | `ResultsScreen.tsx:193` |
+| `RETAILER_SEARCH_URLS` | 37 retailers (added nasser pharmacy) | `structured_comparison_service.py` |
 
 ---
 
