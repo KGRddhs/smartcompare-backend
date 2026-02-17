@@ -189,14 +189,39 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const RatingDisplay = ({ product }: { product: Product }) => {
     const { rating, review_count, rating_verified, rating_source } = product;
 
-    // If no rating or not verified, show "No verified rating"
-    if (rating === null || rating === undefined || !rating_verified || !rating_source?.url) {
+    // If no rating data at all, show "No verified rating"
+    if (rating === null || rating === undefined) {
       return (
         <View style={styles.ratingContainer}>
           <Text style={styles.noRatingText}>No verified rating</Text>
           <Text style={styles.noRatingSubtext}>
             Rating could not be verified from retailers
           </Text>
+        </View>
+      );
+    }
+
+    // If rating exists but unverified, show with disclaimer
+    if (!rating_verified) {
+      return (
+        <View style={styles.ratingContainer}>
+          <View style={styles.ratingRow}>
+            <Ionicons name="star-outline" size={16} color="#9E9E9E" />
+            <Text style={[styles.ratingText, { color: '#757575' }]}>{rating.toFixed(1)}</Text>
+            {review_count && review_count > 0 && (
+              <Text style={[styles.reviewCount, { color: '#9E9E9E' }]}>({review_count.toLocaleString()} reviews)</Text>
+            )}
+          </View>
+          <View style={styles.sourceLink}>
+            <View style={[styles.verifiedBadge, { backgroundColor: '#9E9E9E' }]}>
+              <Text style={styles.verifiedBadgeText}>Unverified</Text>
+            </View>
+            {rating_source?.name && (
+              <Text style={[styles.sourceText, { color: '#9E9E9E' }]}>
+                {rating_source.name}
+              </Text>
+            )}
+          </View>
         </View>
       );
     }

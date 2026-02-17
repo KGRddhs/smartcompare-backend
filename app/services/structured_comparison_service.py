@@ -661,18 +661,21 @@ class StructuredComparisonService:
 
     @staticmethod
     def _strict_title_match(product_name: str, title: str) -> bool:
-        """For high-value products, key words from the query must appear in the title.
+        """Key words from the product name must appear in the shopping title.
 
         'iPhone 16 Pro Max' → title must contain 'iphone' AND '16' AND 'pro' AND 'max'.
-        Small words (<=2 chars) like 'vs', 'of' are skipped.
+        'HealthAid Vitamin D-3' → title must contain 'healthaid' AND 'vitamin' (d3 is <=2 chars).
+        Small words (<=2 chars after hyphen removal) like 'vs', 'of', 'd3' are skipped.
         Manufacturer brands (nvidia, amd, intel) are skipped since AIB partners rebrand.
+        Hyphens are normalized: 'D-3' matches 'D3'.
         """
-        title_lower = title.lower()
+        title_normalized = title.lower().replace("-", "")
         key_words = [
-            w for w in product_name.lower().split()
-            if len(w) > 2 and w not in StructuredComparisonService.MANUFACTURER_BRAND_WORDS
+            w.replace("-", "") for w in product_name.lower().split()
+            if len(w.replace("-", "")) > 2
+            and w.replace("-", "") not in StructuredComparisonService.MANUFACTURER_BRAND_WORDS
         ]
-        return all(w in title_lower for w in key_words)
+        return all(w in title_normalized for w in key_words)
 
     # Rating retailer tiers — determines confidence label
     RATING_TIER_1 = {  # "Verified" — official/authorized, real product ratings
@@ -1357,7 +1360,6 @@ class StructuredComparisonService:
             return empty
 
         p_words = self._normalize_words(product_name)
-        is_high_value = self._is_high_value_query(product_name)
         tier1_candidates = []
         tier2_candidates = []
         tier3_candidates = []
@@ -1381,8 +1383,8 @@ class StructuredComparisonService:
                 logger.debug(f"[RATING] Skipped accessory: '{title}'")
                 continue
 
-            # FILTER 2: Strict title match for high-value products
-            if is_high_value and not self._strict_title_match(product_name, title):
+            # FILTER 2: Strict title match — all key words must appear in title
+            if not self._strict_title_match(product_name, title):
                 logger.debug(f"[RATING] Skipped weak title match: '{title}' for '{product_name}'")
                 continue
 
