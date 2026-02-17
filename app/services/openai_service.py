@@ -61,27 +61,33 @@ async def identify_products(image_data_list: List[Dict]) -> Dict:
     content = [
         {
             "type": "text",
-            "text": """You are a product identification expert. Analyze these images and identify EVERY distinct product visible.
+            "text": """You are a product identification expert with OCR skills. Analyze these images and identify EVERY distinct product visible.
+
+CRITICAL: READ the EXACT text printed on each product's packaging, label, or screen. Do NOT guess from memory or training data. Only report what you can actually SEE in the image.
 
 For EACH product found, extract:
-- brand: Manufacturer/brand name. Use logo, packaging text, or product design to identify.
-- name: SPECIFIC model name, not generic. "MX Master 3S" not "wireless mouse". "iPhone 16 Pro" not "smartphone". Include model number if visible.
-- visible_price: Any price shown in the image (shelf tag, screen, label). Include currency symbol. null if no price visible.
-- confidence: "high" (brand+model clearly readable), "medium" (brand clear, model inferred from design), "low" (best guess from shape/context)
+- brand: Manufacturer/brand name. Read it from the label/logo/packaging.
+- name: The FULL product name exactly as printed on the packaging. Include model numbers, variants, and descriptors. "Vitamin D-3 5000 IU" not just "Vitamin D". "iPhone 16 Pro Max 256GB" not just "iPhone".
+- size_or_count: The quantity, count, weight, volume, or storage size printed on the package. Examples: "360 Softgels", "1000mg", "128GB", "500ml", "2.5kg". null if not visible.
+- visible_price: Any price shown in the image (shelf tag, screen, label). Include currency symbol. null if not visible.
+- confidence: "high" (text clearly readable), "medium" (partially readable, some inference), "low" (best guess)
 
 RULES:
+- READ the label text character by character — exact numbers and units matter
 - One image may contain MULTIPLE products — identify ALL (up to 4 total across all images)
-- Identify products even WITHOUT packaging: use shape, color, logo, ports, design cues
+- For supplements/vitamins: read the EXACT count from the front label (e.g., "360 Softgels", "120 Tablets", "250 Capsules")
+- For electronics: read the EXACT model and storage/memory if visible (e.g., "Galaxy S25 Ultra 512GB")
+- For food/grocery: read weight, volume, or count (e.g., "500g", "1L", "12 pack")
+- Identify products even WITHOUT packaging: use shape, color, logo, design cues (confidence="low")
 - For screenshots of retailer pages: extract the product name exactly as shown
 - If you see a price tag next to a product, associate it with that product
-- Generic unidentifiable items: brand="Unknown", name="[descriptive name]", confidence="low"
 - Do NOT include markdown code blocks
 - Return ONLY a valid JSON array, nothing else
 
 EXAMPLES:
 [
-  {"brand": "Apple", "name": "iPhone 16 Pro", "visible_price": "BHD 449", "confidence": "high"},
-  {"brand": "Samsung", "name": "Galaxy S25 Ultra", "visible_price": null, "confidence": "medium"}
+  {"brand": "NOW", "name": "Vitamin D-3 5000 IU", "size_or_count": "360 Softgels", "visible_price": "BHD 8.50", "confidence": "high"},
+  {"brand": "Apple", "name": "iPhone 16 Pro", "size_or_count": "256GB", "visible_price": null, "confidence": "medium"}
 ]"""
         }
     ]
@@ -101,7 +107,7 @@ EXAMPLES:
             "type": "image_url",
             "image_url": {
                 "url": f"data:{mime_type};base64,{base64_image}",
-                "detail": "low"  # Use "low" to save costs
+                "detail": "auto"  # "auto" lets GPT choose resolution — needed for reading label text
             }
         })
     
@@ -135,6 +141,7 @@ EXAMPLES:
         normalized.append({
             "brand": p.get("brand") or "Unknown",
             "name": p.get("name") or "Unknown Product",
+            "size_or_count": p.get("size_or_count"),
             "visible_price": p.get("visible_price"),
             "confidence": p.get("confidence", "medium"),
         })

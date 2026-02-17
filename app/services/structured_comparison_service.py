@@ -94,6 +94,7 @@ DEFAULT_RETAILER_SCORE = 0.5  # Unknown retailers get benefit of the doubt
 # Retailer search URL templates — maps retailer name (lowercase) to search page URL
 # Used instead of Serper's "link" field which is a Google Shopping redirect
 RETAILER_SEARCH_URLS = {
+    # Major US/Global retailers
     "amazon": "https://www.amazon.com/s?k={query}",
     "amazon.ae": "https://www.amazon.ae/s?k={query}",
     "amazon.sa": "https://www.amazon.sa/s?k={query}",
@@ -101,15 +102,40 @@ RETAILER_SEARCH_URLS = {
     "best buy": "https://www.bestbuy.com/site/searchpage.jsp?st={query}",
     "bestbuy": "https://www.bestbuy.com/site/searchpage.jsp?st={query}",
     "target": "https://www.target.com/s?searchTerm={query}",
-    "noon": "https://www.noon.com/search?q={query}",
+    "costco": "https://www.costco.com/CatalogSearch?dept=All&keyword={query}",
     "newegg": "https://www.newegg.com/p/pl?d={query}",
-    "iherb": "https://www.iherb.com/search?kw={query}",
-    "ebay": "https://www.ebay.com/sch/i.html?_nkw={query}",
+    "b&h": "https://www.bhphotovideo.com/c/search?q={query}",
+    "bhphoto": "https://www.bhphotovideo.com/c/search?q={query}",
+    "adorama": "https://www.adorama.com/l/?searchinfo={query}",
+    "micro center": "https://www.microcenter.com/search/search_results.aspx?Ntt={query}",
+    # GCC retailers
+    "noon": "https://www.noon.com/search?q={query}",
     "jarir": "https://www.jarir.com/sa-en/catalogsearch/result/?q={query}",
     "extra": "https://www.extra.com/en-sa/search/?q={query}",
     "sharaf dg": "https://uae.sharafdg.com/search/?q={query}",
-    "costco": "https://www.costco.com/CatalogSearch?dept=All&keyword={query}",
-    "b&h": "https://www.bhphotovideo.com/c/search?q={query}",
+    "ubuy": "https://www.ubuy.com.bh/en/search?q={query}",
+    "lulu": "https://www.luluhypermarket.com/en-bh/search?q={query}",
+    "carrefour": "https://www.carrefouruae.com/mafuae/en/search?q={query}",
+    "virgin megastore": "https://www.virginmegastore.ae/search/{query}",
+    # Brand stores
+    "apple": "https://www.apple.com/shop/buy?fh={query}",
+    "samsung": "https://www.samsung.com/search/?searchvalue={query}",
+    "dell": "https://www.dell.com/en-us/search/{query}",
+    "lenovo": "https://www.lenovo.com/us/en/search?query={query}",
+    # UK/EU retailers
+    "currys": "https://www.currys.co.uk/search/{query}",
+    "john lewis": "https://www.johnlewis.com/search?search-term={query}",
+    "fnac": "https://www.fnac.com/SearchResult/ResultList.aspx?Search={query}",
+    # Marketplaces
+    "ebay": "https://www.ebay.com/sch/i.html?_nkw={query}",
+    "aliexpress": "https://www.aliexpress.com/wholesale?SearchText={query}",
+    "temu": "https://www.temu.com/search_result.html?search_key={query}",
+    "back market": "https://www.backmarket.com/en-us/search?q={query}",
+    "backmarket": "https://www.backmarket.com/en-us/search?q={query}",
+    "swappa": "https://swappa.com/search?q={query}",
+    # Health/Supplement stores
+    "iherb": "https://www.iherb.com/search?kw={query}",
+    "vitacost": "https://www.vitacost.com/search?t={query}",
 }
 
 
@@ -694,6 +720,13 @@ class StructuredComparisonService:
             if key in name_lower:
                 return score
         return DEFAULT_RETAILER_SCORE
+
+    def _has_retailer_url(self, source: str) -> bool:
+        """Check if a source name matches any key in RETAILER_SEARCH_URLS."""
+        if not source:
+            return False
+        source_lower = source.lower().strip()
+        return any(key in source_lower for key in RETAILER_SEARCH_URLS)
 
     def _build_retailer_url(self, source: str, product_name: str) -> str:
         """Build a retailer search URL from the source name and product name.
@@ -1399,7 +1432,11 @@ class StructuredComparisonService:
             if count >= 3:
                 # Same rating across 3+ sellers = Google product aggregate, promote to verified
                 consensus = [c for c in all_candidates if (c["rating"], c["review_count"]) == most_common]
-                consensus.sort(key=lambda c: c["match_score"], reverse=True)
+                # Prefer sources with known retailer URLs (avoid Google fallback)
+                consensus.sort(key=lambda c: (
+                    self._has_retailer_url(c["source"]),  # Known retailer first
+                    c["match_score"],                      # Then best title match
+                ), reverse=True)
                 best = consensus[0]
                 logger.info(f"[RATING] ✓ CONSENSUS ({count} sellers): {best['rating']}/5 ({best['review_count']} reviews)")
                 return {

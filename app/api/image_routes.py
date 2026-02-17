@@ -88,6 +88,13 @@ async def identify_and_compare(
     products = vision_result.get("products", [])
     vision_cost = vision_result.get("cost", 0)
 
+    # Enrich product name with size_or_count if vision detected it
+    # e.g., name="Vitamin D-3" + size_or_count="360 Softgels" → name="Vitamin D-3 360 Softgels"
+    for p in products:
+        size_or_count = p.get("size_or_count")
+        if size_or_count and size_or_count.lower() not in p.get("name", "").lower():
+            p["name"] = f"{p['name']} {size_or_count}".strip()
+
     product_names = [f"{p.get('brand', '')} {p.get('name', '')}" for p in products]
     logger.info(f"[IMAGE] Identified {len(products)} product(s): {product_names}")
 
