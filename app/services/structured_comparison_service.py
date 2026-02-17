@@ -369,6 +369,26 @@ class StructuredComparisonService:
         result["rating_verified"] = rating_data.get("rating_verified", False)
         result["rating_source"] = rating_data.get("rating_source")
 
+        # Fallback: if no shopping rating found, use GPT-extracted average_rating from reviews (unverified)
+        if result["rating"] is None and result.get("reviews") and isinstance(result["reviews"], dict):
+            avg = result["reviews"].get("average_rating")
+            if avg is not None:
+                try:
+                    avg_float = round(float(avg), 1)
+                    if 1.0 <= avg_float <= 5.0:
+                        result["rating"] = avg_float
+                        result["review_count"] = result["reviews"].get("total_reviews")
+                        result["rating_verified"] = False
+                        result["rating_source"] = {
+                            "name": "Aggregated from reviews",
+                            "url": None,
+                            "extract_method": "gpt_review_aggregate",
+                            "confidence": "low",
+                        }
+                        logger.info(f"[RATING] Fallback to GPT review average: {avg_float} for {full_name}")
+                except (ValueError, TypeError):
+                    pass
+
         # Inject verified rating into reviews so frontend has a single source of truth
         if result.get("reviews") and isinstance(result["reviews"], dict) and rating_data.get("rating"):
             result["reviews"]["verified_rating"] = {
