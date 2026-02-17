@@ -1355,6 +1355,56 @@ Current status (Feb 14, 2026):
 
 ---
 
+# SESSION LOG: February 16, 2026 — Camera Vision & URL Fixes
+
+## What We Fixed
+
+### 1. Vision prompt OCR improvements
+**File:** `app/services/openai_service.py`
+- Changed `detail: "low"` → `detail: "auto"` — lets GPT choose resolution per image, enables reading small label text
+- Rewrote prompt to emphasize OCR: "READ the EXACT text printed on each product's packaging, label, or screen"
+- Added `size_or_count` field — dedicated slot for "360 Softgels", "128GB", "1000mg" etc.
+- Added category-specific OCR rules (supplements, electronics, grocery)
+- Examples now include vitamin bottle, not just electronics
+
+### 2. Expanded RETAILER_SEARCH_URLS (16 → 36 retailers)
+**File:** `app/services/structured_comparison_service.py`
+- Added: Ubuy, Lulu, Carrefour, Virgin Megastore, Apple, Samsung, Dell, Lenovo, Currys, John Lewis, Fnac, AliExpress, Temu, Back Market, Swappa, Vitacost, Adorama, Micro Center, B&H Photo
+- Previously: Galaxy S25 rating URL went to google.com (Ubuy not in map). Now goes to bestbuy.com or ubuy.com
+
+### 3. Consensus rating prefers known retailers
+**File:** `app/services/structured_comparison_service.py`
+- Added `_has_retailer_url()` helper — checks if source matches any RETAILER_SEARCH_URLS key
+- Consensus sort now uses `(has_retailer_url, match_score)` — prefers sources with real retailer URLs
+
+### 4. Vision size_or_count enrichment
+**File:** `app/api/image_routes.py`
+- After vision identification, appends `size_or_count` to product name if not already present
+- "Vitamin D-3" + "360 Softgels" → "Vitamin D-3 360 Softgels" — feeds correct variant into specs extraction
+
+## Test Results (verified on Railway)
+| Test | Specs Count | Rating URL | Cost |
+|------|-------------|------------|------|
+| NOW Vitamin D-3 360 | count=360 ✅ | google.com (Tahoma Clinic — unknown retailer, expected) | $0.003 (cached) |
+| Nature Made D3 2000 | count=250 ✅ | walmart.com ✅ | $0.003 (cached) |
+| iPhone 16 | N/A | apple.com ✅ (was bestbuy before) | $0.006 |
+| Galaxy S25 | N/A | bestbuy.com ✅ (was google.com before) | $0.006 |
+
+## Commits
+- `f549cc7` — Fix camera vision: OCR prompt, detail:auto, expand retailer URLs
+
+## Current Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices | ✅ Working |
+| Ratings | ✅ Working (URLs go to real retailers) |
+| Reviews | ✅ Working |
+| Specs | ✅ Working (count field correct for supplements) |
+| Camera | ✅ Working (OCR prompt, detail:auto, size_or_count field) |
+| URL input | ❌ Not started |
+
+---
+
 **END OF KNOWLEDGE TRANSFER**
 
 *Keep this document updated as the project evolves.*
