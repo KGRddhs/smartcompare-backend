@@ -17,14 +17,13 @@ from app.services.extraction_service import (
     extract_price,
     extract_price_from_training_data,
     extract_reviews,
-    generate_pros_cons,
     generate_comparison,
     get_specs_cache_key,
     get_price_cache_key,
     get_reviews_cache_key,
     GCC_REGIONS
 )
-from app.services.serper_service import search_product_prices, search_web
+from app.services.serper_service import search_product_prices, search_price_organic, search_web
 from app.services.cache_service import get_cached, set_cached
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -222,23 +221,25 @@ class StructuredComparisonService:
                 self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache)
             )
             
-            # Step 3: Generate pros/cons if requested
-            if include_pros_cons:
-                pros_cons = await asyncio.gather(
-                    self._get_pros_cons(product_data[0]),
-                    self._get_pros_cons(product_data[1])
-                )
-                product_data[0]["pros_cons"] = pros_cons[0]
-                product_data[1]["pros_cons"] = pros_cons[1]
-            
-            # Step 4: Generate comparison
+            # Step 3+4: Generate comparison (includes pros/cons to save a GPT call)
             comparison = await generate_comparison(
                 product_data[0],
                 product_data[1],
                 region,
                 parsed.get("comparison_type", "value") if not vision_products else "value"
             )
-            self._track_cost(0.0008)  # ~800 tokens
+            self._track_cost(0.001)  # ~1000 tokens (comparison + pros/cons merged)
+
+            # Extract pros/cons from comparison result into product data
+            if include_pros_cons:
+                product_data[0]["pros_cons"] = {
+                    "pros": comparison.pop("product_0_pros", []),
+                    "cons": comparison.pop("product_0_cons", []),
+                }
+                product_data[1]["pros_cons"] = {
+                    "pros": comparison.pop("product_1_pros", []),
+                    "cons": comparison.pop("product_1_cons", []),
+                }
             
             # Calculate timing
             elapsed = (datetime.now() - start_time).total_seconds()
@@ -475,7 +476,7 @@ class StructuredComparisonService:
         full_name = f"{brand} {name} {variant or ''}".strip()
         logger.info(f"Fetching price for: {full_name} in {region}")
 
-        # Fetch shopping + organic results from Serper
+        # Fetch shopping results from Serper (organic deferred to Tier 2 if needed)
         search_results = await search_product_prices(search_query, region_info["code"])
         self._track_cost(0.001)
 
@@ -519,6 +520,12 @@ class StructuredComparisonService:
                 return price
 
         # --- Tier 2: GPT extraction from search context ---
+        # Fetch organic results on-demand (only when Tier 1 shopping failed)
+        organic_results = await search_price_organic(search_query, region_info["code"])
+        self._track_cost(0.001)
+        # Merge organic into search_results for context formatting
+        search_results["organic"] = organic_results.get("organic", [])
+        search_results["knowledge_graph"] = organic_results.get("knowledge_graph")
         search_context = self._format_search_results(search_results)
         price = await extract_price(brand, name, variant, region, search_context)
         self._track_cost(0.0003)

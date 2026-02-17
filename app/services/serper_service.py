@@ -98,33 +98,14 @@ async def search_product_prices(
     currency: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Search specifically for product prices.
-    Uses shopping search for better price results.
-    
-    Args:
-        product: Product name/query
-        country: Country code (bh, sa, ae, kw, qa, om)
-        currency: Optional currency filter
+    Search for product prices via Serper Shopping API only.
+    Organic search is deferred to search_price_organic() and only called if Tier 1 fails.
     """
     if not SERPER_API_KEY:
         return {"shopping": [], "organic": [], "error": "Search not configured"}
-    
-    # Country-specific search enhancements
-    country_terms = {
-        "bh": "Bahrain price BHD buy",
-        "sa": "Saudi Arabia price SAR buy",
-        "ae": "UAE Dubai price AED buy",
-        "kw": "Kuwait price KWD buy",
-        "qa": "Qatar price QAR buy",
-        "om": "Oman price OMR buy"
-    }
-    
-    location_term = country_terms.get(country, "price buy")
-    search_query = f"{product} {location_term}"
-    
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            # Try shopping search first
             shopping_response = await client.post(
                 f"{SERPER_BASE_URL}/shopping",
                 headers={
@@ -138,13 +119,47 @@ async def search_product_prices(
                     "num": 10
                 }
             )
-            
+
             shopping_results = {}
             if shopping_response.status_code == 200:
                 shopping_results = shopping_response.json()
-            
-            # Also do regular search for additional price sources
-            organic_response = await client.post(
+
+            return {
+                "shopping": shopping_results.get("shopping", []),
+                "organic": [],
+                "query": product
+            }
+
+    except Exception as e:
+        logger.error(f"Price search error: {e}")
+        return {"shopping": [], "organic": [], "error": str(e)}
+
+
+async def search_price_organic(
+    product: str,
+    country: str = "bh",
+) -> Dict[str, Any]:
+    """
+    Organic search for price context — only called when Tier 1 shopping fails.
+    Returns organic results for GPT Tier 2 price extraction.
+    """
+    if not SERPER_API_KEY:
+        return {"organic": [], "error": "Search not configured"}
+
+    country_terms = {
+        "bh": "Bahrain price BHD buy",
+        "sa": "Saudi Arabia price SAR buy",
+        "ae": "UAE Dubai price AED buy",
+        "kw": "Kuwait price KWD buy",
+        "qa": "Qatar price QAR buy",
+        "om": "Oman price OMR buy"
+    }
+    location_term = country_terms.get(country, "price buy")
+    search_query = f"{product} {location_term}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
                 f"{SERPER_BASE_URL}/search",
                 headers={
                     "X-API-KEY": SERPER_API_KEY,
@@ -157,21 +172,20 @@ async def search_product_prices(
                     "num": 10
                 }
             )
-            
-            organic_results = {}
-            if organic_response.status_code == 200:
-                organic_results = organic_response.json()
-            
+
+            results = {}
+            if response.status_code == 200:
+                results = response.json()
+
             return {
-                "shopping": shopping_results.get("shopping", []),
-                "organic": organic_results.get("organic", []),
-                "knowledge_graph": organic_results.get("knowledgeGraph"),
+                "organic": results.get("organic", []),
+                "knowledge_graph": results.get("knowledgeGraph"),
                 "query": search_query
             }
-    
+
     except Exception as e:
-        logger.error(f"Price search error: {e}")
-        return {"shopping": [], "organic": [], "error": str(e)}
+        logger.error(f"Price organic search error: {e}")
+        return {"organic": [], "error": str(e)}
 
 
 async def search_product_specs(

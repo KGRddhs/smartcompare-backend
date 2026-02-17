@@ -272,7 +272,7 @@ RULES:
 - Base on specs and reviews, don't invent"""
 
 
-COMPARISON_PROMPT = """You are a product comparison expert. Compare these products and pick a winner.
+COMPARISON_PROMPT = """You are a product comparison expert. Compare these products, generate pros/cons for each, and pick a winner.
 
 PRODUCT 1:
 {product1_json}
@@ -287,6 +287,10 @@ Return ONLY valid JSON:
 {{
     "winner_index": 0 or 1,
     "winner_reason": "clear 1-sentence reason",
+    "product_0_pros": ["specific pro 1", "specific pro 2", "specific pro 3", "specific pro 4"],
+    "product_0_cons": ["specific con 1", "specific con 2"],
+    "product_1_pros": ["specific pro 1", "specific pro 2", "specific pro 3", "specific pro 4"],
+    "product_1_cons": ["specific con 1", "specific con 2"],
     "price_comparison": {{
         "cheaper_index": 0 or 1,
         "price_difference": "X {currency} (Y%)",
@@ -316,6 +320,7 @@ Return ONLY valid JSON:
 
 RULES:
 - Be objective and fair
+- 4-6 pros, 2-4 cons per product (specific, not generic)
 - Consider price-to-value ratio heavily for GCC market
 - Key differences should be meaningful, not trivial
 - Value score: 10 = exceptional value, 5 = average, 1 = poor value"""
@@ -613,18 +618,18 @@ async def generate_comparison(
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=800,
+            max_tokens=1000,
             temperature=0.2,
         )
-        
+
         result = response.choices[0].message.content.strip()
         if result.startswith("```"):
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
-        
+
         return json.loads(result)
-    
+
     except Exception as e:
         logger.error(f"Comparison generation error: {e}")
         return {"winner_index": 0, "error": str(e)}
