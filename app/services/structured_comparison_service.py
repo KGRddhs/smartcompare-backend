@@ -532,31 +532,30 @@ class StructuredComparisonService:
         self._sanitize_gpt_price(price)
         self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
-            # Sanity check Tier 2 for high-value products (too high OR too low)
-            if self._is_high_value_query(full_name):
-                # Reuse Tier 3 estimate if already fetched during Tier 1 check
-                if tier3_estimate is None:
-                    tier3_estimate = await extract_price_from_training_data(brand, name, variant, region)
-                    self._track_cost(0.0003)
-                    self._sanitize_gpt_price(tier3_estimate)
-                    self._convert_gpt_price_currency(tier3_estimate, currency)
-                if tier3_estimate and tier3_estimate.get("amount"):
-                    tier2_bhd = _convert_to_bhd(price["amount"], currency)
-                    tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
-                    if tier2_bhd > tier3_bhd * 2:
-                        logger.info(
-                            f"[PRICE] Tier 2 too HIGH: {currency} {price['amount']} "
-                            f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
-                        )
-                        price = tier3_estimate
-                        price["estimated"] = True
-                    elif tier2_bhd < tier3_bhd * 0.5:
-                        logger.info(
-                            f"[PRICE] Tier 2 too LOW: {currency} {price['amount']} "
-                            f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
-                        )
-                        price = tier3_estimate
-                        price["estimated"] = True
+            # Sanity check Tier 2 for ALL products (too high OR too low vs GPT estimate)
+            # Reuse Tier 3 estimate if already fetched during Tier 1 check
+            if tier3_estimate is None:
+                tier3_estimate = await extract_price_from_training_data(brand, name, variant, region)
+                self._track_cost(0.0003)
+                self._sanitize_gpt_price(tier3_estimate)
+                self._convert_gpt_price_currency(tier3_estimate, currency)
+            if tier3_estimate and tier3_estimate.get("amount"):
+                tier2_bhd = _convert_to_bhd(price["amount"], currency)
+                tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
+                if tier2_bhd > tier3_bhd * 2:
+                    logger.info(
+                        f"[PRICE] Tier 2 too HIGH: {currency} {price['amount']} "
+                        f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
+                    )
+                    price = tier3_estimate
+                    price["estimated"] = True
+                elif tier2_bhd < tier3_bhd * 0.5:
+                    logger.info(
+                        f"[PRICE] Tier 2 too LOW: {currency} {price['amount']} "
+                        f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
+                    )
+                    price = tier3_estimate
+                    price["estimated"] = True
             # Backfill URL from retailer name (GPT returns url: null)
             if price.get("retailer") and not price.get("url"):
                 price["url"] = self._build_retailer_url(price["retailer"], full_name)
