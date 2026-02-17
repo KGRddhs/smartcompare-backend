@@ -136,6 +136,7 @@ RETAILER_SEARCH_URLS = {
     # Health/Supplement stores
     "iherb": "https://www.iherb.com/search?kw={query}",
     "vitacost": "https://www.vitacost.com/search?t={query}",
+    "nasser pharmacy": "https://www.nasserpharmacy.com/search?q={query}",
 }
 
 
@@ -529,6 +530,9 @@ class StructuredComparisonService:
                         )
                         price = tier3_estimate
                         price["estimated"] = True
+            # Backfill URL from retailer name (GPT returns url: null)
+            if price.get("retailer") and not price.get("url"):
+                price["url"] = self._build_retailer_url(price["retailer"], full_name)
             logger.info(f"[PRICE] Tier 2 (GPT search): {currency} {price['amount']}")
             set_cached(cache_key, price, PRICE_CACHE_TTL)
             price["_cached"] = False
@@ -545,6 +549,9 @@ class StructuredComparisonService:
         price = tier3_estimate
         if price and price.get("amount"):
             price["estimated"] = True
+            # Backfill URL from retailer name (GPT returns url: null)
+            if price.get("retailer") and not price.get("url"):
+                price["url"] = self._build_retailer_url(price["retailer"], full_name)
             logger.info(f"[PRICE] Tier 3 (estimated): {currency} {price['amount']}")
             # Cache estimates for shorter time
             set_cached(cache_key, price, PRICE_CACHE_TTL // 2)

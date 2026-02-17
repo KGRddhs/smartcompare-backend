@@ -53,6 +53,7 @@ interface Product {
     amount: number | null;
     currency: string;
     retailer?: string;
+    url?: string;
     estimated?: boolean;
     note?: string;
     unavailable?: boolean;
@@ -274,7 +275,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <Text style={styles.priceNote}>*Estimated price</Text>
         )}
         {product.price?.retailer && !product.price?.unavailable && (
-          <Text style={styles.retailerText}>{product.price.retailer}</Text>
+          product.price?.url ? (
+            <TouchableOpacity onPress={() => Linking.openURL(product.price!.url!)}>
+              <Text style={[styles.retailerText, { color: '#1976D2', textDecorationLine: 'underline' }]}>
+                {product.price.retailer} ↗
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.retailerText}>{product.price.retailer}</Text>
+          )
         )}
         
         {/* Rating with source */}
