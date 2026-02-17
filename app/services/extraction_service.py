@@ -52,7 +52,7 @@ Extract and return ONLY valid JSON (no markdown, no explanation):
             "brand": "brand name",
             "name": "product name",
             "variant": "variant/size if mentioned (e.g., 128GB, Pro, 2.5kg)",
-            "category": "electronics|grocery|beauty|fashion|home|sports|automotive|other",
+            "category": "electronics|grocery|supplements|beauty|fashion|home|sports|automotive|other",
             "search_query": "optimized search query for this product"
         }}
     ],
@@ -79,6 +79,11 @@ CATEGORY_SPEC_SCHEMAS = {
         "nutrition_fat", "nutrition_carbs", "origin", "organic",
         "allergens", "shelf_life"
     ],
+    "supplements": [
+        "count", "serving_size", "active_ingredient", "dosage",
+        "form", "allergens", "certifications", "origin",
+        "organic", "shelf_life", "nutrition_calories"
+    ],
     "other": [
         "count", "dimensions", "weight", "material", "color", "warranty",
         "power", "features", "included", "compatibility", "origin"
@@ -90,7 +95,7 @@ def _build_specs_prompt(brand: str, name: str, variant: str, category: str, sear
     schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
     fields = CATEGORY_SPEC_SCHEMAS[schema_key]
 
-    fields_json = ",\n    ".join(f'"{f}": "value or null"' for f in fields)
+    fields_json = ",\n    ".join(f'"{f}": null' for f in fields)
 
     variant_note = f'(variant: {variant})' if variant else '(base model)'
 
@@ -394,7 +399,7 @@ async def extract_specs(
             val = raw.get(key)
             if key in meta_keys:
                 cleaned[key] = val
-            elif val is None or val == "" or val == "null":
+            elif val is None or val == "" or val == "null" or (isinstance(val, str) and "or null" in val.lower()):
                 cleaned[key] = "N/A"
             elif isinstance(val, list):
                 cleaned[key] = ", ".join(str(v) for v in val)

@@ -139,6 +139,12 @@ const SPEC_DISPLAY_CONFIG: Record<string, { label: string; order: number }> = {
   allergens: { label: 'Allergens', order: 9 },
   shelf_life: { label: 'Shelf Life', order: 10 },
   halal: { label: 'Halal', order: 11 },
+  // Supplements
+  count: { label: 'Count', order: 1 },
+  serving_size: { label: 'Serving Size', order: 2 },
+  active_ingredient: { label: 'Active Ingredient', order: 3 },
+  dosage: { label: 'Dosage', order: 4 },
+  form: { label: 'Form', order: 5 },
   // Other
   dimensions: { label: 'Dimensions', order: 1 },
   material: { label: 'Material', order: 3 },
@@ -346,7 +352,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       .filter((key) => {
         const val0 = products[0]?.specs?.[key];
         const val1 = products[1]?.specs?.[key];
-        const isNA = (v: any) => !v || v === 'N/A' || v === '-';
+        const isNA = (v: any) => !v || v === 'N/A' || v === '-' || (typeof v === 'string' && v.toLowerCase().includes('or null'));
         return !isNA(val0) && !isNA(val1);
       });
 
@@ -385,7 +391,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               </View>
               {products.map((product, colIndex) => {
                 const val = product.specs?.[key];
-                const isNA = !val || val === 'N/A' || val === '-';
+                const isNA = !val || val === 'N/A' || val === '-' || (typeof val === 'string' && val.toLowerCase().includes('or null'));
                 return (
                   <View key={colIndex} style={styles.specsTableCell}>
                     <Text style={isNA ? styles.specNA : styles.specValue}>

@@ -1519,7 +1519,7 @@ class StructuredComparisonService:
         for key, value in specs.items():
             if key in meta_keys:
                 continue
-            if value is None or value == "" or value == "null":
+            if value is None or value == "" or value == "null" or (isinstance(value, str) and "or null" in value.lower()):
                 cleaned[key] = "N/A"
             elif isinstance(value, list):
                 cleaned[key] = ", ".join(str(v) for v in value)
