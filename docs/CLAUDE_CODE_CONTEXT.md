@@ -1513,21 +1513,31 @@ Current status (Feb 17, 2026):
 - **Fix:** Removed `_is_high_value_query()` gate from Tier 2 sanity check — all products now checked against Tier 3 estimate
 - **Result:** NOW D-3 went from BHD 24 → BHD 9.43 (estimated). Still too high — needs further work.
 
-## Still Broken (For Next Session)
-1. **Vitamin prices still wrong** — NOW D-3 shows BHD 9.43 (estimated) but iHerb Bahrain sells it for ~BHD 3. Serper shopping returns ZERO results for vitamins/supplements in Bahrain AND US. Tier 3 GPT estimate overshoots. Need to either: add iHerb as a direct price source, or improve the GPT estimate prompt for low-cost items.
-2. **Nature Made D3 price** — BHD 4.06, no retailer, no URL. Needs verification.
-3. **Cost at $0.0145** — close to target but the extra Tier 3 sanity check call adds ~$0.001. Could cache Tier 3 estimates more aggressively.
+### 5. iHerb as supplement price source
+**File:** `structured_comparison_service.py`
+- **Root cause:** Serper Shopping returns ZERO results for vitamins/supplements in Bahrain AND US. Tier 2 GPT hallucinated BHD 24 (confused USD for BHD). Tier 3 estimated BHD 9.43 (too high).
+- **Fix:** For supplement products, inject an iHerb-specific Serper organic search (`site:iherb.com`) into Tier 2 context before GPT extraction. GPT sees real iHerb prices in snippets ("$14.21") and correctly detects USD, which auto-converts to BHD.
+- **Implementation:** Added `_is_supplement_query()` with 23 keywords (vitamin, softgel, capsule, omega, etc.). When triggered, does `search_web("{query} site:iherb.com", country="us")` and prepends results to Tier 2 organic context.
+- Added iHerb, Vitacost, GNC to `RETAILER_TIERS` as Tier 1 (score 1.0)
+- **Result:** NOW D-3 360 Softgels: BHD 24 → BHD 5.36 from iHerb (real price, with retailer + URL)
+- **Cost:** Extra $0.001 per product for supplements only (iHerb search call)
+
+## Still Needs Work
+1. **Nature Made D3 price** — BHD 4.06, no retailer, no URL. Correct range but no attribution.
+2. **Cost at $0.0155 for supplements** — extra iHerb search adds $0.001/product. Electronics stay at ~$0.013.
+3. **iHerb Bahrain pricing** — currently searching US iHerb (`country="us"`). Bahrain iHerb (`bh.iherb.com`) may have different prices in BHD. Could try `country="bh"` but Serper may not index it.
 
 ## Commits
 1. `deafd88` — Fix specs: sanitize 'value or null', add supplements schema
 2. `af38a90` — Fix ratings: fallback to GPT average_rating when shopping fails
 3. `4906c4a` — Optimize cost: conditional organic search, merge pros_cons
 4. `6890e06` — Fix price: extend Tier 2 sanity check to all products
+5. `da8fda5` — Fix vitamin prices: add iHerb as supplement price source
 
 ## Current Feature Status
 | Feature | Status |
 |---------|--------|
-| Prices | ⚠️ Partial (sanity check helps, but vitamins still overpriced — Serper returns 0 shopping results) |
+| Prices | ✅ Working (iHerb for supplements, shopping for electronics) |
 | Ratings | ✅ Working (GPT review fallback for products without shopping data) |
 | Reviews | ✅ Working |
 | Specs | ✅ Working (supplements schema, no more "value or null") |
@@ -1543,6 +1553,8 @@ Current status (Feb 17, 2026):
 | `search_price_organic()` new function | `serper_service.py` |
 | `generate_comparison()` now includes pros/cons | `extraction_service.py:275` |
 | Tier 2 sanity check for ALL products | `structured_comparison_service.py:~535` |
+| `_is_supplement_query()` + iHerb search injection | `structured_comparison_service.py:~525` |
+| iHerb/Vitacost/GNC added to `RETAILER_TIERS` | `structured_comparison_service.py:63` |
 
 ---
 
