@@ -559,10 +559,19 @@ class StructuredComparisonService:
         price = await extract_price(brand, name, variant, region, search_context)
         self._track_cost(0.0003)
         self._sanitize_gpt_price(price)
+        # iHerb US prices are always USD — force currency if GPT misidentified as BHD
+        if is_supplement and iherb_organic and price and price.get("amount"):
+            orig = (price.get("original_currency") or "").upper()
+            if orig in ("BHD", "") or orig == currency:
+                logger.info(f"[PRICE] iHerb source: forcing original_currency USD (was {orig!r}) for {full_name}")
+                price["original_currency"] = "USD"
         self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
             # Opt C: Supplements with iHerb data — skip sanity check (iHerb is Tier 1 trusted)
             if is_supplement:
+                # Backfill iHerb as retailer when GPT didn't identify one
+                if iherb_organic and not price.get("retailer"):
+                    price["retailer"] = "iHerb"
                 logger.info(f"[PRICE] Supplement: trusting iHerb price, skipping sanity check for {full_name}")
             else:
                 # Sanity check Tier 2 for non-supplement products (too high OR too low vs GPT estimate)
