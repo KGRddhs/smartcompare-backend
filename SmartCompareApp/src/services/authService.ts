@@ -268,9 +268,9 @@ export async function initializeAuth(): Promise<User | null> {
 }
 
 /**
- * Verify auth status - alias for isLoggedIn
+ * Verify auth status and return user if valid
  * Used by App.tsx to check auth state
  */
-export async function verifyAuth(): Promise<boolean> {
-  return await isLoggedIn();
+export async function verifyAuth(): Promise<User | null> {
+  return await initializeAuth();
 }

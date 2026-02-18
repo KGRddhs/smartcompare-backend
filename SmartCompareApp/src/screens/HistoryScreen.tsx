@@ -95,7 +95,13 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
     if (product.price === null || product.price === undefined) {
       return 'N/A';
     }
-    return `${product.price.toFixed(2)} ${product.currency || 'BHD'}`;
+    if (typeof product.price === 'object') {
+      if (product.price.amount === null || product.price.amount === undefined) {
+        return 'N/A';
+      }
+      return `${product.price.amount.toFixed(2)} ${product.price.currency || 'BHD'}`;
+    }
+    return `${(product.price as number).toFixed(2)} BHD`;
   };
 
   const openDetails = (item: HistoryItem) => {
@@ -105,16 +111,27 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
 
   const viewAsResult = (item: HistoryItem) => {
     setModalVisible(false);
-    // Navigate to Results screen with this data
     navigation.navigate('Results', {
       result: {
         success: true,
         products: item.products,
+        comparison: {
+          winner_index: item.winner_index,
+          winner_reason: item.recommendation || '',
+          recommendation: item.recommendation || '',
+          key_differences: item.key_differences || [],
+        },
         winner_index: item.winner_index,
         recommendation: item.recommendation,
         key_differences: item.key_differences || [],
-        total_cost: item.total_cost || 0,
-        data_freshness: item.data_source || 'cached',
+        metadata: {
+          query: '',
+          region: '',
+          elapsed_seconds: 0,
+          total_cost: item.total_cost || 0,
+          api_calls: 0,
+          timestamp: item.created_at,
+        },
       },
     });
   };

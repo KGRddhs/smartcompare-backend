@@ -271,7 +271,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             <Text style={styles.verifiedBadgeText}>{getMethodLabel()}</Text>
           </View>
           <Text style={styles.sourceText}>
-            {rating_source.name}
+            {rating_source?.name ?? 'Retailer'}
           </Text>
           <Ionicons name="open-outline" size={12} color="#2196F3" />
         </TouchableOpacity>
