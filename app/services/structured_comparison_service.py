@@ -542,7 +542,7 @@ class StructuredComparisonService:
 
         # --- Tier 2: GPT extraction from search context ---
         if is_supplement:
-            # Opt B: Supplements — try iHerb first (has real USD prices), BH organic as fallback
+            # Opt B: Supplements — try direct iHerb scrape first (most reliable)
             # Strip pill count from query — iHerb search chokes on "360 Softgels" etc.
             # Keep dosage (e.g., "1000 IU") since it distinguishes product variants
             iherb_query = re.sub(
@@ -551,28 +551,27 @@ class StructuredComparisonService:
             ).strip()
             iherb_query = re.sub(r'\s+', ' ', iherb_query)  # collapse whitespace
             iherb_cc = region_info["code"]  # "bh" for Bahrain, "ae" for UAE, etc.
-            iherb_is_regional = False  # Track if results came from regional vs US store
-            # Try regional iHerb first (bh.iherb.com has BHD prices with duties/VAT)
-            logger.info(f"[PRICE] iHerb search query: {iherb_query} site:{iherb_cc}.iherb.com (country={iherb_cc})")
-            iherb_results = await search_web(f"{iherb_query} site:{iherb_cc}.iherb.com", num_results=5, country=iherb_cc)
+
+            # Direct iHerb scrape — bypass Serper entirely, get real regional prices
+            iherb_price = await self._fetch_iherb_price(iherb_query, brand, full_name, iherb_cc, currency)
+            if iherb_price:
+                # Direct iHerb succeeded — return immediately, skip GPT extraction
+                iherb_price["_cached"] = False
+                logger.info(f"[PRICE] Supplement: direct iHerb price {currency} {iherb_price['amount']} for {full_name}")
+                await set_cached(cache_key, iherb_price, ttl=PRICE_CACHE_TTL)
+                return iherb_price
+
+            # Direct scrape failed — fall back to Serper iHerb search (US store, needs conversion)
+            logger.info(f"[PRICE] iHerb direct scrape failed, trying Serper for {full_name}")
+            iherb_results = await search_web(f"{iherb_query} site:iherb.com", num_results=5, country="us")
             self._track_cost(0.001)
             iherb_organic = iherb_results.get("organic", [])
             if iherb_organic:
-                iherb_is_regional = True
-                logger.info(f"[PRICE] Regional iHerb ({iherb_cc}.iherb.com) returned {len(iherb_organic)} results for {full_name}")
+                logger.info(f"[PRICE] Serper US iHerb returned {len(iherb_organic)} results for {full_name}")
                 organic_results = {"organic": iherb_organic, "knowledge_graph": None}
             else:
-                # Regional iHerb not indexed — fall back to US iHerb (USD prices, will be converted)
-                logger.info(f"[PRICE] Regional iHerb empty, trying US iHerb for {full_name}")
-                iherb_results = await search_web(f"{iherb_query} site:iherb.com", num_results=5, country="us")
-                self._track_cost(0.001)
-                iherb_organic = iherb_results.get("organic", [])
-                if iherb_organic:
-                    logger.info(f"[PRICE] US iHerb returned {len(iherb_organic)} results for {full_name}")
-                    organic_results = {"organic": iherb_organic, "knowledge_graph": None}
-                else:
-                    logger.info(f"[PRICE] iHerb empty (both regional and US) for {full_name}")
-                    organic_results = {"organic": [], "knowledge_graph": None}
+                logger.info(f"[PRICE] Serper iHerb also empty for {full_name}, falling to Tier 3")
+                organic_results = {"organic": [], "knowledge_graph": None}
         else:
             # Non-supplements: fetch BH organic results on-demand (only when Tier 1 shopping failed)
             organic_results = await search_price_organic(search_query, region_info["code"])
@@ -585,20 +584,13 @@ class StructuredComparisonService:
         price = await extract_price(brand, name, variant, region, search_context)
         self._track_cost(0.0003)
         self._sanitize_gpt_price(price)
-        # Force correct currency based on iHerb source:
-        # - Regional iHerb (bh.iherb.com): prices are in local currency (BHD) with duties/VAT
-        # - US iHerb (iherb.com): prices are in USD, need conversion
+        # If we reach here for supplements, it's the Serper US iHerb fallback (direct scrape returned early)
+        # US iHerb prices are always USD — force currency if GPT misidentified
         if is_supplement and iherb_organic and price and price.get("amount"):
             orig = (price.get("original_currency") or "").upper()
-            if iherb_is_regional:
-                if orig != currency:
-                    logger.info(f"[PRICE] Regional iHerb: forcing original_currency {currency} (was {orig!r}) for {full_name}")
-                    price["original_currency"] = currency
-            else:
-                # US iHerb fallback — force USD so conversion happens correctly
-                if orig in ("BHD", "") or orig == currency:
-                    logger.info(f"[PRICE] US iHerb fallback: forcing original_currency USD (was {orig!r}) for {full_name}")
-                    price["original_currency"] = "USD"
+            if orig in ("BHD", "") or orig == currency:
+                logger.info(f"[PRICE] US iHerb fallback: forcing original_currency USD (was {orig!r}) for {full_name}")
+                price["original_currency"] = "USD"
         self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
             # Opt C: Supplements with iHerb data — skip sanity check (iHerb is Tier 1 trusted)
@@ -741,6 +733,88 @@ class StructuredComparisonService:
         "d3", "d-3",  # unambiguously vitamin names
         "nature made", "now foods", "solgar", "garden of life", "kirkland",  # supplement brands
     }
+
+    async def _fetch_iherb_price(self, query: str, brand: str, full_name: str, region_code: str, currency: str) -> Optional[Dict[str, Any]]:
+        """Fetch price directly from regional iHerb search page.
+
+        iHerb embeds structured product data in HTML data-ga-* attributes.
+        Returns price dict or None if fetch/parse fails.
+        """
+        import html as html_lib
+        try:
+            search_url = f"https://{region_code}.iherb.com/search?kw={query.replace(' ', '+')}&lang=en-US"
+            logger.info(f"[PRICE] Direct iHerb fetch: {search_url}")
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+                resp = await client.get(search_url, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                    "Accept-Language": "en-US,en;q=0.9"
+                }, follow_redirects=True)
+            if resp.status_code != 200:
+                logger.warning(f"[PRICE] iHerb returned {resp.status_code}")
+                return None
+            page = resp.text
+            # Parse product cards: <a href="..." ... data-ga-brand-name="..." data-ga-discount-price="..." title="...">
+            card_pattern = re.compile(
+                r'<a\s[^>]*?href="([^"]+)"[^>]*?'
+                r'data-ga-brand-name="([^"]*)"[^>]*?'
+                r'data-ga-discount-price="([\d.]+)"[^>]*?'
+                r'title="([^"]*)"',
+                re.DOTALL
+            )
+            products = []
+            for m in card_pattern.finditer(page):
+                href, item_brand, price_str, title_raw = m.groups()
+                title = html_lib.unescape(title_raw)
+                products.append({
+                    "url": href if href.startswith("http") else f"https://{region_code}.iherb.com{href}",
+                    "brand": item_brand,
+                    "price": float(price_str),
+                    "title": title,
+                })
+            if not products:
+                logger.info(f"[PRICE] iHerb: no product cards found on page")
+                return None
+            logger.info(f"[PRICE] iHerb: found {len(products)} products, matching to '{full_name}'")
+            # Match: prefer exact brand match + word overlap
+            brand_lower = brand.lower()
+            best = None
+            best_score = -1
+            name_words = self._normalize_words(full_name)
+            for p in products:
+                if p["brand"].lower() != brand_lower and brand_lower not in p["brand"].lower():
+                    continue
+                title_words = self._normalize_words(p["title"])
+                overlap = len(name_words & title_words)
+                # Bonus for number match (e.g., "360" softgels)
+                if self._numbers_match(full_name, p["title"]):
+                    overlap += 2
+                if overlap > best_score:
+                    best_score = overlap
+                    best = p
+            if not best:
+                # Fallback: first product from same brand (iHerb search is usually good)
+                brand_matches = [p for p in products if brand_lower in p["brand"].lower()]
+                if brand_matches:
+                    best = brand_matches[0]
+                    logger.info(f"[PRICE] iHerb: no word match, using first brand match: {best['title'][:60]}")
+            if not best:
+                logger.info(f"[PRICE] iHerb: no brand match for '{brand}' in results")
+                return None
+            logger.info(f"[PRICE] iHerb direct: {currency} {best['price']} for '{best['title'][:60]}' → {best['url'][:80]}")
+            return {
+                "amount": best["price"],
+                "original_currency": currency,
+                "currency": currency,
+                "retailer": "iHerb",
+                "url": best["url"],
+                "in_stock": True,
+                "confidence": 1.0,
+                "estimated": False,
+                "_cached": False,
+            }
+        except Exception as e:
+            logger.warning(f"[PRICE] iHerb direct fetch failed: {e}")
+            return None
 
     @staticmethod
     def _is_supplement_query(product_name: str) -> bool:
