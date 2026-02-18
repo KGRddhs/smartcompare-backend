@@ -40,39 +40,6 @@ class QuickCompareRequest(BaseModel):
 # Endpoints
 # ============================================
 
-@router.get("/debug-iherb")
-async def debug_iherb(q: str = Query(default="NOW Vitamin D3"), cc: str = Query(default="bh")):
-    """Debug: test curl_cffi direct iHerb fetch from Railway."""
-    import re, html as html_lib
-    url = f"https://{cc}.iherb.com/search?kw={q.replace(' ', '+')}&lang=en-US"
-    try:
-        from curl_cffi.requests import AsyncSession
-        async with AsyncSession() as session:
-            resp = await session.get(url, impersonate="chrome", timeout=15, allow_redirects=True)
-        card_pattern = re.compile(
-            r'<a\s[^>]*?href="([^"]+)"[^>]*?'
-            r'data-ga-brand-name="([^"]*)"[^>]*?'
-            r'data-ga-discount-price="([\d.]+)"[^>]*?'
-            r'title="([^"]*)"',
-            re.DOTALL
-        )
-        products = []
-        for m in card_pattern.finditer(resp.text):
-            href, brand, price, title = m.groups()
-            products.append({"brand": brand, "price": price, "title": html_lib.unescape(title)[:80], "url": href[:120]})
-        return {
-            "method": "curl_cffi",
-            "url": url,
-            "status": resp.status_code,
-            "page_length": len(resp.text),
-            "products_found": len(products),
-            "products": products[:8],
-            "has_cloudflare": "Just a moment" in resp.text[:500],
-        }
-    except ImportError:
-        return {"error": "curl_cffi not installed"}
-    except Exception as e:
-        return {"url": url, "error": str(e), "error_type": type(e).__name__}
 
 @router.post("/compare")
 async def text_compare(request: TextCompareRequest):
@@ -122,25 +89,16 @@ async def text_compare_get(
     nocache: bool = Query(False, description="Bypass cache for fresh data")
 ):
     """GET version of text comparison for easy testing."""
-    import traceback
     service = get_comparison_service()
 
-    try:
-        result = await service.compare_from_text(
-            query=q,
-            region=region,
-            include_specs=specs,
-            include_reviews=reviews,
-            include_pros_cons=pros_cons,
-            nocache=nocache
-        )
-    except Exception as e:
-        tb = traceback.format_exc()
-        logger.error(f"Comparison crashed: {tb}")
-        raise HTTPException(status_code=500, detail=f"{e}\n\nTraceback:\n{tb[-1000:]}")
-
-    if result is None:
-        raise HTTPException(status_code=500, detail="compare_from_text returned None")
+    result = await service.compare_from_text(
+        query=q,
+        region=region,
+        include_specs=specs,
+        include_reviews=reviews,
+        include_pros_cons=pros_cons,
+        nocache=nocache
+    )
 
     if not result.get("success"):
         raise HTTPException(

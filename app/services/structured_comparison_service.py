@@ -267,12 +267,10 @@ class StructuredComparisonService:
             }
             
         except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            logger.error(f"Comparison error: {e}\n{tb}")
+            logger.error(f"Comparison error: {e}", exc_info=True)
             return {
                 "success": False,
-                "error": f"{e}\n\nTraceback:\n{tb[-1500:]}",
+                "error": str(e),
                 "total_cost": self.total_cost
             }
     
@@ -1262,9 +1260,9 @@ class StructuredComparisonService:
     
     def _calculate_freshness(self, product: Dict) -> str:
         """Calculate overall data freshness."""
-        specs_cached = product.get("specs", {}).get("_cached", True)
-        price_cached = product.get("price", {}).get("_cached", True)
-        reviews_cached = product.get("reviews", {}).get("_cached", True)
+        specs_cached = (product.get("specs") or {}).get("_cached", True)
+        price_cached = (product.get("price") or {}).get("_cached", True)
+        reviews_cached = (product.get("reviews") or {}).get("_cached", True)
         
         if not specs_cached and not price_cached:
             return "live"
