@@ -21,6 +21,7 @@ export interface AuthResponse {
 
 const USER_STORAGE_KEY = '@smartcompare_user';
 const TOKEN_STORAGE_KEY = '@smartcompare_token';
+const REFRESH_TOKEN_KEY = '@smartcompare_refresh_token';
 
 /**
  * Register a new user
@@ -36,6 +37,9 @@ export async function register(email: string, password: string): Promise<AuthRes
       await saveUser(response.data.user);
       if (response.data.session?.access_token) {
         await saveToken(response.data.session.access_token);
+      }
+      if (response.data.session?.refresh_token) {
+        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
       }
       return {
         success: true,
@@ -71,6 +75,9 @@ export async function login(email: string, password: string): Promise<AuthRespon
       await saveUser(response.data.user);
       if (response.data.session?.access_token) {
         await saveToken(response.data.session.access_token);
+      }
+      if (response.data.session?.refresh_token) {
+        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
       }
       return {
         success: true,
@@ -122,19 +129,22 @@ export async function logout(): Promise<void> {
  */
 export async function refreshSession(): Promise<AuthResponse> {
   try {
-    const token = await getToken();
-    if (!token) {
-      return { success: false, error: 'No token found' };
+    const refreshToken = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+    if (!refreshToken) {
+      return { success: false, error: 'No refresh token found' };
     }
 
-    const response = await api.post('/api/v1/auth/refresh', {}, {
-      headers: { Authorization: `Bearer ${token}` }
+    const response = await api.post('/api/v1/auth/refresh', {
+      refresh_token: refreshToken,
     });
 
     if (response.data.user) {
       await saveUser(response.data.user);
       if (response.data.session?.access_token) {
         await saveToken(response.data.session.access_token);
+      }
+      if (response.data.session?.refresh_token) {
+        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
       }
       return {
         success: true,
@@ -228,7 +238,7 @@ async function saveToken(token: string): Promise<void> {
  */
 async function clearSession(): Promise<void> {
   try {
-    await AsyncStorage.multiRemove([USER_STORAGE_KEY, TOKEN_STORAGE_KEY]);
+    await AsyncStorage.multiRemove([USER_STORAGE_KEY, TOKEN_STORAGE_KEY, REFRESH_TOKEN_KEY]);
   } catch (error) {
     console.error('Error clearing session:', error);
   }
