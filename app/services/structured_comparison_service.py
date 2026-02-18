@@ -479,14 +479,23 @@ class StructuredComparisonService:
         full_name = f"{brand} {name} {variant or ''}".strip()
         logger.info(f"Fetching price for: {full_name} in {region}")
 
-        # Fetch shopping results from Serper (organic deferred to Tier 2 if needed)
-        search_results = await search_product_prices(search_query, region_info["code"])
-        self._track_cost(0.001)
+        # Detect supplement early — used by Opts A/B/C to skip wasteful calls
+        is_supplement = self._is_supplement_query(full_name)
 
         # --- Tier 1: Direct Serper Shopping extraction ---
-        shopping_items = search_results.get("shopping", [])
-        # Store for reuse by rating extraction (avoids duplicate API call)
-        self._shopping_items_cache[full_name] = shopping_items
+        if is_supplement:
+            # Opt A: BH shopping always returns 0 for supplements — skip the $0.001 call
+            logger.info(f"[PRICE] Supplement detected, skipping BH shopping for {full_name}")
+            search_results = {"shopping": [], "organic": []}
+            shopping_items = []
+            self._shopping_items_cache[full_name] = []
+        else:
+            # Fetch shopping results from Serper (organic deferred to Tier 2 if needed)
+            search_results = await search_product_prices(search_query, region_info["code"])
+            self._track_cost(0.001)
+            shopping_items = search_results.get("shopping", [])
+            # Store for reuse by rating extraction (avoids duplicate API call)
+            self._shopping_items_cache[full_name] = shopping_items
 
         # Cached Tier 3 estimate — reused across sanity checks and final fallback
         tier3_estimate = None
@@ -523,19 +532,23 @@ class StructuredComparisonService:
                 return price
 
         # --- Tier 2: GPT extraction from search context ---
-        # Fetch organic results on-demand (only when Tier 1 shopping failed)
-        organic_results = await search_price_organic(search_query, region_info["code"])
-        self._track_cost(0.001)
-
-        # For supplements: augment with iHerb-specific search (iHerb has real BHD/USD prices)
-        if self._is_supplement_query(full_name):
+        if is_supplement:
+            # Opt B: Supplements — try iHerb first (has real USD prices), BH organic as fallback
             iherb_results = await search_web(f"{search_query} site:iherb.com", num_results=5, country="us")
             self._track_cost(0.001)
             iherb_organic = iherb_results.get("organic", [])
             if iherb_organic:
-                logger.info(f"[PRICE] iHerb search returned {len(iherb_organic)} results for {full_name}")
-            # Prepend iHerb results so GPT sees them first (higher priority)
-            organic_results["organic"] = iherb_organic + organic_results.get("organic", [])
+                logger.info(f"[PRICE] iHerb returned {len(iherb_organic)} results for {full_name}")
+                organic_results = {"organic": iherb_organic, "knowledge_graph": None}
+            else:
+                # iHerb failed — fall back to BH organic
+                logger.info(f"[PRICE] iHerb empty, falling back to BH organic for {full_name}")
+                organic_results = await search_price_organic(search_query, region_info["code"])
+                self._track_cost(0.001)
+        else:
+            # Non-supplements: fetch BH organic results on-demand (only when Tier 1 shopping failed)
+            organic_results = await search_price_organic(search_query, region_info["code"])
+            self._track_cost(0.001)
 
         # Merge organic into search_results for context formatting
         search_results["organic"] = organic_results.get("organic", [])
@@ -546,30 +559,34 @@ class StructuredComparisonService:
         self._sanitize_gpt_price(price)
         self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
-            # Sanity check Tier 2 for ALL products (too high OR too low vs GPT estimate)
-            # Reuse Tier 3 estimate if already fetched during Tier 1 check
-            if tier3_estimate is None:
-                tier3_estimate = await extract_price_from_training_data(brand, name, variant, region)
-                self._track_cost(0.0003)
-                self._sanitize_gpt_price(tier3_estimate)
-                self._convert_gpt_price_currency(tier3_estimate, currency)
-            if tier3_estimate and tier3_estimate.get("amount"):
-                tier2_bhd = _convert_to_bhd(price["amount"], currency)
-                tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
-                if tier2_bhd > tier3_bhd * 2:
-                    logger.info(
-                        f"[PRICE] Tier 2 too HIGH: {currency} {price['amount']} "
-                        f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
-                    )
-                    price = tier3_estimate
-                    price["estimated"] = True
-                elif tier2_bhd < tier3_bhd * 0.5:
-                    logger.info(
-                        f"[PRICE] Tier 2 too LOW: {currency} {price['amount']} "
-                        f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
-                    )
-                    price = tier3_estimate
-                    price["estimated"] = True
+            # Opt C: Supplements with iHerb data — skip sanity check (iHerb is Tier 1 trusted)
+            if is_supplement:
+                logger.info(f"[PRICE] Supplement: trusting iHerb price, skipping sanity check for {full_name}")
+            else:
+                # Sanity check Tier 2 for non-supplement products (too high OR too low vs GPT estimate)
+                # Reuse Tier 3 estimate if already fetched during Tier 1 check
+                if tier3_estimate is None:
+                    tier3_estimate = await extract_price_from_training_data(brand, name, variant, region)
+                    self._track_cost(0.0003)
+                    self._sanitize_gpt_price(tier3_estimate)
+                    self._convert_gpt_price_currency(tier3_estimate, currency)
+                if tier3_estimate and tier3_estimate.get("amount"):
+                    tier2_bhd = _convert_to_bhd(price["amount"], currency)
+                    tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
+                    if tier2_bhd > tier3_bhd * 2:
+                        logger.info(
+                            f"[PRICE] Tier 2 too HIGH: {currency} {price['amount']} "
+                            f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
+                        )
+                        price = tier3_estimate
+                        price["estimated"] = True
+                    elif tier2_bhd < tier3_bhd * 0.5:
+                        logger.info(
+                            f"[PRICE] Tier 2 too LOW: {currency} {price['amount']} "
+                            f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
+                        )
+                        price = tier3_estimate
+                        price["estimated"] = True
             # Backfill URL from retailer name (GPT returns url: null)
             if price.get("retailer") and not price.get("url"):
                 price["url"] = self._build_retailer_url(price["retailer"], full_name)
@@ -670,7 +687,7 @@ class StructuredComparisonService:
         return any(kw in name_lower for kw in StructuredComparisonService.HIGH_VALUE_KEYWORDS)
 
     SUPPLEMENT_KEYWORDS = {
-        "vitamin", "supplement", "softgel", "capsule", "tablet", "mineral",
+        "vitamin", "supplement", "softgel", "capsule", "mineral",
         "omega", "probiotic", "protein", "magnesium", "zinc", "calcium",
         "fish oil", "collagen", "biotin", "melatonin", "turmeric", "creatine",
         "multivitamin", "iron", "folic", "coq10", "glucosamine",
@@ -678,8 +695,12 @@ class StructuredComparisonService:
 
     @staticmethod
     def _is_supplement_query(product_name: str) -> bool:
-        """Check if the query is for a supplement/vitamin product."""
+        """Check if the query is for a supplement/vitamin product.
+        Uses electronics anti-keywords to prevent false positives like 'Galaxy Tablet'."""
         name_lower = product_name.lower()
+        # Electronics anti-keywords — if present, NOT a supplement
+        if any(kw in name_lower for kw in StructuredComparisonService.HIGH_VALUE_KEYWORDS):
+            return False
         return any(kw in name_lower for kw in StructuredComparisonService.SUPPLEMENT_KEYWORDS)
 
     # Manufacturer names that AIB partners replace in product titles
