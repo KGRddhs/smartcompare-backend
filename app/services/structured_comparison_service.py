@@ -542,9 +542,9 @@ class StructuredComparisonService:
 
         # --- Tier 2: GPT extraction from search context ---
         if is_supplement:
-            # Opt B: Supplements — try direct iHerb scrape first (most reliable)
+            # Opt B: Supplements — search iHerb via Serper with price-focused query
+            # Note: direct iHerb scrape blocked by Cloudflare from cloud IPs
             # Strip pill count from query — iHerb search chokes on "360 Softgels" etc.
-            # Keep dosage (e.g., "1000 IU") since it distinguishes product variants
             iherb_query = re.sub(
                 r'\b\d+\s*(softgels?|capsules?|tablets?|gummies?|caplets?|count|ct)\b',
                 '', search_query, flags=re.IGNORECASE
@@ -552,25 +552,17 @@ class StructuredComparisonService:
             iherb_query = re.sub(r'\s+', ' ', iherb_query)  # collapse whitespace
             iherb_cc = region_info["code"]  # "bh" for Bahrain, "ae" for UAE, etc.
 
-            # Direct iHerb scrape — bypass Serper entirely, get real regional prices
-            iherb_price = await self._fetch_iherb_price(iherb_query, brand, full_name, iherb_cc, currency)
-            if iherb_price:
-                # Direct iHerb succeeded — return immediately, skip GPT extraction
-                iherb_price["_cached"] = False
-                logger.info(f"[PRICE] Supplement: direct iHerb price {currency} {iherb_price['amount']} for {full_name}")
-                await set_cached(cache_key, iherb_price, ttl=PRICE_CACHE_TTL)
-                return iherb_price
-
-            # Direct scrape failed — fall back to Serper iHerb search (US store, needs conversion)
-            logger.info(f"[PRICE] iHerb direct scrape failed, trying Serper for {full_name}")
-            iherb_results = await search_web(f"{iherb_query} site:iherb.com", num_results=5, country="us")
+            # Use keyword search (not site: filter) — returns snippets WITH prices
+            # site:iherb.com returns description-only snippets → GPT can't extract price
+            logger.info(f"[PRICE] iHerb Serper search: {iherb_query} iherb price (country={iherb_cc})")
+            iherb_results = await search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
             self._track_cost(0.001)
             iherb_organic = iherb_results.get("organic", [])
             if iherb_organic:
-                logger.info(f"[PRICE] Serper US iHerb returned {len(iherb_organic)} results for {full_name}")
+                logger.info(f"[PRICE] iHerb Serper returned {len(iherb_organic)} results for {full_name}")
                 organic_results = {"organic": iherb_organic, "knowledge_graph": None}
             else:
-                logger.info(f"[PRICE] Serper iHerb also empty for {full_name}, falling to Tier 3")
+                logger.info(f"[PRICE] iHerb Serper empty for {full_name}, falling to Tier 3")
                 organic_results = {"organic": [], "knowledge_graph": None}
         else:
             # Non-supplements: fetch BH organic results on-demand (only when Tier 1 shopping failed)
@@ -584,13 +576,10 @@ class StructuredComparisonService:
         price = await extract_price(brand, name, variant, region, search_context)
         self._track_cost(0.0003)
         self._sanitize_gpt_price(price)
-        # If we reach here for supplements, it's the Serper US iHerb fallback (direct scrape returned early)
-        # US iHerb prices are always USD — force currency if GPT misidentified
-        if is_supplement and iherb_organic and price and price.get("amount"):
-            orig = (price.get("original_currency") or "").upper()
-            if orig in ("BHD", "") or orig == currency:
-                logger.info(f"[PRICE] US iHerb fallback: forcing original_currency USD (was {orig!r}) for {full_name}")
-                price["original_currency"] = "USD"
+        # iHerb keyword search returns mixed currencies in snippets (mostly USD from www.iherb.com)
+        # Trust GPT's currency detection — the extraction prompt handles USD/$, BHD/BD etc.
+        # If GPT says USD → _convert_gpt_price_currency converts to BHD
+        # If GPT says BHD → no conversion (might be from bh.iherb.com snippet)
         self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
             # Opt C: Supplements with iHerb data — skip sanity check (iHerb is Tier 1 trusted)
