@@ -7,8 +7,8 @@ import base64
 from typing import List, Dict, Optional
 from openai import AsyncOpenAI
 
-# Initialize async client
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize async client (reads OPENAI_API_KEY from env at request time)
+client = AsyncOpenAI()
 
 
 def encode_image_to_base64(image_path: str) -> str:

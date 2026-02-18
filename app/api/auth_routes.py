@@ -98,7 +98,7 @@ async def get_optional_user(authorization: Optional[str] = Header(None)):
         
         token = parts[1]
         return await verify_token(token)
-    except:
+    except Exception:
         return None
 
 

@@ -122,10 +122,9 @@ class RateLimitError(BaseModel):
 class CostStatus(BaseModel):
     """Monthly cost status"""
     allowed: bool
-    current_spend: float
-    budget: float
+    current_cost: float
+    budget_limit: float
     remaining: float
-    percentage_used: float
 
 
 # ============================================

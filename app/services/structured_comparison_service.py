@@ -183,6 +183,7 @@ class StructuredComparisonService:
         start_time = datetime.now()
         self.total_cost = 0.0
         self.api_calls = 0
+        self._shopping_items_cache = {}  # Clear per-request to prevent cross-request data leak
 
         try:
             # Step 1: Parse the query (or use vision products directly)
@@ -1632,6 +1633,8 @@ async def get_regional_prices(
 
 def _convert_to_bhd(amount: float, currency: str) -> float:
     """Convert amount to BHD (approximate rates)."""
+    if not currency:
+        return amount
     rates = {
         "BHD": 1.0,
         "SAR": 0.1,      # 1 SAR ≈ 0.10 BHD
