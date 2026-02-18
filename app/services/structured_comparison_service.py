@@ -557,7 +557,7 @@ class StructuredComparisonService:
             if iherb_price:
                 iherb_price["_cached"] = False
                 logger.info(f"[PRICE] Supplement: direct iHerb price {currency} {iherb_price['amount']} for {full_name}")
-                await set_cached(cache_key, iherb_price, ttl=PRICE_CACHE_TTL)
+                set_cached(cache_key, iherb_price, PRICE_CACHE_TTL)
                 return iherb_price
 
             # Direct scrape failed — fall back to Serper keyword search
