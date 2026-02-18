@@ -811,7 +811,7 @@ class StructuredComparisonService:
             if not best:
                 logger.info(f"[PRICE] iHerb: no brand match for '{brand}' in results")
                 return None
-            logger.info(f"[PRICE] iHerb direct: {currency} {best['price']} (score={best_score:.1f}) for '{best['title'][:80]}'")
+            logger.info(f"[PRICE] iHerb direct: {currency} {best['price']} for '{best['title'][:80]}'")
             return {
                 "amount": best["price"],
                 "original_currency": currency,
