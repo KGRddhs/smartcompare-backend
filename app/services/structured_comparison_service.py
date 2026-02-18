@@ -34,7 +34,6 @@ logger = logging.getLogger(__name__)
 SPECS_CACHE_TTL = 7 * 24 * 60 * 60    # 7 days - specs rarely change
 PRICE_CACHE_TTL = 24 * 60 * 60         # 24 hours - prices change daily
 REVIEWS_CACHE_TTL = 7 * 24 * 60 * 60   # 7 days - reviews aggregate slowly
-PROS_CONS_CACHE_TTL = 7 * 24 * 60 * 60 # 7 days - derived from specs/reviews
 
 # Retailer quality tiers — prefer official/authorized retailers over resellers
 # Keys are lowercase substrings matched against the Serper "source" field
@@ -1090,34 +1089,6 @@ class StructuredComparisonService:
 
         reviews["_cached"] = False
         return reviews
-    
-    async def _get_pros_cons(self, product: Dict) -> Dict[str, Any]:
-        """Generate pros/cons from specs and reviews."""
-        cache_key = f"proscons:{product.get('brand', '')}:{product.get('name', '')}:{product.get('variant', '')}"
-        
-        # Check cache
-        cached = get_cached(cache_key)
-        if cached:
-            return cached
-        
-        # Generate
-        pros_cons = await generate_pros_cons(
-            product.get("brand", ""),
-            product.get("name", ""),
-            product.get("variant"),
-            product.get("category", "other"),
-            product.get("specs", {}),
-            product.get("reviews", {}),
-            product.get("best_price"),
-            product.get("currency", "BHD")
-        )
-        self._track_cost(0.0004)
-        
-        # Cache
-        if pros_cons and not pros_cons.get("error"):
-            set_cached(cache_key, pros_cons, PROS_CONS_CACHE_TTL)
-        
-        return pros_cons
     
     def _format_search_results(self, results: Dict) -> str:
         """Format search results into context string."""

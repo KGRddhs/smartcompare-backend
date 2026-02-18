@@ -236,42 +236,6 @@ RULES:
 - Return null/empty for fields without reliable data"""
 
 
-PROS_CONS_PROMPT = """You are a product analyst. Generate pros and cons for this product.
-
-PRODUCT: {brand} {name} {variant}
-CATEGORY: {category}
-
-Specs:
-{specs_json}
-
-Reviews summary:
-{reviews_json}
-
-Price: {price} {currency}
-
-Return ONLY valid JSON:
-{{
-    "pros": [
-        "specific pro 1",
-        "specific pro 2",
-        "specific pro 3",
-        "specific pro 4",
-        "specific pro 5"
-    ],
-    "cons": [
-        "specific con 1",
-        "specific con 2",
-        "specific con 3"
-    ]
-}}
-
-RULES:
-- 4-6 pros, 2-4 cons (be balanced but fair)
-- Be specific, not generic
-- Consider: price, quality, features, durability, value
-- Base on specs and reviews, don't invent"""
-
-
 COMPARISON_PROMPT = """You are a product comparison expert. Compare these products, generate pros/cons for each, and pick a winner.
 
 PRODUCT 1:
@@ -552,50 +516,6 @@ def _normalize_review_response(data: Dict[str, Any]) -> Dict[str, Any]:
     data.setdefault("summary", data.get("summary"))
 
     return data
-
-
-async def generate_pros_cons(
-    brand: str,
-    name: str,
-    variant: Optional[str],
-    category: str,
-    specs: Dict,
-    reviews: Dict,
-    price: float,
-    currency: str
-) -> Dict[str, Any]:
-    """Generate pros and cons based on specs and reviews."""
-    try:
-        client = get_client()
-        prompt = PROS_CONS_PROMPT.format(
-            brand=brand,
-            name=name,
-            variant=variant or "",
-            category=category,
-            specs_json=json.dumps(specs, indent=2),
-            reviews_json=json.dumps(reviews, indent=2),
-            price=price or "Unknown",
-            currency=currency
-        )
-        
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=400,
-            temperature=0.3,
-        )
-        
-        result = response.choices[0].message.content.strip()
-        if result.startswith("```"):
-            result = result.split("```")[1]
-            if result.startswith("json"):
-                result = result[4:]
-        
-        return json.loads(result)
-    
-    except Exception as e:
-        logger.error(f"Pros/cons generation error: {e}")
-        return {"pros": [], "cons": [], "error": str(e)}
 
 
 async def generate_comparison(
