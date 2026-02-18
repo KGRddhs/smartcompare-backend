@@ -122,16 +122,25 @@ async def text_compare_get(
     nocache: bool = Query(False, description="Bypass cache for fresh data")
 ):
     """GET version of text comparison for easy testing."""
+    import traceback
     service = get_comparison_service()
 
-    result = await service.compare_from_text(
-        query=q,
-        region=region,
-        include_specs=specs,
-        include_reviews=reviews,
-        include_pros_cons=pros_cons,
-        nocache=nocache
-    )
+    try:
+        result = await service.compare_from_text(
+            query=q,
+            region=region,
+            include_specs=specs,
+            include_reviews=reviews,
+            include_pros_cons=pros_cons,
+            nocache=nocache
+        )
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"Comparison crashed: {tb}")
+        raise HTTPException(status_code=500, detail=f"{e}\n\nTraceback:\n{tb[-1000:]}")
+
+    if result is None:
+        raise HTTPException(status_code=500, detail="compare_from_text returned None")
 
     if not result.get("success"):
         raise HTTPException(
