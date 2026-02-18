@@ -40,6 +40,43 @@ class QuickCompareRequest(BaseModel):
 # Endpoints
 # ============================================
 
+@router.get("/debug-iherb")
+async def debug_iherb(q: str = Query(default="NOW Vitamin D3"), cc: str = Query(default="bh")):
+    """Debug: test direct iHerb fetch from Railway (temporary)."""
+    import httpx, re, html as html_lib
+    url = f"https://{cc}.iherb.com/search?kw={q.replace(' ', '+')}&lang=en-US"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=10.0)) as client:
+            resp = await client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml",
+                "Accept-Language": "en-US,en;q=0.9",
+            }, follow_redirects=True)
+        card_pattern = re.compile(
+            r'<a\s[^>]*?href="([^"]+)"[^>]*?'
+            r'data-ga-brand-name="([^"]*)"[^>]*?'
+            r'data-ga-discount-price="([\d.]+)"[^>]*?'
+            r'title="([^"]*)"',
+            re.DOTALL
+        )
+        products = []
+        for m in card_pattern.finditer(resp.text):
+            href, brand, price, title = m.groups()
+            products.append({"brand": brand, "price": price, "title": html_lib.unescape(title)[:80], "url": href[:100]})
+        return {
+            "url": url,
+            "status": resp.status_code,
+            "page_length": len(resp.text),
+            "final_url": str(resp.url)[:200],
+            "products_found": len(products),
+            "products": products[:5],
+            "has_captcha": "captcha" in resp.text.lower(),
+            "has_blocked": "blocked" in resp.text.lower() or "access denied" in resp.text.lower(),
+            "snippet": resp.text[:500],
+        }
+    except Exception as e:
+        return {"url": url, "error": str(e), "error_type": type(e).__name__}
+
 @router.post("/compare")
 async def text_compare(request: TextCompareRequest):
     """

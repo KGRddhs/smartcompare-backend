@@ -744,11 +744,13 @@ class StructuredComparisonService:
         try:
             search_url = f"https://{region_code}.iherb.com/search?kw={query.replace(' ', '+')}&lang=en-US"
             logger.info(f"[PRICE] Direct iHerb fetch: {search_url}")
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=10.0)) as client:
                 resp = await client.get(search_url, headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-                    "Accept-Language": "en-US,en;q=0.9"
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
                 }, follow_redirects=True)
+            logger.info(f"[PRICE] iHerb response: status={resp.status_code}, length={len(resp.text)}, url={str(resp.url)[:100]}")
             if resp.status_code != 200:
                 logger.warning(f"[PRICE] iHerb returned {resp.status_code}")
                 return None
