@@ -267,10 +267,12 @@ class StructuredComparisonService:
             }
             
         except Exception as e:
-            logger.error(f"Comparison error: {e}", exc_info=True)
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"Comparison error: {e}\n{tb}")
             return {
                 "success": False,
-                "error": str(e),
+                "error": f"{e}\n\nTraceback:\n{tb[-1500:]}",
                 "total_cost": self.total_cost
             }
     
