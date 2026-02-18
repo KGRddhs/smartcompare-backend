@@ -242,43 +242,12 @@ async def debug_iherb(
     brand: str = Query("NOW", description="Brand name"),
     region: str = Query("bh", description="Region code")
 ):
-    """Debug: test direct iHerb scrape — shows raw product cards and matching."""
-    import traceback, re, html as html_lib, asyncio
+    """Debug: test direct iHerb scrape via _fetch_iherb_price (single request)."""
+    import traceback
+    service = get_comparison_service()
     try:
-        from curl_cffi import requests as curl_requests
-        search_url = f"https://{region}.iherb.com/search?kw={q.replace(' ', '+')}&lang=en-US"
-        loop = asyncio.get_event_loop()
-        resp = await loop.run_in_executor(
-            None, lambda: curl_requests.get(search_url, impersonate="chrome", timeout=15, allow_redirects=True)
-        )
-        if resp.status_code != 200:
-            return {"success": False, "status": resp.status_code, "body_start": resp.text[:500]}
-        page = resp.text
-        card_pattern = re.compile(
-            r'<a\s[^>]*?href="([^"]+)"[^>]*?'
-            r'data-ga-brand-name="([^"]*)"[^>]*?'
-            r'data-ga-discount-price="([\d.]+)"[^>]*?'
-            r'title="([^"]*)"',
-            re.DOTALL
-        )
-        products = []
-        for m in card_pattern.finditer(page):
-            href, item_brand, price_str, title_raw = m.groups()
-            products.append({"brand": item_brand, "price": float(price_str), "title": html_lib.unescape(title_raw), "url": href[:80]})
-        # Show matching
-        service = get_comparison_service()
-        name_words = service._normalize_words(q)
-        brand_lower = brand.lower()
-        scored = []
-        for p in products:
-            brand_match = p["brand"].lower() == brand_lower or brand_lower in p["brand"].lower()
-            title_words = service._normalize_words(p["title"])
-            all_words = name_words.issubset(title_words)
-            overlap = len(name_words & title_words)
-            scored.append({**p, "brand_match": brand_match, "all_words": all_words, "overlap": overlap, "name_words": list(name_words), "title_words": list(title_words)})
-        # Also try actual method
-        price = await service._fetch_iherb_price(q, brand, q, region, "BHD")
-        return {"success": True, "url": search_url, "total_cards": len(products), "products": scored[:10], "price_result": price}
+        result = await service._fetch_iherb_price(q, brand, q, region, "BHD")
+        return {"success": True, "query": q, "brand": brand, "region": region, "price": result}
     except Exception as e:
         return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
 
