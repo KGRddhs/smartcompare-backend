@@ -479,7 +479,12 @@ class StructuredComparisonService:
 
         region_info = GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])
         currency = region_info["currency"]
-        full_name = f"{brand} {name} {variant or ''}".strip()
+        # Avoid doubling variant — for vision products, name already includes size_or_count
+        # e.g., name="high potency vitamin d-3 360 Softgels", variant="360 Softgels"
+        if variant and variant.lower() in name.lower():
+            full_name = f"{brand} {name}".strip()
+        else:
+            full_name = f"{brand} {name} {variant or ''}".strip()
         logger.info(f"Fetching price for: {full_name} in {region}")
 
         # Detect supplement early — used by Opts A/B/C to skip wasteful calls
@@ -538,17 +543,25 @@ class StructuredComparisonService:
         # --- Tier 2: GPT extraction from search context ---
         if is_supplement:
             # Opt B: Supplements — try iHerb first (has real USD prices), BH organic as fallback
-            iherb_results = await search_web(f"{search_query} site:iherb.com", num_results=5, country="us")
+            # Strip pill count from query — iHerb search chokes on "360 Softgels" etc.
+            # Keep dosage (e.g., "1000 IU") since it distinguishes product variants
+            iherb_query = re.sub(
+                r'\b\d+\s*(softgels?|capsules?|tablets?|gummies?|caplets?|count|ct)\b',
+                '', search_query, flags=re.IGNORECASE
+            ).strip()
+            iherb_query = re.sub(r'\s+', ' ', iherb_query)  # collapse whitespace
+            logger.info(f"[PRICE] iHerb search query: {iherb_query} site:iherb.com")
+            iherb_results = await search_web(f"{iherb_query} site:iherb.com", num_results=5, country="us")
             self._track_cost(0.001)
             iherb_organic = iherb_results.get("organic", [])
             if iherb_organic:
                 logger.info(f"[PRICE] iHerb returned {len(iherb_organic)} results for {full_name}")
                 organic_results = {"organic": iherb_organic, "knowledge_graph": None}
             else:
-                # iHerb failed — fall back to BH organic
-                logger.info(f"[PRICE] iHerb empty, falling back to BH organic for {full_name}")
-                organic_results = await search_price_organic(search_query, region_info["code"])
-                self._track_cost(0.001)
+                # iHerb failed — DON'T fall back to BH organic (gives wrong local BHD prices for US supplements)
+                # Let Tier 2 GPT extraction return null → Tier 3 USD estimate handles it
+                logger.info(f"[PRICE] iHerb empty for {full_name}, skipping BH organic (would give wrong currency)")
+                organic_results = {"organic": [], "knowledge_graph": None}
         else:
             # Non-supplements: fetch BH organic results on-demand (only when Tier 1 shopping failed)
             organic_results = await search_price_organic(search_query, region_info["code"])
