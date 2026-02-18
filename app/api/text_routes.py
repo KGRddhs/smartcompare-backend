@@ -242,14 +242,65 @@ async def debug_iherb(
     brand: str = Query("NOW", description="Brand name"),
     region: str = Query("bh", description="Region code")
 ):
-    """Debug: test direct iHerb scrape via _fetch_iherb_price (single request)."""
-    import traceback
-    service = get_comparison_service()
+    """Debug: step-by-step iHerb scrape diagnostics."""
+    import traceback, re, html as html_lib, asyncio
+    steps = {}
     try:
-        result = await service._fetch_iherb_price(q, brand, q, region, "BHD")
-        return {"success": True, "query": q, "brand": brand, "region": region, "price": result}
+        from curl_cffi import requests as curl_requests
+        steps["curl_cffi"] = "imported"
+    except ImportError as e:
+        return {"success": False, "steps": steps, "error": f"curl_cffi import: {e}"}
+    try:
+        search_url = f"https://{region}.iherb.com/search?kw={q.replace(' ', '+')}&lang=en-US"
+        steps["url"] = search_url
+        loop = asyncio.get_event_loop()
+        resp = await loop.run_in_executor(
+            None, lambda: curl_requests.get(search_url, impersonate="chrome", timeout=15, allow_redirects=True)
+        )
+        steps["status"] = resp.status_code
+        steps["body_len"] = len(resp.text)
+        if resp.status_code != 200:
+            steps["body_start"] = resp.text[:300]
+            return {"success": False, "steps": steps}
+        page = resp.text
+        card_pattern = re.compile(
+            r'<a\s[^>]*?href="([^"]+)"[^>]*?'
+            r'data-ga-brand-name="([^"]*)"[^>]*?'
+            r'data-ga-discount-price="([\d.]+)"[^>]*?'
+            r'title="([^"]*)"',
+            re.DOTALL
+        )
+        products = []
+        for m in card_pattern.finditer(page):
+            href, item_brand, price_str, title_raw = m.groups()
+            products.append({"brand": item_brand, "price": float(price_str), "title": html_lib.unescape(title_raw)})
+        steps["cards_found"] = len(products)
+        if not products:
+            steps["has_data_ga"] = "data-ga-brand-name" in page
+            steps["has_discount"] = "data-ga-discount-price" in page
+            steps["sample"] = page[page.find("data-ga"):page.find("data-ga")+200] if "data-ga" in page else "none"
+            return {"success": False, "steps": steps}
+        # Matching
+        service = get_comparison_service()
+        brand_lower = brand.lower()
+        name_words = service._normalize_words(q)
+        steps["name_words"] = list(name_words)
+        brand_matches = [p for p in products if p["brand"].lower() == brand_lower or brand_lower in p["brand"].lower()]
+        steps["brand_matches"] = len(brand_matches)
+        full_matches = []
+        for p in brand_matches:
+            tw = service._normalize_words(p["title"])
+            if name_words.issubset(tw):
+                full_matches.append({**p, "title_words": list(tw)})
+        steps["full_matches"] = len(full_matches)
+        if full_matches:
+            full_matches.sort(key=lambda p: p["price"])
+            steps["winner"] = full_matches[0]
+        return {"success": True, "steps": steps, "top_brand_matches": [{"brand": p["brand"], "price": p["price"], "title": p["title"][:80]} for p in brand_matches[:5]]}
     except Exception as e:
-        return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
+        steps["exception"] = str(e)
+        steps["traceback"] = traceback.format_exc()
+        return {"success": False, "steps": steps}
 
 
 @router.post("/compare/electronics")
