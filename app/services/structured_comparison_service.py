@@ -738,11 +738,14 @@ class StructuredComparisonService:
         """
         import html as html_lib
         try:
-            from curl_cffi.requests import AsyncSession
+            from curl_cffi import requests as curl_requests
             search_url = f"https://{region_code}.iherb.com/search?kw={query.replace(' ', '+')}&lang=en-US"
             logger.info(f"[PRICE] Direct iHerb fetch (curl_cffi): {search_url}")
-            async with AsyncSession() as session:
-                resp = await session.get(search_url, impersonate="chrome", timeout=15, allow_redirects=True)
+            loop = asyncio.get_event_loop()
+            resp = await loop.run_in_executor(
+                None,
+                lambda: curl_requests.get(search_url, impersonate="chrome", timeout=15, allow_redirects=True)
+            )
             logger.info(f"[PRICE] iHerb response: status={resp.status_code}, length={len(resp.text)}")
             if resp.status_code != 200:
                 logger.warning(f"[PRICE] iHerb returned {resp.status_code}")
