@@ -773,21 +773,25 @@ class StructuredComparisonService:
                 logger.info(f"[PRICE] iHerb: no product cards found on page")
                 return None
             logger.info(f"[PRICE] iHerb: found {len(products)} products, matching to '{full_name}'")
-            # Match: prefer exact brand match + word overlap
+            # Match: prefer brand match + word overlap, penalize combo products
             brand_lower = brand.lower()
             best = None
-            best_score = -1
+            best_score = -999
             name_words = self._normalize_words(full_name)
             for p in products:
                 if p["brand"].lower() != brand_lower and brand_lower not in p["brand"].lower():
                     continue
                 title_words = self._normalize_words(p["title"])
                 overlap = len(name_words & title_words)
-                # Bonus for number match (e.g., "360" softgels)
+                # Bonus for number match (e.g., "360" softgels, "1000" IU)
                 if self._numbers_match(full_name, p["title"]):
                     overlap += 2
-                if overlap > best_score:
-                    best_score = overlap
+                # Penalty for extra words in title not in query (penalizes combo products
+                # like "D3 + K2" when query is just "D3")
+                extra = len(title_words - name_words)
+                score = overlap - extra * 0.25
+                if score > best_score or (score == best_score and best and p["price"] < best["price"]):
+                    best_score = score
                     best = p
             if not best:
                 # Fallback: first product from same brand (iHerb search is usually good)
@@ -798,7 +802,7 @@ class StructuredComparisonService:
             if not best:
                 logger.info(f"[PRICE] iHerb: no brand match for '{brand}' in results")
                 return None
-            logger.info(f"[PRICE] iHerb direct: {currency} {best['price']} for '{best['title'][:60]}' → {best['url'][:80]}")
+            logger.info(f"[PRICE] iHerb direct: {currency} {best['price']} (score={best_score:.1f}) for '{best['title'][:80]}'")
             return {
                 "amount": best["price"],
                 "original_currency": currency,
@@ -830,12 +834,11 @@ class StructuredComparisonService:
 
     @staticmethod
     def _normalize_words(text: str) -> set:
-        """Normalize words for matching: lowercase, remove hyphens.
+        """Normalize words for matching: lowercase, remove hyphens and punctuation.
 
-        'Vitamin D-3' → {'vitamin', 'd3'}
-        'Vitamin D3'  → {'vitamin', 'd3'}
+        'Vitamin D-3, 1000 IU' → {'vitamin', 'd3', '1000', 'iu'}
         """
-        return set(w.replace("-", "") for w in text.lower().split())
+        return set(w.replace("-", "").strip(",.()&:;'\"") for w in text.lower().split() if w.strip(",.()&:;'\""))
 
     @staticmethod
     def _numbers_match(product_name: str, title: str) -> bool:
