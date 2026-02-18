@@ -551,18 +551,28 @@ class StructuredComparisonService:
             ).strip()
             iherb_query = re.sub(r'\s+', ' ', iherb_query)  # collapse whitespace
             iherb_cc = region_info["code"]  # "bh" for Bahrain, "ae" for UAE, etc.
+            iherb_is_regional = False  # Track if results came from regional vs US store
+            # Try regional iHerb first (bh.iherb.com has BHD prices with duties/VAT)
             logger.info(f"[PRICE] iHerb search query: {iherb_query} site:{iherb_cc}.iherb.com (country={iherb_cc})")
             iherb_results = await search_web(f"{iherb_query} site:{iherb_cc}.iherb.com", num_results=5, country=iherb_cc)
             self._track_cost(0.001)
             iherb_organic = iherb_results.get("organic", [])
             if iherb_organic:
-                logger.info(f"[PRICE] iHerb returned {len(iherb_organic)} results for {full_name}")
+                iherb_is_regional = True
+                logger.info(f"[PRICE] Regional iHerb ({iherb_cc}.iherb.com) returned {len(iherb_organic)} results for {full_name}")
                 organic_results = {"organic": iherb_organic, "knowledge_graph": None}
             else:
-                # iHerb failed — DON'T fall back to BH organic (gives wrong local BHD prices for US supplements)
-                # Let Tier 2 GPT extraction return null → Tier 3 USD estimate handles it
-                logger.info(f"[PRICE] iHerb empty for {full_name}, skipping BH organic (would give wrong currency)")
-                organic_results = {"organic": [], "knowledge_graph": None}
+                # Regional iHerb not indexed — fall back to US iHerb (USD prices, will be converted)
+                logger.info(f"[PRICE] Regional iHerb empty, trying US iHerb for {full_name}")
+                iherb_results = await search_web(f"{iherb_query} site:iherb.com", num_results=5, country="us")
+                self._track_cost(0.001)
+                iherb_organic = iherb_results.get("organic", [])
+                if iherb_organic:
+                    logger.info(f"[PRICE] US iHerb returned {len(iherb_organic)} results for {full_name}")
+                    organic_results = {"organic": iherb_organic, "knowledge_graph": None}
+                else:
+                    logger.info(f"[PRICE] iHerb empty (both regional and US) for {full_name}")
+                    organic_results = {"organic": [], "knowledge_graph": None}
         else:
             # Non-supplements: fetch BH organic results on-demand (only when Tier 1 shopping failed)
             organic_results = await search_price_organic(search_query, region_info["code"])
@@ -575,12 +585,20 @@ class StructuredComparisonService:
         price = await extract_price(brand, name, variant, region, search_context)
         self._track_cost(0.0003)
         self._sanitize_gpt_price(price)
-        # Regional iHerb prices are in local currency — force regional currency if GPT misidentified
+        # Force correct currency based on iHerb source:
+        # - Regional iHerb (bh.iherb.com): prices are in local currency (BHD) with duties/VAT
+        # - US iHerb (iherb.com): prices are in USD, need conversion
         if is_supplement and iherb_organic and price and price.get("amount"):
             orig = (price.get("original_currency") or "").upper()
-            if orig != currency:
-                logger.info(f"[PRICE] Regional iHerb: forcing original_currency {currency} (was {orig!r}) for {full_name}")
-                price["original_currency"] = currency
+            if iherb_is_regional:
+                if orig != currency:
+                    logger.info(f"[PRICE] Regional iHerb: forcing original_currency {currency} (was {orig!r}) for {full_name}")
+                    price["original_currency"] = currency
+            else:
+                # US iHerb fallback — force USD so conversion happens correctly
+                if orig in ("BHD", "") or orig == currency:
+                    logger.info(f"[PRICE] US iHerb fallback: forcing original_currency USD (was {orig!r}) for {full_name}")
+                    price["original_currency"] = "USD"
         self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
             # Opt C: Supplements with iHerb data — skip sanity check (iHerb is Tier 1 trusted)
