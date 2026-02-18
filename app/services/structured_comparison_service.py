@@ -315,7 +315,7 @@ class StructuredComparisonService:
             phase1_tasks.append(self._get_specs(brand, name, variant, category, search_query, nocache))
             phase1_keys.append("specs")
 
-        phase1_tasks.append(self._get_price(brand, name, variant, region, search_query, nocache))
+        phase1_tasks.append(self._get_price(brand, name, variant, region, search_query, nocache, category))
         phase1_keys.append("price")
 
         phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
@@ -457,7 +457,8 @@ class StructuredComparisonService:
         variant: Optional[str],
         region: str,
         search_query: str,
-        nocache: bool = False
+        nocache: bool = False,
+        category: str = "other"
     ) -> Dict[str, Any]:
         """
         Get price with 3-tier strategy to guarantee a price:
@@ -480,7 +481,8 @@ class StructuredComparisonService:
         logger.info(f"Fetching price for: {full_name} in {region}")
 
         # Detect supplement early — used by Opts A/B/C to skip wasteful calls
-        is_supplement = self._is_supplement_query(full_name)
+        # Use GPT category as primary signal, keyword matching as backup
+        is_supplement = (category == "supplements") or self._is_supplement_query(full_name)
 
         # --- Tier 1: Direct Serper Shopping extraction ---
         if is_supplement:
@@ -691,6 +693,8 @@ class StructuredComparisonService:
         "omega", "probiotic", "protein", "magnesium", "zinc", "calcium",
         "fish oil", "collagen", "biotin", "melatonin", "turmeric", "creatine",
         "multivitamin", "iron", "folic", "coq10", "glucosamine",
+        "d3", "d-3",  # unambiguously vitamin names
+        "nature made", "now foods", "solgar", "garden of life", "kirkland",  # supplement brands
     }
 
     @staticmethod
