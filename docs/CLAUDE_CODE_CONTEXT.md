@@ -903,13 +903,14 @@ When starting Claude Code, say:
 Read docs/CLAUDE_CODE_CONTEXT.md completely. This is SmartCompare - a product
 comparison app for GCC region.
 
-Current status (Feb 17, 2026):
-- Backend: Running on Railway
-- Prices: Working (3-tier fallback + retailer quality scoring + clickable URLs)
-- Specs: Partially working (count works, other fields show "value or null" for vitamins)
-- Ratings: Partially working (brand-aware matching, unverified display needs testing)
+Current status (Feb 18, 2026):
+- Backend: Running on Railway (critical bugs fixed)
+- Prices: Working (3-tier fallback + retailer quality scoring + clickable URLs + iHerb for supplements)
+- Specs: Working (supplements schema, no more "value or null")
+- Ratings: Working (GPT review fallback for unverified, brand-aware matching)
 - Enhanced Reviews: Working (category_scores, rating_distribution, user_quotes, source_ratings, verified_rating)
 - Camera input: Working (OCR prompt, detail:auto, size_or_count field)
+- Auth: Fixed (refresh token flow, verifyAuth return type)
 - URL input: Not started
 ```
 
@@ -1555,6 +1556,112 @@ Current status (Feb 17, 2026):
 | Tier 2 sanity check for ALL products | `structured_comparison_service.py:~535` |
 | `_is_supplement_query()` + iHerb search injection | `structured_comparison_service.py:~525` |
 | iHerb/Vitacost/GNC added to `RETAILER_TIERS` | `structured_comparison_service.py:63` |
+
+---
+
+# SESSION LOG: February 18, 2026 — Full Codebase Audit & Critical Bug Fixes
+
+## What We Did
+
+### Full audit: 48 bugs found (24 backend, 24 frontend)
+Ran 3 parallel exploration agents across backend, frontend, and runtime logs. Categorized all issues by severity.
+
+### Phase 1: Backend Critical Fixes (commit `1700b6c`)
+
+**1a. Singleton cache leak — `_shopping_items_cache` never cleared**
+- `StructuredComparisonService` is a singleton (`get_comparison_service()`). `total_cost` and `api_calls` were reset per request but `_shopping_items_cache` was not.
+- Under concurrent load: memory grows unbounded, stale product data leaks across requests.
+- **Fix:** Added `self._shopping_items_cache = {}` at start of `compare_from_text()` (line 186).
+
+**1b. `_convert_to_bhd(None)` crash**
+- If a shopping item had no currency, calling `.upper()` on None raised `AttributeError`.
+- **Fix:** Added `if not currency: return amount` guard at top of function.
+
+**1c. Bare `except:` in `auth_routes.py:101`**
+- Was catching `SystemExit`/`KeyboardInterrupt`. Changed to `except Exception:`.
+
+**1d. CostStatus schema mismatch**
+- `schemas.py` had fields `current_spend`, `budget`, `percentage_used`
+- `check_monthly_budget()` returns `current_cost`, `budget_limit` (no `percentage_used`)
+- **Fix:** Renamed schema fields to match actual return values.
+
+**1e. OpenAI client import-time init**
+- `openai_service.py` created `AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))` at module import time — could init with None key on cold start.
+- **Fix:** Changed to `AsyncOpenAI()` which reads env at request time.
+
+### Phase 2: Frontend Critical Fixes (commit `9602291`)
+
+**2a. `verifyAuth()` returned boolean, App.tsx used as User**
+- `verifyAuth()` called `isLoggedIn()` returning `Promise<boolean>`.
+- `App.tsx:118` did `setUser(verifiedUser)` — user state became `true` not a User object. `user.email` would crash.
+- **Fix:** Changed `verifyAuth()` to return `Promise<User | null>` via `initializeAuth()`.
+
+**2b. `formatPrice()` called `.toFixed()` on ProductPrice object**
+- `HistoryScreen.tsx:98`: `product.price.toFixed(2)` but `price` is `{ amount, currency }` not a number.
+- **Fix:** Access `product.price.amount?.toFixed(2)` and `product.price.currency`. Handle both object and legacy number formats.
+
+**2c. History→Results missing `comparison` field**
+- `viewAsResult()` navigated with object missing `comparison` and `metadata` fields.
+- `ResultsScreen` destructured `comparison` → crash on undefined.
+- **Fix:** Added `comparison` and `metadata` objects to navigation params.
+
+**2d. `rating_source.name` without null guard**
+- In verified rating branch, `rating_source` could be null even when `rating_verified` is true.
+- **Fix:** Changed to `rating_source?.name ?? 'Retailer'`.
+
+### Phase 3: Session Refresh 422 Fix (commit `c19e9fb`)
+
+**Root cause:** `POST /api/v1/auth/refresh` expects `{ refresh_token: "..." }` in body. Frontend sent `{}` (empty body) with access token in header only. FastAPI returned 422 validation error.
+
+**Fix:**
+- Added `REFRESH_TOKEN_KEY` storage constant
+- Save `refresh_token` from login/register/refresh responses
+- `refreshSession()` reads refresh token from storage and sends in body
+- Clear refresh token on logout/session clear
+- **Note:** Users must log out and back in once to store refresh token for first time.
+
+## Remaining Bugs (deferred — Phases 3-5 from audit)
+| # | Bug | Severity |
+|---|-----|----------|
+| 1 | Legacy `/api/v1/compare` — all function calls use wrong arg counts (4 TypeErrors) | High (legacy route) |
+| 2 | No axios auth interceptor — token never sent on API requests | High |
+| 3 | Missing expo-camera/expo-image-picker plugins in app.json | High (EAS builds) |
+| 4 | Debug console.log everywhere in api.ts + HomeScreen | Medium |
+| 5 | `.gitignore` corrupted with PowerShell heredoc wrapper | Medium |
+| 6 | `pyproject.toml` diverged from `requirements.txt` (openai v1 vs v2) | Medium |
+| 7 | ResultsScreen local type defs diverge from types.ts | Medium |
+| 8 | Dead code: `_get_pros_cons`, `_get_expert_review`, unused TEMP_DIR | Low |
+| 9 | `print()` instead of `logger` in auth_service/database_service | Low |
+| 10 | `load_dotenv(override=True)` in library modules | Low |
+
+## Commits
+1. `1700b6c` — Fix backend critical: cache leak, None currency, schema mismatch
+2. `9602291` — Fix frontend critical: auth type, price format, null guards
+3. `c19e9fb` — Fix session refresh 422: store and send refresh token
+
+## Current Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices | Working (iHerb for supplements, shopping for electronics, clickable URLs) |
+| Ratings | Working (GPT review fallback for unverified, brand-aware matching) |
+| Reviews | Working (category_scores, rating_distribution, user_quotes, source_ratings) |
+| Specs | Working (supplements schema, no more "value or null") |
+| Camera | Working (OCR prompt, detail:auto, size_or_count) |
+| Auth | Fixed (refresh token flow, verifyAuth return type) |
+| URL input | Not started |
+
+## Key Technical Changes
+| Change | File |
+|--------|------|
+| `self._shopping_items_cache = {}` per request | `structured_comparison_service.py:186` |
+| `_convert_to_bhd` None guard | `structured_comparison_service.py:1635` |
+| `CostStatus` fields renamed | `schemas.py:122` |
+| `AsyncOpenAI()` lazy env read | `openai_service.py:11` |
+| `verifyAuth()` returns `User \| null` | `authService.ts:274` |
+| `formatPrice()` handles ProductPrice object | `HistoryScreen.tsx:94` |
+| `viewAsResult()` includes comparison/metadata | `HistoryScreen.tsx:106` |
+| `rating_source?.name` null guard | `ResultsScreen.tsx:274` |
+| Refresh token stored/sent/cleared | `authService.ts:23,73,134,145,238` |
 
 ---
 
