@@ -5,10 +5,12 @@ import os
 import json
 import base64
 from typing import List, Dict, Optional
+import httpx
 from openai import AsyncOpenAI
 
 # Initialize async client (reads OPENAI_API_KEY from env at request time)
-client = AsyncOpenAI()
+# Explicit timeout: 30s connect (Railway networking can be slow), 120s total
+client = AsyncOpenAI(timeout=httpx.Timeout(120.0, connect=30.0))
 
 
 def encode_image_to_base64(image_path: str) -> str:

@@ -10,6 +10,7 @@ import hashlib
 import logging
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
+import httpx
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ def get_client() -> AsyncOpenAI:
     if _client is None:
         api_key = os.getenv("OPENAI_API_KEY")
         logger.info(f"Initializing OpenAI client with key ending in: ...{api_key[-10:] if api_key else 'NONE'}")
-        _client = AsyncOpenAI(api_key=api_key)
+        _client = AsyncOpenAI(api_key=api_key, timeout=httpx.Timeout(120.0, connect=30.0))
     return _client
 
 # GCC Region mappings

@@ -23,7 +23,7 @@ _client = None
 def get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=httpx.Timeout(120.0, connect=30.0))
     return _client
 
 
