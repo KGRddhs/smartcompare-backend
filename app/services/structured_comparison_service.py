@@ -194,11 +194,13 @@ class StructuredComparisonService:
                     brand = vp.get("brand", "Unknown")
                     vname = vp.get("name", "Unknown Product")
                     full = f"{brand} {vname}".strip()
+                    # Auto-detect category for vision products (no GPT parser to classify)
+                    category = "supplements" if self._is_supplement_query(full) else "other"
                     products.append({
                         "brand": brand,
                         "name": vname,               # GPT prompt: "{brand} {name}" = "NOW Vitamin D-3 360 Softgels"
                         "variant": vname,             # Forces GPT "(variant: Vitamin D-3 360 Softgels)" not "(base model)"
-                        "category": "other",
+                        "category": category,
                         "search_query": full,         # Serper search: "NOW Vitamin D-3 360 Softgels"
                         "_vision": True,              # Flag for display name override
                     })

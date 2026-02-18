@@ -77,10 +77,8 @@ export async function compareProducts(
       `/api/v1/compare?country=${encodeURIComponent(country)}`,
       formData,
       {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        transformRequest: (data) => data, // Don't transform FormData
+        // Don't set Content-Type — let FormData set it with correct boundary
+        transformRequest: (data) => data,
       }
     );
     
@@ -140,17 +138,27 @@ export async function identifyFromImages(
     } as any);
   }
 
-  const response = await api.post<ImageIdentifyResult>(
-    `/api/v1/image/identify?region=${encodeURIComponent(region)}`,
-    formData,
+  console.log('Image URIs:', imageUris);
+
+  // Use fetch instead of Axios — Axios has known multipart issues on Android
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/image/identify?region=${encodeURIComponent(region)}`,
     {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      transformRequest: (data) => data,
+      method: 'POST',
+      body: formData,
+      // Don't set Content-Type — fetch sets it with correct multipart boundary
     }
   );
 
-  console.log('Identify response action:', (response.data as any).action);
-  return response.data;
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Identify response error:', response.status, errorText);
+    throw new Error(`Server error ${response.status}: ${errorText}`);
+  }
+
+  const data: ImageIdentifyResult = await response.json();
+  console.log('Identify response action:', (data as any).action);
+  return data;
 }
 
 /**
