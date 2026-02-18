@@ -42,40 +42,43 @@ class QuickCompareRequest(BaseModel):
 
 @router.get("/debug-iherb")
 async def debug_iherb(q: str = Query(default="NOW Vitamin D3"), cc: str = Query(default="bh")):
-    """Debug: test direct iHerb fetch from Railway (temporary)."""
-    import httpx, re, html as html_lib
-    url = f"https://{cc}.iherb.com/search?kw={q.replace(' ', '+')}&lang=en-US"
+    """Debug: test iHerb via Serper + direct fetch from Railway (temporary)."""
+    from app.services.serper_service import search_web
+    results = {}
+    # Test 1: Serper with site:iherb.com (US)
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=10.0)) as client:
-            resp = await client.get(url, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml",
-                "Accept-Language": "en-US,en;q=0.9",
-            }, follow_redirects=True)
-        card_pattern = re.compile(
-            r'<a\s[^>]*?href="([^"]+)"[^>]*?'
-            r'data-ga-brand-name="([^"]*)"[^>]*?'
-            r'data-ga-discount-price="([\d.]+)"[^>]*?'
-            r'title="([^"]*)"',
-            re.DOTALL
-        )
-        products = []
-        for m in card_pattern.finditer(resp.text):
-            href, brand, price, title = m.groups()
-            products.append({"brand": brand, "price": price, "title": html_lib.unescape(title)[:80], "url": href[:100]})
-        return {
-            "url": url,
-            "status": resp.status_code,
-            "page_length": len(resp.text),
-            "final_url": str(resp.url)[:200],
-            "products_found": len(products),
-            "products": products[:5],
-            "has_captcha": "captcha" in resp.text.lower(),
-            "has_blocked": "blocked" in resp.text.lower() or "access denied" in resp.text.lower(),
-            "snippet": resp.text[:500],
+        r1 = await search_web(f"{q} site:iherb.com", num_results=5, country="us")
+        organic1 = r1.get("organic", [])
+        results["serper_site_us"] = {
+            "query": f"{q} site:iherb.com (country=us)",
+            "count": len(organic1),
+            "results": [{"title": o.get("title","")[:80], "link": o.get("link","")[:100], "snippet": o.get("snippet","")[:150]} for o in organic1[:3]]
         }
     except Exception as e:
-        return {"url": url, "error": str(e), "error_type": type(e).__name__}
+        results["serper_site_us"] = {"error": str(e)}
+    # Test 2: Serper with just "iherb" keyword (no site: filter)
+    try:
+        r2 = await search_web(f"{q} iherb price", num_results=5, country=cc)
+        organic2 = r2.get("organic", [])
+        results["serper_keyword"] = {
+            "query": f"{q} iherb price (country={cc})",
+            "count": len(organic2),
+            "results": [{"title": o.get("title","")[:80], "link": o.get("link","")[:100], "snippet": o.get("snippet","")[:150]} for o in organic2[:3]]
+        }
+    except Exception as e:
+        results["serper_keyword"] = {"error": str(e)}
+    # Test 3: Serper with site:bh.iherb.com
+    try:
+        r3 = await search_web(f"{q} site:{cc}.iherb.com", num_results=5, country=cc)
+        organic3 = r3.get("organic", [])
+        results["serper_site_regional"] = {
+            "query": f"{q} site:{cc}.iherb.com (country={cc})",
+            "count": len(organic3),
+            "results": [{"title": o.get("title","")[:80], "link": o.get("link","")[:100], "snippet": o.get("snippet","")[:150]} for o in organic3[:3]]
+        }
+    except Exception as e:
+        results["serper_site_regional"] = {"error": str(e)}
+    return results
 
 @router.post("/compare")
 async def text_compare(request: TextCompareRequest):
