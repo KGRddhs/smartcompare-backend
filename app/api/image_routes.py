@@ -29,6 +29,7 @@ TEMP_DIR.mkdir(exist_ok=True)
 async def identify_and_compare(
     images: List[UploadFile] = File(..., description="1-4 product images"),
     region: str = Query("bahrain", description="Region for price search"),
+    nocache: bool = Query(False, description="Bypass price/spec cache"),
 ):
     """
     Identify products from uploaded images, then compare if 2+ found.
@@ -127,7 +128,7 @@ async def identify_and_compare(
 
     try:
         service = StructuredComparisonService()
-        result = await service.compare_from_text(query, region=region, vision_products=products)
+        result = await service.compare_from_text(query, region=region, vision_products=products, nocache=nocache)
 
         # Inject vision metadata
         if result.get("metadata"):

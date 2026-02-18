@@ -199,7 +199,7 @@ class StructuredComparisonService:
                     products.append({
                         "brand": brand,
                         "name": vname,               # GPT prompt: "{brand} {name}" = "NOW Vitamin D-3 360 Softgels"
-                        "variant": vname,             # Forces GPT "(variant: Vitamin D-3 360 Softgels)" not "(base model)"
+                        "variant": vp.get("size_or_count"),  # "360 Softgels", "128GB", etc. — used for cache key + specs hint
                         "category": category,
                         "search_query": full,         # Serper search: "NOW Vitamin D-3 360 Softgels"
                         "_vision": True,              # Flag for display name override
