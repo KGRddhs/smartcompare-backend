@@ -1,7 +1,7 @@
 # SmartCompare - Complete Project Knowledge Transfer
 
 > **Purpose:** This document contains EVERYTHING needed to continue development without context loss.
-> **Last Updated:** February 13, 2026
+> **Last Updated:** February 18, 2026
 > **Author:** Transferred from Claude.ai conversation (Days 1-7), updated by Claude Code sessions
 
 ---
@@ -904,13 +904,15 @@ Read docs/CLAUDE_CODE_CONTEXT.md completely. This is SmartCompare - a product
 comparison app for GCC region.
 
 Current status (Feb 18, 2026):
-- Backend: Running on Railway (critical bugs fixed)
+- Backend: Running on Railway (critical bugs fixed, cost optimization deployed)
+- BLOCKER: OpenAI API calls timeout from Railway (~17s connect timeout) — needs investigation
 - Prices: Working (3-tier fallback + retailer quality scoring + clickable URLs + iHerb for supplements)
 - Specs: Working (supplements schema, no more "value or null")
 - Ratings: Working (GPT review fallback for unverified, brand-aware matching)
 - Enhanced Reviews: Working (category_scores, rating_distribution, user_quotes, source_ratings, verified_rating)
 - Camera input: Working (OCR prompt, detail:auto, size_or_count field)
 - Auth: Fixed (refresh token flow, verifyAuth return type)
+- Cost: Supplement $0.013 (was $0.017), Electronics $0.015 — verified locally
 - URL input: Not started
 ```
 
@@ -1630,7 +1632,7 @@ Ran 3 parallel exploration agents across backend, frontend, and runtime logs. Ca
 | 5 | `.gitignore` corrupted with PowerShell heredoc wrapper | Medium |
 | 6 | `pyproject.toml` diverged from `requirements.txt` (openai v1 vs v2) | Medium |
 | 7 | ResultsScreen local type defs diverge from types.ts | Medium |
-| 8 | Dead code: `_get_pros_cons`, `_get_expert_review`, unused TEMP_DIR | Low |
+| 8 | ~~Dead code: `_get_pros_cons`~~ FIXED (commit `b697534`). `_get_expert_review`, unused TEMP_DIR remain | Low |
 | 9 | `print()` instead of `logger` in auth_service/database_service | Low |
 | 10 | `load_dotenv(override=True)` in library modules | Low |
 
@@ -1662,6 +1664,74 @@ Ran 3 parallel exploration agents across backend, frontend, and runtime logs. Ca
 | `viewAsResult()` includes comparison/metadata | `HistoryScreen.tsx:106` |
 | `rating_source?.name` null guard | `ResultsScreen.tsx:274` |
 | Refresh token stored/sent/cleared | `authService.ts:23,73,134,145,238` |
+
+---
+
+# SESSION LOG: February 18, 2026 — Cost Optimization & Dead Code Cleanup
+
+## What We Did
+
+### Dead Code Cleanup (commit `b697534`)
+Removed 109 lines of dead code that was superseded by merged pros/cons in `generate_comparison()`:
+- **`extraction_service.py`**: Removed `PROS_CONS_PROMPT` template and `generate_pros_cons()` function
+- **`structured_comparison_service.py`**: Removed `PROS_CONS_CACHE_TTL` constant and `_get_pros_cons()` method
+
+### Cost Optimization DEPLOYED (commit `d9fb064`)
+Supplement comparison cost reduced from $0.017 to $0.013:
+
+**Fix 0: Hardened `_is_supplement_query()` against false positives**
+- Removed "tablet" from `SUPPLEMENT_KEYWORDS` (matched "Samsung Galaxy Tablet")
+- Added electronics anti-keywords using existing `HIGH_VALUE_KEYWORDS` set
+- Now: if any electronics keyword present → NOT a supplement
+
+**Opt A: Skip BH shopping for supplements (saves $0.002/comparison)**
+- Serper Shopping returns ZERO results for supplements in BH
+- Set `_shopping_items_cache[full_name] = []` directly, preserving invariant for rating extraction
+
+**Opt B (Modified): iHerb-first with BH organic fallback (saves $0.001-0.002)**
+- Supplements: try `site:iherb.com` search first (has real USD prices)
+- If iHerb returns nothing → fall back to BH organic search
+- Non-supplements: unchanged (BH organic on-demand)
+
+**Opt C: Trust iHerb prices, skip sanity check (saves $0.0006)**
+- iHerb is a trusted source (Tier 1 quality) — no need for Tier 3 GPT estimate verification
+- Non-supplements: sanity check unchanged
+
+**Opt D: HELD — defer US shopping for supplement ratings**
+- Would save $0.002 but loses ~50% chance of verified rating → quality cut, held for later
+
+### Local Test Results (Railway OpenAI timeout — tested locally)
+
+| Test | total_cost | api_calls | Notes |
+|------|-----------|-----------|-------|
+| Supplements (NOW D3 vs HealthAid D3) | $0.0125 | 18 | Was $0.0165/22 calls |
+| Electronics (iPhone 16 vs Galaxy S25) | $0.0145 | 20 | Unchanged path |
+
+## BLOCKER: OpenAI API Timeout on Railway
+- All OpenAI GPT-4o-mini calls timeout from Railway (~17s = 3x connect retries)
+- Serper works, Upstash cache works — only OpenAI fails
+- API key verified working locally (sk-proj-G33L...zgA)
+- Health endpoint responds in <1s — Railway app is running
+- Error: "Request timed out." from httpx connect timeout
+
+### Needs Investigation
+1. Check `OPENAI_API_KEY` in Railway Variables — is it set? Same key as backend/.env?
+2. Check OpenAI account status/billing — rate limits, project API key permissions
+3. Consider adding explicit timeout to `AsyncOpenAI()`: `timeout=httpx.Timeout(120.0, connect=10.0)`
+4. Try redeploying on Railway (fresh container may resolve networking)
+
+## Commits
+1. `b697534` — Remove dead pros_cons code (merged into comparison)
+2. `d9fb064` — Optimize supplement costs: skip empty BH calls, iHerb-first with fallback
+
+## Key Technical Changes
+| Change | File | Line |
+|--------|------|------|
+| `SUPPLEMENT_KEYWORDS` — removed "tablet" | `structured_comparison_service.py` | ~685 |
+| `_is_supplement_query()` — electronics anti-keywords | `structured_comparison_service.py` | ~697 |
+| Skip BH shopping for supplements | `structured_comparison_service.py` | ~486 |
+| iHerb-first with BH organic fallback | `structured_comparison_service.py` | ~535 |
+| Skip Tier 2 sanity check for supplements | `structured_comparison_service.py` | ~563 |
 
 ---
 
