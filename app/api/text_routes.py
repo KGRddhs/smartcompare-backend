@@ -42,43 +42,37 @@ class QuickCompareRequest(BaseModel):
 
 @router.get("/debug-iherb")
 async def debug_iherb(q: str = Query(default="NOW Vitamin D3"), cc: str = Query(default="bh")):
-    """Debug: test iHerb via Serper + direct fetch from Railway (temporary)."""
-    from app.services.serper_service import search_web
-    results = {}
-    # Test 1: Serper with site:iherb.com (US)
+    """Debug: test curl_cffi direct iHerb fetch from Railway."""
+    import re, html as html_lib
+    url = f"https://{cc}.iherb.com/search?kw={q.replace(' ', '+')}&lang=en-US"
     try:
-        r1 = await search_web(f"{q} site:iherb.com", num_results=5, country="us")
-        organic1 = r1.get("organic", [])
-        results["serper_site_us"] = {
-            "query": f"{q} site:iherb.com (country=us)",
-            "count": len(organic1),
-            "results": [{"title": o.get("title","")[:80], "link": o.get("link","")[:100], "snippet": o.get("snippet","")[:150]} for o in organic1[:3]]
+        from curl_cffi.requests import AsyncSession
+        async with AsyncSession() as session:
+            resp = await session.get(url, impersonate="chrome", timeout=15, allow_redirects=True)
+        card_pattern = re.compile(
+            r'<a\s[^>]*?href="([^"]+)"[^>]*?'
+            r'data-ga-brand-name="([^"]*)"[^>]*?'
+            r'data-ga-discount-price="([\d.]+)"[^>]*?'
+            r'title="([^"]*)"',
+            re.DOTALL
+        )
+        products = []
+        for m in card_pattern.finditer(resp.text):
+            href, brand, price, title = m.groups()
+            products.append({"brand": brand, "price": price, "title": html_lib.unescape(title)[:80], "url": href[:120]})
+        return {
+            "method": "curl_cffi",
+            "url": url,
+            "status": resp.status_code,
+            "page_length": len(resp.text),
+            "products_found": len(products),
+            "products": products[:8],
+            "has_cloudflare": "Just a moment" in resp.text[:500],
         }
+    except ImportError:
+        return {"error": "curl_cffi not installed"}
     except Exception as e:
-        results["serper_site_us"] = {"error": str(e)}
-    # Test 2: Serper with just "iherb" keyword (no site: filter)
-    try:
-        r2 = await search_web(f"{q} iherb price", num_results=5, country=cc)
-        organic2 = r2.get("organic", [])
-        results["serper_keyword"] = {
-            "query": f"{q} iherb price (country={cc})",
-            "count": len(organic2),
-            "results": [{"title": o.get("title","")[:80], "link": o.get("link","")[:100], "snippet": o.get("snippet","")[:150]} for o in organic2[:3]]
-        }
-    except Exception as e:
-        results["serper_keyword"] = {"error": str(e)}
-    # Test 3: Serper with site:bh.iherb.com
-    try:
-        r3 = await search_web(f"{q} site:{cc}.iherb.com", num_results=5, country=cc)
-        organic3 = r3.get("organic", [])
-        results["serper_site_regional"] = {
-            "query": f"{q} site:{cc}.iherb.com (country={cc})",
-            "count": len(organic3),
-            "results": [{"title": o.get("title","")[:80], "link": o.get("link","")[:100], "snippet": o.get("snippet","")[:150]} for o in organic3[:3]]
-        }
-    except Exception as e:
-        results["serper_site_regional"] = {"error": str(e)}
-    return results
+        return {"url": url, "error": str(e), "error_type": type(e).__name__}
 
 @router.post("/compare")
 async def text_compare(request: TextCompareRequest):

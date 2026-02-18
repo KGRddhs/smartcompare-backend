@@ -552,9 +552,16 @@ class StructuredComparisonService:
             iherb_query = re.sub(r'\s+', ' ', iherb_query)  # collapse whitespace
             iherb_cc = region_info["code"]  # "bh" for Bahrain, "ae" for UAE, etc.
 
-            # Use keyword search (not site: filter) — returns snippets WITH prices
-            # site:iherb.com returns description-only snippets → GPT can't extract price
-            logger.info(f"[PRICE] iHerb Serper search: {iherb_query} iherb price (country={iherb_cc})")
+            # Direct iHerb scrape via curl_cffi (bypasses Cloudflare TLS fingerprinting)
+            iherb_price = await self._fetch_iherb_price(iherb_query, brand, full_name, iherb_cc, currency)
+            if iherb_price:
+                iherb_price["_cached"] = False
+                logger.info(f"[PRICE] Supplement: direct iHerb price {currency} {iherb_price['amount']} for {full_name}")
+                await set_cached(cache_key, iherb_price, ttl=PRICE_CACHE_TTL)
+                return iherb_price
+
+            # Direct scrape failed — fall back to Serper keyword search
+            logger.info(f"[PRICE] iHerb direct scrape failed, trying Serper keyword search for {full_name}")
             iherb_results = await search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
             self._track_cost(0.001)
             iherb_organic = iherb_results.get("organic", [])
@@ -731,15 +738,12 @@ class StructuredComparisonService:
         """
         import html as html_lib
         try:
+            from curl_cffi.requests import AsyncSession
             search_url = f"https://{region_code}.iherb.com/search?kw={query.replace(' ', '+')}&lang=en-US"
-            logger.info(f"[PRICE] Direct iHerb fetch: {search_url}")
-            async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=10.0)) as client:
-                resp = await client.get(search_url, headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.9",
-                }, follow_redirects=True)
-            logger.info(f"[PRICE] iHerb response: status={resp.status_code}, length={len(resp.text)}, url={str(resp.url)[:100]}")
+            logger.info(f"[PRICE] Direct iHerb fetch (curl_cffi): {search_url}")
+            async with AsyncSession() as session:
+                resp = await session.get(search_url, impersonate="chrome", timeout=15, allow_redirects=True)
+            logger.info(f"[PRICE] iHerb response: status={resp.status_code}, length={len(resp.text)}")
             if resp.status_code != 200:
                 logger.warning(f"[PRICE] iHerb returned {resp.status_code}")
                 return None
