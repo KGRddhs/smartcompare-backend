@@ -773,32 +773,41 @@ class StructuredComparisonService:
                 logger.info(f"[PRICE] iHerb: no product cards found on page")
                 return None
             logger.info(f"[PRICE] iHerb: found {len(products)} products, matching to '{full_name}'")
-            # Match: prefer brand match + word overlap, penalize combo products
+            # Match: among brand matches containing ALL query words, pick cheapest
             brand_lower = brand.lower()
-            best = None
-            best_score = -999
             name_words = self._normalize_words(full_name)
+            brand_matches = []
             for p in products:
                 if p["brand"].lower() != brand_lower and brand_lower not in p["brand"].lower():
                     continue
+                brand_matches.append(p)
+            if not brand_matches:
+                # Try looser brand match (e.g., "NOW" in "Now Foods")
+                brand_matches = [p for p in products if brand_lower in p["title"].lower()]
+            # Primary: products whose title contains ALL query words → cheapest wins
+            best = None
+            full_matches = []
+            for p in brand_matches:
                 title_words = self._normalize_words(p["title"])
-                overlap = len(name_words & title_words)
-                # Bonus for number match (e.g., "360" softgels, "1000" IU)
-                if self._numbers_match(full_name, p["title"]):
-                    overlap += 2
-                # Penalty for extra words in title not in query (penalizes combo products
-                # like "D3 + K2" when query is just "D3")
-                extra = len(title_words - name_words)
-                score = overlap - extra * 0.25
-                if score > best_score or (score == best_score and best and p["price"] < best["price"]):
-                    best_score = score
-                    best = p
-            if not best:
-                # Fallback: first product from same brand (iHerb search is usually good)
-                brand_matches = [p for p in products if brand_lower in p["brand"].lower()]
-                if brand_matches:
-                    best = brand_matches[0]
-                    logger.info(f"[PRICE] iHerb: no word match, using first brand match: {best['title'][:60]}")
+                if name_words.issubset(title_words):
+                    full_matches.append(p)
+            if full_matches:
+                full_matches.sort(key=lambda p: p["price"])
+                best = full_matches[0]
+                logger.info(f"[PRICE] iHerb match: all-words match, cheapest of {len(full_matches)} candidates")
+            else:
+                # Fallback: best word overlap, cheapest tiebreaker
+                best_score = -1
+                for p in brand_matches:
+                    title_words = self._normalize_words(p["title"])
+                    overlap = len(name_words & title_words)
+                    if self._numbers_match(full_name, p["title"]):
+                        overlap += 2
+                    if overlap > best_score or (overlap == best_score and best and p["price"] < best["price"]):
+                        best_score = overlap
+                        best = p
+                if best:
+                    logger.info(f"[PRICE] iHerb match: overlap fallback (score={best_score})")
             if not best:
                 logger.info(f"[PRICE] iHerb: no brand match for '{brand}' in results")
                 return None
