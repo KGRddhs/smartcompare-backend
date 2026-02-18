@@ -236,6 +236,22 @@ async def parse_query(
 # Category-specific endpoints
 # ============================================
 
+@router.get("/debug/iherb")
+async def debug_iherb(
+    q: str = Query("NOW D3", description="Product to search on iHerb"),
+    brand: str = Query("NOW", description="Brand name"),
+    region: str = Query("bh", description="Region code")
+):
+    """Debug: test direct iHerb scrape via curl_cffi."""
+    import traceback
+    service = get_comparison_service()
+    try:
+        result = await service._fetch_iherb_price(q, brand, q, region, "BHD")
+        return {"success": True, "price": result}
+    except Exception as e:
+        return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
+
+
 @router.post("/compare/electronics")
 async def compare_electronics(request: TextCompareRequest):
     """
