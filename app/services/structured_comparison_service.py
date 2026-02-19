@@ -565,26 +565,22 @@ class StructuredComparisonService:
                 set_cached(cache_key, iherb_price, PRICE_CACHE_TTL)
                 return iherb_price
 
-            # Direct scrape failed — fall back to Serper keyword search
-            logger.info(f"[PRICE] iHerb direct scrape failed, trying Serper keyword search for {full_name}")
-            iherb_results = await search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
-            self._track_cost(0.001)
+            # Direct scrape failed — search iHerb + Bahrain pharmacies in parallel
+            logger.info(f"[PRICE] iHerb direct scrape failed, trying Serper + Bahrain pharmacy for {full_name}")
+            iherb_task = search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
+            bh_pharmacy_task = search_web(f"{brand} {name} price", num_results=5, country="bh")
+            iherb_results, bh_pharmacy_results = await asyncio.gather(iherb_task, bh_pharmacy_task)
+            self._track_cost(0.002)  # 2 Serper calls
             iherb_organic = iherb_results.get("organic", [])
-            if iherb_organic:
-                logger.info(f"[PRICE] iHerb Serper returned {len(iherb_organic)} results for {full_name}")
-                organic_results = {"organic": iherb_organic, "knowledge_graph": None}
+            bh_organic = bh_pharmacy_results.get("organic", [])
+            # Combine results — iHerb first, then Bahrain pharmacies
+            combined_organic = iherb_organic + bh_organic
+            if combined_organic:
+                logger.info(f"[PRICE] Supplement Serper: {len(iherb_organic)} iHerb + {len(bh_organic)} BH pharmacy results for {full_name}")
+                organic_results = {"organic": combined_organic, "knowledge_graph": None}
             else:
-                # iHerb Serper also empty — try Bahrain pharmacy search (bolo.bh, nahdionline, etc.)
-                logger.info(f"[PRICE] iHerb Serper empty for {full_name}, trying Bahrain pharmacy search")
-                bh_pharmacy_results = await search_web(f"{brand} {name} price", num_results=5, country="bh")
-                self._track_cost(0.001)
-                bh_organic = bh_pharmacy_results.get("organic", [])
-                if bh_organic:
-                    logger.info(f"[PRICE] Bahrain pharmacy search returned {len(bh_organic)} results for {full_name}")
-                    organic_results = {"organic": bh_organic, "knowledge_graph": None}
-                else:
-                    logger.info(f"[PRICE] Bahrain pharmacy search also empty for {full_name}, falling to Tier 3")
-                    organic_results = {"organic": [], "knowledge_graph": None}
+                logger.info(f"[PRICE] No Serper results at all for {full_name}, falling to Tier 3")
+                organic_results = {"organic": [], "knowledge_graph": None}
         else:
             # Non-supplements: fetch BH organic results on-demand (only when Tier 1 shopping failed)
             organic_results = await search_price_organic(search_query, region_info["code"])
