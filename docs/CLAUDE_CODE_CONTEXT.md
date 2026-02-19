@@ -1,7 +1,7 @@
 # SmartCompare - Complete Project Knowledge Transfer
 
 > **Purpose:** This document contains EVERYTHING needed to continue development without context loss.
-> **Last Updated:** February 18, 2026
+> **Last Updated:** February 19, 2026
 > **Author:** Transferred from Claude.ai conversation (Days 1-7), updated by Claude Code sessions
 
 ---
@@ -696,6 +696,35 @@ Query params:
 **Cause:** Wrong remote URL, conflicts
 **Solution:** Fixed remote to `smartcompare-backend.git`, resolved conflicts
 
+## Feb 19: iHerb Direct Scrape for Supplement Prices
+**Problem:** Supplement prices were wrong — BHD 2.07 (USD→BHD conversion from US iHerb) vs real BHD 4.388 on bh.iherb.com. Original plan was to use Serper with `site:bh.iherb.com` but Serper doesn't index iHerb regional subdomains. Direct HTTP to iHerb blocked by Cloudflare from Railway datacenter IPs.
+
+**Solution:** `curl_cffi` library mimics Chrome TLS fingerprint, bypasses Cloudflare. Added `_fetch_iherb_price()` method that:
+1. Fetches `{cc}.iherb.com/search?kw=...` via `curl_cffi` (sync, wrapped in `run_in_executor`)
+2. Parses product cards from HTML `data-ga-*` attributes (brand, price, title)
+3. Matches by brand filter → all-query-words subset → iHerb's relevance order (first = most popular)
+4. Returns real BHD price directly (no USD conversion needed)
+
+**Bugs hit along the way (all fixed):**
+- `await set_cached()` — `set_cached()` is sync (returns bool), `await bool` → TypeError, caught silently by `asyncio.gather(return_exceptions=True)` → price=None
+- `NameError: best_score` — log message referenced variable only defined in `else` fallback branch. Broad `except Exception` caught it silently
+- `_calculate_freshness` NoneType — `product.get("price", {}).get(...)` fails when price is explicitly `None`. Fixed with `(p.get("price") or {}).get(...)` pattern
+- iHerb search query noise — "NOW D3 supplement" returned mostly non-NOW products. Stripped generic words (supplement, vitamin) from iHerb query
+- Cheapest-wins picked trial packs — 30-softgel trial (BD 1.305) selected over standard product. Changed to use iHerb's relevance order
+
+**Result:**
+- NOW D3: BHD 3.739 from iHerb (real price, real retailer, direct product URL) ✓
+- HealthAid D3: BHD 5.66 estimated (not on iHerb — honest behavior) ✓
+- Electronics regression: iPhone 16 BHD 449, Galaxy S25 BHD 389 (unchanged) ✓
+- Cost: $0.011 (under budget) ✓
+
+**Files changed:**
+- `app/services/structured_comparison_service.py` — `_fetch_iherb_price()`, iHerb query cleanup, matching logic, NameError fix, freshness guard
+- `app/api/text_routes.py` — debug endpoint added/removed during investigation
+- `requirements.txt` — added `curl_cffi>=0.7.0`
+
+**Known limitation:** Variant matching is imprecise — generic "NOW D3" picks iHerb's first relevant result (2000 IU 240 softgels) which may not match specs (1000 IU 180 softgels). Specs and price are fetched in parallel so spec data isn't available to refine the iHerb match.
+
 ---
 
 # 10. CURRENT ISSUES
@@ -712,6 +741,12 @@ Added `RETAILER_TIERS` scoring system — prefers official retailers over eBay/m
 **Frontend:** `ResultsScreen.tsx` ReviewsTab renders all new fields (score bars, star distribution, user quotes with sentiment badges, source ratings with verified badge). Code audited — all conditional rendering uses safe optional chaining and null checks.
 
 **Key architecture:** `source_ratings` come from REAL Serper shopping data (injected post-GPT-extraction). GPT is explicitly told NOT to generate source_ratings to prevent hallucinated review counts. `verified_rating` is injected into reviews to match Overview tab rating.
+
+## FIXED: Supplement Prices (Feb 19)
+iHerb prices now fetched via `curl_cffi` direct scrape of regional store (`bh.iherb.com`). Returns real BHD prices with retailer attribution and product URLs. Bypasses Cloudflare via Chrome TLS fingerprint mimicry. Fallback: Serper keyword search → GPT extraction → Tier 3 estimate.
+
+## KNOWN ISSUE: iHerb Variant Matching
+Generic queries like "NOW D3" match multiple variants on iHerb. Current logic picks iHerb's first relevant result (by relevance sort), which may not match the dosage/count from specs. Specs and price are fetched in parallel, so spec data isn't available to refine the match. Could be improved by fetching specs first, then using dosage/count to filter iHerb results.
 
 ## KNOWN ISSUE: Stale cache
 Old cached data (7-day TTL for specs/reviews) can serve outdated formats after schema changes. Use `?nocache=true` to bypass. Consider adding a cache version key or flushing on deploy.
@@ -903,17 +938,18 @@ When starting Claude Code, say:
 Read docs/CLAUDE_CODE_CONTEXT.md completely. This is SmartCompare - a product
 comparison app for GCC region.
 
-Current status (Feb 18, 2026):
-- Backend: Running on Railway (critical bugs fixed, cost optimization deployed)
-- BLOCKER: OpenAI API calls timeout from Railway (~17s connect timeout) — needs investigation
-- Prices: Working (3-tier fallback + retailer quality scoring + clickable URLs + iHerb for supplements)
+Current status (Feb 19, 2026):
+- Backend: Running on Railway (all critical bugs fixed, iHerb direct scrape deployed)
+- Prices (text): Working (3-tier fallback + retailer scoring + clickable URLs + curl_cffi iHerb scrape for supplements)
+- Prices (camera): PARTIALLY BROKEN — supplements get wrong BHD price from camera path (verbose product names fail iHerb search)
 - Specs: Working (supplements schema, no more "value or null")
 - Ratings: Working (GPT review fallback for unverified, brand-aware matching)
 - Enhanced Reviews: Working (category_scores, rating_distribution, user_quotes, source_ratings, verified_rating)
-- Camera input: Working (OCR prompt, detail:auto, size_or_count field)
+- Camera input: Working for identification, broken for supplement prices
 - Auth: Fixed (refresh token flow, verifyAuth return type)
-- Cost: Supplement $0.013 (was $0.017), Electronics $0.015 — verified locally
+- Cost: Supplement $0.011, Electronics $0.015
 - URL input: Not started
+- Known limitation: iHerb variant matching imprecise (generic queries pick first relevant product, may not match specs exactly)
 ```
 
 ---
@@ -1732,6 +1768,100 @@ Supplement comparison cost reduced from $0.017 to $0.013:
 | Skip BH shopping for supplements | `structured_comparison_service.py` | ~486 |
 | iHerb-first with BH organic fallback | `structured_comparison_service.py` | ~535 |
 | Skip Tier 2 sanity check for supplements | `structured_comparison_service.py` | ~563 |
+
+---
+
+# SESSION LOG: February 18, 2026 (Evening) — OpenAI Timeout Fix & Supplement iHerb Price Fix
+
+## What We Did
+
+### Phase 1: OpenAI Timeout on Railway (commits `4eb4432`, `54e9d76`)
+
+**Root cause:** Railway's default httpx connect timeout (~5s) was too short for OpenAI API cold-start connections. Locally worked fine because ISP latency was lower.
+
+**Fix:** Added explicit `timeout=httpx.Timeout(120.0, connect=30.0)` to all 3 `AsyncOpenAI()` clients:
+- `extraction_service.py` (specs/price/review/comparison extraction)
+- `openai_service.py` (vision identification)
+- `structured_comparison_service.py` (Tier 3 price estimate)
+
+### Phase 2: Supplement Detection Miss (commits `5a192bd`, `7ab9b62`)
+
+**Root cause chain:**
+1. `_get_price()` only used keyword matching via `_is_supplement_query()` — "Nature Made D3" had no matching keywords ("d3" was missing from list)
+2. Non-supplement path searched BH shopping → found USD prices → no currency conversion → wrong BHD amount
+3. Even when detected, iHerb prices were in USD but `original_currency` wasn't forced to "USD"
+
+**Fix:**
+- Added `category` parameter to `_get_price()` — `category=="supplements"` (from GPT parser) as primary signal, keyword match as backup
+- Added "d3", "d-3", brand name keywords ("nature made", "now foods", "solgar", "garden of life", "kirkland") to `SUPPLEMENT_KEYWORDS`
+- Force `original_currency = "USD"` when iHerb organic results are the source
+
+### Phase 3: Camera Price Cache Bug (commit `54e9d76`)
+
+**Root cause:** Stale Redis cache from pre-fix code served BHD 10.9 for camera path. The `nocache=true` bypass was only on text endpoint.
+
+**Fix:** Added `nocache` parameter to image_routes.py, threaded through to `compare_from_text()`.
+
+### Phase 4: Supplement iHerb Price Reliability (commit `70d1bba`) — DID NOT FULLY RESOLVE
+
+**Problem:** Camera comparison showed NOW D-3: BHD 10.9 (should be ~BHD 4). Text path worked but camera path did not.
+
+**Root cause chain:**
+1. Camera gives long product name: `"NOW high potency vitamin d-3 360 Softgels"`
+2. iHerb search query becomes: `"NOW high potency vitamin d-3 360 Softgels site:iherb.com"` — too specific, returns 0 results
+3. Code falls back to BH organic: `search_price_organic(search_query, "bh")` — Bahrain pharmacy search
+4. GPT extracts ~10.9 from a Bahrain pharmacy listing → `original_currency: "BHD"`
+5. Target is also BHD → no conversion → BHD 10.9 (wrong)
+6. The iHerb USD→BHD forcing logic doesn't fire because `iherb_organic` is empty
+
+**Secondary bug:** `full_name` in `_get_price()` doubles the variant: `"NOW high potency vitamin d-3 360 Softgels 360 Softgels"` (name already has variant from image_routes enrichment + `_get_price` appends variant again)
+
+**Three fixes applied:**
+
+1. **Strip pill count from iHerb search query** — regex removes `\b\d+\s*(softgels?|capsules?|tablets?|...)\b` from query. Keeps dosage (e.g., "1000 IU"). Example: `"NOW high potency vitamin d-3 1000 IU 360 Softgels"` → `"NOW high potency vitamin d-3 1000 IU"`
+
+2. **Remove BH organic fallback for supplements** — when iHerb returns nothing, instead of falling back to BH organic search (which gives wrong local BHD prices), pass empty context so Tier 2 GPT returns null → Tier 3 USD estimate handles it with proper conversion
+
+3. **Fix full_name doubling for vision products** — check if `variant.lower() in name.lower()` before concatenating. Vision products have name already containing size_or_count from image_routes.py enrichment.
+
+**Status:** Deployed but did NOT fully resolve the camera price issue. Needs further investigation — possibly the camera product name itself needs simplification before being used as search query, or the iHerb search needs broader matching.
+
+## Commits
+1. `4eb4432` — Fix OpenAI timeout: increase connect timeout to 30s for Railway
+2. `5a192bd` — Fix supplement detection: use GPT category, add d3/brand keywords
+3. `7ab9b62` — Fix iHerb USD→BHD conversion: force original_currency for US prices
+4. `73e8c33` — Fix vision category detection + camera upload Network Error
+5. `54e9d76` — Fix camera price cache: stale BHD 10.9 served from pre-fix cache
+6. `70d1bba` — Fix supplement iHerb price: strip pill count from query, remove BH fallback (DID NOT FULLY RESOLVE)
+
+## Key Technical Changes
+| Change | File | Detail |
+|--------|------|--------|
+| `timeout=httpx.Timeout(120.0, connect=30.0)` | 3 files | All AsyncOpenAI clients |
+| `category` param on `_get_price()` | `structured_comparison_service.py` | Primary supplement signal |
+| `SUPPLEMENT_KEYWORDS` expanded | `structured_comparison_service.py` | d3, d-3, brand names |
+| Force `original_currency = "USD"` for iHerb | `structured_comparison_service.py:565` | Prevents BHD misattribution |
+| `nocache` on image endpoint | `image_routes.py` | Bypass stale camera cache |
+| Strip pill count regex | `structured_comparison_service.py:548` | `re.sub(r'\b\d+\s*(softgels?|...)\b', ...)` |
+| Skip BH organic for supplements | `structured_comparison_service.py:561` | Empty context → Tier 3 estimate |
+| `full_name` variant dedup | `structured_comparison_service.py:484` | `if variant.lower() in name.lower()` |
+
+## Still Broken
+1. **Camera supplement prices** — iHerb search with stripped pill count still may not return results for verbose camera product names. The search query `"NOW high potency vitamin d-3 1000 IU site:iherb.com"` may still be too long/specific. May need to simplify the camera product name further (e.g., just `"NOW vitamin d3 1000 IU"`) or use a different search strategy for camera-identified supplements.
+2. **No axios auth interceptor** — token never sent on API requests (deferred)
+3. **Legacy `/api/v1/compare` route** — broken function calls (deferred)
+
+## Current Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices (text input) | ✅ Working (iHerb for supplements, shopping for electronics) |
+| Prices (camera input) | ⚠️ Partially broken (supplements get wrong BHD price from camera path) |
+| Ratings | ✅ Working (GPT review fallback for unverified, brand-aware matching) |
+| Reviews | ✅ Working |
+| Specs | ✅ Working (supplements schema) |
+| Camera | ⚠️ Partial (identification works, prices broken for supplements) |
+| Auth | ✅ Fixed (refresh token flow) |
+| URL input | ❌ Not started |
 
 ---
 
