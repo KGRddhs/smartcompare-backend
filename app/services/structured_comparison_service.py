@@ -574,8 +574,17 @@ class StructuredComparisonService:
                 logger.info(f"[PRICE] iHerb Serper returned {len(iherb_organic)} results for {full_name}")
                 organic_results = {"organic": iherb_organic, "knowledge_graph": None}
             else:
-                logger.info(f"[PRICE] iHerb Serper empty for {full_name}, falling to Tier 3")
-                organic_results = {"organic": [], "knowledge_graph": None}
+                # iHerb Serper also empty — try Bahrain pharmacy search (bolo.bh, nahdionline, etc.)
+                logger.info(f"[PRICE] iHerb Serper empty for {full_name}, trying Bahrain pharmacy search")
+                bh_pharmacy_results = await search_web(f"{brand} {name} price", num_results=5, country="bh")
+                self._track_cost(0.001)
+                bh_organic = bh_pharmacy_results.get("organic", [])
+                if bh_organic:
+                    logger.info(f"[PRICE] Bahrain pharmacy search returned {len(bh_organic)} results for {full_name}")
+                    organic_results = {"organic": bh_organic, "knowledge_graph": None}
+                else:
+                    logger.info(f"[PRICE] Bahrain pharmacy search also empty for {full_name}, falling to Tier 3")
+                    organic_results = {"organic": [], "knowledge_graph": None}
         else:
             # Non-supplements: fetch BH organic results on-demand (only when Tier 1 shopping failed)
             organic_results = await search_price_organic(search_query, region_info["code"])
@@ -741,9 +750,9 @@ class StructuredComparisonService:
         iHerb embeds structured product data in HTML data-ga-* attributes.
         Returns price dict or None if fetch/parse fails.
         """
-        import html as html_lib
         try:
             from curl_cffi import requests as curl_requests
+            from bs4 import BeautifulSoup
             search_url = f"https://{region_code}.iherb.com/search?kw={query.replace(' ', '+')}&lang=en-US"
             logger.info(f"[PRICE] Direct iHerb fetch (curl_cffi): {search_url}")
             loop = asyncio.get_event_loop()
@@ -756,18 +765,17 @@ class StructuredComparisonService:
                 logger.warning(f"[PRICE] iHerb returned {resp.status_code}")
                 return None
             page = resp.text
-            # Parse product cards: <a href="..." ... data-ga-brand-name="..." data-ga-discount-price="..." title="...">
-            card_pattern = re.compile(
-                r'<a\s[^>]*?href="([^"]+)"[^>]*?'
-                r'data-ga-brand-name="([^"]*)"[^>]*?'
-                r'data-ga-discount-price="([\d.]+)"[^>]*?'
-                r'title="([^"]*)"',
-                re.DOTALL
-            )
+            # Parse product cards using BeautifulSoup (attribute-order-independent)
+            soup = BeautifulSoup(page, 'html.parser')
+            cards = soup.select('a[data-ga-brand-name][data-ga-discount-price][title]')
             products = []
-            for m in card_pattern.finditer(page):
-                href, item_brand, price_str, title_raw = m.groups()
-                title = html_lib.unescape(title_raw)
+            for card in cards:
+                item_brand = card.get('data-ga-brand-name', '')
+                price_str = card.get('data-ga-discount-price', '')
+                title = card.get('title', '')
+                href = card.get('href', '')
+                if not price_str:
+                    continue
                 products.append({
                     "url": href if href.startswith("http") else f"https://{region_code}.iherb.com{href}",
                     "brand": item_brand,
