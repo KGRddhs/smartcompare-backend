@@ -544,10 +544,15 @@ class StructuredComparisonService:
         if is_supplement:
             # Opt B: Supplements — search iHerb via Serper with price-focused query
             # Note: direct iHerb scrape blocked by Cloudflare from cloud IPs
-            # Strip pill count from query — iHerb search chokes on "360 Softgels" etc.
+            # Strip pill count and generic words from query — iHerb search is noisy with these
             iherb_query = re.sub(
                 r'\b\d+\s*(softgels?|capsules?|tablets?|gummies?|caplets?|count|ct)\b',
                 '', search_query, flags=re.IGNORECASE
+            ).strip()
+            # Remove generic supplement words that distort iHerb search results
+            iherb_query = re.sub(
+                r'\b(supplement|vitamin|vitamins|mineral|minerals)\b',
+                '', iherb_query, flags=re.IGNORECASE
             ).strip()
             iherb_query = re.sub(r'\s+', ' ', iherb_query)  # collapse whitespace
             iherb_cc = region_info["code"]  # "bh" for Bahrain, "ae" for UAE, etc.
