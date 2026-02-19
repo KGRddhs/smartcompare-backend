@@ -797,9 +797,9 @@ class StructuredComparisonService:
                 if name_words.issubset(title_words):
                     full_matches.append(p)
             if full_matches:
-                full_matches.sort(key=lambda p: p["price"])
+                # Use iHerb's relevance order (first match) — their search puts popular products first
                 best = full_matches[0]
-                logger.info(f"[PRICE] iHerb match: all-words match, cheapest of {len(full_matches)} candidates")
+                logger.info(f"[PRICE] iHerb match: all-words, first of {len(full_matches)} candidates")
             else:
                 # Fallback: best word overlap, cheapest tiebreaker
                 best_score = -1
