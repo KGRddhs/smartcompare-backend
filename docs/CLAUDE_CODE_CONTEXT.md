@@ -1,7 +1,7 @@
 # SmartCompare - Complete Project Knowledge Transfer
 
 > **Purpose:** This document contains EVERYTHING needed to continue development without context loss.
-> **Last Updated:** February 19, 2026
+> **Last Updated:** February 20, 2026
 > **Author:** Transferred from Claude.ai conversation (Days 1-7), updated by Claude Code sessions
 
 ---
@@ -1862,6 +1862,72 @@ Supplement comparison cost reduced from $0.017 to $0.013:
 | Camera | ⚠️ Partial (identification works, prices broken for supplements) |
 | Auth | ✅ Fixed (refresh token flow) |
 | URL input | ❌ Not started |
+
+---
+
+## Session: February 20, 2026 — Rating/Price Links + Cost Optimization
+
+### What Was Done
+
+**1. Fixed Rating & Price Links (no legit links before)**
+- **Problem:** Rating links pointed nowhere useful. Price links were wrong for some products (generic search pages instead of product pages).
+- **Root cause:** Backend discarded Serper Shopping `link` field. Frontend `openRatingSource()` hardcoded Google Shopping search, ignoring backend URLs.
+- **Fix (backend):** Use Serper Shopping `link` field (Google Shopping product-specific URLs with catalog IDs) as primary URL for both price and rating. Fall back to `_build_retailer_url()` search pages when no link available.
+- **Fix (frontend):** `openRatingSource()` now uses `rating_source.url` from backend first. Added `google_shopping_consensus` and `gpt_review_aggregate` to `extract_method` type union, `getConfidenceColor()`, and `getMethodLabel()`.
+- **Files changed:** `structured_comparison_service.py` (4 edits), `ResultsScreen.tsx` (4 edits)
+- **Tests:** `tests/test_url_extraction.py` — 8 pytest tests covering price URL, tiered rating URL, and consensus rating URL extraction
+- **Commit:** `b3e35e7`
+
+**2. Cost Optimization — Unified Search Merging**
+- **Problem:** Each comparison made 15-20 API calls at $0.0145 (electronics) / $0.0119 (supplements). Target: ≤$0.015.
+- **Analysis:** Specs and reviews each did their own Serper web search ($0.001 each). Two separate searches per product = $0.004/comparison wasted on redundant calls.
+- **Fix:** Added unified pre-search in `_fetch_product_data()` — one Serper web search (`"{query} specifications reviews price"`, 10 results) shared by both `_get_specs(search_results=...)` and `_get_reviews(search_results=...)`. Gated by cache check so no wasted call when data is already cached.
+- **Results:**
+  - Electronics: **$0.0145 → $0.0099** (32% reduction, 20→13 API calls)
+  - Supplements: **$0.0119 → $0.0119** (1 call saved; iHerb/pharmacy paths dominate)
+- **Approach B (skip redundant US rating search):** After analysis, the existing BH→US fallback in `_get_verified_rating()` already correctly returns early when BH data has tier1/tier2/consensus ratings. No code change needed.
+- **Commit:** `ec2e80d`
+
+### Key Decisions Made
+| Decision | Rationale |
+|----------|-----------|
+| Use Serper `link` field as primary URL | Zero-cost improvement (data already fetched), gives product-specific Google Shopping pages |
+| `_build_retailer_url()` as fallback | Generates search page URLs when Serper link is absent (GCC retailers) |
+| Unified search over separate searches | One Serper call ($0.001) replaces two ($0.002), 10 results cover both specs and reviews |
+| Gate unified search on cache check | Avoids wasting $0.001 when both specs and reviews are already cached |
+| Don't merge price organic search | Uses region-specific query terms ("Bahrain price BHD buy") — merging would dilute results |
+
+### Architecture Changes
+```
+BEFORE (per product, no cache):
+  Phase 1: _get_specs() [search_web + GPT] + _get_price() [shopping + organic + GPT]
+  Phase 2: _get_reviews() [search_web + GPT] + _get_verified_rating() [US shopping]
+
+AFTER:
+  Pre-fetch: unified search_web() — shared by specs + reviews (gated by cache check)
+  Phase 1: _get_specs(search_results=unified) + _get_price() [shopping + organic + GPT]
+  Phase 2: _get_reviews(search_results=unified) + _get_verified_rating() [US shopping]
+```
+
+### What Serper Shopping `link` Actually Contains
+- NOT direct retailer URLs (despite Serper docs suggesting this)
+- Google Shopping product-specific pages with `ibp=oshop`, `catalogid`, `pvo`, `pvt` parameters
+- Example: `https://www.google.com/search?ibp=oshop&q=NOW+D3&prds=catalogid:10530300028176976053,...`
+- Still much better than generic search pages — leads to product detail with price comparison
+
+### Updated Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices (text input) | ✅ Working (iHerb for supplements, shopping for electronics) |
+| Prices (camera input) | ⚠️ Partially broken (supplements get wrong BHD price from camera path) |
+| Ratings | ✅ Working + **linked to sources** |
+| Reviews | ✅ Working |
+| Specs | ✅ Working (supplements schema) |
+| Camera | ⚠️ Partial (identification works, prices broken for supplements) |
+| Auth | ✅ Fixed (refresh token flow) |
+| URL input | ❌ Not started |
+| **Rating/Price links** | ✅ **NEW — product-specific Google Shopping URLs** |
+| **Cost optimization** | ✅ **NEW — $0.010 electronics, $0.012 supplements** |
 
 ---
 
