@@ -1043,7 +1043,7 @@ class StructuredComparisonService:
                 "amount": round(amount, 2),
                 "currency": currency,
                 "retailer": retailer,
-                "url": self._build_retailer_url(retailer, product_name),
+                "url": item.get("link") or self._build_retailer_url(retailer, product_name),
                 "in_stock": True,
                 "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
                 "match_score": match_score,
@@ -1602,6 +1602,7 @@ class StructuredComparisonService:
                 "rating": rating_val,
                 "review_count": review_count,
                 "source": source,
+                "link": item.get("link"),
                 "title": title,
                 "match_score": match_score,
             }
@@ -1642,7 +1643,7 @@ class StructuredComparisonService:
                     "rating_verified": True,
                     "rating_source": {
                         "name": "Google Shopping (product aggregate)",
-                        "url": self._build_retailer_url(best["source"], product_name),
+                        "url": best.get("link") or self._build_retailer_url(best["source"], product_name),
                         "retrieved_at": datetime.now().isoformat() + "Z",
                         "extract_method": "google_shopping_consensus",
                         "confidence": "high"
@@ -1688,7 +1689,7 @@ class StructuredComparisonService:
             "rating_verified": verified,
             "rating_source": {
                 "name": label,
-                "url": self._build_retailer_url(best["source"], product_name),
+                "url": best.get("link") or self._build_retailer_url(best["source"], product_name),
                 "retrieved_at": datetime.now().isoformat() + "Z",
                 "extract_method": "google_shopping",
                 "confidence": confidence

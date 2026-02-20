@@ -19,7 +19,7 @@ interface RatingSource {
   name: string;
   url: string;
   retrieved_at: string;
-  extract_method?: 'google_shopping' | 'json_ld' | 'microdata' | 'meta_tags' | 'css_selector';
+  extract_method?: 'google_shopping' | 'google_shopping_consensus' | 'json_ld' | 'microdata' | 'meta_tags' | 'css_selector' | 'gpt_review_aggregate';
   confidence?: 'high' | 'medium' | 'low';
 }
 
@@ -180,14 +180,16 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   };
 
   const openRatingSource = (source: RatingSource | null | undefined, product?: Product) => {
-    // Build a clean Google Shopping search URL instead of using the
-    // internal redirect URL which crashes Chrome on Android
-    const productName = product?.full_name || product?.name || '';
-    if (productName) {
-      const query = encodeURIComponent(productName);
-      Linking.openURL(`https://www.google.com/search?q=${query}&tbm=shop`);
-    } else if (source?.url) {
+    // Prefer actual product page URL from backend (Serper Shopping link)
+    // Fall back to Google Shopping search if no URL available
+    if (source?.url) {
       Linking.openURL(source.url);
+    } else {
+      const productName = product?.full_name || product?.name || '';
+      if (productName) {
+        const query = encodeURIComponent(productName);
+        Linking.openURL(`https://www.google.com/search?q=${query}&tbm=shop`);
+      }
     }
   };
 
@@ -234,19 +236,23 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
     // Confidence indicator
     const getConfidenceColor = () => {
-      if (rating_source?.extract_method === 'google_shopping') return '#4CAF50'; // High
-      if (rating_source?.extract_method === 'json_ld') return '#4CAF50'; // High
-      if (rating_source?.extract_method === 'microdata') return '#4CAF50'; // High
-      return '#FFC107'; // Medium
+      if (rating_source?.extract_method === 'google_shopping') return '#4CAF50';
+      if (rating_source?.extract_method === 'google_shopping_consensus') return '#4CAF50';
+      if (rating_source?.extract_method === 'json_ld') return '#4CAF50';
+      if (rating_source?.extract_method === 'microdata') return '#4CAF50';
+      if (rating_source?.extract_method === 'gpt_review_aggregate') return '#9E9E9E';
+      return '#FFC107';
     };
 
     const getMethodLabel = () => {
       switch (rating_source?.extract_method) {
         case 'google_shopping': return 'Verified';
+        case 'google_shopping_consensus': return 'Verified';
         case 'json_ld': return 'Verified';
         case 'microdata': return 'Verified';
         case 'meta_tags': return 'Extracted';
         case 'css_selector': return 'Parsed';
+        case 'gpt_review_aggregate': return 'Unverified';
         default: return 'Verified';
       }
     };
