@@ -308,13 +308,28 @@ class StructuredComparisonService:
             "query": search_query,
         }
 
+        # === Unified web search (one Serper call for both specs + reviews) ===
+        # Saves $0.001/product vs separate searches per function
+        unified_search = None
+        if include_specs or include_reviews:
+            specs_key = get_specs_cache_key(brand, name, variant)
+            reviews_key = get_reviews_cache_key(brand, name, variant)
+            specs_hit = get_cached(specs_key) if not nocache else None
+            reviews_hit = get_cached(reviews_key) if not nocache else None
+            if (include_specs and not specs_hit) or (include_reviews and not reviews_hit):
+                unified_search = await search_web(
+                    f"{search_query} specifications reviews price",
+                    num_results=10
+                )
+                self._track_cost(0.001)
+
         # === Phase 1: specs + price (parallel) ===
         # Price must run first so _shopping_items_cache is populated for reviews
         phase1_tasks = []
         phase1_keys = []
 
         if include_specs:
-            phase1_tasks.append(self._get_specs(brand, name, variant, category, search_query, nocache))
+            phase1_tasks.append(self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search))
             phase1_keys.append("specs")
 
         phase1_tasks.append(self._get_price(brand, name, variant, region, search_query, nocache, category))
@@ -349,7 +364,8 @@ class StructuredComparisonService:
         if include_reviews:
             phase2_tasks.append(self._get_reviews(
                 brand, name, variant, search_query, nocache,
-                category=category, retailer_ratings=retailer_ratings
+                category=category, retailer_ratings=retailer_ratings,
+                search_results=unified_search
             ))
             phase2_keys.append("reviews")
 
@@ -422,9 +438,10 @@ class StructuredComparisonService:
         variant: Optional[str],
         category: str,
         search_query: str,
-        nocache: bool = False
+        nocache: bool = False,
+        search_results: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """Get specs with caching."""
+        """Get specs with caching. Uses pre-fetched search_results if provided."""
         cache_key = get_specs_cache_key(brand, name, variant)
 
         # Check cache
@@ -433,11 +450,12 @@ class StructuredComparisonService:
             logger.info(f"Specs cache hit: {cache_key}")
             cached["_cached"] = True
             return cached
-        
-        # Fetch from search
+
+        # Fetch from search (reuse unified search if available)
         logger.info(f"Fetching specs for: {brand} {name}")
-        search_results = await search_web(f"{search_query} specifications features")
-        self._track_cost(0.001)  # Serper cost
+        if search_results is None:
+            search_results = await search_web(f"{search_query} specifications features")
+            self._track_cost(0.001)  # Serper cost
         
         search_context = self._format_search_results(search_results)
         
@@ -1215,9 +1233,10 @@ class StructuredComparisonService:
         search_query: str,
         nocache: bool = False,
         category: str = "other",
-        retailer_ratings: Optional[List[Dict]] = None
+        retailer_ratings: Optional[List[Dict]] = None,
+        search_results: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """Get reviews with caching. Uses category-aware search and retailer ratings."""
+        """Get reviews with caching. Uses pre-fetched search_results if provided."""
         cache_key = get_reviews_cache_key(brand, name, variant)
 
         # Check cache
@@ -1227,11 +1246,12 @@ class StructuredComparisonService:
             cached["_cached"] = True
             return cached
 
-        # Category-aware search query
+        # Fetch from search (reuse unified search if available)
         review_terms = self.CATEGORY_REVIEW_TERMS.get(category, "user reviews pros cons rating")
         logger.info(f"Fetching reviews for: {brand} {name} (category: {category})")
-        search_results = await search_web(f"{search_query} {review_terms}")
-        self._track_cost(0.001)  # Serper cost
+        if search_results is None:
+            search_results = await search_web(f"{search_query} {review_terms}")
+            self._track_cost(0.001)  # Serper cost
 
         # Use enhanced formatter with retailer ratings
         search_context = self._format_review_search_results(
