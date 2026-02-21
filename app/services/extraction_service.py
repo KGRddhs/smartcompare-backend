@@ -92,7 +92,7 @@ CATEGORY_SPEC_SCHEMAS = {
 }
 
 
-def _build_specs_prompt(brand: str, name: str, variant: str, category: str, search_context: str) -> str:
+def _build_specs_prompt(brand: str, name: str, variant: str, category: str, search_context: str, drug_context: str = "") -> str:
     schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
     fields = CATEGORY_SPEC_SCHEMAS[schema_key]
 
@@ -107,6 +107,7 @@ CATEGORY: {category}
 
 Search results for context:
 {search_context}
+{drug_context}
 
 Return ONLY valid JSON (no markdown) with EXACTLY these fields:
 {{
@@ -334,14 +335,16 @@ async def extract_specs(
     name: str,
     variant: Optional[str],
     category: str,
-    search_context: str
+    search_context: str,
+    drug_context: str = ""
 ) -> Dict[str, Any]:
     """Extract structured specifications for a product, enforcing a fixed schema."""
     try:
         client = get_client()
         prompt = _build_specs_prompt(
             brand, name, variant or "", category,
-            search_context[:3000]
+            search_context[:3000],
+            drug_context=drug_context
         )
 
         response = await client.chat.completions.create(

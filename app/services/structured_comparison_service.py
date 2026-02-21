@@ -25,6 +25,7 @@ from app.services.extraction_service import (
 )
 from app.services.serper_service import search_product_prices, search_price_organic, search_web
 from app.services.cache_service import get_cached, set_cached
+from app.services.drug_database_service import find_matching_drugs, format_drug_context
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
@@ -328,8 +329,19 @@ class StructuredComparisonService:
         phase1_tasks = []
         phase1_keys = []
 
+        # Drug database lookup for supplements (enriches GPT prompt with official data)
+        drug_context = ""
+        if include_specs and category == "supplements":
+            try:
+                drugs = await find_matching_drugs(search_query, limit=5)
+                drug_context = format_drug_context(drugs)
+                if drug_context:
+                    logger.info(f"Drug DB: found {len(drugs)} matches for '{search_query}'")
+            except Exception as e:
+                logger.warning(f"Drug DB lookup failed: {e}")
+
         if include_specs:
-            phase1_tasks.append(self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search))
+            phase1_tasks.append(self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context))
             phase1_keys.append("specs")
 
         phase1_tasks.append(self._get_price(brand, name, variant, region, search_query, nocache, category))
@@ -439,7 +451,8 @@ class StructuredComparisonService:
         category: str,
         search_query: str,
         nocache: bool = False,
-        search_results: Optional[Dict] = None
+        search_results: Optional[Dict] = None,
+        drug_context: str = ""
     ) -> Dict[str, Any]:
         """Get specs with caching. Uses pre-fetched search_results if provided."""
         cache_key = get_specs_cache_key(brand, name, variant)
@@ -460,7 +473,7 @@ class StructuredComparisonService:
         search_context = self._format_search_results(search_results)
         
         # Extract specs
-        specs = await extract_specs(brand, name, variant, category, search_context)
+        specs = await extract_specs(brand, name, variant, category, search_context, drug_context=drug_context)
         self._track_cost(0.0005)  # ~500 tokens
         
         # Cache result
