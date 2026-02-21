@@ -998,10 +998,11 @@ class StructuredComparisonService:
 
         Filters Serper organic results for known pharmacy domains, fetches
         each product page, and parses JSON-LD Product schema for price.
-        If no pharmacy URLs in initial results, tries a targeted site:bolo.bh search.
+        If initial URLs have no JSON-LD (e.g. search pages), tries a targeted
+        site:bolo.bh search to find indexed product pages.
         Returns first valid match or None.
         """
-        # Filter for pharmacy URLs from existing Serper results
+        # Collect pharmacy URLs from existing Serper results
         pharmacy_urls = []
         for item in serper_organic:
             link = item.get("link", "")
@@ -1010,24 +1011,44 @@ class StructuredComparisonService:
                     pharmacy_urls.append((link, retailer_name))
                     break
 
-        # If no pharmacy URLs found, try targeted site search for bolo.bh
-        if not pharmacy_urls:
-            logger.info(f"[PRICE] No pharmacy URLs in Serper results, trying site:bolo.bh search for {full_name}")
-            try:
-                site_results = await search_web(f"{brand} {full_name} site:bolo.bh", num_results=3, country="bh")
-                self._track_cost(0.001)
-                for item in site_results.get("organic", []):
-                    link = item.get("link", "")
-                    if "bolo.bh" in link:
-                        pharmacy_urls.append((link, "Bolo"))
-            except Exception as e:
-                logger.warning(f"[PRICE] Site search failed: {e}")
+        # Try fetching and parsing JSON-LD from pharmacy URLs
+        result = await self._try_pharmacy_urls(pharmacy_urls, brand, currency)
+        if result:
+            return result
 
+        # Initial URLs had no JSON-LD (likely search/listing pages) — try targeted site search
+        logger.info(f"[PRICE] No JSON-LD in initial pharmacy URLs, trying site:bolo.bh search for {full_name}")
+        try:
+            site_results = await search_web(f"{brand} {full_name} site:bolo.bh", num_results=3, country="bh")
+            self._track_cost(0.001)
+            site_urls = []
+            for item in site_results.get("organic", []):
+                link = item.get("link", "")
+                if "bolo.bh" in link:
+                    site_urls.append((link, "Bolo"))
+            result = await self._try_pharmacy_urls(site_urls, brand, currency)
+            if result:
+                return result
+        except Exception as e:
+            logger.warning(f"[PRICE] Site search failed: {e}")
+
+        logger.info(f"[PRICE] No pharmacy JSON-LD price found for {full_name}")
+        return None
+
+    async def _try_pharmacy_urls(
+        self,
+        pharmacy_urls: List[Tuple[str, str]],
+        brand: str,
+        currency: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Try fetching JSON-LD price from a list of pharmacy URLs.
+
+        Returns price dict on first successful JSON-LD extraction, or None.
+        """
         if not pharmacy_urls:
-            logger.info(f"[PRICE] No pharmacy URLs found for {full_name}")
             return None
 
-        logger.info(f"[PRICE] Found {len(pharmacy_urls)} pharmacy URLs, trying JSON-LD extraction")
+        logger.info(f"[PRICE] Trying {len(pharmacy_urls)} pharmacy URLs for JSON-LD extraction")
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             for url, retailer_name in pharmacy_urls[:3]:
