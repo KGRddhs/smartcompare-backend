@@ -80,6 +80,21 @@ def test_skips_wrong_brand(service):
     assert result is None
 
 
+def test_matches_brand_with_spaces(service):
+    """'HealthAid' should match 'Health Aid' (space-insensitive)."""
+    html = '''
+    <html><head>
+    <script type="application/ld+json">
+    {"@type": "Product", "name": "Health Aid Vitamin D3 1000iu 30 Tablets",
+     "offers": {"@type": "Offer", "price": 6.3, "priceCurrency": "BHD"}}
+    </script>
+    </head><body></body></html>
+    '''
+    result = service._extract_jsonld_price(html, "HealthAid", "BHD")
+    assert result is not None
+    assert result["amount"] == 6.3
+
+
 def test_returns_none_for_no_jsonld(service):
     """No JSON-LD on page."""
     html = '<html><head></head><body><p>No data</p></body></html>'

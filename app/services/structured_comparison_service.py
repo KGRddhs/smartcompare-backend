@@ -943,9 +943,11 @@ class StructuredComparisonService:
                         products.append(item)
 
             for product in products:
-                # Verify brand in product name
+                # Verify brand in product name (space-insensitive: "HealthAid" matches "Health Aid")
                 product_name = product.get("name", "")
-                if brand_lower not in product_name.lower():
+                brand_nospace = brand_lower.replace(" ", "")
+                name_nospace = product_name.lower().replace(" ", "")
+                if brand_nospace not in name_nospace:
                     continue
 
                 # Extract offers (single dict or list)
