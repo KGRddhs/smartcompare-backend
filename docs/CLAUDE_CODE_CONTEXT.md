@@ -1,7 +1,7 @@
 # SmartCompare - Complete Project Knowledge Transfer
 
 > **Purpose:** This document contains EVERYTHING needed to continue development without context loss.
-> **Last Updated:** February 21, 2026
+> **Last Updated:** February 21, 2026 (Session 8: Drug DB + Integration Tests)
 > **Author:** Transferred from Claude.ai conversation (Days 1-7), updated by Claude Code sessions
 
 ---
@@ -866,65 +866,85 @@ DEBUG_MODE=true
 
 # 13. TESTING GUIDE
 
+## Automated Tests (pytest)
+
+```bash
+# All unit tests (fast, no API calls)
+python -m pytest tests/test_url_extraction.py tests/test_pharmacy_jsonld.py tests/test_drug_database_service.py -v
+
+# Drug database unit tests only (6 live_db tests auto-skip without Supabase)
+python -m pytest tests/test_drug_database_service.py -v -m "not live_db"
+
+# Integration tests — hits live Railway, costs ~$0.06, takes ~4 min
+python -m pytest tests/test_integration.py -v -m integration
+
+# All tests
+python -m pytest tests/ -v --timeout=180
+```
+
+### Test Files
+| File | Tests | Type | Notes |
+|------|-------|------|-------|
+| `tests/test_url_extraction.py` | 8 | Unit | URL extraction for price + rating links |
+| `tests/test_pharmacy_jsonld.py` | 12 | Unit | Pharmacy JSON-LD price parsing |
+| `tests/test_drug_database_service.py` | 11 | Unit + Live DB | 5 local + 6 `live_db` (need Supabase) |
+| `tests/test_integration.py` | 6 | Integration | Live Railway: phones, laptops, supplements (iHerb + pharmacy), grocery, shoes |
+
 ## Local Backend Testing
 
-```powershell
-cd "C:\Users\SynAckITPC\Documents\AI\smartcompare\backend"
-poetry run uvicorn app.main:app --reload --port 8000
+```bash
+cd C:\Users\SynAckITPC\Documents\AI\smartcompare
+uvicorn app.main:app --reload --port 8000
 ```
 
 Test URLs:
 - Health: http://localhost:8000/health
-- Compare: http://localhost:8000/api/v1/text/compare?q=iPhone%2015%20vs%20Galaxy%20S24&mode=v3
+- Compare: http://localhost:8000/api/v1/text/compare?q=iPhone%2015%20vs%20Galaxy%20S24&nocache=true
+
+## Production Testing
+
+```bash
+curl https://smartcompare-backend-production.up.railway.app/health
+curl "https://smartcompare-backend-production.up.railway.app/api/v1/text/compare?q=iPhone+15+vs+Galaxy+S24&nocache=true"
+```
 
 ## Mobile Testing
 
-```powershell
-cd "C:\Users\SynAckITPC\Documents\AI\smartcompare\SmartCompareApp"
+```bash
+cd SmartCompareApp
 npx expo start
-```
-
-## Checking Logs
-
-Railway logs should show:
-```
-[RATING] Extracting verified rating for: Apple iPhone 15
-[RATING] Trying Amazon US...
-[RATING] Found product page: https://amazon.com/dp/B0CHX1W1XY
-[RATING] ✓ VERIFIED: 4.6/5 (12543 reviews)
-```
-
-If broken:
-```
-[RATING] Extracting verified rating for: Apple iPhone 15
-[RATING] Trying Amazon US...
-[RATING] No product page found on Amazon US
-[RATING] === No verified rating found ===
 ```
 
 ---
 
 # 14. FUTURE ROADMAP
 
-## Immediate (This Week)
-- [ ] Fix rating extraction
-- [ ] Verify all retailers working
-- [ ] Test with 10+ product pairs
+## Completed (Feb 11-21 2026)
+- [x] Fix rating extraction (Serper Shopping tiers + consensus)
+- [x] Rating/Price clickable links (Google Shopping product URLs)
+- [x] Supplement pricing (iHerb scrape + pharmacy JSON-LD)
+- [x] Camera input (GPT-4o-mini vision OCR)
+- [x] Enhanced reviews (category_scores, source_ratings, user_quotes)
+- [x] Cost optimization ($0.010/comparison via unified search)
+- [x] Bahrain drug database (655 products, GPT context injection)
+- [x] Integration tests (6 tests across all categories)
 
-## Short Term (This Month)
+## Short Term
 - [ ] Apply Figma UI design
-- [ ] Add product history
-- [ ] Implement favorites/wishlist
+- [ ] Fix camera supplement pricing (verbose names fail iHerb search)
+- [ ] Add axios auth interceptor (token auto-sent on requests)
+- [ ] Fix ResultsScreen type divergence from types.ts
+- [ ] Add product history / favorites
 
 ## Medium Term
+- [ ] URL input comparison (`/api/v1/url/compare`)
 - [ ] Premium tier with Stripe
-- [ ] More comparison modes
 - [ ] Price alerts
 - [ ] Barcode scanning
+- [ ] Multi-language support
 
 ## Long Term
 - [ ] AI shopping assistant
-- [ ] Multi-language support
 - [ ] More GCC retailers
 - [ ] Price prediction
 
@@ -938,18 +958,19 @@ When starting Claude Code, say:
 Read docs/CLAUDE_CODE_CONTEXT.md completely. This is SmartCompare - a product
 comparison app for GCC region.
 
-Current status (Feb 19, 2026):
-- Backend: Running on Railway (all critical bugs fixed, iHerb direct scrape deployed)
-- Prices (text): Working (3-tier fallback + retailer scoring + clickable URLs + curl_cffi iHerb scrape for supplements)
-- Prices (camera): PARTIALLY BROKEN — supplements get wrong BHD price from camera path (verbose product names fail iHerb search)
-- Specs: Working (supplements schema, no more "value or null")
-- Ratings: Working (GPT review fallback for unverified, brand-aware matching)
-- Enhanced Reviews: Working (category_scores, rating_distribution, user_quotes, source_ratings, verified_rating)
+Current status (Feb 21, 2026):
+- Backend: Running on Railway (all critical bugs fixed, iHerb scrape + pharmacy JSON-LD deployed)
+- Prices (text): Working (3-tier fallback + iHerb scrape + pharmacy JSON-LD + clickable URLs)
+- Prices (camera): PARTIALLY BROKEN — supplements get wrong BHD price from camera path
+- Specs: Working (supplements enriched with Bahrain drug database context)
+- Ratings: Working (Serper Shopping tiers + consensus + GPT review fallback)
+- Enhanced Reviews: Working (category_scores, rating_distribution, user_quotes, source_ratings)
 - Camera input: Working for identification, broken for supplement prices
-- Auth: Fixed (refresh token flow, verifyAuth return type)
-- Cost: Supplement $0.011, Electronics $0.015
+- Auth: Fixed (refresh token flow)
+- Cost: ~$0.010/comparison (electronics and supplements)
+- Bahrain Drug DB: 655 registered health products, GPT context injection for supplements
+- Tests: 37 total (8 URL + 12 pharmacy + 11 drug DB + 6 integration)
 - URL input: Not started
-- Known limitation: iHerb variant matching imprecise (generic queries pick first relevant product, may not match specs exactly)
 ```
 
 ---
