@@ -1,7 +1,7 @@
 # SmartCompare - Complete Project Knowledge Transfer
 
 > **Purpose:** This document contains EVERYTHING needed to continue development without context loss.
-> **Last Updated:** February 20, 2026
+> **Last Updated:** February 21, 2026
 > **Author:** Transferred from Claude.ai conversation (Days 1-7), updated by Claude Code sessions
 
 ---
@@ -1928,6 +1928,97 @@ AFTER:
 | URL input | ❌ Not started |
 | **Rating/Price links** | ✅ **NEW — product-specific Google Shopping URLs** |
 | **Cost optimization** | ✅ **NEW — $0.010 electronics, $0.012 supplements** |
+
+---
+
+## Session 8: Feb 21, 2026 — Pharmacy JSON-LD Price Extraction
+
+### Problem
+Non-iHerb supplement brands (HealthAid, Vitabiotics, etc.) were getting wrong prices. HealthAid Vitamin D3 1000IU returned BHD 3.77 (GPT guess), BHD 5.66, or BHD 7.71 (wrong iHerb product match) across different runs. Real price is BHD 9.00 (bolo.bh, 120ct) or BHD 6.30 (Boots, 30ct).
+
+### Root Cause
+HealthAid is NOT sold on iHerb. The iHerb scraper either matched a different brand's product or returned None, falling through to unreliable GPT snippet extraction.
+
+### Solution: JSON-LD Product Schema Parsing
+Bahrain pharmacy product pages (bolo.bh, bn.boots.com) embed structured `Product` schema in JSON-LD with exact BHD prices. Parse these instead of relying on GPT.
+
+### New Supplement Price Pipeline
+```
+1. iHerb direct scrape (existing — NOW, Solgar, Nature Made)
+   ↓ no brand match
+2. Serper BH pharmacy search (existing, $0.002)
+   ↓ try pharmacy URLs
+3. _try_pharmacy_urls() — fetch pages, parse JSON-LD Product schema
+   ↓ no JSON-LD found (search pages, not product pages)
+4. Targeted site search: site:bn.boots.com OR site:bolo.bh ($0.001)
+   ↓ find product page URLs
+5. _try_pharmacy_urls() again on targeted results
+   ↓ still no JSON-LD
+6. GPT extraction from snippets (existing fallback)
+   ↓ GPT fails
+7. Tier 3 GPT estimate (existing)
+```
+
+### New Code
+- `_extract_jsonld_price(html, brand, currency)` — static method, parses `<script type="application/ld+json">` for Product.offers.price
+- `_fetch_pharmacy_price(serper_organic, brand, full_name, currency)` — filters URLs, calls `_try_pharmacy_urls`, falls back to targeted site search
+- `_try_pharmacy_urls(urls, brand, currency)` — fetches pages via httpx, calls `_extract_jsonld_price`
+- `PHARMACY_DOMAINS` — `{"bolo.bh": "Bolo", "bn.boots.com": "Boots", "aldeerahpharmacy.com": "Al Deerah Pharmacy"}`
+
+### Bugs Discovered & Fixed During Production Testing
+1. **bolo.bh not indexed by Google** — Vue.js SPA, `site:bolo.bh` returns zero results. Had to add bn.boots.com (IS indexed) to targeted search
+2. **Search pages vs product pages** — Serper returns pharmacy search/listing URLs, not product pages. Search pages have no Product JSON-LD. Fixed by trying initial URLs first, then falling back to targeted site search
+3. **Brand spelling mismatch** — Boots spells it "Health Aid" (with space), our brand is "HealthAid" (no space). Fixed with space-insensitive brand matching: `brand.replace(" ", "")` before comparison
+4. **Duplicate brand in search query** — `f"{brand} {full_name}"` produced "HealthAid HealthAid Vitamin D3..." since full_name already contains brand
+
+### Results
+| | Before | After |
+|---|---|---|
+| HealthAid D3 price | BHD 3.77 (GPT estimate, wrong) | BHD 6.30 (Boots, real, verified) |
+| HealthAid retailer | None | Boots |
+| HealthAid URL | iHerb search (wrong) | bn.boots.com product page |
+| Cost | $0.0202 → $0.0099 | $0.0103 |
+
+### Tests Added
+- `tests/test_pharmacy_jsonld.py` — 12 tests (8 JSON-LD parsing + 1 brand-with-spaces + 3 integration)
+- All 20 tests pass (12 pharmacy + 8 URL extraction)
+
+### Key Lessons Learned
+1. **SPA sites are NOT scrapable** with simple HTTP — bolo.bh renders products client-side. But product pages may still have server-rendered JSON-LD metadata.
+2. **Google indexing varies wildly** — bolo.bh (major GCC retailer) has ZERO pages indexed, while bn.boots.com (Boots) is fully indexed.
+3. **Brand names have variants** — "HealthAid" vs "Health Aid". Space-insensitive matching is essential for pharmacy data.
+4. **Serper organic returns listing pages** — even when searching for specific products, Serper often returns the retailer's search/category page, not the product page. Targeted `site:` queries work better.
+5. **JSON-LD is reliable** — when a page has it, it's structured, deterministic, and free to parse. Far superior to GPT snippet extraction.
+
+### Planned: Bahrain Drug Database
+User has an Excel file of drugs approved in Bahrain. Future session will explore training/fine-tuning GPT on this data for better supplement/drug price predictions.
+
+### Architecture Changes
+```
+BEFORE (supplement pricing):
+  iHerb scrape → Serper fallback (2 calls) → GPT extraction → Tier 3 estimate
+
+AFTER:
+  iHerb scrape → Serper fallback (2 calls) → JSON-LD from pharmacy URLs →
+  targeted site:bn.boots.com search ($0.001) → JSON-LD from site results →
+  GPT extraction → Tier 3 estimate
+```
+
+### Updated Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices (text input) | ✅ Working (iHerb for supplements, shopping for electronics) |
+| **Prices (non-iHerb supplements)** | ✅ **NEW — Boots JSON-LD extraction** |
+| Prices (camera input) | ⚠️ Partially broken (supplements get wrong BHD price from camera path) |
+| Ratings | ✅ Working + linked to sources |
+| Reviews | ✅ Working |
+| Specs | ✅ Working (supplements schema) |
+| Camera | ⚠️ Partial (identification works, prices broken for supplements) |
+| Auth | ✅ Fixed (refresh token flow) |
+| URL input | ❌ Not started |
+| Rating/Price links | ✅ Product-specific Google Shopping URLs |
+| Cost optimization | ✅ $0.010 electronics, $0.010 supplements |
+| **Pharmacy JSON-LD** | ✅ **NEW — bn.boots.com, bolo.bh (if indexed)** |
 
 ---
 

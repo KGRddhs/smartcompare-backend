@@ -91,11 +91,12 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 - **Phase 2:** reviews + rating fetched in parallel (reviews reuses unified search, shopping data from Phase 1 feeds ratings)
 - `_shopping_items_cache` — populated during price search, used by rating/review injection. Cleared per-request.
 
-**Price pipeline (3 tiers):**
+**Price pipeline (3 tiers + pharmacy JSON-LD):**
 1. Serper Shopping API direct extraction (structured prices)
 2. GPT-4o-mini extraction from organic search results (with Tier 3 sanity check)
 3. GPT training data estimate (marked `estimated: true`)
-- Supplements use iHerb-specific search (`_is_supplement_query()` → `site:iherb.com`)
+- Supplements: iHerb direct scrape → Bahrain pharmacy JSON-LD → Serper organic + GPT → Tier 3
+- Non-iHerb brands (HealthAid, Vitabiotics): `_fetch_pharmacy_price()` parses JSON-LD from bn.boots.com product pages
 
 **Rating pipeline (4 tiers):**
 - Tier 0: Expert review JSON-LD scrape (dead code — never called)
@@ -112,8 +113,12 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 
 **Supplement-specific behavior:**
 - `_is_supplement_query()` detects vitamins/supplements by keyword
-- Serper Shopping returns ZERO results for supplements — iHerb organic search used instead
-- `site:iherb.com` search injected into Tier 2 context, GPT extracts USD price, auto-converts to BHD
+- Serper Shopping returns ZERO results for supplements — iHerb direct scrape used instead
+- iHerb scrape via `curl_cffi` (bypasses Cloudflare TLS fingerprinting) → brand + word matching
+- Non-iHerb brands: `_fetch_pharmacy_price()` → tries pharmacy URLs from Serper → targeted `site:bn.boots.com` search → JSON-LD `Product` schema parsing
+- `PHARMACY_DOMAINS` map: `bolo.bh→Bolo`, `bn.boots.com→Boots`, `aldeerahpharmacy.com→Al Deerah Pharmacy`
+- Brand matching is space-insensitive: "HealthAid" matches "Health Aid" in JSON-LD
+- bolo.bh NOT indexed by Google (Vue.js SPA); bn.boots.com IS indexed with JSON-LD prices
 
 **Key services:**
 - `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`
@@ -153,7 +158,7 @@ Backend returns `{ amount, currency, retailer, url, estimated }`. Frontend code 
 `StructuredComparisonService` is a singleton. `total_cost`, `api_calls`, and `_shopping_items_cache` are reset at the start of each `compare_from_text()` call. Any new per-request state must also be reset there.
 
 ### Cost budget
-Target: **$0.009-0.01/comparison** (current: ~$0.010 electronics, ~$0.012 supplements). Achieved via unified search merging (one Serper call shared by specs + reviews). Track with `self.total_cost` and `self._track_cost()`.
+Target: **$0.009-0.01/comparison** (current: ~$0.010 electronics, ~$0.010 supplements). Achieved via unified search merging (one Serper call shared by specs + reviews). Pharmacy JSON-LD adds +$0.001 only when targeted search triggers (non-iHerb brands). Track with `self.total_cost` and `self._track_cost()`.
 
 ### Unified search optimization
 `_fetch_product_data()` does ONE web search pre-fetch (gated by cache check) and passes results to both `_get_specs(search_results=...)` and `_get_reviews(search_results=...)`. Each function skips its own Serper call when pre-fetched results are provided. This saves $0.001/product ($0.002/comparison).
@@ -173,6 +178,7 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 - `curl` against Railway production (`?nocache=true` for fresh data)
 - `npx tsc --noEmit` for frontend type checking
 - `python -m pytest tests/test_url_extraction.py -v` — 8 tests for URL extraction (price + rating link logic)
+- `python -m pytest tests/test_pharmacy_jsonld.py -v` — 12 tests for pharmacy JSON-LD price extraction
 
 ## Known Remaining Bugs (deferred)
 
