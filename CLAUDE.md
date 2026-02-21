@@ -120,11 +120,21 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 - Brand matching is space-insensitive: "HealthAid" matches "Health Aid" in JSON-LD
 - bolo.bh NOT indexed by Google (Vue.js SPA); bn.boots.com IS indexed with JSON-LD prices
 
+**Bahrain Drug Database (supplement enrichment):**
+- `drug_database_service.py` — `find_matching_drugs(query, limit=5)` queries `bahrain_approved_drugs` table via full-text search
+- `format_drug_context(drugs)` — formats matches for GPT prompt injection
+- Only triggered for `category == "supplements"` — injected into spec extraction prompt as ground truth
+- 655 registered health products (vitamins, supplements, OTC drugs) with trade names, ingredients, forms, pack sizes
+- Supabase table with `TSVECTOR` column + `GIN` index for fast full-text search
+- Supabase `text_search()` API: use `options={"type": "plain", "config": "english"}` (NOT keyword args); `.limit()` must come BEFORE `.text_search()` in chain
+
 **Key services:**
 - `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`
+- `drug_database_service.py` — Bahrain drug database lookup + GPT context formatting (supplements only)
 - `serper_service.py` — Serper API calls (`search_product_prices()`, `search_price_organic()`, `search_web()`)
 - `cache_service.py` — Upstash Redis caching, monthly budget tracking
 - `openai_service.py` — GPT-4o-mini vision for camera identification (`detail: "auto"`, OCR-focused prompt)
+- `database_service.py` — Supabase client singleton (`get_supabase_client()`)
 
 ### Frontend (React Native + Expo)
 
@@ -143,7 +153,7 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls intelligently.
 - **Serper** — Google Search + Shopping API ($0.001/call). Don't search for what you already have.
-- **Supabase** — PostgreSQL (products, prices, specs, reviews, search_logs) + Auth. Cache strategically.
+- **Supabase** — PostgreSQL (products, prices, specs, reviews, search_logs, bahrain_approved_drugs) + Auth. Cache strategically.
 - **Upstash Redis** — Response caching (prices 24h, specs/reviews 7d)
 
 ## Important Patterns
@@ -179,6 +189,8 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 - `npx tsc --noEmit` for frontend type checking
 - `python -m pytest tests/test_url_extraction.py -v` — 8 tests for URL extraction (price + rating link logic)
 - `python -m pytest tests/test_pharmacy_jsonld.py -v` — 12 tests for pharmacy JSON-LD price extraction
+- `python -m pytest tests/test_drug_database_service.py -v -m "not live_db"` — 5 unit tests for drug DB (6 live_db tests auto-skip without Supabase access)
+- `python -m pytest tests/test_integration.py -v -m integration` — 6 integration tests against live Railway (~$0.06, ~4 min)
 
 ## Known Remaining Bugs (deferred)
 

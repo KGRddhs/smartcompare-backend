@@ -1990,9 +1990,6 @@ Bahrain pharmacy product pages (bolo.bh, bn.boots.com) embed structured `Product
 4. **Serper organic returns listing pages** — even when searching for specific products, Serper often returns the retailer's search/category page, not the product page. Targeted `site:` queries work better.
 5. **JSON-LD is reliable** — when a page has it, it's structured, deterministic, and free to parse. Far superior to GPT snippet extraction.
 
-### Planned: Bahrain Drug Database
-User has an Excel file of drugs approved in Bahrain. Future session will explore training/fine-tuning GPT on this data for better supplement/drug price predictions.
-
 ### Architecture Changes
 ```
 BEFORE (supplement pricing):
@@ -2004,21 +2001,93 @@ AFTER:
   GPT extraction → Tier 3 estimate
 ```
 
+---
+
+## Session 8: Bahrain Drug Database + Integration Tests (Feb 21 2026, continued)
+
+### What Was Done
+Implemented the Bahrain Drug Database feature end-to-end: Supabase table, data import, service layer, GPT prompt injection, unit tests, integration tests, deploy + verification.
+
+### Plan: 3 Parallel Agents (Failed)
+Original plan called for 3 parallel agents (A: feature code, B: integration tests, C: unit tests) with strict file ownership. **All 3 agents failed** due to tool permission denials in the agent environment. The data import agent also got stuck in plan mode. All work was completed directly in the main conversation instead.
+
+### New Files Created
+| File | Purpose |
+|------|---------|
+| `app/services/drug_database_service.py` | `find_matching_drugs(query, limit)` — Supabase full-text search on `bahrain_approved_drugs` table; `format_drug_context(drugs)` — formats results for GPT prompt |
+| `tests/test_drug_database_service.py` | 11 unit tests (5 run locally + 6 live_db auto-skip) |
+| `tests/test_integration.py` | 6 integration tests against live Railway endpoint |
+| `import_batches/batch_1.sql` through `batch_7.sql` | 655 drug records in SQL INSERT format |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `app/services/extraction_service.py` | Added `drug_context` param to `_build_specs_prompt()` and `extract_specs()`, injected `{drug_context}` into prompt template |
+| `app/services/structured_comparison_service.py` | Import drug_database_service, drug lookup before Phase 1 (supplements only), pass `drug_context` through `_get_specs()` |
+| `pyproject.toml` | Added pytest markers (`live_db`, `integration`) |
+
+### Database: `bahrain_approved_drugs` Table
+- **655 rows** of Bahrain-registered health products (vitamins, supplements, OTC drugs)
+- Columns: `trade_name`, `registration_no`, `api_name` (ingredients), `form`, `pack_size`, `method_of_sale`, `manufacturer`, `country`, `applicant_name`
+- `search_vector` TSVECTOR column auto-generated from `trade_name + api_name` via trigger
+- `GIN` index for fast full-text search
+- Supabase project: `qulajmyxdbdkchvecmvc`
+
+### How Drug Context Injection Works
+1. Before Phase 1, if `category == "supplements"`, call `find_matching_drugs(search_query)`
+2. Returns up to 5 matching registered drugs with official ingredients, forms, pack sizes
+3. `format_drug_context()` formats them as a prompt section: "Official Bahrain Drug Registration Data"
+4. Injected into GPT spec extraction prompt after search context — acts as ground truth for dosage/form/ingredient
+5. Cost: zero (Supabase query, no API calls)
+
+### Supabase Python Client Gotchas (Fixed)
+- `text_search()` uses `options={"type": "plain", "config": "english"}` dict — NOT `type="plain"` keyword
+- `.text_search()` returns `SyncQueryRequestBuilder` — `.limit()` must come BEFORE `.text_search()` in chain
+- Skip detection in tests: direct `client.table().select("id").limit(1).execute()` — NOT `find_matching_drugs()` (catches errors → returns `[]`, same as "no results")
+
+### Integration Tests
+6 tests calling live Railway production with `nocache=true`:
+1. **Phones** — iPhone 15 vs Samsung Galaxy S24 (checks display, processor, battery specs)
+2. **Laptops** — MacBook Air M3 vs Dell XPS 15 (checks RAM, storage specs)
+3. **iHerb supplements** — NOW D3 5000 IU vs Nature Made D3 2000 IU (checks dosage, form)
+4. **Pharmacy supplements** — HealthAid Vitamin C vs Vitabiotics Wellman (BHD prices)
+5. **Grocery** — Coca Cola vs Pepsi
+6. **General** — Nike Air Max 90 vs Adidas Ultraboost
+
+**Assertion fixes discovered during first run:**
+- `product.rating` is a raw float (e.g., `4.8`), NOT a dict `{score: 4.8}`
+- Cost tracked at `metadata.total_cost`, NOT `metadata.cost.current_cost`
+- Phone display spec key is `display`, NOT `display_size`
+- Shoe prices can exceed 150 BHD (Adidas Ultraboost was 317 BHD)
+
+### Project ID Confusion (Resolved)
+Three different Supabase project IDs encountered:
+- `jzmjaawdkbhvvqnmxpcq` — stale ID from previous session's MCP calls (doesn't exist in account)
+- `khatrmxzrvjzlbtcetva` — local env `SUPABASE_URL` points here (different project)
+- `qulajmyxdbdkchvecmvc` — actual smartcompare project, where table + data lives
+
+### Commits
+- `83f6311` — feat: Bahrain drug database integration + tests
+- `54addc6` — fix: integration test assertions to match actual API response format
+
 ### Updated Feature Status
 | Feature | Status |
 |---------|--------|
 | Prices (text input) | ✅ Working (iHerb for supplements, shopping for electronics) |
-| **Prices (non-iHerb supplements)** | ✅ **NEW — Boots JSON-LD extraction** |
+| Prices (non-iHerb supplements) | ✅ Boots JSON-LD extraction |
 | Prices (camera input) | ⚠️ Partially broken (supplements get wrong BHD price from camera path) |
 | Ratings | ✅ Working + linked to sources |
 | Reviews | ✅ Working |
 | Specs | ✅ Working (supplements schema) |
+| **Specs (supplements enrichment)** | ✅ **NEW — Bahrain drug DB ground truth injected into GPT prompt** |
 | Camera | ⚠️ Partial (identification works, prices broken for supplements) |
 | Auth | ✅ Fixed (refresh token flow) |
 | URL input | ❌ Not started |
 | Rating/Price links | ✅ Product-specific Google Shopping URLs |
 | Cost optimization | ✅ $0.010 electronics, $0.010 supplements |
-| **Pharmacy JSON-LD** | ✅ **NEW — bn.boots.com, bolo.bh (if indexed)** |
+| Pharmacy JSON-LD | ✅ bn.boots.com, bolo.bh (if indexed) |
+| **Bahrain Drug Database** | ✅ **NEW — 655 records, full-text search, GPT context injection** |
+| **Integration Tests** | ✅ **NEW — 6 tests, all passing (~$0.06, ~4 min)** |
 
 ---
 
