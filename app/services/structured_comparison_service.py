@@ -998,9 +998,10 @@ class StructuredComparisonService:
 
         Filters Serper organic results for known pharmacy domains, fetches
         each product page, and parses JSON-LD Product schema for price.
+        If no pharmacy URLs in initial results, tries a targeted site:bolo.bh search.
         Returns first valid match or None.
         """
-        # Filter for pharmacy URLs
+        # Filter for pharmacy URLs from existing Serper results
         pharmacy_urls = []
         for item in serper_organic:
             link = item.get("link", "")
@@ -1008,8 +1009,22 @@ class StructuredComparisonService:
                 if domain in link:
                     pharmacy_urls.append((link, retailer_name))
                     break
+
+        # If no pharmacy URLs found, try targeted site search for bolo.bh
         if not pharmacy_urls:
-            logger.info(f"[PRICE] No pharmacy URLs in Serper results for {full_name}")
+            logger.info(f"[PRICE] No pharmacy URLs in Serper results, trying site:bolo.bh search for {full_name}")
+            try:
+                site_results = await search_web(f"{brand} {full_name} site:bolo.bh", num_results=3, country="bh")
+                self._track_cost(0.001)
+                for item in site_results.get("organic", []):
+                    link = item.get("link", "")
+                    if "bolo.bh" in link:
+                        pharmacy_urls.append((link, "Bolo"))
+            except Exception as e:
+                logger.warning(f"[PRICE] Site search failed: {e}")
+
+        if not pharmacy_urls:
+            logger.info(f"[PRICE] No pharmacy URLs found for {full_name}")
             return None
 
         logger.info(f"[PRICE] Found {len(pharmacy_urls)} pharmacy URLs, trying JSON-LD extraction")

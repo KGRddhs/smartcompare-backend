@@ -178,13 +178,15 @@ def test_fetch_pharmacy_price_finds_bolo_url(service):
 
 
 def test_fetch_pharmacy_price_returns_none_for_no_pharmacy_urls(service):
-    """Returns None when no Serper URLs match pharmacy domains."""
+    """Returns None when no Serper URLs match pharmacy domains and site search also fails."""
     serper_organic = [
         {"title": "Some result", "link": "https://www.amazon.com/something"},
     ]
-    result = asyncio.get_event_loop().run_until_complete(
-        service._fetch_pharmacy_price(serper_organic, "HealthAid", "HealthAid D3", "BHD")
-    )
+    with patch("app.services.structured_comparison_service.search_web", new_callable=AsyncMock) as mock_search:
+        mock_search.return_value = {"organic": []}
+        result = asyncio.get_event_loop().run_until_complete(
+            service._fetch_pharmacy_price(serper_organic, "HealthAid", "HealthAid D3", "BHD")
+        )
     assert result is None
 
 
