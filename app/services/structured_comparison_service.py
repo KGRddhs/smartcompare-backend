@@ -894,6 +894,84 @@ class StructuredComparisonService:
         return bool(product_numbers & title_numbers)
 
     @staticmethod
+    def _extract_jsonld_price(html: str, brand: str, expected_currency: str) -> Optional[Dict[str, Any]]:
+        """Parse JSON-LD Product schema from HTML for price data.
+
+        Looks for <script type="application/ld+json"> containing a Product
+        with offers.price in the expected currency. Verifies brand name
+        appears in the product name.
+
+        Returns price dict or None if no valid match found.
+        """
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, 'html.parser')
+        ld_scripts = soup.find_all('script', type='application/ld+json')
+        if not ld_scripts:
+            return None
+
+        brand_lower = brand.lower()
+        best_price = None
+
+        for script in ld_scripts:
+            try:
+                data = json.loads(script.string or "")
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            # Collect Product objects (may be top-level, in @graph, or in a list)
+            products = []
+            if isinstance(data, dict):
+                if data.get("@type") == "Product":
+                    products.append(data)
+                elif "@graph" in data:
+                    for item in data["@graph"]:
+                        if isinstance(item, dict) and item.get("@type") == "Product":
+                            products.append(item)
+            elif isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and item.get("@type") == "Product":
+                        products.append(item)
+
+            for product in products:
+                # Verify brand in product name
+                product_name = product.get("name", "")
+                if brand_lower not in product_name.lower():
+                    continue
+
+                # Extract offers (single dict or list)
+                offers = product.get("offers", {})
+                if isinstance(offers, dict):
+                    offers = [offers]
+                elif not isinstance(offers, list):
+                    continue
+
+                for offer in offers:
+                    if not isinstance(offer, dict):
+                        continue
+                    currency = offer.get("priceCurrency", "")
+                    if currency.upper() != expected_currency.upper():
+                        continue
+                    try:
+                        price_val = float(offer.get("price", 0))
+                    except (ValueError, TypeError):
+                        continue
+                    if price_val <= 0:
+                        continue
+
+                    availability = offer.get("availability", "")
+                    in_stock = "OutOfStock" not in availability
+
+                    if best_price is None or price_val < best_price["amount"]:
+                        best_price = {
+                            "amount": price_val,
+                            "currency": expected_currency,
+                            "in_stock": in_stock,
+                        }
+
+        return best_price
+
+    @staticmethod
     def _strict_title_match(product_name: str, title: str) -> bool:
         """Key words from the product name must appear in the shopping title.
 
