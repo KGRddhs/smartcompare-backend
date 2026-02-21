@@ -1017,15 +1017,18 @@ class StructuredComparisonService:
             return result
 
         # Initial URLs had no JSON-LD (likely search/listing pages) — try targeted site search
-        logger.info(f"[PRICE] No JSON-LD in initial pharmacy URLs, trying site:bolo.bh search for {full_name}")
+        site_query = " OR ".join(f"site:{d}" for d in self.PHARMACY_DOMAINS.keys())
+        logger.info(f"[PRICE] No JSON-LD in initial pharmacy URLs, trying targeted pharmacy search for {full_name}")
         try:
-            site_results = await search_web(f"{brand} {full_name} site:bolo.bh", num_results=3, country="bh")
+            site_results = await search_web(f"{full_name} {site_query}", num_results=5, country="bh")
             self._track_cost(0.001)
             site_urls = []
             for item in site_results.get("organic", []):
                 link = item.get("link", "")
-                if "bolo.bh" in link:
-                    site_urls.append((link, "Bolo"))
+                for domain, retailer_name in self.PHARMACY_DOMAINS.items():
+                    if domain in link:
+                        site_urls.append((link, retailer_name))
+                        break
             result = await self._try_pharmacy_urls(site_urls, brand, currency)
             if result:
                 return result
