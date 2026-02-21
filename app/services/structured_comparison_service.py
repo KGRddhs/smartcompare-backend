@@ -971,6 +971,70 @@ class StructuredComparisonService:
 
         return best_price
 
+    # Bahrain pharmacy domains that serve JSON-LD Product schema with BHD prices
+    PHARMACY_DOMAINS = {
+        "bolo.bh": "Bolo",
+        "bn.boots.com": "Boots",
+        "aldeerahpharmacy.com": "Al Deerah Pharmacy",
+    }
+
+    async def _fetch_pharmacy_price(
+        self,
+        serper_organic: List[Dict],
+        brand: str,
+        full_name: str,
+        currency: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch BHD price from Bahrain pharmacy product pages via JSON-LD.
+
+        Filters Serper organic results for known pharmacy domains, fetches
+        each product page, and parses JSON-LD Product schema for price.
+        Returns first valid match or None.
+        """
+        # Filter for pharmacy URLs
+        pharmacy_urls = []
+        for item in serper_organic:
+            link = item.get("link", "")
+            for domain, retailer_name in self.PHARMACY_DOMAINS.items():
+                if domain in link:
+                    pharmacy_urls.append((link, retailer_name))
+                    break
+        if not pharmacy_urls:
+            logger.info(f"[PRICE] No pharmacy URLs in Serper results for {full_name}")
+            return None
+
+        logger.info(f"[PRICE] Found {len(pharmacy_urls)} pharmacy URLs, trying JSON-LD extraction")
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for url, retailer_name in pharmacy_urls[:3]:
+                try:
+                    resp = await client.get(url, follow_redirects=True)
+                    if resp.status_code != 200:
+                        logger.info(f"[PRICE] Pharmacy {retailer_name}: HTTP {resp.status_code} for {url}")
+                        continue
+
+                    price_data = self._extract_jsonld_price(resp.text, brand, currency)
+                    if price_data:
+                        logger.info(f"[PRICE] Pharmacy JSON-LD: {currency} {price_data['amount']} from {retailer_name}")
+                        return {
+                            "amount": price_data["amount"],
+                            "original_currency": currency,
+                            "currency": currency,
+                            "retailer": retailer_name,
+                            "url": url,
+                            "in_stock": price_data.get("in_stock", True),
+                            "confidence": 1.0,
+                            "estimated": False,
+                        }
+                    else:
+                        logger.info(f"[PRICE] Pharmacy {retailer_name}: no valid JSON-LD price at {url}")
+
+                except Exception as e:
+                    logger.warning(f"[PRICE] Pharmacy {retailer_name} fetch failed: {e}")
+                    continue
+
+        return None
+
     @staticmethod
     def _strict_title_match(product_name: str, title: str) -> bool:
         """Key words from the product name must appear in the shopping title.

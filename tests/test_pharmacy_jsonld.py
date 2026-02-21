@@ -3,6 +3,9 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import asyncio
+from unittest.mock import AsyncMock, patch, MagicMock
+
 import pytest
 from app.services.structured_comparison_service import StructuredComparisonService
 
@@ -130,3 +133,80 @@ def test_detects_out_of_stock(service):
     result = service._extract_jsonld_price(html, "HealthAid", "BHD")
     assert result is not None
     assert result["in_stock"] is False
+
+
+# --- _fetch_pharmacy_price tests ---
+
+BOLO_HTML = '''
+<html><head>
+<script type="application/ld+json">
+{"@type": "Product", "name": "HealthAid Vitamin D3 1000iu Tablet Pack of 120",
+ "offers": {"@type": "Offer", "price": 9, "priceCurrency": "BHD",
+            "availability": "https://schema.org/InStock"}}
+</script>
+</head><body></body></html>
+'''
+
+
+def test_fetch_pharmacy_price_finds_bolo_url(service):
+    """Finds bolo.bh URL in Serper results and extracts JSON-LD price."""
+    serper_organic = [
+        {"title": "Some irrelevant result", "link": "https://www.google.com/shopping/123"},
+        {"title": "HealthAid Vitamin D3 1000IU", "link": "https://www.bolo.bh/products/healthaid-d3"},
+    ]
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = BOLO_HTML
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        result = asyncio.get_event_loop().run_until_complete(
+            service._fetch_pharmacy_price(serper_organic, "HealthAid", "HealthAid Vitamin D3 1000IU", "BHD")
+        )
+
+    assert result is not None
+    assert result["amount"] == 9.0
+    assert result["retailer"] == "Bolo"
+    assert result["url"] == "https://www.bolo.bh/products/healthaid-d3"
+    assert result["estimated"] is False
+
+
+def test_fetch_pharmacy_price_returns_none_for_no_pharmacy_urls(service):
+    """Returns None when no Serper URLs match pharmacy domains."""
+    serper_organic = [
+        {"title": "Some result", "link": "https://www.amazon.com/something"},
+    ]
+    result = asyncio.get_event_loop().run_until_complete(
+        service._fetch_pharmacy_price(serper_organic, "HealthAid", "HealthAid D3", "BHD")
+    )
+    assert result is None
+
+
+def test_fetch_pharmacy_price_skips_failed_fetches(service):
+    """Skips pharmacy URLs that return non-200 or timeout."""
+    serper_organic = [
+        {"title": "HealthAid D3", "link": "https://www.bolo.bh/products/healthaid-d3"},
+    ]
+
+    mock_response = MagicMock()
+    mock_response.status_code = 403
+    mock_response.text = "Forbidden"
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        result = asyncio.get_event_loop().run_until_complete(
+            service._fetch_pharmacy_price(serper_organic, "HealthAid", "HealthAid D3", "BHD")
+        )
+
+    assert result is None
