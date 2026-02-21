@@ -591,7 +591,16 @@ class StructuredComparisonService:
             self._track_cost(0.002)  # 2 Serper calls
             iherb_organic = iherb_results.get("organic", [])
             bh_organic = bh_pharmacy_results.get("organic", [])
-            # Combine results — iHerb first, then Bahrain pharmacies
+
+            # NEW: Try JSON-LD extraction from Bahrain pharmacy product pages (FREE)
+            pharmacy_price = await self._fetch_pharmacy_price(bh_organic, brand, full_name, currency)
+            if pharmacy_price:
+                pharmacy_price["_cached"] = False
+                logger.info(f"[PRICE] Supplement: pharmacy JSON-LD price {currency} {pharmacy_price['amount']} for {full_name}")
+                set_cached(cache_key, pharmacy_price, PRICE_CACHE_TTL)
+                return pharmacy_price
+
+            # Combine results for GPT extraction fallback
             combined_organic = iherb_organic + bh_organic
             if combined_organic:
                 logger.info(f"[PRICE] Supplement Serper: {len(iherb_organic)} iHerb + {len(bh_organic)} BH pharmacy results for {full_name}")
