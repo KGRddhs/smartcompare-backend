@@ -1,7 +1,7 @@
 # SmartCompare - Complete Project Knowledge Transfer
 
 > **Purpose:** This document contains EVERYTHING needed to continue development without context loss.
-> **Last Updated:** February 22, 2026 (Session 10: Code Cleanup)
+> **Last Updated:** February 22, 2026 (Session 11: Fact-Checking)
 > **Author:** Transferred from Claude.ai conversation (Days 1-7), updated by Claude Code sessions
 
 ---
@@ -2244,6 +2244,73 @@ Documentation said `app/api/routes.py` had 4 TypeErrors. Investigation found no 
 
 ### Commits
 - `02e23de` — chore: remove dead code, fix .gitignore, consolidate pyproject.toml
+
+---
+
+## Session 11: Feb 22, 2026 — Fact-Checking & Data Accuracy
+
+### What Was Done
+Added zero-cost fact-checking system that cross-validates GPT-extracted data against real sources already fetched. Every product in the API response now has a `fact_check` object with `overall_confidence`.
+
+### New Methods (5 added to `structured_comparison_service.py`)
+- `_format_numbered_search_results()` — prefixes search snippets with `[snippet_N]` for GPT citation
+- `_verify_spec_citations(specs, search_snippets)` — validates GPT's `_source` citations against actual snippet text
+- `_cross_validate_specs_with_shopping(specs, shopping_items)` — checks spec numbers against Serper Shopping titles
+- `_verify_review_sentiment(reviews, source_ratings)` — cross-checks GPT average_rating vs weighted Serper average (0.8 tolerance)
+- `_verify_price(price, shopping_items)` — compares final price against Serper Shopping median (30% threshold)
+- `_build_fact_check(product)` — assembles fact_check object from all verification results
+
+### Prompt Changes (`extraction_service.py`)
+- Spec extraction prompt now requires `{field}_source` citation fields (`snippet_N` or `"training"`)
+- `max_tokens` increased 800 → 1000 to accommodate citation fields
+- `extract_specs()` preserves `_source` fields through schema enforcement
+- `_normalize_review_response()` defaults `source`, `sentiment`, `aspect` on user_quotes
+
+### `fact_check` Response Object
+```json
+{
+  "fact_check": {
+    "specs_verified": 8,
+    "specs_likely": 2,
+    "specs_flagged": 0,
+    "specs_unverified": 1,
+    "price_verified": true,
+    "price_deviation_pct": 5.2,
+    "review_sentiment_consistent": true,
+    "review_rating_deviation": 0.3,
+    "overall_confidence": "high"
+  }
+}
+```
+
+Overall confidence logic:
+- `low` — any specs flagged OR review sentiment inconsistent
+- `high` — price verified + sentiment consistent + most specs verified/likely
+- `medium` — everything else
+
+### Bug Found During Development
+`_verify_price()`: `deviation_pct` of `0.0` is falsy in Python. `round(0.0, 1) if deviation_pct` returned `None` for exact price matches. Fixed to `if deviation_pct is not None`.
+
+### Team Structure
+3 Opus agents with cross-QA:
+- Agent A: spec fact-checking (prompt + citations + verification) → QA'd Agent B
+- Agent B: review sentiment + price verification → QA'd Agent C (+ wrote 17 edge case tests while idle, found 0.0 bug)
+- Agent C: assembly + wiring + tests → QA'd Agent A
+
+### Integration Tests
+5/6 passed. `test_supplements_iherb` got transient 502 (Railway gateway timeout on slow iHerb scrape). Retry returned 200. Not a code issue.
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `app/services/structured_comparison_service.py` | 5 new verification methods + wiring + _clean_specs update (+291 lines) |
+| `app/services/extraction_service.py` | Prompt citations + _source preservation + user_quotes defaults (+26 lines) |
+| `tests/test_fact_checking.py` | 48 new unit tests for all fact-checking logic |
+| `docs/plans/2026-02-22-fact-checking-design.md` | Design document |
+| `docs/plans/2026-02-22-fact-checking-plan.md` | Implementation plan |
+
+### Commits
+- `2cb9a80` — feat: add zero-cost fact-checking via cross-validation and self-citation
 
 ---
 

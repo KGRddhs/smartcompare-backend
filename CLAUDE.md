@@ -158,6 +158,13 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 
 ## Important Patterns
 
+### Fact-checking (zero-cost cross-validation)
+Every product in the API response has a `fact_check` object with `overall_confidence` (high/medium/low). Built from:
+- **Spec citations**: GPT must cite `snippet_N` or `"training"` for each spec field. Citations verified against actual search snippet text. Cross-validated against Serper Shopping titles.
+- **Review sentiment**: GPT `average_rating` cross-checked against weighted Serper `source_ratings` average. Flagged if deviation > 0.8.
+- **Price verification**: Final price compared against Serper Shopping median. Flagged if deviation > 30%.
+- Zero additional API calls — all verification uses data already fetched.
+
 ### Ratings are NEVER AI-generated
 Ratings come from real Serper Shopping data or GPT review aggregation (marked unverified). The GPT extraction prompt explicitly forbids generating `source_ratings`.
 
@@ -190,7 +197,7 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 
 ### Run commands
 ```bash
-# All free unit tests (98 tests, ~2s, $0)
+# All free unit tests (146 tests, ~2s, $0)
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb, Serper, GPT vision — ~$0.03)
@@ -203,7 +210,8 @@ python -m pytest tests/test_integration.py -v -m integration
 python -m pytest tests/ -v --timeout=180
 ```
 
-### Test files (120 total: 98 unit + 10 live_unit + 6 live_db + 6 integration)
+### Test files (168 total: 146 unit + 10 live_unit + 6 live_db + 6 integration)
+- `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
 - `tests/test_rating_tiers.py` — 16 tests: tier classification, consensus logic, accessory filtering
 - `tests/test_price_fallback.py` — 12 tests: shopping extraction, currency conversion, all-tiers-fail
