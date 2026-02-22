@@ -869,8 +869,11 @@ DEBUG_MODE=true
 ## Automated Tests (pytest)
 
 ```bash
-# All unit tests (fast, no API calls)
-python -m pytest tests/test_url_extraction.py tests/test_pharmacy_jsonld.py tests/test_drug_database_service.py -v
+# All unit tests (fast, free, no API calls) — 98 tests, ~2s
+python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
+
+# Include live unit tests (iHerb scraping, Serper, GPT vision) — adds ~$0.03
+python -m pytest tests/ -v -m "not (live_db or integration)"
 
 # Drug database unit tests only (6 live_db tests auto-skip without Supabase)
 python -m pytest tests/test_drug_database_service.py -v -m "not live_db"
@@ -885,10 +888,25 @@ python -m pytest tests/ -v --timeout=180
 ### Test Files
 | File | Tests | Type | Notes |
 |------|-------|------|-------|
+| `tests/test_error_paths.py` | 31 | Unit | Currency conversion, freshness calc, price parsing, supplement detection, title/number matching |
+| `tests/test_rating_tiers.py` | 16 | Unit + Live | Tier classification, consensus logic, accessory filtering, invalid ratings |
+| `tests/test_price_fallback.py` | 12 | Unit + Live | Shopping extraction, accessory filter, high-value min price, currency conversion, all-tiers-fail |
+| `tests/test_camera_vision.py` | 10 | Unit + Live | Vision pipeline, JSON cleanup, size_or_count enrichment, field normalization |
+| `tests/test_iherb_scraping.py` | 7 | Unit + Live | Word normalization, live iHerb scraping, brand filtering |
+| `tests/test_unified_search.py` | 4 | Unit + Live | Search sharing (specs/reviews reuse), cost budget tracking |
+| `tests/test_singleton_state.py` | 3 | Unit | Singleton pattern, cache leak prevention, state reset between requests |
 | `tests/test_url_extraction.py` | 8 | Unit | URL extraction for price + rating links |
 | `tests/test_pharmacy_jsonld.py` | 12 | Unit | Pharmacy JSON-LD price parsing |
 | `tests/test_drug_database_service.py` | 11 | Unit + Live DB | 5 local + 6 `live_db` (need Supabase) |
 | `tests/test_integration.py` | 6 | Integration | Live Railway: phones, laptops, supplements (iHerb + pharmacy), grocery, shoes |
+| **Total** | **120** | | **98 free unit tests + 10 live_unit + 6 live_db + 6 integration** |
+
+### Pytest Markers
+| Marker | Purpose | Run command |
+|--------|---------|-------------|
+| `live_unit` | Tests calling live external services (iHerb, Serper, OpenAI) | `-m live_unit` |
+| `live_db` | Tests requiring live Supabase `bahrain_approved_drugs` table | `-m live_db` |
+| `integration` | End-to-end tests against live Railway production | `-m integration` |
 
 ## Local Backend Testing
 
@@ -935,6 +953,15 @@ npx expo start
 - [ ] Add axios auth interceptor (token auto-sent on requests)
 - [ ] Fix ResultsScreen type divergence from types.ts
 - [ ] Add product history / favorites
+- [ ] Expand test coverage (37 tests → 80% target). Uncovered areas:
+  - Camera/vision identification pipeline
+  - Singleton state reset between requests
+  - iHerb scraping logic (brand matching, query cleanup, TLS bypass)
+  - Rating tier selection and consensus logic
+  - Price tier fallback chain (Tier 1 → 2 → 3)
+  - Unified search call merging
+  - Error paths (API timeouts, malformed GPT responses, currency conversion edge cases)
+  - Edge cases: empty query, single product, health endpoint
 
 ## Medium Term
 - [ ] URL input comparison (`/api/v1/url/compare`)
@@ -2109,6 +2136,64 @@ Three different Supabase project IDs encountered:
 | Pharmacy JSON-LD | ✅ bn.boots.com, bolo.bh (if indexed) |
 | **Bahrain Drug Database** | ✅ **NEW — 655 records, full-text search, GPT context injection** |
 | **Integration Tests** | ✅ **NEW — 6 tests, all passing (~$0.06, ~4 min)** |
+| **Unit Test Coverage** | ✅ **NEW — 73 tests across 7 files covering all core logic** |
+
+---
+
+## Session 9: Feb 22, 2026 — Test Coverage for 7 Uncovered Areas
+
+### What Was Done
+Added 73 unit tests across 7 new test files covering all previously untested core logic. Used a 3-agent Opus team with cross-QA (each agent reviews another's work). All QA passed with zero issues.
+
+### Team Structure (Successful)
+3 Opus agents running in parallel with `bypassPermissions` mode:
+- **Agent A**: test_camera_vision.py, test_singleton_state.py, test_iherb_scraping.py → QA'd Agent B's files
+- **Agent B**: test_rating_tiers.py, test_price_fallback.py → QA'd Agent C's files
+- **Agent C**: test_unified_search.py, test_error_paths.py → QA'd Agent A's files
+
+All 11 tasks (7 implementation + 3 QA + 1 final verification) completed successfully. This is the first successful multi-agent team execution in this project (previous attempt in Session 8 failed due to tool permissions).
+
+### New Test Files
+| File | Tests | Coverage Area |
+|------|-------|---------------|
+| `tests/test_error_paths.py` | 31 | `_convert_to_bhd` edge cases, `_calculate_freshness` with None, `_parse_price_string` garbage input, `_is_supplement_query` anti-keywords, `_strict_title_match` hyphens, `_numbers_match` year vs count |
+| `tests/test_rating_tiers.py` | 16 | `_get_rating_tier` classification, `_extract_rating_from_shopping` tier priority, consensus detection, Tier 3 review count threshold, accessory rejection |
+| `tests/test_price_fallback.py` | 12 | `_extract_price_from_shopping` filters, `_convert_gpt_price_currency`, `_sanitize_gpt_price`, all-tiers-fail fallback |
+| `tests/test_camera_vision.py` | 10 | `identify_products` vision pipeline, `clean_json_response`, size_or_count enrichment (matches image_routes.py) |
+| `tests/test_iherb_scraping.py` | 7 | `_normalize_words`, live iHerb scraping, brand filtering, nonexistent product handling |
+| `tests/test_unified_search.py` | 4 | `_get_specs`/`_get_reviews` search_results sharing, cost budget tracking |
+| `tests/test_singleton_state.py` | 3 | `get_comparison_service()` singleton, `_shopping_items_cache` cleared per request, `total_cost`/`api_calls` reset |
+
+### What Each Test Area Catches
+- **Error paths**: Every bug type from "Critical Bugs Fixed" (None currency, None price, garbage input)
+- **Rating tiers**: Wrong tier priority, consensus with ties, Tier 3 accepted/rejected incorrectly
+- **Price fallback**: Wrong fallback order, supplement misdetection, currency conversion errors
+- **Camera/vision**: Malformed GPT response, missing fields, size_or_count duplication
+- **iHerb scraping**: Brand mismatch, variant confusion (360 vs 120 Softgels), empty results
+- **Unified search**: Wasted API calls, search not shared between specs/reviews
+- **Singleton state**: Cross-request data leaks (the exact bug fixed in Session 6)
+
+### Test Run Commands
+```bash
+# Free unit tests only (73 new + 25 existing = 98 tests, ~2s)
+python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
+
+# Include live unit tests (~$0.03 extra)
+python -m pytest tests/ -v -m "not (live_db or integration)"
+
+# Full suite including integration (~$0.09 total, ~4 min)
+python -m pytest tests/ -v --timeout=180
+```
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `pyproject.toml` | Added `live_unit` pytest marker |
+| `docs/plans/2026-02-22-test-coverage-design.md` | Design document for test coverage |
+| `docs/plans/2026-02-22-test-coverage-plan.md` | Implementation plan with exact test code |
+
+### Commits
+- `402e36d` — feat: add 73 unit tests covering 7 previously untested areas
 
 ---
 

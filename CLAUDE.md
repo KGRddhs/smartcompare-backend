@@ -187,10 +187,34 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 - `python -m py_compile <file>` for syntax checks
 - `curl` against Railway production (`?nocache=true` for fresh data)
 - `npx tsc --noEmit` for frontend type checking
-- `python -m pytest tests/test_url_extraction.py -v` — 8 tests for URL extraction (price + rating link logic)
-- `python -m pytest tests/test_pharmacy_jsonld.py -v` — 12 tests for pharmacy JSON-LD price extraction
-- `python -m pytest tests/test_drug_database_service.py -v -m "not live_db"` — 5 unit tests for drug DB (6 live_db tests auto-skip without Supabase access)
-- `python -m pytest tests/test_integration.py -v -m integration` — 6 integration tests against live Railway (~$0.06, ~4 min)
+
+### Run commands
+```bash
+# All free unit tests (98 tests, ~2s, $0)
+python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
+
+# Include live unit tests (iHerb, Serper, GPT vision — ~$0.03)
+python -m pytest tests/ -v -m "not (live_db or integration)"
+
+# Integration tests only (live Railway — ~$0.06, ~4 min)
+python -m pytest tests/test_integration.py -v -m integration
+
+# Full suite
+python -m pytest tests/ -v --timeout=180
+```
+
+### Test files (120 total: 98 unit + 10 live_unit + 6 live_db + 6 integration)
+- `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
+- `tests/test_rating_tiers.py` — 16 tests: tier classification, consensus logic, accessory filtering
+- `tests/test_price_fallback.py` — 12 tests: shopping extraction, currency conversion, all-tiers-fail
+- `tests/test_camera_vision.py` — 10 tests: vision pipeline, JSON cleanup, size_or_count enrichment
+- `tests/test_iherb_scraping.py` — 7 tests: word normalization, live iHerb scraping, brand filtering
+- `tests/test_unified_search.py` — 4 tests: search sharing (specs/reviews), cost budget tracking
+- `tests/test_singleton_state.py` — 3 tests: singleton pattern, cache leak prevention, state reset
+- `tests/test_url_extraction.py` — 8 tests: URL extraction (price + rating link logic)
+- `tests/test_pharmacy_jsonld.py` — 12 tests: pharmacy JSON-LD price extraction
+- `tests/test_drug_database_service.py` — 11 tests: drug DB (5 unit + 6 `live_db` auto-skip)
+- `tests/test_integration.py` — 6 tests: live Railway (~$0.06, ~4 min)
 
 ## Known Remaining Bugs (deferred)
 
