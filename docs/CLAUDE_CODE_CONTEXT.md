@@ -1,7 +1,7 @@
 # SmartCompare - Complete Project Knowledge Transfer
 
 > **Purpose:** This document contains EVERYTHING needed to continue development without context loss.
-> **Last Updated:** February 21, 2026 (Session 8: Drug DB + Integration Tests)
+> **Last Updated:** February 22, 2026 (Session 10: Code Cleanup)
 > **Author:** Transferred from Claude.ai conversation (Days 1-7), updated by Claude Code sessions
 
 ---
@@ -1232,7 +1232,7 @@ Current status (Feb 21, 2026):
 ### 4. Cost Optimization
 - Skip sanity check for trusted retailers (retailer_score >= 1.0: Amazon, Best Buy, eXtra, Noon, etc.)
 - Cache Tier 3 estimate within `_get_price()` to avoid duplicate calls
-- Tier 0 expert review (`_get_expert_review()`) is dead code — defined but never called
+- Tier 0 expert review code removed in Session 10 cleanup (commit `02e23de`)
 - Cost: $0.011 (trusted) to $0.012 (untrusted) — under $0.015 target
 
 ### 5. UI & Cache Fixes
@@ -1713,10 +1713,10 @@ Ran 3 parallel exploration agents across backend, frontend, and runtime logs. Ca
 | 2 | No axios auth interceptor — token never sent on API requests | High |
 | 3 | Missing expo-camera/expo-image-picker plugins in app.json | High (EAS builds) |
 | 4 | Debug console.log everywhere in api.ts + HomeScreen | Medium |
-| 5 | `.gitignore` corrupted with PowerShell heredoc wrapper | Medium |
-| 6 | `pyproject.toml` diverged from `requirements.txt` (openai v1 vs v2) | Medium |
+| 5 | ~~`.gitignore` corrupted with PowerShell heredoc wrapper~~ FIXED (commit `02e23de`) | ~~Medium~~ |
+| 6 | ~~`pyproject.toml` diverged from `requirements.txt`~~ FIXED (commit `02e23de`) | ~~Medium~~ |
 | 7 | ResultsScreen local type defs diverge from types.ts | Medium |
-| 8 | ~~Dead code: `_get_pros_cons`~~ FIXED (commit `b697534`). `_get_expert_review`, unused TEMP_DIR remain | Low |
+| 8 | ~~Dead code: `_get_pros_cons`~~ FIXED (`b697534`). ~~`_get_expert_review`~~ FIXED (`02e23de`). | ~~Low~~ |
 | 9 | `print()` instead of `logger` in auth_service/database_service | Low |
 | 10 | `load_dotenv(override=True)` in library modules | Low |
 
@@ -2194,6 +2194,56 @@ python -m pytest tests/ -v --timeout=180
 
 ### Commits
 - `402e36d` — feat: add 73 unit tests covering 7 previously untested areas
+
+---
+
+## Session 10: Feb 22, 2026 — Code Cleanup
+
+### What Was Done
+Removed dead code, fixed corrupted .gitignore, and consolidated pyproject.toml with requirements.txt. Zero behavior change.
+
+### Dead Code Removed (~200 lines)
+From `structured_comparison_service.py`:
+- `REVIEW_SITES` class variable (10 lines) — list of expert review site domains
+- `_get_expert_review()` method (80 lines) — Tier 0 rating, never called
+- `_parse_review_jsonld()` method (25 lines) — only called by `_get_expert_review`
+- `_extract_rating_from_jsonld_item()` method (85 lines) — only called by `_parse_review_jsonld`
+
+From `extraction_service.py`:
+- Unused `Tuple` import removed
+
+Note: `Tuple` import kept in `structured_comparison_service.py` — still used by `_try_pharmacy_urls` at line 1058.
+
+### .gitignore Fixed
+- Removed PowerShell heredoc wrapper corruption (line 1: `@"`, line 31: `"@ | Out-File...`)
+- Added patterns for ~80 untracked debug artifacts: `response_*.json`, `/test_*.py`, `/extract_*.py`, `import_batches/`, `.expo/`, `nul`, test images
+
+### pyproject.toml Consolidated
+Authority: `requirements.txt` (what Railway deploys).
+- Fixed openai version: `>=2.17.0` → `>=1.12.0` (v2 → v1)
+- Added 3 missing packages: `beautifulsoup4`, `lxml`, `curl-cffi`
+- Removed `pillow` (not in requirements.txt)
+- Removed all upper bound constraints to match requirements.txt style
+
+### Legacy Routes — No Fix Needed
+Documentation said `app/api/routes.py` had 4 TypeErrors. Investigation found no broken calls — issue was either already fixed or referred to `backend/app/api/routes.py` (non-deployed).
+
+### Team Structure
+2 Opus agents with cross-QA:
+- Agent A: dead code removal → QA'd Agent B's config changes
+- Agent B: .gitignore + pyproject.toml → QA'd Agent A's dead code removal
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `app/services/structured_comparison_service.py` | Removed ~200 lines of dead Tier 0 code |
+| `app/services/extraction_service.py` | Removed unused `Tuple` import |
+| `.gitignore` | Fixed corruption, added debug artifact patterns |
+| `pyproject.toml` | Consolidated with requirements.txt |
+| `docs/plans/2026-02-22-code-cleanup-design.md` | Design document |
+
+### Commits
+- `02e23de` — chore: remove dead code, fix .gitignore, consolidate pyproject.toml
 
 ---
 

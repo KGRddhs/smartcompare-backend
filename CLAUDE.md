@@ -223,9 +223,6 @@ These are known issues that have been intentionally deferred:
 - No axios auth interceptor — token never sent on API requests
 - Missing `expo-camera`/`expo-image-picker` plugins in `app.json` (breaks EAS builds)
 - `ResultsScreen.tsx` has local type definitions that diverge from `src/types/types.ts`
-- `.gitignore` corrupted with PowerShell heredoc wrapper text
-- `pyproject.toml` diverged from `requirements.txt` (openai v1 vs v2)
-- Dead code: `_get_pros_cons()`, `_get_expert_review()` (Tier 0 — defined but never called)
 
 ## Detailed Context
 See `docs/CLAUDE_CODE_CONTEXT.md` for full session history, all decisions made, and known issues. **Read this before major changes** — learn from what worked and what didn't.
