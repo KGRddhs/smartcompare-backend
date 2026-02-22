@@ -8,7 +8,7 @@ import os
 import json
 import hashlib
 import logging
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 import httpx
 from openai import AsyncOpenAI
