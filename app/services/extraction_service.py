@@ -125,11 +125,14 @@ CRITICAL RULES:
 - If the product name or variant contains a count/quantity (e.g. "360 Softgels", "120 tablets", "1000mg"), use EXACTLY that number for the "count" field. Do NOT substitute a different count
 - EVERY field MUST have a value. Use search results first, then your training knowledge. null is ONLY acceptable if the spec truly does not exist for this product (e.g. water_resistance for a budget phone that has none)
 - Be precise with numbers and units
-- Include ONLY the fields listed above, no extra keys
+- Include ONLY the fields listed above, plus the _source citation fields described below
 - ONLY functional specs — NO launch price, MSRP, release date, or marketing names
 - For connectivity: list supported standards (e.g. "Wi-Fi 6, 5G, Bluetooth 5.3, NFC")
 - Keep each value short and factual (e.g. "6.1-inch Super Retina XDR OLED" not a paragraph)
-- For well-known products (iPhones, Galaxy, Pixel, etc.) you KNOW the specs — do NOT return null for basic fields like os, weight, or water_resistance"""
+- For well-known products (iPhones, Galaxy, Pixel, etc.) you KNOW the specs — do NOT return null for basic fields like os, weight, or water_resistance
+- For EACH spec field, also include a "{{field}}_source" field with the snippet number (e.g. "snippet_1") where you found this value, or "training" if from your own knowledge
+- Example: "battery": "4422 mAh", "battery_source": "snippet_2"
+- The _source field should reference the [snippet_N] labels shown in the search results above"""
 
 
 PRICE_EXTRACTION_PROMPT = """You are a price extraction expert for GCC markets.
@@ -350,7 +353,7 @@ async def extract_specs(
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=800,
+            max_tokens=1000,
             temperature=0.1,
         )
 
@@ -362,7 +365,7 @@ async def extract_specs(
 
         raw = json.loads(result)
 
-        # Enforce schema: only keep fields in the category schema + meta keys
+        # Enforce schema: only keep fields in the category schema + meta keys + _source citations
         schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
         allowed_fields = set(CATEGORY_SPEC_SCHEMAS[schema_key])
         meta_keys = {"brand", "model", "variant", "category"}
@@ -378,6 +381,13 @@ async def extract_specs(
                 cleaned[key] = ", ".join(str(v) for v in val)
             else:
                 cleaned[key] = str(val)
+
+        # Preserve _source citation fields from GPT response (used for fact-checking)
+        for key in CATEGORY_SPEC_SCHEMAS[schema_key]:
+            source_key = f"{key}_source"
+            source_val = raw.get(source_key)
+            if source_val and isinstance(source_val, str):
+                cleaned[source_key] = source_val
 
         return cleaned
 
@@ -518,6 +528,14 @@ def _normalize_review_response(data: Dict[str, Any]) -> Dict[str, Any]:
     data.setdefault("detailed_complaints", [])
     data.setdefault("user_quotes", [])
     data.setdefault("summary", data.get("summary"))
+
+    # Ensure each user_quote has source, sentiment, and aspect fields
+    quotes = data.get("user_quotes", [])
+    for quote in quotes:
+        quote.setdefault("source", "unknown")
+        quote.setdefault("sentiment", "mixed")
+        quote.setdefault("aspect", "general")
+    data["user_quotes"] = quotes
 
     return data
 

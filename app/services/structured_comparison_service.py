@@ -362,7 +362,29 @@ class StructuredComparisonService:
             result["currency"] = result["price"].get("currency", "BHD")
             result["retailer"] = result["price"].get("retailer")
 
-        # Clean specs: remove meta keys, flatten additional_specs
+        # Fact-check: verify spec citations before cleaning
+        if result.get("specs") and isinstance(result["specs"], dict):
+            raw_specs = result["specs"]
+            search_snippets = raw_specs.pop("_search_snippets", [])
+
+            # Citation verification: check GPT's _source claims against snippet text
+            citation_confidence = self._verify_spec_citations(raw_specs, search_snippets)
+
+            # Cross-validate against shopping data (upgrades 'likely' → 'verified')
+            shopping_items = self._shopping_items_cache.get(full_name, [])
+            shopping_flags = self._cross_validate_specs_with_shopping(raw_specs, shopping_items)
+
+            # Merge: shopping verification can upgrade citation confidence
+            spec_confidence = {}
+            for key in citation_confidence:
+                if shopping_flags.get(key) == "verified":
+                    spec_confidence[key] = "verified"
+                else:
+                    spec_confidence[key] = citation_confidence[key]
+
+            result["_spec_confidence"] = spec_confidence
+
+        # Clean specs: remove meta keys, _source fields, flatten additional_specs
         if result.get("specs"):
             result["specs"] = self._clean_specs(result["specs"])
 
@@ -438,6 +460,24 @@ class StructuredComparisonService:
         if rating_data.get("expert_cons"):
             result["expert_cons"] = rating_data["expert_cons"]
 
+        # === Fact-checking: review sentiment + price verification ===
+        # Review sentiment cross-validation (GPT vs Serper ratings)
+        if result.get("reviews") and isinstance(result["reviews"], dict):
+            result["_review_verification"] = self._verify_review_sentiment(
+                result["reviews"], retailer_ratings
+            )
+        else:
+            result["_review_verification"] = {"sentiment_consistent": None, "gpt_rating": None, "serper_avg_rating": None, "deviation": None}
+
+        # Price cross-check against shopping data
+        shopping_items = self._shopping_items_cache.get(full_name, [])
+        result["_price_verification"] = self._verify_price(
+            result.get("price"), shopping_items
+        )
+
+        # Assemble fact_check object (pops internal _spec_confidence, _review_verification, _price_verification)
+        result["fact_check"] = self._build_fact_check(result)
+
         # Calculate data freshness
         result["data_freshness"] = self._calculate_freshness(result)
 
@@ -469,17 +509,20 @@ class StructuredComparisonService:
         if search_results is None:
             search_results = await search_web(f"{search_query} specifications features")
             self._track_cost(0.001)  # Serper cost
-        
-        search_context = self._format_search_results(search_results)
-        
+
+        # Use numbered snippets for citation tracking
+        search_context, raw_snippets = self._format_numbered_search_results(search_results)
+
         # Extract specs
         specs = await extract_specs(brand, name, variant, category, search_context, drug_context=drug_context)
         self._track_cost(0.0005)  # ~500 tokens
-        
-        # Cache result
+
+        # Cache result (without internal _search_snippets)
         if specs and not specs.get("error"):
             set_cached(cache_key, specs, SPECS_CACHE_TTL)
-        
+
+        # Attach raw snippets for fact-check verification (stripped before response)
+        specs["_search_snippets"] = raw_snippets
         specs["_cached"] = False
         return specs
     
@@ -1492,19 +1535,91 @@ class StructuredComparisonService:
         
         return "\n".join(formatted)
     
+    def _format_numbered_search_results(self, results: Dict) -> Tuple[str, List[str]]:
+        """Format search results with [snippet_N] labels for GPT citation tracking.
+
+        Returns:
+            (formatted_context, raw_snippets) where raw_snippets[i] is the text
+            of snippet_{i+1} for later citation verification.
+        """
+        if not results:
+            return "No search results available.", []
+
+        formatted = []
+        raw_snippets = []
+
+        organic = results.get("organic", [])[:5]
+        for i, r in enumerate(organic):
+            title = r.get("title", "")
+            snippet = r.get("snippet", "")
+            snippet_text = f"{title} - {snippet}"
+            raw_snippets.append(snippet_text)
+            formatted.append(f"[snippet_{i+1}] {title}\n   {snippet}")
+
+        shopping = results.get("shopping", [])[:3]
+        if shopping:
+            formatted.append("\n--- Shopping Results ---")
+            for s in shopping:
+                title = s.get("title", "")
+                price = s.get("price", "")
+                source = s.get("source", "")
+                formatted.append(f"- {title}: {price} ({source})")
+
+        return "\n".join(formatted), raw_snippets
+
     def _calculate_freshness(self, product: Dict) -> str:
         """Calculate overall data freshness."""
         specs_cached = (product.get("specs") or {}).get("_cached", True)
         price_cached = (product.get("price") or {}).get("_cached", True)
         reviews_cached = (product.get("reviews") or {}).get("_cached", True)
-        
+
         if not specs_cached and not price_cached:
             return "live"
         elif specs_cached and price_cached and reviews_cached:
             return "cached"
         else:
             return "mixed"
-    
+
+    def _build_fact_check(self, product: Dict) -> Dict:
+        """Assemble fact_check object from per-field verification results.
+
+        Pops internal _spec_confidence, _review_verification, _price_verification
+        keys from the product dict and returns a clean fact_check summary.
+        """
+        spec_confidence = product.pop("_spec_confidence", {})
+        review_verification = product.pop("_review_verification", {})
+        price_verification = product.pop("_price_verification", {})
+
+        specs_verified = sum(1 for v in spec_confidence.values() if v == "verified")
+        specs_likely = sum(1 for v in spec_confidence.values() if v == "likely")
+        specs_flagged = sum(1 for v in spec_confidence.values() if v == "flagged")
+        specs_unverified = sum(1 for v in spec_confidence.values() if v == "unverified")
+
+        price_verified = price_verification.get("price_verified", False)
+        sentiment_consistent = review_verification.get("sentiment_consistent")
+
+        # Overall confidence
+        if specs_flagged > 0 or (sentiment_consistent is False):
+            overall = "low"
+        elif specs_unverified > specs_verified + specs_likely:
+            overall = "medium"
+        elif price_verified and (sentiment_consistent is True or sentiment_consistent is None):
+            overall = "high"
+        else:
+            overall = "medium"
+
+        return {
+            "specs_verified": specs_verified,
+            "specs_likely": specs_likely,
+            "specs_flagged": specs_flagged,
+            "specs_unverified": specs_unverified,
+            "price_verified": price_verified,
+            "price_deviation_pct": price_verification.get("deviation_pct"),
+            "review_sentiment_consistent": sentiment_consistent,
+            "review_rating_deviation": review_verification.get("deviation"),
+            "overall_confidence": overall,
+        }
+
     def _track_cost(self, cost: float):
         """Track API costs."""
         self.total_cost += cost
@@ -1716,9 +1831,159 @@ class StructuredComparisonService:
             }
         }
 
+    def _verify_spec_citations(self, specs: Dict, search_snippets: List[str]) -> Dict[str, str]:
+        """Verify GPT spec citations against actual search snippets.
+
+        Returns dict mapping spec_field -> confidence:
+          'verified': citation matches snippet text
+          'likely': citation provided but can't fully cross-check
+          'unverified': no citation or citation doesn't match
+        """
+        confidence = {}
+        for key, value in specs.items():
+            if key.endswith("_source") or key.startswith("_") or key in ("brand", "model", "variant", "category"):
+                continue
+            source_key = f"{key}_source"
+            source = specs.get(source_key)
+
+            if not source or source == "training":
+                confidence[key] = "unverified"
+            elif source.startswith("snippet_"):
+                try:
+                    idx = int(source.split("_")[1]) - 1
+                    if 0 <= idx < len(search_snippets):
+                        snippet_text = search_snippets[idx].lower()
+                        value_str = str(value).lower()
+                        # Check if key terms from the value appear in the snippet
+                        terms = [t for t in value_str.split() if len(t) > 2]
+                        if not terms:
+                            confidence[key] = "likely"
+                        else:
+                            matches = sum(1 for t in terms if t in snippet_text)
+                            confidence[key] = "verified" if matches >= len(terms) * 0.5 else "likely"
+                    else:
+                        confidence[key] = "unverified"
+                except (ValueError, IndexError):
+                    confidence[key] = "unverified"
+            else:
+                confidence[key] = "unverified"
+
+        return confidence
+
+    def _cross_validate_specs_with_shopping(self, specs: Dict, shopping_items: List[Dict]) -> Dict[str, str]:
+        """Cross-check spec values against Serper Shopping product titles/descriptions.
+
+        Upgrades 'likely' to 'verified' if shopping data confirms.
+        Returns dict mapping field -> 'verified' for confirmed fields.
+        """
+        if not shopping_items:
+            return {}
+
+        # Combine all shopping titles into one searchable text
+        shopping_text = " ".join(
+            f"{item.get('title', '')} {item.get('description', '')}"
+            for item in shopping_items
+        ).lower()
+
+        flags = {}
+        # Check key spec fields that commonly appear in shopping titles
+        checkable = ["storage", "ram", "display", "processor", "count", "dosage", "form"]
+        for key in checkable:
+            value = specs.get(key)
+            if not value or value == "N/A":
+                continue
+            value_str = str(value).lower()
+            # Extract numbers from spec value
+            numbers = re.findall(r'\d+', value_str)
+            if numbers:
+                # Check if any key number appears in shopping text
+                found = any(n in shopping_text for n in numbers if len(n) >= 2)
+                if found:
+                    flags[key] = "verified"
+
+        return flags
+
+    def _verify_review_sentiment(self, reviews: Dict, source_ratings: List[Dict]) -> Dict:
+        """Cross-check GPT review sentiment against real Serper ratings.
+
+        Returns:
+          sentiment_consistent: bool or None (None if insufficient data)
+          gpt_rating: float or None
+          serper_avg_rating: float or None
+          deviation: float or None
+        """
+        gpt_rating = reviews.get("average_rating")
+        if not source_ratings or gpt_rating is None:
+            return {"sentiment_consistent": None, "gpt_rating": gpt_rating, "serper_avg_rating": None, "deviation": None}
+
+        # Calculate weighted average from source_ratings
+        total_weight = 0
+        weighted_sum = 0
+        for sr in source_ratings:
+            rating = sr.get("rating")
+            count = sr.get("review_count", 1) or 1
+            if rating and isinstance(rating, (int, float)):
+                weighted_sum += rating * count
+                total_weight += count
+
+        if total_weight == 0:
+            return {"sentiment_consistent": None, "gpt_rating": gpt_rating, "serper_avg_rating": None, "deviation": None}
+
+        serper_avg = round(weighted_sum / total_weight, 2)
+        deviation = abs(gpt_rating - serper_avg)
+        consistent = deviation <= 0.8  # Allow 0.8 point tolerance
+
+        return {
+            "sentiment_consistent": consistent,
+            "gpt_rating": gpt_rating,
+            "serper_avg_rating": serper_avg,
+            "deviation": round(deviation, 2)
+        }
+
+    def _verify_price(self, price: Dict, shopping_items: List[Dict]) -> Dict:
+        """Cross-check final price against Serper Shopping prices.
+
+        Returns:
+          price_verified: bool
+          deviation_pct: float or None
+          source_count: int
+        """
+        if not price or not shopping_items:
+            return {"price_verified": price is not None and not (price or {}).get("estimated", False), "deviation_pct": None, "source_count": 0}
+
+        final_amount = price.get("amount")
+        if not final_amount:
+            return {"price_verified": False, "deviation_pct": None, "source_count": 0}
+
+        # Collect valid prices from shopping items
+        shopping_prices = []
+        for item in shopping_items:
+            p = item.get("price")
+            if isinstance(p, (int, float)) and p > 0:
+                shopping_prices.append(p)
+            elif isinstance(p, str):
+                nums = re.findall(r'[\d.]+', p.replace(',', ''))
+                if nums:
+                    try:
+                        shopping_prices.append(float(nums[0]))
+                    except ValueError:
+                        pass
+
+        if not shopping_prices:
+            return {"price_verified": not price.get("estimated", False), "deviation_pct": None, "source_count": 0}
+
+        median = sorted(shopping_prices)[len(shopping_prices) // 2]
+        deviation_pct = abs(final_amount - median) / median * 100 if median > 0 else None
+
+        return {
+            "price_verified": deviation_pct is not None and deviation_pct <= 30 and not price.get("estimated", False),
+            "deviation_pct": round(deviation_pct, 1) if deviation_pct is not None else None,
+            "source_count": len(shopping_prices)
+        }
+
     @staticmethod
     def _clean_specs(specs: Dict[str, Any]) -> Dict[str, Any]:
-        """Clean specs for display: remove meta keys, replace None with N/A."""
+        """Clean specs for display: remove meta keys, _source citation fields, replace None with N/A."""
         if not specs or not isinstance(specs, dict):
             return {}
 
@@ -1727,6 +1992,12 @@ class StructuredComparisonService:
         cleaned = {}
         for key, value in specs.items():
             if key in meta_keys:
+                continue
+            # Strip _source citation fields (used for fact-checking, not displayed)
+            if key.endswith("_source"):
+                continue
+            # Strip internal keys
+            if key.startswith("_"):
                 continue
             if value is None or value == "" or value == "null" or (isinstance(value, str) and "or null" in value.lower()):
                 cleaned[key] = "N/A"
