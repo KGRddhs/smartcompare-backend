@@ -189,6 +189,12 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 ## Environment Variables (Railway)
 `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`
 
+### Serper API Credits
+- As of Feb 22 2026: ~42 credits remaining (~10-14 comparisons with `nocache=true`)
+- Each comparison uses ~3-4 Serper calls (shopping + web search + occasional pharmacy search)
+- Cached responses (default) cost zero Serper calls — only `nocache=true` burns credits
+- **To rotate**: Create new Serper account at serper.dev (free tier = 2,500 credits), update `SERPER_API_KEY` in Railway env vars. No code changes needed — the key is stateless.
+
 ## Tests
 
 - `python -m py_compile <file>` for syntax checks
