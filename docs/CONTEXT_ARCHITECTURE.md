@@ -164,8 +164,8 @@ smartcompare/
 │   │   ├── __init__.py
 │   │   ├── text_routes.py               # /api/v1/text/* endpoints (rate limited)
 │   │   ├── url_routes.py                # /api/v1/url/* endpoints
-│   │   ├── image_routes.py              # /api/v1/image/* (camera)
-│   │   ├── auth_routes.py               # /api/v1/auth/* endpoints
+│   │   ├── image_routes.py              # /api/v1/image/* (camera, HEIC detection)
+│   │   ├── auth_routes.py               # /api/v1/auth/* (login, register, profile, social-login)
 │   │   ├── admin_routes.py              # /api/v1/admin/* analytics (X-Admin-Key auth)
 │   │   └── routes.py                    # /api/v1/compare (legacy, broken)
 │   ├── middleware/
@@ -192,36 +192,37 @@ smartcompare/
 ├── SmartCompareApp/                     # React Native mobile app
 │   ├── src/
 │   │   ├── screens/
-│   │   │   ├── HomeScreen.tsx           # Main input screen
+│   │   │   ├── HomeScreen.tsx           # Main input screen (gear icon → AccountScreen)
 │   │   │   ├── ResultsScreen.tsx        # Comparison results
 │   │   │   ├── CameraScreen.tsx         # Camera capture + identify
-│   │   │   ├── HistoryScreen.tsx        # Comparison history
-│   │   │   ├── LoginScreen.tsx
-│   │   │   └── RegisterScreen.tsx
+│   │   │   ├── HistoryScreen.tsx        # Comparison history (401 → sign-in prompt)
+│   │   │   ├── AccountScreen.tsx        # Account panel (name/email edit, password, social accounts)
+│   │   │   ├── LoginScreen.tsx          # Email login + Google/Apple sign-in + inline validation
+│   │   │   └── RegisterScreen.tsx       # Email register + Google/Apple sign-in + inline validation
 │   │   ├── services/
-│   │   │   ├── api.ts                   # Axios config + auth interceptors
-│   │   │   └── authService.ts           # Supabase auth functions
+│   │   │   ├── api.ts                   # Axios config + auth interceptors + JPEG transcoding
+│   │   │   └── authService.ts           # Supabase auth + Google/Apple sign-in
 │   │   ├── components/
 │   │   │   └── ...
 │   │   └── types/
 │   │       └── index.ts
 │   ├── App.tsx
-│   ├── app.json
+│   ├── app.json                         # EAS plugins: expo-camera, expo-image-picker, expo-image-manipulator, google-signin, apple-auth
 │   └── package.json
 │
-├── tests/                               # 18 test files, 280 tests
+├── tests/                               # 18 test files, 366 tests
 │   ├── conftest.py                      # Auto-loads .env for all tests
+│   ├── test_auth_interceptor.py         # 93 tests (was 45 — added social login, profile, MIME)
 │   ├── test_fact_checking.py            # 48 tests
-│   ├── test_auth_interceptor.py         # 45 tests
 │   ├── test_error_paths.py              # 31 tests
 │   ├── test_analytics.py               # 30 tests
+│   ├── test_camera_vision.py           # 26 tests (was 10 — added HEIC detection/rejection)
 │   ├── test_observability.py            # 24 tests
 │   ├── test_security_middleware.py      # 16 tests
 │   ├── test_rating_tiers.py            # 16 tests
 │   ├── test_price_fallback.py          # 12 tests
 │   ├── test_pharmacy_jsonld.py         # 12 tests
 │   ├── test_drug_database_service.py   # 11 tests
-│   ├── test_camera_vision.py           # 10 tests
 │   ├── test_history.py                 # 10 tests
 │   ├── test_db_improvements.py         # 9 tests
 │   ├── test_url_extraction.py          # 8 tests
@@ -268,7 +269,41 @@ app.include_router(admin_router, prefix="/api/v1/admin")  # /api/v1/admin/*
 # Structured logging: configure_logging() — JSON format, quiets noisy libs
 ```
 
-## 4.2 Comparison Service v3 (comparison_service_v3.py)
+## 4.2 Auth Endpoints (auth_routes.py)
+
+```python
+# Existing endpoints
+POST /api/v1/auth/login         # Email + password login
+POST /api/v1/auth/register      # Email + password registration
+POST /api/v1/auth/refresh       # Refresh token → new access token
+GET  /api/v1/auth/me            # Get current user (requires auth)
+
+# New in Session 15
+PUT  /api/v1/auth/profile       # Update display name (requires auth)
+PUT  /api/v1/auth/email         # Update email (triggers Supabase verification)
+PUT  /api/v1/auth/password      # Change password (current password required)
+POST /api/v1/auth/social-login  # Google/Apple idToken → Supabase signInWithIdToken
+```
+
+### Social Login Flow
+1. Frontend calls native Google/Apple SDK to get `idToken`
+2. Frontend sends `POST /auth/social-login` with `{ provider: "google"|"apple", id_token: "..." }`
+3. Backend calls `supabase.auth.sign_in_with_id_token(provider, id_token)`
+4. Supabase creates user if new, returns session
+5. Backend returns `{ user, session }` — frontend stores tokens same as email login
+
+### HEIC Image Detection (image_routes.py)
+`_detect_mime_type(file_bytes)` reads magic bytes to detect:
+- JPEG (`FF D8 FF`)
+- PNG (`89 50 4E 47`)
+- WebP (`52 49 46 46` + `57 45 42 50`)
+- GIF (`47 49 46 38`)
+- HEIC/HEIF (`66 74 79 70` at offset 4 — `heic`, `heix`, `mif1`, `msf1`)
+- Returns `None` for unsupported formats → 400 error response
+
+Frontend also transcodes via `expo-image-manipulator` to JPEG before upload (belt-and-suspenders).
+
+## 4.3 Comparison Service v3 (comparison_service_v3.py)
 
 This is the MAIN service. Key functions:
 
@@ -370,6 +405,11 @@ Key functions:
 - `getCurrentUser()` - Gets stored user from AsyncStorage
 - `isLoggedIn()` - Checks if token exists
 - `verifyAuth()` - Alias for isLoggedIn (was missing, we added it)
+- `signInWithGoogle()` - Native Google Sign-In SDK → `POST /auth/social-login`
+- `signInWithApple()` - Native Apple Authentication with nonce → `POST /auth/social-login`
+- `updateProfile(displayName)` - `PUT /auth/profile`
+- `updateEmail(newEmail)` - `PUT /auth/email`
+- `changePassword(currentPassword, newPassword)` - `PUT /auth/password`
 
 Storage keys:
 ```typescript
@@ -377,7 +417,23 @@ const USER_STORAGE_KEY = '@smartcompare_user';
 const TOKEN_STORAGE_KEY = '@smartcompare_token';
 ```
 
-## 5.3 Results Screen (ResultsScreen.tsx)
+## 5.3 AccountScreen (AccountScreen.tsx)
+
+New screen accessible via gear icon on HomeScreen:
+- **Inline editing**: display name and email fields with edit/save/cancel buttons
+- **Password change**: modal with current password, new password, confirm fields
+- **Connected accounts**: Google and Apple connection buttons (shows "Connected" or "Connect")
+- **Logout button**: clears all stored tokens and navigates to login
+
+## 5.4 Input Validation (LoginScreen, RegisterScreen)
+
+Inline per-field validation:
+- Email: regex validation, shown on blur
+- Password: minimum 6 characters
+- Confirm password: must match (RegisterScreen only)
+- Errors shown inline below each field in red text
+
+## 5.5 Results Screen (ResultsScreen.tsx)
 
 ### Rating Display Component
 ```typescript

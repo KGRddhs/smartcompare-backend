@@ -113,6 +113,24 @@ SENTRY_DSN=https://xxx@sentry.io/xxx     # Enables Sentry error tracking (free t
 LOG_LEVEL=INFO                            # Structured logging level (DEBUG/INFO/WARNING/ERROR)
 ```
 
+## Frontend Config (Deferred — Manual Setup Required)
+```
+# Google Sign-In (authService.ts + app.json)
+- Google Cloud Console: create OAuth client IDs for web, iOS, Android
+- Replace TODO_REPLACE_WITH_GOOGLE_WEB_CLIENT_ID in authService.ts
+- Replace TODO_REPLACE_WITH_GOOGLE_IOS_CLIENT_ID in app.json
+- Supabase Dashboard: enable Google provider with web client ID + secret
+
+# Apple Sign-In (app.json)
+- Requires active Apple Developer subscription ($99/year)
+- Replace TODO_REPLACE_WITH_APPLE_TEAM_ID in app.json
+- Enable "Sign in with Apple" capability in Xcode / Apple Developer Portal
+- Supabase Dashboard: enable Apple provider
+
+# Supabase Schema
+- Add `display_name` TEXT column to auth.users (or profiles table) — needed for PUT /auth/profile
+```
+
 ---
 
 # 13. TESTING GUIDE
@@ -120,7 +138,7 @@ LOG_LEVEL=INFO                            # Structured logging level (DEBUG/INFO
 ## Automated Tests (pytest)
 
 ```bash
-# All unit tests (fast, free, no API calls) — 280 tests, ~4s
+# All unit tests (fast, free, no API calls) — 344 tests, ~4s
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb scraping, Serper, GPT vision) — adds ~$0.03
@@ -141,17 +159,17 @@ python -m pytest tests/ -v --timeout=180
 ### Test Files
 | File | Tests | Type | Notes |
 |------|-------|------|-------|
+| `tests/test_auth_interceptor.py` | 93 | Unit | Auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases |
 | `tests/test_fact_checking.py` | 48 | Unit | Spec citations, shopping cross-validation, review sentiment, price verification |
-| `tests/test_auth_interceptor.py` | 45 | Unit | Auth endpoints, token verify, optional/required user, profile, password reset |
 | `tests/test_error_paths.py` | 31 | Unit | Currency conversion, freshness calc, price parsing, supplement detection, title/number matching |
 | `tests/test_analytics.py` | 30 | Unit | Analytics service (daily/popular/cost/error/product stats), admin endpoints (auth, all 5 routes) |
+| `tests/test_camera_vision.py` | 26 | Unit + Live | Vision pipeline, JSON cleanup, size_or_count enrichment, HEIC detection, MIME type validation, endpoint-level rejection |
 | `tests/test_observability.py` | 24 | Unit | Sentry init, structured formatter, configure_logging, error handler middleware |
 | `tests/test_security_middleware.py` | 16 | Unit | Request ID, security headers, rate limiting (under/over limit, 429) |
 | `tests/test_rating_tiers.py` | 16 | Unit + Live | Tier classification, consensus logic, accessory filtering, invalid ratings |
 | `tests/test_price_fallback.py` | 12 | Unit + Live | Shopping extraction, accessory filter, high-value min price, currency conversion, all-tiers-fail |
 | `tests/test_pharmacy_jsonld.py` | 12 | Unit | Pharmacy JSON-LD price parsing |
 | `tests/test_drug_database_service.py` | 11 | Unit + Live DB | 5 local + 6 `live_db` (need Supabase) |
-| `tests/test_camera_vision.py` | 10 | Unit + Live | Vision pipeline, JSON cleanup, size_or_count enrichment, field normalization |
 | `tests/test_history.py` | 10 | Unit | save_comparison, get history, delete, search, product name extraction |
 | `tests/test_db_improvements.py` | 9 | Unit | log_search, upsert_product, error handling |
 | `tests/test_url_extraction.py` | 8 | Unit | URL extraction for price + rating links |
@@ -159,7 +177,7 @@ python -m pytest tests/ -v --timeout=180
 | `tests/test_unified_search.py` | 4 | Unit + Live | Search sharing (specs/reviews reuse), cost budget tracking |
 | `tests/test_singleton_state.py` | 3 | Unit | Singleton pattern, cache leak prevention, state reset between requests |
 | `tests/test_integration.py` | 6 | Integration | Live Railway: phones, laptops, supplements (iHerb + pharmacy), grocery, shoes |
-| **Total** | **302** | | **280 free unit + 10 live_unit + 6 live_db + 6 integration** |
+| **Total** | **366** | | **344 free unit + 10 live_unit + 6 live_db + 6 integration** |
 
 ### Pytest Markers
 | Marker | Purpose | Run command |
@@ -210,17 +228,32 @@ npx expo start
 - [x] Axios auth interceptors (request token attach + 401 auto-refresh)
 - [x] Comparison history (save, search, delete with real auth)
 - [x] Database improvements (search_logs, product dedup, dead code cleanup)
-- [x] Test coverage expansion (37 → 302 tests across 18 files)
+- [x] Test coverage expansion (37 → 366 tests across 18 files)
 - [x] Supabase local env fix (correct project credentials + conftest.py dotenv loading)
 - [x] Production readiness: rate limiting, security headers, structured logging, error handling, admin analytics, CI/CD
 - [x] Sentry integration (opt-in via SENTRY_DSN)
 - [x] GitHub Actions CI (pytest + py_compile + tsc on push/PR)
+- [x] Account panel (AccountScreen — name/email edit, password change, connected accounts)
+- [x] Google Sign-In (native `@react-native-google-signin/google-signin` + backend social-login endpoint)
+- [x] Apple Sign-In (native `expo-apple-authentication` + nonce via `expo-crypto`)
+- [x] Image upload HEIC fix (expo-image-manipulator JPEG transcoding + backend magic byte detection)
+- [x] History 401 crash fix (sign-in prompt instead of crash)
+- [x] EAS build fix (all required plugins added to app.json)
+- [x] Input validation on Login/Register screens (email regex, password min 6, confirm match)
+- [x] Backend profile endpoints (PUT /auth/profile, /auth/email, /auth/password)
+- [x] Backend social-login endpoint (POST /auth/social-login — Google/Apple idToken → Supabase)
 
-## Short Term
+## Short Term — Config Setup (Manual, Deferred)
+- [ ] Google Cloud Console: create OAuth client IDs (web + iOS + Android)
+- [ ] Supabase: enable Google provider, add `display_name` column to users table
+- [ ] Replace `TODO_REPLACE_*` placeholder client IDs in authService.ts and app.json
+- [ ] Apple Developer subscription (needed for Apple Sign-In activation)
+- [ ] Set up Sentry DSN for error tracking
+
+## Short Term — Code
 - [ ] Apply Figma UI design
 - [ ] Fix camera supplement pricing (verbose names fail iHerb search)
 - [ ] Fix ResultsScreen type divergence from types.ts
-- [ ] Set up Sentry DSN for error tracking
 
 ## Medium Term
 - [ ] URL input comparison (`/api/v1/url/compare`)
@@ -244,7 +277,7 @@ When starting Claude Code, say:
 Read docs/CLAUDE_CODE_CONTEXT.md completely. This is SmartCompare - a product
 comparison app for GCC region.
 
-Current status (Mar 3, 2026):
+Current status (Mar 3, 2026 — Session 15):
 - Backend: Running on Railway v2.1.0 (production-ready with middleware stack)
 - Middleware: Security headers, rate limiting, structured logging, error handler, request ID
 - Prices (text): Working (3-tier fallback + iHerb scrape + pharmacy JSON-LD + clickable URLs)
@@ -252,14 +285,18 @@ Current status (Mar 3, 2026):
 - Specs: Working (supplements enriched with Bahrain drug database context)
 - Ratings: Working (Serper Shopping tiers + consensus + GPT review fallback)
 - Enhanced Reviews: Working (category_scores, rating_distribution, user_quotes, source_ratings)
-- Camera input: Working for identification, broken for supplement prices
-- Auth: Fixed (refresh token flow + axios interceptors)
-- History: Working (save, search, delete with real auth)
+- Camera input: Working (HEIC fix via expo-image-manipulator JPEG transcoding + backend magic byte detection)
+- Auth: Fixed (refresh token flow + axios interceptors + social login endpoints)
+- Account: NEW — AccountScreen with name/email edit, password change, Google/Apple connect
+- Social Auth: NEW — Google Sign-In (native SDK) + Apple Sign-In (expo-apple-authentication)
+  - Config needed: Google Cloud OAuth client IDs, Supabase Google provider, Apple Dev subscription
+- History: Working (save, search, delete with real auth, 401 shows sign-in prompt)
 - Cost: ~$0.010/comparison (electronics and supplements)
 - Admin: Analytics endpoints at /api/v1/admin/* (protected by ADMIN_API_KEY)
 - Sentry: Ready (opt-in when SENTRY_DSN is set)
 - CI/CD: GitHub Actions runs pytest + py_compile + tsc on push/PR
-- Tests: 302 total across 18 files (280 free unit + 10 live_unit + 6 live_db + 6 integration)
+- Tests: 366 total across 18 files (344 free unit + 10 live_unit + 6 live_db + 6 integration)
+- EAS Build: Fixed (all plugins in app.json: expo-camera, expo-image-picker, expo-image-manipulator, google-signin, apple-auth)
 - URL input: Not started
 ```
 

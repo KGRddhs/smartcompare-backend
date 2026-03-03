@@ -78,9 +78,9 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 
 **Entry:** `app/main.py` (v2.1.0) — loads env vars, configures middleware stack, registers 6 routers:
 - `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow, rate limited)
-- `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited)
+- `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited, HEIC detection)
 - `/api/v1/url/*` — `url_routes.py` (partially implemented)
-- `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth
+- `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social-login)
 - `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints (X-Admin-Key auth)
 - `/api/v1/*` — `routes.py` (legacy image comparison, has broken function calls)
 
@@ -153,14 +153,17 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 **Location:** `SmartCompareApp/`
 
 **Screens:**
-- `HomeScreen.tsx` — Text input, calls `GET /api/v1/text/compare`
+- `HomeScreen.tsx` — Text input, calls `GET /api/v1/text/compare`. Gear icon navigates to AccountScreen.
 - `ResultsScreen.tsx` — Tabs: Overview, Specs, Reviews. Has local type definitions that diverge from `src/types/types.ts`.
 - `CameraScreen.tsx` — Camera capture, calls `POST /api/v1/image/identify`
-- `HistoryScreen.tsx` — Comparison history from Supabase
+- `HistoryScreen.tsx` — Comparison history from Supabase. Shows "Sign In Required" prompt on 401 (not crash).
+- `AccountScreen.tsx` — Account panel: inline name/email editing, password change modal, Google/Apple connect, logout.
+- `LoginScreen.tsx` — Email login + Google/Apple sign-in buttons + inline field validation.
+- `RegisterScreen.tsx` — Email register + Google/Apple sign-in buttons + inline field validation.
 
 **Services:**
-- `api.ts` — Axios instance pointing to Railway production URL (120s timeout)
-- `authService.ts` — Login/register/refresh with Supabase. Stores access_token + refresh_token in AsyncStorage. `verifyAuth()` returns `User | null` (NOT boolean).
+- `api.ts` — Axios instance pointing to Railway production URL (120s timeout). JPEG transcoding via `expo-image-manipulator` before image upload.
+- `authService.ts` — Login/register/refresh with Supabase. `signInWithGoogle()` and `signInWithApple()` for social login. Stores access_token + refresh_token in AsyncStorage. `verifyAuth()` returns `User | null` (NOT boolean).
 
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls intelligently.
@@ -216,7 +219,7 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 
 ### Run commands
 ```bash
-# All free unit tests (280 tests, ~4s, $0)
+# All free unit tests (344 tests, ~4s, $0)
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb, Serper, GPT vision — ~$0.03)
@@ -234,18 +237,18 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (302 total: 280 unit + 10 live_unit + 6 live_db + 6 integration)
+### Test files (366 total: 344 unit + 10 live_unit + 6 live_db + 6 integration)
+- `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
-- `tests/test_auth_interceptor.py` — 45 tests: auth endpoints, token verify, optional/required user, profile, password reset
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
 - `tests/test_analytics.py` — 30 tests: analytics service queries, admin endpoint auth + all 5 routes
+- `tests/test_camera_vision.py` — 26 tests: vision pipeline, JSON cleanup, size_or_count enrichment, HEIC detection, MIME validation, endpoint rejection
 - `tests/test_observability.py` — 24 tests: Sentry init, structured JSON formatter, configure_logging, error handler middleware
 - `tests/test_security_middleware.py` — 16 tests: request ID generation/preservation, security headers, rate limiting (under/over/429)
 - `tests/test_rating_tiers.py` — 16 tests: tier classification, consensus logic, accessory filtering
 - `tests/test_price_fallback.py` — 12 tests: shopping extraction, currency conversion, all-tiers-fail
 - `tests/test_pharmacy_jsonld.py` — 12 tests: pharmacy JSON-LD price extraction
 - `tests/test_drug_database_service.py` — 11 tests: drug DB (5 unit + 6 `live_db`)
-- `tests/test_camera_vision.py` — 10 tests: vision pipeline, JSON cleanup, size_or_count enrichment
 - `tests/test_history.py` — 10 tests: save_comparison, get history, delete, search, product name extraction
 - `tests/test_db_improvements.py` — 9 tests: log_search, upsert_product, error handling
 - `tests/test_url_extraction.py` — 8 tests: URL extraction (price + rating link logic)
@@ -258,8 +261,9 @@ python -m pytest tests/ -v --timeout=180
 
 These are known issues that have been intentionally deferred:
 - Legacy `/api/v1/compare` route (`routes.py`): all function calls use wrong arg counts — 4 TypeErrors
-- Missing `expo-camera`/`expo-image-picker` plugins in `app.json` (breaks EAS builds)
 - `ResultsScreen.tsx` has local type definitions that diverge from `src/types/types.ts`
+- Google/Apple sign-in: placeholder client IDs (`TODO_REPLACE_*`) need real values from Cloud Console / Apple Dev Portal
+- Supabase: `display_name` column not yet added to users table (needed for PUT /auth/profile)
 
 ## Detailed Context
 See `docs/CLAUDE_CODE_CONTEXT.md` for the index of all context files. Key files: CONTEXT_ARCHITECTURE.md (system design), CONTEXT_SESSION_LOG.md (development history), CONTEXT_REFERENCE.md (testing/deploy).

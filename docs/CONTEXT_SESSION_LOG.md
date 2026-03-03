@@ -1479,6 +1479,162 @@ Middleware execution order (outermost → innermost):
 
 ---
 
+## Session 15: Mar 3, 2026 — Account Panel, Social Auth, Image Upload Fix
+
+### What Was Done
+Multi-agent team (3 Opus agents, `bypassPermissions`, circular cross-QA) implemented account management, social authentication, and fixed critical bugs. Fourth time using multi-agent team (Sessions 9, 12, 14, 15).
+
+**Team Structure:**
+- **backend-agent**: Auth endpoints (profile, email, password, social-login), HEIC detection, EAS plugins
+- **frontend-core-agent**: AccountScreen, HomeScreen gear icon, HistoryScreen 401 fix, image JPEG transcoding
+- **frontend-auth-agent**: Google/Apple sign-in SDK integration, Login/Register social buttons + input validation
+
+### Bug Fixes
+
+**1. Image Upload `invalid_image_format` (HEIC)**
+- **Problem:** iOS devices capture photos in HEIC format. Backend couldn't process HEIC images.
+- **Frontend fix:** `expo-image-manipulator` transcodes all camera/gallery images to JPEG before upload in `api.ts`
+- **Backend fix:** `_detect_mime_type()` function in `image_routes.py` reads magic bytes to detect JPEG/PNG/WebP/GIF/HEIC. Rejects unsupported formats with 400 error. Belt-and-suspenders approach — frontend transcodes, backend validates.
+- **HEIC magic bytes:** offset 4 contains `ftyp` marker, then `heic`/`heix`/`mif1`/`msf1` brand codes
+
+**2. History 401 Crash**
+- **Problem:** HistoryScreen crashed when user was not authenticated (401 response).
+- **Fix:** HistoryScreen now catches 401 and shows a "Sign In Required" prompt with a sign-in button instead of crashing. Button navigates to LoginScreen.
+
+**3. EAS Build Missing Plugins**
+- **Problem:** `app.json` was missing required Expo plugins, causing EAS build failures.
+- **Fix:** Added all required plugins to `app.json`: `expo-camera`, `expo-image-picker`, `expo-image-manipulator`, `@react-native-google-signin/google-signin`, `expo-apple-authentication`
+
+### New Features
+
+**4. AccountScreen**
+- **File:** `SmartCompareApp/src/screens/AccountScreen.tsx`
+- Inline editing for display name and email (edit/save/cancel pattern)
+- Password change via modal (current password + new password + confirm)
+- Connected accounts section showing Google/Apple connection status with connect buttons
+- Logout button
+- Accessible via gear icon (settings) on HomeScreen header
+
+**5. Google Sign-In**
+- **Frontend:** Native `@react-native-google-signin/google-signin` SDK
+- `signInWithGoogle()` in `authService.ts` — calls `GoogleSignin.signIn()`, gets `idToken`, sends to backend
+- Buttons on LoginScreen, RegisterScreen, and AccountScreen
+- **Config needed:** Google Cloud Console OAuth client IDs (web + iOS + Android), Supabase Google provider
+
+**6. Apple Sign-In**
+- **Frontend:** Native `expo-apple-authentication` with cryptographic nonce via `expo-crypto`
+- `signInWithApple()` in `authService.ts` — calls `AppleAuthentication.signInAsync()` with nonce, sends `identityToken` to backend
+- iOS-only buttons (hidden on Android via `Platform.OS === 'ios'` check)
+- **Config needed:** Apple Developer subscription ($99/year), enable capability in Xcode
+
+**7. Backend Social Login Endpoint**
+- `POST /api/v1/auth/social-login` — accepts `{ provider: "google"|"apple", id_token: "..." }`
+- Calls `supabase.auth.sign_in_with_id_token(credentials={"provider": provider, "token": id_token})`
+- Creates user if new, returns `{ user, session }` — frontend handles same as email login
+- Returns 401 on invalid token, 400 on missing fields
+
+**8. Backend Profile Endpoints (3 new)**
+- `PUT /api/v1/auth/profile` — updates display name via `supabase.auth.update_user({"data": {"display_name": name}})`
+- `PUT /api/v1/auth/email` — updates email, triggers Supabase verification email
+- `PUT /api/v1/auth/password` — changes password (current password required for verification)
+
+**9. Input Validation**
+- LoginScreen + RegisterScreen now have inline per-field validation
+- Email: regex validation shown on blur
+- Password: minimum 6 characters
+- Confirm password: must match (RegisterScreen only)
+- Red error text shown inline below each field
+
+### New Dependencies (Frontend Only)
+- `expo-image-manipulator` — JPEG transcoding for camera/gallery images
+- `@react-native-google-signin/google-signin` — native Google Sign-In SDK
+- `expo-apple-authentication` — native Apple Sign-In
+- `expo-crypto` — cryptographic nonce generation for Apple Sign-In
+
+### Tests Added (64 new, 366 total)
+| File | Before | After | New Tests |
+|------|--------|-------|-----------|
+| `tests/test_auth_interceptor.py` | 45 | 93 | +48 (social login, profile/email/password endpoints, edge cases) |
+| `tests/test_camera_vision.py` | 10 | 26 | +16 (HEIC magic bytes, MIME detection, endpoint-level rejection) |
+| **Total** | **302** | **366** | **+64** |
+
+Breakdown: 344 free unit + 10 live_unit + 6 live_db + 6 integration = 366
+
+### Config Still Needed (Manual, Deferred)
+| Item | Where | Status |
+|------|-------|--------|
+| Google Cloud OAuth client IDs | Cloud Console → authService.ts + app.json | TODO_REPLACE_* placeholders |
+| Supabase Google provider | Supabase Dashboard → Auth → Providers | Not enabled |
+| Supabase `display_name` column | Supabase Dashboard → users table | Not added |
+| Apple Developer subscription | developer.apple.com | Deferred ($99/year) |
+
+### Commits (18)
+```
+50fad03 fix: add missing expo-camera and expo-image-picker plugins to app.json
+deb8f1f fix: add HEIC magic byte detection, reject unsupported image formats
+39fbc0b feat: add PUT /auth/profile endpoint for display name update
+f614f15 feat: add PUT /auth/email endpoint with Supabase verification
+ee65c4d feat: add PUT /auth/password endpoint with current password verification
+78a205a fix: transcode images to JPEG via expo-image-manipulator before upload
+6e845ad feat: install and configure native Google Sign-In SDK
+6580e99 fix: show sign-in prompt on history 401 instead of crashing
+16cf29b feat: install and configure native Apple Sign-In with nonce support
+b409e8c feat: add POST /auth/social-login for Google and Apple sign-in
+604226c feat: add Google and Apple sign-in buttons to LoginScreen
+b35df38 feat: add Google and Apple sign-in buttons to RegisterScreen
+1834617 feat: add Google and Apple connect buttons to AccountScreen
+0fc4612 test: add edge case tests for new auth endpoints (8 additional)
+0bf4cc1 feat: add AccountScreen with name/email editing, password change, and navigation
+8899990 feat: add inline input validation to Login and Register screens
+450a7b1 test: add 14 deep edge case tests for auth endpoints
+fe8d9c2 test: add endpoint-level HEIC rejection tests for /image/identify
+```
+
+### Key Technical Changes
+| Change | File |
+|--------|------|
+| `_detect_mime_type()` — magic byte HEIC/JPEG/PNG/WebP/GIF detection | `app/api/image_routes.py` |
+| `PUT /auth/profile`, `PUT /auth/email`, `PUT /auth/password` | `app/api/auth_routes.py` |
+| `POST /auth/social-login` — Google/Apple idToken → Supabase | `app/api/auth_routes.py` |
+| JPEG transcoding via `expo-image-manipulator` | `SmartCompareApp/src/services/api.ts` |
+| `signInWithGoogle()` — native Google Sign-In SDK | `SmartCompareApp/src/services/authService.ts` |
+| `signInWithApple()` — native Apple Auth + nonce | `SmartCompareApp/src/services/authService.ts` |
+| AccountScreen — name/email/password/social accounts | `SmartCompareApp/src/screens/AccountScreen.tsx` |
+| History 401 → sign-in prompt | `SmartCompareApp/src/screens/HistoryScreen.tsx` |
+| Inline validation on Login/Register | `SmartCompareApp/src/screens/LoginScreen.tsx`, `RegisterScreen.tsx` |
+| EAS plugins added | `SmartCompareApp/app.json` |
+
+### Updated Feature Status
+| Feature | Status |
+|---------|--------|
+| Prices (text input) | Working (iHerb for supplements, shopping for electronics) |
+| Prices (camera input) | Partially broken (supplements get wrong BHD price from camera path) |
+| Ratings | Working + linked to sources |
+| Reviews | Working |
+| Specs | Working (supplements schema) |
+| Camera | Working (HEIC fix — JPEG transcoding + magic byte validation) |
+| Auth | Working (email + social login + refresh token + axios interceptors) |
+| **Account Panel** | **NEW — name/email edit, password change, Google/Apple connect** |
+| **Google Sign-In** | **NEW — native SDK, needs Cloud Console config** |
+| **Apple Sign-In** | **NEW — native SDK, needs Apple Dev subscription** |
+| **Input Validation** | **NEW — inline per-field on Login/Register** |
+| History | Working (save, search, delete, 401 sign-in prompt) |
+| Cost optimization | $0.010 electronics, $0.010 supplements |
+| Rating/Price links | Product-specific Google Shopping URLs |
+| Pharmacy JSON-LD | bn.boots.com, bolo.bh (if indexed) |
+| Bahrain Drug Database | 655 records, full-text search, GPT context injection |
+| Integration Tests | 6 tests, all passing |
+| **Test Coverage** | **366 total (344 free unit + 10 live + 6 live_db + 6 integration)** |
+| URL input | Not started |
+
+### Known Remaining Bugs
+- Legacy `/api/v1/compare` route: all function calls use wrong arg counts (unchanged)
+- ResultsScreen local type definitions diverge from types.ts (unchanged)
+- Camera supplement prices: verbose names fail iHerb search (unchanged)
+- Google/Apple sign-in: placeholder client IDs need real values (config, not code)
+
+---
+
 **END OF KNOWLEDGE TRANSFER**
 
 *Keep this document updated as the project evolves.*
