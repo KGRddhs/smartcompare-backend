@@ -29,6 +29,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [socialLoading, setSocialLoading] = useState('');
   const [showApple, setShowApple] = useState(false);
 
@@ -73,15 +75,30 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
   };
 
   const handleLogin = async () => {
-    // Validation
-    if (!email.trim()) {
-      setError('Please enter your email');
-      return;
+    let hasError = false;
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      setEmailError('Email is required');
+      hasError = true;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailError('Invalid email format');
+      hasError = true;
+    } else {
+      setEmailError('');
     }
+
     if (!password) {
-      setError('Please enter your password');
-      return;
+      setPasswordError('Password is required');
+      hasError = true;
+    } else if (password.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      hasError = true;
+    } else {
+      setPasswordError('');
     }
+
+    if (hasError) return;
 
     setLoading(true);
     setError('');
@@ -127,29 +144,31 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Email</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, emailError ? styles.inputError : null]}
                 placeholder="Enter your email"
                 placeholderTextColor="#999"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(text) => { setEmail(text); setEmailError(''); }}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!loading}
               />
+              {emailError ? <Text style={styles.fieldError}>{emailError}</Text> : null}
             </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Password</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, passwordError ? styles.inputError : null]}
                 placeholder="Enter your password"
                 placeholderTextColor="#999"
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(text) => { setPassword(text); setPasswordError(''); }}
                 secureTextEntry
                 editable={!loading}
               />
+              {passwordError ? <Text style={styles.fieldError}>{passwordError}</Text> : null}
             </View>
 
             <TouchableOpacity
@@ -290,6 +309,14 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     borderWidth: 1,
     borderColor: '#E0E0E0',
+  },
+  inputError: {
+    borderColor: '#FF3B30',
+  },
+  fieldError: {
+    color: '#FF3B30',
+    fontSize: 12,
+    marginTop: 4,
   },
   forgotPassword: {
     alignSelf: 'flex-end',

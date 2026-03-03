@@ -30,6 +30,9 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [confirmError, setConfirmError] = useState('');
   const [socialLoading, setSocialLoading] = useState('');
   const [showApple, setShowApple] = useState(false);
 
@@ -79,27 +82,40 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
   };
 
   const handleRegister = async () => {
-    // Validation
-    if (!email.trim()) {
-      setError('Please enter your email');
-      return;
+    let hasError = false;
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      setEmailError('Email is required');
+      hasError = true;
+    } else if (!validateEmail(trimmedEmail)) {
+      setEmailError('Invalid email format');
+      hasError = true;
+    } else {
+      setEmailError('');
     }
-    if (!validateEmail(email.trim())) {
-      setError('Please enter a valid email address');
-      return;
-    }
+
     if (!password) {
-      setError('Please enter a password');
-      return;
+      setPasswordError('Password is required');
+      hasError = true;
+    } else if (password.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      hasError = true;
+    } else {
+      setPasswordError('');
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
+
+    if (!confirmPassword) {
+      setConfirmError('Please confirm your password');
+      hasError = true;
+    } else if (password !== confirmPassword) {
+      setConfirmError('Passwords do not match');
+      hasError = true;
+    } else {
+      setConfirmError('');
     }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
+
+    if (hasError) return;
 
     setLoading(true);
     setError('');
@@ -149,42 +165,45 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Email</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, emailError ? styles.inputError : null]}
                   placeholder="Enter your email"
                   placeholderTextColor="#999"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(text) => { setEmail(text); setEmailError(''); }}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
                   editable={!loading}
                 />
+                {emailError ? <Text style={styles.fieldError}>{emailError}</Text> : null}
               </View>
 
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Password</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, passwordError ? styles.inputError : null]}
                   placeholder="Create a password (min 6 characters)"
                   placeholderTextColor="#999"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(text) => { setPassword(text); setPasswordError(''); }}
                   secureTextEntry
                   editable={!loading}
                 />
+                {passwordError ? <Text style={styles.fieldError}>{passwordError}</Text> : null}
               </View>
 
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Confirm Password</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, confirmError ? styles.inputError : null]}
                   placeholder="Confirm your password"
                   placeholderTextColor="#999"
                   value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  onChangeText={(text) => { setConfirmPassword(text); setConfirmError(''); }}
                   secureTextEntry
                   editable={!loading}
                 />
+                {confirmError ? <Text style={styles.fieldError}>{confirmError}</Text> : null}
               </View>
 
               <TouchableOpacity
@@ -331,6 +350,14 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     borderWidth: 1,
     borderColor: '#E0E0E0',
+  },
+  inputError: {
+    borderColor: '#FF3B30',
+  },
+  fieldError: {
+    color: '#FF3B30',
+    fontSize: 12,
+    marginTop: 4,
   },
   registerButton: {
     backgroundColor: '#34C759',
