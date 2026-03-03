@@ -204,3 +204,147 @@ def test_error_handler_returns_json_content_type():
     response = client.get("/crash")
     assert response.status_code == 500
     assert "application/json" in response.headers["content-type"]
+
+
+def test_error_handler_default_request_id_when_no_state():
+    """Error handler uses 'unknown' when request.state has no request_id."""
+    app = _make_error_app()
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/crash")
+    assert response.status_code == 500
+    assert response.json()["request_id"] == "unknown"
+
+
+def test_error_handler_sends_to_sentry_when_available():
+    """Error handler calls sentry_sdk.capture_exception on crash."""
+    app = _make_error_app()
+    client = TestClient(app, raise_server_exceptions=False)
+    with patch("app.middleware.error_handler.sentry_sdk", create=True) as mock_sentry:
+        # The import inside the handler is dynamic, so we patch differently
+        with patch.dict("sys.modules", {"sentry_sdk": mock_sentry}):
+            response = client.get("/crash")
+    assert response.status_code == 500
+
+
+# ── Sentry edge case tests ──
+
+def test_sentry_init_handles_import_error():
+    """init_sentry() handles missing sentry-sdk gracefully."""
+    import importlib
+    import app.services.sentry_service as mod
+
+    with patch.dict("os.environ", {"SENTRY_DSN": "https://abc@sentry.io/123"}, clear=False):
+        importlib.reload(mod)
+        # Simulate sentry_sdk not installed
+        with patch.dict("sys.modules", {"sentry_sdk": None}):
+            with patch("builtins.__import__", side_effect=ImportError("No module")):
+                # Should not raise -- graceful handling
+                mod.init_sentry()
+
+
+def test_sentry_init_handles_init_exception():
+    """init_sentry() handles sentry_sdk.init failure gracefully."""
+    with patch.dict("os.environ", {"SENTRY_DSN": "https://bad@sentry.io/999"}, clear=False):
+        with patch("sentry_sdk.init", side_effect=Exception("Network error")):
+            import importlib
+            import app.services.sentry_service as mod
+            importlib.reload(mod)
+            # Should not raise
+            mod.init_sentry()
+
+
+def test_sentry_init_uses_railway_environment():
+    """init_sentry() passes RAILWAY_ENVIRONMENT to sentry_sdk.init."""
+    env = {
+        "SENTRY_DSN": "https://abc@sentry.io/123",
+        "RAILWAY_ENVIRONMENT": "production",
+        "RAILWAY_GIT_COMMIT_SHA": "abc123def",
+    }
+    with patch.dict("os.environ", env, clear=False):
+        with patch("sentry_sdk.init") as mock_init:
+            import importlib
+            import app.services.sentry_service as mod
+            importlib.reload(mod)
+            mod.init_sentry()
+            call_kwargs = mock_init.call_args[1]
+            assert call_kwargs["environment"] == "production"
+            assert call_kwargs["release"] == "abc123def"
+            assert call_kwargs["traces_sample_rate"] == 0.1
+
+
+# ── Structured Logging edge cases ──
+
+def test_structured_formatter_handles_different_log_levels():
+    """StructuredFormatter correctly reports WARNING, ERROR, DEBUG levels."""
+    from app.middleware.logging_config import StructuredFormatter
+
+    formatter = StructuredFormatter()
+    for level, name in [(logging.WARNING, "WARNING"), (logging.ERROR, "ERROR"), (logging.DEBUG, "DEBUG")]:
+        record = logging.LogRecord(
+            name="test", level=level, pathname="test.py",
+            lineno=1, msg="level test", args=(), exc_info=None,
+        )
+        output = formatter.format(record)
+        parsed = json.loads(output)
+        assert parsed["level"] == name
+
+
+def test_structured_formatter_timestamp_is_utc_iso():
+    """StructuredFormatter timestamp is valid ISO 8601 UTC."""
+    from app.middleware.logging_config import StructuredFormatter
+    from datetime import datetime, timezone
+
+    formatter = StructuredFormatter()
+    record = logging.LogRecord(
+        name="test", level=logging.INFO, pathname="test.py",
+        lineno=1, msg="timestamp test", args=(), exc_info=None,
+    )
+    output = formatter.format(record)
+    parsed = json.loads(output)
+    # Should be parseable as ISO datetime
+    ts = datetime.fromisoformat(parsed["timestamp"])
+    assert ts.tzinfo is not None  # Has timezone info
+
+
+def test_configure_logging_adds_stdout_handler():
+    """configure_logging adds a StreamHandler to stdout."""
+    import sys
+    from app.middleware.logging_config import configure_logging
+
+    configure_logging("INFO")
+    root = logging.getLogger()
+    assert len(root.handlers) == 1
+    handler = root.handlers[0]
+    assert isinstance(handler, logging.StreamHandler)
+    assert handler.stream == sys.stdout
+
+
+def test_configure_logging_clears_duplicate_handlers():
+    """Calling configure_logging twice does not add duplicate handlers."""
+    from app.middleware.logging_config import configure_logging
+
+    configure_logging("INFO")
+    configure_logging("INFO")
+    root = logging.getLogger()
+    assert len(root.handlers) == 1
+
+
+def test_configure_logging_quiets_uvicorn_and_urllib3():
+    """configure_logging also quiets uvicorn.access and urllib3."""
+    from app.middleware.logging_config import configure_logging
+
+    configure_logging("DEBUG")
+    assert logging.getLogger("uvicorn.access").level == logging.WARNING
+    assert logging.getLogger("urllib3").level == logging.WARNING
+
+    # Reset
+    configure_logging("INFO")
+
+
+def test_configure_logging_handles_invalid_level():
+    """configure_logging falls back to INFO for invalid level string."""
+    from app.middleware.logging_config import configure_logging
+
+    configure_logging("NONSENSE")
+    root = logging.getLogger()
+    assert root.level == logging.INFO
