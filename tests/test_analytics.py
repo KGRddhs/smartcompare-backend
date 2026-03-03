@@ -375,3 +375,213 @@ def test_admin_daily_stats_invalid_days_rejected():
         headers={"X-Admin-Key": "test-admin-key-123"},
     )
     assert response.status_code == 422
+
+
+# ── Additional coverage tests ──
+
+@pytest.mark.asyncio
+async def test_daily_stats_groups_by_date_correctly():
+    """get_daily_stats groups records into correct daily buckets."""
+    mock_client = MagicMock()
+    records = [
+        _make_log_record(created_at="2026-03-01T10:00:00+00:00"),
+        _make_log_record(created_at="2026-03-01T15:00:00+00:00"),
+        _make_log_record(created_at="2026-03-02T08:00:00+00:00"),
+    ]
+    mock_chain = MagicMock()
+    mock_chain.gte.return_value = mock_chain
+    mock_chain.execute.return_value = _mock_search_logs(records)
+    mock_client.table.return_value.select.return_value.gte.return_value = mock_chain
+
+    with patch("app.services.analytics_service.get_supabase_client", return_value=mock_client):
+        from app.services.analytics_service import get_daily_stats
+        result = await get_daily_stats(days=7)
+
+    assert result["daily_breakdown"]["2026-03-01"] == 2
+    assert result["daily_breakdown"]["2026-03-02"] == 1
+    assert result["total_comparisons"] == 3
+
+
+@pytest.mark.asyncio
+async def test_daily_stats_calculates_avg_duration():
+    """get_daily_stats correctly averages duration_ms."""
+    mock_client = MagicMock()
+    records = [
+        _make_log_record(duration_ms=3000),
+        _make_log_record(duration_ms=5000),
+        _make_log_record(duration_ms=7000),
+    ]
+    mock_chain = MagicMock()
+    mock_chain.gte.return_value = mock_chain
+    mock_chain.execute.return_value = _mock_search_logs(records)
+    mock_client.table.return_value.select.return_value.gte.return_value = mock_chain
+
+    with patch("app.services.analytics_service.get_supabase_client", return_value=mock_client):
+        from app.services.analytics_service import get_daily_stats
+        result = await get_daily_stats(days=7)
+
+    assert result["avg_duration_ms"] == 5000
+
+
+@pytest.mark.asyncio
+async def test_daily_stats_handles_none_duration():
+    """get_daily_stats treats None duration_ms as 0."""
+    mock_client = MagicMock()
+    records = [
+        _make_log_record(duration_ms=None),
+        _make_log_record(duration_ms=4000),
+    ]
+    mock_chain = MagicMock()
+    mock_chain.gte.return_value = mock_chain
+    mock_chain.execute.return_value = _mock_search_logs(records)
+    mock_client.table.return_value.select.return_value.gte.return_value = mock_chain
+
+    with patch("app.services.analytics_service.get_supabase_client", return_value=mock_client):
+        from app.services.analytics_service import get_daily_stats
+        result = await get_daily_stats(days=7)
+
+    assert result["avg_duration_ms"] == 2000
+
+
+@pytest.mark.asyncio
+async def test_error_stats_groups_multiple_error_types():
+    """get_error_stats counts different error messages correctly."""
+    mock_client = MagicMock()
+    records = [
+        _make_log_record(success=False, error_message="timeout"),
+        _make_log_record(success=False, error_message="timeout"),
+        _make_log_record(success=False, error_message="rate_limited"),
+        _make_log_record(success=True),
+    ]
+    mock_chain = MagicMock()
+    mock_chain.gte.return_value = mock_chain
+    mock_chain.execute.return_value = _mock_search_logs(records)
+    mock_client.table.return_value.select.return_value.gte.return_value = mock_chain
+
+    with patch("app.services.analytics_service.get_supabase_client", return_value=mock_client):
+        from app.services.analytics_service import get_error_stats
+        result = await get_error_stats(days=7)
+
+    assert result["error_count"] == 3
+    assert result["error_rate"] == 0.75
+    # Most common error first
+    assert result["common_errors"][0]["message"] == "timeout"
+    assert result["common_errors"][0]["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_popular_queries_respects_limit():
+    """get_popular_queries only returns up to limit results."""
+    mock_client = MagicMock()
+    records = [
+        _make_log_record(query="A vs B"),
+        _make_log_record(query="C vs D"),
+        _make_log_record(query="E vs F"),
+    ]
+    mock_chain = MagicMock()
+    mock_chain.execute.return_value = _mock_search_logs(records)
+    mock_client.table.return_value.select.return_value = mock_chain
+
+    with patch("app.services.analytics_service.get_supabase_client", return_value=mock_client):
+        from app.services.analytics_service import get_popular_queries
+        result = await get_popular_queries(limit=2)
+
+    assert len(result) == 2
+
+
+@pytest.mark.asyncio
+async def test_popular_queries_skips_empty_query_strings():
+    """get_popular_queries ignores records with empty query."""
+    mock_client = MagicMock()
+    records = [
+        _make_log_record(query="iPhone vs Galaxy"),
+        {"query": "", "input_type": "text"},
+        {"query": None, "input_type": "text"},
+    ]
+    mock_chain = MagicMock()
+    mock_chain.execute.return_value = _mock_search_logs(records)
+    mock_client.table.return_value.select.return_value = mock_chain
+
+    with patch("app.services.analytics_service.get_supabase_client", return_value=mock_client):
+        from app.services.analytics_service import get_popular_queries
+        result = await get_popular_queries(limit=10)
+
+    assert len(result) == 1
+    assert result[0]["query"] == "iPhone vs Galaxy"
+
+
+@pytest.mark.asyncio
+async def test_product_stats_handles_missing_fields():
+    """get_product_stats handles records with missing category/brand."""
+    mock_client = MagicMock()
+    records = [
+        {"canonical_name": "Unknown Product", "brand": None, "category": None, "updated_at": "2026-03-01"},
+    ]
+    mock_chain = MagicMock()
+    mock_chain.execute.return_value = _mock_search_logs(records)
+    mock_client.table.return_value.select.return_value = mock_chain
+
+    with patch("app.services.analytics_service.get_supabase_client", return_value=mock_client):
+        from app.services.analytics_service import get_product_stats
+        result = await get_product_stats(limit=20)
+
+    assert result["total_products"] == 1
+    # None category defaults to "other", None brand to "Unknown"
+    assert "other" in result["category_breakdown"]
+    assert "Unknown" in result["top_brands"]
+
+
+@pytest.mark.asyncio
+async def test_cost_trends_daily_costs_sorted():
+    """get_cost_trends returns daily_costs sorted by date."""
+    mock_client = MagicMock()
+    records = [
+        _make_log_record(cost=0.01, created_at="2026-03-02T10:00:00+00:00"),
+        _make_log_record(cost=0.02, created_at="2026-03-01T10:00:00+00:00"),
+        _make_log_record(cost=0.015, created_at="2026-03-03T10:00:00+00:00"),
+    ]
+    mock_chain = MagicMock()
+    mock_chain.gte.return_value = mock_chain
+    mock_chain.execute.return_value = _mock_search_logs(records)
+    mock_client.table.return_value.select.return_value.gte.return_value = mock_chain
+
+    with patch("app.services.analytics_service.get_supabase_client", return_value=mock_client):
+        from app.services.analytics_service import get_cost_trends
+        result = await get_cost_trends(days=7)
+
+    dates = list(result["daily_costs"].keys())
+    assert dates == sorted(dates)
+
+
+def test_admin_popular_limit_validation():
+    """GET /stats/popular rejects limit > 100."""
+    app = _make_admin_app()
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/admin/stats/popular?limit=200",
+        headers={"X-Admin-Key": "test-admin-key-123"},
+    )
+    assert response.status_code == 422
+
+
+def test_admin_errors_days_validation():
+    """GET /stats/errors rejects days > 90."""
+    app = _make_admin_app()
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/admin/stats/errors?days=100",
+        headers={"X-Admin-Key": "test-admin-key-123"},
+    )
+    assert response.status_code == 422
+
+
+def test_admin_403_body_contains_detail():
+    """403 response has proper error detail message."""
+    app = _make_admin_app()
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/admin/stats/daily",
+        headers={"X-Admin-Key": "wrong-key"},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Invalid admin key"

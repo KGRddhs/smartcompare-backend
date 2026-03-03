@@ -166,8 +166,8 @@ async def get_product_stats(limit: int = 20) -> Dict:
         )
         records = response.data or []
 
-        categories = Counter(r.get("category", "other") for r in records)
-        brands = Counter(r.get("brand", "Unknown") for r in records)
+        categories = Counter(r.get("category") or "other" for r in records)
+        brands = Counter(r.get("brand") or "Unknown" for r in records)
 
         return {
             "total_products": len(records),
