@@ -4,7 +4,11 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import api from './api';
+import { Platform } from 'react-native';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
+import api, { API_BASE_URL } from './api';
 
 export interface User {
   id: string;
@@ -286,4 +290,133 @@ export async function initializeAuth(): Promise<User | null> {
  */
 export async function verifyAuth(): Promise<User | null> {
   return await initializeAuth();
+}
+
+// --- Google Sign-In ---
+
+/**
+ * Configure Google Sign-In. Call once at app startup.
+ * TODO: Replace with real Google Web Client ID from Google Cloud Console.
+ */
+export function configureGoogleSignIn() {
+  GoogleSignin.configure({
+    webClientId: 'TODO_REPLACE_GOOGLE_WEB_CLIENT_ID', // TODO: Replace with real client ID from Google Cloud Console
+    offlineAccess: true,
+  });
+}
+
+/**
+ * Sign in with Google. Gets ID token from native SDK, sends to backend.
+ */
+export async function signInWithGoogle(): Promise<AuthResponse> {
+  try {
+    await GoogleSignin.hasPlayServices();
+    const signInResult = await GoogleSignin.signIn();
+    const idToken = signInResult.data?.idToken;
+
+    if (!idToken) {
+      return { success: false, error: 'Failed to get Google ID token' };
+    }
+
+    // Send to our backend, which handles Supabase signInWithIdToken
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'google', id_token: idToken }),
+    });
+
+    const data = await response.json();
+
+    if (data.success && data.session?.access_token) {
+      await saveToken(data.session.access_token);
+      if (data.session.refresh_token) {
+        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, data.session.refresh_token);
+      }
+      if (data.user) await saveUser(data.user);
+    }
+
+    return {
+      success: data.success,
+      user: data.user,
+      token: data.session?.access_token,
+      error: data.error,
+    };
+  } catch (error: any) {
+    if (error.code === 'SIGN_IN_CANCELLED') {
+      return { success: false, error: 'Sign-in cancelled' };
+    }
+    return { success: false, error: error.message || 'Google sign-in failed' };
+  }
+}
+
+// --- Apple Sign-In ---
+// Note: Apple Sign-In requires Apple Developer subscription to configure.
+// The code is built and ready but won't be testable until Apple Developer account is set up.
+
+/**
+ * Check if Apple Sign-In is available (iOS 13+)
+ */
+export async function isAppleSignInAvailable(): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  return await AppleAuthentication.isAvailableAsync();
+}
+
+/**
+ * Sign in with Apple. Gets identity token from native SDK, sends to backend with nonce.
+ */
+export async function signInWithApple(): Promise<AuthResponse> {
+  try {
+    // Generate nonce for security
+    const rawNonce = Math.random().toString(36).substring(2, 15);
+    const hashedNonce = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      rawNonce
+    );
+
+    const credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+      nonce: hashedNonce,
+    });
+
+    const idToken = credential.identityToken;
+    if (!idToken) {
+      return { success: false, error: 'Failed to get Apple identity token' };
+    }
+
+    // Send to our backend
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: 'apple',
+        id_token: idToken,
+        nonce: rawNonce,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.success && data.session?.access_token) {
+      await saveToken(data.session.access_token);
+      if (data.session.refresh_token) {
+        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, data.session.refresh_token);
+      }
+      if (data.user) await saveUser(data.user);
+    }
+
+    return {
+      success: data.success,
+      user: data.user,
+      token: data.session?.access_token,
+      error: data.error,
+    };
+  } catch (error: any) {
+    if (error.code === 'ERR_REQUEST_CANCELED') {
+      return { success: false, error: 'Sign-in cancelled' };
+    }
+    return { success: false, error: error.message || 'Apple sign-in failed' };
+  }
 }

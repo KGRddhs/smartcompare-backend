@@ -42,7 +42,13 @@
           "photosPermission": "SmartCompare needs photo library access to identify products from your photos."
         }
       ],
-      "expo-image-manipulator"
+      "expo-image-manipulator",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.TODO_REPLACE_IOS_CLIENT_ID"
+        }
+      ]
     ]
   }
 }

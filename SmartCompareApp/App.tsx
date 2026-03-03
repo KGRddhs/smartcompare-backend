@@ -19,7 +19,10 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 
 // Import auth service
-import { verifyAuth, getSavedUser, User } from './src/services/authService';
+import { verifyAuth, getSavedUser, User, configureGoogleSignIn } from './src/services/authService';
+
+// Configure Google Sign-In at module level (before any component renders)
+configureGoogleSignIn();
 
 // Import types
 import { RootStackParamList, AuthStackParamList } from './src/types';
