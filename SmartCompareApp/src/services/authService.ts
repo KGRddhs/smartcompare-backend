@@ -138,18 +138,21 @@ export async function refreshSession(): Promise<AuthResponse> {
       refresh_token: refreshToken,
     });
 
-    if (response.data.user) {
-      await saveUser(response.data.user);
-      if (response.data.session?.access_token) {
-        await saveToken(response.data.session.access_token);
-      }
-      if (response.data.session?.refresh_token) {
+    if (response.data.success && response.data.session?.access_token) {
+      // Always save new tokens — this is critical for the 401 interceptor
+      await saveToken(response.data.session.access_token);
+      if (response.data.session.refresh_token) {
         await AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
       }
+      // Save user if provided, otherwise keep cached user
+      if (response.data.user) {
+        await saveUser(response.data.user);
+      }
+      const user = response.data.user || await getSavedUser();
       return {
         success: true,
-        user: response.data.user,
-        token: response.data.session?.access_token,
+        user: user || undefined,
+        token: response.data.session.access_token,
       };
     }
 

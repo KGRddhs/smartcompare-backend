@@ -116,9 +116,9 @@ async def refresh_session(refresh_token: str) -> Dict:
     try:
         client = get_auth_client()
         response = client.auth.refresh_session(refresh_token)
-        
+
         if response.session:
-            return {
+            result = {
                 "success": True,
                 "session": {
                     "access_token": response.session.access_token,
@@ -126,9 +126,16 @@ async def refresh_session(refresh_token: str) -> Dict:
                     "expires_at": response.session.expires_at,
                 }
             }
+            # Include user data so frontend can update stored user
+            if response.user:
+                result["user"] = {
+                    "id": response.user.id,
+                    "email": response.user.email,
+                }
+            return result
         else:
             return {"success": False, "error": "Failed to refresh session"}
-            
+
     except Exception as e:
         return {"success": False, "error": str(e)}
 
