@@ -2,7 +2,7 @@
  * SmartCompare - Register Screen
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { register } from '../services/authService';
+import { register, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import { AuthStackParamList } from '../types';
 
 type RegisterScreenProps = {
@@ -30,6 +30,48 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [socialLoading, setSocialLoading] = useState('');
+  const [showApple, setShowApple] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      isAppleSignInAvailable().then(setShowApple);
+    }
+  }, []);
+
+  const handleGoogleSignIn = async () => {
+    setSocialLoading('google');
+    setError('');
+    try {
+      const result = await signInWithGoogle();
+      if (result.success) {
+        onRegisterSuccess();
+      } else if (result.error !== 'Sign-in cancelled') {
+        setError(result.error || 'Google sign-in failed');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Google sign-in failed');
+    } finally {
+      setSocialLoading('');
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setSocialLoading('apple');
+    setError('');
+    try {
+      const result = await signInWithApple();
+      if (result.success) {
+        onRegisterSuccess();
+      } else if (result.error !== 'Sign-in cancelled') {
+        setError(result.error || 'Apple sign-in failed');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Apple sign-in failed');
+    } finally {
+      setSocialLoading('');
+    }
+  };
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -156,6 +198,39 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
                   <Text style={styles.registerButtonText}>Create Account</Text>
                 )}
               </TouchableOpacity>
+
+              {/* Social Sign-In */}
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={handleGoogleSignIn}
+                disabled={!!socialLoading || loading}
+              >
+                {socialLoading === 'google' ? (
+                  <ActivityIndicator size="small" color="#333" />
+                ) : (
+                  <Text style={styles.socialButtonText}>Continue with Google</Text>
+                )}
+              </TouchableOpacity>
+
+              {showApple && (
+                <TouchableOpacity
+                  style={[styles.socialButton, styles.appleSocialButton]}
+                  onPress={handleAppleSignIn}
+                  disabled={!!socialLoading || loading}
+                >
+                  {socialLoading === 'apple' ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={[styles.socialButtonText, styles.appleSocialText]}>Continue with Apple</Text>
+                  )}
+                </TouchableOpacity>
+              )}
 
               {/* Benefits */}
               <View style={styles.benefits}>
@@ -303,5 +378,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 4,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#DDD',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    color: '#888',
+    fontSize: 14,
+  },
+  socialButton: {
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+    backgroundColor: '#FFF',
+  },
+  socialButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  appleSocialButton: {
+    backgroundColor: '#000',
+    borderColor: '#000',
+  },
+  appleSocialText: {
+    color: '#FFF',
   },
 });
