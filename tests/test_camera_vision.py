@@ -146,6 +146,85 @@ class TestSizeOrCountEnrichment:
         assert products[0]["name"] == original_name
 
 
+# --- MIME type detection tests ---
+
+class TestDetectMimeType:
+    def test_heic_magic_bytes_detected(self):
+        """Backend should detect HEIC magic bytes from ftyp box."""
+        from app.api.image_routes import _detect_mime_type
+        heic_bytes = b'\x00\x00\x00\x1c' + b'ftyp' + b'heic' + b'\x00' * 20
+        assert _detect_mime_type(heic_bytes, "image/jpeg") == "image/heic"
+
+    def test_heif_heix_brand_detected(self):
+        """HEIF with heix brand should also be detected."""
+        from app.api.image_routes import _detect_mime_type
+        heix_bytes = b'\x00\x00\x00\x1c' + b'ftyp' + b'heix' + b'\x00' * 20
+        assert _detect_mime_type(heix_bytes, "image/jpeg") == "image/heic"
+
+    def test_hevc_brand_detected(self):
+        """HEVC brand in ftyp box should be detected as HEIC."""
+        from app.api.image_routes import _detect_mime_type
+        hevc_bytes = b'\x00\x00\x00\x1c' + b'ftyp' + b'hevc' + b'\x00' * 20
+        assert _detect_mime_type(hevc_bytes, "image/jpeg") == "image/heic"
+
+    def test_mif1_brand_detected(self):
+        """mif1 brand (HEIF) should be detected."""
+        from app.api.image_routes import _detect_mime_type
+        mif1_bytes = b'\x00\x00\x00\x1c' + b'ftyp' + b'mif1' + b'\x00' * 20
+        assert _detect_mime_type(mif1_bytes, "image/jpeg") == "image/heic"
+
+    def test_gif87a_detected(self):
+        """GIF87a should be detected."""
+        from app.api.image_routes import _detect_mime_type
+        gif87 = b'GIF87a' + b'\x00' * 20
+        assert _detect_mime_type(gif87, "image/jpeg") == "image/gif"
+
+    def test_gif89a_detected(self):
+        """GIF89a should be detected."""
+        from app.api.image_routes import _detect_mime_type
+        gif89 = b'GIF89a' + b'\x00' * 20
+        assert _detect_mime_type(gif89, "image/jpeg") == "image/gif"
+
+    def test_jpeg_magic_bytes_detected(self):
+        """JPEG should be correctly detected from magic bytes."""
+        from app.api.image_routes import _detect_mime_type
+        jpeg_bytes = b'\xff\xd8\xff\xe0' + b'\x00' * 20
+        assert _detect_mime_type(jpeg_bytes, "image/png") == "image/jpeg"
+
+    def test_png_magic_bytes_detected(self):
+        """PNG should be correctly detected from magic bytes."""
+        from app.api.image_routes import _detect_mime_type
+        png_bytes = b'\x89PNG\r\n\x1a\n' + b'\x00' * 20
+        assert _detect_mime_type(png_bytes, "image/jpeg") == "image/png"
+
+    def test_webp_magic_bytes_detected(self):
+        """WebP should be correctly detected from magic bytes."""
+        from app.api.image_routes import _detect_mime_type
+        webp_bytes = b'RIFF' + b'\x00\x00\x00\x00' + b'WEBP' + b'\x00' * 20
+        assert _detect_mime_type(webp_bytes, "image/jpeg") == "image/webp"
+
+    def test_unknown_format_uses_fallback(self):
+        """Unknown bytes should return the fallback MIME type."""
+        from app.api.image_routes import _detect_mime_type
+        unknown_bytes = b'\x00\x01\x02\x03' + b'\x00' * 20
+        assert _detect_mime_type(unknown_bytes, "image/jpeg") == "image/jpeg"
+
+    def test_short_content_uses_fallback(self):
+        """Very short content should not crash, use fallback."""
+        from app.api.image_routes import _detect_mime_type
+        assert _detect_mime_type(b'\xff', "image/png") == "image/png"
+        assert _detect_mime_type(b'', "image/jpeg") == "image/jpeg"
+
+    def test_supported_mime_types_constant(self):
+        """SUPPORTED_MIME_TYPES should include jpeg, png, webp, gif."""
+        from app.api.image_routes import SUPPORTED_MIME_TYPES
+        assert "image/jpeg" in SUPPORTED_MIME_TYPES
+        assert "image/png" in SUPPORTED_MIME_TYPES
+        assert "image/webp" in SUPPORTED_MIME_TYPES
+        assert "image/gif" in SUPPORTED_MIME_TYPES
+        assert "image/heic" not in SUPPORTED_MIME_TYPES
+
+
 # --- Live vision test (real GPT-4o-mini call) ---
 
 @pytest.mark.live_unit

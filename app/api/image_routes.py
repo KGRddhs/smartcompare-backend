@@ -23,6 +23,28 @@ from app.middleware.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
+# Supported image MIME types for OpenAI Vision
+SUPPORTED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+def _detect_mime_type(content: bytes, fallback: str = "image/jpeg") -> str:
+    """Detect image MIME type from magic bytes."""
+    if len(content) >= 2 and content[:2] == b"\xff\xd8":
+        return "image/jpeg"
+    if len(content) >= 8 and content[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    if len(content) >= 6 and content[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    # HEIC/HEIF detection: ftyp box with heic/heix/hevc/mif1 brand
+    if len(content) >= 12 and content[4:8] == b"ftyp":
+        brand = content[8:12]
+        if brand in (b"heic", b"heix", b"hevc", b"mif1"):
+            return "image/heic"
+    return fallback
+
+
 router = APIRouter(prefix="/api/v1/image", tags=["image-comparison"])
 
 # Temp dir for uploaded images (cleaned up after each request)
@@ -67,13 +89,14 @@ async def identify_and_compare(
             raise HTTPException(status_code=400, detail=f"Image {i+1} exceeds 10MB limit.")
 
         # Detect MIME type from magic bytes, fall back to upload header
-        content_type = img.content_type or "image/jpeg"
-        if content[:2] == b"\xff\xd8":
-            content_type = "image/jpeg"
-        elif content[:8] == b"\x89PNG\r\n\x1a\n":
-            content_type = "image/png"
-        elif content[:4] == b"RIFF" and content[8:12] == b"WEBP":
-            content_type = "image/webp"
+        content_type = _detect_mime_type(content, img.content_type or "image/jpeg")
+
+        if content_type not in SUPPORTED_MIME_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image {i+1} has unsupported format ({content_type}). "
+                       f"Please use JPEG, PNG, WebP, or GIF."
+            )
 
         image_data_list.append({"bytes": content, "mime_type": content_type})
         logger.info(f"[IMAGE]   Image {i+1}: {len(content)} bytes, {content_type}")
