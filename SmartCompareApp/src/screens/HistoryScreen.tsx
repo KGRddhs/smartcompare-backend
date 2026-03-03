@@ -16,11 +16,12 @@ import {
   Alert,
   Modal,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList, Product } from '../types';
-import { getComparisonHistory } from '../services/api';
+import { getComparisonHistory, deleteComparison } from '../services/api';
 
 type HistoryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'History'>;
@@ -28,12 +29,10 @@ type HistoryScreenProps = {
 
 interface HistoryItem {
   id: string;
-  products: Product[];
-  winner_index: number;
-  recommendation: string;
-  key_differences: string[];
-  data_source: string;
-  total_cost: number;
+  full_response: any;  // Complete API response blob
+  query: string;
+  input_type: string;
+  product_names: string[];
   created_at: string;
 }
 
@@ -44,6 +43,7 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
   const [total, setTotal] = useState(0);
   const [selectedItem, setSelectedItem] = useState<HistoryItem | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Reload history when screen comes into focus
   useFocusEffect(
@@ -54,12 +54,15 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
 
   const loadHistory = async () => {
     try {
-      const data = await getComparisonHistory(50, 0);
+      const data = await getComparisonHistory(50, 0, searchQuery || undefined);
       setHistory(data.comparisons || []);
       setTotal(data.total || 0);
     } catch (error) {
       console.error('Error loading history:', error);
-      Alert.alert('Error', 'Failed to load history');
+      // Don't show alert for auth errors — user may not be logged in
+      if ((error as any)?.response?.status !== 401) {
+        Alert.alert('Error', 'Failed to load history');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -83,7 +86,7 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    
+
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -91,8 +94,8 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
     });
   };
 
-  const formatPrice = (product: Product) => {
-    if (product.price === null || product.price === undefined) {
+  const formatPrice = (product: any) => {
+    if (!product || product.price === null || product.price === undefined) {
       return 'N/A';
     }
     if (typeof product.price === 'object') {
@@ -111,34 +114,40 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
 
   const viewAsResult = (item: HistoryItem) => {
     setModalVisible(false);
+    // Pass the full stored blob directly — same shape as live response
     navigation.navigate('Results', {
-      result: {
-        success: true,
-        products: item.products,
-        comparison: {
-          winner_index: item.winner_index,
-          winner_reason: item.recommendation || '',
-          recommendation: item.recommendation || '',
-          key_differences: item.key_differences || [],
-        },
-        winner_index: item.winner_index,
-        recommendation: item.recommendation,
-        key_differences: item.key_differences || [],
-        metadata: {
-          query: '',
-          region: '',
-          elapsed_seconds: 0,
-          total_cost: item.total_cost || 0,
-          api_calls: 0,
-          timestamp: item.created_at,
-        },
-      },
+      result: item.full_response,
     });
   };
 
+  const handleDelete = async (item: HistoryItem) => {
+    Alert.alert(
+      'Delete Comparison',
+      'Are you sure you want to delete this comparison?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteComparison(item.id);
+              setHistory((prev) => prev.filter((h) => h.id !== item.id));
+              setTotal((prev) => prev - 1);
+              setModalVisible(false);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete comparison');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderItem = ({ item }: { item: HistoryItem }) => {
-    const winner = item.products[item.winner_index];
-    const loser = item.products.find((_, i) => i !== item.winner_index);
+    const products = item.full_response?.products || [];
+    const winner_index = item.full_response?.comparison?.winner_index ?? item.full_response?.winner_index ?? 0;
+    const winner = products[winner_index];
 
     return (
       <TouchableOpacity style={styles.historyCard} onPress={() => openDetails(item)}>
@@ -146,160 +155,173 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
           <Text style={styles.dateText}>{formatDate(item.created_at)}</Text>
           <View style={[
             styles.sourceBadge,
-            { backgroundColor: item.data_source === 'live' ? '#34C759' : '#FF9500' }
+            { backgroundColor: item.input_type === 'camera' ? '#5856D6' : '#34C759' }
           ]}>
-            <Text style={styles.sourceBadgeText}>{item.data_source || 'cached'}</Text>
+            <Text style={styles.sourceBadgeText}>{item.input_type || 'text'}</Text>
           </View>
         </View>
-        
+
         <View style={styles.vsContainer}>
           <View style={styles.productSummary}>
             <Text style={styles.productLabel}>Product 1</Text>
             <Text style={styles.productSummaryName} numberOfLines={1}>
-              {item.products[0]?.brand} {item.products[0]?.name}
+              {products[0]?.brand} {products[0]?.name}
             </Text>
-            <Text style={styles.productSummaryPrice}>{formatPrice(item.products[0])}</Text>
+            <Text style={styles.productSummaryPrice}>{formatPrice(products[0])}</Text>
           </View>
-          
+
           <Text style={styles.vsText}>VS</Text>
-          
+
           <View style={styles.productSummary}>
             <Text style={styles.productLabel}>Product 2</Text>
             <Text style={styles.productSummaryName} numberOfLines={1}>
-              {item.products[1]?.brand} {item.products[1]?.name}
+              {products[1]?.brand} {products[1]?.name}
             </Text>
-            <Text style={styles.productSummaryPrice}>{formatPrice(item.products[1])}</Text>
+            <Text style={styles.productSummaryPrice}>{formatPrice(products[1])}</Text>
           </View>
         </View>
-        
-        <View style={styles.winnerRow}>
-          <Text style={styles.winnerEmoji}>🏆</Text>
-          <Text style={styles.winnerName} numberOfLines={1}>
-            {winner?.brand} {winner?.name}
-          </Text>
-          <Text style={styles.winnerPrice}>{formatPrice(winner)}</Text>
-        </View>
-        
+
+        {winner && (
+          <View style={styles.winnerRow}>
+            <Text style={styles.winnerEmoji}>🏆</Text>
+            <Text style={styles.winnerName} numberOfLines={1}>
+              {winner?.brand} {winner?.name}
+            </Text>
+            <Text style={styles.winnerPrice}>{formatPrice(winner)}</Text>
+          </View>
+        )}
+
         <View style={styles.tapHint}>
-          <Text style={styles.tapHintText}>Tap to view details →</Text>
+          <Text style={styles.tapHintText}>Tap to view details</Text>
         </View>
       </TouchableOpacity>
     );
   };
 
-  const renderModal = () => (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={modalVisible}
-      onRequestClose={() => setModalVisible(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {selectedItem && (
-              <>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Comparison Details</Text>
-                  <TouchableOpacity onPress={() => setModalVisible(false)}>
-                    <Text style={styles.closeButton}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-                
-                <Text style={styles.modalDate}>
-                  {new Date(selectedItem.created_at).toLocaleString()}
-                </Text>
+  const renderModal = () => {
+    if (!selectedItem) return null;
 
-                {/* Winner Banner */}
+    const products = selectedItem.full_response?.products || [];
+    const comparison = selectedItem.full_response?.comparison || {};
+    const winner_index = comparison.winner_index ?? 0;
+    const recommendation = comparison.recommendation || '';
+    const key_differences = comparison.key_differences || [];
+
+    return (
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Comparison Details</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <Text style={styles.closeButton}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.modalDate}>
+                {new Date(selectedItem.created_at).toLocaleString()}
+              </Text>
+
+              {/* Winner Banner */}
+              {products[winner_index] && (
                 <View style={styles.modalWinnerBanner}>
                   <Text style={styles.modalWinnerEmoji}>🏆</Text>
                   <Text style={styles.modalWinnerLabel}>Winner</Text>
                   <Text style={styles.modalWinnerName}>
-                    {selectedItem.products[selectedItem.winner_index]?.brand}{' '}
-                    {selectedItem.products[selectedItem.winner_index]?.name}
+                    {products[winner_index]?.brand}{' '}
+                    {products[winner_index]?.name}
                   </Text>
                   <Text style={styles.modalWinnerPrice}>
-                    {formatPrice(selectedItem.products[selectedItem.winner_index])}
+                    {formatPrice(products[winner_index])}
                   </Text>
                 </View>
+              )}
 
-                {/* Products */}
-                <Text style={styles.modalSectionTitle}>Products Compared</Text>
-                {selectedItem.products.map((product, index) => (
-                  <View 
-                    key={index} 
-                    style={[
-                      styles.modalProductCard,
-                      index === selectedItem.winner_index && styles.modalProductWinner
-                    ]}
-                  >
-                    {index === selectedItem.winner_index && (
-                      <View style={styles.winnerBadge}>
-                        <Text style={styles.winnerBadgeText}>WINNER</Text>
-                      </View>
-                    )}
-                    <Text style={styles.modalProductBrand}>{product.brand}</Text>
-                    <Text style={styles.modalProductName}>{product.name}</Text>
-                    {product.size && (
-                      <Text style={styles.modalProductSize}>Size: {product.size}</Text>
-                    )}
-                    <Text style={styles.modalProductPrice}>{formatPrice(product)}</Text>
-                  </View>
-                ))}
-
-                {/* Recommendation */}
-                {selectedItem.recommendation && (
-                  <>
-                    <Text style={styles.modalSectionTitle}>💡 Recommendation</Text>
-                    <View style={styles.modalRecommendation}>
-                      <Text style={styles.modalRecommendationText}>
-                        {selectedItem.recommendation}
-                      </Text>
+              {/* Products */}
+              <Text style={styles.modalSectionTitle}>Products Compared</Text>
+              {products.map((product: any, index: number) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.modalProductCard,
+                    index === winner_index && styles.modalProductWinner
+                  ]}
+                >
+                  {index === winner_index && (
+                    <View style={styles.winnerBadge}>
+                      <Text style={styles.winnerBadgeText}>WINNER</Text>
                     </View>
-                  </>
-                )}
-
-                {/* Key Differences */}
-                {selectedItem.key_differences && selectedItem.key_differences.length > 0 && (
-                  <>
-                    <Text style={styles.modalSectionTitle}>📋 Key Differences</Text>
-                    <View style={styles.modalDifferences}>
-                      {selectedItem.key_differences.map((diff, index) => (
-                        <Text key={index} style={styles.modalDifferenceItem}>
-                          • {diff}
-                        </Text>
-                      ))}
-                    </View>
-                  </>
-                )}
-
-                {/* Actions */}
-                <View style={styles.modalActions}>
-                  <TouchableOpacity 
-                    style={styles.modalActionButton}
-                    onPress={() => viewAsResult(selectedItem)}
-                  >
-                    <Text style={styles.modalActionText}>📊 View Full Results</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[styles.modalActionButton, styles.modalActionSecondary]}
-                    onPress={() => setModalVisible(false)}
-                  >
-                    <Text style={styles.modalActionTextSecondary}>Close</Text>
-                  </TouchableOpacity>
+                  )}
+                  <Text style={styles.modalProductBrand}>{product.brand}</Text>
+                  <Text style={styles.modalProductName}>{product.name}</Text>
+                  <Text style={styles.modalProductPrice}>{formatPrice(product)}</Text>
                 </View>
-              </>
-            )}
-          </ScrollView>
+              ))}
+
+              {/* Recommendation */}
+              {recommendation ? (
+                <>
+                  <Text style={styles.modalSectionTitle}>Recommendation</Text>
+                  <View style={styles.modalRecommendation}>
+                    <Text style={styles.modalRecommendationText}>
+                      {recommendation}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
+
+              {/* Key Differences */}
+              {key_differences.length > 0 && (
+                <>
+                  <Text style={styles.modalSectionTitle}>Key Differences</Text>
+                  <View style={styles.modalDifferences}>
+                    {key_differences.map((diff: string, index: number) => (
+                      <Text key={index} style={styles.modalDifferenceItem}>
+                        {'\u2022'} {diff}
+                      </Text>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Actions */}
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalActionButton}
+                  onPress={() => viewAsResult(selectedItem)}
+                >
+                  <Text style={styles.modalActionText}>View Full Results</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalActionButton, { backgroundColor: '#FF3B30' }]}
+                  onPress={() => handleDelete(selectedItem)}
+                >
+                  <Text style={styles.modalActionText}>Delete</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalActionButton, styles.modalActionSecondary]}
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Text style={styles.modalActionTextSecondary}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
+  };
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyEmoji}>📭</Text>
       <Text style={styles.emptyTitle}>No Comparisons Yet</Text>
       <Text style={styles.emptyText}>
         Your comparison history will appear here after you compare products.
@@ -308,7 +330,7 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
         style={styles.startButton}
         onPress={() => navigation.navigate('Camera')}
       >
-        <Text style={styles.startButtonText}>📷 Start Comparing</Text>
+        <Text style={styles.startButtonText}>Start Comparing</Text>
       </TouchableOpacity>
     </View>
   );
@@ -329,6 +351,18 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Comparison History</Text>
         <Text style={styles.headerSubtitle}>{total} comparison{total !== 1 ? 's' : ''}</Text>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search comparisons..."
+          placeholderTextColor="#999"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onSubmitEditing={() => { setLoading(true); loadHistory(); }}
+          returnKeyType="search"
+        />
       </View>
 
       <FlatList
@@ -367,6 +401,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 4,
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#FFF',
+  },
+  searchInput: {
+    backgroundColor: '#F0F0F0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#333',
   },
   listContent: {
     padding: 16,
@@ -482,10 +529,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
-  },
-  emptyEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
   },
   emptyTitle: {
     fontSize: 20,
@@ -611,10 +654,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#1A1A1A',
-  },
-  modalProductSize: {
-    fontSize: 12,
-    color: '#666',
   },
   modalProductPrice: {
     fontSize: 16,
