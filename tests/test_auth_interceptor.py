@@ -723,3 +723,74 @@ async def test_update_user_profile_service_error():
 
     assert result["success"] is False
     assert "DB error" in result["error"]
+
+
+# ── update_email tests ──
+
+@pytest.mark.asyncio
+async def test_update_email_success():
+    """PUT /api/v1/auth/email should trigger email update."""
+    from app.api.auth_routes import update_email, UpdateEmailRequest
+    mock_user = {"id": "user-1", "email": "old@example.com"}
+    with patch("app.api.auth_routes.update_user_email", new_callable=AsyncMock,
+               return_value={"success": True, "message": "Verification email sent to new address"}):
+        result = await update_email(
+            body=UpdateEmailRequest(new_email="new@example.com"),
+            current_user=mock_user
+        )
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_email_validates_format():
+    """Invalid email format should raise ValidationError."""
+    from app.api.auth_routes import UpdateEmailRequest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        UpdateEmailRequest(new_email="not-an-email")
+
+
+@pytest.mark.asyncio
+async def test_update_email_already_in_use():
+    """update_user_email returns friendly error for duplicate email."""
+    from app.services.auth_service import update_user_email
+
+    mock_admin = MagicMock()
+    mock_admin.auth.admin.update_user_by_id.side_effect = Exception("Email already registered")
+
+    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_email("user-1", "taken@example.com")
+
+    assert result["success"] is False
+    assert "already in use" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_update_email_service_success():
+    """update_user_email returns success on normal call."""
+    from app.services.auth_service import update_user_email
+
+    mock_admin = MagicMock()
+
+    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_email("user-1", "new@example.com")
+
+    assert result["success"] is True
+    mock_admin.auth.admin.update_user_by_id.assert_called_once_with(
+        "user-1", {"email": "new@example.com"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_email_service_generic_error():
+    """update_user_email returns raw error for non-duplicate errors."""
+    from app.services.auth_service import update_user_email
+
+    mock_admin = MagicMock()
+    mock_admin.auth.admin.update_user_by_id.side_effect = Exception("Network timeout")
+
+    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_email("user-1", "new@example.com")
+
+    assert result["success"] is False
+    assert "Network timeout" in result["error"]

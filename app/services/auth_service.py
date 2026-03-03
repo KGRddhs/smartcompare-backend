@@ -182,6 +182,19 @@ async def logout_user(access_token: str) -> Dict:
         return {"success": False, "error": str(e)}
 
 
+async def update_user_email(user_id: str, new_email: str) -> Dict:
+    """Update email via Supabase Admin API (sends verification to new email)."""
+    try:
+        admin = get_admin_client()
+        admin.auth.admin.update_user_by_id(user_id, {"email": new_email})
+        return {"success": True, "message": "Verification email sent to new address"}
+    except Exception as e:
+        error_msg = str(e)
+        if "already registered" in error_msg.lower():
+            return {"success": False, "error": "Email already in use"}
+        return {"success": False, "error": error_msg}
+
+
 async def update_user_profile(user_id: str, display_name: str) -> Dict:
     """Update display name in users table."""
     try:
