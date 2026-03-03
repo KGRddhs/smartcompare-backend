@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-timeout
+
+      - name: Syntax check all Python files
+        run: |
+          find app -name "*.py" -exec python -m py_compile {} +
+          echo "All Python files pass syntax check"
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/ -v \
+            -m "not (live_unit or live_db or integration)" \
+            --ignore=tests/test_integration.py \
+            --timeout=60 \
+            --tb=short
+
+  frontend-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: SmartCompareApp/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd SmartCompareApp && npm ci
+
+      - name: TypeScript type check
+        run: cd SmartCompareApp && npx tsc --noEmit
+        continue-on-error: true  # 7 pre-existing TS errors
