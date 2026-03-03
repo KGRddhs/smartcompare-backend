@@ -246,4 +246,4 @@ These are known issues that have been intentionally deferred:
 - `ResultsScreen.tsx` has local type definitions that diverge from `src/types/types.ts`
 
 ## Detailed Context
-See `docs/CLAUDE_CODE_CONTEXT.md` for full session history, all decisions made, and known issues. **Read this before major changes** — learn from what worked and what didn't.
+See `docs/CLAUDE_CODE_CONTEXT.md` for the index of all context files. Key files: CONTEXT_ARCHITECTURE.md (system design), CONTEXT_SESSION_LOG.md (development history), CONTEXT_REFERENCE.md (testing/deploy).
