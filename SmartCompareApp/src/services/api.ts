@@ -4,11 +4,12 @@
  */
 
 import axios from 'axios';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { ComparisonResult, ImageIdentifyResult, RateLimitStatus, SubscriptionStatus } from '../types';
 
 // IMPORTANT: Change this to your computer's local IP
 // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
-const API_BASE_URL = 'https://smartcompare-backend-production.up.railway.app';
+export const API_BASE_URL = 'https://smartcompare-backend-production.up.railway.app';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -194,30 +195,28 @@ export async function identifyFromImages(
   for (let i = 0; i < imageUris.length; i++) {
     const uri = imageUris[i];
 
-    // Get file name and extension
-    const uriParts = uri.split('/');
-    let fileName = uriParts[uriParts.length - 1];
-    if (uri.includes('ph://')) {
-      fileName = `photo_${i + 1}.jpg`;
-    }
-
-    const extensionMatch = fileName.match(/\.([^.]+)$/);
-    let extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'jpg';
-    if (extension === 'jpeg') extension = 'jpg';
-    if (extension === 'heic' || extension === 'heif') extension = 'jpg';
-
-    let mimeType = 'image/jpeg';
-    if (extension === 'png') mimeType = 'image/png';
-    else if (extension === 'webp') mimeType = 'image/webp';
+    // Transcode every image to JPEG — guarantees format regardless of source (HEIC, PNG, etc.)
+    const manipulated = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: 1024 } }],
+      { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
+    );
 
     formData.append('images', {
-      uri,
-      type: mimeType,
-      name: `product_${i + 1}.${extension}`,
+      uri: manipulated.uri,
+      type: 'image/jpeg',
+      name: `product_${i + 1}.jpg`,
     } as any);
   }
 
-  console.log('Image URIs:', imageUris);
+  // Attach auth token if available (fetch doesn't use axios interceptor)
+  // Use require() to avoid circular import (authService imports api)
+  const { getToken } = require('./authService');
+  const token = await getToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   // Use fetch instead of Axios — Axios has known multipart issues on Android
   const response = await fetch(
@@ -225,7 +224,7 @@ export async function identifyFromImages(
     {
       method: 'POST',
       body: formData,
-      // Don't set Content-Type — fetch sets it with correct multipart boundary
+      headers,
     }
   );
 
