@@ -138,19 +138,23 @@ async def save_comparison(
 async def get_user_comparisons(
     user_id: str,
     limit: int = 20,
-    offset: int = 0
+    offset: int = 0,
+    search: Optional[str] = None,
 ) -> List[Dict]:
-    """Get user's comparison history"""
+    """Get user's comparison history, optionally filtered by product name search."""
     try:
         client = get_supabase_client()
-        response = (
+        query = (
             client.table("comparisons")
             .select("*")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
-            .range(offset, offset + limit - 1)
-            .execute()
         )
+
+        if search:
+            query = query.ilike("query", f"%{search}%")
+
+        response = query.range(offset, offset + limit - 1).execute()
         return response.data or []
     except Exception as e:
         print(f"Error getting comparisons: {e}")
