@@ -200,6 +200,7 @@ export type RootStackParamList = {
   Results: { result: ComparisonResult };
   History: undefined;
   Profile: undefined;
+  Account: undefined;
 };
 
 export type AuthStackParamList = {

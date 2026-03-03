@@ -14,6 +14,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import CameraScreen from './src/screens/CameraScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
+import AccountScreen from './src/screens/AccountScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
@@ -93,6 +94,13 @@ function MainNavigator({ onLogout }: { onLogout: () => void }) {
         component={HistoryScreen}
         options={{
           title: 'History',
+        }}
+      />
+      <RootStack.Screen
+        name="Account"
+        component={AccountScreen}
+        options={{
+          title: 'Account Settings',
         }}
       />
     </RootStack.Navigator>

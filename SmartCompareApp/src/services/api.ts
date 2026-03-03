@@ -327,4 +327,28 @@ export async function debugUpload(imageUris: string[]): Promise<any> {
   return response.data;
 }
 
+/**
+ * Update user display name
+ */
+export async function updateProfile(displayName: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  const response = await api.put('/api/v1/auth/profile', { display_name: displayName });
+  return response.data;
+}
+
+/**
+ * Update user email (sends verification to new address)
+ */
+export async function updateEmail(newEmail: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  const response = await api.put('/api/v1/auth/email', { new_email: newEmail });
+  return response.data;
+}
+
+/**
+ * Change password (requires current password)
+ */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  const response = await api.put('/api/v1/auth/password', { current_password: currentPassword, new_password: newPassword });
+  return response.data;
+}
+
 export default api;

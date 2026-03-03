@@ -255,8 +255,8 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
               <Text style={styles.title}>SmartCompare</Text>
               <Text style={styles.subtitle}>AI-Powered Product Comparison</Text>
             </View>
-            <TouchableOpacity style={styles.profileButton} onPress={handleLogout}>
-              <Text style={styles.profileEmoji}>👤</Text>
+            <TouchableOpacity style={styles.profileButton} onPress={() => navigation.navigate('Account')}>
+              <Text style={styles.profileEmoji}>&#9881;</Text>
             </TouchableOpacity>
           </View>
 
