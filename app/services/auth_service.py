@@ -182,6 +182,48 @@ async def logout_user(access_token: str) -> Dict:
         return {"success": False, "error": str(e)}
 
 
+async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -> Dict:
+    """Sign in with social provider via Supabase's signInWithIdToken."""
+    try:
+        auth_client = get_auth_client()
+
+        credentials = {"provider": provider, "token": id_token}
+        if nonce:
+            credentials["nonce"] = nonce
+
+        response = auth_client.auth.sign_in_with_id_token(credentials)
+
+        if not response.user:
+            return {"success": False, "error": "Authentication failed"}
+
+        # Ensure user exists in our users table
+        admin = get_admin_client()
+        existing = admin.table("users").select("id").eq("id", response.user.id).execute()
+        if not existing.data:
+            admin.table("users").insert({
+                "id": response.user.id,
+                "email": response.user.email,
+                "auth_provider": provider,
+                "subscription_tier": "free",
+            }).execute()
+
+        return {
+            "success": True,
+            "user": {
+                "id": response.user.id,
+                "email": response.user.email,
+            },
+            "session": {
+                "access_token": response.session.access_token if response.session else None,
+                "refresh_token": response.session.refresh_token if response.session else None,
+                "expires_at": response.session.expires_at if response.session else None,
+            },
+            "message": f"Signed in with {provider}"
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 async def change_user_password(user_id: str, email: str, current_password: str, new_password: str) -> Dict:
     """Verify current password then update to new password."""
     try:

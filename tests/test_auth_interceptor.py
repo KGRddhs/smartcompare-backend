@@ -887,3 +887,204 @@ async def test_change_user_password_generic_error():
 
     assert result["success"] is False
     assert "Network timeout" in result["error"]
+
+
+# ── social_login tests ──
+
+@pytest.mark.asyncio
+async def test_social_login_google_success():
+    """POST /api/v1/auth/social-login with Google token should return session."""
+    from app.api.auth_routes import social_login, SocialLoginRequest
+    mock_result = {
+        "success": True,
+        "user": {"id": "google-user", "email": "user@gmail.com"},
+        "session": {"access_token": "tok", "refresh_token": "ref", "expires_at": 123},
+        "message": "Signed in with google",
+    }
+    with patch("app.api.auth_routes.sign_in_with_social", new_callable=AsyncMock,
+               return_value=mock_result):
+        result = await social_login(
+            body=SocialLoginRequest(provider="google", id_token="mock-google-id-token")
+        )
+    assert result["success"] is True
+    assert "session" in result
+
+
+@pytest.mark.asyncio
+async def test_social_login_apple_success():
+    """POST /api/v1/auth/social-login with Apple token should return session."""
+    from app.api.auth_routes import social_login, SocialLoginRequest
+    mock_result = {
+        "success": True,
+        "user": {"id": "apple-user", "email": "user@icloud.com"},
+        "session": {"access_token": "tok", "refresh_token": "ref", "expires_at": 123},
+        "message": "Signed in with apple",
+    }
+    with patch("app.api.auth_routes.sign_in_with_social", new_callable=AsyncMock,
+               return_value=mock_result):
+        result = await social_login(
+            body=SocialLoginRequest(provider="apple", id_token="mock-apple-token", nonce="abc")
+        )
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_social_login_invalid_provider():
+    """Only google and apple are valid providers."""
+    from app.api.auth_routes import SocialLoginRequest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        SocialLoginRequest(provider="facebook", id_token="token")
+
+
+@pytest.mark.asyncio
+async def test_social_login_auth_failure():
+    """social_login raises 401 when auth fails."""
+    from app.api.auth_routes import social_login, SocialLoginRequest
+    from fastapi import HTTPException
+    with patch("app.api.auth_routes.sign_in_with_social", new_callable=AsyncMock,
+               return_value={"success": False, "error": "Invalid token"}):
+        with pytest.raises(HTTPException) as exc_info:
+            await social_login(
+                body=SocialLoginRequest(provider="google", id_token="bad-token")
+            )
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_sign_in_with_social_service_success():
+    """sign_in_with_social calls Supabase signInWithIdToken and creates user."""
+    from app.services.auth_service import sign_in_with_social
+
+    mock_user = MagicMock()
+    mock_user.id = "social-uid"
+    mock_user.email = "social@test.com"
+
+    mock_session = MagicMock()
+    mock_session.access_token = "social-tok"
+    mock_session.refresh_token = "social-ref"
+    mock_session.expires_at = 9999
+
+    mock_response = MagicMock()
+    mock_response.user = mock_user
+    mock_response.session = mock_session
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_id_token.return_value = mock_response
+
+    # User doesn't exist yet
+    mock_admin_client = MagicMock()
+    mock_admin_client.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
+        result = await sign_in_with_social("google", "id-token-123")
+
+    assert result["success"] is True
+    assert result["user"]["id"] == "social-uid"
+    assert result["session"]["access_token"] == "social-tok"
+    # Should have created user in users table
+    mock_admin_client.table.return_value.insert.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_sign_in_with_social_existing_user():
+    """sign_in_with_social skips user creation if user already exists."""
+    from app.services.auth_service import sign_in_with_social
+
+    mock_user = MagicMock()
+    mock_user.id = "existing-uid"
+    mock_user.email = "existing@test.com"
+
+    mock_session = MagicMock()
+    mock_session.access_token = "tok"
+    mock_session.refresh_token = "ref"
+    mock_session.expires_at = 9999
+
+    mock_response = MagicMock()
+    mock_response.user = mock_user
+    mock_response.session = mock_session
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_id_token.return_value = mock_response
+
+    # User already exists
+    mock_admin_client = MagicMock()
+    mock_admin_client.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=[{"id": "existing-uid"}]
+    )
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
+        result = await sign_in_with_social("apple", "apple-token", nonce="nonce123")
+
+    assert result["success"] is True
+    # Should NOT have inserted into users table
+    mock_admin_client.table.return_value.insert.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sign_in_with_social_no_user_returned():
+    """sign_in_with_social returns failure when Supabase returns no user."""
+    from app.services.auth_service import sign_in_with_social
+
+    mock_response = MagicMock()
+    mock_response.user = None
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_id_token.return_value = mock_response
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client):
+        result = await sign_in_with_social("google", "bad-token")
+
+    assert result["success"] is False
+    assert "failed" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_sign_in_with_social_exception():
+    """sign_in_with_social returns error on exception."""
+    from app.services.auth_service import sign_in_with_social
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_id_token.side_effect = Exception("Provider error")
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client):
+        result = await sign_in_with_social("google", "token")
+
+    assert result["success"] is False
+    assert "Provider error" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_sign_in_with_social_passes_nonce():
+    """sign_in_with_social passes nonce to Supabase for Apple Sign-In."""
+    from app.services.auth_service import sign_in_with_social
+
+    mock_user = MagicMock()
+    mock_user.id = "uid"
+    mock_user.email = "e@e.com"
+
+    mock_session = MagicMock()
+    mock_session.access_token = "t"
+    mock_session.refresh_token = "r"
+    mock_session.expires_at = 1
+
+    mock_response = MagicMock()
+    mock_response.user = mock_user
+    mock_response.session = mock_session
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_id_token.return_value = mock_response
+
+    mock_admin_client = MagicMock()
+    mock_admin_client.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "uid"}])
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
+        await sign_in_with_social("apple", "apple-token", nonce="my-nonce")
+
+    call_args = mock_auth_client.auth.sign_in_with_id_token.call_args[0][0]
+    assert call_args["provider"] == "apple"
+    assert call_args["token"] == "apple-token"
+    assert call_args["nonce"] == "my-nonce"

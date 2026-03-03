@@ -3,7 +3,7 @@ Auth Routes - Authentication endpoints
 """
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Literal, Optional
 
 from app.services.auth_service import (
     register_user,
@@ -16,6 +16,7 @@ from app.services.auth_service import (
     update_user_profile,
     update_user_email,
     change_user_password,
+    sign_in_with_social,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
@@ -54,6 +55,12 @@ class UpdateEmailRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=6)
+
+
+class SocialLoginRequest(BaseModel):
+    provider: Literal["google", "apple"]
+    id_token: str
+    nonce: Optional[str] = None  # Apple Sign-In uses nonce
 
 
 class AuthResponse(BaseModel):
@@ -272,4 +279,13 @@ async def change_password(
     )
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/social-login")
+async def social_login(body: SocialLoginRequest):
+    """Authenticate via Google or Apple ID token. Creates account if new."""
+    result = await sign_in_with_social(body.provider, body.id_token, body.nonce)
+    if not result["success"]:
+        raise HTTPException(status_code=401, detail=result["error"])
     return result
