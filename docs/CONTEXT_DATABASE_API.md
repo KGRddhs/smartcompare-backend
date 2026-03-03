@@ -167,6 +167,25 @@ Query params:
 }
 ```
 
+## Admin Analytics (protected by X-Admin-Key header)
+
+### GET `/api/v1/admin/stats/daily`
+Daily comparison stats (count, cost, avg duration) for last 30 days.
+
+### GET `/api/v1/admin/stats/popular`
+Top 20 most queried products.
+
+### GET `/api/v1/admin/stats/costs`
+Cost trends (daily total cost + avg per comparison) for last 30 days.
+
+### GET `/api/v1/admin/stats/errors`
+Error stats (count + recent error messages) for last 7 days.
+
+### GET `/api/v1/admin/stats/products`
+Product catalog stats (total count, top categories, recent additions).
+
+**Auth:** All admin endpoints require `X-Admin-Key` header matching `ADMIN_API_KEY` env var.
+
 ## Health
 
 ### GET `/health`

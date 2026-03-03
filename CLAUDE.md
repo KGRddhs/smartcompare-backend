@@ -76,12 +76,15 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 
 ### Backend (FastAPI + Python 3.12)
 
-**Entry:** `app/main.py` — loads env vars, registers 5 routers:
-- `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow)
-- `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare
+**Entry:** `app/main.py` (v2.1.0) — loads env vars, configures middleware stack, registers 6 routers:
+- `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow, rate limited)
+- `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited)
 - `/api/v1/url/*` — `url_routes.py` (partially implemented)
 - `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth
+- `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints (X-Admin-Key auth)
 - `/api/v1/*` — `routes.py` (legacy image comparison, has broken function calls)
+
+**Middleware stack** (outermost → innermost): RequestID → SecurityHeaders → ErrorHandler → CORS → slowapi rate limiter
 
 **Core service:** `app/services/structured_comparison_service.py`
 - `StructuredComparisonService` is a **singleton** (`get_comparison_service()`)
@@ -135,6 +138,15 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 - `cache_service.py` — Upstash Redis caching, monthly budget tracking
 - `openai_service.py` — GPT-4o-mini vision for camera identification (`detail: "auto"`, OCR-focused prompt)
 - `database_service.py` — Supabase client singleton (`get_supabase_client()`)
+- `sentry_service.py` — `init_sentry()` (opt-in via `SENTRY_DSN` env var)
+- `analytics_service.py` — Admin analytics queries (`get_daily_stats()`, `get_popular_queries()`, etc.)
+
+**Middleware** (`app/middleware/`):
+- `request_id.py` — UUID generation per request, X-Request-ID header
+- `security.py` — Security response headers (nosniff, DENY frame, etc.)
+- `rate_limiter.py` — slowapi limiter, in-memory storage, 10/min on compare
+- `error_handler.py` — Global exception handler, clean 500 JSON, Sentry capture
+- `logging_config.py` — Structured JSON logging, one-line per log entry
 
 ### Frontend (React Native + Expo)
 
@@ -187,7 +199,8 @@ Target: **$0.009-0.01/comparison** (current: ~$0.010 electronics, ~$0.010 supple
 Camera input passes `vision_products` directly to `compare_from_text()`, skipping `parse_product_query()`. The `size_or_count` field (e.g., "360 Softgels") is appended to the product name in `image_routes.py` before comparison.
 
 ## Environment Variables (Railway)
-`OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`
+**Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
+**Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO)
 
 ### Serper API Credits
 - **Rotated Feb 28 2026**: Fresh 2,500 credits (~625-833 nocache comparisons)
@@ -203,7 +216,7 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 
 ### Run commands
 ```bash
-# All free unit tests (210 tests, ~3s, $0)
+# All free unit tests (280 tests, ~4s, $0)
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb, Serper, GPT vision — ~$0.03)
@@ -221,10 +234,13 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (232 total: 194 unit + 10 live_unit + 6 live_db + 6 integration)
+### Test files (302 total: 280 unit + 10 live_unit + 6 live_db + 6 integration)
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_auth_interceptor.py` — 45 tests: auth endpoints, token verify, optional/required user, profile, password reset
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
+- `tests/test_analytics.py` — 30 tests: analytics service queries, admin endpoint auth + all 5 routes
+- `tests/test_observability.py` — 24 tests: Sentry init, structured JSON formatter, configure_logging, error handler middleware
+- `tests/test_security_middleware.py` — 16 tests: request ID generation/preservation, security headers, rate limiting (under/over/429)
 - `tests/test_rating_tiers.py` — 16 tests: tier classification, consensus logic, accessory filtering
 - `tests/test_price_fallback.py` — 12 tests: shopping extraction, currency conversion, all-tiers-fail
 - `tests/test_pharmacy_jsonld.py` — 12 tests: pharmacy JSON-LD price extraction

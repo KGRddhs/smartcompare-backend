@@ -2,7 +2,7 @@
 
 # IMPORTANT: CURRENT DATE CONTEXT
 
-**Today's date: February 2026**
+**Today's date: March 2026**
 
 Your training data may be outdated. These products EXIST and are currently on sale:
 
@@ -157,38 +157,49 @@ SmartCompare must provide COMPLETE, ACTIONABLE product comparisons with:
 
 ```
 smartcompare/
-├── backend/
-│   ├── app/
+├── app/                                 # ROOT — deployed code (Railway runs this!)
+│   ├── __init__.py
+│   ├── main.py                          # FastAPI app entry + middleware stack
+│   ├── api/
 │   │   ├── __init__.py
-│   │   ├── main.py                      # FastAPI app entry point
-│   │   ├── config.py                    # Settings/env vars
-│   │   ├── api/
-│   │   │   ├── __init__.py
-│   │   │   ├── text_routes.py           # /api/v1/text/* endpoints
-│   │   │   ├── url_routes.py            # /api/v1/url/* endpoints
-│   │   │   ├── image_routes.py          # /api/v1/compare (camera) [LEGACY]
-│   │   │   └── auth_routes.py           # /api/v1/auth/* endpoints
-│   │   └── services/
-│   │       ├── __init__.py
-│   │       ├── comparison_service_v3.py # MAIN SERVICE - use this
-│   │       ├── rating_extractor.py      # Deterministic ratings (BROKEN)
-│   │       ├── rating_service.py        # Old rating service (deprecated)
-│   │       ├── url_extraction_service.py# URL parsing with BeautifulSoup
-│   │       └── image_service.py         # Image/OCR processing
-│   ├── requirements.txt                 # Poetry deps (backend folder)
-│   ├── pyproject.toml                   # Poetry config
-│   └── poetry.lock
+│   │   ├── text_routes.py               # /api/v1/text/* endpoints (rate limited)
+│   │   ├── url_routes.py                # /api/v1/url/* endpoints
+│   │   ├── image_routes.py              # /api/v1/image/* (camera)
+│   │   ├── auth_routes.py               # /api/v1/auth/* endpoints
+│   │   ├── admin_routes.py              # /api/v1/admin/* analytics (X-Admin-Key auth)
+│   │   └── routes.py                    # /api/v1/compare (legacy, broken)
+│   ├── middleware/
+│   │   ├── __init__.py
+│   │   ├── request_id.py                # X-Request-ID generation/propagation
+│   │   ├── security.py                  # Security headers (nosniff, DENY, etc.)
+│   │   ├── rate_limiter.py              # slowapi rate limiter (10/min on compare)
+│   │   ├── error_handler.py             # Global error handler (clean 500 JSON)
+│   │   └── logging_config.py            # Structured JSON logging
+│   └── services/
+│       ├── __init__.py
+│       ├── structured_comparison_service.py  # MAIN — orchestrator, pricing, ratings
+│       ├── extraction_service.py        # GPT prompts, spec/review extraction
+│       ├── serper_service.py            # Serper API (search, shopping)
+│       ├── cache_service.py             # Upstash Redis caching
+│       ├── database_service.py          # Supabase client + history/logging
+│       ├── drug_database_service.py     # Bahrain drug DB lookup
+│       ├── openai_service.py            # GPT-4o-mini vision
+│       ├── sentry_service.py            # Sentry init (opt-in via SENTRY_DSN)
+│       └── analytics_service.py         # Admin analytics queries
+│
+├── backend/app/                         # OLD — NOT deployed. Do NOT edit.
 │
 ├── SmartCompareApp/                     # React Native mobile app
 │   ├── src/
 │   │   ├── screens/
 │   │   │   ├── HomeScreen.tsx           # Main input screen
 │   │   │   ├── ResultsScreen.tsx        # Comparison results
+│   │   │   ├── CameraScreen.tsx         # Camera capture + identify
+│   │   │   ├── HistoryScreen.tsx        # Comparison history
 │   │   │   ├── LoginScreen.tsx
-│   │   │   ├── RegisterScreen.tsx
-│   │   │   └── HistoryScreen.tsx
+│   │   │   └── RegisterScreen.tsx
 │   │   ├── services/
-│   │   │   ├── api.ts                   # Axios config, Railway URL
+│   │   │   ├── api.ts                   # Axios config + auth interceptors
 │   │   │   └── authService.ts           # Supabase auth functions
 │   │   ├── components/
 │   │   │   └── ...
@@ -198,11 +209,32 @@ smartcompare/
 │   ├── app.json
 │   └── package.json
 │
-├── docs/
-│   ├── ARCHITECTURE_V3.md               # Architecture documentation
-│   └── CLAUDE_CODE_CONTEXT.md           # THIS FILE
+├── tests/                               # 18 test files, 280 tests
+│   ├── conftest.py                      # Auto-loads .env for all tests
+│   ├── test_fact_checking.py            # 48 tests
+│   ├── test_auth_interceptor.py         # 45 tests
+│   ├── test_error_paths.py              # 31 tests
+│   ├── test_analytics.py               # 30 tests
+│   ├── test_observability.py            # 24 tests
+│   ├── test_security_middleware.py      # 16 tests
+│   ├── test_rating_tiers.py            # 16 tests
+│   ├── test_price_fallback.py          # 12 tests
+│   ├── test_pharmacy_jsonld.py         # 12 tests
+│   ├── test_drug_database_service.py   # 11 tests
+│   ├── test_camera_vision.py           # 10 tests
+│   ├── test_history.py                 # 10 tests
+│   ├── test_db_improvements.py         # 9 tests
+│   ├── test_url_extraction.py          # 8 tests
+│   ├── test_iherb_scraping.py          # 7 tests
+│   ├── test_unified_search.py          # 4 tests
+│   ├── test_singleton_state.py         # 3 tests
+│   └── test_integration.py            # 6 integration tests (live Railway)
 │
-├── requirements.txt                     # ROOT - Railway reads this!
+├── .github/workflows/ci.yml            # GitHub Actions CI pipeline
+├── docs/                                # Context docs, plans, designs
+├── migrations/                          # SQL migration files
+├── requirements.txt                     # ROOT — Railway reads this!
+├── pyproject.toml
 ├── .gitignore
 └── README.md
 ```
@@ -211,20 +243,29 @@ smartcompare/
 
 # 4. BACKEND DEEP DIVE
 
-## 4.1 Main Entry Point (main.py)
+## 4.1 Main Entry Point (main.py) — v2.1.0
 
 ```python
-# Key imports
-from app.api.text_routes import router as text_router
-from app.api.url_routes import router as url_router
-from app.api.image_routes import router as image_router
-from app.api.auth_routes import router as auth_router
+# Middleware stack (order matters: outermost added last in Starlette)
+# Request flow: RequestID → SecurityHeaders → ErrorHandler → [CORS] → route handler
+app.add_middleware(CORSMiddleware, ...)     # Innermost
+app.add_middleware(ErrorHandlerMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestIDMiddleware)      # Outermost
+
+# Rate limiter (slowapi — decorator-based, not middleware)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Routes registered
-app.include_router(text_router, prefix="/api/v1/text")
-app.include_router(url_router, prefix="/api/v1/url")
-app.include_router(image_router, prefix="/api/v1")
-app.include_router(auth_router, prefix="/api/v1/auth")
+app.include_router(text_router)      # /api/v1/text/*
+app.include_router(url_router)       # /api/v1/url/*
+app.include_router(image_router)     # /api/v1/image/*
+app.include_router(auth_router)      # /api/v1/auth/*
+app.include_router(admin_router, prefix="/api/v1/admin")  # /api/v1/admin/*
+
+# Sentry (opt-in): init_sentry() — no-op if SENTRY_DSN not set
+# Structured logging: configure_logging() — JSON format, quiets noisy libs
 ```
 
 ## 4.2 Comparison Service v3 (comparison_service_v3.py)

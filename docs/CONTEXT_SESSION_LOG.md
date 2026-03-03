@@ -1390,6 +1390,95 @@ Verified all auth, history, and db tests pass. Fixed issues blocking live Supaba
 
 ---
 
+## Session 14: Mar 3, 2026 — Production Readiness (Security, Observability, Analytics, CI/CD)
+
+### What Was Done
+Multi-agent team (3 Opus agents, `bypassPermissions`, circular cross-QA) implemented full production readiness stack. All free-tier.
+
+**Team Structure:**
+- **security-agent**: Rate limiting, security headers, request ID middleware, main.py rewrite
+- **observability-agent**: Structured logging, Sentry integration, error handler middleware
+- **analytics-ci-agent**: Admin analytics endpoints, GitHub Actions CI pipeline
+
+### 1. Middleware Stack (5 layers)
+**Files:** `app/middleware/request_id.py`, `security.py`, `rate_limiter.py`, `error_handler.py`, `logging_config.py`, `__init__.py`
+
+Middleware execution order (outermost → innermost):
+1. **RequestIDMiddleware** — generates UUID per request, preserves client-provided `X-Request-ID`
+2. **SecurityHeadersMiddleware** — adds `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `X-XSS-Protection`, `Permissions-Policy`
+3. **ErrorHandlerMiddleware** — catches unhandled exceptions, logs with request_id, sends to Sentry, returns clean 500 JSON (no stack traces leaked)
+4. **CORS** — restricted origins (Railway + localhost only, not wildcard `["*"]`)
+5. **slowapi rate limiter** — decorator-based, 10/min on compare endpoints, in-memory storage (`memory://`)
+
+### 2. Structured JSON Logging
+**File:** `app/middleware/logging_config.py`
+- `StructuredFormatter` outputs one-line JSON per log entry (timestamp, level, module, message, request_id, exception)
+- `configure_logging()` sets root logger level, clears default handlers, quiets noisy libs (httpx, httpcore, uvicorn, urllib3)
+
+### 3. Sentry Integration
+**File:** `app/services/sentry_service.py`
+- `init_sentry()` — no-op if `SENTRY_DSN` env var is empty/missing
+- Handles `ImportError` gracefully (sentry-sdk is in requirements but DSN is optional)
+- `traces_sample_rate=0.1` (10% of transactions traced)
+
+### 4. Admin Analytics API
+**Files:** `app/services/analytics_service.py`, `app/api/admin_routes.py`
+- 5 GET endpoints: `/stats/daily`, `/stats/popular`, `/stats/costs`, `/stats/errors`, `/stats/products`
+- Protected by `verify_admin_key()` dependency checking `X-Admin-Key` header against `ADMIN_API_KEY` env var
+- Empty/missing `ADMIN_API_KEY` rejects all requests (403)
+- All queries use `search_logs` and `products` tables via `get_supabase_client()`
+
+### 5. GitHub Actions CI
+**File:** `.github/workflows/ci.yml`
+- Two jobs: `backend-tests` (Python 3.12, pip install, py_compile on all `app/`, pytest unit tests) and `frontend-typecheck` (Node 20, npm ci, tsc --noEmit with continue-on-error)
+- Triggers on push to main and PRs
+
+### 6. main.py Rewrite
+**File:** `app/main.py`
+- All 5 middleware layers registered in correct Starlette order
+- CORS restricted to Railway + localhost origins
+- Calls `configure_logging()` before imports, `init_sentry()` after
+- Registers `admin_router` at `/api/v1/admin`
+- Version bumped to 2.1.0
+
+### Rate Limiting Details
+- `text_routes.py`: POST and GET `/compare` decorated with `@limiter.limit("10/minute")`
+- `image_routes.py`: identify endpoint rate-limited
+- POST endpoints renamed Pydantic `request` param to `body` to avoid collision with slowapi's required `request: Request` parameter
+
+### New Dependencies
+- `slowapi>=0.1.9` — rate limiting
+- `sentry-sdk[fastapi]>=1.40.0` — error tracking
+
+### New Environment Variables
+- `ADMIN_API_KEY` — required for admin endpoints (added to Railway)
+- `SENTRY_DSN` — optional, enables Sentry error tracking
+- `LOG_LEVEL` — optional, defaults to INFO
+
+### Tests Added (86 new)
+| File | Tests | Coverage |
+|------|-------|----------|
+| `tests/test_analytics.py` | 30 | Analytics service + admin endpoints |
+| `tests/test_observability.py` | 24 | Sentry, structured logging, error handler |
+| `tests/test_security_middleware.py` | 16 | Request ID, security headers, rate limiting |
+| **Total new** | **70** | **+ 16 existing test updates = 86 effective** |
+
+### Test Results
+- **280/280 unit tests passing** (0 failures, 0 regressions)
+- All 86 new tests pass
+- Original 194 tests unaffected
+
+### Commits
+- 15 commits from 3-agent team covering implementation + cross-QA
+- Final push: `43481a2..071e9a4` deployed to Railway
+
+### Deployment Verified
+- Health check: `{"status":"healthy","message":"SmartCompare API is running"}`
+- Security headers present: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `X-Xss-Protection`, `Permissions-Policy`
+- `X-Request-Id` UUID in every response
+
+---
+
 **END OF KNOWLEDGE TRANSFER**
 
 *Keep this document updated as the project evolves.*

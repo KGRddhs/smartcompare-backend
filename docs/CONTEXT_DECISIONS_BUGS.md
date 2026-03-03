@@ -14,6 +14,12 @@
 | Multi-source price fallback | Never show "Price N/A" if data exists anywhere |
 | Deterministic ratings over AI | AI was generating fake ratings (4.5/150) |
 | Cache with TTL | Prices 24h, specs 7d - balance freshness vs cost |
+| slowapi in-memory rate limiting | Single Railway instance, no need for distributed Redis limiter |
+| Sentry opt-in (not required) | Free tier 5K errors/mo, zero-config when DSN not set |
+| Structured JSON logging | One-line JSON per log entry for Railway log aggregation |
+| CORS restricted origins | Only Railway + localhost, not wildcard `["*"]` |
+| Admin API key auth (not JWT) | Simple, stateless, no user session needed for admin |
+| GitHub Actions CI | Free for public repos, runs unit tests + syntax check on push/PR |
 
 ## Code Decisions
 
