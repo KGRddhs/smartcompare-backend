@@ -15,6 +15,7 @@ from app.services.auth_service import (
     request_password_reset,
     update_user_profile,
     update_user_email,
+    change_user_password,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
@@ -48,6 +49,11 @@ class UpdateProfileRequest(BaseModel):
 
 class UpdateEmailRequest(BaseModel):
     new_email: EmailStr
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=6)
 
 
 class AuthResponse(BaseModel):
@@ -251,4 +257,19 @@ async def update_email(
 ):
     """Update user email. Supabase sends a verification email to the new address."""
     result = await update_user_email(current_user["id"], str(body.new_email))
+    return result
+
+
+@router.put("/password")
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Change password. Requires current password for verification."""
+    result = await change_user_password(
+        current_user["id"], current_user["email"],
+        body.current_password, body.new_password
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
     return result

@@ -182,6 +182,24 @@ async def logout_user(access_token: str) -> Dict:
         return {"success": False, "error": str(e)}
 
 
+async def change_user_password(user_id: str, email: str, current_password: str, new_password: str) -> Dict:
+    """Verify current password then update to new password."""
+    try:
+        # Verify current password by attempting login
+        auth_client = get_auth_client()
+        auth_client.auth.sign_in_with_password({"email": email, "password": current_password})
+
+        # Update password via admin API
+        admin = get_admin_client()
+        admin.auth.admin.update_user_by_id(user_id, {"password": new_password})
+        return {"success": True, "message": "Password changed successfully"}
+    except Exception as e:
+        error_msg = str(e)
+        if "invalid" in error_msg.lower() or "credentials" in error_msg.lower():
+            return {"success": False, "error": "Current password is incorrect"}
+        return {"success": False, "error": error_msg}
+
+
 async def update_user_email(user_id: str, new_email: str) -> Dict:
     """Update email via Supabase Admin API (sends verification to new email)."""
     try:

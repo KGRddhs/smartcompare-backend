@@ -794,3 +794,96 @@ async def test_update_email_service_generic_error():
 
     assert result["success"] is False
     assert "Network timeout" in result["error"]
+
+
+# ── change_password tests ──
+
+@pytest.mark.asyncio
+async def test_change_password_success():
+    """PUT /api/v1/auth/password should change password."""
+    from app.api.auth_routes import change_password, ChangePasswordRequest
+    mock_user = {"id": "user-1", "email": "test@example.com"}
+    with patch("app.api.auth_routes.change_user_password", new_callable=AsyncMock,
+               return_value={"success": True, "message": "Password changed successfully"}):
+        result = await change_password(
+            body=ChangePasswordRequest(current_password="oldpass123", new_password="newpass123"),
+            current_user=mock_user
+        )
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_change_password_min_length():
+    """New password must be at least 6 chars."""
+    from app.api.auth_routes import ChangePasswordRequest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        ChangePasswordRequest(current_password="oldpass123", new_password="12345")
+
+
+@pytest.mark.asyncio
+async def test_change_password_wrong_current():
+    """Wrong current password should return 400."""
+    from app.api.auth_routes import change_password, ChangePasswordRequest
+    from fastapi import HTTPException
+    mock_user = {"id": "user-1", "email": "test@example.com"}
+    with patch("app.api.auth_routes.change_user_password", new_callable=AsyncMock,
+               return_value={"success": False, "error": "Current password is incorrect"}):
+        with pytest.raises(HTTPException) as exc_info:
+            await change_password(
+                body=ChangePasswordRequest(current_password="wrong", new_password="newpass123"),
+                current_user=mock_user
+            )
+    assert exc_info.value.status_code == 400
+    assert "incorrect" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_change_user_password_service_success():
+    """change_user_password verifies current password then updates."""
+    from app.services.auth_service import change_user_password
+
+    mock_auth_client = MagicMock()
+    mock_admin_client = MagicMock()
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
+        result = await change_user_password("user-1", "test@example.com", "oldpass", "newpass")
+
+    assert result["success"] is True
+    mock_auth_client.auth.sign_in_with_password.assert_called_once_with({
+        "email": "test@example.com", "password": "oldpass"
+    })
+    mock_admin_client.auth.admin.update_user_by_id.assert_called_once_with(
+        "user-1", {"password": "newpass"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_change_user_password_wrong_current():
+    """change_user_password returns friendly error for wrong password."""
+    from app.services.auth_service import change_user_password
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_password.side_effect = Exception("Invalid login credentials")
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client):
+        result = await change_user_password("user-1", "test@example.com", "wrong", "newpass")
+
+    assert result["success"] is False
+    assert "incorrect" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_change_user_password_generic_error():
+    """change_user_password returns raw error for non-credential errors."""
+    from app.services.auth_service import change_user_password
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_password.side_effect = Exception("Network timeout")
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client):
+        result = await change_user_password("user-1", "test@example.com", "pass", "newpass")
+
+    assert result["success"] is False
+    assert "Network timeout" in result["error"]
