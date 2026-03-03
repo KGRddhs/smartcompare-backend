@@ -5,7 +5,7 @@ import asyncio
 import logging
 import time
 from typing import Optional, Dict
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from pydantic import BaseModel
 
 from app.services.structured_comparison_service import (
@@ -14,6 +14,7 @@ from app.services.structured_comparison_service import (
 )
 from app.api.auth_routes import get_optional_user
 from app.services.database_service import save_comparison, log_search
+from app.middleware.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +47,16 @@ class QuickCompareRequest(BaseModel):
 
 
 @router.post("/compare")
-async def text_compare(request: TextCompareRequest, user: Optional[Dict] = Depends(get_optional_user)):
+@limiter.limit("10/minute")
+async def text_compare(request: Request, body: TextCompareRequest, user: Optional[Dict] = Depends(get_optional_user)):
     """
     Compare products from natural language query.
-    
+
     Examples:
     - "iPhone 15 vs Galaxy S24"
     - "compare Nido milk with Almarai"
     - "MacBook Air M3 vs Dell XPS 13"
-    
+
     Returns structured comparison with:
     - Product specs
     - Regional prices (GCC)
@@ -62,17 +64,17 @@ async def text_compare(request: TextCompareRequest, user: Optional[Dict] = Depen
     - Pros/cons
     - Winner recommendation
     """
-    logger.info(f"Text comparison request: {request.query}")
+    logger.info(f"Text comparison request: {body.query}")
 
     service = get_comparison_service()
     start_time = time.time()
 
     result = await service.compare_from_text(
-        query=request.query,
-        region=request.region,
-        include_specs=request.include_specs,
-        include_reviews=request.include_reviews,
-        include_pros_cons=request.include_pros_cons
+        query=body.query,
+        region=body.region,
+        include_specs=body.include_specs,
+        include_reviews=body.include_reviews,
+        include_pros_cons=body.include_pros_cons
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -80,7 +82,7 @@ async def text_compare(request: TextCompareRequest, user: Optional[Dict] = Depen
     if not result.get("success"):
         # Log failed search
         asyncio.create_task(log_search(
-            query=request.query, input_type="text",
+            query=body.query, input_type="text",
             user_id=user.get("id") if user else None,
             success=False, error_message=result.get("error"),
             duration_ms=duration_ms,
@@ -98,14 +100,14 @@ async def text_compare(request: TextCompareRequest, user: Optional[Dict] = Depen
 
     # Fire-and-forget: log search + save history
     asyncio.create_task(log_search(
-        query=request.query, input_type="text", user_id=user_id,
+        query=body.query, input_type="text", user_id=user_id,
         products_found=product_names, success=True,
         cost=result.get("metadata", {}).get("total_cost", 0),
         duration_ms=duration_ms,
     ))
     if user_id:
         asyncio.create_task(save_comparison(
-            full_response=result, query=request.query,
+            full_response=result, query=body.query,
             input_type="text", user_id=user_id,
         ))
 
@@ -113,7 +115,9 @@ async def text_compare(request: TextCompareRequest, user: Optional[Dict] = Depen
 
 
 @router.get("/compare")
+@limiter.limit("10/minute")
 async def text_compare_get(
+    request: Request,
     q: str = Query(..., description="Comparison query, e.g., 'iPhone 15 vs S24'"),
     region: str = Query("bahrain", description="GCC region for pricing"),
     specs: bool = Query(True, description="Include specifications"),
@@ -171,10 +175,11 @@ async def text_compare_get(
 
 
 @router.post("/quick")
-async def quick_compare(request: QuickCompareRequest):
+@limiter.limit("10/minute")
+async def quick_compare(request: Request, body: QuickCompareRequest):
     """
     Quick comparison when you already know both product names.
-    
+
     Example:
     {
         "product1": "iPhone 15 Pro",
@@ -182,23 +187,23 @@ async def quick_compare(request: QuickCompareRequest):
         "region": "bahrain"
     }
     """
-    query = f"{request.product1} vs {request.product2}"
-    
+    query = f"{body.product1} vs {body.product2}"
+
     service = get_comparison_service()
     result = await service.compare_from_text(
         query=query,
-        region=request.region,
+        region=body.region,
         include_specs=True,
         include_reviews=True,
         include_pros_cons=True
     )
-    
+
     if not result.get("success"):
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Comparison failed")
         )
-    
+
     return result
 
 
@@ -298,21 +303,20 @@ async def parse_query(
 # ============================================
 
 @router.post("/compare/electronics")
-async def compare_electronics(request: TextCompareRequest):
+async def compare_electronics(request: Request, body: TextCompareRequest):
     """
     Optimized comparison for electronics.
     Emphasizes: specs, performance, features.
     """
-    # Add category hint to query
-    result = await text_compare(request)
+    result = await text_compare(request, body)
     return result
 
 
 @router.post("/compare/grocery")
-async def compare_grocery(request: TextCompareRequest):
+async def compare_grocery(request: Request, body: TextCompareRequest):
     """
     Optimized comparison for grocery items.
     Emphasizes: price per unit, ingredients, nutrition.
     """
-    result = await text_compare(request)
+    result = await text_compare(request, body)
     return result

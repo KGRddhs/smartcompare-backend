@@ -13,12 +13,13 @@ import uuid
 from pathlib import Path
 from typing import List, Optional, Dict
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, Request
 
 from app.services.openai_service import identify_products
 from app.services.structured_comparison_service import StructuredComparisonService
 from app.api.auth_routes import get_optional_user
 from app.services.database_service import log_search, save_comparison
+from app.middleware.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,9 @@ TEMP_DIR.mkdir(exist_ok=True)
 
 
 @router.post("/identify")
+@limiter.limit("10/minute")
 async def identify_and_compare(
+    request: Request,
     images: List[UploadFile] = File(..., description="1-4 product images"),
     region: str = Query("bahrain", description="Region for price search"),
     nocache: bool = Query(False, description="Bypass price/spec cache"),
