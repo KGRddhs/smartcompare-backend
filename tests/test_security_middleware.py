@@ -85,3 +85,68 @@ def test_security_headers_on_error_response():
     assert response.status_code == 404
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["X-Frame-Options"] == "DENY"
+
+
+# ── Rate Limiting tests ──
+
+def _make_rate_limited_app():
+    """Create FastAPI app with rate limiting."""
+    from fastapi import FastAPI, Request
+    from slowapi import _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from app.middleware.rate_limiter import limiter
+
+    test_app = FastAPI()
+    test_app.state.limiter = limiter
+    test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    @test_app.get("/limited")
+    @limiter.limit("2/minute")
+    async def limited_endpoint(request: Request):
+        return {"ok": True}
+
+    @test_app.get("/unlimited")
+    async def unlimited_endpoint(request: Request):
+        return {"ok": True}
+
+    return test_app
+
+
+def test_rate_limit_allows_under_limit():
+    """Requests under rate limit succeed."""
+    app = _make_rate_limited_app()
+    client = TestClient(app)
+    response = client.get("/limited")
+    assert response.status_code == 200
+
+
+def test_rate_limit_blocks_over_limit():
+    """Requests over rate limit return 429."""
+    app = _make_rate_limited_app()
+    client = TestClient(app)
+    # Use 2/minute limit -- first 2 succeed, third fails
+    client.get("/limited")
+    client.get("/limited")
+    response = client.get("/limited")
+    assert response.status_code == 429
+
+
+def test_rate_limit_returns_error_detail():
+    """429 response includes error detail."""
+    app = _make_rate_limited_app()
+    client = TestClient(app)
+    client.get("/limited")
+    client.get("/limited")
+    response = client.get("/limited")
+    assert response.status_code == 429
+    body = response.json()
+    assert "error" in body or "detail" in body
+
+
+def test_unlimited_endpoint_not_affected():
+    """Endpoints without @limiter.limit are not rate limited."""
+    app = _make_rate_limited_app()
+    client = TestClient(app)
+    for _ in range(20):
+        response = client.get("/unlimited")
+        assert response.status_code == 200
