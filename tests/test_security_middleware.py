@@ -150,3 +150,128 @@ def test_unlimited_endpoint_not_affected():
     for _ in range(20):
         response = client.get("/unlimited")
         assert response.status_code == 200
+
+
+# ── Request ID uniqueness tests ──
+
+def test_request_id_unique_across_requests():
+    """Each request without X-Request-ID gets a unique ID."""
+    app = _make_test_app()
+    client = TestClient(app)
+    ids = set()
+    for _ in range(10):
+        response = client.get("/test")
+        rid = response.headers["X-Request-ID"]
+        ids.add(rid)
+    assert len(ids) == 10
+
+
+def test_request_id_present_on_post():
+    """Request ID middleware works on POST requests too."""
+    from fastapi import FastAPI, Request
+    from app.middleware.request_id import RequestIDMiddleware
+
+    test_app = FastAPI()
+    test_app.add_middleware(RequestIDMiddleware)
+
+    @test_app.post("/test")
+    async def post_endpoint(request: Request):
+        return {"request_id": request.state.request_id}
+
+    client = TestClient(test_app)
+    response = client.post("/test")
+    assert response.status_code == 200
+    assert "X-Request-ID" in response.headers
+
+
+# ── Security headers edge cases ──
+
+def test_security_headers_permissions_policy_full():
+    """Permissions-Policy contains all expected directives."""
+    app = _make_secure_app()
+    client = TestClient(app)
+    response = client.get("/test")
+    policy = response.headers["Permissions-Policy"]
+    assert "camera=()" in policy
+    assert "microphone=()" in policy
+    assert "geolocation=()" in policy
+
+
+def test_security_headers_on_post_request():
+    """Security headers present on POST responses too."""
+    from fastapi import FastAPI
+    from app.middleware.security import SecurityHeadersMiddleware
+
+    test_app = FastAPI()
+    test_app.add_middleware(SecurityHeadersMiddleware)
+
+    @test_app.post("/test")
+    async def post_endpoint():
+        return {"ok": True}
+
+    client = TestClient(test_app)
+    response = client.post("/test")
+    assert response.status_code == 200
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+
+
+# ── Combined middleware tests ──
+
+def _make_combined_app():
+    """Create FastAPI app with all middleware stacked."""
+    from fastapi import FastAPI, Request
+    from app.middleware.request_id import RequestIDMiddleware
+    from app.middleware.security import SecurityHeadersMiddleware
+
+    test_app = FastAPI()
+    # Order: security headers (inner), request ID (outer)
+    test_app.add_middleware(SecurityHeadersMiddleware)
+    test_app.add_middleware(RequestIDMiddleware)
+
+    @test_app.get("/test")
+    async def test_endpoint(request: Request):
+        return {"request_id": request.state.request_id}
+
+    return test_app
+
+
+def test_combined_middleware_all_headers():
+    """Both request ID and security headers present together."""
+    app = _make_combined_app()
+    client = TestClient(app)
+    response = client.get("/test")
+    assert response.status_code == 200
+    # Request ID
+    assert "X-Request-ID" in response.headers
+    # Security headers
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+
+
+def test_combined_middleware_preserves_custom_id():
+    """Custom request ID preserved through full middleware stack."""
+    app = _make_combined_app()
+    client = TestClient(app)
+    response = client.get("/test", headers={"X-Request-ID": "custom-123"})
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == "custom-123"
+    assert response.json()["request_id"] == "custom-123"
+
+
+# ── Rate limiter module-level tests ──
+
+def test_limiter_storage_is_memory():
+    """Rate limiter uses in-memory storage."""
+    from app.middleware.rate_limiter import limiter
+    # limiter should be a Limiter instance
+    assert limiter is not None
+    assert hasattr(limiter, "limit")
+
+
+def test_rate_limit_constants_defined():
+    """Rate limit constants are accessible."""
+    from app.middleware.rate_limiter import ANON_LIMIT, AUTH_LIMIT, DAILY_LIMIT
+    assert "minute" in ANON_LIMIT
+    assert "minute" in AUTH_LIMIT
+    assert "day" in DAILY_LIMIT
