@@ -89,47 +89,48 @@ async def update_user_subscription(
 # ============================================
 
 async def save_comparison(
-    user_id: str,
-    products: List[Dict],
-    winner_index: int,
-    recommendation: str,
-    key_differences: List[str],
-    data_source: str,
-    total_cost: float,
-    image_urls: Optional[List[str]] = None
+    full_response: Dict,
+    query: str,
+    input_type: str = "text",
+    user_id: Optional[str] = None,
 ) -> Optional[Dict]:
     """
     Save a comparison to the database.
-    
+
     Args:
-        user_id: User's ID
-        products: List of product dicts with price data
-        winner_index: Index of winning product
-        recommendation: AI recommendation text
-        key_differences: List of key differences
-        data_source: "live", "cached", or "estimated"
-        total_cost: API cost in USD
-        image_urls: Optional list of image URLs
-    
+        full_response: The entire API response dict (products, comparison, metadata, etc.)
+        query: Original search query
+        input_type: "text" or "camera"
+        user_id: Authenticated user's ID, or None for anonymous
+
     Returns:
-        Saved comparison record or None
+        Saved comparison record or None on failure
     """
     try:
         client = get_supabase_client()
-        
-        response = client.table("comparisons").insert({
-            "user_id": user_id,
-            "image_urls": image_urls or [],
-            "products": products,
-            "winner_index": winner_index,
-            "recommendation": recommendation,
-            "key_differences": key_differences,
-            "data_source": data_source,
-            "total_cost": total_cost
-        }).execute()
-        
+
+        # Extract product names for indexing
+        products = full_response.get("products", [])
+        product_names = []
+        for p in products:
+            name = f"{p.get('brand', '')} {p.get('name', '')}".strip()
+            if name:
+                product_names.append(name)
+
+        record = {
+            "full_response": full_response,
+            "query": query,
+            "input_type": input_type,
+            "product_names": product_names,
+        }
+
+        if user_id:
+            record["user_id"] = user_id
+
+        response = client.table("comparisons").insert(record).execute()
         return response.data[0] if response.data else None
     except Exception as e:
+        # Fire-and-forget — never break the comparison response
         print(f"Error saving comparison: {e}")
         return None
 
