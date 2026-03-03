@@ -44,6 +44,7 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
   const [selectedItem, setSelectedItem] = useState<HistoryItem | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [authError, setAuthError] = useState(false);
 
   // Reload history when screen comes into focus
   useFocusEffect(
@@ -54,13 +55,18 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
 
   const loadHistory = async () => {
     try {
+      setAuthError(false);
       const data = await getComparisonHistory(50, 0, searchQuery || undefined);
       setHistory(data.comparisons || []);
       setTotal(data.total || 0);
     } catch (error) {
-      console.error('Error loading history:', error);
-      // Don't show alert for auth errors — user may not be logged in
-      if ((error as any)?.response?.status !== 401) {
+      const status = (error as any)?.response?.status;
+      if (status === 401) {
+        setAuthError(true);
+        setHistory([]);
+        setTotal(0);
+      } else {
+        console.error('Error loading history:', error);
         Alert.alert('Error', 'Failed to load history');
       }
     } finally {
@@ -365,16 +371,31 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
         />
       </View>
 
-      <FlatList
-        data={history}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={renderEmpty}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      />
+      {authError ? (
+        <View style={styles.authPrompt}>
+          <Text style={styles.authPromptTitle}>Sign In Required</Text>
+          <Text style={styles.authPromptText}>
+            Sign in to view your comparison history.
+          </Text>
+          <TouchableOpacity
+            style={styles.signInButton}
+            onPress={() => navigation.navigate('Login' as any)}
+          >
+            <Text style={styles.signInButtonText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={history}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={renderEmpty}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        />
+      )}
 
       {renderModal()}
     </SafeAreaView>
@@ -550,6 +571,35 @@ const styles = StyleSheet.create({
   },
   startButtonText: {
     color: '#FFF',
+    fontWeight: '600',
+  },
+  authPrompt: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  authPromptTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  authPromptText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  signInButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  signInButtonText: {
+    color: '#FFF',
+    fontSize: 16,
     fontWeight: '600',
   },
   // Modal Styles
