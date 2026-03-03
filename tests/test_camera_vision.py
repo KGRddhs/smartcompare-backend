@@ -225,6 +225,79 @@ class TestDetectMimeType:
         assert "image/heic" not in SUPPORTED_MIME_TYPES
 
 
+# --- Endpoint-level HEIC rejection tests ---
+
+class TestEndpointHeicRejection:
+    """Test that the /api/v1/image/identify endpoint rejects HEIC at HTTP level."""
+
+    def test_heic_upload_returns_400(self):
+        """Uploading a HEIC image should return 400 with clear error message."""
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        # Construct HEIC magic bytes
+        heic_content = b'\x00\x00\x00\x1c' + b'ftyp' + b'heic' + b'\x00' * 100
+        response = client.post(
+            "/api/v1/image/identify?region=bahrain",
+            files=[("images", ("photo.jpg", heic_content, "image/jpeg"))],
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert "unsupported format" in data["detail"].lower()
+        assert "image/heic" in data["detail"]
+
+    def test_jpeg_upload_passes_validation(self):
+        """Uploading a proper JPEG should pass MIME validation (may fail at vision step)."""
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        # Minimal JPEG header (will fail at vision but should pass MIME check)
+        jpeg_content = b'\xff\xd8\xff\xe0' + b'\x00' * 100
+        with patch("app.api.image_routes.identify_products", new_callable=AsyncMock) as mock_vision:
+            mock_vision.return_value = {"products": [], "cost": 0.001}
+            response = client.post(
+                "/api/v1/image/identify?region=bahrain",
+                files=[("images", ("photo.jpg", jpeg_content, "image/jpeg"))],
+            )
+        # Should not be 400 (MIME check passed); will be 200 with error action (0 products)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["action"] == "error"  # No products identified
+
+    def test_multiple_images_one_heic_rejects(self):
+        """If any image in a batch is HEIC, the whole request should fail."""
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        jpeg_content = b'\xff\xd8\xff\xe0' + b'\x00' * 100
+        heic_content = b'\x00\x00\x00\x1c' + b'ftyp' + b'heic' + b'\x00' * 100
+        response = client.post(
+            "/api/v1/image/identify?region=bahrain",
+            files=[
+                ("images", ("photo1.jpg", jpeg_content, "image/jpeg")),
+                ("images", ("photo2.jpg", heic_content, "image/jpeg")),
+            ],
+        )
+        assert response.status_code == 400
+        assert "Image 2" in response.json()["detail"]
+
+    def test_empty_image_returns_400(self):
+        """Uploading an empty file should return 400."""
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/image/identify?region=bahrain",
+            files=[("images", ("photo.jpg", b"", "image/jpeg"))],
+        )
+        assert response.status_code == 400
+        assert "empty" in response.json()["detail"].lower()
+
+
 # --- Live vision test (real GPT-4o-mini call) ---
 
 @pytest.mark.live_unit
