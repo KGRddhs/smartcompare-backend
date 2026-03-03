@@ -178,6 +178,23 @@ async def get_comparison_by_id(comparison_id: str) -> Optional[Dict]:
         return None
 
 
+async def delete_comparison(comparison_id: str, user_id: str) -> bool:
+    """Delete a comparison (only if owned by user)."""
+    try:
+        client = get_supabase_client()
+        response = (
+            client.table("comparisons")
+            .delete()
+            .eq("id", comparison_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return len(response.data) > 0 if response.data else False
+    except Exception as e:
+        print(f"Error deleting comparison: {e}")
+        return False
+
+
 async def get_user_comparison_count(user_id: str) -> int:
     """Get total number of comparisons for a user"""
     try:
