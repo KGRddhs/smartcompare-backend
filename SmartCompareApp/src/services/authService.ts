@@ -236,7 +236,7 @@ async function saveToken(token: string): Promise<void> {
 /**
  * Clear session (logout locally)
  */
-async function clearSession(): Promise<void> {
+export async function clearSession(): Promise<void> {
   try {
     await AsyncStorage.multiRemove([USER_STORAGE_KEY, TOKEN_STORAGE_KEY, REFRESH_TOKEN_KEY]);
   } catch (error) {

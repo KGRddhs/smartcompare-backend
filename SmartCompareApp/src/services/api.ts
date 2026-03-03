@@ -15,6 +15,21 @@ const api = axios.create({
   timeout: 120000, // 2 minutes for image processing
 });
 
+// Auth interceptor — attach JWT to every request
+api.interceptors.request.use(
+  async (config) => {
+    // Import here to avoid circular dependency
+    const { getToken } = require('./authService');
+    const token = await getToken();
+    if (token) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 /**
  * Compare products from images (iOS & Android compatible)
  */
