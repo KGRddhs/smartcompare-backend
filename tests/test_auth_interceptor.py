@@ -1275,3 +1275,260 @@ async def test_refresh_session_includes_user_data():
     assert result["success"] is True
     assert result["user"]["id"] == "uid-refresh"
     assert result["user"]["email"] == "refresh@test.com"
+
+
+# ── Deeper edge cases (team lead suggestions) ──
+
+@pytest.mark.asyncio
+async def test_update_profile_whitespace_only_name_passes_pydantic():
+    """Pydantic min_length counts whitespace chars, so '  ' (2 spaces) is valid."""
+    from app.api.auth_routes import UpdateProfileRequest
+    # Two spaces pass min_length=2 — this is by design; frontend should trim
+    req = UpdateProfileRequest(display_name="  ")
+    assert req.display_name == "  "
+
+
+@pytest.mark.asyncio
+async def test_update_profile_boundary_2_chars():
+    """Display name with exactly 2 characters should be valid."""
+    from app.api.auth_routes import UpdateProfileRequest
+    req = UpdateProfileRequest(display_name="AB")
+    assert req.display_name == "AB"
+
+
+@pytest.mark.asyncio
+async def test_update_profile_boundary_100_chars():
+    """Display name with exactly 100 characters should be valid."""
+    from app.api.auth_routes import UpdateProfileRequest
+    name = "A" * 100
+    req = UpdateProfileRequest(display_name=name)
+    assert len(req.display_name) == 100
+
+
+@pytest.mark.asyncio
+async def test_update_email_same_email_succeeds():
+    """Updating to the same email should still succeed (Supabase handles it)."""
+    from app.services.auth_service import update_user_email
+
+    mock_admin = MagicMock()
+
+    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_email("user-1", "same@example.com")
+
+    assert result["success"] is True
+    mock_admin.auth.admin.update_user_by_id.assert_called_once_with(
+        "user-1", {"email": "same@example.com"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_change_password_same_as_current_succeeds():
+    """Changing password to same value should succeed (Supabase allows it)."""
+    from app.services.auth_service import change_user_password
+
+    mock_auth_client = MagicMock()
+    mock_admin_client = MagicMock()
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
+        result = await change_user_password("user-1", "e@e.com", "samepass", "samepass")
+
+    assert result["success"] is True
+    mock_admin_client.auth.admin.update_user_by_id.assert_called_once_with(
+        "user-1", {"password": "samepass"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_change_password_admin_update_fails_after_login():
+    """If login succeeds but admin password update fails, return error."""
+    from app.services.auth_service import change_user_password
+
+    mock_auth_client = MagicMock()
+    # Login succeeds
+    mock_auth_client.auth.sign_in_with_password.return_value = MagicMock()
+
+    mock_admin_client = MagicMock()
+    # But admin update fails
+    mock_admin_client.auth.admin.update_user_by_id.side_effect = Exception("Admin API rate limit")
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
+        result = await change_user_password("user-1", "e@e.com", "correct", "newpass")
+
+    assert result["success"] is False
+    assert "Admin API rate limit" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_social_login_empty_string_nonce_not_sent():
+    """Empty string nonce should be treated as falsy and not included."""
+    from app.services.auth_service import sign_in_with_social
+
+    mock_user = MagicMock()
+    mock_user.id = "uid"
+    mock_user.email = "e@e.com"
+
+    mock_session = MagicMock()
+    mock_session.access_token = "t"
+    mock_session.refresh_token = "r"
+    mock_session.expires_at = 1
+
+    mock_response = MagicMock()
+    mock_response.user = mock_user
+    mock_response.session = mock_session
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_id_token.return_value = mock_response
+
+    mock_admin_client = MagicMock()
+    mock_admin_client.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "uid"}])
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
+        await sign_in_with_social("google", "token", nonce="")
+
+    call_args = mock_auth_client.auth.sign_in_with_id_token.call_args[0][0]
+    assert "nonce" not in call_args
+
+
+@pytest.mark.asyncio
+async def test_social_login_user_table_check_fails_gracefully():
+    """If checking existing user in users table fails, the whole call should still handle it."""
+    from app.services.auth_service import sign_in_with_social
+
+    mock_user = MagicMock()
+    mock_user.id = "uid"
+    mock_user.email = "e@e.com"
+
+    mock_session = MagicMock()
+    mock_session.access_token = "t"
+    mock_session.refresh_token = "r"
+    mock_session.expires_at = 1
+
+    mock_response = MagicMock()
+    mock_response.user = mock_user
+    mock_response.session = mock_session
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_id_token.return_value = mock_response
+
+    # The SELECT to check existing user throws
+    mock_admin_client = MagicMock()
+    mock_admin_client.table.return_value.select.return_value.eq.return_value.execute.side_effect = Exception("DB connection lost")
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
+        result = await sign_in_with_social("google", "token")
+
+    # The whole function is wrapped in try/except, so it should return error
+    assert result["success"] is False
+    assert "DB connection lost" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_social_login_user_insert_fails_gracefully():
+    """If creating user in users table fails, the whole call should handle it."""
+    from app.services.auth_service import sign_in_with_social
+
+    mock_user = MagicMock()
+    mock_user.id = "new-uid"
+    mock_user.email = "new@e.com"
+
+    mock_session = MagicMock()
+    mock_session.access_token = "t"
+    mock_session.refresh_token = "r"
+    mock_session.expires_at = 1
+
+    mock_response = MagicMock()
+    mock_response.user = mock_user
+    mock_response.session = mock_session
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_id_token.return_value = mock_response
+
+    # User doesn't exist
+    mock_admin_client = MagicMock()
+    mock_admin_client.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+    # But insert fails
+    mock_admin_client.table.return_value.insert.return_value.execute.side_effect = Exception("Duplicate key")
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
+        result = await sign_in_with_social("apple", "token")
+
+    assert result["success"] is False
+    assert "Duplicate key" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_social_login_request_nonce_defaults_none():
+    """SocialLoginRequest nonce field defaults to None when not provided."""
+    from app.api.auth_routes import SocialLoginRequest
+    req = SocialLoginRequest(provider="google", id_token="tok")
+    assert req.nonce is None
+
+
+@pytest.mark.asyncio
+async def test_social_login_message_includes_provider():
+    """Success response message should include the provider name."""
+    from app.services.auth_service import sign_in_with_social
+
+    mock_user = MagicMock()
+    mock_user.id = "uid"
+    mock_user.email = "e@e.com"
+
+    mock_session = MagicMock()
+    mock_session.access_token = "t"
+    mock_session.refresh_token = "r"
+    mock_session.expires_at = 1
+
+    mock_response = MagicMock()
+    mock_response.user = mock_user
+    mock_response.session = mock_session
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.sign_in_with_id_token.return_value = mock_response
+
+    mock_admin_client = MagicMock()
+    mock_admin_client.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "uid"}])
+
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth_client), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
+        result = await sign_in_with_social("google", "token")
+
+    assert result["message"] == "Signed in with google"
+
+
+@pytest.mark.asyncio
+async def test_change_password_new_password_exactly_6_chars():
+    """New password with exactly 6 chars (minimum) should be valid."""
+    from app.api.auth_routes import ChangePasswordRequest
+    req = ChangePasswordRequest(current_password="whatever", new_password="123456")
+    assert req.new_password == "123456"
+
+
+@pytest.mark.asyncio
+async def test_change_password_new_password_5_chars_invalid():
+    """New password with 5 chars (below minimum) should be rejected by Pydantic."""
+    from app.api.auth_routes import ChangePasswordRequest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        ChangePasswordRequest(current_password="whatever", new_password="12345")
+
+
+@pytest.mark.asyncio
+async def test_update_email_admin_api_error_with_unknown_message():
+    """update_user_email with unrecognized error returns raw error string."""
+    from app.services.auth_service import update_user_email
+
+    mock_admin = MagicMock()
+    mock_admin.auth.admin.update_user_by_id.side_effect = Exception("Internal server error 500")
+
+    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_email("user-1", "new@example.com")
+
+    assert result["success"] is False
+    assert "Internal server error 500" in result["error"]
+    # Should NOT say "Email already in use"
+    assert "already in use" not in result["error"]
