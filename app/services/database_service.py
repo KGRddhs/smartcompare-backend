@@ -3,7 +3,7 @@ Database Service - Supabase integration for storing comparisons and user data
 """
 import os
 from typing import Dict, List, Optional
-from datetime import datetime, date
+from datetime import datetime
 from supabase import create_client, Client
 
 # Initialize Supabase client
@@ -212,110 +212,99 @@ async def get_user_comparison_count(user_id: str) -> int:
 
 
 # ============================================
-# Daily Usage Functions (Database backup for Redis)
+# Search Logging Functions
 # ============================================
 
-async def get_daily_usage_db(user_id: str) -> int:
-    """Get user's daily usage from database (backup for Redis)"""
+async def log_search(
+    query: str,
+    input_type: str = "text",
+    user_id: Optional[str] = None,
+    products_found: Optional[List[str]] = None,
+    success: bool = True,
+    error_message: Optional[str] = None,
+    cost: float = 0.0,
+    duration_ms: int = 0,
+) -> None:
+    """
+    Log a search/comparison request for analytics. Fire-and-forget.
+
+    Args:
+        query: The search query
+        input_type: "text" or "camera"
+        user_id: Authenticated user ID or None
+        products_found: List of product names identified
+        success: Whether the comparison succeeded
+        error_message: Error message if failed
+        cost: Total API cost in USD
+        duration_ms: Request duration in milliseconds
+    """
     try:
         client = get_supabase_client()
-        today = date.today().isoformat()
-        
-        response = (
-            client.table("daily_usage")
-            .select("comparison_count")
-            .eq("user_id", user_id)
-            .eq("usage_date", today)
-            .single()
-            .execute()
-        )
-        
-        return response.data["comparison_count"] if response.data else 0
-    except Exception as e:
-        # Record might not exist
-        return 0
+        record = {
+            "query": query,
+            "input_type": input_type,
+            "products_found": products_found or [],
+            "success": success,
+            "cost": cost,
+            "duration_ms": duration_ms,
+        }
+        if user_id:
+            record["user_id"] = user_id
+        if error_message:
+            record["error_message"] = error_message
 
-
-async def increment_daily_usage_db(user_id: str) -> int:
-    """Increment user's daily usage in database"""
-    try:
-        client = get_supabase_client()
-        today = date.today().isoformat()
-        
-        # Try to get existing record
-        existing = (
-            client.table("daily_usage")
-            .select("*")
-            .eq("user_id", user_id)
-            .eq("usage_date", today)
-            .execute()
-        )
-        
-        if existing.data:
-            # Update existing
-            new_count = existing.data[0]["comparison_count"] + 1
-            client.table("daily_usage").update({
-                "comparison_count": new_count
-            }).eq("id", existing.data[0]["id"]).execute()
-            return new_count
-        else:
-            # Insert new
-            client.table("daily_usage").insert({
-                "user_id": user_id,
-                "usage_date": today,
-                "comparison_count": 1
-            }).execute()
-            return 1
+        client.table("search_logs").insert(record).execute()
     except Exception as e:
-        print(f"Error incrementing daily usage: {e}")
-        return 0
+        # Never fail the request for logging
+        print(f"Error logging search: {e}")
 
 
 # ============================================
-# Price Cache Functions (Database backup for Redis)
+# Product Dedup Functions
 # ============================================
 
-async def cache_price_db(
-    product_key: str,
-    price: float,
-    currency: str,
-    retailer: Optional[str] = None,
-    confidence: str = "medium"
-) -> bool:
-    """Cache price in database (backup for Redis)"""
+async def upsert_product(
+    canonical_name: str,
+    brand: Optional[str] = None,
+    category: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Upsert a product by exact canonical_name. Returns product ID.
+    Updates last_seen_at on existing records.
+    """
     try:
         client = get_supabase_client()
-        
-        # Upsert (insert or update)
-        client.table("price_cache").upsert({
-            "product_key": product_key,
-            "price": price,
-            "currency": currency,
-            "retailer": retailer,
-            "confidence": confidence,
-            "updated_at": datetime.utcnow().isoformat()
-        }).execute()
-        
-        return True
+        response = client.table("products").upsert(
+            {
+                "canonical_name": canonical_name,
+                "brand": brand,
+                "category": category,
+                "updated_at": datetime.utcnow().isoformat(),
+            },
+            on_conflict="canonical_name",
+        ).execute()
+        return response.data[0]["id"] if response.data else None
     except Exception as e:
-        print(f"Error caching price in DB: {e}")
-        return False
-
-
-async def get_cached_price_db(product_key: str) -> Optional[Dict]:
-    """Get cached price from database"""
-    try:
-        client = get_supabase_client()
-        response = (
-            client.table("price_cache")
-            .select("*")
-            .eq("product_key", product_key)
-            .single()
-            .execute()
-        )
-        return response.data
-    except Exception as e:
+        print(f"Error upserting product: {e}")
         return None
+
+
+async def upsert_products_from_comparison(full_response: Dict) -> List[str]:
+    """
+    Upsert all products from a comparison response. Returns list of product IDs.
+    """
+    product_ids = []
+    for product in full_response.get("products", []):
+        name = f"{product.get('brand', '')} {product.get('name', '')}".strip()
+        if name:
+            pid = await upsert_product(
+                canonical_name=name,
+                brand=product.get("brand"),
+                category=product.get("category"),
+            )
+            if pid:
+                product_ids.append(pid)
+    return product_ids
 
 
 # ============================================
