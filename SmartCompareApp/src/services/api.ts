@@ -274,10 +274,18 @@ export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
 /**
  * Get comparison history
  */
-export async function getComparisonHistory(limit: number = 20, offset: number = 0) {
+export async function getComparisonHistory(limit: number = 20, offset: number = 0, search?: string) {
   const response = await api.get('/api/v1/comparisons/history', {
-    params: { limit, offset },
+    params: { limit, offset, ...(search ? { search } : {}) },
   });
+  return response.data;
+}
+
+/**
+ * Delete a comparison from history
+ */
+export async function deleteComparison(comparisonId: string) {
+  const response = await api.delete(`/api/v1/comparisons/${comparisonId}`);
   return response.data;
 }
 
