@@ -1,6 +1,7 @@
 """
 Text Comparison Routes - API endpoints for text-based product comparisons
 """
+import asyncio
 import logging
 from typing import Optional, Dict
 from fastapi import APIRouter, HTTPException, Query, Depends
@@ -11,6 +12,7 @@ from app.services.structured_comparison_service import (
     get_regional_prices
 )
 from app.api.auth_routes import get_optional_user
+from app.services.database_service import save_comparison
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +78,16 @@ async def text_compare(request: TextCompareRequest, user: Optional[Dict] = Depen
             status_code=400,
             detail=result.get("error", "Comparison failed")
         )
-    
+
+    # Fire-and-forget: save to history if user is authenticated
+    if user and user.get("id"):
+        asyncio.create_task(save_comparison(
+            full_response=result,
+            query=request.query,
+            input_type="text",
+            user_id=user["id"],
+        ))
+
     return result
 
 
@@ -107,6 +118,15 @@ async def text_compare_get(
             status_code=400,
             detail=result.get("error", "Comparison failed")
         )
+
+    # Fire-and-forget: save to history if user is authenticated
+    if user and user.get("id"):
+        asyncio.create_task(save_comparison(
+            full_response=result,
+            query=q,
+            input_type="text",
+            user_id=user["id"],
+        ))
 
     return result
 
