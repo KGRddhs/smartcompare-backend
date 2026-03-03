@@ -2,14 +2,15 @@
 Text Comparison Routes - API endpoints for text-based product comparisons
 """
 import logging
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from typing import Optional, Dict
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 
 from app.services.structured_comparison_service import (
     get_comparison_service,
     get_regional_prices
 )
+from app.api.auth_routes import get_optional_user
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class QuickCompareRequest(BaseModel):
 
 
 @router.post("/compare")
-async def text_compare(request: TextCompareRequest):
+async def text_compare(request: TextCompareRequest, user: Optional[Dict] = Depends(get_optional_user)):
     """
     Compare products from natural language query.
     
@@ -86,7 +87,8 @@ async def text_compare_get(
     specs: bool = Query(True, description="Include specifications"),
     reviews: bool = Query(True, description="Include reviews"),
     pros_cons: bool = Query(True, description="Include pros/cons"),
-    nocache: bool = Query(False, description="Bypass cache for fresh data")
+    nocache: bool = Query(False, description="Bypass cache for fresh data"),
+    user: Optional[Dict] = Depends(get_optional_user),
 ):
     """GET version of text comparison for easy testing."""
     service = get_comparison_service()
