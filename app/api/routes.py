@@ -23,10 +23,12 @@ from app.services.database_service import (
     get_user_comparisons,
     get_comparison_by_id,
     get_user_comparison_count,
+    delete_comparison,
     health_check as db_health_check,
     create_user,
     get_user_by_email
 )
+from app.api.auth_routes import get_current_user
 from app.models.schemas import (
     ComparisonResponse,
     ComparisonRequest,
@@ -343,24 +345,37 @@ async def quick_compare_endpoint(request: ComparisonRequest):
         )
 
 
-@router.get("/comparisons/history", response_model=ComparisonHistoryResponse)
+@router.get("/comparisons/history")
 async def comparison_history(
     limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    search: Optional[str] = Query(None, description="Search by product name or query"),
+    user: dict = Depends(get_current_user),
 ):
-    """Get user's comparison history"""
-    
-    user = await get_or_create_dev_user()
-    
-    comparisons = await get_user_comparisons(user["id"], limit, offset)
-    total = await get_user_comparison_count(user["id"])
-    
+    """Get comparison history for authenticated user."""
+    user_id = user["id"]
+
+    comparisons = await get_user_comparisons(user_id, limit, offset, search=search)
+    total = await get_user_comparison_count(user_id)
+
     return {
         "comparisons": comparisons,
         "total": total,
         "page": (offset // limit) + 1,
-        "per_page": limit
+        "per_page": limit,
     }
+
+
+@router.delete("/comparisons/{comparison_id}")
+async def delete_comparison_endpoint(
+    comparison_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Delete a comparison from history (only own comparisons)."""
+    deleted = await delete_comparison(comparison_id, user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Comparison not found")
+    return {"success": True, "deleted_id": comparison_id}
 
 
 @router.get("/comparisons/{comparison_id}")
