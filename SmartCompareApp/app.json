@@ -13,9 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "bundleIdentifier": "com.smartcompare.app",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.smartcompare.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -27,7 +29,20 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SmartCompare needs camera access to photograph products for comparison."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SmartCompare needs photo library access to identify products from your photos."
+        }
+      ],
+      "expo-image-manipulator"
     ]
   }
 }
