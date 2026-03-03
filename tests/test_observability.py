@@ -121,3 +121,86 @@ def test_configure_logging_quiets_noisy_libraries():
 
     # Reset
     configure_logging("INFO")
+
+
+# ── Error Handler Middleware tests ──
+
+from starlette.testclient import TestClient
+
+
+def _make_error_app():
+    """Create FastAPI app with error handler middleware."""
+    from fastapi import FastAPI, HTTPException
+    from app.middleware.error_handler import ErrorHandlerMiddleware
+
+    test_app = FastAPI()
+    test_app.add_middleware(ErrorHandlerMiddleware)
+
+    @test_app.get("/ok")
+    async def ok():
+        return {"status": "ok"}
+
+    @test_app.get("/crash")
+    async def crash():
+        raise RuntimeError("Something broke")
+
+    @test_app.get("/http-error")
+    async def http_error():
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return test_app
+
+
+def test_error_handler_passes_normal_responses():
+    """Normal responses pass through unchanged."""
+    app = _make_error_app()
+    client = TestClient(app)
+    response = client.get("/ok")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_error_handler_catches_unhandled_exception():
+    """Unhandled exceptions return clean 500 JSON, not stack trace."""
+    app = _make_error_app()
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/crash")
+    assert response.status_code == 500
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"] == "Internal server error"
+    # Stack trace NOT leaked
+    assert "RuntimeError" not in json.dumps(body)
+    assert "Something broke" not in json.dumps(body)
+
+
+def test_error_handler_includes_request_id():
+    """500 response includes request_id if available."""
+    from app.middleware.request_id import RequestIDMiddleware
+
+    app = _make_error_app()
+    # Add request ID middleware (outermost, runs before error handler)
+    app.add_middleware(RequestIDMiddleware)
+
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/crash", headers={"X-Request-ID": "test-123"})
+    assert response.status_code == 500
+    assert response.json()["request_id"] == "test-123"
+
+
+def test_error_handler_lets_http_exceptions_through():
+    """HTTPExceptions are NOT caught -- FastAPI handles them normally."""
+    app = _make_error_app()
+    client = TestClient(app)
+    response = client.get("/http-error")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Not found"
+
+
+def test_error_handler_returns_json_content_type():
+    """500 error response has application/json content type."""
+    app = _make_error_app()
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/crash")
+    assert response.status_code == 500
+    assert "application/json" in response.headers["content-type"]
