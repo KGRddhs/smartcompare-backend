@@ -4,7 +4,7 @@ Database Service - Supabase integration for storing comparisons and user data
 import logging
 import os
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ async def update_user_subscription(
         client = get_supabase_client()
         update_data = {
             "subscription_tier": tier,
-            "updated_at": datetime.utcnow().isoformat()
+            "updated_at": datetime.now(timezone.utc).isoformat()
         }
         if expires_at:
             update_data["subscription_expires_at"] = expires_at.isoformat()
@@ -282,7 +282,7 @@ async def upsert_product(
                 "canonical_name": canonical_name,
                 "brand": brand,
                 "category": category,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             },
             on_conflict="canonical_name",
         ).execute()

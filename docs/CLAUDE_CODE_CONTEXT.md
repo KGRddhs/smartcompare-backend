@@ -1,7 +1,7 @@
 # SmartCompare - Complete Project Knowledge Transfer
 
 > **Purpose:** This document contains EVERYTHING needed to continue development without context loss.
-> **Last Updated:** February 22, 2026 (Session 11: Fact-Checking)
+> **Last Updated:** March 3, 2026 (Session 13: Test Verification & Supabase Fix)
 > **Author:** Transferred from Claude.ai conversation (Days 1-7), updated by Claude Code sessions
 
 ---
@@ -869,14 +869,14 @@ DEBUG_MODE=true
 ## Automated Tests (pytest)
 
 ```bash
-# All unit tests (fast, free, no API calls) — 98 tests, ~2s
+# All unit tests (fast, free, no API calls) — 210 tests, ~3s
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb scraping, Serper, GPT vision) — adds ~$0.03
 python -m pytest tests/ -v -m "not (live_db or integration)"
 
-# Drug database unit tests only (6 live_db tests auto-skip without Supabase)
-python -m pytest tests/test_drug_database_service.py -v -m "not live_db"
+# Live database tests (needs Supabase credentials in .env)
+python -m pytest tests/test_drug_database_service.py -v -m live_db
 
 # Integration tests — hits live Railway, costs ~$0.06, takes ~4 min
 python -m pytest tests/test_integration.py -v -m integration
@@ -885,21 +885,27 @@ python -m pytest tests/test_integration.py -v -m integration
 python -m pytest tests/ -v --timeout=180
 ```
 
+**Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv`, so Supabase credentials are available for all tests.
+
 ### Test Files
 | File | Tests | Type | Notes |
 |------|-------|------|-------|
+| `tests/test_fact_checking.py` | 48 | Unit | Spec citations, shopping cross-validation, review sentiment, price verification |
+| `tests/test_auth_interceptor.py` | 45 | Unit | Auth endpoints, token verify, optional/required user, profile, password reset |
 | `tests/test_error_paths.py` | 31 | Unit | Currency conversion, freshness calc, price parsing, supplement detection, title/number matching |
 | `tests/test_rating_tiers.py` | 16 | Unit + Live | Tier classification, consensus logic, accessory filtering, invalid ratings |
 | `tests/test_price_fallback.py` | 12 | Unit + Live | Shopping extraction, accessory filter, high-value min price, currency conversion, all-tiers-fail |
+| `tests/test_pharmacy_jsonld.py` | 12 | Unit | Pharmacy JSON-LD price parsing |
+| `tests/test_drug_database_service.py` | 11 | Unit + Live DB | 5 local + 6 `live_db` (need Supabase) |
 | `tests/test_camera_vision.py` | 10 | Unit + Live | Vision pipeline, JSON cleanup, size_or_count enrichment, field normalization |
+| `tests/test_history.py` | 10 | Unit | save_comparison, get history, delete, search, product name extraction |
+| `tests/test_db_improvements.py` | 9 | Unit | log_search, upsert_product, error handling |
+| `tests/test_url_extraction.py` | 8 | Unit | URL extraction for price + rating links |
 | `tests/test_iherb_scraping.py` | 7 | Unit + Live | Word normalization, live iHerb scraping, brand filtering |
 | `tests/test_unified_search.py` | 4 | Unit + Live | Search sharing (specs/reviews reuse), cost budget tracking |
 | `tests/test_singleton_state.py` | 3 | Unit | Singleton pattern, cache leak prevention, state reset between requests |
-| `tests/test_url_extraction.py` | 8 | Unit | URL extraction for price + rating links |
-| `tests/test_pharmacy_jsonld.py` | 12 | Unit | Pharmacy JSON-LD price parsing |
-| `tests/test_drug_database_service.py` | 11 | Unit + Live DB | 5 local + 6 `live_db` (need Supabase) |
 | `tests/test_integration.py` | 6 | Integration | Live Railway: phones, laptops, supplements (iHerb + pharmacy), grocery, shoes |
-| **Total** | **120** | | **98 free unit tests + 10 live_unit + 6 live_db + 6 integration** |
+| **Total** | **232** | | **194 free unit + 10 live_unit + 6 live_db + 6 integration** |
 
 ### Pytest Markers
 | Marker | Purpose | Run command |
@@ -937,7 +943,7 @@ npx expo start
 
 # 14. FUTURE ROADMAP
 
-## Completed (Feb 11-21 2026)
+## Completed (Feb 11 — Mar 3, 2026)
 - [x] Fix rating extraction (Serper Shopping tiers + consensus)
 - [x] Rating/Price clickable links (Google Shopping product URLs)
 - [x] Supplement pricing (iHerb scrape + pharmacy JSON-LD)
@@ -946,22 +952,17 @@ npx expo start
 - [x] Cost optimization ($0.010/comparison via unified search)
 - [x] Bahrain drug database (655 products, GPT context injection)
 - [x] Integration tests (6 tests across all categories)
+- [x] Zero-cost fact-checking (spec citations, price/review cross-validation)
+- [x] Axios auth interceptors (request token attach + 401 auto-refresh)
+- [x] Comparison history (save, search, delete with real auth)
+- [x] Database improvements (search_logs, product dedup, dead code cleanup)
+- [x] Test coverage expansion (37 → 232 tests across 15 files)
+- [x] Supabase local env fix (correct project credentials + conftest.py dotenv loading)
 
 ## Short Term
 - [ ] Apply Figma UI design
 - [ ] Fix camera supplement pricing (verbose names fail iHerb search)
-- [ ] Add axios auth interceptor (token auto-sent on requests)
 - [ ] Fix ResultsScreen type divergence from types.ts
-- [ ] Add product history / favorites
-- [ ] Expand test coverage (37 tests → 80% target). Uncovered areas:
-  - Camera/vision identification pipeline
-  - Singleton state reset between requests
-  - iHerb scraping logic (brand matching, query cleanup, TLS bypass)
-  - Rating tier selection and consensus logic
-  - Price tier fallback chain (Tier 1 → 2 → 3)
-  - Unified search call merging
-  - Error paths (API timeouts, malformed GPT responses, currency conversion edge cases)
-  - Edge cases: empty query, single product, health endpoint
 
 ## Medium Term
 - [ ] URL input comparison (`/api/v1/url/compare`)
@@ -2311,6 +2312,94 @@ Overall confidence logic:
 
 ### Commits
 - `2cb9a80` — feat: add zero-cost fact-checking via cross-validation and self-citation
+
+---
+
+## Session 12: Mar 3, 2026 — Auth, History & DB Improvements
+
+### What Was Done
+Multi-agent team (3 Opus agents, `bypassPermissions`, circular cross-QA) implemented three features:
+
+**1. Auth System (Axios Interceptors)**
+- Request interceptor in `api.ts` attaches JWT Bearer token to every request
+- 401 response interceptor auto-refreshes token, queues failed requests, retries
+- `get_optional_user()` in `auth_routes.py` returns `User | None`, never throws
+- Text + image endpoints use `Depends(get_optional_user)` — anonymous users can still compare
+- 45 tests in `test_auth_interceptor.py`
+
+**2. History Feature**
+- `save_comparison()` stores full API response as JSONB blob + query + input_type + product_names array
+- Fire-and-forget via `asyncio.create_task()` — save failure never breaks comparison
+- Only saves for authenticated users
+- `GET /api/v1/comparisons/history` with real auth + optional `?search=` param
+- `DELETE /api/v1/comparisons/{id}` with ownership check
+- HistoryScreen passes stored blob directly to ResultsScreen
+- 10 tests in `test_history.py`
+
+**3. Database Improvements**
+- `search_logs` table: logs every comparison (success/failure) with query, products, cost, duration
+- `upsert_product()` by exact `canonical_name` — no fuzzy matching
+- `log_search()` fire-and-forget, wired into text + image routes
+- ~105 lines dead code removed (daily_usage + price_cache functions)
+- 9 tests in `test_db_improvements.py`
+
+### SQL Migrations Applied
+- `migrations/001_update_comparisons.sql` — comparisons table (was missing)
+- `migrations/002_search_logs_and_products.sql` — search_logs + products tables
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `SmartCompareApp/src/services/api.ts` | Axios request + 401 response interceptors |
+| `SmartCompareApp/src/services/authService.ts` | Token storage, refresh logic |
+| `SmartCompareApp/src/screens/HistoryScreen.tsx` | Search bar, delete, input type badges |
+| `app/api/auth_routes.py` | `get_optional_user()`, real auth on history/delete |
+| `app/api/text_routes.py` | `save_comparison()` + `log_search()` wiring |
+| `app/api/image_routes.py` | `save_comparison()` + `log_search()` wiring |
+| `app/services/database_service.py` | `save_comparison()`, `log_search()`, `upsert_product()`, dead code removal |
+| `tests/test_auth_interceptor.py` | 45 new tests |
+| `tests/test_history.py` | 10 new tests |
+| `tests/test_db_improvements.py` | 9 new tests |
+
+### Commits
+- `fdb51a1` — feat(history): update history endpoint to use real auth, add delete endpoint
+- `38c379b` — feat(history): add search param and delete function to API service
+- `e23dbfc` — feat(history): full blob passthrough, search, delete, updated UI
+- `35b3892` — test(auth): expand to 45 tests for ~90% auth pipeline coverage
+- `c534d09` — fix: add proper logging to database_service fire-and-forget functions
+
+---
+
+## Session 13: Mar 3, 2026 — Test Verification & Supabase Fix
+
+### What Was Done
+Verified all auth, history, and db tests pass. Fixed issues blocking live Supabase tests.
+
+**1. Fixed `datetime.utcnow()` deprecation**
+- `database_service.py` used deprecated `datetime.utcnow()` in 2 places
+- Replaced with `datetime.now(timezone.utc)` — Python 3.12+ recommended pattern
+
+**2. Fixed local `.env` Supabase credentials**
+- `.env` had wrong Supabase project (`khatrmxzrvjzlbtcetva` — old/dead project)
+- Updated to correct project (`qulajmyxdbdkchvecmvc`) with matching anon + service_role keys
+- All 6 `live_db` drug database tests now pass locally
+
+**3. Added `tests/conftest.py`**
+- Loads `.env` via `python-dotenv` at test collection time
+- Fixes issue where `database_service.py` module-level env var reads happened before `.env` was loaded
+- All tests now pick up correct Supabase credentials automatically
+
+### Test Results
+- **210 unit tests passed** (0 failures, 0 errors)
+- **6 live_db tests passed** (Supabase drug database)
+- **75 auth+history+db tests passed** specifically verified
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `app/services/database_service.py` | `datetime.utcnow()` → `datetime.now(timezone.utc)` (2 occurrences) |
+| `tests/conftest.py` | New file — loads `.env` for all tests |
+| `.env` | Updated SUPABASE_URL + keys to correct project |
 
 ---
 

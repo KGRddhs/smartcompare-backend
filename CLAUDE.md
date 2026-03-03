@@ -203,11 +203,14 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 
 ### Run commands
 ```bash
-# All free unit tests (146 tests, ~2s, $0)
+# All free unit tests (210 tests, ~3s, $0)
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb, Serper, GPT vision — ~$0.03)
 python -m pytest tests/ -v -m "not (live_db or integration)"
+
+# Live database tests (needs Supabase credentials in .env)
+python -m pytest tests/test_drug_database_service.py -v -m live_db
 
 # Integration tests only (live Railway — ~$0.06, ~4 min)
 python -m pytest tests/test_integration.py -v -m integration
@@ -216,25 +219,29 @@ python -m pytest tests/test_integration.py -v -m integration
 python -m pytest tests/ -v --timeout=180
 ```
 
-### Test files (168 total: 146 unit + 10 live_unit + 6 live_db + 6 integration)
+**Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
+
+### Test files (232 total: 194 unit + 10 live_unit + 6 live_db + 6 integration)
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
+- `tests/test_auth_interceptor.py` — 45 tests: auth endpoints, token verify, optional/required user, profile, password reset
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
 - `tests/test_rating_tiers.py` — 16 tests: tier classification, consensus logic, accessory filtering
 - `tests/test_price_fallback.py` — 12 tests: shopping extraction, currency conversion, all-tiers-fail
+- `tests/test_pharmacy_jsonld.py` — 12 tests: pharmacy JSON-LD price extraction
+- `tests/test_drug_database_service.py` — 11 tests: drug DB (5 unit + 6 `live_db`)
 - `tests/test_camera_vision.py` — 10 tests: vision pipeline, JSON cleanup, size_or_count enrichment
+- `tests/test_history.py` — 10 tests: save_comparison, get history, delete, search, product name extraction
+- `tests/test_db_improvements.py` — 9 tests: log_search, upsert_product, error handling
+- `tests/test_url_extraction.py` — 8 tests: URL extraction (price + rating link logic)
 - `tests/test_iherb_scraping.py` — 7 tests: word normalization, live iHerb scraping, brand filtering
 - `tests/test_unified_search.py` — 4 tests: search sharing (specs/reviews), cost budget tracking
 - `tests/test_singleton_state.py` — 3 tests: singleton pattern, cache leak prevention, state reset
-- `tests/test_url_extraction.py` — 8 tests: URL extraction (price + rating link logic)
-- `tests/test_pharmacy_jsonld.py` — 12 tests: pharmacy JSON-LD price extraction
-- `tests/test_drug_database_service.py` — 11 tests: drug DB (5 unit + 6 `live_db` auto-skip)
 - `tests/test_integration.py` — 6 tests: live Railway (~$0.06, ~4 min)
 
 ## Known Remaining Bugs (deferred)
 
 These are known issues that have been intentionally deferred:
 - Legacy `/api/v1/compare` route (`routes.py`): all function calls use wrong arg counts — 4 TypeErrors
-- No axios auth interceptor — token never sent on API requests
 - Missing `expo-camera`/`expo-image-picker` plugins in `app.json` (breaks EAS builds)
 - `ResultsScreen.tsx` has local type definitions that diverge from `src/types/types.ts`
 
