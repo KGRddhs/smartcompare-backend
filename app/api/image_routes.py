@@ -6,7 +6,9 @@ Endpoints:
     - 1 product found: returns product info, frontend asks for second
     - 2+ products found: auto-runs full comparison via structured_comparison_service
 """
+import asyncio
 import logging
+import time
 import uuid
 from pathlib import Path
 from typing import List, Optional, Dict
@@ -16,6 +18,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
 from app.services.openai_service import identify_products
 from app.services.structured_comparison_service import StructuredComparisonService
 from app.api.auth_routes import get_optional_user
+from app.services.database_service import log_search, save_comparison
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,7 @@ async def identify_and_compare(
       - action="error" (0 products or processing failure)
     """
     logger.info(f"[IMAGE] Received {len(images)} image(s) for identification")
+    start_time = time.time()
 
     # Validate image count
     if len(images) < 1:
@@ -148,10 +152,36 @@ async def identify_and_compare(
             }
 
         result["action"] = "comparison"
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        user_id = user.get("id") if user else None
+
+        # Fire-and-forget: log search + save history
+        asyncio.create_task(log_search(
+            query=query, input_type="camera", user_id=user_id,
+            products_found=product_names, success=True,
+            cost=result.get("metadata", {}).get("total_cost", 0),
+            duration_ms=duration_ms,
+        ))
+        if user_id:
+            asyncio.create_task(save_comparison(
+                full_response=result, query=query,
+                input_type="camera", user_id=user_id,
+            ))
+
         return result
 
     except Exception as e:
         logger.error(f"[IMAGE] Comparison failed after identification: {e}", exc_info=True)
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        asyncio.create_task(log_search(
+            query=query, input_type="camera",
+            user_id=user.get("id") if user else None,
+            products_found=product_names, success=False,
+            error_message=str(e), duration_ms=duration_ms,
+        ))
+
         # Still return the identified products so frontend can fall back to text compare
         return {
             "success": False,

@@ -3,6 +3,7 @@ Text Comparison Routes - API endpoints for text-based product comparisons
 """
 import asyncio
 import logging
+import time
 from typing import Optional, Dict
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
@@ -12,7 +13,7 @@ from app.services.structured_comparison_service import (
     get_regional_prices
 )
 from app.api.auth_routes import get_optional_user
-from app.services.database_service import save_comparison
+from app.services.database_service import save_comparison, log_search
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,10 @@ async def text_compare(request: TextCompareRequest, user: Optional[Dict] = Depen
     - Winner recommendation
     """
     logger.info(f"Text comparison request: {request.query}")
-    
+
     service = get_comparison_service()
-    
+    start_time = time.time()
+
     result = await service.compare_from_text(
         query=request.query,
         region=request.region,
@@ -72,20 +74,39 @@ async def text_compare(request: TextCompareRequest, user: Optional[Dict] = Depen
         include_reviews=request.include_reviews,
         include_pros_cons=request.include_pros_cons
     )
-    
+
+    duration_ms = int((time.time() - start_time) * 1000)
+
     if not result.get("success"):
+        # Log failed search
+        asyncio.create_task(log_search(
+            query=request.query, input_type="text",
+            user_id=user.get("id") if user else None,
+            success=False, error_message=result.get("error"),
+            duration_ms=duration_ms,
+        ))
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Comparison failed")
         )
 
-    # Fire-and-forget: save to history if user is authenticated
-    if user and user.get("id"):
+    # Extract product names for logging
+    product_names = [f"{p.get('brand', '')} {p.get('name', '')}".strip()
+                     for p in result.get("products", [])]
+
+    user_id = user.get("id") if user else None
+
+    # Fire-and-forget: log search + save history
+    asyncio.create_task(log_search(
+        query=request.query, input_type="text", user_id=user_id,
+        products_found=product_names, success=True,
+        cost=result.get("metadata", {}).get("total_cost", 0),
+        duration_ms=duration_ms,
+    ))
+    if user_id:
         asyncio.create_task(save_comparison(
-            full_response=result,
-            query=request.query,
-            input_type="text",
-            user_id=user["id"],
+            full_response=result, query=request.query,
+            input_type="text", user_id=user_id,
         ))
 
     return result
@@ -103,6 +124,7 @@ async def text_compare_get(
 ):
     """GET version of text comparison for easy testing."""
     service = get_comparison_service()
+    start_time = time.time()
 
     result = await service.compare_from_text(
         query=q,
@@ -113,19 +135,36 @@ async def text_compare_get(
         nocache=nocache
     )
 
+    duration_ms = int((time.time() - start_time) * 1000)
+
     if not result.get("success"):
+        asyncio.create_task(log_search(
+            query=q, input_type="text",
+            user_id=user.get("id") if user else None,
+            success=False, error_message=result.get("error"),
+            duration_ms=duration_ms,
+        ))
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Comparison failed")
         )
 
-    # Fire-and-forget: save to history if user is authenticated
-    if user and user.get("id"):
+    product_names = [f"{p.get('brand', '')} {p.get('name', '')}".strip()
+                     for p in result.get("products", [])]
+
+    user_id = user.get("id") if user else None
+
+    # Fire-and-forget: log search + save history
+    asyncio.create_task(log_search(
+        query=q, input_type="text", user_id=user_id,
+        products_found=product_names, success=True,
+        cost=result.get("metadata", {}).get("total_cost", 0),
+        duration_ms=duration_ms,
+    ))
+    if user_id:
         asyncio.create_task(save_comparison(
-            full_response=result,
-            query=q,
-            input_type="text",
-            user_id=user["id"],
+            full_response=result, query=q,
+            input_type="text", user_id=user_id,
         ))
 
     return result
