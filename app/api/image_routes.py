@@ -9,12 +9,13 @@ Endpoints:
 import logging
 import uuid
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Dict
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
 
 from app.services.openai_service import identify_products
 from app.services.structured_comparison_service import StructuredComparisonService
+from app.api.auth_routes import get_optional_user
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ async def identify_and_compare(
     images: List[UploadFile] = File(..., description="1-4 product images"),
     region: str = Query("bahrain", description="Region for price search"),
     nocache: bool = Query(False, description="Bypass price/spec cache"),
+    user: Optional[Dict] = Depends(get_optional_user),
 ):
     """
     Identify products from uploaded images, then compare if 2+ found.
