@@ -182,6 +182,18 @@ async def logout_user(access_token: str) -> Dict:
         return {"success": False, "error": str(e)}
 
 
+async def update_user_profile(user_id: str, display_name: str) -> Dict:
+    """Update display name in users table."""
+    try:
+        client = get_admin_client()
+        client.table("users").update({
+            "display_name": display_name
+        }).eq("id", user_id).execute()
+        return {"success": True, "message": "Profile updated"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 async def request_password_reset(email: str) -> Dict:
     """Send password reset email."""
     try:

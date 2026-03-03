@@ -646,3 +646,80 @@ async def test_request_password_reset_error():
 
     assert result["success"] is False
     assert "SMTP failure" in result["error"]
+
+
+# ── update_profile tests ──
+
+@pytest.mark.asyncio
+async def test_update_profile_success():
+    """PUT /api/v1/auth/profile should update display name."""
+    from app.api.auth_routes import update_profile, UpdateProfileRequest
+    mock_user = {"id": "user-1", "email": "test@example.com"}
+    with patch("app.api.auth_routes.update_user_profile", new_callable=AsyncMock,
+               return_value={"success": True, "message": "Profile updated"}):
+        result = await update_profile(
+            body=UpdateProfileRequest(display_name="Test User"),
+            current_user=mock_user
+        )
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_profile_requires_auth():
+    """update_profile requires authentication (get_current_user dependency)."""
+    from app.api.auth_routes import get_current_user
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_user(authorization=None)
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_update_profile_validates_min_length():
+    """Display name must be at least 2 chars."""
+    from app.api.auth_routes import UpdateProfileRequest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        UpdateProfileRequest(display_name="X")
+
+
+@pytest.mark.asyncio
+async def test_update_profile_validates_max_length():
+    """Display name must be at most 100 chars."""
+    from app.api.auth_routes import UpdateProfileRequest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        UpdateProfileRequest(display_name="A" * 101)
+
+
+@pytest.mark.asyncio
+async def test_update_user_profile_service_success():
+    """update_user_profile calls Supabase and returns success."""
+    from app.services.auth_service import update_user_profile
+
+    mock_table = MagicMock()
+    mock_table.update.return_value.eq.return_value.execute.return_value = MagicMock()
+
+    mock_admin = MagicMock()
+    mock_admin.table.return_value = mock_table
+
+    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_profile("user-1", "New Name")
+
+    assert result["success"] is True
+    mock_table.update.assert_called_once_with({"display_name": "New Name"})
+
+
+@pytest.mark.asyncio
+async def test_update_user_profile_service_error():
+    """update_user_profile returns error on exception."""
+    from app.services.auth_service import update_user_profile
+
+    mock_admin = MagicMock()
+    mock_admin.table.return_value.update.side_effect = Exception("DB error")
+
+    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_profile("user-1", "Name")
+
+    assert result["success"] is False
+    assert "DB error" in result["error"]

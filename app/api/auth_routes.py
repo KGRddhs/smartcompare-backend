@@ -2,7 +2,7 @@
 Auth Routes - Authentication endpoints
 """
 from fastapi import APIRouter, HTTPException, Depends, Header
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
 from app.services.auth_service import (
@@ -12,7 +12,8 @@ from app.services.auth_service import (
     verify_token,
     get_user_profile,
     logout_user,
-    request_password_reset
+    request_password_reset,
+    update_user_profile,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
@@ -38,6 +39,10 @@ class RefreshRequest(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
+
+
+class UpdateProfileRequest(BaseModel):
+    display_name: str = Field(..., min_length=2, max_length=100)
 
 
 class AuthResponse(BaseModel):
@@ -222,3 +227,13 @@ async def verify_auth(current_user: dict = Depends(get_current_user)):
         "valid": True,
         "user": current_user
     }
+
+
+@router.put("/profile")
+async def update_profile(
+    body: UpdateProfileRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update user display name."""
+    result = await update_user_profile(current_user["id"], body.display_name)
+    return result
