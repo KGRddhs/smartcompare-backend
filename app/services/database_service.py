@@ -1,10 +1,13 @@
 """
 Database Service - Supabase integration for storing comparisons and user data
 """
+import logging
 import os
 from typing import Dict, List, Optional
 from datetime import datetime
 from supabase import create_client, Client
+
+logger = logging.getLogger(__name__)
 
 # Initialize Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -131,7 +134,7 @@ async def save_comparison(
         return response.data[0] if response.data else None
     except Exception as e:
         # Fire-and-forget — never break the comparison response
-        print(f"Error saving comparison: {e}")
+        logger.warning(f"Error saving comparison: {e}", exc_info=True)
         return None
 
 
@@ -256,7 +259,7 @@ async def log_search(
         client.table("search_logs").insert(record).execute()
     except Exception as e:
         # Never fail the request for logging
-        print(f"Error logging search: {e}")
+        logger.warning(f"Error logging search: {e}", exc_info=True)
 
 
 # ============================================
