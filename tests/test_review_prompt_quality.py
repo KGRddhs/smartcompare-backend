@@ -60,3 +60,97 @@ class TestVerdictPromptStructure:
         """Prompt must include examples of strong vs weak verdicts."""
         has_example = "DO:" in COMPARISON_PROMPT or "GOOD:" in COMPARISON_PROMPT or "example" in COMPARISON_PROMPT.lower()
         assert has_example, "Prompt should include verdict quality examples"
+
+
+class TestReviewPromptCompleteness:
+    """Verify the review prompt has all required JSON fields and template variables."""
+
+    def test_prompt_has_template_variables(self):
+        """Prompt must have {brand}, {name}, {variant}, {category}, {search_context}."""
+        prompt = REVIEWS_EXTRACTION_PROMPT
+        for var in ["{brand}", "{name}", "{variant}", "{category}", "{search_context}"]:
+            assert var in prompt, f"Missing template variable: {var}"
+
+    def test_prompt_json_has_required_fields(self):
+        """Prompt JSON template must contain all expected output fields."""
+        prompt = REVIEWS_EXTRACTION_PROMPT
+        required_fields = [
+            "average_rating", "total_reviews", "positive_percentage",
+            "rating_distribution", "category_scores", "common_praises",
+            "common_complaints", "detailed_praises", "detailed_complaints",
+            "user_quotes", "summary"
+        ]
+        for field in required_fields:
+            assert field in prompt, f"Missing JSON field: {field}"
+
+    def test_rating_distribution_set_to_null(self):
+        """rating_distribution must be hardcoded to null in the JSON template."""
+        prompt = REVIEWS_EXTRACTION_PROMPT
+        assert '"rating_distribution": null' in prompt
+
+    def test_prompt_forbids_source_ratings_generation(self):
+        """Prompt must explicitly forbid GPT from generating source_ratings."""
+        prompt = REVIEWS_EXTRACTION_PROMPT
+        assert "do not generate source_ratings" in prompt.lower()
+
+    def test_detailed_fields_have_source_key(self):
+        """detailed_praises and detailed_complaints must include 'source' key in template."""
+        prompt = REVIEWS_EXTRACTION_PROMPT
+        # The JSON template for detailed items should show "source" as a field
+        assert '"source":' in prompt or '"source"' in prompt
+
+    def test_prompt_requests_json_only(self):
+        """Prompt must instruct GPT to return ONLY valid JSON."""
+        prompt = REVIEWS_EXTRACTION_PROMPT
+        assert "return only valid json" in prompt.lower()
+
+
+class TestVerdictPromptCompleteness:
+    """Verify the verdict prompt has all required JSON fields and template variables."""
+
+    def test_prompt_has_template_variables(self):
+        """Prompt must have {product1_json}, {product2_json}, {region}, {concern}, {currency}."""
+        prompt = COMPARISON_PROMPT
+        for var in ["{product1_json}", "{product2_json}", "{region}", "{concern}", "{currency}"]:
+            assert var in prompt, f"Missing template variable: {var}"
+
+    def test_prompt_json_has_required_fields(self):
+        """Prompt JSON template must contain all expected output fields."""
+        prompt = COMPARISON_PROMPT
+        required_fields = [
+            "winner_index", "winner_reason",
+            "product_0_pros", "product_0_cons",
+            "product_1_pros", "product_1_cons",
+            "price_comparison", "specs_comparison",
+            "value_scores", "best_for",
+            "recommendation", "key_differences"
+        ]
+        for field in required_fields:
+            assert field in prompt, f"Missing JSON field: {field}"
+
+    def test_prompt_has_best_for_categories(self):
+        """best_for must include budget, performance, features, reliability."""
+        prompt = COMPARISON_PROMPT
+        for cat in ["budget", "performance", "features", "reliability"]:
+            assert cat in prompt.lower(), f"Missing best_for category: {cat}"
+
+    def test_prompt_mentions_gcc_market(self):
+        """Prompt must mention GCC market for regional pricing context."""
+        prompt = COMPARISON_PROMPT
+        assert "gcc" in prompt.lower()
+
+    def test_prompt_demands_decisive_winner(self):
+        """Prompt must instruct GPT to be decisive, not hedge."""
+        prompt = COMPARISON_PROMPT.lower()
+        assert "decisive" in prompt or "clear winner" in prompt
+
+    def test_prompt_requests_json_only(self):
+        """Prompt must instruct GPT to return ONLY valid JSON."""
+        prompt = COMPARISON_PROMPT
+        assert "return only valid json" in prompt.lower()
+
+    def test_prompt_has_value_score_scale(self):
+        """Prompt must define value score scale (1-10)."""
+        prompt = COMPARISON_PROMPT
+        assert "10 =" in prompt or "10=" in prompt
+        assert "1 =" in prompt or "1=" in prompt
