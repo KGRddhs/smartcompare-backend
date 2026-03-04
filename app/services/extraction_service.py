@@ -241,7 +241,7 @@ DON'T: "Great camera quality" (generic, no evidence)
 - Return null/empty for fields without reliable data from the provided snippets"""
 
 
-COMPARISON_PROMPT = """You are a product comparison expert. Compare these products, generate pros/cons for each, and pick a winner.
+COMPARISON_PROMPT = """You are a product comparison expert. Compare these products with SPECIFIC, DATA-BACKED analysis. Be decisive — users want a clear answer, not fence-sitting.
 
 PRODUCT 1:
 {product1_json}
@@ -255,20 +255,20 @@ Primary concern: {concern}
 Return ONLY valid JSON:
 {{
     "winner_index": 0 or 1,
-    "winner_reason": "clear 1-sentence reason",
-    "product_0_pros": ["specific pro 1", "specific pro 2", "specific pro 3", "specific pro 4"],
-    "product_0_cons": ["specific con 1", "specific con 2"],
-    "product_1_pros": ["specific pro 1", "specific pro 2", "specific pro 3", "specific pro 4"],
-    "product_1_cons": ["specific con 1", "specific con 2"],
+    "winner_reason": "clear 1-sentence reason with a specific number or fact",
+    "product_0_pros": ["specific pro with number/fact", "..."],
+    "product_0_cons": ["specific con with number/fact", "..."],
+    "product_1_pros": ["specific pro with number/fact", "..."],
+    "product_1_cons": ["specific con with number/fact", "..."],
     "price_comparison": {{
         "cheaper_index": 0 or 1,
         "price_difference": "X {currency} (Y%)",
         "better_value_index": 0 or 1
     }},
     "specs_comparison": {{
-        "product_0_advantages": ["advantage 1", "advantage 2"],
-        "product_1_advantages": ["advantage 1", "advantage 2"],
-        "similar": ["shared feature 1", "shared feature 2"]
+        "product_0_advantages": ["advantage with specific number"],
+        "product_1_advantages": ["advantage with specific number"],
+        "similar": ["shared feature"]
     }},
     "value_scores": [0.0-10.0, 0.0-10.0],
     "best_for": {{
@@ -277,22 +277,28 @@ Return ONLY valid JSON:
         "features": 0 or 1,
         "reliability": 0 or 1
     }},
-    "recommendation": "2-3 sentence recommendation for the user",
+    "recommendation": "2-3 sentence decisive recommendation",
     "key_differences": [
-        "difference 1",
-        "difference 2",
-        "difference 3",
-        "difference 4",
-        "difference 5"
+        "difference 1 with numbers",
+        "difference 2 with numbers",
+        "difference 3 with numbers",
+        "difference 4 with numbers",
+        "difference 5 with numbers"
     ]
 }}
 
 RULES:
-- Be objective and fair
-- 4-6 pros, 2-4 cons per product (specific, not generic)
+- 4-6 pros, 2-4 cons per product — each MUST include a specific number, percentage, or measurable fact
+- DO: "50% larger battery (5000 vs 3274 mAh) means 2+ hours more screen-on time"
+- DON'T: "Better battery life" (vague, no numbers)
+- DO: "15% cheaper at $799 vs $949 while matching camera quality"
+- DON'T: "Good value for money" (meaningless without numbers)
+- winner_reason MUST cite the single most important numeric advantage
+- recommendation MUST state: who should buy Product 1, who should buy Product 2, and the specific trade-off between them
+- key_differences: each must include actual specs/numbers, not generic descriptions
 - Consider price-to-value ratio heavily for GCC market
-- Key differences should be meaningful, not trivial
-- Value score: 10 = exceptional value, 5 = average, 1 = poor value"""
+- Value score: 10 = exceptional value, 5 = average, 1 = poor value
+- Be DECISIVE — pick a clear winner and defend it with data"""
 
 
 # ============================================
