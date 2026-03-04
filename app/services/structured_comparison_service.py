@@ -93,6 +93,10 @@ RETAILER_TIERS = {
 }
 DEFAULT_RETAILER_SCORE = 0.5  # Unknown retailers get benefit of the doubt
 
+# Fields where numeric values must match exactly during citation verification
+NUMERIC_SPEC_FIELDS = {"ram", "storage", "battery", "weight", "display", "count", "dosage",
+                       "nutrition_calories", "nutrition_protein", "nutrition_fat", "nutrition_carbs"}
+
 # Retailer search URL templates — maps retailer name (lowercase) to search page URL
 # Used instead of Serper's "link" field which is a Google Shopping redirect
 RETAILER_SEARCH_URLS = {
@@ -1208,15 +1212,17 @@ class StructuredComparisonService:
         source_lower = source.lower().strip()
         return any(key in source_lower for key in RETAILER_SEARCH_URLS)
 
-    def _build_retailer_url(self, source: str, product_name: str) -> str:
+    def _build_retailer_url(self, source: str, product_name: str) -> Optional[str]:
         """Build a retailer search URL from the source name and product name.
-        Falls back to Google Shopping search for unknown retailers."""
+        Returns None for unknown retailers instead of a generic Google search."""
+        if not source:
+            return None
         from urllib.parse import quote_plus
         source_lower = source.lower().strip()
         for key, template in RETAILER_SEARCH_URLS.items():
             if key in source_lower:
                 return template.format(query=quote_plus(product_name))
-        return f"https://www.google.com/search?tbm=shop&q={quote_plus(product_name)}"
+        return None
 
     def _extract_price_from_shopping(
         self,
@@ -1834,6 +1840,9 @@ class StructuredComparisonService:
     def _verify_spec_citations(self, specs: Dict, search_snippets: List[str]) -> Dict[str, str]:
         """Verify GPT spec citations against actual search snippets.
 
+        For numeric fields (ram, storage, battery, weight, etc.): requires exact number match.
+        For text fields (os, connectivity, etc.): uses keyword overlap (50% threshold).
+
         Returns dict mapping spec_field -> confidence:
           'verified': citation matches snippet text
           'likely': citation provided but can't fully cross-check
@@ -1854,13 +1863,33 @@ class StructuredComparisonService:
                     if 0 <= idx < len(search_snippets):
                         snippet_text = search_snippets[idx].lower()
                         value_str = str(value).lower()
-                        # Check if key terms from the value appear in the snippet
-                        terms = [t for t in value_str.split() if len(t) > 2]
-                        if not terms:
-                            confidence[key] = "likely"
+
+                        # Extract numbers from the spec value
+                        spec_numbers = re.findall(r'\d+', value_str)
+
+                        if key in NUMERIC_SPEC_FIELDS and spec_numbers:
+                            # STRICT: all significant numbers must appear in snippet
+                            # Filter to numbers >= 2 digits (skip "1", "2" etc. which match everywhere)
+                            sig_numbers = [n for n in spec_numbers if len(n) >= 2]
+                            if sig_numbers:
+                                matches = sum(1 for n in sig_numbers if n in snippet_text)
+                                confidence[key] = "verified" if matches == len(sig_numbers) else "likely"
+                            else:
+                                # Only small numbers — use keyword matching
+                                terms = [t for t in value_str.split() if len(t) > 2]
+                                if not terms:
+                                    confidence[key] = "likely"
+                                else:
+                                    matches = sum(1 for t in terms if t in snippet_text)
+                                    confidence[key] = "verified" if matches >= len(terms) * 0.5 else "likely"
                         else:
-                            matches = sum(1 for t in terms if t in snippet_text)
-                            confidence[key] = "verified" if matches >= len(terms) * 0.5 else "likely"
+                            # TEXT fields: keyword overlap matching (original behavior)
+                            terms = [t for t in value_str.split() if len(t) > 2]
+                            if not terms:
+                                confidence[key] = "likely"
+                            else:
+                                matches = sum(1 for t in terms if t in snippet_text)
+                                confidence[key] = "verified" if matches >= len(terms) * 0.5 else "likely"
                     else:
                         confidence[key] = "unverified"
                 except (ValueError, IndexError):
@@ -1874,6 +1903,7 @@ class StructuredComparisonService:
         """Cross-check spec values against Serper Shopping product titles/descriptions.
 
         Upgrades 'likely' to 'verified' if shopping data confirms.
+        For numeric fields, requires ALL significant numbers to match (not just any).
         Returns dict mapping field -> 'verified' for confirmed fields.
         """
         if not shopping_items:
@@ -1886,19 +1916,24 @@ class StructuredComparisonService:
         ).lower()
 
         flags = {}
-        # Check key spec fields that commonly appear in shopping titles
         checkable = ["storage", "ram", "display", "processor", "count", "dosage", "form"]
         for key in checkable:
             value = specs.get(key)
             if not value or value == "N/A":
                 continue
             value_str = str(value).lower()
-            # Extract numbers from spec value
-            numbers = re.findall(r'\d+', value_str)
-            if numbers:
-                # Check if any key number appears in shopping text
-                found = any(n in shopping_text for n in numbers if len(n) >= 2)
-                if found:
+            # Extract significant numbers (2+ digits) from spec value
+            spec_numbers = [n for n in re.findall(r'\d+', value_str) if len(n) >= 2]
+            if spec_numbers:
+                # ALL significant numbers must appear in shopping text
+                all_found = all(n in shopping_text for n in spec_numbers)
+                if all_found:
+                    flags[key] = "verified"
+            else:
+                # Non-numeric: check key words
+                terms = [t for t in value_str.split() if len(t) > 2]
+                found = sum(1 for t in terms if t in shopping_text)
+                if terms and found >= len(terms) * 0.5:
                     flags[key] = "verified"
 
         return flags

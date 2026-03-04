@@ -157,8 +157,8 @@ def test_rating_consensus_url_uses_serper_link(service):
 
 
 def test_rating_consensus_url_falls_back_when_no_link(service):
-    """Consensus rating with no link fields should fall back to Google Shopping search URL."""
-    # All unknown retailers, no link fields → consensus path, fallback URL
+    """Consensus rating with no link fields should return None URL for unknown retailers."""
+    # All unknown retailers, no link fields → consensus path, no URL
     items = [
         {
             "title": "Apple iPhone 16",
@@ -185,5 +185,5 @@ def test_rating_consensus_url_falls_back_when_no_link(service):
     result = service._extract_rating_from_shopping("Apple iPhone 16", items)
     assert result["rating"] == 4.7
     assert result["rating_source"]["extract_method"] == "google_shopping_consensus"
-    # No link → falls back to Google Shopping search (unknown retailers)
-    assert "google.com" in result["rating_source"]["url"]
+    # No link + unknown retailers → URL should be None (no fake Google fallback)
+    assert result["rating_source"]["url"] is None
