@@ -191,7 +191,7 @@ RULES:
 - NEVER return null for amount — always provide an estimate"""
 
 
-REVIEWS_EXTRACTION_PROMPT = """You are a review analysis expert. Provide a COMPREHENSIVE review analysis for this product.
+REVIEWS_EXTRACTION_PROMPT = """You are a review analysis expert. Extract a FACTUAL review analysis for this product using ONLY the search results provided.
 
 PRODUCT: {brand} {name} {variant}
 CATEGORY: {category}
@@ -204,41 +204,41 @@ Return ONLY valid JSON:
     "average_rating": 0.0-5.0 or null,
     "total_reviews": estimated_count or null,
     "positive_percentage": 0-100 or null,
-    "rating_distribution": {{
-        "5_star": percentage,
-        "4_star": percentage,
-        "3_star": percentage,
-        "2_star": percentage,
-        "1_star": percentage
-    }},
+    "rating_distribution": null,
     "category_scores": {{
         "aspect_name": score_out_of_10
     }},
-    "common_praises": ["praise 1", "praise 2", "praise 3"],
-    "common_complaints": ["complaint 1", "complaint 2", "complaint 3"],
+    "common_praises": ["[snippet_N] specific praise with evidence"],
+    "common_complaints": ["[snippet_N] specific complaint with evidence"],
     "detailed_praises": [
-        {{"text": "specific praise", "frequency": "how often mentioned", "quote": "actual user words if available"}}
+        {{"text": "specific praise", "frequency": "how often mentioned", "source": "snippet_N"}}
     ],
     "detailed_complaints": [
-        {{"text": "specific complaint", "frequency": "how often mentioned", "quote": "actual user words if available"}}
+        {{"text": "specific complaint", "frequency": "how often mentioned", "source": "snippet_N"}}
     ],
     "user_quotes": [
-        {{"text": "exact or near-exact user quote from snippets", "sentiment": "positive|negative|mixed", "source": "where from", "aspect": "what aspect it covers"}}
+        {{"text": "exact words from snippet", "sentiment": "positive|negative|mixed", "source": "snippet_N", "aspect": "what aspect it covers"}}
     ],
     "summary": "2-3 sentence specific, opinionated summary"
 }}
 
 RULES:
-- Aggregate from ALL sources shown in the search results
-- category_scores: pick 4-6 aspects relevant to the product category (e.g. for phones: camera, battery, display, performance, value, build quality)
-- Score each aspect 1-10 based on review consensus
-- common_praises/common_complaints: keep as simple string lists (3-5 items each)
-- detailed_praises/detailed_complaints: structured versions with frequency and real quotes
-- user_quotes: extract 3-5 real user quotes/phrases from the search snippets — actual words people used, not your paraphrasing
+- EVERY praise and complaint MUST cite its source as [snippet_N] — if you cannot cite a snippet, do NOT include the claim
+- category_scores: pick 4-6 aspects relevant to the product category (e.g. for phones: camera, battery, display, performance, value, build quality). Score 1-10 based on review consensus from snippets
+- common_praises/common_complaints: prefix each with [snippet_N] citation. 3-5 items each
+- detailed_praises/detailed_complaints: MUST include "source" field referencing the snippet
+- user_quotes: extract 3-5 EXACT phrases from the search snippets — actual words as written. Do NOT paraphrase, invent, or fabricate quotes
+- rating_distribution: always set to null — real distribution data is injected separately
 - DO NOT generate source_ratings — retailer ratings are injected separately from real data
-- rating_distribution: estimate percentages based on available data (must sum to ~100)
-- summary: be SPECIFIC and opinionated (e.g. "The camera system is class-leading but battery life disappoints power users" not "This is a good phone")
-- Return null/empty for fields without reliable data"""
+- summary: be SPECIFIC and opinionated, referencing actual findings from snippets
+
+DO: "[snippet_3] Battery drains to 20% by 3pm with heavy camera use"
+DON'T: "Battery life could be better" (too vague, no citation)
+
+DO: "[snippet_1] 48MP main sensor captures sharp detail in low light"
+DON'T: "Great camera quality" (generic, no evidence)
+
+- Return null/empty for fields without reliable data from the provided snippets"""
 
 
 COMPARISON_PROMPT = """You are a product comparison expert. Compare these products, generate pros/cons for each, and pick a winner.
