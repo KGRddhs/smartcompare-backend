@@ -91,3 +91,126 @@ class TestCrossValidationNumeric:
         shopping = [{"title": "iPhone 15 Pro 256GB", "description": ""}]
         result = service._cross_validate_specs_with_shopping(specs, shopping)
         assert result.get("storage") != "verified"
+
+
+class TestNumericVerificationEdgeCases:
+    """Edge cases for numeric spec verification."""
+
+    def test_display_size_verified(self, service):
+        """Display '6.7 inches' should verify when '6.7' is in snippet."""
+        specs = {"display": "6.7 inches OLED", "display_source": "snippet_1"}
+        snippets = ["The 6.7-inch Super Retina XDR display is stunning"]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["display"] == "likely"  # "6" and "7" are single digits, no sig numbers
+
+    def test_multiple_numbers_all_must_match(self, service):
+        """Storage '128 GB + 8 GB RAM' in a single field needs 128 to match."""
+        specs = {"storage": "128 GB with 8 GB RAM", "storage_source": "snippet_1"}
+        snippets = ["Comes with 128GB storage and 8GB RAM"]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["storage"] == "verified"
+
+    def test_multiple_numbers_partial_match_is_likely(self, service):
+        """If only some significant numbers match, result is 'likely'."""
+        specs = {"storage": "256 GB with 16 GB RAM", "storage_source": "snippet_1"}
+        snippets = ["The phone has 256GB of storage with 8GB RAM"]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["storage"] == "likely"
+
+    def test_dosage_numeric_match(self, service):
+        """Supplement dosage '1000 IU' should match snippet with '1000'."""
+        specs = {"dosage": "1000 IU", "dosage_source": "snippet_1"}
+        snippets = ["Vitamin D3 1000 IU per softgel for daily supplementation"]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["dosage"] == "verified"
+
+    def test_dosage_wrong_number_not_verified(self, service):
+        """Dosage '1000 IU' should not verify against snippet with '5000 IU'."""
+        specs = {"dosage": "1000 IU", "dosage_source": "snippet_1"}
+        snippets = ["High-dose Vitamin D3 5000 IU for deficiency treatment"]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["dosage"] != "verified"
+
+    def test_count_numeric_match(self, service):
+        """Count '120 softgels' should verify when snippet has '120'."""
+        specs = {"count": "120 softgels", "count_source": "snippet_1"}
+        snippets = ["Pack of 120 softgels, 4-month supply"]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["count"] == "verified"
+
+    def test_small_number_only_uses_keyword_matching(self, service):
+        """RAM '8 GB' has only single-digit '8' — falls to keyword matching."""
+        specs = {"ram": "8 GB", "ram_source": "snippet_1"}
+        snippets = ["The phone has 8GB of RAM for smooth multitasking"]
+        result = service._verify_spec_citations(specs, snippets)
+        # "8" is 1 digit (not significant), "gb" is 2 chars (too short)
+        # No sig numbers and no terms > 2 chars → "likely"
+        assert result["ram"] == "likely"
+
+    def test_non_numeric_field_not_affected(self, service):
+        """Processor field (not in NUMERIC_SPEC_FIELDS) uses keyword matching."""
+        specs = {"processor": "Snapdragon 8 Gen 3", "processor_source": "snippet_1"}
+        snippets = ["Powered by Qualcomm Snapdragon 8 Gen 3 chipset"]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["processor"] == "verified"
+
+    def test_connectivity_text_field(self, service):
+        """Connectivity is a text field and should use keyword matching."""
+        specs = {"connectivity": "5G, Wi-Fi 6E, Bluetooth 5.3", "connectivity_source": "snippet_1"}
+        snippets = ["Supports 5G connectivity, Wi-Fi 6E, and Bluetooth 5.3"]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["connectivity"] == "verified"
+
+
+class TestCrossValidationEdgeCases:
+    """Edge cases for shopping cross-validation."""
+
+    def test_empty_shopping_returns_empty(self, service):
+        """Empty shopping list returns empty dict."""
+        result = service._cross_validate_specs_with_shopping({"storage": "128GB"}, [])
+        assert result == {}
+
+    def test_na_value_skipped(self, service):
+        """'N/A' values should be skipped."""
+        specs = {"storage": "N/A"}
+        shopping = [{"title": "iPhone 15 128GB", "description": ""}]
+        result = service._cross_validate_specs_with_shopping(specs, shopping)
+        assert "storage" not in result
+
+    def test_non_checkable_field_ignored(self, service):
+        """Fields not in checkable list are not cross-validated."""
+        specs = {"os": "Android 14"}
+        shopping = [{"title": "Samsung Galaxy S24 Android 14", "description": ""}]
+        result = service._cross_validate_specs_with_shopping(specs, shopping)
+        assert "os" not in result
+
+    def test_processor_text_match_in_shopping(self, service):
+        """Processor 'Snapdragon' should be found via text matching (no significant numbers)."""
+        specs = {"processor": "Snapdragon 8 Gen 3"}
+        shopping = [{"title": "Samsung Galaxy S24 Snapdragon 8 Gen 3 256GB", "description": ""}]
+        result = service._cross_validate_specs_with_shopping(specs, shopping)
+        assert result.get("processor") == "verified"
+
+    def test_form_text_match(self, service):
+        """Form 'softgels' should match via text matching."""
+        specs = {"form": "softgels"}
+        shopping = [{"title": "Fish Oil 120 Softgels", "description": ""}]
+        result = service._cross_validate_specs_with_shopping(specs, shopping)
+        assert result.get("form") == "verified"
+
+    def test_description_also_searched(self, service):
+        """Cross-validation should check descriptions too, not just titles."""
+        specs = {"storage": "128 GB"}
+        shopping = [{"title": "iPhone 15", "description": "128GB storage option"}]
+        result = service._cross_validate_specs_with_shopping(specs, shopping)
+        assert result.get("storage") == "verified"
+
+    def test_multiple_shopping_items_combined(self, service):
+        """Numbers can match across multiple shopping items."""
+        specs = {"storage": "128 GB"}
+        shopping = [
+            {"title": "iPhone 15 64GB", "description": ""},
+            {"title": "iPhone 15 128GB Blue", "description": ""},
+        ]
+        result = service._cross_validate_specs_with_shopping(specs, shopping)
+        assert result.get("storage") == "verified"
