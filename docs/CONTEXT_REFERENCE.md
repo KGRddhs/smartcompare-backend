@@ -113,22 +113,23 @@ SENTRY_DSN=https://xxx@sentry.io/xxx     # Enables Sentry error tracking (free t
 LOG_LEVEL=INFO                            # Structured logging level (DEBUG/INFO/WARNING/ERROR)
 ```
 
-## Frontend Config (Deferred — Manual Setup Required)
+## Frontend Config
 ```
-# Google Sign-In (authService.ts + app.json)
-- Google Cloud Console: create OAuth client IDs for web, iOS, Android
-- Replace TODO_REPLACE_WITH_GOOGLE_WEB_CLIENT_ID in authService.ts
-- Replace TODO_REPLACE_WITH_GOOGLE_IOS_CLIENT_ID in app.json
-- Supabase Dashboard: enable Google provider with web client ID + secret
+# Google Sign-In (CONFIGURED — Session 16, Mar 4 2026)
+- Google Cloud Console: OAuth client IDs created (Web + iOS + Android)
+- authService.ts: Web Client ID configured (21336192767-i9prqks93nrdmb9rg7ho2v1md9bgqgsv)
+- app.json: iOS URL scheme configured (21336192767-38hi4t1ac23089iau7jdog1f43oc7rdm)
+- Android SHA-1 fingerprint: 5B:7F:D1:0A:35:DD:FA:1B:31:9E:B9:B7:24:1A:6F:68:E4:78:2E:7E (debug keystore)
+- PENDING: Enable Google provider in Supabase Dashboard (Auth → Providers) with Web client ID + secret
 
-# Apple Sign-In (app.json)
+# Apple Sign-In (DEFERRED)
 - Requires active Apple Developer subscription ($99/year)
-- Replace TODO_REPLACE_WITH_APPLE_TEAM_ID in app.json
-- Enable "Sign in with Apple" capability in Xcode / Apple Developer Portal
-- Supabase Dashboard: enable Apple provider
+- Code is ready in authService.ts and app.json — just needs Apple Dev Portal config
+- Supabase Dashboard: enable Apple provider when ready
 
-# Supabase Schema
-- Add `display_name` TEXT column to auth.users (or profiles table) — needed for PUT /auth/profile
+# Supabase Schema (DONE — Session 16)
+- `public.users` table created with: id, email, display_name, auth_provider, subscription_tier, etc.
+- RLS enabled: users read/update own row, service role full access
 ```
 
 ---
@@ -138,7 +139,7 @@ LOG_LEVEL=INFO                            # Structured logging level (DEBUG/INFO
 ## Automated Tests (pytest)
 
 ```bash
-# All unit tests (fast, free, no API calls) — 344 tests, ~4s
+# All unit tests (fast, free, no API calls) — 411 tests, ~3s
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb scraping, Serper, GPT vision) — adds ~$0.03
@@ -172,12 +173,15 @@ python -m pytest tests/ -v --timeout=180
 | `tests/test_drug_database_service.py` | 11 | Unit + Live DB | 5 local + 6 `live_db` (need Supabase) |
 | `tests/test_history.py` | 10 | Unit | save_comparison, get history, delete, search, product name extraction |
 | `tests/test_db_improvements.py` | 9 | Unit | log_search, upsert_product, error handling |
+| `tests/test_review_prompt_quality.py` | 22 | Unit | Review + verdict prompt structure, citations, examples, completeness |
+| `tests/test_spec_verification_strict.py` | 27 | Unit | Strict numeric matching, cross-validation, training/no-source handling |
+| `tests/test_url_quality.py` | 18 | Unit | Retailer URL generation, null for unknowns, Serper link extraction |
 | `tests/test_url_extraction.py` | 8 | Unit | URL extraction for price + rating links |
 | `tests/test_iherb_scraping.py` | 7 | Unit + Live | Word normalization, live iHerb scraping, brand filtering |
 | `tests/test_unified_search.py` | 4 | Unit + Live | Search sharing (specs/reviews reuse), cost budget tracking |
 | `tests/test_singleton_state.py` | 3 | Unit | Singleton pattern, cache leak prevention, state reset between requests |
 | `tests/test_integration.py` | 6 | Integration | Live Railway: phones, laptops, supplements (iHerb + pharmacy), grocery, shoes |
-| **Total** | **366** | | **344 free unit + 10 live_unit + 6 live_db + 6 integration** |
+| **Total** | **411** | | **395 free unit + 10 live_unit + 6 live_db + 6 integration** |
 
 ### Pytest Markers
 | Marker | Purpose | Run command |
@@ -242,11 +246,19 @@ npx expo start
 - [x] Input validation on Login/Register screens (email regex, password min 6, confirm match)
 - [x] Backend profile endpoints (PUT /auth/profile, /auth/email, /auth/password)
 - [x] Backend social-login endpoint (POST /auth/social-login — Google/Apple idToken → Supabase)
+- [x] Expo startup fix (removed expo-image-manipulator config plugin — Session 17)
+- [x] Lazy native module imports for Expo Go compatibility (Google Sign-In, Apple Auth — Session 17)
+- [x] Review prompt: snippet citations required, no synthetic rating_distribution (Session 17)
+- [x] Verdict prompt: numeric diffs, trade-off analysis, audience targeting (Session 17)
+- [x] Spec verification: strict numeric matching for quantifiable fields (Session 17)
+- [x] URL fixes: null for unknown retailers instead of Google fallback (Session 17)
+- [x] Test coverage: 366 → 411 tests (Session 17)
 
-## Short Term — Config Setup (Manual, Deferred)
-- [ ] Google Cloud Console: create OAuth client IDs (web + iOS + Android)
-- [ ] Supabase: enable Google provider, add `display_name` column to users table
-- [ ] Replace `TODO_REPLACE_*` placeholder client IDs in authService.ts and app.json
+## Short Term — Config Setup
+- [x] Google Cloud Console: create OAuth client IDs (web + iOS + Android) — Done Session 16
+- [x] Replace placeholder client IDs in authService.ts and app.json — Done Session 16
+- [x] Supabase: create `public.users` table with `display_name` column — Done Session 16
+- [ ] Supabase: enable Google provider in dashboard (paste Web client ID + secret)
 - [ ] Apple Developer subscription (needed for Apple Sign-In activation)
 - [ ] Set up Sentry DSN for error tracking
 
@@ -295,8 +307,12 @@ Current status (Mar 3, 2026 — Session 15):
 - Admin: Analytics endpoints at /api/v1/admin/* (protected by ADMIN_API_KEY)
 - Sentry: Ready (opt-in when SENTRY_DSN is set)
 - CI/CD: GitHub Actions runs pytest + py_compile + tsc on push/PR
-- Tests: 366 total across 18 files (344 free unit + 10 live_unit + 6 live_db + 6 integration)
-- EAS Build: Fixed (all plugins in app.json: expo-camera, expo-image-picker, expo-image-manipulator, google-signin, apple-auth)
+- Tests: 411 total across 21 files (395 free unit + 10 live_unit + 6 live_db + 6 integration)
+- EAS Build: Fixed (expo-image-manipulator removed from plugins — it's a library not a config plugin)
+- Expo Go: Fixed (native modules lazy-loaded — Google/Apple sign-in gracefully unavailable)
+- AI Quality: Review/verdict prompts require snippet citations + numeric diffs (Session 17)
+- Spec Verification: Strict numeric matching for quantifiable fields (Session 17)
+- URL Quality: Unknown retailers return null instead of Google fallback (Session 17)
 - URL input: Not started
 ```
 

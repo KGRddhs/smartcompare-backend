@@ -4,6 +4,69 @@
 
 ---
 
+# SESSION 17: March 4, 2026 — Smart Polish (AI Quality & Bug Fixes)
+
+## What We Did
+
+3-agent Opus team (agent-expo-urls, agent-prompts, agent-specs) with full cross-QA.
+
+### 1. Fixed Expo Startup
+**File:** `SmartCompareApp/app.json`
+- Removed `expo-image-manipulator` from plugins array — it's a regular library, not a config plugin
+- Was causing `PluginError: Unable to resolve a valid config plugin` on `npx expo start`
+
+### 2. Fixed Native Module Crash in Expo Go
+**File:** `SmartCompareApp/src/services/authService.ts`
+- `@react-native-google-signin/google-signin` crashed at import time in Expo Go (no native binary)
+- Converted all native module imports (GoogleSignin, AppleAuthentication, Crypto) to lazy-loaded with try/catch
+- App now works in Expo Go — social sign-in buttons show "requires development build" error instead of crashing
+
+### 3. Tightened Review Extraction Prompt
+**File:** `app/services/extraction_service.py` (REVIEWS_EXTRACTION_PROMPT)
+- Every praise/complaint now requires `[snippet_N]` citation
+- `rating_distribution` always set to null (no more synthetic percentages)
+- Added DO/DON'T examples for specific vs generic output
+- Warns against paraphrasing/fabricating user quotes
+- `detailed_praises/complaints` must include `source` field
+
+### 4. Tightened Spec Citation Verification
+**File:** `app/services/structured_comparison_service.py`
+- Added `NUMERIC_SPEC_FIELDS` constant (ram, storage, battery, weight, display, count, dosage, nutrition_*)
+- `_verify_spec_citations()`: numeric fields require exact number match in cited snippet (was 50% keyword overlap)
+- `_cross_validate_specs_with_shopping()`: ALL significant numbers (2+ digits) must match
+- Text fields retain original keyword overlap behavior
+
+### 5. Fixed Broken Retailer URLs
+**File:** `app/services/structured_comparison_service.py`
+- `_build_retailer_url()` now returns `None` for unknown retailers (was returning Google Shopping search page)
+- Return type changed to `Optional[str]`
+- Frontend already handles null URLs gracefully (price button hidden, rating falls back to Google Shopping search)
+
+### 6. Improved Comparison Verdict Prompt
+**File:** `app/services/extraction_service.py` (COMPARISON_PROMPT)
+- Every pro/con must include a specific number or measurable fact
+- Added DO/DON'T examples: "50% larger battery (5000 vs 3274 mAh)" not "Better battery life"
+- `winner_reason` must cite numeric advantage
+- `recommendation` must state who should buy each product with specific trade-offs
+- `key_differences` must include actual specs/numbers
+
+## Test Results
+- **411 tests** (up from 366), 0 failures, 21 test files
+- New test files: `test_review_prompt_quality.py` (22 tests), `test_spec_verification_strict.py` (27 tests), `test_url_quality.py` (18 tests)
+- All 48 existing fact-checking tests pass (no regressions)
+
+## Commits
+- `116b92f` — fix: remove expo-image-manipulator from plugins
+- `029576b` — feat: tighten review prompt — require snippet citations
+- `94d121a` — fix: return null URL for unknown retailers
+- `9b151be` — feat: improve verdict prompt — numeric diffs, trade-offs
+- `d01254d` — feat: strict numeric verification for spec citations
+- `cc7c4f1` — test: add completeness tests for prompts (22 total)
+- `16ca0e6` — test: add 12 edge case tests for URL handling
+- (+ lazy native module imports committed after team)
+
+---
+
 # SESSION LOG: February 11, 2026
 
 ## What We Fixed
@@ -1563,9 +1626,9 @@ Breakdown: 344 free unit + 10 live_unit + 6 live_db + 6 integration = 366
 ### Config Still Needed (Manual, Deferred)
 | Item | Where | Status |
 |------|-------|--------|
-| Google Cloud OAuth client IDs | Cloud Console → authService.ts + app.json | TODO_REPLACE_* placeholders |
-| Supabase Google provider | Supabase Dashboard → Auth → Providers | Not enabled |
-| Supabase `display_name` column | Supabase Dashboard → users table | Not added |
+| Google Cloud OAuth client IDs | Cloud Console → authService.ts + app.json | Done (Session 16) — Web/iOS/Android client IDs configured |
+| Supabase Google provider | Supabase Dashboard → Auth → Providers | Pending — enable + paste Web client ID/secret |
+| `public.users` table + `display_name` | Supabase migration | Done (Session 16) — table created with RLS |
 | Apple Developer subscription | developer.apple.com | Deferred ($99/year) |
 
 ### Commits (18)
@@ -1631,7 +1694,8 @@ fe8d9c2 test: add endpoint-level HEIC rejection tests for /image/identify
 - Legacy `/api/v1/compare` route: all function calls use wrong arg counts (unchanged)
 - ResultsScreen local type definitions diverge from types.ts (unchanged)
 - Camera supplement prices: verbose names fail iHerb search (unchanged)
-- Google/Apple sign-in: placeholder client IDs need real values (config, not code)
+- Google Sign-In: Supabase Google provider not yet enabled in dashboard (client IDs configured in Session 16)
+- Apple Sign-In: deferred — requires Apple Developer subscription ($99/year)
 
 ---
 

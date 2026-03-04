@@ -219,7 +219,7 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 
 ### Run commands
 ```bash
-# All free unit tests (344 tests, ~4s, $0)
+# All free unit tests (411 tests, ~3s, $0)
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb, Serper, GPT vision — ~$0.03)
@@ -237,13 +237,16 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (366 total: 344 unit + 10 live_unit + 6 live_db + 6 integration)
+### Test files (411 total: 395 unit + 10 live_unit + 6 live_db + 6 integration)
 - `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
 - `tests/test_analytics.py` — 30 tests: analytics service queries, admin endpoint auth + all 5 routes
+- `tests/test_spec_verification_strict.py` — 27 tests: strict numeric matching, cross-validation, training/no-source handling
 - `tests/test_camera_vision.py` — 26 tests: vision pipeline, JSON cleanup, size_or_count enrichment, HEIC detection, MIME validation, endpoint rejection
 - `tests/test_observability.py` — 24 tests: Sentry init, structured JSON formatter, configure_logging, error handler middleware
+- `tests/test_review_prompt_quality.py` — 22 tests: review + verdict prompt structure, citations, examples, completeness
+- `tests/test_url_quality.py` — 18 tests: retailer URL generation, null for unknowns, Serper link extraction
 - `tests/test_security_middleware.py` — 16 tests: request ID generation/preservation, security headers, rate limiting (under/over/429)
 - `tests/test_rating_tiers.py` — 16 tests: tier classification, consensus logic, accessory filtering
 - `tests/test_price_fallback.py` — 12 tests: shopping extraction, currency conversion, all-tiers-fail
@@ -262,8 +265,8 @@ python -m pytest tests/ -v --timeout=180
 These are known issues that have been intentionally deferred:
 - Legacy `/api/v1/compare` route (`routes.py`): all function calls use wrong arg counts — 4 TypeErrors
 - `ResultsScreen.tsx` has local type definitions that diverge from `src/types/types.ts`
-- Google/Apple sign-in: placeholder client IDs (`TODO_REPLACE_*`) need real values from Cloud Console / Apple Dev Portal
-- Supabase: `display_name` column not yet added to users table (needed for PUT /auth/profile)
+- Google Sign-In: Supabase Google provider needs to be enabled in dashboard (client IDs configured in code)
+- Apple Sign-In: deferred — requires Apple Developer subscription ($99/year); code is ready
 
 ## Detailed Context
 See `docs/CLAUDE_CODE_CONTEXT.md` for the index of all context files. Key files: CONTEXT_ARCHITECTURE.md (system design), CONTEXT_SESSION_LOG.md (development history), CONTEXT_REFERENCE.md (testing/deploy).

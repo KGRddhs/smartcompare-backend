@@ -5,9 +5,43 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import * as AppleAuthentication from 'expo-apple-authentication';
-import * as Crypto from 'expo-crypto';
+// Native modules loaded lazily — crashes Expo Go if imported at top level
+let GoogleSignin: any = null;
+let AppleAuthentication: any = null;
+let Crypto: any = null;
+
+function getGoogleSignin() {
+  if (!GoogleSignin) {
+    try {
+      GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
+    } catch {
+      console.warn('Google Sign-In native module not available (Expo Go?)');
+    }
+  }
+  return GoogleSignin;
+}
+
+function getAppleAuth() {
+  if (!AppleAuthentication) {
+    try {
+      AppleAuthentication = require('expo-apple-authentication');
+    } catch {
+      console.warn('Apple Authentication module not available');
+    }
+  }
+  return AppleAuthentication;
+}
+
+function getCrypto() {
+  if (!Crypto) {
+    try {
+      Crypto = require('expo-crypto');
+    } catch {
+      console.warn('Expo Crypto module not available');
+    }
+  }
+  return Crypto;
+}
 import api, { API_BASE_URL } from './api';
 
 export interface User {
@@ -296,11 +330,13 @@ export async function verifyAuth(): Promise<User | null> {
 
 /**
  * Configure Google Sign-In. Call once at app startup.
- * TODO: Replace with real Google Web Client ID from Google Cloud Console.
+ * Uses Google Web Client ID from Google Cloud Console.
  */
 export function configureGoogleSignIn() {
-  GoogleSignin.configure({
-    webClientId: 'TODO_REPLACE_GOOGLE_WEB_CLIENT_ID', // TODO: Replace with real client ID from Google Cloud Console
+  const gs = getGoogleSignin();
+  if (!gs) return;
+  gs.configure({
+    webClientId: '21336192767-i9prqks93nrdmb9rg7ho2v1md9bgqgsv.apps.googleusercontent.com',
     offlineAccess: true,
   });
 }
@@ -310,8 +346,10 @@ export function configureGoogleSignIn() {
  */
 export async function signInWithGoogle(): Promise<AuthResponse> {
   try {
-    await GoogleSignin.hasPlayServices();
-    const signInResult = await GoogleSignin.signIn();
+    const gs = getGoogleSignin();
+    if (!gs) return { success: false, error: 'Google Sign-In not available (requires development build)' };
+    await gs.hasPlayServices();
+    const signInResult = await gs.signIn();
     const idToken = signInResult.data?.idToken;
 
     if (!idToken) {
@@ -358,7 +396,9 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
  */
 export async function isAppleSignInAvailable(): Promise<boolean> {
   if (Platform.OS !== 'ios') return false;
-  return await AppleAuthentication.isAvailableAsync();
+  const apple = getAppleAuth();
+  if (!apple) return false;
+  return await apple.isAvailableAsync();
 }
 
 /**
@@ -366,17 +406,21 @@ export async function isAppleSignInAvailable(): Promise<boolean> {
  */
 export async function signInWithApple(): Promise<AuthResponse> {
   try {
+    const apple = getAppleAuth();
+    const crypto = getCrypto();
+    if (!apple || !crypto) return { success: false, error: 'Apple Sign-In not available (requires development build)' };
+
     // Generate nonce for security
     const rawNonce = Math.random().toString(36).substring(2, 15);
-    const hashedNonce = await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
+    const hashedNonce = await crypto.digestStringAsync(
+      crypto.CryptoDigestAlgorithm.SHA256,
       rawNonce
     );
 
-    const credential = await AppleAuthentication.signInAsync({
+    const credential = await apple.signInAsync({
       requestedScopes: [
-        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        apple.AppleAuthenticationScope.FULL_NAME,
+        apple.AppleAuthenticationScope.EMAIL,
       ],
       nonce: hashedNonce,
     });
