@@ -101,6 +101,9 @@ export interface ComparisonResult {
   winner_index: number;
   recommendation: string;
   key_differences: string[];
+  category_used?: string;
+  category_switched?: boolean;
+  original_category?: string;
   metadata?: {
     query: string;
     region: string;
