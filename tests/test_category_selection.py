@@ -73,3 +73,131 @@ def test_all_schemas_are_lists():
 def test_total_category_count():
     """Should have 8 total categories (4 existing + 4 new)"""
     assert len(CATEGORY_SPEC_SCHEMAS) == 8
+
+
+# ============================================
+# Task 2: API parameter tests
+# ============================================
+
+from fastapi.testclient import TestClient
+from unittest.mock import patch, AsyncMock
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_api_accepts_selected_category_param():
+    """API endpoint accepts selected_category parameter without 422"""
+    with patch("app.api.text_routes.get_comparison_service") as mock_svc:
+        mock_service = mock_svc.return_value
+        mock_service.compare_from_text = AsyncMock(return_value={
+            "success": True, "products": [], "comparison": {},
+            "category_used": "electronics", "category_switched": False,
+        })
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"q": "iPhone 15 vs Galaxy S24", "selected_category": "electronics"}
+        )
+        # Should not be 422 (validation error)
+        assert response.status_code != 422
+
+
+def test_api_accepts_null_selected_category():
+    """API endpoint works without selected_category (backwards compatible)"""
+    with patch("app.api.text_routes.get_comparison_service") as mock_svc:
+        mock_service = mock_svc.return_value
+        mock_service.compare_from_text = AsyncMock(return_value={
+            "success": True, "products": [], "comparison": {},
+            "category_used": "electronics", "category_switched": False,
+        })
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"q": "iPhone 15 vs Galaxy S24"}
+        )
+        assert response.status_code != 422
+
+
+def test_api_passes_selected_category_to_service():
+    """API passes selected_category to service.compare_from_text()"""
+    with patch("app.api.text_routes.get_comparison_service") as mock_svc:
+        mock_service = mock_svc.return_value
+        mock_service.compare_from_text = AsyncMock(return_value={
+            "success": True, "products": [], "comparison": {},
+            "category_used": "makeup", "category_switched": True,
+            "original_category": "electronics",
+        })
+        client.get(
+            "/api/v1/text/compare",
+            params={"q": "MAC lipstick vs Dior lipstick", "selected_category": "makeup"}
+        )
+        # Verify selected_category was passed to the service
+        call_kwargs = mock_service.compare_from_text.call_args
+        assert call_kwargs is not None
+        # Check it was passed as keyword arg
+        if call_kwargs.kwargs:
+            assert call_kwargs.kwargs.get("selected_category") == "makeup"
+
+
+# ============================================
+# Task 3: Category switching logic tests
+# ============================================
+
+def test_category_switching_response_fields():
+    """Service response includes category switching fields when mismatch"""
+    with patch("app.api.text_routes.get_comparison_service") as mock_svc:
+        mock_service = mock_svc.return_value
+        mock_service.compare_from_text = AsyncMock(return_value={
+            "success": True, "products": [], "comparison": {},
+            "category_used": "makeup", "category_switched": True,
+            "original_category": "electronics",
+        })
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"q": "MAC lipstick vs Dior lipstick", "selected_category": "electronics"}
+        )
+        data = response.json()
+        assert data.get("category_used") == "makeup"
+        assert data.get("category_switched") is True
+        assert data.get("original_category") == "electronics"
+
+
+def test_no_switch_response_fields():
+    """Service response has no switch when categories match"""
+    with patch("app.api.text_routes.get_comparison_service") as mock_svc:
+        mock_service = mock_svc.return_value
+        mock_service.compare_from_text = AsyncMock(return_value={
+            "success": True, "products": [], "comparison": {},
+            "category_used": "electronics", "category_switched": False,
+            "original_category": None,
+        })
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"q": "iPhone 15 vs Galaxy S24", "selected_category": "electronics"}
+        )
+        data = response.json()
+        assert data.get("category_used") == "electronics"
+        assert data.get("category_switched") is False
+        assert data.get("original_category") is None
+
+
+# ============================================
+# Task 5: Parser prompt category detection tests
+# ============================================
+
+def test_parser_prompt_includes_new_categories():
+    """PRODUCT_PARSER_PROMPT includes the 4 new categories"""
+    from app.services.extraction_service import PRODUCT_PARSER_PROMPT
+    assert "makeup" in PRODUCT_PARSER_PROMPT
+    assert "skincare" in PRODUCT_PARSER_PROMPT
+    assert "haircare" in PRODUCT_PARSER_PROMPT
+    assert "fragrances" in PRODUCT_PARSER_PROMPT
+
+
+def test_parser_prompt_has_detection_rules():
+    """PRODUCT_PARSER_PROMPT has detection rules for new categories"""
+    from app.services.extraction_service import PRODUCT_PARSER_PROMPT
+    # Should have examples/hints for each new category
+    assert "lipstick" in PRODUCT_PARSER_PROMPT.lower() or "foundation" in PRODUCT_PARSER_PROMPT.lower()
+    assert "moisturizer" in PRODUCT_PARSER_PROMPT.lower() or "serum" in PRODUCT_PARSER_PROMPT.lower()
+    assert "shampoo" in PRODUCT_PARSER_PROMPT.lower() or "conditioner" in PRODUCT_PARSER_PROMPT.lower()
+    assert "perfume" in PRODUCT_PARSER_PROMPT.lower() or "cologne" in PRODUCT_PARSER_PROMPT.lower()

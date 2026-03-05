@@ -173,6 +173,7 @@ class StructuredComparisonService:
         include_reviews: bool = True,
         include_pros_cons: bool = True,
         nocache: bool = False,
+        selected_category: Optional[str] = None,
         vision_products: Optional[List[Dict]] = None
     ) -> Dict[str, Any]:
         """
@@ -224,7 +225,21 @@ class StructuredComparisonService:
 
                 products = parsed["products"][:2]  # Limit to 2 products
                 logger.info(f"Identified products: {products}")
-            
+
+            # Determine detected category from first product
+            detected_category = products[0].get("category", "other")
+
+            # Track category switching (selected vs AI-detected)
+            category_switched = False
+            original_category = None
+            if selected_category and selected_category != detected_category:
+                category_switched = True
+                original_category = selected_category
+                logger.info(f"Category switch: selected={selected_category}, detected={detected_category}")
+
+            # Always use AI-detected category (AI decision wins)
+            category_used = detected_category
+
             # Step 2: Fetch data for each product (parallel)
             product_data = await asyncio.gather(
                 self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
@@ -261,6 +276,9 @@ class StructuredComparisonService:
                 "winner_index": comparison.get("winner_index", 0),
                 "recommendation": comparison.get("recommendation", ""),
                 "key_differences": comparison.get("key_differences", []),
+                "category_used": category_used,
+                "category_switched": category_switched,
+                "original_category": original_category,
                 "metadata": {
                     "query": query,
                     "region": region,

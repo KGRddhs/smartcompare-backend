@@ -53,7 +53,7 @@ Extract and return ONLY valid JSON (no markdown, no explanation):
             "brand": "brand name",
             "name": "product name",
             "variant": "variant/size if mentioned (e.g., 128GB, Pro, 2.5kg)",
-            "category": "electronics|grocery|supplements|beauty|fashion|home|sports|automotive|other",
+            "category": "electronics|grocery|supplements|makeup|skincare|haircare|fragrances|other",
             "search_query": "optimized search query for this product"
         }}
     ],
@@ -66,6 +66,15 @@ RULES:
 - Normalize brand names (e.g., "iphone" → "Apple", "galaxy" → "Samsung")
 - Include variant if specified (storage, size, color, etc.)
 - search_query should be specific for price searches
+- Category detection:
+  * electronics: phones, laptops, TVs, cameras, headphones, tablets
+  * grocery: food, beverages, household items
+  * supplements: vitamins, minerals, health supplements
+  * makeup: foundation, lipstick, mascara, eyeshadow, concealer, blush, primer
+  * skincare: moisturizer, serum, cleanser, sunscreen, toner, face wash
+  * haircare: shampoo, conditioner, hair treatment, styling products, hair oil
+  * fragrances: perfume, cologne, eau de toilette, eau de parfum, body spray
+  * other: anything not fitting above categories
 - Return valid JSON only"""
 
 

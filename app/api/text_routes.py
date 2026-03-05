@@ -124,6 +124,7 @@ async def text_compare_get(
     reviews: bool = Query(True, description="Include reviews"),
     pros_cons: bool = Query(True, description="Include pros/cons"),
     nocache: bool = Query(False, description="Bypass cache for fresh data"),
+    selected_category: Optional[str] = Query(None, description="User-selected category hint"),
     user: Optional[Dict] = Depends(get_optional_user),
 ):
     """GET version of text comparison for easy testing."""
@@ -136,7 +137,8 @@ async def text_compare_get(
         include_specs=specs,
         include_reviews=reviews,
         include_pros_cons=pros_cons,
-        nocache=nocache
+        nocache=nocache,
+        selected_category=selected_category,
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
