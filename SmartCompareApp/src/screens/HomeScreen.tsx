@@ -23,6 +23,7 @@ import { RootStackParamList } from '../types';
 import { healthCheck } from '../services/api';
 import { logout, getSavedUser, User } from '../services/authService';
 import api from '../services/api';
+import CategorySelector from '../components/CategorySelector';
 
 type HomeScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
@@ -41,6 +42,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
   const [textQuery, setTextQuery] = useState('');
   const [url1, setUrl1] = useState('');
   const [url2, setUrl2] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('electronics');
 
   useFocusEffect(
     useCallback(() => {
@@ -87,6 +89,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         params: {
           q: textQuery.trim(),
           region: 'bahrain',
+          selected_category: selectedCategory,
           ...(needsCacheBust && { nocache: true }),
         }
       });
@@ -126,6 +129,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         url1: url1.trim(),
         url2: url2.trim(),
         region: 'bahrain',
+        selected_category: selectedCategory,
       });
       
       if (response.data.success) {
@@ -270,6 +274,12 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
               <Text style={styles.userEmail}> • {user.email}</Text>
             )}
           </View>
+
+          {/* Category Selector */}
+          <CategorySelector
+            value={selectedCategory}
+            onChange={setSelectedCategory}
+          />
 
           {/* Input Method Selector */}
           <View style={styles.methodSelector}>
