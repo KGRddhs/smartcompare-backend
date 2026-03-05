@@ -89,6 +89,60 @@ CATEGORY_SPEC_SCHEMAS = {
         "count", "dimensions", "weight", "material", "color", "warranty",
         "power", "features", "included", "compatibility", "origin"
     ],
+
+    # Beauty & Personal Care
+    "makeup": [
+        "shade_range",      # e.g., "50 shades", "Light to Deep"
+        "finish",           # matte, glossy, satin, dewy
+        "coverage",         # sheer, medium, full
+        "skin_type",        # oily, dry, combination, sensitive
+        "ingredients",      # key ingredients list
+        "cruelty_free",     # yes/no
+        "vegan",            # yes/no
+        "spf",              # sun protection factor
+        "volume",           # ml/oz
+        "waterproof",       # yes/no
+        "long_lasting",     # hours or yes/no
+    ],
+
+    "skincare": [
+        "skin_type",           # oily, dry, combination, sensitive
+        "skin_concern",        # acne, aging, hydration, brightening
+        "ingredients",         # key ingredients
+        "active_ingredient",   # retinol, vitamin C, niacinamide, etc.
+        "spf",                 # sun protection factor
+        "fragrance_free",      # yes/no
+        "cruelty_free",        # yes/no
+        "vegan",               # yes/no
+        "volume",              # ml/oz
+        "ph_level",            # pH balance
+    ],
+
+    "haircare": [
+        "hair_type",        # straight, wavy, curly, coily
+        "hair_concern",     # frizz, damage, volume, color-treated
+        "ingredients",      # key ingredients
+        "sulfate_free",     # yes/no
+        "paraben_free",     # yes/no
+        "silicone_free",    # yes/no
+        "cruelty_free",     # yes/no
+        "vegan",            # yes/no
+        "volume",           # ml/oz
+        "scent",            # fragrance description
+    ],
+
+    "fragrances": [
+        "scent_family",     # floral, woody, oriental, fresh, etc.
+        "notes_top",        # top notes (first impression)
+        "notes_heart",      # heart/middle notes (main character)
+        "notes_base",       # base notes (lasting impression)
+        "longevity",        # hours of wear
+        "sillage",          # projection (soft, moderate, strong)
+        "season",           # spring, summer, fall, winter, all-season
+        "occasion",         # day, evening, formal, casual
+        "volume",           # ml/oz
+        "concentration",    # eau de toilette, eau de parfum, parfum
+    ],
 }
 
 
