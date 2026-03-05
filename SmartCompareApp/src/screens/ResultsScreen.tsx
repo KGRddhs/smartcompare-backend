@@ -99,6 +99,9 @@ interface ResultsScreenProps {
         winner_index: number;
         recommendation: string;
         key_differences: string[];
+        category_used?: string;
+        category_switched?: boolean;
+        original_category?: string;
         metadata?: {
           elapsed_seconds: number;
           total_cost: number;
@@ -155,6 +158,38 @@ const SPEC_DISPLAY_CONFIG: Record<string, { label: string; order: number }> = {
   included: { label: 'Included', order: 8 },
   compatibility: { label: 'Compatibility', order: 9 },
   certifications: { label: 'Certifications', order: 11 },
+  // Makeup
+  shade_range: { label: 'Shade Range', order: 1 },
+  finish: { label: 'Finish', order: 2 },
+  coverage: { label: 'Coverage', order: 3 },
+  skin_type: { label: 'Skin Type', order: 4 },
+  cruelty_free: { label: 'Cruelty Free', order: 6 },
+  vegan: { label: 'Vegan', order: 7 },
+  spf: { label: 'SPF', order: 8 },
+  volume: { label: 'Volume', order: 9 },
+  waterproof: { label: 'Waterproof', order: 10 },
+  long_lasting: { label: 'Long Lasting', order: 11 },
+  // Skincare
+  skin_concern: { label: 'Skin Concern', order: 2 },
+  fragrance_free: { label: 'Fragrance Free', order: 6 },
+  ph_level: { label: 'pH Level', order: 10 },
+  // Haircare
+  hair_type: { label: 'Hair Type', order: 1 },
+  hair_concern: { label: 'Hair Concern', order: 2 },
+  sulfate_free: { label: 'Sulfate Free', order: 4 },
+  paraben_free: { label: 'Paraben Free', order: 5 },
+  silicone_free: { label: 'Silicone Free', order: 6 },
+  scent: { label: 'Scent', order: 10 },
+  // Fragrances
+  scent_family: { label: 'Scent Family', order: 1 },
+  notes_top: { label: 'Top Notes', order: 2 },
+  notes_heart: { label: 'Heart Notes', order: 3 },
+  notes_base: { label: 'Base Notes', order: 4 },
+  longevity: { label: 'Longevity', order: 5 },
+  sillage: { label: 'Sillage', order: 6 },
+  season: { label: 'Season', order: 7 },
+  occasion: { label: 'Occasion', order: 8 },
+  concentration: { label: 'Concentration', order: 10 },
 };
 
 export default function ResultsScreen({ route, navigation }: ResultsScreenProps) {
@@ -621,6 +656,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <Text style={styles.shareText}>Share</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Category Switch Banner */}
+      {result.category_switched && (
+        <View style={styles.infoBanner}>
+          <Text style={styles.infoBannerText}>
+            We identified these as {result.category_used} products for accurate comparison.
+          </Text>
+        </View>
+      )}
 
       {/* Tabs */}
       <View style={styles.tabBar}>
@@ -1298,5 +1342,23 @@ const styles = StyleSheet.create({
     color: '#F44336',
     marginBottom: 4,
     marginLeft: 8,
+  },
+
+  // Category switch banner
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginHorizontal: 0,
+  },
+  infoBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1565C0',
+    lineHeight: 18,
   },
 });
