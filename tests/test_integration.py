@@ -192,3 +192,91 @@ def test_general_product():
     for product in data["products"]:
         amount = product["price"]["amount"]
         assert 5 <= amount <= 400, f"Shoe price {amount} BHD seems unrealistic"
+
+
+# ============================================
+# Category Selection Tests
+# ============================================
+
+def fetch_comparison_with_category(query: str, selected_category: str = None) -> dict:
+    """Call compare endpoint with optional selected_category param."""
+    params = {"q": query, "nocache": "true"}
+    if selected_category:
+        params["selected_category"] = selected_category
+    response = httpx.get(
+        f"{BASE_URL}/api/v1/text/compare",
+        params=params,
+        timeout=TIMEOUT,
+    )
+    assert response.status_code == 200, f"HTTP {response.status_code}: {response.text[:500]}"
+    return response.json()
+
+
+@pytest.mark.integration
+def test_category_selection_electronics_match():
+    """E2E: Select electronics, query electronics, verify no switch."""
+    data = fetch_comparison_with_category(
+        "iPhone 15 vs Samsung Galaxy S24",
+        selected_category="electronics"
+    )
+    assert data["success"] is True
+    assert data["category_used"] == "electronics"
+    assert data["category_switched"] is False
+    assert data.get("original_category") is None
+
+
+@pytest.mark.integration
+def test_category_selection_mismatch():
+    """E2E: Select electronics, query makeup, verify switch to makeup."""
+    data = fetch_comparison_with_category(
+        "MAC Ruby Woo vs Dior 999 lipstick",
+        selected_category="electronics"
+    )
+    assert data["success"] is True
+    assert data["category_used"] == "makeup"
+    assert data["category_switched"] is True
+    assert data["original_category"] == "electronics"
+
+    # Verify makeup specs were extracted
+    if data.get("products"):
+        product = data["products"][0]
+        specs = product.get("specs", {})
+        makeup_fields = ["finish", "shade_range", "coverage", "skin_type",
+                         "cruelty_free", "waterproof", "volume"]
+        has_makeup_field = any(f in specs for f in makeup_fields)
+        assert has_makeup_field, \
+            f"No makeup fields found in specs: {list(specs.keys())}"
+
+
+@pytest.mark.integration
+def test_backward_compat_no_category():
+    """E2E: API works without selected_category param (backward compat)."""
+    data = fetch_comparison_with_category(
+        "iPhone 15 vs Samsung Galaxy S24",
+        selected_category=None  # No category selected
+    )
+    assert data["success"] is True
+    assert "category_used" in data
+    assert data["category_switched"] is False
+
+
+@pytest.mark.integration
+def test_category_skincare_match():
+    """E2E: Skincare products with matching category."""
+    data = fetch_comparison_with_category(
+        "CeraVe Moisturizing Cream vs Cetaphil Daily Hydrating Lotion",
+        selected_category="skincare"
+    )
+    assert data["success"] is True
+    # AI should detect skincare
+    assert data["category_used"] in ("skincare", "other")
+
+    if data.get("products"):
+        product = data["products"][0]
+        specs = product.get("specs", {})
+        skincare_fields = ["skin_type", "skin_concern", "active_ingredient",
+                           "fragrance_free", "volume"]
+        if data["category_used"] == "skincare":
+            has_skincare_field = any(f in specs for f in skincare_fields)
+            assert has_skincare_field, \
+                f"No skincare fields in specs: {list(specs.keys())}"

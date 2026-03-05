@@ -132,7 +132,7 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 - Supabase `text_search()` API: use `options={"type": "plain", "config": "english"}` (NOT keyword args); `.limit()` must come BEFORE `.text_search()` in chain
 
 **Key services:**
-- `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`
+- `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/makeup/skincare/haircare/fragrances/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`
 - `drug_database_service.py` — Bahrain drug database lookup + GPT context formatting (supplements only)
 - `serper_service.py` — Serper API calls (`search_product_prices()`, `search_price_organic()`, `search_web()`)
 - `cache_service.py` — Upstash Redis caching, monthly budget tracking
@@ -201,6 +201,9 @@ Target: **$0.009-0.01/comparison** (current: ~$0.010 electronics, ~$0.010 supple
 ### Vision products bypass query parsing
 Camera input passes `vision_products` directly to `compare_from_text()`, skipping `parse_product_query()`. The `size_or_count` field (e.g., "360 Softgels") is appended to the product name in `image_routes.py` before comparison.
 
+### Category selection (soft validation)
+The frontend provides 7 category options: Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances. The `selected_category` parameter is passed to `/api/v1/text/compare` as a hint, but the backend AI always makes the final category decision via `PRODUCT_PARSER_PROMPT`. If a mismatch is detected (`selected_category != detected_category`), the response includes `category_switched: true` and the frontend shows an info banner. The 4 new beauty categories have dedicated spec schemas in `CATEGORY_SPEC_SCHEMAS` (extraction_service.py). Zero extra API cost -- category detection happens within the existing product parser call.
+
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
 **Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO)
@@ -219,7 +222,7 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 
 ### Run commands
 ```bash
-# All free unit tests (411 tests, ~3s, $0)
+# All free unit tests (453 tests, ~5s, $0)
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb, Serper, GPT vision — ~$0.03)
@@ -237,7 +240,7 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (411 total: 395 unit + 10 live_unit + 6 live_db + 6 integration)
+### Test files (483 total: 453 unit + 14 live_unit + 6 live_db + 10 integration)
 - `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
@@ -257,8 +260,9 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_url_extraction.py` — 8 tests: URL extraction (price + rating link logic)
 - `tests/test_iherb_scraping.py` — 7 tests: word normalization, live iHerb scraping, brand filtering
 - `tests/test_unified_search.py` — 4 tests: search sharing (specs/reviews), cost budget tracking
+- `tests/test_category_selection.py` — 46 tests: schema validation, prompt building, API params, category switching, parser prompt, live GPT extraction
 - `tests/test_singleton_state.py` — 3 tests: singleton pattern, cache leak prevention, state reset
-- `tests/test_integration.py` — 6 tests: live Railway (~$0.06, ~4 min)
+- `tests/test_integration.py` — 10 tests: live Railway (~$0.10, ~5 min)
 
 ## Known Remaining Bugs (deferred)
 

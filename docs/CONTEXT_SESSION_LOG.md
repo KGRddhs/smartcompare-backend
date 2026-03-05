@@ -4,6 +4,73 @@
 
 ---
 
+# SESSION 18: March 5, 2026 — Category Selection Feature
+
+## What We Did
+
+4-agent Opus team (backend-agent, frontend-agent, test-agent, qa-agent) with cross-QA.
+
+### 1. Added 4 New Category Schemas
+**File:** `app/services/extraction_service.py`
+- Added makeup (11 fields: shade_range, finish, coverage, skin_type, ingredients, cruelty_free, vegan, spf, volume, waterproof, long_lasting)
+- Added skincare (10 fields: skin_type, skin_concern, ingredients, active_ingredient, spf, fragrance_free, cruelty_free, vegan, volume, ph_level)
+- Added haircare (10 fields: hair_type, hair_concern, ingredients, sulfate_free, paraben_free, silicone_free, cruelty_free, vegan, volume, scent)
+- Added fragrances (10 fields: scent_family, notes_top, notes_heart, notes_base, longevity, sillage, season, occasion, volume, concentration)
+- Total: 8 categories in CATEGORY_SPEC_SCHEMAS (was 4)
+
+### 2. Updated Product Parser Prompt
+**File:** `app/services/extraction_service.py`
+- PRODUCT_PARSER_PROMPT category enum: `electronics|grocery|supplements|makeup|skincare|haircare|fragrances|other`
+- Added detection rules with product examples for each new category
+- Removed stale categories (beauty, fashion, home, sports, automotive)
+
+### 3. Added selected_category API Parameter
+**File:** `app/api/text_routes.py`
+- `selected_category: Optional[str] = Query(None)` on GET `/api/v1/text/compare`
+- Forwarded to `service.compare_from_text(selected_category=...)`
+- Backward compatible (parameter is optional)
+
+### 4. Category Switching Logic
+**File:** `app/services/structured_comparison_service.py`
+- `selected_category` parameter added to `compare_from_text()`
+- Detects mismatch between user selection and AI detection
+- AI always wins: `category_used = detected_category`
+- Response includes `category_used`, `category_switched`, `original_category`
+
+### 5. CategorySelector Component
+**File:** `SmartCompareApp/src/components/CategorySelector.tsx`
+- Horizontal scrolling chip selector with 7 categories + icons
+- Active state: blue (#007AFF) background, white text
+- Props: `value: string | null`, `onChange: (category: string) => void`
+
+### 6. HomeScreen Integration
+**File:** `SmartCompareApp/src/screens/HomeScreen.tsx`
+- CategorySelector placed between status bar and input method tabs
+- `selectedCategory` state defaults to 'electronics'
+- `selected_category` passed in text and URL API calls
+
+### 7. ResultsScreen Banner
+**File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+- Info banner shown when `category_switched === true`
+- SPEC_DISPLAY_CONFIG entries for all new category fields (63 total)
+
+### 8. TypeScript Types
+**File:** `SmartCompareApp/src/types/types.ts`
+- Added `category_used`, `category_switched`, `original_category` to ComparisonResult
+
+## Test Results
+- 46 new tests in `tests/test_category_selection.py`
+- 483 total tests (was 411), all passing
+- Zero regressions
+- Zero additional API cost
+
+## Design Decisions
+- **Soft validation**: Category selection is a hint, not a constraint. AI decides final category.
+- **Zero cost increase**: Category detection happens within existing product parser GPT call.
+- **Default category**: Electronics (most common use case in GCC market).
+
+---
+
 # SESSION 17: March 4, 2026 — Smart Polish (AI Quality & Bug Fixes)
 
 ## What We Did
