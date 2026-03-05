@@ -35,6 +35,8 @@ Be intelligent about every decision:
 3. Quality first, then optimize
 4. Show confidence, not false certainty
 5. Plan → Approve → Implement → Test
+6. For multi-file features (3+ files, frontend+backend): use parallel agent teams (TeamCreate with 4 Opus agents: backend, frontend, test, qa)
+7. After major features: update CLAUDE.md (project context), MEMORY.md (learnings), CONTEXT_SESSION_LOG.md (what changed)
 
 ## Critical: Two app/ Directories
 
@@ -59,13 +61,17 @@ curl "https://smartcompare-backend-production.up.railway.app/api/v1/text/compare
 
 # Deploy: push to main, Railway auto-deploys in ~90s
 git push origin main
+
+# After deploy: verify new features work in production
+# Example: Test category selection with wrong category (should switch)
+curl -s "https://smartcompare-backend-production.up.railway.app/api/v1/text/compare?q=iPhone+15+vs+Galaxy+S24&selected_category=grocery&nocache=true" | python -c "import sys, json; r=json.load(sys.stdin); print(f\"switched: {r.get('category_switched')}, used: {r.get('category_used')}\")"
 ```
 
 ### Frontend (React Native / Expo)
 ```bash
 cd SmartCompareApp
 npx expo start                    # Dev server
-npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as of Feb 18 2026)
+npx tsc --noEmit                  # TypeScript check (5 pre-existing errors as of Mar 5 2026)
 ```
 
 ### Dependencies
@@ -88,7 +94,7 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 
 **Core service:** `app/services/structured_comparison_service.py`
 - `StructuredComparisonService` is a **singleton** (`get_comparison_service()`)
-- `compare_from_text(query, region, vision_products?)` — main entry point
+- `compare_from_text(query, region, vision_products?, selected_category?)` — main entry point
 - **Pre-fetch:** Unified web search (1 Serper call) shared by specs + reviews — gated by cache check
 - **Phase 1:** specs + price fetched in parallel (specs reuses unified search)
 - **Phase 2:** reviews + rating fetched in parallel (reviews reuses unified search, shopping data from Phase 1 feeds ratings)
@@ -153,13 +159,16 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 **Location:** `SmartCompareApp/`
 
 **Screens:**
-- `HomeScreen.tsx` — Text input, calls `GET /api/v1/text/compare`. Gear icon navigates to AccountScreen.
+- `HomeScreen.tsx` — CategorySelector (7 categories), text/camera/URL input tabs, calls `GET /api/v1/text/compare`. Gear icon navigates to AccountScreen.
 - `ResultsScreen.tsx` — Tabs: Overview, Specs, Reviews. Has local type definitions that diverge from `src/types/types.ts`.
 - `CameraScreen.tsx` — Camera capture, calls `POST /api/v1/image/identify`
 - `HistoryScreen.tsx` — Comparison history from Supabase. Shows "Sign In Required" prompt on 401 (not crash).
 - `AccountScreen.tsx` — Account panel: inline name/email editing, password change modal, Google/Apple connect, logout.
 - `LoginScreen.tsx` — Email login + Google/Apple sign-in buttons + inline field validation.
 - `RegisterScreen.tsx` — Email register + Google/Apple sign-in buttons + inline field validation.
+
+**Components:**
+- `CategorySelector.tsx` — Horizontal scrolling chip selector for 7 product categories (Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances)
 
 **Services:**
 - `api.ts` — Axios instance pointing to Railway production URL (120s timeout). JPEG transcoding via `expo-image-manipulator` before image upload.
@@ -168,7 +177,7 @@ npx tsc --noEmit                  # TypeScript check (7 pre-existing errors as o
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls intelligently.
 - **Serper** — Google Search + Shopping API ($0.001/call). Don't search for what you already have.
-- **Supabase** — PostgreSQL (products, prices, specs, reviews, search_logs, bahrain_approved_drugs) + Auth. Cache strategically.
+- **Supabase** — PostgreSQL (users, comparisons, products, prices, specs, reviews, search_logs, bahrain_approved_drugs) + Auth. Cache strategically.
 - **Upstash Redis** — Response caching (prices 24h, specs/reviews 7d)
 
 ## Important Patterns
@@ -219,6 +228,11 @@ The frontend provides 7 category options: Electronics, Grocery, Supplements, Mak
 - `python -m py_compile <file>` for syntax checks
 - `curl` against Railway production (`?nocache=true` for fresh data)
 - `npx tsc --noEmit` for frontend type checking
+
+**Test coverage expectations:**
+- New features: 80%+ coverage, test-driven development (red-green-refactor)
+- No regressions: All existing tests must pass before merging
+- Test types: Unit tests (free), live_unit tests (~$0.03), integration tests (Railway ~$0.06)
 
 ### Run commands
 ```bash
