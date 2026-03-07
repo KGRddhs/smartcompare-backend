@@ -278,6 +278,18 @@ export default function AccountScreen({ navigation }: Props) {
           )}
         </View>
 
+        {/* My Preferences */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>My Preferences</Text>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => navigation.navigate('Preferences', { mode: 'edit' })}
+          >
+            <Text style={styles.menuItemText}>Edit Preferences</Text>
+            <Text style={styles.menuItemArrow}>{'\u203A'}</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Logout */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>Log Out</Text>

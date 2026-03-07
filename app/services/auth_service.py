@@ -44,12 +44,13 @@ async def register_user(email: str, password: str) -> Dict:
                 "email": email,
                 "subscription_tier": "free"
             }).execute()
-            
+
             return {
                 "success": True,
                 "user": {
                     "id": response.user.id,
                     "email": response.user.email,
+                    "preferences_completed": False,
                 },
                 "session": {
                     "access_token": response.session.access_token if response.session else None,
@@ -86,11 +87,24 @@ async def login_user(email: str, password: str) -> Dict:
         })
         
         if response.user and response.session:
+            # Fetch preferences_completed from users table
+            prefs_completed = False
+            try:
+                admin = get_admin_client()
+                row = admin.table("users").select("preferences_completed").eq(
+                    "id", response.user.id
+                ).single().execute()
+                if row.data:
+                    prefs_completed = row.data.get("preferences_completed", False)
+            except Exception:
+                pass  # Default to False if lookup fails
+
             return {
                 "success": True,
                 "user": {
                     "id": response.user.id,
                     "email": response.user.email,
+                    "preferences_completed": prefs_completed,
                 },
                 "session": {
                     "access_token": response.session.access_token,
@@ -128,9 +142,20 @@ async def refresh_session(refresh_token: str) -> Dict:
             }
             # Include user data so frontend can update stored user
             if response.user:
+                prefs_completed = False
+                try:
+                    admin = get_admin_client()
+                    row = admin.table("users").select("preferences_completed").eq(
+                        "id", response.user.id
+                    ).single().execute()
+                    if row.data:
+                        prefs_completed = row.data.get("preferences_completed", False)
+                except Exception:
+                    pass
                 result["user"] = {
                     "id": response.user.id,
                     "email": response.user.email,
+                    "preferences_completed": prefs_completed,
                 }
             return result
         else:
@@ -207,11 +232,23 @@ async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -
                 "subscription_tier": "free",
             }).execute()
 
+        # Fetch preferences_completed
+        prefs_completed = False
+        try:
+            prefs_row = admin.table("users").select("preferences_completed").eq(
+                "id", response.user.id
+            ).single().execute()
+            if prefs_row.data:
+                prefs_completed = prefs_row.data.get("preferences_completed", False)
+        except Exception:
+            pass
+
         return {
             "success": True,
             "user": {
                 "id": response.user.id,
                 "email": response.user.email,
+                "preferences_completed": prefs_completed,
             },
             "session": {
                 "access_token": response.session.access_token if response.session else None,
@@ -263,6 +300,37 @@ async def update_user_profile(user_id: str, display_name: str) -> Dict:
             "display_name": display_name
         }).eq("id", user_id).execute()
         return {"success": True, "message": "Profile updated"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def get_user_preferences(user_id: str) -> Dict:
+    """Get user preferences from the users table."""
+    try:
+        admin = get_admin_client()
+        response = admin.table("users").select(
+            "preferences, preferences_completed"
+        ).eq("id", user_id).single().execute()
+        if response.data:
+            return {
+                "success": True,
+                "preferences": response.data.get("preferences", {}),
+                "preferences_completed": response.data.get("preferences_completed", False),
+            }
+        return {"success": False, "error": "User not found"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def save_user_preferences(user_id: str, preferences: Dict) -> Dict:
+    """Save user preferences and mark preferences_completed=true."""
+    try:
+        admin = get_admin_client()
+        admin.table("users").update({
+            "preferences": preferences,
+            "preferences_completed": True,
+        }).eq("id", user_id).execute()
+        return {"success": True, "message": "Preferences saved"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 

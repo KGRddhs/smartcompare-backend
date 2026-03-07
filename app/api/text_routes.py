@@ -13,6 +13,7 @@ from app.services.structured_comparison_service import (
     get_regional_prices
 )
 from app.api.auth_routes import get_optional_user
+from app.services.auth_service import get_user_preferences
 from app.services.database_service import save_comparison, log_search
 from app.middleware.rate_limiter import limiter
 
@@ -69,12 +70,20 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
     service = get_comparison_service()
     start_time = time.time()
 
+    # Fetch user preferences if authenticated
+    user_prefs = None
+    if user:
+        prefs_result = await get_user_preferences(user["id"])
+        if prefs_result.get("success") and prefs_result.get("preferences_completed"):
+            user_prefs = prefs_result.get("preferences")
+
     result = await service.compare_from_text(
         query=body.query,
         region=body.region,
         include_specs=body.include_specs,
         include_reviews=body.include_reviews,
-        include_pros_cons=body.include_pros_cons
+        include_pros_cons=body.include_pros_cons,
+        user_preferences=user_prefs,
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -131,6 +140,13 @@ async def text_compare_get(
     service = get_comparison_service()
     start_time = time.time()
 
+    # Fetch user preferences if authenticated
+    user_prefs = None
+    if user:
+        prefs_result = await get_user_preferences(user["id"])
+        if prefs_result.get("success") and prefs_result.get("preferences_completed"):
+            user_prefs = prefs_result.get("preferences")
+
     result = await service.compare_from_text(
         query=q,
         region=region,
@@ -139,6 +155,7 @@ async def text_compare_get(
         include_pros_cons=pros_cons,
         nocache=nocache,
         selected_category=selected_category,
+        user_preferences=user_prefs,
     )
 
     duration_ms = int((time.time() - start_time) * 1000)

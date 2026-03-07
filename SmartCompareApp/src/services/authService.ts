@@ -48,6 +48,7 @@ export interface User {
   id: string;
   email: string;
   created_at?: string;
+  preferences_completed?: boolean;
 }
 
 export interface AuthResponse {

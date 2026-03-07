@@ -102,6 +102,8 @@ interface ResultsScreenProps {
         category_used?: string;
         category_switched?: boolean;
         original_category?: string;
+        personalized?: boolean;
+        personalization_factors?: string[];
         metadata?: {
           elapsed_seconds: number;
           total_cost: number;
@@ -656,6 +658,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <Text style={styles.shareText}>Share</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Personalized Banner */}
+      {result.personalized && (
+        <View style={styles.infoBanner}>
+          <Text style={styles.infoBannerText}>
+            Personalized for you
+          </Text>
+        </View>
+      )}
 
       {/* Category Switch Banner */}
       {result.category_switched && (

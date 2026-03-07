@@ -609,11 +609,37 @@ def _normalize_review_response(data: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
+def _build_preferences_prompt(user_preferences: Dict[str, Any]) -> str:
+    """Build the personalization section to append to the comparison prompt."""
+    priorities = ", ".join(user_preferences.get("priorities", []))
+    budget = user_preferences.get("budget", "mid")
+    lifestyle = ", ".join(user_preferences.get("lifestyle", [])) or "none specified"
+    brand_attitude = user_preferences.get("brand_attitude", "best_of_both")
+
+    return f"""
+
+## User Preferences (personalize your verdict to this user)
+- Top priorities: {priorities}
+- Budget level: {budget} (interpret contextually for this product category)
+- Lifestyle: {lifestyle}
+- Brand attitude: {brand_attitude}
+
+Based on these preferences, your recommendation MUST:
+1. Explain WHY this product is better FOR THIS USER (not generically)
+2. Reference specific preferences ("You prioritize battery life, and Product A has 5000mAh vs 3349mAh")
+3. Interpret budget contextually: "budget" for phones means <$300, for supplements means <$15
+4. Flag if a product conflicts with lifestyle (e.g., non-vegan supplement for vegan user)
+5. For brand_loyal users: weight established brand reputation higher
+6. For function_first users: ignore brand entirely, focus on specs and value
+7. For best_of_both users: prefer branded options when specs are similar, but recommend better-performing product even if lesser brand"""
+
+
 async def generate_comparison(
     product1: Dict,
     product2: Dict,
     region: str,
-    concern: str = "value"
+    concern: str = "value",
+    user_preferences: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Generate detailed comparison between two products."""
     try:
@@ -625,6 +651,10 @@ async def generate_comparison(
             currency=GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])["currency"],
             concern=concern
         )
+
+        # Append personalization section if user has preferences
+        if user_preferences:
+            prompt += _build_preferences_prompt(user_preferences)
         
         response = await client.chat.completions.create(
             model="gpt-4o-mini",

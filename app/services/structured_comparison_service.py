@@ -174,7 +174,8 @@ class StructuredComparisonService:
         include_pros_cons: bool = True,
         nocache: bool = False,
         selected_category: Optional[str] = None,
-        vision_products: Optional[List[Dict]] = None
+        vision_products: Optional[List[Dict]] = None,
+        user_preferences: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Main entry point for text-based comparisons.
@@ -251,7 +252,8 @@ class StructuredComparisonService:
                 product_data[0],
                 product_data[1],
                 region,
-                parsed.get("comparison_type", "value") if not vision_products else "value"
+                parsed.get("comparison_type", "value") if not vision_products else "value",
+                user_preferences=user_preferences,
             )
             self._track_cost(0.001)  # ~1000 tokens (comparison + pros/cons merged)
 
@@ -269,6 +271,17 @@ class StructuredComparisonService:
             # Calculate timing
             elapsed = (datetime.now() - start_time).total_seconds()
             
+            # Build personalization metadata
+            personalized = user_preferences is not None and bool(user_preferences)
+            personalization_factors = []
+            if personalized:
+                for p in user_preferences.get("priorities", []):
+                    personalization_factors.append(f"priority_{p}")
+                if user_preferences.get("budget"):
+                    personalization_factors.append(f"budget_{user_preferences['budget']}")
+                for tag in user_preferences.get("lifestyle", []):
+                    personalization_factors.append(f"lifestyle_{tag}")
+
             return {
                 "success": True,
                 "products": product_data,
@@ -279,6 +292,8 @@ class StructuredComparisonService:
                 "category_used": category_used,
                 "category_switched": category_switched,
                 "original_category": original_category,
+                "personalized": personalized,
+                "personalization_factors": personalization_factors,
                 "metadata": {
                     "query": query,
                     "region": region,

@@ -104,6 +104,8 @@ export interface ComparisonResult {
   category_used?: string;
   category_switched?: boolean;
   original_category?: string;
+  personalized?: boolean;
+  personalization_factors?: string[];
   metadata?: {
     query: string;
     region: string;
@@ -181,12 +183,22 @@ export type ImageIdentifyResult =
       message?: string;
     };
 
+// --- Preferences ---
+
+export interface UserPreferences {
+  priorities: string[];
+  budget: 'budget' | 'mid' | 'premium';
+  lifestyle: string[];
+  brand_attitude: 'brand_loyal' | 'function_first' | 'best_of_both';
+}
+
 // --- Auth types ---
 
 export interface User {
   id: string;
   email: string;
   subscription_tier?: 'free' | 'premium';
+  preferences_completed?: boolean;
 }
 
 export interface AuthSession {
@@ -204,6 +216,7 @@ export type RootStackParamList = {
   History: undefined;
   Profile: undefined;
   Account: undefined;
+  Preferences: { mode: 'onboarding' | 'edit' };
 };
 
 export type AuthStackParamList = {

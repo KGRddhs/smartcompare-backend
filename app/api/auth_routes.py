@@ -2,8 +2,8 @@
 Auth Routes - Authentication endpoints
 """
 from fastapi import APIRouter, HTTPException, Depends, Header
-from pydantic import BaseModel, EmailStr, Field
-from typing import Literal, Optional
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import List, Literal, Optional
 
 from app.services.auth_service import (
     register_user,
@@ -17,6 +17,8 @@ from app.services.auth_service import (
     update_user_email,
     change_user_password,
     sign_in_with_social,
+    get_user_preferences,
+    save_user_preferences,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
@@ -55,6 +57,53 @@ class UpdateEmailRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=6)
+
+
+VALID_PRIORITIES = ["price", "quality", "brand_reputation", "durability", "latest_features", "ease_of_use", "eco_friendly", "health_safety"]
+VALID_BUDGET = ["budget", "mid", "premium"]
+VALID_LIFESTYLE = ["gamer", "photographer", "fitness_enthusiast", "vegan", "sensitive_skin", "parent", "student", "professional", "outdoor_adventurer", "minimalist", "tech_enthusiast"]
+VALID_BRAND_ATTITUDE = ["brand_loyal", "function_first", "best_of_both"]
+
+
+class UserPreferencesRequest(BaseModel):
+    priorities: List[str] = Field(..., min_length=1, max_length=3)
+    budget: str
+    lifestyle: List[str] = Field(default_factory=list)
+    brand_attitude: str
+
+    @field_validator("priorities")
+    @classmethod
+    def validate_priorities(cls, v: List[str]) -> List[str]:
+        for p in v:
+            if p not in VALID_PRIORITIES:
+                raise ValueError(f"Invalid priority: {p}. Must be one of {VALID_PRIORITIES}")
+        return v
+
+    @field_validator("budget")
+    @classmethod
+    def validate_budget(cls, v: str) -> str:
+        if v not in VALID_BUDGET:
+            raise ValueError(f"Invalid budget: {v}. Must be one of {VALID_BUDGET}")
+        return v
+
+    @field_validator("lifestyle")
+    @classmethod
+    def validate_lifestyle(cls, v: List[str]) -> List[str]:
+        for tag in v:
+            if tag not in VALID_LIFESTYLE:
+                raise ValueError(f"Invalid lifestyle tag: {tag}. Must be one of {VALID_LIFESTYLE}")
+        return v
+
+    @field_validator("brand_attitude")
+    @classmethod
+    def validate_brand_attitude(cls, v: str) -> str:
+        if v not in VALID_BRAND_ATTITUDE:
+            raise ValueError(f"Invalid brand_attitude: {v}. Must be one of {VALID_BRAND_ATTITUDE}")
+        return v
+
+
+# Alias for backward compatibility with tests
+PreferencesRequest = UserPreferencesRequest
 
 
 class SocialLoginRequest(BaseModel):
@@ -210,10 +259,11 @@ async def get_me(current_user: dict = Depends(get_current_user)):
                 "id": profile["id"],
                 "email": profile["email"],
                 "subscription_tier": profile.get("subscription_tier", "free"),
-                "created_at": profile.get("created_at")
+                "created_at": profile.get("created_at"),
+                "preferences_completed": profile.get("preferences_completed", False),
             }
         }
-    
+
     return {
         "success": True,
         "user": current_user
@@ -288,4 +338,36 @@ async def social_login(body: SocialLoginRequest):
     result = await sign_in_with_social(body.provider, body.id_token, body.nonce)
     if not result["success"]:
         raise HTTPException(status_code=401, detail=result["error"])
+    return result
+
+
+# ============================================
+# Preferences Endpoints
+# ============================================
+
+@router.get("/preferences")
+async def get_preferences(current_user: dict = Depends(get_current_user)):
+    """Get current user's preferences."""
+    result = await get_user_preferences(current_user["id"])
+    if result is None:
+        return {"success": True, "preferences": {}, "preferences_completed": False}
+    # If result is a structured response from get_user_preferences
+    if isinstance(result, dict) and "success" in result:
+        if not result["success"]:
+            raise HTTPException(status_code=404, detail=result.get("error", "Preferences not found"))
+        return result
+    # If result is raw preferences dict (e.g. from direct DB query)
+    return {"success": True, "preferences": result, "preferences_completed": bool(result)}
+
+
+@router.put("/preferences")
+async def save_preferences(
+    body: UserPreferencesRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Save or update user preferences. All 4 fields are mandatory."""
+    preferences = body.model_dump()
+    result = await save_user_preferences(current_user["id"], preferences)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to save preferences"))
     return result

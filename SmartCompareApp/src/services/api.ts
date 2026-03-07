@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { ComparisonResult, ImageIdentifyResult, RateLimitStatus, SubscriptionStatus } from '../types';
+import { ComparisonResult, ImageIdentifyResult, RateLimitStatus, SubscriptionStatus, UserPreferences } from '../types';
 
 // IMPORTANT: Change this to your computer's local IP
 // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
@@ -348,6 +348,26 @@ export async function updateEmail(newEmail: string): Promise<{ success: boolean;
  */
 export async function changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message?: string; error?: string }> {
   const response = await api.put('/api/v1/auth/password', { current_password: currentPassword, new_password: newPassword });
+  return response.data;
+}
+
+/**
+ * Get user preferences
+ */
+export async function getPreferences(): Promise<UserPreferences | null> {
+  try {
+    const response = await api.get('/api/v1/auth/preferences');
+    return response.data.preferences || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save/update user preferences
+ */
+export async function savePreferences(preferences: UserPreferences): Promise<{ success: boolean; error?: string }> {
+  const response = await api.put('/api/v1/auth/preferences', preferences);
   return response.data;
 }
 

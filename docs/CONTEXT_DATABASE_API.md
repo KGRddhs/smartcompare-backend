@@ -78,6 +78,34 @@ CREATE TABLE rating_cache (
 );
 ```
 
+### users (Session 16, Mar 4 2026)
+```sql
+CREATE TABLE public.users (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT,
+    display_name TEXT,
+    auth_provider TEXT DEFAULT 'email',          -- 'email', 'google', 'apple'
+    subscription_tier TEXT DEFAULT 'free',
+    subscription_expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+-- RLS: users read/update own row, service_role full access
+```
+
+### comparisons
+```sql
+CREATE TABLE comparisons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    query TEXT NOT NULL,
+    input_type TEXT NOT NULL DEFAULT 'text',
+    product_names TEXT[] DEFAULT '{}',
+    response_data JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
 ### search_logs
 ```sql
 CREATE TABLE search_logs (

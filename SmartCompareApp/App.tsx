@@ -1,6 +1,6 @@
 /**
  * SmartCompare - Main App Entry Point
- * With Authentication Flow
+ * With Authentication Flow + Preferences Onboarding
  */
 
 import React, { useState, useEffect } from 'react';
@@ -18,6 +18,7 @@ import AccountScreen from './src/screens/AccountScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import PreferencesScreen from './src/screens/PreferencesScreen';
 
 // Import auth service
 import { verifyAuth, getSavedUser, User, configureGoogleSignIn } from './src/services/authService';
@@ -103,6 +104,14 @@ function MainNavigator({ onLogout }: { onLogout: () => void }) {
           title: 'Account Settings',
         }}
       />
+      <RootStack.Screen
+        name="Preferences"
+        component={PreferencesScreen}
+        options={{
+          title: 'Preferences',
+          headerBackTitle: 'Back',
+        }}
+      />
     </RootStack.Navigator>
   );
 }
@@ -110,6 +119,7 @@ function MainNavigator({ onLogout }: { onLogout: () => void }) {
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [needsPreferences, setNeedsPreferences] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
@@ -118,18 +128,16 @@ export default function App() {
 
   const checkAuthStatus = async () => {
     try {
-      // First check if we have a saved user
       const savedUser = await getSavedUser();
-      
+
       if (savedUser) {
-        // Verify the token is still valid
         const verifiedUser = await verifyAuth();
-        
+
         if (verifiedUser) {
           setUser(verifiedUser);
           setIsAuthenticated(true);
+          setNeedsPreferences(!verifiedUser.preferences_completed);
         } else {
-          // Token invalid, clear and show login
           setIsAuthenticated(false);
         }
       } else {
@@ -143,12 +151,22 @@ export default function App() {
     }
   };
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = async () => {
     setIsAuthenticated(true);
+    const savedUser = await getSavedUser();
+    if (savedUser) {
+      setUser(savedUser);
+      setNeedsPreferences(!savedUser.preferences_completed);
+    }
+  };
+
+  const handlePreferencesComplete = () => {
+    setNeedsPreferences(false);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    setNeedsPreferences(false);
     setUser(null);
   };
 
@@ -160,14 +178,37 @@ export default function App() {
     );
   }
 
+  if (!isAuthenticated) {
+    return (
+      <NavigationContainer>
+        <StatusBar style="auto" />
+        <AuthNavigator onLoginSuccess={handleLoginSuccess} />
+      </NavigationContainer>
+    );
+  }
+
+  if (needsPreferences) {
+    return (
+      <NavigationContainer>
+        <StatusBar style="auto" />
+        <RootStack.Navigator screenOptions={{ headerShown: false }}>
+          <RootStack.Screen name="Preferences" options={{ headerShown: false }}>
+            {(props) => (
+              <PreferencesScreen
+                {...props}
+                onComplete={handlePreferencesComplete}
+              />
+            )}
+          </RootStack.Screen>
+        </RootStack.Navigator>
+      </NavigationContainer>
+    );
+  }
+
   return (
     <NavigationContainer>
       <StatusBar style="auto" />
-      {isAuthenticated ? (
-        <MainNavigator onLogout={handleLogout} />
-      ) : (
-        <AuthNavigator onLoginSuccess={handleLoginSuccess} />
-      )}
+      <MainNavigator onLogout={handleLogout} />
     </NavigationContainer>
   );
 }
