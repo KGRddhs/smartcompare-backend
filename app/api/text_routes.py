@@ -2,10 +2,12 @@
 Text Comparison Routes - API endpoints for text-based product comparisons
 """
 import asyncio
+import json
 import logging
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.services.structured_comparison_service import (
@@ -191,6 +193,89 @@ async def text_compare_get(
         ))
 
     return result
+
+
+@router.get("/compare/stream")
+@limiter.limit("10/minute")
+async def text_compare_stream(
+    request: Request,
+    q: str = Query(..., description="Comparison query, e.g., 'iPhone 15 vs S24'"),
+    region: str = Query("bahrain", description="GCC region for pricing"),
+    specs: bool = Query(True, description="Include specifications"),
+    reviews: bool = Query(True, description="Include reviews"),
+    pros_cons: bool = Query(True, description="Include pros/cons"),
+    nocache: bool = Query(False, description="Bypass cache for fresh data"),
+    selected_category: Optional[str] = Query(None, description="User-selected category hint"),
+    user: Optional[Dict] = Depends(get_optional_user),
+):
+    """SSE streaming version of text comparison. Returns Server-Sent Events."""
+    service = get_comparison_service()
+    start_time = time.time()
+
+    # Fetch user preferences if authenticated
+    user_prefs = None
+    if user:
+        prefs_result = await get_user_preferences(user["id"])
+        if prefs_result.get("success") and prefs_result.get("preferences_completed"):
+            user_prefs = prefs_result.get("preferences")
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        complete_response = None
+        had_error = False
+
+        async for event_type, data in service.compare_from_text_streaming(
+            query=q,
+            region=region,
+            include_specs=specs,
+            include_reviews=reviews,
+            include_pros_cons=pros_cons,
+            nocache=nocache,
+            selected_category=selected_category,
+            user_preferences=user_prefs,
+        ):
+            if event_type == "complete":
+                complete_response = data
+            if event_type == "error":
+                had_error = True
+
+            yield f"event: {event_type}\ndata: {json.dumps(data, default=str)}\n\n"
+
+        # Fire-and-forget logging after stream completes
+        duration_ms = int((time.time() - start_time) * 1000)
+        user_id = user.get("id") if user else None
+
+        if complete_response and not had_error:
+            product_names = [
+                f"{p.get('brand', '')} {p.get('name', '')}".strip()
+                for p in complete_response.get("products", [])
+            ]
+            asyncio.create_task(log_search(
+                query=q, input_type="text_stream", user_id=user_id,
+                products_found=product_names, success=True,
+                cost=complete_response.get("metadata", {}).get("total_cost", 0),
+                duration_ms=duration_ms,
+            ))
+            if user_id:
+                asyncio.create_task(save_comparison(
+                    full_response=complete_response, query=q,
+                    input_type="text_stream", user_id=user_id,
+                ))
+        elif had_error:
+            asyncio.create_task(log_search(
+                query=q, input_type="text_stream", user_id=user_id,
+                success=False, error_message="Streaming comparison failed",
+                duration_ms=duration_ms,
+            ))
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/quick")

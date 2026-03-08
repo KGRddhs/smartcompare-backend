@@ -327,7 +327,209 @@ class StructuredComparisonService:
                 "error": str(e),
                 "total_cost": self.total_cost
             }
-    
+
+    async def compare_from_text_streaming(
+        self,
+        query: str,
+        region: str = "bahrain",
+        include_specs: bool = True,
+        include_reviews: bool = True,
+        include_pros_cons: bool = True,
+        nocache: bool = False,
+        selected_category: Optional[str] = None,
+        vision_products: Optional[List[Dict]] = None,
+        user_preferences: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Async generator version of compare_from_text that yields partial results.
+        Each yield is a (event_type, data) tuple for SSE streaming.
+        """
+        start_time = datetime.now()
+        self.total_cost = 0.0
+        self.api_calls = 0
+        self._shopping_items_cache = {}
+
+        try:
+            # Step 1: Parse the query
+            yield ("status", {"message": "Parsing query..."})
+
+            if vision_products and len(vision_products) >= 2:
+                products = []
+                for vp in vision_products[:2]:
+                    brand = vp.get("brand", "Unknown")
+                    vname = vp.get("name", "Unknown Product")
+                    full = f"{brand} {vname}".strip()
+                    category = "supplements" if self._is_supplement_query(full) else "other"
+                    products.append({
+                        "brand": brand,
+                        "name": vname,
+                        "variant": vp.get("size_or_count"),
+                        "category": category,
+                        "search_query": full,
+                        "_vision": True,
+                    })
+                parsed = {}
+            else:
+                parsed = await parse_product_query(query)
+                self._track_cost(0.0003)
+
+                if not parsed.get("products") or len(parsed["products"]) < 2:
+                    yield ("error", {
+                        "success": False,
+                        "error": "Could not identify two products to compare. Try: 'iPhone 15 vs Galaxy S24'",
+                        "parsed": parsed,
+                    })
+                    return
+
+                products = parsed["products"][:2]
+
+            # Determine category
+            detected_category = products[0].get("category", "other")
+            category_switched = False
+            original_category = None
+            if selected_category and selected_category != detected_category:
+                category_switched = True
+                original_category = selected_category
+            category_used = detected_category
+
+            # Step 2: Fetch product data (Phase 1 + Phase 2 inside _fetch_product_data)
+            yield ("status", {"message": "Fetching specs and prices..."})
+
+            product_data = await asyncio.gather(
+                self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
+                self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache),
+            )
+
+            # Yield specs
+            specs_payload = {}
+            for i, pd in enumerate(product_data):
+                key = f"product_{i}"
+                specs_payload[key] = {
+                    "brand": pd.get("brand"),
+                    "name": pd.get("name"),
+                    "specs": pd.get("specs"),
+                    "fact_check": pd.get("fact_check"),
+                }
+            yield ("specs", specs_payload)
+
+            # Yield prices
+            prices_payload = {}
+            for i, pd in enumerate(product_data):
+                key = f"product_{i}"
+                prices_payload[key] = {
+                    "brand": pd.get("brand"),
+                    "name": pd.get("name"),
+                    "price": pd.get("price"),
+                    "best_price": pd.get("best_price"),
+                    "currency": pd.get("currency"),
+                    "retailer": pd.get("retailer"),
+                }
+            yield ("prices", prices_payload)
+
+            # Yield reviews
+            yield ("status", {"message": "Analyzing reviews..."})
+            reviews_payload = {}
+            for i, pd in enumerate(product_data):
+                key = f"product_{i}"
+                reviews_payload[key] = {
+                    "brand": pd.get("brand"),
+                    "name": pd.get("name"),
+                    "reviews": pd.get("reviews"),
+                    "rating": pd.get("rating"),
+                    "review_count": pd.get("review_count"),
+                    "rating_verified": pd.get("rating_verified"),
+                    "rating_source": pd.get("rating_source"),
+                }
+            yield ("reviews", reviews_payload)
+
+            # Step 3: Compute scores (instant, $0)
+            scoring_service = get_scoring_service()
+            scoring_result = scoring_service.compute_scores(
+                product_data, preferences=user_preferences
+            )
+            product_names = [
+                f"{p.get('brand', '')} {p.get('name', '')}".strip()
+                for p in product_data
+            ]
+            scores_summary = scoring_service.build_scores_summary(
+                scoring_result, product_names
+            )
+            yield ("scores", scoring_result)
+
+            # Step 4: Generate verdict
+            yield ("status", {"message": "Generating verdict..."})
+            comparison = await generate_comparison(
+                product_data[0],
+                product_data[1],
+                region,
+                parsed.get("comparison_type", "value") if not vision_products else "value",
+                user_preferences=user_preferences,
+                scores_summary=scores_summary,
+            )
+            self._track_cost(0.001)
+
+            if include_pros_cons:
+                product_data[0]["pros_cons"] = {
+                    "pros": comparison.pop("product_0_pros", []),
+                    "cons": comparison.pop("product_0_cons", []),
+                }
+                product_data[1]["pros_cons"] = {
+                    "pros": comparison.pop("product_1_pros", []),
+                    "cons": comparison.pop("product_1_cons", []),
+                }
+
+            yield ("verdict", {
+                "comparison": comparison,
+                "winner_index": comparison.get("winner_index", 0),
+                "recommendation": comparison.get("recommendation", ""),
+                "key_differences": comparison.get("key_differences", []),
+            })
+
+            # Step 5: Build complete response
+            elapsed = (datetime.now() - start_time).total_seconds()
+            personalized = user_preferences is not None and bool(user_preferences)
+            personalization_factors = []
+            if personalized:
+                for p in user_preferences.get("priorities", []):
+                    personalization_factors.append(f"priority_{p}")
+                if user_preferences.get("budget"):
+                    personalization_factors.append(f"budget_{user_preferences['budget']}")
+                for tag in user_preferences.get("lifestyle", []):
+                    personalization_factors.append(f"lifestyle_{tag}")
+
+            complete_response = {
+                "success": True,
+                "products": product_data,
+                "comparison": comparison,
+                "scoring": scoring_result,
+                "winner_index": comparison.get("winner_index", 0),
+                "recommendation": comparison.get("recommendation", ""),
+                "key_differences": comparison.get("key_differences", []),
+                "category_used": category_used,
+                "category_switched": category_switched,
+                "original_category": original_category,
+                "personalized": personalized,
+                "personalization_factors": personalization_factors,
+                "metadata": {
+                    "query": query,
+                    "region": region,
+                    "elapsed_seconds": round(elapsed, 2),
+                    "total_cost": round(self.total_cost, 6),
+                    "api_calls": self.api_calls,
+                    "timestamp": datetime.now().isoformat(),
+                },
+            }
+
+            yield ("complete", complete_response)
+
+        except Exception as e:
+            logger.error(f"Streaming comparison error: {e}", exc_info=True)
+            yield ("error", {
+                "success": False,
+                "error": str(e),
+                "total_cost": self.total_cost,
+            })
+
     async def _fetch_product_data(
         self,
         product_info: Dict,

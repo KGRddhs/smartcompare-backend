@@ -21,6 +21,7 @@ from app.api.text_routes import router as text_router    # Text comparison
 from app.api.url_routes import router as url_router      # URL comparison
 from app.api.image_routes import router as image_router  # Camera identification + comparison
 from app.api.admin_routes import router as admin_router  # Admin analytics
+from app.api.feedback_routes import router as feedback_router  # Feedback + events
 
 # Import middleware
 from app.middleware.request_id import RequestIDMiddleware
@@ -99,6 +100,7 @@ app.include_router(text_router)      # /api/v1/text/*
 app.include_router(url_router)       # /api/v1/url/*
 app.include_router(image_router)     # /api/v1/image/* (camera)
 app.include_router(admin_router, prefix="/api/v1/admin")  # /api/v1/admin/*
+app.include_router(feedback_router)  # /api/v1/feedback, /api/v1/events
 
 
 @app.get("/")
@@ -127,6 +129,12 @@ async def root():
         ]
     }
 
+
+# Cold-start prevention: Railway supports cron jobs to keep the service warm.
+# Set up a Railway cron service that pings GET /health every 5 minutes:
+#   Schedule: */5 * * * *
+#   Command:  curl -sf https://smartcompare-backend-production.up.railway.app/health
+# This prevents the ~10-20s cold start penalty on first request after idle.
 
 @app.get("/health")
 async def health_check():
