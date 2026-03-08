@@ -163,7 +163,8 @@ npx tsc --noEmit                  # TypeScript check (5 pre-existing errors as o
 - `ResultsScreen.tsx` — Tabs: Overview, Specs, Reviews. Has local type definitions that diverge from `src/types/types.ts`.
 - `CameraScreen.tsx` — Camera capture, calls `POST /api/v1/image/identify`
 - `HistoryScreen.tsx` — Comparison history from Supabase. Shows "Sign In Required" prompt on 401 (not crash).
-- `AccountScreen.tsx` — Account panel: inline name/email editing, password change modal, Google/Apple connect, logout.
+- `AccountScreen.tsx` — Account panel: inline name/email editing, password change modal, Google/Apple connect, logout, "My Preferences" link.
+- `PreferencesScreen.tsx` — 4-card onboarding (priorities, budget, lifestyle, brand attitude). Shown once after first login, editable from Account.
 - `LoginScreen.tsx` — Email login + Google/Apple sign-in buttons + inline field validation.
 - `RegisterScreen.tsx` — Email register + Google/Apple sign-in buttons + inline field validation.
 
@@ -210,6 +211,20 @@ Target: **$0.009-0.01/comparison** (current: ~$0.010 electronics, ~$0.010 supple
 ### Vision products bypass query parsing
 Camera input passes `vision_products` directly to `compare_from_text()`, skipping `parse_product_query()`. The `size_or_count` field (e.g., "360 Softgels") is appended to the product name in `image_routes.py` before comparison.
 
+### Personalization (zero extra cost)
+The frontend collects 4 preference dimensions once after first login (PreferencesScreen with 4 swipeable cards — all mandatory, no skip):
+- **Priorities** (1-3 of 8: price, quality, brand_reputation, durability, latest_features, ease_of_use, eco_friendly, health_safety)
+- **Budget** (budget/mid/premium)
+- **Lifestyle** (0+ of 11 tags)
+- **Brand attitude** (brand_loyal/function_first/best_of_both)
+
+Stored as JSONB in `public.users.preferences` column. `preferences_completed` boolean controls onboarding flow.
+- `GET/PUT /api/v1/auth/preferences` — read/write preferences (auth required)
+- Login/register/social responses include `preferences_completed`
+- `_build_preferences_prompt()` in extraction_service.py appends to verdict prompt
+- Response includes `personalized: true/false` + `personalization_factors` list
+- Zero extra API cost — preferences ride on existing GPT prompt tokens
+
 ### Category selection (soft validation)
 The frontend provides 7 category options: Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances. The `selected_category` parameter is passed to `/api/v1/text/compare` as a hint, but the backend AI always makes the final category decision via `PRODUCT_PARSER_PROMPT`. If a mismatch is detected (`selected_category != detected_category`), the response includes `category_switched: true` and the frontend shows an info banner. The 4 new beauty categories have dedicated spec schemas in `CATEGORY_SPEC_SCHEMAS` (extraction_service.py). Zero extra API cost -- category detection happens within the existing product parser call.
 
@@ -254,7 +269,7 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (483 total: 453 unit + 14 live_unit + 6 live_db + 10 integration)
+### Test files (535 total: 505 unit + 14 live_unit + 6 live_db + 10 integration)
 - `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
@@ -275,6 +290,7 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_iherb_scraping.py` — 7 tests: word normalization, live iHerb scraping, brand filtering
 - `tests/test_unified_search.py` — 4 tests: search sharing (specs/reviews), cost budget tracking
 - `tests/test_category_selection.py` — 46 tests: schema validation, prompt building, API params, category switching, parser prompt, live GPT extraction
+- `tests/test_personalization.py` — 52 tests: preference validation, GET/PUT endpoints, service functions, auth response flag, prompt injection, comparison metadata, valid options
 - `tests/test_singleton_state.py` — 3 tests: singleton pattern, cache leak prevention, state reset
 - `tests/test_integration.py` — 10 tests: live Railway (~$0.10, ~5 min)
 

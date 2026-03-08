@@ -4,6 +4,73 @@
 
 ---
 
+# SESSION 19: March 7-8, 2026 — Personalization Feature
+
+## What We Did
+
+4-agent Opus team (backend, frontend, test, qa). Session hit context limit before test/qa agents ran — verified manually in Session 20.
+
+### 1. Backend: Preferences Endpoints
+**File:** `app/api/auth_routes.py`
+- `GET /api/v1/auth/preferences` — returns user's saved preferences (auth required)
+- `PUT /api/v1/auth/preferences` — saves/updates preferences with Pydantic validation (all 4 fields mandatory)
+- Login/register/social-login responses now include `preferences_completed` boolean
+
+### 2. Backend: Preference Storage
+**File:** `app/services/auth_service.py`
+- `get_user_preferences(user_id)` — reads `preferences` JSONB column from `public.users`
+- `save_user_preferences(user_id, prefs)` — upserts preferences + sets `preferences_completed=true`
+- Pydantic model `UserPreferences`: priorities (1-3 from 8 options), budget, brand_attitude, lifestyle (0+ from 11 options)
+
+### 3. Backend: Prompt Injection for Personalized Verdicts
+**File:** `app/services/extraction_service.py`
+- `_build_preferences_prompt(user_preferences)` — builds personalization section appended to comparison verdict prompt
+- `generate_comparison()` accepts optional `user_preferences` dict
+- Zero extra API cost — preferences ride on existing GPT prompt tokens
+
+### 4. Backend: Service Integration
+**File:** `app/services/structured_comparison_service.py`
+- `compare_from_text()` accepts `user_preferences` param, forwards to `generate_comparison()`
+- Response includes `personalized: true/false` and `personalization_factors` list
+
+**File:** `app/api/text_routes.py`
+- Reads user preferences from DB (if authenticated) and passes to comparison service
+
+### 5. Frontend: PreferencesScreen Onboarding
+**File:** `SmartCompareApp/src/screens/PreferencesScreen.tsx`
+- 4 swipeable cards: Priority Weights, Budget Comfort, Lifestyle Tags, Brand Attitude
+- All mandatory — no skip buttons
+- Shown once after first login (when `preferences_completed=false`)
+- Editable later from AccountScreen
+
+### 6. Frontend: App Flow Update
+**File:** `SmartCompareApp/App.tsx`
+- Auth flow: Login → check `preferences_completed` → PreferencesScreen (if needed) → HomeScreen
+- `needsPreferences` state controls routing
+
+### 7. Frontend: AccountScreen + Types
+- AccountScreen: "My Preferences" link to edit preferences
+- `types.ts`: Added `UserPreferences` type and `Preferences` to `RootStackParamList`
+- `ResultsScreen.tsx`: Shows "Personalized for you" indicator when `personalized: true`
+
+### 8. Tests
+**File:** `tests/test_personalization.py` — 52 tests covering:
+- Pydantic validation (all valid/invalid combos for 4 dimensions)
+- GET/PUT endpoints (auth, success, error cases)
+- Service functions (DB success/error/empty)
+- Auth response `preferences_completed` flag (login, register, social)
+- Prompt injection (full/empty/none preferences)
+- Comparison service metadata (personalized flag, factors list)
+- Valid option constants
+
+## Session 20 Verification (March 8, 2026)
+- All 505 tests pass (52 personalization + 453 existing), zero regressions
+- All backend files compile cleanly
+- Frontend: 5 pre-existing TS errors only, no new ones
+- Production deployed and healthy, preferences endpoint responds correctly (401 on bad token)
+
+---
+
 # SESSION 18: March 5, 2026 — Category Selection Feature
 
 ## What We Did
