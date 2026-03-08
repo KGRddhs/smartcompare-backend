@@ -507,3 +507,118 @@ class TestScoresSummary:
     def test_none_result_returns_empty_string(self, service):
         summary = service.build_scores_summary(None, ["A", "B"])
         assert summary == ""
+
+
+# ===========================================
+# ADDITIONAL COVERAGE: TIE HANDLING
+# ===========================================
+
+class TestTieHandling:
+    """Test identical products produce tied scores."""
+
+    def test_identical_products_tie(self, service):
+        """Two identical products should have win_margin == 0."""
+        p1 = _make_product(price_amount=799, rating=4.5)
+        p2 = _make_product(price_amount=799, rating=4.5)
+        result = service.compute_scores([p1, p2])
+        assert result["win_margin"] == 0
+        assert result["scores"]["product_0"]["overall"] == result["scores"]["product_1"]["overall"]
+
+    def test_identical_products_equal_breakdowns(self, service):
+        """Identical products should have identical dimension breakdowns."""
+        p1 = _make_product()
+        p2 = _make_product()
+        result = service.compute_scores([p1, p2])
+        b0 = result["scores"]["product_0"]["breakdown"]
+        b1 = result["scores"]["product_1"]["breakdown"]
+        for dim in b0:
+            assert b0[dim] == b1[dim], f"Mismatch on {dim}: {b0[dim]} != {b1[dim]}"
+
+
+# ===========================================
+# ADDITIONAL COVERAGE: ALL PRIORITIES STACKING
+# ===========================================
+
+class TestAllPrioritiesStacking:
+    """Test weight behavior when many priorities are selected."""
+
+    def test_all_priorities_weights_sum_to_one(self, service):
+        """Even with all 8 priorities selected, weights must still sum to 1.0."""
+        all_priorities = [
+            "price", "quality", "brand_reputation", "durability",
+            "latest_features", "ease_of_use", "eco_friendly", "health_safety",
+        ]
+        prefs = {"priorities": all_priorities, "budget": "budget"}
+        weights = service._compute_weights(prefs)
+        assert abs(sum(weights.values()) - 1.0) < 1e-9
+
+    def test_all_priorities_no_negative_weights(self, service):
+        """No weight should be negative after stacking all priorities."""
+        all_priorities = [
+            "price", "quality", "brand_reputation", "durability",
+            "latest_features", "ease_of_use", "eco_friendly", "health_safety",
+        ]
+        prefs = {"priorities": all_priorities, "budget": "premium"}
+        weights = service._compute_weights(prefs)
+        for k, v in weights.items():
+            assert v >= 0.0, f"{k} has negative weight: {v}"
+
+    def test_three_priorities_weights_valid(self, service):
+        """Common case: 3 priorities + budget = valid weights."""
+        prefs = {"priorities": ["price", "quality", "eco_friendly"], "budget": "mid"}
+        weights = service._compute_weights(prefs)
+        assert abs(sum(weights.values()) - 1.0) < 1e-9
+        for v in weights.values():
+            assert v >= 0.0
+
+
+# ===========================================
+# ADDITIONAL COVERAGE: MORE CATEGORIES
+# ===========================================
+
+class TestMoreCategories:
+    """Test category-specific scoring for beauty/other categories."""
+
+    def test_makeup_category(self, service):
+        p1 = _make_product(category="makeup", specs={
+            "shade_range": "40 shades", "spf": "30", "volume": "30ml",
+        })
+        p2 = _make_product(category="makeup", specs={
+            "shade_range": "10 shades", "spf": "15", "volume": "15ml",
+        })
+        result = service.compute_scores([p1, p2])
+        assert result["scores"]["product_0"]["breakdown"]["spec_score"] > \
+               result["scores"]["product_1"]["breakdown"]["spec_score"]
+
+    def test_skincare_category(self, service):
+        p1 = _make_product(category="skincare", specs={
+            "spf": "50", "volume": "50ml",
+        })
+        p2 = _make_product(category="skincare", specs={
+            "spf": "15", "volume": "30ml",
+        })
+        result = service.compute_scores([p1, p2])
+        assert result["scores"]["product_0"]["breakdown"]["spec_score"] >= \
+               result["scores"]["product_1"]["breakdown"]["spec_score"]
+
+    def test_fragrances_category(self, service):
+        p1 = _make_product(category="fragrances", specs={
+            "volume": "100ml", "longevity": "8 hours",
+        })
+        p2 = _make_product(category="fragrances", specs={
+            "volume": "50ml", "longevity": "4 hours",
+        })
+        result = service.compute_scores([p1, p2])
+        assert result["scores"]["product_0"]["breakdown"]["spec_score"] > \
+               result["scores"]["product_1"]["breakdown"]["spec_score"]
+
+    def test_haircare_category(self, service):
+        p1 = _make_product(category="haircare", specs={
+            "volume": "500ml",
+        })
+        p2 = _make_product(category="haircare", specs={
+            "volume": "250ml",
+        })
+        result = service.compute_scores([p1, p2])
+        assert result["scores"]["product_0"]["breakdown"]["spec_score"] >= \
+               result["scores"]["product_1"]["breakdown"]["spec_score"]

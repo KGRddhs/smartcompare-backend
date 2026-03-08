@@ -289,3 +289,69 @@ class TestEventsEndpoint:
                 "mattered_most": valid_items,
             })
         assert resp.status_code == 200
+
+
+# ============================================
+# Additional coverage: edge cases
+# ============================================
+
+class TestFeedbackEdgeCases:
+    """Additional coverage for feedback edge cases."""
+
+    def test_feedback_invalid_json_body(self, client):
+        """Non-JSON body returns 422."""
+        resp = client.post(
+            "/api/v1/feedback",
+            content="not json at all",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 422
+
+    def test_feedback_extra_fields_ignored(self, client):
+        """Extra unexpected fields should be ignored (Pydantic default)."""
+        with patch("app.services.feedback_service.get_supabase_client"):
+            resp = client.post("/api/v1/feedback", json={
+                "useful": True,
+                "mattered_most": ["price"],
+                "unexpected_field": "should be ignored",
+                "another_extra": 42,
+            })
+        assert resp.status_code == 200
+
+    def test_feedback_long_change_suggestion(self, client):
+        """Very long change_suggestion text should be accepted."""
+        long_text = "A" * 5000
+        with patch("app.services.feedback_service.get_supabase_client"):
+            resp = client.post("/api/v1/feedback", json={
+                "useful": True,
+                "change_suggestion": long_text,
+            })
+        assert resp.status_code == 200
+
+    def test_events_batch_exactly_50(self, client):
+        """Exactly 50 events (at the limit) should succeed."""
+        events = [{"event_type": "save"} for _ in range(50)]
+        with patch("app.services.feedback_service.get_supabase_client"):
+            resp = client.post("/api/v1/events", json={"events": events})
+        assert resp.status_code == 200
+        assert "50 events received" in resp.json()["message"]
+
+    def test_events_invalid_json_body(self, client):
+        """Non-JSON body returns 422."""
+        resp = client.post(
+            "/api/v1/events",
+            content="not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 422
+
+    def test_feedback_useful_false_accepted(self, client):
+        """Useful=False is a valid value."""
+        with patch("app.services.feedback_service.get_supabase_client"):
+            resp = client.post("/api/v1/feedback", json={"useful": False})
+        assert resp.status_code == 200
+
+    def test_feedback_useful_null_rejected(self, client):
+        """Useful=null should be rejected (field is required bool)."""
+        resp = client.post("/api/v1/feedback", json={"useful": None})
+        assert resp.status_code == 422

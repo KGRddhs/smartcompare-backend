@@ -371,4 +371,150 @@ export async function savePreferences(preferences: UserPreferences): Promise<{ s
   return response.data;
 }
 
+/**
+ * SSE streaming comparison.
+ * Uses fetch + ReadableStream (EventSource not reliable in React Native).
+ * Falls back to non-streaming on failure.
+ */
+export interface StreamCallbacks {
+  onStatus?: (message: string) => void;
+  onSpecs?: (data: any) => void;
+  onPrices?: (data: any) => void;
+  onReviews?: (data: any) => void;
+  onScores?: (data: any) => void;
+  onVerdict?: (data: any) => void;
+  onComplete?: (data: ComparisonResult) => void;
+  onError?: (error: Error) => void;
+}
+
+export function streamComparison(
+  query: string,
+  options?: { nocache?: boolean; selected_category?: string }
+): {
+  subscribe: (callbacks: StreamCallbacks) => void;
+  abort: () => void;
+} {
+  const controller = new AbortController();
+
+  const subscribe = (callbacks: StreamCallbacks) => {
+    (async () => {
+      try {
+        const { getToken } = require('./authService');
+        const token = await getToken();
+
+        const params = new URLSearchParams({ q: query, region: 'bahrain' });
+        if (options?.nocache) params.set('nocache', 'true');
+        if (options?.selected_category) params.set('selected_category', options.selected_category);
+
+        const headers: Record<string, string> = { Accept: 'text/event-stream' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const response = await fetch(
+          `${API_BASE_URL}/api/v1/text/compare/stream?${params.toString()}`,
+          { method: 'GET', headers, signal: controller.signal }
+        );
+
+        if (!response.ok || !response.body) {
+          throw new Error(`Stream failed: ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+
+          for (const part of parts) {
+            if (!part.trim()) continue;
+            const lines = part.split('\n');
+            let eventType = '';
+            let eventData = '';
+            for (const line of lines) {
+              if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+              else if (line.startsWith('data: ')) eventData = line.slice(6);
+            }
+            if (!eventType || !eventData) continue;
+
+            try {
+              const parsed = JSON.parse(eventData);
+              switch (eventType) {
+                case 'status': callbacks.onStatus?.(parsed.message || parsed); break;
+                case 'specs': callbacks.onSpecs?.(parsed); break;
+                case 'prices': callbacks.onPrices?.(parsed); break;
+                case 'reviews': callbacks.onReviews?.(parsed); break;
+                case 'scores': callbacks.onScores?.(parsed); break;
+                case 'verdict': callbacks.onVerdict?.(parsed); break;
+                case 'complete': callbacks.onComplete?.(parsed); break;
+                case 'error': callbacks.onError?.(new Error(parsed.error || 'Stream error')); break;
+              }
+            } catch {
+              // Ignore malformed JSON lines
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+        // Fallback to non-streaming
+        console.log('SSE failed, falling back to non-streaming:', err.message);
+        try {
+          const response = await api.get('/api/v1/text/compare', {
+            params: {
+              q: query,
+              region: 'bahrain',
+              selected_category: options?.selected_category,
+              ...(options?.nocache && { nocache: true }),
+            },
+            signal: controller.signal,
+          });
+          if (response.data.success) {
+            callbacks.onComplete?.(response.data);
+          } else {
+            callbacks.onError?.(new Error(response.data.error || 'Comparison failed'));
+          }
+        } catch (fallbackErr: any) {
+          if (fallbackErr.name !== 'AbortError' && fallbackErr.name !== 'CanceledError') {
+            callbacks.onError?.(fallbackErr);
+          }
+        }
+      }
+    })();
+  };
+
+  return { subscribe, abort: () => controller.abort() };
+}
+
+/**
+ * Submit feedback on a comparison result
+ */
+export async function submitFeedback(data: {
+  useful: boolean;
+  comparison_id?: string;
+  mattered_most?: string[];
+  change_suggestion?: string;
+}): Promise<{ success: boolean }> {
+  const response = await api.post('/api/v1/feedback', data);
+  return response.data;
+}
+
+/**
+ * Batch track user events (fire-and-forget)
+ */
+export async function trackEvents(events: Array<{
+  event_type: string;
+  event_data?: Record<string, any>;
+  comparison_id?: string;
+}>): Promise<void> {
+  try {
+    await api.post('/api/v1/events', { events });
+  } catch {
+    // Fire-and-forget: swallow errors
+  }
+}
+
 export default api;

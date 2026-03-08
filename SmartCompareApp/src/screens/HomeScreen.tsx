@@ -20,9 +20,9 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../types';
-import { healthCheck } from '../services/api';
-import { logout, getSavedUser, User } from '../services/authService';
+import { healthCheck, streamComparison } from '../services/api';
 import api from '../services/api';
+import { logout, getSavedUser, User } from '../services/authService';
 import CategorySelector from '../components/CategorySelector';
 
 type HomeScreenProps = {
@@ -43,6 +43,8 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
   const [url1, setUrl1] = useState('');
   const [url2, setUrl2] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('electronics');
+  const [statusMessage, setStatusMessage] = useState<string>('');
+  const abortRef = React.useRef<(() => void) | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -74,41 +76,44 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
     navigation.navigate('Camera');
   };
 
-  // Text comparison
-  const handleTextCompare = async () => {
+  // Text comparison (streaming)
+  const handleTextCompare = () => {
     if (!textQuery.trim()) {
       Alert.alert('Enter Products', 'Example: "iPhone 15 vs Galaxy S24"');
       return;
     }
-    
+
     setLoading(true);
-    try {
-      // nocache until Feb 15 to let stale 24h cache entries expire (created ~Feb 14 evening)
-      const needsCacheBust = new Date() < new Date('2026-02-16');
-      const response = await api.get('/api/v1/text/compare', {
-        params: {
-          q: textQuery.trim(),
-          region: 'bahrain',
-          selected_category: selectedCategory,
-          ...(needsCacheBust && { nocache: true }),
+    setStatusMessage('Starting comparison...');
+    let navigated = false;
+
+    const { subscribe, abort } = streamComparison(textQuery.trim(), {
+      selected_category: selectedCategory,
+    });
+    abortRef.current = abort;
+
+    subscribe({
+      onStatus: (message) => {
+        setStatusMessage(typeof message === 'string' ? message : String(message));
+      },
+      onComplete: (data) => {
+        abortRef.current = null;
+        setLoading(false);
+        setStatusMessage('');
+        if (!navigated && data.success) {
+          navigated = true;
+          navigation.navigate('Results', { result: data });
+        } else if (!data.success) {
+          Alert.alert('Error', data.error || 'Comparison failed');
         }
-      });
-
-      // Debug: log price data from API response
-      (response.data?.products || []).forEach((p: any) => {
-        console.log(`[PRICE DEBUG] ${p.name}: ${p.price?.currency} ${p.price?.amount} from ${p.price?.retailer}`);
-      });
-
-      if (response.data.success) {
-        navigation.navigate('Results', { result: response.data });
-      } else {
-        Alert.alert('Error', response.data.error || 'Comparison failed');
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Comparison failed');
-    } finally {
-      setLoading(false);
-    }
+      },
+      onError: (error) => {
+        abortRef.current = null;
+        setLoading(false);
+        setStatusMessage('');
+        Alert.alert('Error', error.message || 'Comparison failed');
+      },
+    });
   };
 
   // URL comparison
@@ -196,14 +201,19 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
               disabled={!serverOnline || loading}
             >
               {loading ? (
-                <ActivityIndicator color="#FFF" />
+                <View style={styles.loadingRow}>
+                  <ActivityIndicator color="#FFF" size="small" />
+                  {statusMessage ? (
+                    <Text style={styles.statusMessageText}>{statusMessage}</Text>
+                  ) : null}
+                </View>
               ) : (
-                <Text style={styles.primaryButtonText}>⚡ Compare</Text>
+                <Text style={styles.primaryButtonText}>Compare</Text>
               )}
             </TouchableOpacity>
           </View>
         );
-      
+
       case 'url':
         return (
           <View style={styles.inputSection}>
@@ -529,5 +539,16 @@ const styles = StyleSheet.create({
     color: '#333',
     fontSize: 15,
     fontWeight: '600',
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  statusMessageText: {
+    color: '#FFF',
+    fontSize: 13,
+    marginLeft: 4,
   },
 });

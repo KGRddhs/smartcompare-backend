@@ -3,7 +3,7 @@
  * Shows "No verified rating available" if rating is null
  * Includes link to source when rating is verified
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, Product, Comparison, RatingSource, ComparisonResult, ScoringResult, ProductScores, ScoreBreakdown } from '../types';
+import FeedbackCard from '../components/FeedbackCard';
+import { trackEvents } from '../services/api';
 
 type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
@@ -26,6 +28,41 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   const { products, comparison, winner_index, recommendation, key_differences, metadata } = result;
+
+  // Event tracking
+  const mountTimeRef = useRef(Date.now());
+  const pendingEventsRef = useRef<Array<{ event_type: string; event_data?: Record<string, any>; comparison_id?: string }>>([]);
+  const comparisonId = metadata?.query;
+
+  const trackEvent = (eventType: string, eventData?: Record<string, any>) => {
+    pendingEventsRef.current.push({
+      event_type: eventType,
+      event_data: eventData,
+      comparison_id: comparisonId,
+    });
+  };
+
+  useEffect(() => {
+    return () => {
+      // Send view duration + any pending events on unmount (fire-and-forget)
+      const durationMs = Date.now() - mountTimeRef.current;
+      pendingEventsRef.current.push({
+        event_type: 'result_view_duration',
+        event_data: { duration_ms: durationMs },
+        comparison_id: comparisonId,
+      });
+      if (pendingEventsRef.current.length > 0) {
+        trackEvents(pendingEventsRef.current);
+      }
+    };
+  }, []);
+
+  const handleTabSwitch = (tab: TabType) => {
+    if (tab !== activeTab) {
+      trackEvent('tab_switch', { from: activeTab, to: tab });
+    }
+    setActiveTab(tab);
+  };
 
   const formatPrice = (price?: Product['price']) => {
     if (!price || price.unavailable || price.amount === null) {
@@ -45,6 +82,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   const openRatingSource = (source: RatingSource | null | undefined) => {
     if (source?.url) {
+      trackEvent('source_click', { source_name: source.name, url: source.url });
       Linking.openURL(source.url);
     }
   };
@@ -361,7 +399,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <TouchableOpacity
             key={tab}
             style={[styles.tab, activeTab === tab && styles.activeTab]}
-            onPress={() => setActiveTab(tab)}
+            onPress={() => handleTabSwitch(tab)}
           >
             <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -420,12 +458,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             {metadata && (
               <View style={styles.metadataSection}>
                 <Text style={styles.metadataText}>
-                  Comparison took {metadata.elapsed_seconds?.toFixed(1)}s • 
-                  Cost: ${metadata.total_cost?.toFixed(4)} • 
+                  Comparison took {metadata.elapsed_seconds?.toFixed(1)}s •
+                  Cost: ${metadata.total_cost?.toFixed(4)} •
                   {(metadata.cache_hits ?? 0) > 0 ? `${metadata.cache_hits} cached` : 'Fresh data'}
                 </Text>
               </View>
             )}
+
+            {/* Feedback */}
+            <FeedbackCard comparisonId={comparisonId} />
           </>
         )}
 
