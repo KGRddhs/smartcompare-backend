@@ -4,6 +4,71 @@
 
 ---
 
+# SESSION 20: March 8, 2026 — Smart Scoring Engine + SSE Streaming + Feedback
+
+## What We Did
+
+3-phase, 2-agent-per-phase Opus team (6 agents total). Pro subscription token limit management: 2 agents instead of 4 to avoid rate limit spikes on resume.
+
+### Phase 1: Scoring Engine + TS Fixes
+**Agents:** backend-scoring, frontend-fixes
+
+1. **Scoring Service** (`app/services/scoring_service.py` — new)
+   - 6 dimensions: price, spec, review, value, reliability, popularity (0-100 scale)
+   - Personalized weights from user preferences (priorities, budget, brand_attitude)
+   - Category-specific spec scoring for all 8 categories
+   - Deterministic: pure math, $0 cost, same input = same output
+   - Integrated after Phase 2 in pipeline, scores_summary injected into verdict prompt
+
+2. **All 5 TS Errors Fixed** (was pre-existing since Session 17)
+   - App.tsx: navigation types, CameraScreen: hoisting, ForgotPasswordScreen: missing export, ResultsScreen: vector-icons import, metadata nullish coalescing
+   - `npx tsc --noEmit` = 0 errors
+
+3. **Scoring UI** in ResultsScreen Overview tab
+   - ScoreBadge per product (color-coded 0-100), breakdown bars, winner margin banner
+
+### Phase 2: SSE Streaming + Feedback System
+**Agents:** backend-streaming, feedback-system
+
+4. **SSE Streaming** (`GET /api/v1/text/compare/stream`)
+   - 10 SSE events: status→specs→prices→reviews→scores→verdict→complete
+   - `compare_from_text_streaming()` async generator in structured_comparison_service.py
+   - Non-streaming endpoint unchanged (backward compatible)
+   - Cold-start prevention documented in main.py
+
+5. **Feedback System**
+   - Supabase tables: `comparison_feedback` + `user_events` (RLS enabled)
+   - `POST /api/v1/feedback` (30/min) + `POST /api/v1/events` (60/min), auth optional
+   - Fire-and-forget via asyncio.create_task()
+
+### Phase 3: Frontend Integration + Final QA
+**Agents:** frontend-streaming, test-qa
+
+6. **Frontend SSE Client** (`streamComparison()` in api.ts)
+   - fetch+ReadableStream with fallback to non-streaming
+   - HomeScreen shows status messages during streaming
+   - ResultsScreen progressive rendering + event tracking (tab_switch, source_click, result_view_duration)
+
+7. **FeedbackCard Component** (`SmartCompareApp/src/components/FeedbackCard.tsx`)
+   - Thumbs up/down (required) + mattered-most chips + optional text
+   - Shown in Overview tab, collapses after submission
+
+8. **Test Coverage**: 609 tests (was 555), +107 new tests across 3 files
+   - test_scoring_service.py (62), test_feedback.py (29), test_streaming.py (16)
+
+## Key Decisions
+- 2 agents per phase (not 4) to manage Pro subscription token limits
+- Scoring is deterministic math (not GPT opinion) — reproducible and explainable
+- SSE streaming for perceived speed; non-streaming preserved for backward compat
+- Feedback tables support anonymous users (user_id nullable)
+- Backend `scoring` key (not `scores`) to match frontend types.ts convention
+
+## Files Changed
+**New:** scoring_service.py, feedback_service.py, feedback_routes.py, FeedbackCard.tsx, react-native-vector-icons.d.ts, test_scoring_service.py, test_feedback.py, test_streaming.py, session20-progress.md, design doc, plan doc
+**Modified:** structured_comparison_service.py, extraction_service.py, text_routes.py, main.py, ResultsScreen.tsx, HomeScreen.tsx, CameraScreen.tsx, api.ts, authService.ts, types.ts
+
+---
+
 # SESSION 19: March 7-8, 2026 — Personalization Feature
 
 ## What We Did

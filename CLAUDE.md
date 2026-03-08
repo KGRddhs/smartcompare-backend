@@ -71,7 +71,7 @@ curl -s "https://smartcompare-backend-production.up.railway.app/api/v1/text/comp
 ```bash
 cd SmartCompareApp
 npx expo start                    # Dev server
-npx tsc --noEmit                  # TypeScript check (5 pre-existing errors as of Mar 5 2026)
+npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 ```
 
 ### Dependencies
@@ -82,11 +82,12 @@ npx tsc --noEmit                  # TypeScript check (5 pre-existing errors as o
 
 ### Backend (FastAPI + Python 3.12)
 
-**Entry:** `app/main.py` (v2.1.0) — loads env vars, configures middleware stack, registers 6 routers:
-- `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow, rate limited)
+**Entry:** `app/main.py` (v2.2.0) — loads env vars, configures middleware stack, registers 7 routers:
+- `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow + SSE streaming, rate limited)
 - `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited, HEIC detection)
 - `/api/v1/url/*` — `url_routes.py` (partially implemented)
 - `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social-login)
+- `/api/v1/feedback`, `/api/v1/events` — `feedback_routes.py` → feedback collection + event tracking
 - `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints (X-Admin-Key auth)
 - `/api/v1/*` — `routes.py` (legacy image comparison, has broken function calls)
 
@@ -95,9 +96,11 @@ npx tsc --noEmit                  # TypeScript check (5 pre-existing errors as o
 **Core service:** `app/services/structured_comparison_service.py`
 - `StructuredComparisonService` is a **singleton** (`get_comparison_service()`)
 - `compare_from_text(query, region, vision_products?, selected_category?)` — main entry point
+- `compare_from_text_streaming(...)` — async generator yielding SSE events (specs→prices→reviews→scores→verdict→complete)
 - **Pre-fetch:** Unified web search (1 Serper call) shared by specs + reviews — gated by cache check
 - **Phase 1:** specs + price fetched in parallel (specs reuses unified search)
 - **Phase 2:** reviews + rating fetched in parallel (reviews reuses unified search, shopping data from Phase 1 feeds ratings)
+- **Scoring:** deterministic scoring after Phase 2 via `scoring_service.py` (zero API cost)
 - `_shopping_items_cache` — populated during price search, used by rating/review injection. Cleared per-request.
 
 **Price pipeline (3 tiers + pharmacy JSON-LD):**
@@ -139,6 +142,8 @@ npx tsc --noEmit                  # TypeScript check (5 pre-existing errors as o
 
 **Key services:**
 - `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/makeup/skincare/haircare/fragrances/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`
+- `scoring_service.py` — Deterministic scoring engine. 6 dimensions (price, spec, review, value, reliability, popularity), personalized weights from user preferences. Pure math, $0 cost.
+- `feedback_service.py` — `save_feedback()`, `track_event()`, `track_events_batch()`. Fire-and-forget pattern (asyncio.create_task).
 - `drug_database_service.py` — Bahrain drug database lookup + GPT context formatting (supplements only)
 - `serper_service.py` — Serper API calls (`search_product_prices()`, `search_price_organic()`, `search_web()`)
 - `cache_service.py` — Upstash Redis caching, monthly budget tracking
@@ -159,8 +164,8 @@ npx tsc --noEmit                  # TypeScript check (5 pre-existing errors as o
 **Location:** `SmartCompareApp/`
 
 **Screens:**
-- `HomeScreen.tsx` — CategorySelector (7 categories), text/camera/URL input tabs, calls `GET /api/v1/text/compare`. Gear icon navigates to AccountScreen.
-- `ResultsScreen.tsx` — Tabs: Overview, Specs, Reviews. Has local type definitions that diverge from `src/types/types.ts`.
+- `HomeScreen.tsx` — CategorySelector (7 categories), text/camera/URL input tabs, uses SSE streaming (`streamComparison()`). Gear icon navigates to AccountScreen.
+- `ResultsScreen.tsx` — Tabs: Overview, Specs, Reviews. Scoring display (ScoreBadge, breakdown bars, winner margin). FeedbackCard below results. Event tracking (tab_switch, source_click, result_view_duration).
 - `CameraScreen.tsx` — Camera capture, calls `POST /api/v1/image/identify`
 - `HistoryScreen.tsx` — Comparison history from Supabase. Shows "Sign In Required" prompt on 401 (not crash).
 - `AccountScreen.tsx` — Account panel: inline name/email editing, password change modal, Google/Apple connect, logout, "My Preferences" link.
@@ -170,15 +175,16 @@ npx tsc --noEmit                  # TypeScript check (5 pre-existing errors as o
 
 **Components:**
 - `CategorySelector.tsx` — Horizontal scrolling chip selector for 7 product categories (Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances)
+- `FeedbackCard.tsx` — Thumbs up/down + mattered-most chips + optional text. Fire-and-forget submit, collapses after submission.
 
 **Services:**
-- `api.ts` — Axios instance pointing to Railway production URL (120s timeout). JPEG transcoding via `expo-image-manipulator` before image upload.
+- `api.ts` — Axios instance pointing to Railway production URL (120s timeout). SSE streaming via `streamComparison()` (fetch+ReadableStream, fallback to non-streaming). `submitFeedback()`, `trackEvents()`. JPEG transcoding via `expo-image-manipulator` before image upload.
 - `authService.ts` — Login/register/refresh with Supabase. `signInWithGoogle()` and `signInWithApple()` for social login. Stores access_token + refresh_token in AsyncStorage. `verifyAuth()` returns `User | null` (NOT boolean).
 
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls intelligently.
 - **Serper** — Google Search + Shopping API ($0.001/call). Don't search for what you already have.
-- **Supabase** — PostgreSQL (users, comparisons, products, prices, specs, reviews, search_logs, bahrain_approved_drugs) + Auth. Cache strategically.
+- **Supabase** — PostgreSQL (users, comparisons, products, prices, specs, reviews, search_logs, bahrain_approved_drugs, comparison_feedback, user_events) + Auth. Cache strategically.
 - **Upstash Redis** — Response caching (prices 24h, specs/reviews 7d)
 
 ## Important Patterns
@@ -210,6 +216,15 @@ Target: **$0.009-0.01/comparison** (current: ~$0.010 electronics, ~$0.010 supple
 
 ### Vision products bypass query parsing
 Camera input passes `vision_products` directly to `compare_from_text()`, skipping `parse_product_query()`. The `size_or_count` field (e.g., "360 Softgels") is appended to the product name in `image_routes.py` before comparison.
+
+### Deterministic scoring (zero cost)
+`scoring_service.py` computes 6 scores (price, spec, review, value, reliability, popularity) from structured data. No API calls — pure math. Weights are personalized from user preferences (priorities, budget, brand_attitude) or fall back to defaults for anonymous users. Scores are 0-100, deterministic (same input = same output). Computed after Phase 2, passed into verdict prompt as `scores_summary`. Response includes `scoring` field with per-product breakdown.
+
+### SSE streaming
+`GET /api/v1/text/compare/stream` returns Server-Sent Events. 10 events: status(parsing) → status(fetching) → specs → prices → status(reviews) → reviews → scores → status(verdict) → verdict → complete. Frontend uses fetch+ReadableStream (not EventSource) with fallback to non-streaming. Non-streaming endpoint unchanged.
+
+### Feedback and event tracking
+`POST /api/v1/feedback` (useful bool, mattered_most[], change_suggestion) + `POST /api/v1/events` (batch event tracking). Both auth-optional, fire-and-forget. FeedbackCard shown in ResultsScreen Overview tab. Events tracked: tab_switch, source_click, result_view_duration. Tables: `comparison_feedback` + `user_events` with RLS.
 
 ### Personalization (zero extra cost)
 The frontend collects 4 preference dimensions once after first login (PreferencesScreen with 4 swipeable cards — all mandatory, no skip):
@@ -269,7 +284,7 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (535 total: 505 unit + 14 live_unit + 6 live_db + 10 integration)
+### Test files (609 total: 579 unit + 14 live_unit + 6 live_db + 10 integration)
 - `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
@@ -291,6 +306,9 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_unified_search.py` — 4 tests: search sharing (specs/reviews), cost budget tracking
 - `tests/test_category_selection.py` — 46 tests: schema validation, prompt building, API params, category switching, parser prompt, live GPT extraction
 - `tests/test_personalization.py` — 52 tests: preference validation, GET/PUT endpoints, service functions, auth response flag, prompt injection, comparison metadata, valid options
+- `tests/test_scoring_service.py` — 62 tests: 6 score dimensions, personalized weights, category scoring, edge cases, determinism
+- `tests/test_feedback.py` — 29 tests: feedback submission, event tracking, validation, batch, fire-and-forget
+- `tests/test_streaming.py` — 16 tests: SSE format, event sequence, generator, endpoint, error handling
 - `tests/test_singleton_state.py` — 3 tests: singleton pattern, cache leak prevention, state reset
 - `tests/test_integration.py` — 10 tests: live Railway (~$0.10, ~5 min)
 
@@ -298,7 +316,6 @@ python -m pytest tests/ -v --timeout=180
 
 These are known issues that have been intentionally deferred:
 - Legacy `/api/v1/compare` route (`routes.py`): all function calls use wrong arg counts — 4 TypeErrors
-- `ResultsScreen.tsx` has local type definitions that diverge from `src/types/types.ts`
 - Google Sign-In: Supabase Google provider needs to be enabled in dashboard (client IDs configured in code)
 - Apple Sign-In: deferred — requires Apple Developer subscription ($99/year); code is ready
 
