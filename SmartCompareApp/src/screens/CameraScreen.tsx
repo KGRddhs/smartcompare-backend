@@ -36,6 +36,34 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
   const MIN_IMAGES = 2;
   const MAX_IMAGES = 4;
 
+  const pickFromGallery = async () => {
+    const remainingSlots = MAX_IMAGES - capturedImages.length;
+    if (remainingSlots <= 0) {
+      Alert.alert('Maximum Reached', `You can only compare up to ${MAX_IMAGES} products.`);
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: remainingSlots,
+      quality: 0.8,
+      exif: false,
+    });
+
+    if (!result.canceled && result.assets) {
+      if (detectedProduct) {
+        setDetectedProduct(null);
+      }
+      const newImages: CapturedImage[] = result.assets.map((asset) => ({
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+      }));
+      setCapturedImages([...capturedImages, ...newImages]);
+    }
+  };
+
   // Request camera permission
   if (!permission) {
     return (
@@ -95,34 +123,6 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
         console.error('Error taking picture:', error);
         Alert.alert('Error', 'Failed to take picture. Please try again.');
       }
-    }
-  };
-
-  const pickFromGallery = async () => {
-    const remainingSlots = MAX_IMAGES - capturedImages.length;
-    if (remainingSlots <= 0) {
-      Alert.alert('Maximum Reached', `You can only compare up to ${MAX_IMAGES} products.`);
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      selectionLimit: remainingSlots,
-      quality: 0.8,
-      exif: false,
-    });
-
-    if (!result.canceled && result.assets) {
-      if (detectedProduct) {
-        setDetectedProduct(null);
-      }
-      const newImages: CapturedImage[] = result.assets.map((asset) => ({
-        uri: asset.uri,
-        width: asset.width,
-        height: asset.height,
-      }));
-      setCapturedImages([...capturedImages, ...newImages]);
     }
   };
 

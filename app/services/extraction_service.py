@@ -640,6 +640,7 @@ async def generate_comparison(
     region: str,
     concern: str = "value",
     user_preferences: Optional[Dict[str, Any]] = None,
+    scores_summary: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Generate detailed comparison between two products."""
     try:
@@ -651,6 +652,10 @@ async def generate_comparison(
             currency=GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])["currency"],
             concern=concern
         )
+
+        # Append scoring context so GPT can reference deterministic scores
+        if scores_summary:
+            prompt += f"\n\n## Scoring Context\n{scores_summary}\nReference these scores in your verdict to support your recommendation with data."
 
         # Append personalization section if user has preferences
         if user_preferences:

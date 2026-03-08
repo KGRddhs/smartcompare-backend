@@ -13,80 +13,11 @@ import {
   Share,
   Linking,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { RootStackParamList, Product, Comparison, RatingSource, ComparisonResult, ScoringResult, ProductScores, ScoreBreakdown } from '../types';
 
-interface RatingSource {
-  name: string;
-  url: string;
-  retrieved_at: string;
-  extract_method?: 'json_ld' | 'microdata' | 'meta_tags' | 'css_selector';
-  confidence?: 'high' | 'medium' | 'low';
-}
-
-interface Product {
-  name: string;
-  brand: string;
-  full_name?: string;
-  category?: string;
-  price?: {
-    amount: number | null;
-    currency: string;
-    retailer?: string;
-    estimated?: boolean;
-    note?: string;
-    unavailable?: boolean;
-  };
-  specs?: Record<string, any>;
-  rating?: number | null;
-  review_count?: number | null;
-  rating_verified?: boolean;
-  rating_source?: RatingSource | null;
-  pros?: string[];
-  cons?: string[];
-  confidence?: number;
-  _rating_debug?: any;
-}
-
-interface Comparison {
-  winner_index: number;
-  winner_reason: string;
-  recommendation: string;
-  key_differences: string[];
-  value_scores?: number[];
-  best_for?: Record<string, number>;
-  price_comparison?: {
-    cheaper_index: number | null;
-    price_difference: string;
-    better_value_index: number;
-  };
-  specs_comparison?: {
-    product_0_advantages: string[];
-    product_1_advantages: string[];
-    similar_features: string[];
-  };
-}
-
-interface ResultsScreenProps {
-  route: {
-    params: {
-      result: {
-        success: boolean;
-        products: Product[];
-        comparison: Comparison;
-        winner_index: number;
-        recommendation: string;
-        key_differences: string[];
-        metadata?: {
-          elapsed_seconds: number;
-          total_cost: number;
-          api_calls: number;
-          cache_hits: number;
-        };
-      };
-    };
-  };
-  navigation: any;
-}
+type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
 type TabType = 'overview' | 'specs' | 'reviews';
 
@@ -116,6 +47,111 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     if (source?.url) {
       Linking.openURL(source.url);
     }
+  };
+
+  // Scoring helpers
+  const scoring = result.scoring;
+
+  const getScoreColor = (score: number): string => {
+    if (score > 70) return '#4CAF50';
+    if (score >= 40) return '#FF9800';
+    return '#F44336';
+  };
+
+  const SCORE_LABELS: Record<keyof ScoreBreakdown, string> = {
+    price_score: 'Price',
+    spec_score: 'Specs',
+    review_score: 'Reviews',
+    value_score: 'Value',
+    reliability_score: 'Reliability',
+    popularity_score: 'Popularity',
+  };
+
+  const getProductScores = (index: number): ProductScores | null => {
+    if (!scoring) return null;
+    const key = `product_${index}`;
+    return scoring.scores[key] ?? null;
+  };
+
+  // Score badge for product cards
+  const ScoreBadge = ({ index }: { index: number }) => {
+    const scores = getProductScores(index);
+    if (!scores) return null;
+
+    return (
+      <View style={[styles.scoreBadge, { borderColor: getScoreColor(scores.overall) }]}>
+        <Text style={[styles.scoreBadgeValue, { color: getScoreColor(scores.overall) }]}>
+          {Math.round(scores.overall)}
+        </Text>
+        <Text style={styles.scoreBadgeLabel}>/100</Text>
+      </View>
+    );
+  };
+
+  // Score breakdown bar
+  const ScoreBar = ({ label, value }: { label: string; value: number }) => (
+    <View style={styles.scoreBarRow}>
+      <Text style={styles.scoreBarLabel}>{label}</Text>
+      <View style={styles.scoreBarTrack}>
+        <View
+          style={[
+            styles.scoreBarFill,
+            { width: `${Math.min(value, 100)}%`, backgroundColor: getScoreColor(value) },
+          ]}
+        />
+      </View>
+      <Text style={styles.scoreBarValue}>{Math.round(value)}</Text>
+    </View>
+  );
+
+  // Full scoring section in overview
+  const ScoringSection = () => {
+    if (!scoring) return null;
+
+    const winnerScores = getProductScores(scoring.winner_index);
+    const winnerName = products[scoring.winner_index]?.name;
+
+    return (
+      <View style={styles.scoringSection}>
+        <Text style={styles.sectionTitle}>Score Breakdown</Text>
+
+        {scoring.win_margin > 0 && winnerName && (
+          <View style={styles.winMarginBanner}>
+            <Text style={styles.winMarginText}>
+              {winnerName} wins by {Math.round(scoring.win_margin)} points
+            </Text>
+          </View>
+        )}
+
+        {products.map((product, index) => {
+          const scores = getProductScores(index);
+          if (!scores) return null;
+
+          return (
+            <View key={index} style={styles.scoreCard}>
+              <View style={styles.scoreCardHeader}>
+                <Text style={styles.scoreCardName}>{product.name}</Text>
+                <View style={[styles.scoreOverallBadge, { backgroundColor: getScoreColor(scores.overall) }]}>
+                  <Text style={styles.scoreOverallText}>{Math.round(scores.overall)}/100</Text>
+                </View>
+              </View>
+              {(Object.keys(SCORE_LABELS) as (keyof ScoreBreakdown)[]).map((key) => (
+                <ScoreBar key={key} label={SCORE_LABELS[key]} value={scores.breakdown[key]} />
+              ))}
+            </View>
+          );
+        })}
+
+        {/* Weights info */}
+        {winnerScores && (
+          <Text style={styles.weightsText}>
+            {scoring.scoring_method === 'personalized'
+              ? 'Weighted for your preferences'
+              : 'Default weights applied'}
+          </Text>
+        )}
+      </View>
+    );
   };
 
   // Rating display component with provenance
@@ -192,9 +228,12 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           </View>
         )}
         
+        {/* Score Badge */}
+        <ScoreBadge index={index} />
+
         <Text style={styles.brandText}>{product.brand}</Text>
         <Text style={styles.productName}>{product.name}</Text>
-        
+
         {/* Price */}
         <Text style={[
           styles.priceText,
@@ -341,6 +380,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               ))}
             </View>
 
+            {/* Scores */}
+            <ScoringSection />
+
             {/* Recommendation */}
             <View style={styles.recommendationSection}>
               <Text style={styles.sectionTitle}>💡 Recommendation</Text>
@@ -380,7 +422,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 <Text style={styles.metadataText}>
                   Comparison took {metadata.elapsed_seconds?.toFixed(1)}s • 
                   Cost: ${metadata.total_cost?.toFixed(4)} • 
-                  {metadata.cache_hits > 0 ? `${metadata.cache_hits} cached` : 'Fresh data'}
+                  {(metadata.cache_hits ?? 0) > 0 ? `${metadata.cache_hits} cached` : 'Fresh data'}
                 </Text>
               </View>
             )}
@@ -741,6 +783,108 @@ const styles = StyleSheet.create({
     color: '#555',
     marginBottom: 4,
     marginLeft: 8,
+  },
+
+  // Scoring styles
+  scoreBadge: {
+    borderWidth: 2,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  scoreBadgeValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  scoreBadgeLabel: {
+    fontSize: 11,
+    color: '#999',
+    marginLeft: 1,
+  },
+  scoringSection: {
+    backgroundColor: '#FFF',
+    margin: 10,
+    padding: 15,
+    borderRadius: 12,
+  },
+  winMarginBanner: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  winMarginText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2E7D32',
+  },
+  scoreCard: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  scoreCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  scoreCardName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  scoreOverallBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  scoreOverallText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  scoreBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  scoreBarLabel: {
+    fontSize: 11,
+    color: '#666',
+    width: 70,
+  },
+  scoreBarTrack: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 3,
+    marginHorizontal: 8,
+  },
+  scoreBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  scoreBarValue: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#333',
+    width: 24,
+    textAlign: 'right',
+  },
+  weightsText: {
+    fontSize: 11,
+    color: '#999',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: 4,
   },
 });
 

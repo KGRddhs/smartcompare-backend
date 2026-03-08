@@ -106,6 +106,7 @@ export interface ComparisonResult {
   original_category?: string;
   personalized?: boolean;
   personalization_factors?: string[];
+  scoring?: ScoringResult;
   metadata?: {
     query: string;
     region: string;
@@ -116,6 +117,30 @@ export interface ComparisonResult {
     timestamp: string;
   };
   error?: string;
+}
+
+// --- Scoring types ---
+
+export interface ScoreBreakdown {
+  price_score: number;
+  spec_score: number;
+  review_score: number;
+  value_score: number;
+  reliability_score: number;
+  popularity_score: number;
+}
+
+export interface ProductScores {
+  overall: number;
+  breakdown: ScoreBreakdown;
+  weights_used: Record<string, number>;
+}
+
+export interface ScoringResult {
+  scores: Record<string, ProductScores>;
+  winner_index: number;
+  win_margin: number;
+  scoring_method: 'personalized' | 'default';
 }
 
 // --- Rate limiting & subscription ---

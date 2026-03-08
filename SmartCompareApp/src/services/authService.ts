@@ -327,6 +327,23 @@ export async function verifyAuth(): Promise<User | null> {
   return await initializeAuth();
 }
 
+/**
+ * Request password reset email via Supabase
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  try {
+    const response = await api.post('/api/v1/auth/reset-password', { email });
+    if (!response.data.success) {
+      throw new Error(response.data.error || 'Password reset request failed');
+    }
+  } catch (error: any) {
+    if (error.response?.data?.detail) {
+      throw new Error(error.response.data.detail);
+    }
+    throw error;
+  }
+}
+
 // --- Google Sign-In ---
 
 /**

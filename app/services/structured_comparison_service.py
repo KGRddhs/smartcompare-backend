@@ -26,6 +26,7 @@ from app.services.extraction_service import (
 from app.services.serper_service import search_product_prices, search_price_organic, search_web
 from app.services.cache_service import get_cached, set_cached
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
+from app.services.scoring_service import get_scoring_service
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
@@ -247,13 +248,27 @@ class StructuredComparisonService:
                 self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache)
             )
             
-            # Step 3+4: Generate comparison (includes pros/cons to save a GPT call)
+            # Step 3: Compute deterministic scores (pure math, $0 cost)
+            scoring_service = get_scoring_service()
+            scoring_result = scoring_service.compute_scores(
+                product_data, preferences=user_preferences
+            )
+            product_names = [
+                f"{p.get('brand', '')} {p.get('name', '')}".strip()
+                for p in product_data
+            ]
+            scores_summary = scoring_service.build_scores_summary(
+                scoring_result, product_names
+            )
+
+            # Step 4: Generate comparison (includes pros/cons to save a GPT call)
             comparison = await generate_comparison(
                 product_data[0],
                 product_data[1],
                 region,
                 parsed.get("comparison_type", "value") if not vision_products else "value",
                 user_preferences=user_preferences,
+                scores_summary=scores_summary,
             )
             self._track_cost(0.001)  # ~1000 tokens (comparison + pros/cons merged)
 
@@ -286,6 +301,7 @@ class StructuredComparisonService:
                 "success": True,
                 "products": product_data,
                 "comparison": comparison,
+                "scoring": scoring_result,
                 "winner_index": comparison.get("winner_index", 0),
                 "recommendation": comparison.get("recommendation", ""),
                 "key_differences": comparison.get("key_differences", []),
