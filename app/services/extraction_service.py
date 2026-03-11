@@ -347,6 +347,13 @@ Return ONLY valid JSON:
         "difference 3 with numbers",
         "difference 4 with numbers",
         "difference 5 with numbers"
+    ],
+    "personalized_insights": [
+        {{{{
+            "focus_area": "user priority area (e.g., battery_life, price, camera)",
+            "product_index": 0 or 1,
+            "insight": "1-2 sentence insight with specific number (max 200 chars)"
+        }}}}
     ]
 }}
 
@@ -361,7 +368,8 @@ RULES:
 - key_differences: each must include actual specs/numbers, not generic descriptions
 - Consider price-to-value ratio heavily for GCC market
 - Value score: 10 = exceptional value, 5 = average, 1 = poor value
-- Be DECISIVE — pick a clear winner and defend it with data"""
+- Be DECISIVE — pick a clear winner and defend it with data
+- personalized_insights: Generate ONLY when personalization context is provided. 2-3 insights, each tied to a different user priority. Each must cite a specific number. If no personalization context, omit this field entirely."""
 
 
 # ============================================
@@ -674,7 +682,20 @@ async def generate_comparison(
             if result.startswith("json"):
                 result = result[4:]
 
-        return json.loads(result)
+        parsed = json.loads(result)
+
+        # Validate personalized_insights
+        has_preferences = user_preferences and any(user_preferences.values())
+        if not has_preferences:
+            parsed.pop("personalized_insights", None)
+        else:
+            insights = parsed.get("personalized_insights")
+            if insights is None or not isinstance(insights, list):
+                parsed["personalized_insights"] = []
+            elif len(insights) > 3:
+                parsed["personalized_insights"] = insights[:3]
+
+        return parsed
 
     except Exception as e:
         logger.error(f"Comparison generation error: {e}")
