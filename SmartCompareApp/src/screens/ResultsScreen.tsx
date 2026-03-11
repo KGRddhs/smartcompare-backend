@@ -441,40 +441,57 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   );
 
   // Reviews tab (pros/cons)
-  const ReviewsTab = () => (
-    <View style={styles.tabContent}>
-      {products.map((product, index) => (
-        <View key={index} style={styles.reviewCard}>
-          <Text style={styles.reviewCardTitle}>{product.name}</Text>
-          
-          {/* Rating info */}
-          <View style={styles.reviewRatingSection}>
-            <RatingDisplay product={product} />
+  const ReviewsTab = () => {
+    const hasAnyReviews = products.some(p =>
+      (p.pros && p.pros.length > 0) || (p.cons && p.cons.length > 0) || p.rating
+    );
+
+    if (!hasAnyReviews) {
+      return (
+        <View style={styles.tabContent}>
+          <View style={styles.emptyStateCard}>
+            <Ionicons name="chatbubble-ellipses-outline" size={40} color="#CCC" />
+            <Text style={styles.emptyStateText}>Reviews not available for these products</Text>
           </View>
-          
-          {/* Pros */}
-          {product.pros && product.pros.length > 0 && (
-            <View style={styles.prosConsSection}>
-              <Text style={styles.prosTitle}>👍 Pros</Text>
-              {product.pros.map((pro, i) => (
-                <Text key={i} style={styles.proItem}>• {pro}</Text>
-              ))}
-            </View>
-          )}
-          
-          {/* Cons */}
-          {product.cons && product.cons.length > 0 && (
-            <View style={styles.prosConsSection}>
-              <Text style={styles.consTitle}>👎 Cons</Text>
-              {product.cons.map((con, i) => (
-                <Text key={i} style={styles.conItem}>• {con}</Text>
-              ))}
-            </View>
-          )}
         </View>
-      ))}
-    </View>
-  );
+      );
+    }
+
+    return (
+      <View style={styles.tabContent}>
+        {products.map((product, index) => (
+          <View key={index} style={styles.reviewCard}>
+            <Text style={styles.reviewCardTitle}>{product.name}</Text>
+
+            {/* Rating info */}
+            <View style={styles.reviewRatingSection}>
+              <RatingDisplay product={product} />
+            </View>
+
+            {/* Pros */}
+            {product.pros && product.pros.length > 0 && (
+              <View style={styles.prosConsSection}>
+                <Text style={styles.prosTitle}>👍 Pros</Text>
+                {product.pros.map((pro, i) => (
+                  <Text key={i} style={styles.proItem}>• {pro}</Text>
+                ))}
+              </View>
+            )}
+
+            {/* Cons */}
+            {product.cons && product.cons.length > 0 && (
+              <View style={styles.prosConsSection}>
+                <Text style={styles.consTitle}>👎 Cons</Text>
+                {product.cons.map((con, i) => (
+                  <Text key={i} style={styles.conItem}>• {con}</Text>
+                ))}
+              </View>
+            )}
+          </View>
+        ))}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -1122,6 +1139,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#999',
     marginTop: 2,
+  },
+  // Empty states
+  emptyStateCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    margin: 10,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 10,
+    textAlign: 'center',
   },
 });
 
