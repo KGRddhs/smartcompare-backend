@@ -32,6 +32,9 @@ SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
 logger = logging.getLogger(__name__)
 
+# Pattern for stripping model variants to broaden price searches
+MODEL_VARIANT_PATTERN = re.compile(r'\s+(pro|plus|max|ultra|\d{2,}gb|\d+tb)$', re.IGNORECASE)
+
 # Cache TTLs (in seconds)
 SPECS_CACHE_TTL = 7 * 24 * 60 * 60    # 7 days - specs rarely change
 PRICE_CACHE_TTL = 24 * 60 * 60         # 24 hours - prices change daily
@@ -980,6 +983,28 @@ class StructuredComparisonService:
             set_cached(cache_key, price, PRICE_CACHE_TTL)
             price["_cached"] = False
             return price
+
+        # --- Broader search fallback (max 1 extra Serper call) ---
+        broader_name = full_name
+        for _ in range(3):  # Strip up to 3 trailing variants
+            stripped = MODEL_VARIANT_PATTERN.sub('', broader_name).strip()
+            if stripped == broader_name:
+                break
+            broader_name = stripped
+
+        if broader_name != full_name and not is_supplement:
+            logger.info(f"[PRICE] Trying broader search: '{broader_name}' (was '{full_name}')")
+            broader_results = await search_product_prices(broader_name, region_info["code"])
+            self._track_cost(0.001)
+            broader_shopping = broader_results.get("shopping", [])
+            if broader_shopping:
+                price = self._extract_price_from_shopping(broader_name, broader_shopping, currency)
+                if price and price.get("amount"):
+                    logger.info(f"[PRICE] Broader search hit: {currency} {price['amount']}")
+                    price.pop("retailer_score", None)
+                    set_cached(cache_key, price, PRICE_CACHE_TTL)
+                    price["_cached"] = False
+                    return price
 
         # --- Tier 3: GPT training data fallback ---
         logger.info(f"[PRICE] Tiers 1-2 failed, falling back to GPT estimate for {full_name}")
