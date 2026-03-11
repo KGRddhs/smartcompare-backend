@@ -388,7 +388,7 @@ All tiers produce: `rating`, `review_count`, `rating_verified`, `rating_source` 
 ## 5.1 API Configuration (api.ts)
 
 ```typescript
-const API_BASE_URL = 'https://smartcompare-backend-production.up.railway.app';
+const API_BASE_URL = 'https://web-production-58776.up.railway.app';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

@@ -67,7 +67,7 @@ app = FastAPI(
 
 # CORS (innermost -- runs first on response)
 ALLOWED_ORIGINS = [
-    "https://smartcompare-backend-production.up.railway.app",
+    "https://web-production-58776.up.railway.app",
     "http://localhost:8000",
     "http://localhost:19006",   # Expo web
     "http://localhost:8081",    # Metro bundler

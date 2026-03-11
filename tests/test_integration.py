@@ -10,7 +10,7 @@ Run with: pytest tests/test_integration.py -v --timeout=180
 import pytest
 import httpx
 
-BASE_URL = "https://smartcompare-backend-production.up.railway.app"
+BASE_URL = "https://web-production-58776.up.railway.app"
 TIMEOUT = 150.0  # seconds — API can take up to 120s for complex queries
 
 

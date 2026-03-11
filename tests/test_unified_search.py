@@ -77,7 +77,7 @@ class TestCostTrackingLive:
     def test_comparison_within_budget(self, service):
         """A full comparison should cost <= $0.020 and use <= 20 API calls."""
         import httpx
-        BASE_URL = "https://smartcompare-backend-production.up.railway.app"
+        BASE_URL = "https://web-production-58776.up.railway.app"
         response = httpx.get(
             f"{BASE_URL}/api/v1/text/compare",
             params={"q": "iPhone 15 vs Samsung Galaxy S24", "nocache": "true"},

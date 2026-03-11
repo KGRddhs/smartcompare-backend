@@ -204,8 +204,8 @@ Test URLs:
 ## Production Testing
 
 ```bash
-curl https://smartcompare-backend-production.up.railway.app/health
-curl "https://smartcompare-backend-production.up.railway.app/api/v1/text/compare?q=iPhone+15+vs+Galaxy+S24&nocache=true"
+curl https://web-production-58776.up.railway.app/health
+curl "https://web-production-58776.up.railway.app/api/v1/text/compare?q=iPhone+15+vs+Galaxy+S24&nocache=true"
 ```
 
 ## Mobile Testing

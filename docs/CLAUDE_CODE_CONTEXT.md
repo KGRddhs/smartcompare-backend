@@ -18,6 +18,6 @@
 
 - **Run tests:** `python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py`
 - **Deploy:** `git push origin main` (Railway auto-deploys)
-- **Health check:** `curl https://smartcompare-backend-production.up.railway.app/health`
+- **Health check:** `curl https://web-production-58776.up.railway.app/health`
 - **Main service:** `app/services/structured_comparison_service.py`
 - **CLAUDE.md** has the condensed version of all critical patterns and rules

@@ -56,15 +56,15 @@ uvicorn app.main:app --reload --port 8000
 python -m py_compile app/services/structured_comparison_service.py
 
 # Test endpoint (production)
-curl https://smartcompare-backend-production.up.railway.app/health
-curl "https://smartcompare-backend-production.up.railway.app/api/v1/text/compare?q=iPhone+15+vs+Galaxy+S24&nocache=true"
+curl https://web-production-58776.up.railway.app/health
+curl "https://web-production-58776.up.railway.app/api/v1/text/compare?q=iPhone+15+vs+Galaxy+S24&nocache=true"
 
 # Deploy: push to main, Railway auto-deploys in ~90s
 git push origin main
 
 # After deploy: verify new features work in production
 # Example: Test category selection with wrong category (should switch)
-curl -s "https://smartcompare-backend-production.up.railway.app/api/v1/text/compare?q=iPhone+15+vs+Galaxy+S24&selected_category=grocery&nocache=true" | python -c "import sys, json; r=json.load(sys.stdin); print(f\"switched: {r.get('category_switched')}, used: {r.get('category_used')}\")"
+curl -s "https://web-production-58776.up.railway.app/api/v1/text/compare?q=iPhone+15+vs+Galaxy+S24&selected_category=grocery&nocache=true" | python -c "import sys, json; r=json.load(sys.stdin); print(f\"switched: {r.get('category_switched')}, used: {r.get('category_used')}\")"
 ```
 
 ### Frontend (React Native / Expo)
