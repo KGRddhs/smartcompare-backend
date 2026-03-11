@@ -94,6 +94,12 @@ export interface Comparison {
   };
 }
 
+export interface PersonalizedInsight {
+  focus_area: string;
+  product_index: number;
+  insight: string;
+}
+
 export interface ComparisonResult {
   success: boolean;
   products: Product[];
@@ -106,6 +112,7 @@ export interface ComparisonResult {
   original_category?: string;
   personalized?: boolean;
   personalization_factors?: string[];
+  personalized_insights?: PersonalizedInsight[];
   scoring?: ScoringResult;
   metadata?: {
     query: string;
