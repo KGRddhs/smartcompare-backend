@@ -310,6 +310,7 @@ class StructuredComparisonService:
                 "original_category": original_category,
                 "personalized": personalized,
                 "personalization_factors": personalization_factors,
+                "personalized_insights": comparison.get("personalized_insights", []),
                 "metadata": {
                     "query": query,
                     "region": region,
@@ -319,7 +320,7 @@ class StructuredComparisonService:
                     "timestamp": datetime.now().isoformat()
                 }
             }
-            
+
         except Exception as e:
             logger.error(f"Comparison error: {e}", exc_info=True)
             return {
@@ -483,6 +484,7 @@ class StructuredComparisonService:
                 "winner_index": comparison.get("winner_index", 0),
                 "recommendation": comparison.get("recommendation", ""),
                 "key_differences": comparison.get("key_differences", []),
+                "personalized_insights": comparison.get("personalized_insights", []),
             })
 
             # Step 5: Build complete response
@@ -510,6 +512,7 @@ class StructuredComparisonService:
                 "original_category": original_category,
                 "personalized": personalized,
                 "personalization_factors": personalization_factors,
+                "personalized_insights": comparison.get("personalized_insights", []),
                 "metadata": {
                     "query": query,
                     "region": region,
