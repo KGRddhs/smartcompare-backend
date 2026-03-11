@@ -673,19 +673,6 @@ const styles = StyleSheet.create({
     borderColor: '#4CAF50',
     borderWidth: 2,
   },
-  winnerBadge: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-    marginBottom: 8,
-  },
-  winnerBadgeText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
   brandText: {
     fontSize: 12,
     color: '#666',
