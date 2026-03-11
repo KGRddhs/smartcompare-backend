@@ -118,3 +118,70 @@ class TestGenerateComparisonInsightsValidation:
             from app.services.extraction_service import generate_comparison
             result = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
             assert result.get("personalized_insights") == []
+
+    @pytest.mark.asyncio
+    async def test_insights_out_of_range_product_index_no_crash(self, sample_product_1, sample_product_2, sample_preferences):
+        """Insights with product_index=5 should pass through validation without crashing."""
+        insights = [{"focus_area": "price", "product_index": 5, "insight": "Out of range index"}]
+        resp = self._make_mock_response({"personalized_insights": insights})
+        with patch("app.services.extraction_service.get_client", return_value=self._mock_client(resp)):
+            from app.services.extraction_service import generate_comparison
+            result = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
+            # Should not crash — validation doesn't filter by index
+            assert "personalized_insights" in result
+            assert len(result["personalized_insights"]) == 1
+
+
+class TestModelVariantPatternChained:
+    """Test MODEL_VARIANT_PATTERN multi-pass stripping from structured_comparison_service."""
+
+    def test_chained_strip_pro_max_256gb(self):
+        from app.services.structured_comparison_service import MODEL_VARIANT_PATTERN
+        name = "iPhone 15 Pro Max 256GB"
+        for _ in range(3):
+            name = MODEL_VARIANT_PATTERN.sub('', name).strip()
+        assert name == "iPhone 15"
+
+    def test_chained_strip_plus_512gb(self):
+        from app.services.structured_comparison_service import MODEL_VARIANT_PATTERN
+        name = "Galaxy S24 Plus 512GB"
+        for _ in range(3):
+            name = MODEL_VARIANT_PATTERN.sub('', name).strip()
+        assert name == "Galaxy S24"
+
+    def test_chained_strip_ultra_1tb(self):
+        from app.services.structured_comparison_service import MODEL_VARIANT_PATTERN
+        name = "Galaxy S24 Ultra 1TB"
+        for _ in range(3):
+            name = MODEL_VARIANT_PATTERN.sub('', name).strip()
+        assert name == "Galaxy S24"
+
+    def test_no_change_for_base_model(self):
+        from app.services.structured_comparison_service import MODEL_VARIANT_PATTERN
+        name = "Pixel 9"
+        for _ in range(3):
+            name = MODEL_VARIANT_PATTERN.sub('', name).strip()
+        assert name == "Pixel 9"
+
+
+class TestComparisonPromptFormatIntegrity:
+    """Verify COMPARISON_PROMPT .format() still works after adding personalized_insights."""
+
+    def test_format_does_not_raise(self):
+        from app.services.extraction_service import COMPARISON_PROMPT
+        result = COMPARISON_PROMPT.format(
+            product1_json="test", product2_json="test",
+            region="bahrain", currency="BHD", concern="value"
+        )
+        assert "personalized_insights" in result
+        assert "test" in result
+
+    def test_format_preserves_json_braces(self):
+        from app.services.extraction_service import COMPARISON_PROMPT
+        result = COMPARISON_PROMPT.format(
+            product1_json="{}", product2_json="{}",
+            region="bahrain", currency="BHD", concern="value"
+        )
+        # After .format(), doubled braces become single braces (valid JSON structure)
+        assert '"winner_index"' in result
+        assert '"personalized_insights"' in result
