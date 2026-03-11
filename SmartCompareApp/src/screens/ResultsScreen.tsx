@@ -105,6 +105,106 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     popularity_score: 'Popularity',
   };
 
+  // Badge mapping: scoring dimension -> label + icon
+  const BADGE_MAP: Record<keyof ScoreBreakdown, { label: string; icon: string }> = {
+    price_score: { label: 'Best Price', icon: 'pricetag-outline' },
+    spec_score: { label: 'Best Specs', icon: 'hardware-chip-outline' },
+    review_score: { label: 'Top Rated', icon: 'star-outline' },
+    value_score: { label: 'Best Value', icon: 'trophy-outline' },
+    reliability_score: { label: 'Most Reliable', icon: 'shield-checkmark-outline' },
+    popularity_score: { label: 'Most Popular', icon: 'trending-up-outline' },
+  };
+
+  const BADGE_THRESHOLD = 3;
+
+  const getProductBadges = (index: number): Array<{ label: string; icon: string }> => {
+    if (!scoring) return [];
+    const myScores = getProductScores(index);
+    const otherScores = getProductScores(index === 0 ? 1 : 0);
+    if (!myScores || !otherScores) return [];
+
+    const badges: Array<{ label: string; icon: string }> = [];
+    for (const [dim, meta] of Object.entries(BADGE_MAP)) {
+      const key = dim as keyof ScoreBreakdown;
+      if (myScores.breakdown[key] - otherScores.breakdown[key] >= BADGE_THRESHOLD) {
+        badges.push(meta);
+      }
+    }
+    return badges;
+  };
+
+  const AspectBadges = ({ index }: { index: number }) => {
+    const badges = getProductBadges(index);
+    const isOverallWinner = scoring && scoring.winner_index === index;
+    if (badges.length === 0 && !isOverallWinner) return null;
+
+    return (
+      <View style={styles.aspectBadgesRow}>
+        {isOverallWinner && (
+          <View style={[styles.aspectBadge, styles.overallBadge]}>
+            <Ionicons name="ribbon-outline" size={10} color="#FFF" />
+            <Text style={styles.overallBadgeText}>
+              {result.personalized ? 'Best for You' : 'Best Overall'}
+            </Text>
+          </View>
+        )}
+        {badges.map((badge, i) => (
+          <View key={i} style={[styles.aspectBadge, isOverallWinner ? styles.winnerAspectBadge : styles.otherAspectBadge]}>
+            <Ionicons name={badge.icon as any} size={10} color={isOverallWinner ? '#2E7D32' : '#1565C0'} />
+            <Text style={[styles.aspectBadgeText, { color: isOverallWinner ? '#2E7D32' : '#1565C0' }]}>
+              {badge.label}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  const getInsightIcon = (focusArea: string): string => {
+    const lower = focusArea.toLowerCase();
+    if (lower.includes('battery')) return 'battery-charging-outline';
+    if (lower.includes('price') || lower.includes('budget') || lower.includes('value')) return 'cash-outline';
+    if (lower.includes('camera') || lower.includes('photo')) return 'camera-outline';
+    if (lower.includes('durability') || lower.includes('build')) return 'shield-checkmark-outline';
+    if (lower.includes('display') || lower.includes('screen')) return 'phone-portrait-outline';
+    if (lower.includes('performance') || lower.includes('speed')) return 'speedometer-outline';
+    if (lower.includes('storage') || lower.includes('memory')) return 'server-outline';
+    return 'information-circle-outline';
+  };
+
+  const InsightCard = ({ insight }: { insight: PersonalizedInsight }) => {
+    return (
+      <View style={styles.insightCard}>
+        <View style={styles.insightIconRow}>
+          <Ionicons name={getInsightIcon(insight.focus_area) as any} size={20} color="#2196F3" />
+          <Text style={styles.insightFocusArea}>
+            {insight.focus_area.replace(/_/g, ' ')}
+          </Text>
+        </View>
+        <Text style={styles.insightText}>{insight.insight}</Text>
+      </View>
+    );
+  };
+
+  const PreferencePromptBanner = () => {
+    if (result.personalized && result.personalized_insights && result.personalized_insights.length > 0) {
+      return null;
+    }
+    return (
+      <TouchableOpacity
+        style={styles.preferencePromptBanner}
+        onPress={() => navigation.navigate('Preferences', { mode: 'onboarding' })}
+      >
+        <Ionicons name="person-circle-outline" size={24} color="#2196F3" />
+        <View style={styles.preferencePromptTextContainer}>
+          <Text style={styles.preferencePromptTitle}>Get personalized guidance</Text>
+          <Text style={styles.preferencePromptSubtext}>Set your preferences to see insights tailored to you</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color="#999" />
+      </TouchableOpacity>
+    );
+  };
+
   const getProductScores = (index: number): ProductScores | null => {
     if (!scoring) return null;
     const key = `product_${index}`;
@@ -260,12 +360,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
     return (
       <View style={[styles.productCard, isWinner && styles.winnerCard]}>
-        {isWinner && (
-          <View style={styles.winnerBadge}>
-            <Text style={styles.winnerBadgeText}>🏆 WINNER</Text>
-          </View>
-        )}
-        
+        <AspectBadges index={index} />
+
         {/* Score Badge */}
         <ScoreBadge index={index} />
 
@@ -417,6 +513,17 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 <ProductCard key={index} product={product} index={index} />
               ))}
             </View>
+
+            {/* Personalized Insight Cards (or preference prompt) */}
+            {result.personalized_insights && result.personalized_insights.length > 0 ? (
+              <View style={styles.insightsSection}>
+                {result.personalized_insights.map((insight, index) => (
+                  <InsightCard key={index} insight={insight} />
+                ))}
+              </View>
+            ) : (
+              <PreferencePromptBanner />
+            )}
 
             {/* Scores */}
             <ScoringSection />
@@ -926,6 +1033,95 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
     marginTop: 4,
+  },
+  // Aspect badges
+  aspectBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginBottom: 8,
+  },
+  aspectBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    gap: 3,
+  },
+  overallBadge: {
+    backgroundColor: '#4CAF50',
+  },
+  overallBadgeText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  winnerAspectBadge: {
+    backgroundColor: '#E8F5E9',
+  },
+  otherAspectBadge: {
+    backgroundColor: '#E3F2FD',
+  },
+  aspectBadgeText: {
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  // Insight cards
+  insightsSection: {
+    paddingHorizontal: 10,
+    marginBottom: 5,
+  },
+  insightCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#2196F3',
+  },
+  insightIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  insightFocusArea: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2196F3',
+    textTransform: 'capitalize',
+  },
+  insightText: {
+    fontSize: 13,
+    color: '#555',
+    lineHeight: 20,
+  },
+  // Preference prompt banner
+  preferencePromptBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    marginHorizontal: 10,
+    marginBottom: 5,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E3F2FD',
+    gap: 10,
+  },
+  preferencePromptTextContainer: {
+    flex: 1,
+  },
+  preferencePromptTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+  },
+  preferencePromptSubtext: {
+    fontSize: 11,
+    color: '#999',
+    marginTop: 2,
   },
 });
 
