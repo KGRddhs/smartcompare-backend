@@ -884,8 +884,8 @@ async def test_change_user_password_wrong_current():
         result = await change_user_password("user-1", "test@example.com", "wrong", "newpass")
 
     assert result["success"] is False
-    # Now categorized via _categorize_auth_error
-    assert result["error"] == "Invalid email or password"
+    # change_password has a special case: "Current password is incorrect"
+    assert result["error"] == "Current password is incorrect"
 
 
 @pytest.mark.asyncio
