@@ -1,9 +1,12 @@
 """
 Auth Service - Supabase Authentication
 """
+import logging
 import os
 from typing import Optional, Dict
 from supabase import create_client, Client
+
+logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
@@ -22,6 +25,25 @@ def get_admin_client() -> Client:
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+
+def _categorize_auth_error(e: Exception, context: str = "operation") -> Dict:
+    """Categorize auth errors into user-friendly messages."""
+    error_msg = str(e).lower()
+    if "invalid login credentials" in error_msg:
+        return {"success": False, "error": "Invalid email or password"}
+    elif "user already registered" in error_msg:
+        return {"success": False, "error": "An account with this email already exists"}
+    elif "email not confirmed" in error_msg:
+        return {"success": False, "error": "Please verify your email before logging in"}
+    elif any(term in error_msg for term in [
+        "network", "connection", "timeout", "dns", "econnrefused",
+        "socket hang up", "enotfound", "failed to fetch", "no network"
+    ]):
+        return {"success": False, "error": "Connection failed. Please try again."}
+    else:
+        logger.error(f"Auth error in {context}: {e}")
+        return {"success": False, "error": "Something went wrong. Please try again later."}
 
 
 async def register_user(email: str, password: str) -> Dict:
@@ -66,12 +88,7 @@ async def register_user(email: str, password: str) -> Dict:
             }
             
     except Exception as e:
-        error_message = str(e)
-        if "User already registered" in error_message:
-            return {"success": False, "error": "Email already registered"}
-        if "Password should be at least" in error_message:
-            return {"success": False, "error": "Password must be at least 6 characters"}
-        return {"success": False, "error": error_message}
+        return _categorize_auth_error(e, "register")
 
 
 async def login_user(email: str, password: str) -> Dict:
@@ -119,10 +136,7 @@ async def login_user(email: str, password: str) -> Dict:
             }
             
     except Exception as e:
-        error_message = str(e)
-        if "Invalid login credentials" in error_message:
-            return {"success": False, "error": "Invalid email or password"}
-        return {"success": False, "error": error_message}
+        return _categorize_auth_error(e, "login")
 
 
 async def refresh_session(refresh_token: str) -> Dict:
@@ -162,7 +176,7 @@ async def refresh_session(refresh_token: str) -> Dict:
             return {"success": False, "error": "Failed to refresh session"}
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _categorize_auth_error(e, "refresh")
 
 
 async def verify_token(access_token: str) -> Optional[Dict]:
@@ -258,7 +272,7 @@ async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -
             "message": f"Signed in with {provider}"
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _categorize_auth_error(e, "social_login")
 
 
 async def change_user_password(user_id: str, email: str, current_password: str, new_password: str) -> Dict:
@@ -273,10 +287,7 @@ async def change_user_password(user_id: str, email: str, current_password: str, 
         admin.auth.admin.update_user_by_id(user_id, {"password": new_password})
         return {"success": True, "message": "Password changed successfully"}
     except Exception as e:
-        error_msg = str(e)
-        if "invalid" in error_msg.lower() or "credentials" in error_msg.lower():
-            return {"success": False, "error": "Current password is incorrect"}
-        return {"success": False, "error": error_msg}
+        return _categorize_auth_error(e, "change_password")
 
 
 async def update_user_email(user_id: str, new_email: str) -> Dict:
@@ -286,10 +297,7 @@ async def update_user_email(user_id: str, new_email: str) -> Dict:
         admin.auth.admin.update_user_by_id(user_id, {"email": new_email})
         return {"success": True, "message": "Verification email sent to new address"}
     except Exception as e:
-        error_msg = str(e)
-        if "already registered" in error_msg.lower():
-            return {"success": False, "error": "Email already in use"}
-        return {"success": False, "error": error_msg}
+        return _categorize_auth_error(e, "update_email")
 
 
 async def update_user_profile(user_id: str, display_name: str) -> Dict:
@@ -301,7 +309,7 @@ async def update_user_profile(user_id: str, display_name: str) -> Dict:
         }).eq("id", user_id).execute()
         return {"success": True, "message": "Profile updated"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _categorize_auth_error(e, "update_profile")
 
 
 async def get_user_preferences(user_id: str) -> Dict:
@@ -345,4 +353,4 @@ async def request_password_reset(email: str) -> Dict:
             "message": "Password reset email sent"
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _categorize_auth_error(e, "password_reset")
