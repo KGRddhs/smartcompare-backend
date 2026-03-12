@@ -174,7 +174,7 @@ Total happens to be accurate due to lucky cancellation, but individual tracking 
 
 1. Modify ALL 6 extraction functions in `extraction_service.py` to return token usage alongside results. Each returns a `(result, token_usage)` tuple:
 
-**Functions to modify (all 5):**
+**Functions to modify (all 6):**
 - `parse_product_query()` — returns `(parsed_dict, usage)`
 - `extract_specs()` — returns `(specs_dict, usage)`
 - `extract_price()` — returns `(price_dict, usage)`
