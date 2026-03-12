@@ -396,18 +396,24 @@ async def parse_product_query(query: str) -> Dict[str, Any]:
         )
         
         result = response.choices[0].message.content.strip()
-        
+
         # Clean markdown if present
         if result.startswith("```"):
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
-        
-        return json.loads(result)
-    
+
+        usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        if hasattr(response, 'usage') and response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens
+            }
+        return json.loads(result), usage
+
     except Exception as e:
         logger.error(f"Product parsing error: {e}")
-        return {"products": [], "error": str(e)}
+        return {"products": [], "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 async def extract_specs(
@@ -466,11 +472,17 @@ async def extract_specs(
             if source_val and isinstance(source_val, str):
                 cleaned[source_key] = source_val
 
-        return cleaned
+        usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        if hasattr(response, 'usage') and response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens
+            }
+        return cleaned, usage
 
     except Exception as e:
         logger.error(f"Specs extraction error: {e}")
-        return {"brand": brand, "model": name, "error": str(e)}
+        return {"brand": brand, "model": name, "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 async def extract_price(
@@ -506,12 +518,18 @@ async def extract_price(
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
-        
-        return json.loads(result)
-    
+
+        usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        if hasattr(response, 'usage') and response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens
+            }
+        return json.loads(result), usage
+
     except Exception as e:
         logger.error(f"Price extraction error: {e}")
-        return {"amount": None, "currency": region_info["currency"], "error": str(e)}
+        return {"amount": None, "currency": region_info["currency"], "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 async def extract_price_from_training_data(
@@ -542,10 +560,16 @@ async def extract_price_from_training_data(
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
-        return json.loads(result)
+        usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        if hasattr(response, 'usage') and response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens
+            }
+        return json.loads(result), usage
     except Exception as e:
         logger.error(f"Price fallback error: {e}")
-        return {"amount": None, "currency": region_info["currency"], "error": str(e)}
+        return {"amount": None, "currency": region_info["currency"], "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 async def extract_reviews(
@@ -580,11 +604,17 @@ async def extract_reviews(
                 result = result[4:]
 
         data = json.loads(result)
-        return _normalize_review_response(data)
+        usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        if hasattr(response, 'usage') and response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens
+            }
+        return _normalize_review_response(data), usage
 
     except Exception as e:
         logger.error(f"Reviews extraction error: {e}")
-        return {"average_rating": None, "error": str(e)}
+        return {"average_rating": None, "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 def _normalize_review_response(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -695,11 +725,17 @@ async def generate_comparison(
             elif len(insights) > 3:
                 parsed["personalized_insights"] = insights[:3]
 
-        return parsed
+        usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        if hasattr(response, 'usage') and response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens
+            }
+        return parsed, usage
 
     except Exception as e:
         logger.error(f"Comparison generation error: {e}")
-        return {"winner_index": 0, "error": str(e)}
+        return {"winner_index": 0, "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 # ============================================
