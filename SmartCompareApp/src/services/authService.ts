@@ -356,6 +356,14 @@ export async function requestPasswordReset(email: string): Promise<void> {
  * Configure Google Sign-In. Call once at app startup.
  * Uses Google Web Client ID from Google Cloud Console.
  */
+// ============================================================
+// SETUP REQUIRED: Enable Google provider in Supabase Dashboard
+// Project: qulajmyxdbdkchvecmvc
+// Path: Authentication → Providers → Google → Enable
+// Web Client ID: 21336192767-i9prqks93nrdmb9rg7ho2v1md9bgqgsv.apps.googleusercontent.com
+// iOS Client ID: 21336192767-38hi4t1ac23089iau7jdog1f43oc7rdm.apps.googleusercontent.com
+// Without this, Google sign-in will fail with "Authentication failed"
+// ============================================================
 export function configureGoogleSignIn() {
   const gs = getGoogleSignin();
   if (!gs) return;
