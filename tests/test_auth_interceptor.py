@@ -310,28 +310,36 @@ async def test_logout_returns_success():
 
 @pytest.mark.asyncio
 async def test_get_me_with_profile():
-    """get_me returns profile data when profile exists."""
+    """get_me returns normalized profile data when profile exists."""
     from app.api.auth_routes import get_me
     mock_profile = {
         "id": "user-1",
         "email": "test@example.com",
+        "display_name": "Test User",
+        "auth_provider": "email",
         "subscription_tier": "pro",
         "created_at": "2026-01-01",
+        "preferences_completed": True,
     }
     with patch("app.api.auth_routes.get_user_profile", new_callable=AsyncMock, return_value=mock_profile):
         result = await get_me(current_user={"id": "user-1", "email": "test@example.com"})
     assert result["success"] is True
     assert result["user"]["subscription_tier"] == "pro"
+    assert result["user"]["display_name"] == "Test User"
+    assert result["user"]["auth_provider"] == "email"
 
 
 @pytest.mark.asyncio
 async def test_get_me_without_profile():
-    """get_me falls back to current_user when profile not found."""
+    """get_me falls back to consistent shape with defaults when profile not found."""
     from app.api.auth_routes import get_me
     with patch("app.api.auth_routes.get_user_profile", new_callable=AsyncMock, return_value=None):
         result = await get_me(current_user={"id": "user-1", "email": "test@example.com"})
     assert result["success"] is True
-    assert result["user"] == {"id": "user-1", "email": "test@example.com"}
+    assert result["user"]["id"] == "user-1"
+    assert result["user"]["email"] == "test@example.com"
+    assert result["user"]["display_name"] is None
+    assert result["user"]["subscription_tier"] == "free"
 
 
 @pytest.mark.asyncio
@@ -419,7 +427,7 @@ async def test_register_user_duplicate_email():
         result = await register_user("dup@test.com", "password123")
 
     assert result["success"] is False
-    assert "Email already registered" in result["error"]
+    assert "already exists" in result["error"]
 
 
 @pytest.mark.asyncio
@@ -543,7 +551,7 @@ async def test_refresh_session_no_session():
 
 @pytest.mark.asyncio
 async def test_refresh_session_error():
-    """refresh_session returns error message on exception."""
+    """refresh_session returns categorized error message on exception."""
     from app.services.auth_service import refresh_session
 
     mock_client = MagicMock()
@@ -553,7 +561,8 @@ async def test_refresh_session_error():
         result = await refresh_session("revoked-token")
 
     assert result["success"] is False
-    assert "Token revoked" in result["error"]
+    # Error is now categorized — "Token revoked" is unknown, so generic message
+    assert result["error"] == "Something went wrong. Please try again later."
 
 
 @pytest.mark.asyncio
@@ -635,7 +644,7 @@ async def test_request_password_reset_success():
 
 @pytest.mark.asyncio
 async def test_request_password_reset_error():
-    """request_password_reset returns error on exception."""
+    """request_password_reset returns categorized error on exception."""
     from app.services.auth_service import request_password_reset
 
     mock_client = MagicMock()
@@ -645,7 +654,8 @@ async def test_request_password_reset_error():
         result = await request_password_reset("user@test.com")
 
     assert result["success"] is False
-    assert "SMTP failure" in result["error"]
+    # Error is now categorized — "SMTP failure" is unknown, so generic message
+    assert result["error"] == "Something went wrong. Please try again later."
 
 
 # ── update_profile tests ──
@@ -712,7 +722,7 @@ async def test_update_user_profile_service_success():
 
 @pytest.mark.asyncio
 async def test_update_user_profile_service_error():
-    """update_user_profile returns error on exception."""
+    """update_user_profile returns categorized error on exception."""
     from app.services.auth_service import update_user_profile
 
     mock_admin = MagicMock()
@@ -722,7 +732,8 @@ async def test_update_user_profile_service_error():
         result = await update_user_profile("user-1", "Name")
 
     assert result["success"] is False
-    assert "DB error" in result["error"]
+    # Error is now categorized — "DB error" is unknown, so generic message
+    assert result["error"] == "Something went wrong. Please try again later."
 
 
 # ── update_email tests ──
@@ -756,13 +767,13 @@ async def test_update_email_already_in_use():
     from app.services.auth_service import update_user_email
 
     mock_admin = MagicMock()
-    mock_admin.auth.admin.update_user_by_id.side_effect = Exception("Email already registered")
+    mock_admin.auth.admin.update_user_by_id.side_effect = Exception("User already registered")
 
     with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
         result = await update_user_email("user-1", "taken@example.com")
 
     assert result["success"] is False
-    assert "already in use" in result["error"]
+    assert "already exists" in result["error"]
 
 
 @pytest.mark.asyncio
@@ -783,7 +794,7 @@ async def test_update_email_service_success():
 
 @pytest.mark.asyncio
 async def test_update_email_service_generic_error():
-    """update_user_email returns raw error for non-duplicate errors."""
+    """update_user_email returns categorized error for non-duplicate errors."""
     from app.services.auth_service import update_user_email
 
     mock_admin = MagicMock()
@@ -793,7 +804,9 @@ async def test_update_email_service_generic_error():
         result = await update_user_email("user-1", "new@example.com")
 
     assert result["success"] is False
-    assert "Network timeout" in result["error"]
+    # "Network timeout" is not in the network terms but "timeout" IS
+    # wait - "timeout" is in the list, so this should match network error
+    assert result["error"] == "Connection failed. Please try again."
 
 
 # ── change_password tests ──
@@ -871,12 +884,13 @@ async def test_change_user_password_wrong_current():
         result = await change_user_password("user-1", "test@example.com", "wrong", "newpass")
 
     assert result["success"] is False
-    assert "incorrect" in result["error"]
+    # Now categorized via _categorize_auth_error
+    assert result["error"] == "Invalid email or password"
 
 
 @pytest.mark.asyncio
 async def test_change_user_password_generic_error():
-    """change_user_password returns raw error for non-credential errors."""
+    """change_user_password returns categorized error for non-credential errors."""
     from app.services.auth_service import change_user_password
 
     mock_auth_client = MagicMock()
@@ -886,7 +900,8 @@ async def test_change_user_password_generic_error():
         result = await change_user_password("user-1", "test@example.com", "pass", "newpass")
 
     assert result["success"] is False
-    assert "Network timeout" in result["error"]
+    # "timeout" is in network terms list
+    assert result["error"] == "Connection failed. Please try again."
 
 
 # ── social_login tests ──
@@ -1043,7 +1058,7 @@ async def test_sign_in_with_social_no_user_returned():
 
 @pytest.mark.asyncio
 async def test_sign_in_with_social_exception():
-    """sign_in_with_social returns error on exception."""
+    """sign_in_with_social returns categorized error on exception."""
     from app.services.auth_service import sign_in_with_social
 
     mock_auth_client = MagicMock()
@@ -1053,7 +1068,8 @@ async def test_sign_in_with_social_exception():
         result = await sign_in_with_social("google", "token")
 
     assert result["success"] is False
-    assert "Provider error" in result["error"]
+    # "Provider error" is unknown, so generic message
+    assert result["error"] == "Something went wrong. Please try again later."
 
 
 @pytest.mark.asyncio
@@ -1341,7 +1357,7 @@ async def test_change_password_same_as_current_succeeds():
 
 @pytest.mark.asyncio
 async def test_change_password_admin_update_fails_after_login():
-    """If login succeeds but admin password update fails, return error."""
+    """If login succeeds but admin password update fails, return categorized error."""
     from app.services.auth_service import change_user_password
 
     mock_auth_client = MagicMock()
@@ -1357,7 +1373,8 @@ async def test_change_password_admin_update_fails_after_login():
         result = await change_user_password("user-1", "e@e.com", "correct", "newpass")
 
     assert result["success"] is False
-    assert "Admin API rate limit" in result["error"]
+    # "Admin API rate limit" is unknown, so generic message
+    assert result["error"] == "Something went wrong. Please try again later."
 
 
 @pytest.mark.asyncio
@@ -1421,9 +1438,9 @@ async def test_social_login_user_table_check_fails_gracefully():
          patch("app.services.auth_service.get_admin_client", return_value=mock_admin_client):
         result = await sign_in_with_social("google", "token")
 
-    # The whole function is wrapped in try/except, so it should return error
+    # Now categorized — "connection" is in network terms
     assert result["success"] is False
-    assert "DB connection lost" in result["error"]
+    assert result["error"] == "Connection failed. Please try again."
 
 
 @pytest.mark.asyncio
@@ -1458,7 +1475,8 @@ async def test_social_login_user_insert_fails_gracefully():
         result = await sign_in_with_social("apple", "token")
 
     assert result["success"] is False
-    assert "Duplicate key" in result["error"]
+    # "Duplicate key" is unknown, so generic message
+    assert result["error"] == "Something went wrong. Please try again later."
 
 
 @pytest.mark.asyncio
@@ -1519,7 +1537,7 @@ async def test_change_password_new_password_5_chars_invalid():
 
 @pytest.mark.asyncio
 async def test_update_email_admin_api_error_with_unknown_message():
-    """update_user_email with unrecognized error returns raw error string."""
+    """update_user_email with unrecognized error returns generic categorized message."""
     from app.services.auth_service import update_user_email
 
     mock_admin = MagicMock()
@@ -1529,6 +1547,198 @@ async def test_update_email_admin_api_error_with_unknown_message():
         result = await update_user_email("user-1", "new@example.com")
 
     assert result["success"] is False
-    assert "Internal server error 500" in result["error"]
-    # Should NOT say "Email already in use"
-    assert "already in use" not in result["error"]
+    # Now categorized — unknown errors get generic message (no raw string leak)
+    assert result["error"] == "Something went wrong. Please try again later."
+    assert "Internal server error" not in result["error"]
+
+
+# ── Password reset endpoint path verification (Task 2) ──
+
+@pytest.mark.asyncio
+async def test_password_reset_endpoint_path():
+    """Verify password reset endpoint matches backend route."""
+    from app.api.auth_routes import router
+    routes = [route.path for route in router.routes]
+    assert "/api/v1/auth/password-reset" in routes
+    # The old path /reset-password should NOT exist
+    assert "/api/v1/auth/reset-password" not in routes
+
+
+# ── Error categorization tests (Task 4) ──
+
+class TestErrorCategorization:
+    def test_invalid_credentials(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("Invalid login credentials"), "login")
+        assert result["success"] is False
+        assert result["error"] == "Invalid email or password"
+
+    def test_user_already_registered(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("User already registered"), "register")
+        assert result["success"] is False
+        assert "already exists" in result["error"]
+
+    def test_email_not_confirmed(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("Email not confirmed"), "login")
+        assert result["success"] is False
+        assert "verify your email" in result["error"]
+
+    def test_network_error_connection(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("Connection refused"), "login")
+        assert result["error"] == "Connection failed. Please try again."
+
+    def test_network_error_timeout(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("Request timeout"), "login")
+        assert result["error"] == "Connection failed. Please try again."
+
+    def test_network_error_dns(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("DNS lookup failed"), "login")
+        assert result["error"] == "Connection failed. Please try again."
+
+    def test_network_error_econnrefused(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("ECONNREFUSED"), "login")
+        assert result["error"] == "Connection failed. Please try again."
+
+    def test_network_error_socket_hang_up(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("socket hang up"), "login")
+        assert result["error"] == "Connection failed. Please try again."
+
+    def test_network_error_enotfound(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("getaddrinfo ENOTFOUND"), "login")
+        assert result["error"] == "Connection failed. Please try again."
+
+    def test_unknown_error_generic_message(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("Something bizarre happened"), "login")
+        assert result["error"] == "Something went wrong. Please try again later."
+
+    def test_unknown_error_no_raw_string(self):
+        """Raw error string must NOT leak to user."""
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("AuthRetryableError: xyz"), "login")
+        assert "AuthRetryableError" not in result["error"]
+        assert "xyz" not in result["error"]
+
+    def test_case_insensitive(self):
+        from app.services.auth_service import _categorize_auth_error
+        result = _categorize_auth_error(Exception("INVALID LOGIN CREDENTIALS"), "login")
+        assert result["error"] == "Invalid email or password"
+
+
+# ── Profile enrichment tests (Task 6) ──
+
+class TestProfileEnrichment:
+    @pytest.mark.asyncio
+    async def test_enriches_with_display_name(self):
+        from app.services.auth_service import _enrich_response_with_profile
+        mock_profile = MagicMock()
+        mock_profile.data = {"display_name": "John", "auth_provider": "email"}
+        mock_table = MagicMock()
+        mock_table.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_profile
+        mock_admin = MagicMock()
+        mock_admin.table.return_value = mock_table
+
+        with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+            response = {"success": True, "user": {"id": "123", "email": "test@test.com"}}
+            result = await _enrich_response_with_profile(response, "123")
+            assert result["user"]["display_name"] == "John"
+            assert result["user"]["auth_provider"] == "email"
+
+    @pytest.mark.asyncio
+    async def test_graceful_on_missing_profile(self):
+        from app.services.auth_service import _enrich_response_with_profile
+        mock_table = MagicMock()
+        mock_table.select.return_value.eq.return_value.single.return_value.execute.side_effect = Exception("not found")
+        mock_admin = MagicMock()
+        mock_admin.table.return_value = mock_table
+
+        with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+            response = {"success": True, "user": {"id": "123"}}
+            result = await _enrich_response_with_profile(response, "123")
+            assert result["user"]["display_name"] is None
+            assert result["user"]["auth_provider"] is None
+            assert result["success"] is True  # Auth response NOT broken
+
+    @pytest.mark.asyncio
+    async def test_graceful_on_none_data(self):
+        from app.services.auth_service import _enrich_response_with_profile
+        mock_profile = MagicMock()
+        mock_profile.data = None
+        mock_table = MagicMock()
+        mock_table.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_profile
+        mock_admin = MagicMock()
+        mock_admin.table.return_value = mock_table
+
+        with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+            response = {"success": True, "user": {"id": "123"}}
+            result = await _enrich_response_with_profile(response, "123")
+            assert result["user"]["display_name"] is None
+            assert result["user"]["auth_provider"] is None
+
+    @pytest.mark.asyncio
+    async def test_creates_user_key_if_missing(self):
+        from app.services.auth_service import _enrich_response_with_profile
+        with patch("app.services.auth_service.get_admin_client") as mock:
+            mock.return_value.table.return_value.select.return_value.eq.return_value.single.return_value.execute.side_effect = Exception("err")
+            response = {"success": True}  # No "user" key
+            result = await _enrich_response_with_profile(response, "123")
+            assert "user" in result
+            assert result["user"]["display_name"] is None
+
+
+# ── /me endpoint normalization tests (Task 9) ──
+
+class TestMeEndpointNormalization:
+    """Verify /me always returns consistent shape regardless of profile state."""
+
+    @pytest.mark.asyncio
+    async def test_me_response_has_all_fields_when_profile_exists(self):
+        """All expected fields present when profile is found."""
+        from app.api.auth_routes import get_me
+        mock_profile = {
+            "id": "user-1", "email": "test@example.com", "display_name": "Test",
+            "auth_provider": "email", "subscription_tier": "free",
+            "created_at": "2026-01-01", "preferences_completed": True
+        }
+        with patch("app.api.auth_routes.get_user_profile", new_callable=AsyncMock, return_value=mock_profile):
+            result = await get_me(current_user={"id": "user-1", "email": "test@example.com"})
+
+        required_fields = ["id", "email", "display_name", "auth_provider",
+                          "subscription_tier", "created_at", "preferences_completed"]
+        for field in required_fields:
+            assert field in result["user"], f"Missing field: {field}"
+
+    @pytest.mark.asyncio
+    async def test_me_response_has_all_fields_when_profile_missing(self):
+        """All fields present with defaults when profile not found."""
+        from app.api.auth_routes import get_me
+        with patch("app.api.auth_routes.get_user_profile", new_callable=AsyncMock, return_value=None):
+            result = await get_me(current_user={"id": "user-1", "email": "test@example.com"})
+
+        assert result["user"]["subscription_tier"] == "free"
+        assert result["user"]["preferences_completed"] is False
+        assert result["user"]["display_name"] is None
+        assert result["user"]["auth_provider"] is None
+
+    @pytest.mark.asyncio
+    async def test_me_response_subscription_tier_defaults_to_free(self):
+        """subscription_tier defaults to 'free' when profile has no tier."""
+        from app.api.auth_routes import get_me
+        mock_profile = {
+            "id": "user-1", "email": "test@example.com",
+            "display_name": None, "auth_provider": None,
+            "created_at": None, "preferences_completed": False
+            # Note: subscription_tier intentionally missing
+        }
+        with patch("app.api.auth_routes.get_user_profile", new_callable=AsyncMock, return_value=mock_profile):
+            result = await get_me(current_user={"id": "user-1", "email": "test@example.com"})
+
+        assert result["user"]["subscription_tier"] == "free"
