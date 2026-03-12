@@ -401,26 +401,3 @@ async def parse_query(
         "parsed": result
     }
 
-
-# ============================================
-# Category-specific endpoints
-# ============================================
-
-@router.post("/compare/electronics")
-async def compare_electronics(request: Request, body: TextCompareRequest):
-    """
-    Optimized comparison for electronics.
-    Emphasizes: specs, performance, features.
-    """
-    result = await text_compare(request, body)
-    return result
-
-
-@router.post("/compare/grocery")
-async def compare_grocery(request: Request, body: TextCompareRequest):
-    """
-    Optimized comparison for grocery items.
-    Emphasizes: price per unit, ingredients, nutrition.
-    """
-    result = await text_compare(request, body)
-    return result
