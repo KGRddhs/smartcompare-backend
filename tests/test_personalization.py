@@ -832,18 +832,18 @@ class TestComparisonServicePersonalization:
             "brand_attitude": "function_first",
         }
 
-        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value={
+        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value=({
             "products": [
                 {"brand": "Apple", "name": "iPhone 15", "variant": None},
                 {"brand": "Samsung", "name": "Galaxy S24", "variant": None},
             ],
             "category": "electronics",
-        }), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
+        }, {"prompt_tokens": 0, "completion_tokens": 0})), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
             "name": "iPhone 15", "brand": "Apple", "specs": {}, "price": {"amount": 299},
             "reviews": {}, "rating": {},
-        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value={
+        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value=({
             "winner": "iPhone 15", "verdict": "Best for you",
-        }):
+        }, {"prompt_tokens": 0, "completion_tokens": 0})):
             result = await service.compare_from_text(
                 query="iPhone 15 vs Galaxy S24",
                 user_preferences=prefs,
@@ -858,18 +858,18 @@ class TestComparisonServicePersonalization:
 
         service = StructuredComparisonService()
 
-        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value={
+        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value=({
             "products": [
                 {"brand": "Apple", "name": "iPhone 15", "variant": None},
                 {"brand": "Samsung", "name": "Galaxy S24", "variant": None},
             ],
             "category": "electronics",
-        }), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
+        }, {"prompt_tokens": 0, "completion_tokens": 0})), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
             "name": "iPhone 15", "brand": "Apple", "specs": {}, "price": {"amount": 299},
             "reviews": {}, "rating": {},
-        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value={
+        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value=({
             "winner": "iPhone 15", "verdict": "Generic verdict",
-        }):
+        }, {"prompt_tokens": 0, "completion_tokens": 0})):
             result = await service.compare_from_text(
                 query="iPhone 15 vs Galaxy S24",
             )
@@ -889,18 +889,18 @@ class TestComparisonServicePersonalization:
             "brand_attitude": "function_first",
         }
 
-        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value={
+        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value=({
             "products": [
                 {"brand": "A", "name": "P1", "variant": None},
                 {"brand": "B", "name": "P2", "variant": None},
             ],
             "category": "electronics",
-        }), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
+        }, {"prompt_tokens": 0, "completion_tokens": 0})), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
             "name": "P1", "brand": "A", "specs": {}, "price": {"amount": 100},
             "reviews": {}, "rating": {},
-        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value={
+        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value=({
             "winner": "P1", "verdict": "v",
-        }):
+        }, {"prompt_tokens": 0, "completion_tokens": 0})):
             result = await service.compare_from_text(query="P1 vs P2", user_preferences=prefs)
 
         factors = result["personalization_factors"]
@@ -920,18 +920,18 @@ class TestComparisonServicePersonalization:
             "brand_attitude": "function_first",
         }
 
-        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value={
+        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value=({
             "products": [
                 {"brand": "A", "name": "P1", "variant": None},
                 {"brand": "B", "name": "P2", "variant": None},
             ],
             "category": "electronics",
-        }), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
+        }, {"prompt_tokens": 0, "completion_tokens": 0})), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
             "name": "P1", "brand": "A", "specs": {}, "price": {"amount": 100},
             "reviews": {}, "rating": {},
-        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value={
+        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value=({
             "winner": "P1", "verdict": "v",
-        }):
+        }, {"prompt_tokens": 0, "completion_tokens": 0})):
             result = await service.compare_from_text(query="P1 vs P2", user_preferences=prefs)
 
         assert "budget_premium" in result["personalization_factors"]
@@ -949,18 +949,18 @@ class TestComparisonServicePersonalization:
             "brand_attitude": "function_first",
         }
 
-        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value={
+        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value=({
             "products": [
                 {"brand": "A", "name": "P1", "variant": None},
                 {"brand": "B", "name": "P2", "variant": None},
             ],
             "category": "electronics",
-        }), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
+        }, {"prompt_tokens": 0, "completion_tokens": 0})), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
             "name": "P1", "brand": "A", "specs": {}, "price": {"amount": 100},
             "reviews": {}, "rating": {},
-        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value={
+        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value=({
             "winner": "P1", "verdict": "v",
-        }):
+        }, {"prompt_tokens": 0, "completion_tokens": 0})):
             result = await service.compare_from_text(query="P1 vs P2", user_preferences=prefs)
 
         factors = result["personalization_factors"]
@@ -974,18 +974,18 @@ class TestComparisonServicePersonalization:
 
         service = StructuredComparisonService()
 
-        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value={
+        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value=({
             "products": [
                 {"brand": "A", "name": "P1", "variant": None},
                 {"brand": "B", "name": "P2", "variant": None},
             ],
             "category": "electronics",
-        }), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
+        }, {"prompt_tokens": 0, "completion_tokens": 0})), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
             "name": "P1", "brand": "A", "specs": {}, "price": {"amount": 100},
             "reviews": {}, "rating": {},
-        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value={
+        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value=({
             "winner": "P1", "verdict": "v",
-        }):
+        }, {"prompt_tokens": 0, "completion_tokens": 0})):
             result = await service.compare_from_text(query="P1 vs P2")
 
         assert result["personalization_factors"] == []
@@ -997,18 +997,18 @@ class TestComparisonServicePersonalization:
 
         service = StructuredComparisonService()
 
-        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value={
+        with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock, return_value=({
             "products": [
                 {"brand": "A", "name": "P1", "variant": None},
                 {"brand": "B", "name": "P2", "variant": None},
             ],
             "category": "electronics",
-        }), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
+        }, {"prompt_tokens": 0, "completion_tokens": 0})), patch.object(service, "_fetch_product_data", new_callable=AsyncMock, return_value={
             "name": "P1", "brand": "A", "specs": {}, "price": {"amount": 100},
             "reviews": {}, "rating": {},
-        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value={
+        }), patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock, return_value=({
             "winner": "P1", "verdict": "v",
-        }):
+        }, {"prompt_tokens": 0, "completion_tokens": 0})):
             result = await service.compare_from_text(query="P1 vs P2", user_preferences={})
 
         assert result["personalized"] is False

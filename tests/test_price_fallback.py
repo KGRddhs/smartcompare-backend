@@ -116,8 +116,8 @@ class TestAllTiersFail:
              patch("app.services.structured_comparison_service.get_cached", return_value=None):
             mock_shop.return_value = {"shopping": [], "organic": []}
             mock_organic.return_value = {"organic": [], "knowledge_graph": None}
-            mock_gpt_price.return_value = {"amount": None}
-            mock_tier3.return_value = {"amount": None}
+            mock_gpt_price.return_value = ({"amount": None}, {"prompt_tokens": 0, "completion_tokens": 0})
+            mock_tier3.return_value = ({"amount": None}, {"prompt_tokens": 0, "completion_tokens": 0})
 
             result = run_async(service._get_price("Apple", "iPhone 99", None, "bahrain", "Apple iPhone 99"))
             assert result["amount"] is None

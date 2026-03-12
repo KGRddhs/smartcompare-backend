@@ -52,14 +52,14 @@ class TestStateReset:
         with patch("app.services.structured_comparison_service.parse_product_query", new_callable=AsyncMock) as mock_parse, \
              patch.object(service, "_fetch_product_data", new_callable=AsyncMock) as mock_fetch, \
              patch("app.services.structured_comparison_service.generate_comparison", new_callable=AsyncMock) as mock_compare:
-            mock_parse.return_value = {
+            mock_parse.return_value = ({
                 "products": [
                     {"brand": "A", "name": "Product1", "category": "other", "search_query": "A Product1"},
                     {"brand": "B", "name": "Product2", "category": "other", "search_query": "B Product2"},
                 ]
-            }
+            }, {"prompt_tokens": 0, "completion_tokens": 0})
             mock_fetch.return_value = {"brand": "Test", "name": "Product", "specs": {}, "price": {"amount": 100, "currency": "BHD"}, "rating": 4.5}
-            mock_compare.return_value = {"winner_index": 0, "recommendation": "Test"}
+            mock_compare.return_value = ({"winner_index": 0, "recommendation": "Test"}, {"prompt_tokens": 0, "completion_tokens": 0})
 
             run_async(service.compare_from_text("A Product1 vs B Product2"))
 

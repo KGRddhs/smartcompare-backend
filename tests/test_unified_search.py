@@ -33,7 +33,7 @@ class TestUnifiedSearchSharing:
              patch("app.services.structured_comparison_service.extract_specs", new_callable=AsyncMock) as mock_extract, \
              patch("app.services.structured_comparison_service.get_cached", return_value=None), \
              patch("app.services.structured_comparison_service.set_cached"):
-            mock_extract.return_value = {"display": "6.1 inch", "processor": "A16"}
+            mock_extract.return_value = ({"display": "6.1 inch", "processor": "A16"}, {"prompt_tokens": 0, "completion_tokens": 0})
             pre_fetched = {"organic": [{"title": "Test", "snippet": "specs"}]}
 
             run_async(service._get_specs("Apple", "iPhone 16", None, "electronics", "Apple iPhone 16",
@@ -49,7 +49,7 @@ class TestUnifiedSearchSharing:
              patch("app.services.structured_comparison_service.get_cached", return_value=None), \
              patch("app.services.structured_comparison_service.set_cached"):
             mock_search.return_value = {"organic": []}
-            mock_extract.return_value = {"display": "6.1 inch"}
+            mock_extract.return_value = ({"display": "6.1 inch"}, {"prompt_tokens": 0, "completion_tokens": 0})
 
             run_async(service._get_specs("Apple", "iPhone 16", None, "electronics", "Apple iPhone 16"))
 
@@ -61,7 +61,7 @@ class TestUnifiedSearchSharing:
              patch("app.services.structured_comparison_service.extract_reviews", new_callable=AsyncMock) as mock_extract, \
              patch("app.services.structured_comparison_service.get_cached", return_value=None), \
              patch("app.services.structured_comparison_service.set_cached"):
-            mock_extract.return_value = {"average_rating": 4.5, "common_praises": [], "common_complaints": []}
+            mock_extract.return_value = ({"average_rating": 4.5, "common_praises": [], "common_complaints": []}, {"prompt_tokens": 0, "completion_tokens": 0})
             pre_fetched = {"organic": [{"title": "Review", "snippet": "good product"}]}
 
             run_async(service._get_reviews("Apple", "iPhone 16", None, "Apple iPhone 16",

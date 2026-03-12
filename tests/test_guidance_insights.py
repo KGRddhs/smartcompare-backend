@@ -73,7 +73,7 @@ class TestGenerateComparisonInsightsValidation:
         resp = self._make_mock_response({"personalized_insights": [{"focus_area": "price", "product_index": 1, "insight": "Cheaper"}]})
         with patch("app.services.extraction_service.get_client", return_value=self._mock_client(resp)):
             from app.services.extraction_service import generate_comparison
-            result = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=None)
+            result, _usage = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=None)
             assert "personalized_insights" not in result
 
     @pytest.mark.asyncio
@@ -81,7 +81,7 @@ class TestGenerateComparisonInsightsValidation:
         resp = self._make_mock_response({"personalized_insights": [{"focus_area": "price", "product_index": 0, "insight": "Hallucinated"}]})
         with patch("app.services.extraction_service.get_client", return_value=self._mock_client(resp)):
             from app.services.extraction_service import generate_comparison
-            result = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences={})
+            result, _usage = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences={})
             assert "personalized_insights" not in result
 
     @pytest.mark.asyncio
@@ -90,7 +90,7 @@ class TestGenerateComparisonInsightsValidation:
         resp = self._make_mock_response({"personalized_insights": insights})
         with patch("app.services.extraction_service.get_client", return_value=self._mock_client(resp)):
             from app.services.extraction_service import generate_comparison
-            result = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
+            result, _usage = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
             assert len(result.get("personalized_insights", [])) <= 3
 
     @pytest.mark.asyncio
@@ -99,7 +99,7 @@ class TestGenerateComparisonInsightsValidation:
         resp = self._make_mock_response({"personalized_insights": insights})
         with patch("app.services.extraction_service.get_client", return_value=self._mock_client(resp)):
             from app.services.extraction_service import generate_comparison
-            result = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
+            result, _usage = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
             assert "personalized_insights" in result
             assert len(result["personalized_insights"]) == 2
 
@@ -108,7 +108,7 @@ class TestGenerateComparisonInsightsValidation:
         resp = self._make_mock_response()  # No insights field
         with patch("app.services.extraction_service.get_client", return_value=self._mock_client(resp)):
             from app.services.extraction_service import generate_comparison
-            result = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
+            result, _usage = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
             assert result.get("personalized_insights") == []
 
     @pytest.mark.asyncio
@@ -116,7 +116,7 @@ class TestGenerateComparisonInsightsValidation:
         resp = self._make_mock_response({"personalized_insights": "not a list"})
         with patch("app.services.extraction_service.get_client", return_value=self._mock_client(resp)):
             from app.services.extraction_service import generate_comparison
-            result = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
+            result, _usage = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
             assert result.get("personalized_insights") == []
 
     @pytest.mark.asyncio
@@ -126,7 +126,7 @@ class TestGenerateComparisonInsightsValidation:
         resp = self._make_mock_response({"personalized_insights": insights})
         with patch("app.services.extraction_service.get_client", return_value=self._mock_client(resp)):
             from app.services.extraction_service import generate_comparison
-            result = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
+            result, _usage = await generate_comparison(sample_product_1, sample_product_2, "bahrain", user_preferences=sample_preferences)
             # Should not crash — validation doesn't filter by index
             assert "personalized_insights" in result
             assert len(result["personalized_insights"]) == 1
