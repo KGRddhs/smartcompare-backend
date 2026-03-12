@@ -1,6 +1,7 @@
 """
 Auth Routes - Authentication endpoints
 """
+import logging
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import List, Literal, Optional
@@ -20,6 +21,8 @@ from app.services.auth_service import (
     get_user_preferences,
     save_user_preferences,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 
@@ -247,26 +250,38 @@ async def logout(current_user: dict = Depends(get_current_user)):
 
 @router.get("/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
-    """
-    Get current user's profile.
-    """
-    profile = await get_user_profile(current_user["id"])
-    
-    if profile:
-        return {
-            "success": True,
-            "user": {
-                "id": profile["id"],
-                "email": profile["email"],
-                "subscription_tier": profile.get("subscription_tier", "free"),
-                "created_at": profile.get("created_at"),
-                "preferences_completed": profile.get("preferences_completed", False),
+    """Get current user profile."""
+    try:
+        # get_user_profile returns raw Supabase row dict or None
+        profile = await get_user_profile(current_user["id"])
+        if profile:
+            return {
+                "success": True,
+                "user": {
+                    "id": current_user["id"],
+                    "email": current_user.get("email"),
+                    "display_name": profile.get("display_name"),
+                    "auth_provider": profile.get("auth_provider"),
+                    "subscription_tier": profile.get("subscription_tier", "free"),
+                    "created_at": profile.get("created_at"),
+                    "preferences_completed": profile.get("preferences_completed", False),
+                }
             }
-        }
+    except Exception as e:
+        logger.warning(f"Profile lookup failed for {current_user['id']}: {e}")
 
+    # Fallback: return consistent shape with defaults
     return {
         "success": True,
-        "user": current_user
+        "user": {
+            "id": current_user["id"],
+            "email": current_user.get("email"),
+            "display_name": None,
+            "auth_provider": None,
+            "subscription_tier": "free",
+            "created_at": None,
+            "preferences_completed": False,
+        }
     }
 
 
