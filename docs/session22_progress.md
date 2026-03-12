@@ -24,6 +24,11 @@
 - [x] Old _track_cost method deleted
 - [x] Tests: 16 new tests in test_cost_tracking.py, 20 mock fixes, cross-QA passed
 
+## Post-Session: Supabase Config Fix
+- [x] Disabled "Confirm email" in Supabase Dashboard (was causing 401 on registration)
+- [x] Updated Site URL to `https://web-production-58776.up.railway.app` (was localhost)
+- [x] Verified: registration returns valid token immediately
+
 ## Final Stats
 - **Tests**: 691 passing (was 637 baseline → +54 new/updated)
 - **Dead code removed**: ~733 lines (routes.py, openai_service.py, text_routes.py)
