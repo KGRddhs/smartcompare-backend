@@ -74,8 +74,11 @@ export async function register(email: string, password: string): Promise<AuthRes
 
     if (response.data.user) {
       await saveUser(response.data.user);
+      console.log('[AUTH] Register - access_token present:', !!response.data.session?.access_token);
       if (response.data.session?.access_token) {
         await saveToken(response.data.session.access_token);
+      } else {
+        console.warn('[AUTH] No access_token after register — email confirmation may be required');
       }
       if (response.data.session?.refresh_token) {
         await AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
@@ -112,8 +115,11 @@ export async function login(email: string, password: string): Promise<AuthRespon
 
     if (response.data.user) {
       await saveUser(response.data.user);
+      console.log('[AUTH] Login - access_token present:', !!response.data.session?.access_token);
       if (response.data.session?.access_token) {
         await saveToken(response.data.session.access_token);
+      } else {
+        console.warn('[AUTH] No access_token after login');
       }
       if (response.data.session?.refresh_token) {
         await AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
@@ -332,7 +338,7 @@ export async function verifyAuth(): Promise<User | null> {
  */
 export async function requestPasswordReset(email: string): Promise<void> {
   try {
-    const response = await api.post('/api/v1/auth/reset-password', { email });
+    const response = await api.post('/api/v1/auth/password-reset', { email });
     if (!response.data.success) {
       throw new Error(response.data.error || 'Password reset request failed');
     }
