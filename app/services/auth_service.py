@@ -314,6 +314,9 @@ async def change_user_password(user_id: str, email: str, current_password: str, 
         admin.auth.admin.update_user_by_id(user_id, {"password": new_password})
         return {"success": True, "message": "Password changed successfully"}
     except Exception as e:
+        error_msg = str(e).lower()
+        if "invalid login credentials" in error_msg:
+            return {"success": False, "error": "Current password is incorrect"}
         return _categorize_auth_error(e, "change_password")
 
 
