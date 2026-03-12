@@ -46,6 +46,27 @@ def _categorize_auth_error(e: Exception, context: str = "operation") -> Dict:
         return {"success": False, "error": "Something went wrong. Please try again later."}
 
 
+async def _enrich_response_with_profile(response: Dict, user_id: str) -> Dict:
+    """Add display_name and auth_provider from public.users to auth response.
+    Never fails — returns None defaults if profile unavailable."""
+    display_name = None
+    auth_provider = None
+    try:
+        admin = get_admin_client()
+        profile = admin.table("users").select("display_name, auth_provider").eq("id", user_id).single().execute()
+        if profile.data:
+            display_name = profile.data.get("display_name")
+            auth_provider = profile.data.get("auth_provider")
+    except Exception as e:
+        logger.warning(f"Could not fetch profile for {user_id}: {e}")
+
+    if "user" not in response:
+        response["user"] = {}
+    response["user"]["display_name"] = display_name
+    response["user"]["auth_provider"] = auth_provider
+    return response
+
+
 async def register_user(email: str, password: str) -> Dict:
     """
     Register a new user with email and password.
@@ -67,7 +88,7 @@ async def register_user(email: str, password: str) -> Dict:
                 "subscription_tier": "free"
             }).execute()
 
-            return {
+            result = {
                 "success": True,
                 "user": {
                     "id": response.user.id,
@@ -81,6 +102,8 @@ async def register_user(email: str, password: str) -> Dict:
                 },
                 "message": "Registration successful"
             }
+            result = await _enrich_response_with_profile(result, result["user"]["id"])
+            return result
         else:
             return {
                 "success": False,
@@ -116,7 +139,7 @@ async def login_user(email: str, password: str) -> Dict:
             except Exception:
                 pass  # Default to False if lookup fails
 
-            return {
+            result = {
                 "success": True,
                 "user": {
                     "id": response.user.id,
@@ -129,6 +152,8 @@ async def login_user(email: str, password: str) -> Dict:
                     "expires_at": response.session.expires_at,
                 }
             }
+            result = await _enrich_response_with_profile(result, result["user"]["id"])
+            return result
         else:
             return {
                 "success": False,
@@ -257,7 +282,7 @@ async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -
         except Exception:
             pass
 
-        return {
+        result = {
             "success": True,
             "user": {
                 "id": response.user.id,
@@ -271,6 +296,8 @@ async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -
             },
             "message": f"Signed in with {provider}"
         }
+        result = await _enrich_response_with_profile(result, result["user"]["id"])
+        return result
     except Exception as e:
         return _categorize_auth_error(e, "social_login")
 
