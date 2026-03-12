@@ -167,6 +167,8 @@ class StructuredComparisonService:
     def __init__(self):
         self.total_cost = 0.0
         self.api_calls = 0
+        self.gpt_calls = 0
+        self.serper_calls = 0
         self._shopping_items_cache = {}  # Reuse shopping data between price and rating
     
     async def compare_from_text(
@@ -193,6 +195,8 @@ class StructuredComparisonService:
         start_time = datetime.now()
         self.total_cost = 0.0
         self.api_calls = 0
+        self.gpt_calls = 0
+        self.serper_calls = 0
         self._shopping_items_cache = {}  # Clear per-request to prevent cross-request data leak
 
         try:
@@ -351,6 +355,8 @@ class StructuredComparisonService:
         start_time = datetime.now()
         self.total_cost = 0.0
         self.api_calls = 0
+        self.gpt_calls = 0
+        self.serper_calls = 0
         self._shopping_items_cache = {}
 
         try:
@@ -1906,9 +1912,24 @@ class StructuredComparisonService:
         }
 
     def _track_cost(self, cost: float):
-        """Track API costs."""
+        """Track API costs (legacy — use _track_gpt_cost/_track_serper_cost instead)."""
         self.total_cost += cost
         self.api_calls += 1
+
+    def _track_gpt_cost(self, usage: dict):
+        """Track real GPT cost from token usage. gpt-4o-mini: $0.15/1M input, $0.60/1M output."""
+        prompt_tokens = usage.get("prompt_tokens", 0) or 0
+        completion_tokens = usage.get("completion_tokens", 0) or 0
+        cost = (prompt_tokens * 0.15 / 1_000_000) + (completion_tokens * 0.60 / 1_000_000)
+        self.total_cost += cost
+        self.api_calls += 1
+        self.gpt_calls += 1
+
+    def _track_serper_cost(self):
+        """Track a single Serper API call ($0.001 per call)."""
+        self.total_cost += 0.001
+        self.api_calls += 1
+        self.serper_calls += 1
 
     async def _get_verified_rating(self, full_name: str) -> Dict[str, Any]:
         """
