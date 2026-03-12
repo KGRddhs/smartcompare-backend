@@ -222,8 +222,8 @@ class StructuredComparisonService:
                 logger.info(f"[VISION] Using vision-identified products directly: {[p['search_query'] for p in products]}")
             else:
                 logger.info(f"Parsing query: {query}")
-                parsed = await parse_product_query(query)
-                self._track_cost(0.0003)  # ~300 tokens
+                parsed, usage = await parse_product_query(query)
+                self._track_gpt_cost(usage)
 
                 if not parsed.get("products") or len(parsed["products"]) < 2:
                     return {
@@ -269,7 +269,7 @@ class StructuredComparisonService:
             )
 
             # Step 4: Generate comparison (includes pros/cons to save a GPT call)
-            comparison = await generate_comparison(
+            comparison, usage = await generate_comparison(
                 product_data[0],
                 product_data[1],
                 region,
@@ -277,7 +277,7 @@ class StructuredComparisonService:
                 user_preferences=user_preferences,
                 scores_summary=scores_summary,
             )
-            self._track_cost(0.001)  # ~1000 tokens (comparison + pros/cons merged)
+            self._track_gpt_cost(usage)
 
             # Extract pros/cons from comparison result into product data
             if include_pros_cons:
@@ -324,6 +324,8 @@ class StructuredComparisonService:
                     "elapsed_seconds": round(elapsed, 2),
                     "total_cost": round(self.total_cost, 6),
                     "api_calls": self.api_calls,
+                    "gpt_calls": self.gpt_calls,
+                    "serper_calls": self.serper_calls,
                     "timestamp": datetime.now().isoformat()
                 }
             }
@@ -380,8 +382,8 @@ class StructuredComparisonService:
                     })
                 parsed = {}
             else:
-                parsed = await parse_product_query(query)
-                self._track_cost(0.0003)
+                parsed, usage = await parse_product_query(query)
+                self._track_gpt_cost(usage)
 
                 if not parsed.get("products") or len(parsed["products"]) < 2:
                     yield ("error", {
@@ -468,7 +470,7 @@ class StructuredComparisonService:
 
             # Step 4: Generate verdict
             yield ("status", {"message": "Generating verdict..."})
-            comparison = await generate_comparison(
+            comparison, usage = await generate_comparison(
                 product_data[0],
                 product_data[1],
                 region,
@@ -476,7 +478,7 @@ class StructuredComparisonService:
                 user_preferences=user_preferences,
                 scores_summary=scores_summary,
             )
-            self._track_cost(0.001)
+            self._track_gpt_cost(usage)
 
             if include_pros_cons:
                 product_data[0]["pros_cons"] = {
@@ -528,6 +530,8 @@ class StructuredComparisonService:
                     "elapsed_seconds": round(elapsed, 2),
                     "total_cost": round(self.total_cost, 6),
                     "api_calls": self.api_calls,
+                    "gpt_calls": self.gpt_calls,
+                    "serper_calls": self.serper_calls,
                     "timestamp": datetime.now().isoformat(),
                 },
             }
@@ -589,7 +593,7 @@ class StructuredComparisonService:
                     f"{search_query} specifications reviews price",
                     num_results=10
                 )
-                self._track_cost(0.001)
+                self._track_serper_cost()
 
         # === Phase 1: specs + price (parallel) ===
         # Price must run first so _shopping_items_cache is populated for reviews
@@ -775,14 +779,14 @@ class StructuredComparisonService:
         logger.info(f"Fetching specs for: {brand} {name}")
         if search_results is None:
             search_results = await search_web(f"{search_query} specifications features")
-            self._track_cost(0.001)  # Serper cost
+            self._track_serper_cost()
 
         # Use numbered snippets for citation tracking
         search_context, raw_snippets = self._format_numbered_search_results(search_results)
 
         # Extract specs
-        specs = await extract_specs(brand, name, variant, category, search_context, drug_context=drug_context)
-        self._track_cost(0.0005)  # ~500 tokens
+        specs, usage = await extract_specs(brand, name, variant, category, search_context, drug_context=drug_context)
+        self._track_gpt_cost(usage)
 
         # Cache result (without internal _search_snippets)
         if specs and not specs.get("error"):
@@ -842,7 +846,7 @@ class StructuredComparisonService:
         else:
             # Fetch shopping results from Serper (organic deferred to Tier 2 if needed)
             search_results = await search_product_prices(search_query, region_info["code"])
-            self._track_cost(0.001)
+            self._track_serper_cost()
             shopping_items = search_results.get("shopping", [])
             # Store for reuse by rating extraction (avoids duplicate API call)
             self._shopping_items_cache[full_name] = shopping_items
@@ -855,8 +859,8 @@ class StructuredComparisonService:
             # Sanity check Tier 1 only for high-value products from untrusted retailers
             # Trusted retailers (score >= 1.0: Amazon, Best Buy, etc.) are accepted directly
             if self._is_high_value_query(full_name) and price.get("retailer_score", 0) < 1.0:
-                tier3_estimate = await extract_price_from_training_data(brand, name, variant, region)
-                self._track_cost(0.0003)
+                tier3_estimate, usage = await extract_price_from_training_data(brand, name, variant, region)
+                self._track_gpt_cost(usage)
                 self._sanitize_gpt_price(tier3_estimate)
                 self._convert_gpt_price_currency(tier3_estimate, currency)
                 if tier3_estimate and tier3_estimate.get("amount"):
@@ -911,7 +915,8 @@ class StructuredComparisonService:
             iherb_task = search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
             bh_pharmacy_task = search_web(f"{brand} {name} price", num_results=5, country="bh")
             iherb_results, bh_pharmacy_results = await asyncio.gather(iherb_task, bh_pharmacy_task)
-            self._track_cost(0.002)  # 2 Serper calls
+            self._track_serper_cost()
+            self._track_serper_cost()
             iherb_organic = iherb_results.get("organic", [])
             bh_organic = bh_pharmacy_results.get("organic", [])
 
@@ -934,14 +939,14 @@ class StructuredComparisonService:
         else:
             # Non-supplements: fetch BH organic results on-demand (only when Tier 1 shopping failed)
             organic_results = await search_price_organic(search_query, region_info["code"])
-            self._track_cost(0.001)
+            self._track_serper_cost()
 
         # Merge organic into search_results for context formatting
         search_results["organic"] = organic_results.get("organic", [])
         search_results["knowledge_graph"] = organic_results.get("knowledge_graph")
         search_context = self._format_search_results(search_results)
-        price = await extract_price(brand, name, variant, region, search_context)
-        self._track_cost(0.0003)
+        price, usage = await extract_price(brand, name, variant, region, search_context)
+        self._track_gpt_cost(usage)
         self._sanitize_gpt_price(price)
         # iHerb keyword search returns mixed currencies in snippets (mostly USD from www.iherb.com)
         # Trust GPT's currency detection — the extraction prompt handles USD/$, BHD/BD etc.
@@ -961,8 +966,8 @@ class StructuredComparisonService:
                 # Sanity check Tier 2 for non-supplement products (too high OR too low vs GPT estimate)
                 # Reuse Tier 3 estimate if already fetched during Tier 1 check
                 if tier3_estimate is None:
-                    tier3_estimate = await extract_price_from_training_data(brand, name, variant, region)
-                    self._track_cost(0.0003)
+                    tier3_estimate, usage = await extract_price_from_training_data(brand, name, variant, region)
+                    self._track_gpt_cost(usage)
                     self._sanitize_gpt_price(tier3_estimate)
                     self._convert_gpt_price_currency(tier3_estimate, currency)
                 if tier3_estimate and tier3_estimate.get("amount"):
@@ -1001,7 +1006,7 @@ class StructuredComparisonService:
         if broader_name != full_name and not is_supplement:
             logger.info(f"[PRICE] Trying broader search: '{broader_name}' (was '{full_name}')")
             broader_results = await search_product_prices(broader_name, region_info["code"])
-            self._track_cost(0.001)
+            self._track_serper_cost()
             broader_shopping = broader_results.get("shopping", [])
             if broader_shopping:
                 price = self._extract_price_from_shopping(broader_name, broader_shopping, currency)
@@ -1016,8 +1021,8 @@ class StructuredComparisonService:
         logger.info(f"[PRICE] Tiers 1-2 failed, falling back to GPT estimate for {full_name}")
         # Reuse Tier 3 estimate if already fetched during sanity checks
         if tier3_estimate is None:
-            tier3_estimate = await extract_price_from_training_data(brand, name, variant, region)
-            self._track_cost(0.0003)
+            tier3_estimate, usage = await extract_price_from_training_data(brand, name, variant, region)
+            self._track_gpt_cost(usage)
             self._sanitize_gpt_price(tier3_estimate)
             self._convert_gpt_price_currency(tier3_estimate, currency)
         price = tier3_estimate
@@ -1368,7 +1373,7 @@ class StructuredComparisonService:
         logger.info(f"[PRICE] No JSON-LD in initial pharmacy URLs, trying targeted pharmacy search for {full_name}")
         try:
             site_results = await search_web(f"{full_name} {site_query}", num_results=5, country="bh")
-            self._track_cost(0.001)
+            self._track_serper_cost()
             site_urls = []
             for item in site_results.get("organic", []):
                 link = item.get("link", "")
@@ -1778,7 +1783,7 @@ class StructuredComparisonService:
         logger.info(f"Fetching reviews for: {brand} {name} (category: {category})")
         if search_results is None:
             search_results = await search_web(f"{search_query} {review_terms}")
-            self._track_cost(0.001)  # Serper cost
+            self._track_serper_cost()
 
         # Use enhanced formatter with retailer ratings
         search_context = self._format_review_search_results(
@@ -1786,8 +1791,8 @@ class StructuredComparisonService:
         )
 
         # Extract reviews with category awareness
-        reviews = await extract_reviews(brand, name, variant, search_context, category=category)
-        self._track_cost(0.0005)  # ~500 tokens (increased from 400)
+        reviews, usage = await extract_reviews(brand, name, variant, search_context, category=category)
+        self._track_gpt_cost(usage)
 
         # Inject REAL retailer ratings as source_ratings (replaces any GPT-hallucinated data)
         if retailer_ratings:
@@ -1911,11 +1916,6 @@ class StructuredComparisonService:
             "overall_confidence": overall,
         }
 
-    def _track_cost(self, cost: float):
-        """Track API costs (legacy — use _track_gpt_cost/_track_serper_cost instead)."""
-        self.total_cost += cost
-        self.api_calls += 1
-
     def _track_gpt_cost(self, usage: dict):
         """Track real GPT cost from token usage. gpt-4o-mini: $0.15/1M input, $0.60/1M output."""
         prompt_tokens = usage.get("prompt_tokens", 0) or 0
@@ -1959,7 +1959,7 @@ class StructuredComparisonService:
                     headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
                     json={"q": full_name, "gl": "us", "num": 10}
                 )
-                self._track_cost(0.001)
+                self._track_serper_cost()
 
                 if response.status_code != 200:
                     logger.error(f"[RATING] US shopping search failed: {response.status_code}")
