@@ -15,7 +15,6 @@ from app.middleware.logging_config import configure_logging
 configure_logging(os.getenv("LOG_LEVEL", "INFO"))
 
 # Import routes after env vars are loaded
-from app.api.routes import router as api_router          # Image comparison (legacy)
 from app.api.auth_routes import router as auth_router    # Authentication
 from app.api.text_routes import router as text_router    # Text comparison
 from app.api.url_routes import router as url_router      # URL comparison
@@ -94,7 +93,6 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
 # -- Routes --
-app.include_router(api_router)       # /api/v1/compare (legacy image)
 app.include_router(auth_router)      # /api/v1/auth/*
 app.include_router(text_router)      # /api/v1/text/*
 app.include_router(url_router)       # /api/v1/url/*
@@ -112,7 +110,6 @@ async def root():
         "version": "2.1.0",
         "endpoints": {
             "image_identify": "/api/v1/image/identify",
-            "image_compare_legacy": "/api/v1/compare",
             "text_compare": "/api/v1/text/compare",
             "url_compare": "/api/v1/url/compare",
             "auth": "/api/v1/auth/*",
