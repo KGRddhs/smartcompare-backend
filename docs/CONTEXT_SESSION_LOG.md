@@ -71,12 +71,41 @@
 - "(converted from USD)" label replaces old estimated label for `source_method: "converted_usd"`
 - More accurate description of what the price represents
 
+### 12. Auth Flow Improvements (pre-existing, committed with deploy)
+- `clearSession()` called on logout (App.tsx)
+- `onLogout` escape hatch on PreferencesScreen for stuck tokens
+- 401 interceptor scoped to auth flow endpoints only (not `/auth/preferences`)
+
 ## Files Changed
-- `app/api/text_routes.py` — personalization logging
-- `app/services/auth_service.py` — preferences fetch logging
-- `app/services/scoring_service.py` — MAX_WEIGHT_SHIFT_RATIO cap
+- `app/api/text_routes.py` — personalization logging in 3 endpoints
+- `app/services/auth_service.py` — preferences fetch error logging
+- `app/services/scoring_service.py` — MAX_WEIGHT_SHIFT_RATIO + cap logic
 - `app/services/structured_comparison_service.py` — iHerb ratings, tier expansion, pharmacy URLs, price source_method
 - `SmartCompareApp/src/screens/ResultsScreen.tsx` — rating display, reviews fallback, cost removal, feedback state, price labels
+- `SmartCompareApp/src/components/FeedbackCard.tsx` — controlled props (submitted, onSubmitted)
+- `SmartCompareApp/src/types/types.ts` — RatingSource.url nullable, source_method on ProductPrice
+- `SmartCompareApp/App.tsx` — clearSession on logout, PreferencesScreen onLogout prop
+- `SmartCompareApp/src/screens/PreferencesScreen.tsx` — onLogout escape hatch
+- `SmartCompareApp/src/services/api.ts` — 401 interceptor scope fix
+- `tests/test_scoring_service.py` — 5 new weight capping tests
+- `tests/test_url_quality.py` — 4 new pharmacy URL tests
+- `tests/test_rating_tiers.py` — 7 new expanded tier tests
+- `tests/test_iherb_rating.py` — 5 new iHerb rating tests (new file)
+- `tests/test_price_source.py` — 5 new price source tests (new file)
+
+## Test Suite: 717 tests, 32 files (+26 from Session 22 baseline of 691)
+
+## Deployed & Verified
+- 13 commits deployed via `git push origin main`
+- Production health check: healthy
+- Supplement comparison (HealthAid vs NOW Vitamin D3): source_method tags working, reviews populated, price_method_mismatch detected
+- Electronics comparison (iPhone 15 vs Galaxy S24): ratings verified from Tier 1 retailers, scoring working
+- Cost per comparison: $0.0097 (supplements), $0.0112 (electronics) — within $0.015 budget
+
+## Production Observations
+- iHerb `data-ga-rating` attribute returned null on search pages — extraction gracefully returns null, falls back to GPT aggregate. May need investigation of iHerb's current HTML structure.
+- HealthAid brand name stripped by parser (shows as "Vitamin D3") — pre-existing parser behavior, not Session 23 regression.
+- `weights_used` empty for anonymous requests — expected (default weights used, field not populated without auth).
 
 ---
 
