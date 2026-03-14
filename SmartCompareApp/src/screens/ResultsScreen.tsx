@@ -292,65 +292,49 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     );
   };
 
-  // Rating display component with provenance
+  // Rating display component — shows all ratings with source name + link
   const RatingDisplay = ({ product }: { product: Product }) => {
-    const { rating, review_count, rating_verified, rating_source } = product;
+    const { rating, review_count, rating_source } = product;
 
-    // If no rating or not verified, show "No verified rating"
-    if (rating === null || rating === undefined || !rating_verified || !rating_source?.url) {
+    if (rating === null || rating === undefined) {
       return (
         <View style={styles.ratingContainer}>
-          <Text style={styles.noRatingText}>No verified rating</Text>
-          <Text style={styles.noRatingSubtext}>
-            Rating could not be verified from retailers
-          </Text>
+          <Text style={styles.noRatingText}>No rating available</Text>
         </View>
       );
     }
 
-    // Confidence indicator
-    const getConfidenceColor = () => {
-      if (rating_source?.extract_method === 'json_ld') return '#4CAF50'; // High
-      if (rating_source?.extract_method === 'microdata') return '#4CAF50'; // High
-      return '#FFC107'; // Medium
-    };
+    const hasLink = rating_source?.url != null;
 
-    const getMethodLabel = () => {
-      switch (rating_source?.extract_method) {
-        case 'json_ld': return 'Verified';
-        case 'microdata': return 'Verified';
-        case 'meta_tags': return 'Extracted';
-        case 'css_selector': return 'Parsed';
-        default: return '';
-      }
-    };
-
-    // Show verified rating with source
-    return (
-      <View style={styles.ratingContainer}>
+    const ratingContent = (
+      <>
         <View style={styles.ratingRow}>
-          <Ionicons name="star" size={16} color="#FFD700" />
-          <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
-          {review_count && review_count > 0 && (
-            <Text style={styles.reviewCount}>({review_count.toLocaleString()} reviews)</Text>
+          <Text style={styles.ratingText}>{rating.toFixed(1)}/5</Text>
+          {review_count != null && (
+            <Text style={styles.reviewCountText}>({review_count.toLocaleString()} reviews)</Text>
           )}
         </View>
-        
-        {/* Source attribution with link */}
-        <TouchableOpacity 
-          onPress={() => openRatingSource(rating_source)}
-          style={styles.sourceLink}
-        >
-          <View style={[styles.verifiedBadge, { backgroundColor: getConfidenceColor() }]}>
-            <Text style={styles.verifiedBadgeText}>{getMethodLabel()}</Text>
+        {rating_source?.name && (
+          <View style={styles.sourceLink}>
+            <Text style={styles.sourceText}>{rating_source.name}</Text>
+            {hasLink && <Ionicons name="open-outline" size={12} color="#2196F3" />}
           </View>
-          <Text style={styles.sourceText}>
-            {rating_source.name}
-          </Text>
-          <Ionicons name="open-outline" size={12} color="#2196F3" />
-        </TouchableOpacity>
-      </View>
+        )}
+      </>
     );
+
+    if (hasLink) {
+      return (
+        <TouchableOpacity
+          onPress={() => openRatingSource(rating_source!)}
+          style={styles.ratingContainer}
+        >
+          {ratingContent}
+        </TouchableOpacity>
+      );
+    }
+
+    return <View style={styles.ratingContainer}>{ratingContent}</View>;
   };
 
   // Product card component
@@ -443,7 +427,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // Reviews tab (pros/cons)
   const ReviewsTab = () => {
     const hasAnyReviews = products.some(p =>
-      (p.pros && p.pros.length > 0) || (p.cons && p.cons.length > 0) || p.rating
+      (p.pros && p.pros.length > 0) ||
+      (p.cons && p.cons.length > 0) ||
+      p.rating ||
+      (p.reviews?.common_praises && p.reviews.common_praises.length > 0) ||
+      (p.reviews?.common_complaints && p.reviews.common_complaints.length > 0) ||
+      (p.reviews?.average_rating != null) ||
+      (p.reviews?.detailed_praises && p.reviews.detailed_praises.length > 0)
     );
 
     if (!hasAnyReviews) {
@@ -484,6 +474,43 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 <Text style={styles.consTitle}>👎 Cons</Text>
                 {product.cons.map((con, i) => (
                   <Text key={i} style={styles.conItem}>• {con}</Text>
+                ))}
+              </View>
+            )}
+
+            {/* Common Praises (when no pros available) */}
+            {(!product.pros || product.pros.length === 0) && product.reviews?.common_praises && product.reviews.common_praises.length > 0 && (
+              <View style={styles.prosConsSection}>
+                <Text style={styles.prosTitle}>Praised For</Text>
+                {product.reviews.common_praises.map((praise: string, i: number) => (
+                  <Text key={i} style={styles.proItem}>• {praise}</Text>
+                ))}
+              </View>
+            )}
+
+            {/* Common Complaints (when no cons available) */}
+            {(!product.cons || product.cons.length === 0) && product.reviews?.common_complaints && product.reviews.common_complaints.length > 0 && (
+              <View style={styles.prosConsSection}>
+                <Text style={styles.consTitle}>Criticized For</Text>
+                {product.reviews.common_complaints.map((complaint: string, i: number) => (
+                  <Text key={i} style={styles.conItem}>• {complaint}</Text>
+                ))}
+              </View>
+            )}
+
+            {/* Detailed praises with user quotes */}
+            {product.reviews?.detailed_praises && product.reviews.detailed_praises.length > 0 && (
+              <View style={styles.prosConsSection}>
+                <Text style={styles.prosTitle}>What Users Love</Text>
+                {product.reviews.detailed_praises.map((praise: any, i: number) => (
+                  <View key={i}>
+                    <Text style={styles.proItem}>• {praise.text}</Text>
+                    {praise.quote && (
+                      <Text style={[styles.proItem, { fontStyle: 'italic', color: '#666', marginLeft: 16 }]}>
+                        "{praise.quote}"
+                      </Text>
+                    )}
+                  </View>
                 ))}
               </View>
             )}
@@ -582,8 +609,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             {metadata && (
               <View style={styles.metadataSection}>
                 <Text style={styles.metadataText}>
-                  Comparison took {metadata.elapsed_seconds?.toFixed(1)}s •
-                  Cost: ${metadata.total_cost?.toFixed(4)} •
+                  Comparison took {metadata.elapsed_seconds?.toFixed(1)}s •{' '}
                   {(metadata.cache_hits ?? 0) > 0 ? `${metadata.cache_hits} cached` : 'Fresh data'}
                 </Text>
               </View>
@@ -719,7 +745,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  reviewCount: {
+  reviewCountText: {
     fontSize: 12,
     color: '#666',
   },
@@ -727,10 +753,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     fontStyle: 'italic',
-  },
-  noRatingSubtext: {
-    fontSize: 10,
-    color: '#BBB',
   },
   sourceLink: {
     flexDirection: 'row',
@@ -743,18 +765,6 @@ const styles = StyleSheet.create({
     color: '#2196F3',
     fontWeight: '500',
   },
-  verifiedBadge: {
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 3,
-    marginRight: 4,
-  },
-  verifiedBadgeText: {
-    fontSize: 9,
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-  
   valueScoreContainer: {
     marginTop: 8,
   },

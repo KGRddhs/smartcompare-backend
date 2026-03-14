@@ -7,9 +7,9 @@
 
 export interface RatingSource {
   name: string;
-  url: string;
-  retrieved_at: string;
-  extract_method?: 'google_shopping' | 'json_ld' | 'microdata' | 'meta_tags' | 'css_selector';
+  url: string | null;
+  retrieved_at?: string;
+  extract_method?: 'google_shopping' | 'json_ld' | 'microdata' | 'meta_tags' | 'css_selector' | 'gpt_review_aggregate';
   confidence?: 'high' | 'medium' | 'low' | 'expert';
 }
 
@@ -44,6 +44,7 @@ export interface ProductPrice {
   confidence?: number;
   note?: string;
   unavailable?: boolean;
+  source_method?: 'local_bhd' | 'converted_usd' | 'estimated';
 }
 
 export interface Product {
