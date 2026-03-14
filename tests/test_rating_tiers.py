@@ -56,6 +56,31 @@ class TestGetRatingTier:
         assert StructuredComparisonService._get_rating_tier(None) == 3
 
 
+class TestExpandedTiers:
+    """Test newly added retailers are classified correctly."""
+
+    def test_iherb_is_tier_1(self):
+        assert StructuredComparisonService._get_rating_tier("iHerb") == 1
+
+    def test_sephora_is_tier_1(self):
+        assert StructuredComparisonService._get_rating_tier("Sephora") == 1
+
+    def test_ulta_is_tier_1(self):
+        assert StructuredComparisonService._get_rating_tier("Ulta Beauty") == 1
+
+    def test_fragrantica_is_tier_2(self):
+        assert StructuredComparisonService._get_rating_tier("Fragrantica") == 2
+
+    def test_sally_beauty_is_tier_2(self):
+        assert StructuredComparisonService._get_rating_tier("Sally Beauty") == 2
+
+    def test_lookfantastic_is_tier_2(self):
+        assert StructuredComparisonService._get_rating_tier("LookFantastic") == 2
+
+    def test_boots_is_tier_2(self):
+        assert StructuredComparisonService._get_rating_tier("Boots") == 2
+
+
 # --- _extract_rating_from_shopping logic ---
 
 class TestExtractRatingFromShopping:

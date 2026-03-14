@@ -1457,11 +1457,14 @@ class StructuredComparisonService:
     RATING_TIER_1 = {  # "Verified" — official/authorized, real product ratings
         "amazon", "apple", "samsung", "best buy", "bestbuy", "walmart",
         "target", "noon", "jarir", "extra", "newegg", "b&h", "bhphoto",
+        "iherb", "sephora", "ulta",
     }
     RATING_TIER_2 = {  # "Verified" — known retailers, real product ratings
         "costco", "carrefour", "sharaf dg", "virgin megastore", "currys",
         "john lewis", "adorama", "micro center", "google store", "microsoft",
         "dell", "hp store", "lenovo", "fnac",
+        "fragrantica", "sally beauty", "lookfantastic", "beautybay", "nykaa",
+        "bath & body", "boots",
     }
     RATING_TIER_3 = {  # "Marketplace rating" — only if review_count > 1000
         "ebay", "aliexpress", "alibaba", "temu", "wish",
