@@ -40,6 +40,9 @@ BUDGET_ADJUSTMENTS = {
     "premium": {"spec_score": 0.10, "review_score": 0.05, "price_score": -0.10},
 }
 
+# Maximum allowed shift ratio from default weight (±30%)
+MAX_WEIGHT_SHIFT_RATIO = 0.30
+
 # Spec fields where higher is better (electronics-focused)
 HIGHER_IS_BETTER = {
     "ram", "storage", "battery", "rear_camera", "front_camera",
@@ -149,9 +152,12 @@ class ScoringService:
         for dim, delta in budget_adj.items():
             weights[dim] = weights.get(dim, 0) + delta
 
-        # Clamp all weights to >= 0 before normalizing
+        # Cap each dimension's shift to ±30% of its default weight
         for dim in weights:
-            weights[dim] = max(0.0, weights[dim])
+            default_val = DEFAULT_WEIGHTS.get(dim, 0)
+            max_val = default_val * (1 + MAX_WEIGHT_SHIFT_RATIO)
+            min_val = default_val * (1 - MAX_WEIGHT_SHIFT_RATIO)
+            weights[dim] = max(0.0, min(max_val, max(min_val, weights[dim])))
 
         # Renormalize to sum to 1.0
         total = sum(weights.values())

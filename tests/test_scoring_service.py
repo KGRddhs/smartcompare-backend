@@ -622,3 +622,44 @@ class TestMoreCategories:
         result = service.compute_scores([p1, p2])
         assert result["scores"]["product_0"]["breakdown"]["spec_score"] >= \
                result["scores"]["product_1"]["breakdown"]["spec_score"]
+
+
+class TestWeightCapping:
+    """Test that personalization weight shifts are capped at ±30% of defaults."""
+
+    def test_single_priority_capped(self):
+        service = ScoringService()
+        weights = service._compute_weights({"priorities": ["price"]})
+        assert weights["price_score"] <= 0.40
+        assert weights["spec_score"] >= 0.10
+
+    def test_multiple_priorities_capped(self):
+        service = ScoringService()
+        weights = service._compute_weights({
+            "priorities": ["price", "quality", "durability"],
+            "budget": "budget"
+        })
+        for dim, default_val in DEFAULT_WEIGHTS.items():
+            if default_val > 0:
+                assert weights[dim] <= default_val * 2.5, \
+                    f"{dim} is {weights[dim]:.3f}, default {default_val:.3f} — too aggressive"
+
+    def test_weight_cap_preserves_normalization(self):
+        service = ScoringService()
+        weights = service._compute_weights({
+            "priorities": ["price", "health_safety"],
+            "budget": "premium"
+        })
+        assert abs(sum(weights.values()) - 1.0) < 0.001
+
+    def test_no_preferences_unchanged(self):
+        service = ScoringService()
+        weights = service._compute_weights(None)
+        for dim, val in DEFAULT_WEIGHTS.items():
+            assert abs(weights[dim] - val) < 0.001
+
+    def test_empty_preferences_unchanged(self):
+        service = ScoringService()
+        weights = service._compute_weights({})
+        for dim, val in DEFAULT_WEIGHTS.items():
+            assert abs(weights[dim] - val) < 0.001
