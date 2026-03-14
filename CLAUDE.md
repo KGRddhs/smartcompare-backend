@@ -24,7 +24,7 @@ Be intelligent about every decision:
 ## Quality Standards (Non-Negotiable)
 
 - Accurate specs from reliable sources
-- Ratings with confidence indicators (verified vs unverified) — never hide data
+- Ratings from real sources — all displayed without verified/unverified badges
 - Real prices with retailer attribution
 - Honest recommendations based on data, not guesses
 
@@ -82,14 +82,13 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 
 ### Backend (FastAPI + Python 3.12)
 
-**Entry:** `app/main.py` (v2.2.0) — loads env vars, configures middleware stack, registers 7 routers:
+**Entry:** `app/main.py` (v2.2.0) — loads env vars, configures middleware stack, registers 6 routers:
 - `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow + SSE streaming, rate limited)
 - `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited, HEIC detection)
 - `/api/v1/url/*` — `url_routes.py` (partially implemented)
 - `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social-login)
 - `/api/v1/feedback`, `/api/v1/events` — `feedback_routes.py` → feedback collection + event tracking
 - `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints (X-Admin-Key auth)
-- `/api/v1/*` — `routes.py` (legacy image comparison, has broken function calls)
 
 **Middleware stack** (outermost → innermost): RequestID → SecurityHeaders → ErrorHandler → CORS → slowapi rate limiter
 
@@ -107,16 +106,19 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 1. Serper Shopping API direct extraction (structured prices)
 2. GPT-4o-mini extraction from organic search results (with Tier 3 sanity check)
 3. GPT training data estimate (marked `estimated: true`)
+- Each price tagged with `source_method`: `local_bhd` (direct BHD price), `converted_usd` (USD→BHD conversion), or `estimated` (GPT training data). `price_method_mismatch` flag set when products have different source methods.
 - Supplements: iHerb direct scrape → Bahrain pharmacy JSON-LD → Serper organic + GPT → Tier 3
 - Non-iHerb brands (HealthAid, Vitabiotics): `_fetch_pharmacy_price()` parses JSON-LD from bn.boots.com product pages
 
 **Rating pipeline (4 tiers):**
 - Tier 0: Expert review JSON-LD scrape (dead code — never called)
-- Tier 1: Serper Shopping, trusted retailers (Amazon, Best Buy)
-- Tier 2: Known retailers
+- Tier 1: Serper Shopping, trusted retailers (Amazon, Best Buy, iHerb, Sephora, Ulta)
+- Tier 2: Known retailers (Fragrantica, Sally Beauty, LookFantastic, BeautyBay, Nykaa, Bath & Body Works, Boots, etc.)
 - Tier 3: Marketplace (eBay) if review_count > 1000
 - Consensus: 3+ sellers with identical rating → Google product aggregate (verified)
 - Fallback: GPT `average_rating` from reviews (unverified, `extract_method: "gpt_review_aggregate"`)
+- iHerb ratings extracted during price scrape (data-ga-rating/data-ga-review-count attributes, zero extra API calls)
+- Rating display shows all ratings without verified/unverified badges
 
 **URL sourcing for prices and ratings:**
 - Primary: Serper Shopping `link` field (Google Shopping product-specific URLs with catalog IDs)
@@ -218,7 +220,7 @@ Target: **$0.009-0.01/comparison** (current: ~$0.010 electronics, ~$0.010 supple
 Camera input passes `vision_products` directly to `compare_from_text()`, skipping `parse_product_query()`. The `size_or_count` field (e.g., "360 Softgels") is appended to the product name in `image_routes.py` before comparison.
 
 ### Deterministic scoring (zero cost)
-`scoring_service.py` computes 6 scores (price, spec, review, value, reliability, popularity) from structured data. No API calls — pure math. Weights are personalized from user preferences (priorities, budget, brand_attitude) or fall back to defaults for anonymous users. Scores are 0-100, deterministic (same input = same output). Computed after Phase 2, passed into verdict prompt as `scores_summary`. Response includes `scoring` field with per-product breakdown.
+`scoring_service.py` computes 6 scores (price, spec, review, value, reliability, popularity) from structured data. No API calls — pure math. Weights are personalized from user preferences (priorities, budget, brand_attitude) or fall back to defaults for anonymous users. `MAX_WEIGHT_SHIFT_RATIO = 0.30` caps personalization shifts to ±30% of defaults, preventing extreme distributions. Scores are 0-100, deterministic (same input = same output). Computed after Phase 2, passed into verdict prompt as `scores_summary`. Response includes `scoring` field with per-product breakdown.
 
 ### SSE streaming
 `GET /api/v1/text/compare/stream` returns Server-Sent Events. 10 events: status(parsing) → status(fetching) → specs → prices → status(reviews) → reviews → scores → status(verdict) → verdict → complete. Frontend uses fetch+ReadableStream (not EventSource) with fallback to non-streaming. Non-streaming endpoint unchanged.
@@ -284,7 +286,7 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (609 total: 579 unit + 14 live_unit + 6 live_db + 10 integration)
+### Test files (717+ unit, 32 files; plus 14 live_unit + 6 live_db + 10 integration)
 - `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
@@ -310,12 +312,13 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_feedback.py` — 29 tests: feedback submission, event tracking, validation, batch, fire-and-forget
 - `tests/test_streaming.py` — 16 tests: SSE format, event sequence, generator, endpoint, error handling
 - `tests/test_singleton_state.py` — 3 tests: singleton pattern, cache leak prevention, state reset
+- `tests/test_iherb_rating.py` — 5 tests: iHerb rating extraction from HTML attributes, cache injection
+- `tests/test_price_source.py` — 10 tests: source_method tagging, price_method_mismatch flag
 - `tests/test_integration.py` — 10 tests: live Railway (~$0.10, ~5 min)
 
 ## Known Remaining Bugs (deferred)
 
 These are known issues that have been intentionally deferred:
-- Legacy `/api/v1/compare` route (`routes.py`): all function calls use wrong arg counts — 4 TypeErrors
 - Google Sign-In: Supabase Google provider needs to be enabled in dashboard (client IDs configured in code)
 - Apple Sign-In: deferred — requires Apple Developer subscription ($99/year); code is ready
 

@@ -4,6 +4,196 @@
 
 ---
 
+# SESSION 23: March 14, 2026 — Data Quality & UX Polish
+
+## What We Did
+
+3-round, 2-agent Opus team (backend+frontend per round, then test+docs). Focused on improving data accuracy (ratings, prices) and frontend polish.
+
+### 1. Personalization Pipeline Diagnostic Logging
+**Files:** `app/api/text_routes.py`, `app/services/auth_service.py`
+- Added structured logging throughout the personalization pipeline
+- Logs user auth status, preferences fetch, and preference injection into comparison
+- Helps debug "why wasn't my comparison personalized?" issues
+
+### 2. Scoring Weight Cap (±30%)
+**File:** `app/services/scoring_service.py`
+- `MAX_WEIGHT_SHIFT_RATIO = 0.30` — personalization can shift weights by at most ±30% of defaults
+- Prevents extreme weight distributions (e.g., 90% price, 10% everything else)
+- Ensures all scoring dimensions remain meaningful even with strong preferences
+
+### 3. Pharmacy URLs in RETAILER_SEARCH_URLS
+**File:** `app/services/structured_comparison_service.py`
+- Added Boots (`bn.boots.com`) and Al Deerah Pharmacy (`aldeerahpharmacy.com`) to `RETAILER_SEARCH_URLS`
+- Enables `_build_retailer_url()` fallback for pharmacy retailers
+
+### 4. Rating Tier Lists Expanded
+**File:** `app/services/structured_comparison_service.py`
+- **Tier 1** (trusted): added iHerb, Sephora, Ulta (previously only Amazon, Best Buy, etc.)
+- **Tier 2** (known): added Fragrantica, Sally Beauty, LookFantastic, BeautyBay, Nykaa, Bath & Body Works, Boots
+- Better rating coverage for supplements, beauty, and fragrance categories
+
+### 5. iHerb Rating Extraction During Price Scrape
+**File:** `app/services/structured_comparison_service.py`
+- Extracts `data-ga-rating` and `data-ga-review-count` attributes from iHerb HTML during existing price scrape
+- Cached in `_shopping_items_cache` as a synthetic shopping item with `source: "iherb"`
+- Zero extra API calls — piggybacks on existing iHerb price scrape
+- Feeds into rating pipeline as Tier 1 data
+
+### 6. Price `source_method` Tagging
+**File:** `app/services/structured_comparison_service.py`
+- Every price now tagged with `source_method`: `local_bhd` (direct BHD price), `converted_usd` (USD→BHD conversion), or `estimated` (GPT training data)
+- `price_method_mismatch` flag set when two products have different source methods (e.g., one local, one estimated)
+- Helps frontend display appropriate labels and users assess price reliability
+
+### 7. RatingDisplay Simplified
+**File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+- Shows all ratings without verified/unverified badges
+- Cleaner UI — trust indicators were confusing to users
+
+### 8. Reviews Tab Fallback Rendering
+**File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+- When `pros`/`cons` arrays are empty, renders `common_praises`, `complaints`, and `detailed_praises` instead
+- Prevents empty Reviews tab for products with alternative review data shapes
+
+### 9. Cost Display Removed from UI
+**File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+- Removed per-comparison cost display from results screen
+- Cost tracking still works in backend for analytics — just hidden from users
+
+### 10. Feedback Card State Persistence
+**File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+- FeedbackCard state (submitted, useful, selections) lifted to parent ResultsScreen
+- Prevents state loss when switching tabs (React re-mounts tab content)
+
+### 11. Price Label Update
+**File:** `SmartCompareApp/src/screens/ResultsScreen.tsx`
+- "(converted from USD)" label replaces old estimated label for `source_method: "converted_usd"`
+- More accurate description of what the price represents
+
+## Files Changed
+- `app/api/text_routes.py` — personalization logging
+- `app/services/auth_service.py` — preferences fetch logging
+- `app/services/scoring_service.py` — MAX_WEIGHT_SHIFT_RATIO cap
+- `app/services/structured_comparison_service.py` — iHerb ratings, tier expansion, pharmacy URLs, price source_method
+- `SmartCompareApp/src/screens/ResultsScreen.tsx` — rating display, reviews fallback, cost removal, feedback state, price labels
+
+---
+
+# SESSION 22: March 12, 2026 — Auth Fixes, Backend Cleanup & AI Cost Tracking
+
+## What We Did
+
+3 sequential rounds of 2 Opus agents each (fresh team per round to prevent context bloat).
+
+### Round 1: Auth Fixes
+- Password reset endpoint path mismatch fixed (authService.ts)
+- `_categorize_auth_error()` helper — 8 exception blocks updated with clean error messages
+- `_enrich_response_with_profile()` — display_name + auth_provider in login/register/social responses
+- `/me` endpoint normalized (auth_routes.py)
+- 20 new tests, 13 updated
+
+### Round 2: Backend Cleanup
+- `routes.py` DELETED — 485 lines of dead legacy code removed from main.py router
+- Dead category-specific endpoints removed from text_routes.py (23 lines)
+- 3 unused functions removed from openai_service.py (225 lines)
+- Serper cost tracking verified (all 9 calls tracked)
+- 18 new tests in test_backend_cleanup.py
+
+### Round 3: AI Cost Tracking
+- All 6 extraction functions return `(result, token_usage)` tuples
+- `_track_gpt_cost(usage)` uses real OpenAI token counts ($0.15/1M input, $0.60/1M output)
+- `_track_serper_cost()` replaces all `_track_cost(0.001)` calls
+- `gpt_calls` and `serper_calls` counters in response metadata
+- Old `_track_cost()` method deleted
+- 16 new tests in test_cost_tracking.py, 20 mock fixes
+
+### Post-Session: Supabase Config Fix
+- Disabled "Confirm email" in Supabase Dashboard (was causing 401 on registration)
+- Updated Site URL to production Railway URL
+
+## Test Suite: 691 tests (+54 from Session 21 baseline of 637)
+## Dead Code Removed: ~733 lines
+
+---
+
+# SESSION 21: March 11, 2026 — AI Guidance System
+
+## What We Did
+
+2-phase, 2-agent Opus team. Brainstormed → spec → plan → parallel implementation → cross-QA.
+
+### Phase 1: Parallel Implementation
+**Agents:** backend-agent, frontend-agent
+
+1. **Personalized Insight Cards** (backend + frontend)
+   - Added `personalized_insights` field to COMPARISON_PROMPT JSON schema (2-3 insights per comparison)
+   - GPT generates insights tied to user priorities when preferences exist (~50 extra tokens, ~$0)
+   - Validation: strips when no prefs, truncates to 3 max, handles malformed GPT output
+   - Wired through non-streaming response, SSE verdict event, and streaming complete_response
+   - Frontend `InsightCard` component with context-aware Ionicons (battery, price, camera, etc.)
+   - `PreferencePromptBanner` shown for anonymous/non-personalized users → links to Preferences
+
+2. **Winner Badges** (frontend only, $0)
+   - `AspectBadges` component replaces old binary "WINNER" badge
+   - 6 per-dimension badges (Best Price, Best Specs, Top Rated, Best Value, Most Reliable, Most Popular)
+   - Deterministic from `scoring.breakdown` — badge shown when winner leads by >= 3 points
+   - "Best for You" (personalized) / "Best Overall" (anonymous) ribbon for overall winner
+
+3. **Broader Price Fallback** (backend)
+   - `MODEL_VARIANT_PATTERN` regex strips trailing Pro/Plus/Max/Ultra/256GB/1TB
+   - 1 extra Serper Shopping call when Tier 1+2 both fail (before Tier 3 GPT estimate)
+   - Skipped for supplements (they use dedicated iHerb/pharmacy pipeline)
+
+4. **Graceful Empty States** (frontend)
+   - ReviewsTab: empty state card when no reviews/pros/cons/ratings available
+   - SpecsTab: already filtered nulls (no change needed)
+   - Removed orphaned winnerBadge/winnerBadgeText styles
+
+### Phase 2: Cross-QA + Test Coverage
+- Backend agent QA'd frontend: APPROVED (1 minor cleanup — orphaned styles, fixed)
+- Frontend agent QA'd backend: APPROVED (0 issues)
+- 28 new tests (17 guidance insights + 11 fallback improvements)
+- Final: **637 tests passing, 0 failures**
+
+## Files Changed
+- `app/services/extraction_service.py` — COMPARISON_PROMPT + generate_comparison() validation
+- `app/services/structured_comparison_service.py` — insights wiring + MODEL_VARIANT_PATTERN + broader fallback
+- `SmartCompareApp/src/types/types.ts` — PersonalizedInsight interface
+- `SmartCompareApp/src/screens/ResultsScreen.tsx` — AspectBadges, InsightCard, PreferencePromptBanner, empty states
+- `tests/test_guidance_insights.py` (new, 17 tests)
+- `tests/test_fallback_improvements.py` (new, 11 tests)
+
+## Commits (8)
+- `d8fdc15` feat: add PersonalizedInsight type + update ComparisonResult
+- `23b3e31` feat: add personalized_insights to verdict prompt + validation
+- `83427e7` feat: wire personalized_insights through response and SSE stream
+- `ce504c7` feat: add AspectBadges, InsightCard, PreferencePromptBanner
+- `64d7e16` feat: add broader search fallback before Tier 3 GPT estimate
+- `bea82e5` feat: add graceful empty states for missing data
+- `eea1e1c` test: add edge case tests for guidance system
+- `a194d1e` chore: remove orphaned winnerBadge styles
+
+## Test Suite: 637 tests (28 new), 27 files
+
+## Post-Deploy Bugfixes (Session 21b)
+
+### Bug: 401 on Preferences Save
+**Root cause:** Two issues compounding:
+1. **Wrong Supabase env vars on Railway** — `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY` were pointing to non-existent project `khatrmxzrvjzlbtcetva` instead of correct `qulajmyxdbdkchvecmvc`. All auth calls failed with `[Errno -2] Name or service not known`.
+2. **Stale token in AsyncStorage** — User's stored JWT was from the wrong Supabase project, so even after fixing Railway env vars, the cached token was invalid.
+3. **Overly broad interceptor skip** — `api.ts` response interceptor skipped auto-refresh for any URL containing `/auth/`, which included `/auth/preferences`. Fixed to only skip core auth flow endpoints (login, register, refresh, logout, social-login).
+4. **No escape from Preferences onboarding** — When stuck on PreferencesScreen with invalid token, user had no way to logout. Added `onLogout` prop + red "Logout" link in header.
+
+**Fixes:**
+- `SmartCompareApp/src/services/api.ts` — Narrowed 401 refresh skip from `/auth/` to specific auth flow endpoints
+- `SmartCompareApp/src/services/authService.ts` — Added debug logging for token presence after login/register
+- `SmartCompareApp/src/screens/PreferencesScreen.tsx` — Added `onLogout` prop + Logout link in onboarding header
+- `SmartCompareApp/App.tsx` — Pass `onLogout` to PreferencesScreen, `handleLogout` now calls `clearSession()`
+- Railway env vars: corrected all 3 Supabase variables to `qulajmyxdbdkchvecmvc` project
+
+---
+
 # SESSION 20: March 8, 2026 — Smart Scoring Engine + SSE Streaming + Feedback
 
 ## What We Did
