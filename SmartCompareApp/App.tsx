@@ -21,7 +21,7 @@ import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import PreferencesScreen from './src/screens/PreferencesScreen';
 
 // Import auth service
-import { verifyAuth, getSavedUser, User, configureGoogleSignIn } from './src/services/authService';
+import { verifyAuth, getSavedUser, clearSession, User, configureGoogleSignIn } from './src/services/authService';
 
 // Configure Google Sign-In at module level (before any component renders)
 configureGoogleSignIn();
@@ -152,19 +152,21 @@ export default function App() {
   };
 
   const handleLoginSuccess = async () => {
-    setIsAuthenticated(true);
     const savedUser = await getSavedUser();
     if (savedUser) {
       setUser(savedUser);
       setNeedsPreferences(!savedUser.preferences_completed);
     }
+    // Set authenticated AFTER checking preferences to avoid flash of wrong navigator
+    setIsAuthenticated(true);
   };
 
   const handlePreferencesComplete = () => {
     setNeedsPreferences(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await clearSession();
     setIsAuthenticated(false);
     setNeedsPreferences(false);
     setUser(null);
@@ -197,6 +199,7 @@ export default function App() {
               <PreferencesScreen
                 {...props}
                 onComplete={handlePreferencesComplete}
+                onLogout={handleLogout}
               />
             )}
           </RootStack.Screen>

@@ -25,6 +25,8 @@ api.interceptors.request.use(
     if (token) {
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
+    } else if (config.url?.includes('/preferences')) {
+      console.warn('[API] No token available for preferences request!');
     }
     return config;
   },
@@ -53,8 +55,10 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Skip refresh for auth endpoints themselves
-    if (originalRequest.url?.includes('/auth/')) {
+    // Skip refresh for auth flow endpoints (login/register/refresh/logout)
+    // but NOT for authenticated endpoints under /auth/ like /auth/preferences
+    const authFlowEndpoints = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout', '/auth/social-login'];
+    if (authFlowEndpoints.some(ep => originalRequest.url?.includes(ep))) {
       return Promise.reject(error);
     }
 

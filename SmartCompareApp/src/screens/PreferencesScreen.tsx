@@ -23,6 +23,7 @@ type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Preferences'>;
   route: RouteProp<RootStackParamList, 'Preferences'>;
   onComplete?: () => void;
+  onLogout?: () => void;
 };
 
 const TOTAL_STEPS = 4;
@@ -68,7 +69,7 @@ const BRAND_OPTIONS = [
   { value: 'best_of_both', label: 'Best of Both', description: 'Good brands preferred, but function wins if clear' },
 ];
 
-export default function PreferencesScreen({ navigation, route, onComplete }: Props) {
+export default function PreferencesScreen({ navigation, route, onComplete, onLogout }: Props) {
   const mode = route.params?.mode || 'onboarding';
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(mode === 'edit');
@@ -138,7 +139,7 @@ export default function PreferencesScreen({ navigation, route, onComplete }: Pro
       await savePreferences(prefs);
       if (onComplete) {
         onComplete();
-      } else {
+      } else if (navigation.canGoBack()) {
         navigation.goBack();
       }
     } catch (err: any) {
@@ -179,9 +180,16 @@ export default function PreferencesScreen({ navigation, route, onComplete }: Pro
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          {mode === 'onboarding' ? 'Set Up Your Preferences' : 'Edit Preferences'}
-        </Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.headerTitle}>
+            {mode === 'onboarding' ? 'Set Up Your Preferences' : 'Edit Preferences'}
+          </Text>
+          {onLogout && (
+            <TouchableOpacity onPress={onLogout}>
+              <Text style={{ color: '#FF3B30', fontSize: 14 }}>Logout</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <Text style={styles.headerSubtitle}>
           Step {step + 1} of {TOTAL_STEPS}
         </Text>
