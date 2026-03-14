@@ -307,6 +307,10 @@ class StructuredComparisonService:
                 for tag in user_preferences.get("lifestyle", []):
                     personalization_factors.append(f"lifestyle_{tag}")
 
+            # Detect price method mismatch (different price sourcing methods across products)
+            price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
+            unique_methods = set(m for m in price_methods if m)
+
             return {
                 "success": True,
                 "products": product_data,
@@ -321,6 +325,7 @@ class StructuredComparisonService:
                 "personalized": personalized,
                 "personalization_factors": personalization_factors,
                 "personalized_insights": comparison.get("personalized_insights", []),
+                "price_method_mismatch": len(unique_methods) > 1,
                 "metadata": {
                     "query": query,
                     "region": region,
@@ -967,6 +972,12 @@ class StructuredComparisonService:
         # If GPT says BHD → no conversion (might be from bh.iherb.com snippet)
         self._convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
+            # Tag source_method based on whether currency conversion occurred
+            original_cur = price.get("original_currency", "").upper()
+            if original_cur and original_cur != currency:
+                price["source_method"] = "converted_usd"
+            else:
+                price["source_method"] = "local_bhd"
             # Opt C: Supplements with iHerb data — skip sanity check (iHerb is Tier 1 trusted)
             if is_supplement:
                 # Backfill iHerb as retailer when GPT didn't identify one
@@ -993,6 +1004,7 @@ class StructuredComparisonService:
                         )
                         price = tier3_estimate
                         price["estimated"] = True
+                        price["source_method"] = "estimated"
                     elif tier2_bhd < tier3_bhd * 0.5:
                         logger.info(
                             f"[PRICE] Tier 2 too LOW: {currency} {price['amount']} "
@@ -1000,6 +1012,7 @@ class StructuredComparisonService:
                         )
                         price = tier3_estimate
                         price["estimated"] = True
+                        price["source_method"] = "estimated"
             # Backfill URL from retailer name (GPT returns url: null)
             if price.get("retailer") and not price.get("url"):
                 price["url"] = self._build_retailer_url(price["retailer"], full_name)
@@ -1041,6 +1054,7 @@ class StructuredComparisonService:
         price = tier3_estimate
         if price and price.get("amount"):
             price["estimated"] = True
+            price["source_method"] = "estimated"
             # Backfill URL from retailer name (GPT returns url: null)
             if price.get("retailer") and not price.get("url"):
                 price["url"] = self._build_retailer_url(price["retailer"], full_name)
@@ -1245,6 +1259,7 @@ class StructuredComparisonService:
                 "_cached": False,
                 "iherb_rating": best.get("rating"),
                 "iherb_review_count": best.get("review_count"),
+                "source_method": "converted_usd",
             }
         except Exception as e:
             logger.warning(f"[PRICE] iHerb direct fetch failed: {e}")
@@ -1462,6 +1477,7 @@ class StructuredComparisonService:
                             "in_stock": price_data.get("in_stock", True),
                             "confidence": 1.0,
                             "estimated": False,
+                            "source_method": "local_bhd",
                         }
                     else:
                         logger.info(f"[PRICE] Pharmacy {retailer_name}: no valid JSON-LD price at {url}")
@@ -1635,6 +1651,7 @@ class StructuredComparisonService:
                 "retailer": retailer,
                 "url": item.get("link") or self._build_retailer_url(retailer, product_name),
                 "in_stock": True,
+                "source_method": "local_bhd",
                 "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
                 "match_score": match_score,
                 "retailer_score": retailer_score,
