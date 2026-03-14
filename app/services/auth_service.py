@@ -357,6 +357,7 @@ async def get_user_preferences(user_id: str) -> Dict:
             }
         return {"success": False, "error": "User not found"}
     except Exception as e:
+        logger.error(f"[AUTH] get_user_preferences failed for user {user_id}: {e}")
         return {"success": False, "error": str(e)}
 
 

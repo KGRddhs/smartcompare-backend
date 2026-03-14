@@ -79,6 +79,12 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         if prefs_result.get("success") and prefs_result.get("preferences_completed"):
             user_prefs = prefs_result.get("preferences")
 
+    if user and not user_prefs:
+        logger.warning(
+            f"[PREFS] Authenticated user {user.get('id', 'unknown')} has no preferences. "
+            f"prefs_result: {prefs_result}"
+        )
+
     result = await service.compare_from_text(
         query=body.query,
         region=body.region,
@@ -149,6 +155,12 @@ async def text_compare_get(
         if prefs_result.get("success") and prefs_result.get("preferences_completed"):
             user_prefs = prefs_result.get("preferences")
 
+    if user and not user_prefs:
+        logger.warning(
+            f"[PREFS] Authenticated user {user.get('id', 'unknown')} has no preferences. "
+            f"prefs_result: {prefs_result}"
+        )
+
     result = await service.compare_from_text(
         query=q,
         region=region,
@@ -218,6 +230,12 @@ async def text_compare_stream(
         prefs_result = await get_user_preferences(user["id"])
         if prefs_result.get("success") and prefs_result.get("preferences_completed"):
             user_prefs = prefs_result.get("preferences")
+
+    if user and not user_prefs:
+        logger.warning(
+            f"[PREFS] Authenticated user {user.get('id', 'unknown')} has no preferences. "
+            f"prefs_result: {prefs_result}"
+        )
 
     async def event_generator() -> AsyncGenerator[str, None]:
         complete_response = None
