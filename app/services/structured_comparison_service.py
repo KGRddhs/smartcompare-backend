@@ -147,6 +147,9 @@ RETAILER_SEARCH_URLS = {
     "iherb": "https://bh.iherb.com/search?kw={query}",
     "vitacost": "https://www.vitacost.com/search?t={query}",
     "nasser pharmacy": "https://www.nasserpharmacy.com/search?q={query}",
+    # Pharmacy/health retailers (BH)
+    "boots": "https://www.bn.boots.com/search?q={query}",
+    "al deerah": "https://aldeerahpharmacy.com/catalogsearch/result/?q={query}",
 }
 
 
@@ -907,6 +910,16 @@ class StructuredComparisonService:
             if iherb_price:
                 iherb_price["_cached"] = False
                 logger.info(f"[PRICE] Supplement: direct iHerb price {currency} {iherb_price['amount']} for {full_name}")
+                # Cache iHerb rating in _shopping_items_cache for _get_verified_rating (zero extra API calls)
+                if iherb_price.get("iherb_rating"):
+                    self._shopping_items_cache[full_name] = [{
+                        "source": "iHerb",
+                        "rating": iherb_price["iherb_rating"],
+                        "ratingCount": iherb_price.get("iherb_review_count"),
+                        "link": iherb_price["url"],
+                        "title": full_name,
+                    }]
+                    logger.info(f"[RATING] Cached iHerb rating {iherb_price['iherb_rating']} for {full_name}")
                 set_cached(cache_key, iherb_price, PRICE_CACHE_TTL)
                 return iherb_price
 
@@ -1149,11 +1162,30 @@ class StructuredComparisonService:
                 href = card.get('href', '')
                 if not price_str:
                     continue
+                # Extract rating data from data-ga attributes (zero extra cost)
+                rating_str = card.get('data-ga-rating', '')
+                review_count_str = card.get('data-ga-review-count', '')
+                rating = None
+                review_count = None
+                try:
+                    if rating_str:
+                        rating = float(rating_str)
+                        if rating <= 0 or rating > 5:
+                            rating = None
+                except (ValueError, TypeError):
+                    pass
+                try:
+                    if review_count_str:
+                        review_count = int(review_count_str)
+                except (ValueError, TypeError):
+                    pass
                 products.append({
                     "url": href if href.startswith("http") else f"https://{region_code}.iherb.com{href}",
                     "brand": item_brand,
                     "price": float(price_str),
                     "title": title,
+                    "rating": rating,
+                    "review_count": review_count,
                 })
             if not products:
                 logger.info(f"[PRICE] iHerb: no product cards found on page")
@@ -1197,7 +1229,10 @@ class StructuredComparisonService:
             if not best:
                 logger.info(f"[PRICE] iHerb: no brand match for '{brand}' in results")
                 return None
-            logger.info(f"[PRICE] iHerb direct: {currency} {best['price']} for '{best['title'][:80]}'")
+            if best.get("rating"):
+                logger.info(f"[PRICE] iHerb direct: {currency} {best['price']} for '{best['title'][:80]}' (rating: {best['rating']}, reviews: {best.get('review_count')})")
+            else:
+                logger.info(f"[PRICE] iHerb direct: {currency} {best['price']} for '{best['title'][:80]}'")
             return {
                 "amount": best["price"],
                 "original_currency": currency,
@@ -1208,6 +1243,8 @@ class StructuredComparisonService:
                 "confidence": 1.0,
                 "estimated": False,
                 "_cached": False,
+                "iherb_rating": best.get("rating"),
+                "iherb_review_count": best.get("review_count"),
             }
         except Exception as e:
             logger.warning(f"[PRICE] iHerb direct fetch failed: {e}")

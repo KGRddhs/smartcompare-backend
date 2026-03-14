@@ -4,7 +4,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
-from app.services.structured_comparison_service import StructuredComparisonService
+from app.services.structured_comparison_service import StructuredComparisonService, get_comparison_service
 
 
 @pytest.fixture
@@ -183,3 +183,32 @@ class TestRatingUrlWithNullFallback:
         result = service._extract_rating_from_shopping("Apple iPhone 16", items)
         assert result is not None
         assert result["rating_source"]["url"] == "https://techmart.com/iphone-16"
+
+
+class TestPharmacyRetailerUrls:
+    """Test pharmacy domains are in RETAILER_SEARCH_URLS."""
+
+    def test_boots_url_generated(self):
+        service = get_comparison_service()
+        url = service._build_retailer_url("Boots Bahrain", "Vitamin D3 1000 IU")
+        assert url is not None
+        assert "bn.boots.com" in url
+        assert "Vitamin" in url or "vitamin" in url.lower()
+
+    def test_al_deerah_url_generated(self):
+        service = get_comparison_service()
+        url = service._build_retailer_url("Al Deerah Pharmacy", "HealthAid Vitamin D")
+        assert url is not None
+        assert "aldeerahpharmacy.com" in url
+
+    def test_iherb_url_already_exists(self):
+        service = get_comparison_service()
+        url = service._build_retailer_url("iHerb", "NOW Vitamin D3")
+        assert url is not None
+        assert "iherb.com" in url
+
+    def test_bolo_returns_none(self):
+        """bolo.bh is a Vue SPA — should NOT have a search URL."""
+        service = get_comparison_service()
+        url = service._build_retailer_url("Bolo Pharmacy", "Vitamin D")
+        assert url is None
