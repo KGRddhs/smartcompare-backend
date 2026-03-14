@@ -26,6 +26,7 @@ type TabType = 'overview' | 'specs' | 'reviews';
 export default function ResultsScreen({ route, navigation }: ResultsScreenProps) {
   const { result } = route.params;
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   const { products, comparison, winner_index, recommendation, key_differences, metadata } = result;
 
@@ -359,8 +360,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         ]}>
           {formatPrice(product.price)}
         </Text>
-        {product.price?.estimated && (
-          <Text style={styles.priceNote}>*Converted price</Text>
+        {product.price?.source_method === 'converted_usd' && (
+          <Text style={styles.priceNote}>(converted from USD)</Text>
         )}
         {product.price?.retailer && !product.price?.unavailable && (
           <Text style={styles.retailerText}>{product.price.retailer}</Text>
@@ -616,7 +617,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             )}
 
             {/* Feedback */}
-            <FeedbackCard comparisonId={comparisonId} />
+            <FeedbackCard
+              comparisonId={comparisonId}
+              submitted={feedbackSubmitted}
+              onSubmitted={() => setFeedbackSubmitted(true)}
+            />
           </>
         )}
 
