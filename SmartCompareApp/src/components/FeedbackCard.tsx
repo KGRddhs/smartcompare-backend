@@ -17,13 +17,16 @@ const MATTERED_OPTIONS = [
 
 interface FeedbackCardProps {
   comparisonId?: string;
+  submitted?: boolean;
+  onSubmitted?: () => void;
 }
 
-export default function FeedbackCard({ comparisonId }: FeedbackCardProps) {
+export default function FeedbackCard({ comparisonId, submitted: parentSubmitted, onSubmitted }: FeedbackCardProps) {
+  const [localSubmitted, setLocalSubmitted] = useState(false);
+  const submitted = parentSubmitted ?? localSubmitted;
   const [useful, setUseful] = useState<boolean | null>(null);
   const [matteredMost, setMatteredMost] = useState<string[]>([]);
   const [suggestion, setSuggestion] = useState('');
-  const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   if (submitted) {
@@ -53,7 +56,8 @@ export default function FeedbackCard({ comparisonId }: FeedbackCardProps) {
     } catch {
       // Fire-and-forget — don't block UI on failure
     }
-    setSubmitted(true);
+    setLocalSubmitted(true);
+    onSubmitted?.();
     setSubmitting(false);
   };
 
