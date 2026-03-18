@@ -4,6 +4,53 @@
 
 ---
 
+# SESSION 24: March 18, 2026 — Backend Completion & Frontend Audit Fixes
+
+## What We Did
+
+Full backend audit + frontend audit. 2 rounds of 2-agent Opus teams for backend, 1 round for frontend. Total: 758 tests (was 717).
+
+### Backend Round 1: History + Errors + Auth Rate Limits
+- **`app/api/history_routes.py`** (NEW): Restored history endpoints deleted in Session 22 (GET list, GET single, DELETE)
+- **`app/middleware/error_handler.py`** (REWRITTEN): Unified error format `{ success: false, error: "msg", code: "ERROR_CODE", request_id }` across all endpoints
+- **`app/api/auth_routes.py`**: Added slowapi rate limits — login 5/min, register 3/min, social-login 10/min, password-reset 3/min
+- **`app/api/url_routes.py`**: Removed `/compare/multi` stub endpoint (dead code)
+
+### Backend Round 2: Sharing
+- **`migrations/add_share_token.sql`** (NEW): `share_token VARCHAR(12)` column on comparisons table
+- **`app/api/share_routes.py`** (NEW): POST create share link (auth, ownership check), GET public share (strips personalization)
+- **`app/services/database_service.py`**: Added `create_share_token()` (collision retry) and `get_shared_comparison()`
+- **`app/main.py`**: Registered history_router + share_router, unified error handlers
+
+### Frontend Fixes (8 issues from audit)
+1. **AccountScreen logout** — `onLogout()` instead of `navigation.reset()` (was stuck in MainNavigator)
+2. **HistoryScreen 401** — `clearSession()` + `onLogout()` instead of `navigation.navigate('Login')` (non-existent route)
+3. **Share integration** — `shareComparison()` in api.ts, ResultsScreen gets backend share link + OS share sheet fallback
+4. **Category switched banner** — Info banner on ResultsScreen when category auto-corrected
+5. **`parseApiError()` utility** — Handles both `.error` (new) and `.detail` (legacy) formats, used in all 8 screens
+6. **Dead code cleanup** — Removed `compareProducts`, `quickCompare`, `getRateLimitStatus`, `getSubscriptionStatus`, `debugUpload` from api.ts (~140 lines)
+7. **User type consolidation** — Single `User` in authService.ts with `display_name` + `auth_provider`, removed duplicate from types.ts
+8. **PreferencesScreen lifestyle** — Allows 0 selections (was requiring 1+)
+
+### Test Coverage
+- 41 new tests: `test_history_routes.py` (15), `test_share_routes.py` (12), `test_error_middleware.py` (10), auth rate limit tests (4)
+- Fixed 13 test regressions from unified error format change (`data["detail"]` → `data["error"]`)
+- 758 tests passing, `npx tsc --noEmit` 0 errors
+
+## Files Changed (Backend: 10, Frontend: 13)
+**Backend new:** `app/api/history_routes.py`, `app/api/share_routes.py`, `migrations/add_share_token.sql`
+**Backend modified:** `app/main.py`, `app/middleware/error_handler.py`, `app/api/auth_routes.py`, `app/api/url_routes.py`, `app/services/database_service.py`
+**Frontend modified:** `App.tsx`, `AccountScreen.tsx`, `CameraScreen.tsx`, `ForgotPasswordScreen.tsx`, `HistoryScreen.tsx`, `HomeScreen.tsx`, `LoginScreen.tsx`, `PreferencesScreen.tsx`, `RegisterScreen.tsx`, `ResultsScreen.tsx`, `api.ts`, `authService.ts`, `types.ts`
+
+## Key Decisions
+- History routes restored to `/api/v1/comparisons/history` (matching frontend, not `/api/v1/history`)
+- Share tokens are 8-char URL-safe base64 (`secrets.token_urlsafe(6)`), stored as `share_token` column
+- Unified error format uses `code` field for machine-readable errors (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, etc.)
+- Frontend `parseApiError()` handles both old `.detail` and new `.error` response formats for backwards compat
+- Agent teams: 2 rounds backend (2 Opus each), 1 round frontend (2 Opus) — Pro subscription limits handled OK
+
+---
+
 # SESSION 23: March 14, 2026 — Data Quality & UX Polish
 
 ## What We Did

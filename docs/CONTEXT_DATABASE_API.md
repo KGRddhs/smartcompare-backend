@@ -102,8 +102,12 @@ CREATE TABLE comparisons (
     input_type TEXT NOT NULL DEFAULT 'text',
     product_names TEXT[] DEFAULT '{}',
     response_data JSONB NOT NULL,
+    share_token VARCHAR(12) DEFAULT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- Partial index on non-null share tokens
+CREATE UNIQUE INDEX IF NOT EXISTS idx_comparisons_share_token
+  ON comparisons (share_token) WHERE share_token IS NOT NULL;
 ```
 
 ### search_logs
@@ -194,6 +198,32 @@ Query params:
   "password": "password123"
 }
 ```
+
+## History
+
+### GET `/api/v1/comparisons/history`
+Auth required. Returns paginated list of user's comparisons.
+```
+Query params: limit (1-50, default 20), offset (default 0), search (optional)
+Response: { success, comparisons: [{id, query, product_names, input_type, created_at}], total, limit, offset }
+```
+
+### GET `/api/v1/comparisons/{comparison_id}`
+Auth required. Returns single comparison with full response data.
+
+### DELETE `/api/v1/comparisons/{comparison_id}`
+Auth required. Deletes comparison (ownership check).
+
+## Sharing
+
+### POST `/api/v1/share/{comparison_id}`
+Auth required. Creates a public share link for a comparison (ownership check).
+```json
+Response: { "success": true, "share_token": "abc12345", "share_url": "https://.../#/share/abc12345" }
+```
+
+### GET `/api/v1/share/{token}`
+Public (no auth). Returns comparison data for a shared link. Strips personalization fields.
 
 ## Admin Analytics (protected by X-Admin-Key header)
 

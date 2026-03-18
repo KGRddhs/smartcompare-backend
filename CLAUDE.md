@@ -82,15 +82,19 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 
 ### Backend (FastAPI + Python 3.12)
 
-**Entry:** `app/main.py` (v2.2.0) — loads env vars, configures middleware stack, registers 6 routers:
+**Entry:** `app/main.py` (v2.3.0) — loads env vars, configures middleware stack, registers 8 routers:
 - `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow + SSE streaming, rate limited)
 - `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited, HEIC detection)
-- `/api/v1/url/*` — `url_routes.py` (partially implemented)
-- `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social-login)
+- `/api/v1/url/*` — `url_routes.py` (single URL compare only, multi-compare stub removed)
+- `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social-login). Rate limited: login 5/min, register 3/min.
+- `/api/v1/comparisons/*` — `history_routes.py` → comparison history (GET list, GET single, DELETE). Auth required.
+- `/api/v1/share/*` — `share_routes.py` → POST create share link (auth), GET public share (no auth, strips personalization)
 - `/api/v1/feedback`, `/api/v1/events` — `feedback_routes.py` → feedback collection + event tracking
 - `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints (X-Admin-Key auth)
 
 **Middleware stack** (outermost → innermost): RequestID → SecurityHeaders → ErrorHandler → CORS → slowapi rate limiter
+
+**Unified error format** (Session 24): All error responses use `{ success: false, error: "message", code: "ERROR_CODE", request_id: "uuid" }`. Codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `RATE_LIMITED`, `VALIDATION_ERROR`, `INTERNAL_ERROR`. Frontend `parseApiError()` handles both `.error` (new) and `.detail` (legacy FastAPI) formats.
 
 **Core service:** `app/services/structured_comparison_service.py`
 - `StructuredComparisonService` is a **singleton** (`get_comparison_service()`)
@@ -245,6 +249,12 @@ Stored as JSONB in `public.users.preferences` column. `preferences_completed` bo
 ### Category selection (soft validation)
 The frontend provides 7 category options: Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances. The `selected_category` parameter is passed to `/api/v1/text/compare` as a hint, but the backend AI always makes the final category decision via `PRODUCT_PARSER_PROMPT`. If a mismatch is detected (`selected_category != detected_category`), the response includes `category_switched: true` and the frontend shows an info banner. The 4 new beauty categories have dedicated spec schemas in `CATEGORY_SPEC_SCHEMAS` (extraction_service.py). Zero extra API cost -- category detection happens within the existing product parser call.
 
+### Sharing (Session 24)
+`POST /api/v1/share/{comparison_id}` creates an 8-char URL-safe token (`secrets.token_urlsafe(6)`) stored in `comparisons.share_token`. `GET /api/v1/share/{token}` returns the comparison data publicly (strips personalization fields). Frontend `shareComparison()` in api.ts gets the share link, falls back to text-only OS sharing if no comparison_id or API fails.
+
+### History (Session 24)
+`GET /api/v1/comparisons/history` (auth required, paginated, searchable), `GET /api/v1/comparisons/{id}` (full response), `DELETE /api/v1/comparisons/{id}` (ownership check). Frontend HistoryScreen passes stored blob directly to ResultsScreen. On 401, calls `clearSession()` + `onLogout()` to redirect to auth flow.
+
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
 **Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO)
@@ -286,7 +296,7 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (717+ unit, 32 files; plus 14 live_unit + 6 live_db + 10 integration)
+### Test files (758 unit, 35 files; plus 14 live_unit + 6 live_db + 10 integration)
 - `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
@@ -314,6 +324,9 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_singleton_state.py` — 3 tests: singleton pattern, cache leak prevention, state reset
 - `tests/test_iherb_rating.py` — 5 tests: iHerb rating extraction from HTML attributes, cache injection
 - `tests/test_price_source.py` — 10 tests: source_method tagging, price_method_mismatch flag
+- `tests/test_history_routes.py` — 15 tests: history list, single, delete, pagination, ownership, auth
+- `tests/test_share_routes.py` — 12 tests: create share link, public access, ownership, collision retry
+- `tests/test_error_middleware.py` — 10 tests: unified error format, HTTP/validation/rate-limit exceptions
 - `tests/test_integration.py` — 10 tests: live Railway (~$0.10, ~5 min)
 
 ## Known Remaining Bugs (deferred)
