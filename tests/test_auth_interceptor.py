@@ -1,6 +1,28 @@
 """Tests for auth pipeline — optional user dependency and token handling."""
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+from starlette.testclient import TestClient
+
+
+_mock_ip_counter = 0
+
+def _mock_request():
+    """Create a mock starlette Request for direct endpoint calls (needed by slowapi).
+    Uses a unique IP per call to avoid rate limit collisions in tests."""
+    global _mock_ip_counter
+    _mock_ip_counter += 1
+    from starlette.requests import Request
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v1/auth/test",
+        "headers": [],
+        "query_string": b"",
+        "client": ("10.0.0." + str(_mock_ip_counter % 255), 0),
+    }
+    req = Request(scope)
+    req.state.request_id = "test-request-id"
+    return req
 
 
 # ── get_optional_user tests ──
@@ -210,7 +232,7 @@ async def test_register_rejects_short_password():
     from app.api.auth_routes import register, RegisterRequest
 
     with pytest.raises(HTTPException) as exc_info:
-        await register(RegisterRequest(email="test@example.com", password="12345"))
+        await register(_mock_request(), RegisterRequest(email="test@example.com", password="12345"))
     assert exc_info.value.status_code == 400
     assert "at least 6 characters" in exc_info.value.detail
 
@@ -224,7 +246,7 @@ async def test_login_raises_401_on_failure():
     with patch("app.api.auth_routes.login_user", new_callable=AsyncMock,
                return_value={"success": False, "error": "Invalid email or password"}):
         with pytest.raises(HTTPException) as exc_info:
-            await login(LoginRequest(email="test@example.com", password="wrong-password"))
+            await login(_mock_request(), LoginRequest(email="test@example.com", password="wrong-password"))
     assert exc_info.value.status_code == 401
 
 
@@ -253,7 +275,7 @@ async def test_register_success():
         "session": {"access_token": "tok", "refresh_token": "ref"},
     }
     with patch("app.api.auth_routes.register_user", new_callable=AsyncMock, return_value=mock_result):
-        result = await register(RegisterRequest(email="new@example.com", password="password123"))
+        result = await register(_mock_request(), RegisterRequest(email="new@example.com", password="password123"))
     assert result["success"] is True
     assert result["user"]["email"] == "new@example.com"
 
@@ -266,7 +288,7 @@ async def test_register_failure_returns_400():
     with patch("app.api.auth_routes.register_user", new_callable=AsyncMock,
                return_value={"success": False, "error": "Email already registered"}):
         with pytest.raises(HTTPException) as exc_info:
-            await register(RegisterRequest(email="dup@example.com", password="password123"))
+            await register(_mock_request(), RegisterRequest(email="dup@example.com", password="password123"))
     assert exc_info.value.status_code == 400
     assert "Email already registered" in exc_info.value.detail
 
@@ -281,7 +303,7 @@ async def test_login_success():
         "session": {"access_token": "tok", "refresh_token": "ref"},
     }
     with patch("app.api.auth_routes.login_user", new_callable=AsyncMock, return_value=mock_result):
-        result = await login(LoginRequest(email="user@example.com", password="correct-password"))
+        result = await login(_mock_request(), LoginRequest(email="user@example.com", password="correct-password"))
     assert result["success"] is True
 
 
@@ -348,7 +370,7 @@ async def test_password_reset_always_succeeds():
     from app.api.auth_routes import password_reset, PasswordResetRequest
     with patch("app.api.auth_routes.request_password_reset", new_callable=AsyncMock,
                return_value={"success": True}):
-        result = await password_reset(PasswordResetRequest(email="any@example.com"))
+        result = await password_reset(_mock_request(), PasswordResetRequest(email="any@example.com"))
     assert result["success"] is True
     assert "reset link" in result["message"].lower()
 
@@ -359,7 +381,7 @@ async def test_password_reset_succeeds_even_on_error():
     from app.api.auth_routes import password_reset, PasswordResetRequest
     with patch("app.api.auth_routes.request_password_reset", new_callable=AsyncMock,
                return_value={"success": False, "error": "No such user"}):
-        result = await password_reset(PasswordResetRequest(email="nonexistent@example.com"))
+        result = await password_reset(_mock_request(), PasswordResetRequest(email="nonexistent@example.com"))
     assert result["success"] is True
 
 
@@ -919,6 +941,7 @@ async def test_social_login_google_success():
     with patch("app.api.auth_routes.sign_in_with_social", new_callable=AsyncMock,
                return_value=mock_result):
         result = await social_login(
+            request=_mock_request(),
             body=SocialLoginRequest(provider="google", id_token="mock-google-id-token")
         )
     assert result["success"] is True
@@ -938,6 +961,7 @@ async def test_social_login_apple_success():
     with patch("app.api.auth_routes.sign_in_with_social", new_callable=AsyncMock,
                return_value=mock_result):
         result = await social_login(
+            request=_mock_request(),
             body=SocialLoginRequest(provider="apple", id_token="mock-apple-token", nonce="abc")
         )
     assert result["success"] is True
@@ -961,6 +985,7 @@ async def test_social_login_auth_failure():
                return_value={"success": False, "error": "Invalid token"}):
         with pytest.raises(HTTPException) as exc_info:
             await social_login(
+                request=_mock_request(),
                 body=SocialLoginRequest(provider="google", id_token="bad-token")
             )
     assert exc_info.value.status_code == 401
