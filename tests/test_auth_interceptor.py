@@ -1742,3 +1742,40 @@ class TestMeEndpointNormalization:
             result = await get_me(current_user={"id": "user-1", "email": "test@example.com"})
 
         assert result["user"]["subscription_tier"] == "free"
+
+
+# ============================================
+# Auth Rate Limiting
+# ============================================
+
+
+def test_login_has_rate_limit_decorator():
+    """Login endpoint has rate limit configured."""
+    from app.middleware.rate_limiter import limiter
+    from app.main import app  # Ensure routes are registered
+    assert "app.api.auth_routes.login" in limiter._route_limits, \
+        "login endpoint should have rate limit decorator"
+
+
+def test_register_has_rate_limit_decorator():
+    """Register endpoint has rate limit configured."""
+    from app.middleware.rate_limiter import limiter
+    from app.main import app
+    assert "app.api.auth_routes.register" in limiter._route_limits, \
+        "register endpoint should have rate limit decorator"
+
+
+def test_social_login_has_rate_limit_decorator():
+    """Social login endpoint has rate limit configured."""
+    from app.middleware.rate_limiter import limiter
+    from app.main import app
+    assert "app.api.auth_routes.social_login" in limiter._route_limits, \
+        "social_login endpoint should have rate limit decorator"
+
+
+def test_password_reset_has_rate_limit_decorator():
+    """Password reset endpoint has rate limit configured."""
+    from app.middleware.rate_limiter import limiter
+    from app.main import app
+    assert "app.api.auth_routes.password_reset" in limiter._route_limits, \
+        "password_reset endpoint should have rate limit decorator"
