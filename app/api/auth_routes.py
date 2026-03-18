@@ -5,6 +5,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import List, Literal, Optional
+from starlette.requests import Request
+from app.middleware.rate_limiter import limiter
 
 from app.services.auth_service import (
     register_user,
@@ -182,20 +184,21 @@ async def get_optional_user(authorization: Optional[str] = Header(None)):
 # ============================================
 
 @router.post("/register", response_model=AuthResponse)
-async def register(request: RegisterRequest):
+@limiter.limit("3/minute")
+async def register(request: Request, body: RegisterRequest):
     """
     Register a new user.
     
     - Email must be valid
     - Password must be at least 6 characters
     """
-    if len(request.password) < 6:
+    if len(body.password) < 6:
         raise HTTPException(
             status_code=400,
             detail="Password must be at least 6 characters"
         )
-    
-    result = await register_user(request.email, request.password)
+
+    result = await register_user(body.email, body.password)
     
     if not result["success"]:
         raise HTTPException(
@@ -207,13 +210,14 @@ async def register(request: RegisterRequest):
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(request: LoginRequest):
+@limiter.limit("5/minute")
+async def login(request: Request, body: LoginRequest):
     """
     Login with email and password.
-    
+
     Returns access_token and refresh_token on success.
     """
-    result = await login_user(request.email, request.password)
+    result = await login_user(body.email, body.password)
     
     if not result["success"]:
         raise HTTPException(
@@ -286,11 +290,12 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/password-reset")
-async def password_reset(request: PasswordResetRequest):
+@limiter.limit("3/minute")
+async def password_reset(request: Request, body: PasswordResetRequest):
     """
     Request password reset email.
     """
-    result = await request_password_reset(request.email)
+    result = await request_password_reset(body.email)
     
     # Always return success to prevent email enumeration
     return {
@@ -348,7 +353,8 @@ async def change_password(
 
 
 @router.post("/social-login")
-async def social_login(body: SocialLoginRequest):
+@limiter.limit("10/minute")
+async def social_login(request: Request, body: SocialLoginRequest):
     """Authenticate via Google or Apple ID token. Creates account if new."""
     result = await sign_in_with_social(body.provider, body.id_token, body.nonce)
     if not result["success"]:
