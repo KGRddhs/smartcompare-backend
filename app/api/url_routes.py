@@ -2,7 +2,7 @@
 URL Comparison Routes - API endpoints for URL-based product comparisons
 """
 import logging
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, HttpUrl
 
@@ -33,11 +33,6 @@ class URLCompareRequest(BaseModel):
     url2: str
     region: str = "bahrain"
 
-
-class MultiURLCompareRequest(BaseModel):
-    """Request to compare multiple products from URLs"""
-    urls: List[str]
-    region: str = "bahrain"
 
 
 # ============================================
@@ -197,51 +192,3 @@ async def detect_retailer_get(
         "retailer": retailer,
         "supported": retailer["key"] != "unknown"
     }
-
-
-# ============================================
-# Multi-product comparison (future)
-# ============================================
-
-@router.post("/compare/multi")
-async def compare_multiple_urls(request: MultiURLCompareRequest):
-    """
-    Compare multiple products from URLs (2-4 products).
-    
-    Example:
-    {
-        "urls": [
-            "https://amazon.ae/dp/product1",
-            "https://noon.com/product2",
-            "https://sharafdg.com/product3"
-        ],
-        "region": "bahrain"
-    }
-    """
-    if len(request.urls) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="At least 2 URLs required for comparison"
-        )
-    
-    if len(request.urls) > 4:
-        raise HTTPException(
-            status_code=400,
-            detail="Maximum 4 URLs allowed for comparison"
-        )
-    
-    # For now, just compare first two
-    # TODO: Implement multi-product comparison
-    result = await compare_from_urls(
-        request.urls[0],
-        request.urls[1],
-        request.region
-    )
-    
-    if not result.get("success"):
-        raise HTTPException(
-            status_code=400,
-            detail=result.get("error", "Comparison failed")
-        )
-    
-    return result
