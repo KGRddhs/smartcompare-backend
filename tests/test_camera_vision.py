@@ -244,8 +244,8 @@ class TestEndpointHeicRejection:
         )
         assert response.status_code == 400
         data = response.json()
-        assert "unsupported format" in data["detail"].lower()
-        assert "image/heic" in data["detail"]
+        assert "unsupported format" in data["error"].lower()
+        assert "image/heic" in data["error"]
 
     def test_jpeg_upload_passes_validation(self):
         """Uploading a proper JPEG should pass MIME validation (may fail at vision step)."""
@@ -282,7 +282,7 @@ class TestEndpointHeicRejection:
             ],
         )
         assert response.status_code == 400
-        assert "Image 2" in response.json()["detail"]
+        assert "Image 2" in response.json()["error"]
 
     def test_empty_image_returns_400(self):
         """Uploading an empty file should return 400."""
@@ -295,7 +295,7 @@ class TestEndpointHeicRejection:
             files=[("images", ("photo.jpg", b"", "image/jpeg"))],
         )
         assert response.status_code == 400
-        assert "empty" in response.json()["detail"].lower()
+        assert "empty" in response.json()["error"].lower()
 
 
 # --- Live vision test (real GPT-4o-mini call) ---
