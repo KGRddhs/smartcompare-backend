@@ -198,6 +198,87 @@ async def delete_comparison(comparison_id: str, user_id: str) -> bool:
         return False
 
 
+async def create_share_token(comparison_id: str, user_id: str) -> Optional[str]:
+    """
+    Generate a share token for a comparison.
+    Verifies ownership. Returns existing token if already shared.
+    Retries on collision (max 3 attempts).
+    """
+    import secrets
+
+    try:
+        client = get_supabase_client()
+
+        # Fetch comparison and verify ownership
+        comparison = await get_comparison_by_id(comparison_id)
+        if not comparison:
+            return None
+        if comparison.get("user_id") != user_id:
+            raise PermissionError("Not authorized to share this comparison")
+
+        # Return existing token if already shared
+        existing_token = comparison.get("share_token")
+        if existing_token:
+            return existing_token
+
+        # Generate and store token (retry on collision)
+        for attempt in range(3):
+            token = secrets.token_urlsafe(6)  # 8 chars
+            try:
+                response = (
+                    client.table("comparisons")
+                    .update({"share_token": token})
+                    .eq("id", comparison_id)
+                    .eq("user_id", user_id)
+                    .execute()
+                )
+                if response.data:
+                    return token
+            except Exception as e:
+                if "unique" in str(e).lower() and attempt < 2:
+                    continue  # Retry with new token
+                raise
+
+        return None
+    except PermissionError:
+        raise
+    except Exception as e:
+        logger.warning(f"Error creating share token: {e}", exc_info=True)
+        return None
+
+
+async def get_shared_comparison(share_token: str) -> Optional[Dict]:
+    """
+    Get a shared comparison by share token. No auth required.
+    Strips personalization fields from full_response.
+    """
+    try:
+        client = get_supabase_client()
+        response = (
+            client.table("comparisons")
+            .select("id, query, product_names, input_type, full_response, created_at")
+            .eq("share_token", share_token)
+            .single()
+            .execute()
+        )
+        if not response.data:
+            return None
+
+        data = response.data
+
+        # Strip personalization fields from full_response
+        full_response = data.get("full_response", {})
+        if isinstance(full_response, dict):
+            for key in ("personalized", "personalization_factors", "personalization_prompt"):
+                full_response.pop(key, None)
+            data["full_response"] = full_response
+
+        return data
+    except Exception as e:
+        logger.warning(f"Error getting shared comparison: {e}", exc_info=True)
+        return None
+
+
 async def get_user_comparison_count(user_id: str) -> int:
     """Get total number of comparisons for a user"""
     try:
