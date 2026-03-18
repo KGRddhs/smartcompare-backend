@@ -21,6 +21,7 @@ from app.api.url_routes import router as url_router      # URL comparison
 from app.api.image_routes import router as image_router  # Camera identification + comparison
 from app.api.admin_routes import router as admin_router  # Admin analytics
 from app.api.feedback_routes import router as feedback_router  # Feedback + events
+from app.api.history_routes import router as history_router  # Comparison history
 
 # Import middleware
 from app.middleware.request_id import RequestIDMiddleware
@@ -99,6 +100,7 @@ app.include_router(url_router)       # /api/v1/url/*
 app.include_router(image_router)     # /api/v1/image/* (camera)
 app.include_router(admin_router, prefix="/api/v1/admin")  # /api/v1/admin/*
 app.include_router(feedback_router)  # /api/v1/feedback, /api/v1/events
+app.include_router(history_router)  # /api/v1/comparisons/*
 
 
 @app.get("/")
