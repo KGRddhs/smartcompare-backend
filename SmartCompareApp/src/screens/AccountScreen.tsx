@@ -10,14 +10,15 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
-import { updateProfile, updateEmail, changePassword } from '../services/api';
+import { updateProfile, updateEmail, changePassword, parseApiError } from '../services/api';
 import { getSavedUser, logout, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
+  onLogout: () => void;
 };
 
-export default function AccountScreen({ navigation }: Props) {
+export default function AccountScreen({ navigation, onLogout }: Props) {
   const [user, setUser] = useState<any>(null);
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -93,7 +94,7 @@ export default function AccountScreen({ navigation }: Props) {
         setNameError(result.error || 'Update failed');
       }
     } catch (err: any) {
-      setNameError(err.message || 'An error occurred');
+      setNameError(parseApiError(err).message);
     } finally {
       setNameLoading(false);
     }
@@ -114,7 +115,7 @@ export default function AccountScreen({ navigation }: Props) {
         setEmailError(result.error || 'Update failed');
       }
     } catch (err: any) {
-      setEmailError(err.message || 'An error occurred');
+      setEmailError(parseApiError(err).message);
     } finally {
       setEmailLoading(false);
     }
@@ -139,7 +140,7 @@ export default function AccountScreen({ navigation }: Props) {
         setPasswordError(result.error || 'Password change failed');
       }
     } catch (err: any) {
-      setPasswordError(err.message || 'An error occurred');
+      setPasswordError(parseApiError(err).message);
     } finally {
       setPasswordLoading(false);
     }
@@ -153,7 +154,7 @@ export default function AccountScreen({ navigation }: Props) {
         style: 'destructive',
         onPress: async () => {
           await logout();
-          navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+          onLogout();
         },
       },
     ]);
@@ -235,7 +236,7 @@ export default function AccountScreen({ navigation }: Props) {
                   Alert.alert('Error', result.error || 'Failed to connect Google');
                 }
               } catch (err: any) {
-                Alert.alert('Error', err.message || 'Failed to connect Google');
+                Alert.alert('Error', parseApiError(err).message);
               } finally {
                 setSocialLoading('');
               }
@@ -262,7 +263,7 @@ export default function AccountScreen({ navigation }: Props) {
                     Alert.alert('Error', result.error || 'Failed to connect Apple');
                   }
                 } catch (err: any) {
-                  Alert.alert('Error', err.message || 'Failed to connect Apple');
+                  Alert.alert('Error', parseApiError(err).message);
                 } finally {
                   setSocialLoading('');
                 }

@@ -19,7 +19,7 @@ import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, CapturedImage, IdentifiedProduct } from '../types';
-import { identifyFromImages } from '../services/api';
+import { identifyFromImages, parseApiError } from '../services/api';
 
 type CameraScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Camera'>;
@@ -173,7 +173,7 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
           'Could not connect to server. Check your connection.'
         );
       } else {
-        Alert.alert('Error', error.message || 'Comparison failed. Please try again.');
+        Alert.alert('Error', parseApiError(error).message);
       }
     } finally {
       setIsProcessing(false);

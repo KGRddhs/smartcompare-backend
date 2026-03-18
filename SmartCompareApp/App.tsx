@@ -92,18 +92,20 @@ function MainNavigator({ onLogout }: { onLogout: () => void }) {
       />
       <RootStack.Screen
         name="History"
-        component={HistoryScreen}
         options={{
           title: 'History',
         }}
-      />
+      >
+        {(props) => <HistoryScreen {...props} onLogout={onLogout} />}
+      </RootStack.Screen>
       <RootStack.Screen
         name="Account"
-        component={AccountScreen}
         options={{
           title: 'Account Settings',
         }}
-      />
+      >
+        {(props) => <AccountScreen {...props} onLogout={onLogout} />}
+      </RootStack.Screen>
       <RootStack.Screen
         name="Preferences"
         component={PreferencesScreen}

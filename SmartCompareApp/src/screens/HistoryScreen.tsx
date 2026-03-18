@@ -21,10 +21,12 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList, Product } from '../types';
-import { getComparisonHistory, deleteComparison } from '../services/api';
+import { getComparisonHistory, deleteComparison, parseApiError } from '../services/api';
+import { clearSession } from '../services/authService';
 
 type HistoryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'History'>;
+  onLogout: () => void;
 };
 
 interface HistoryItem {
@@ -36,7 +38,7 @@ interface HistoryItem {
   created_at: string;
 }
 
-export default function HistoryScreen({ navigation }: HistoryScreenProps) {
+export default function HistoryScreen({ navigation, onLogout }: HistoryScreenProps) {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -67,7 +69,7 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
         setTotal(0);
       } else {
         console.error('Error loading history:', error);
-        Alert.alert('Error', 'Failed to load history');
+        Alert.alert('Error', parseApiError(error).message);
       }
     } finally {
       setLoading(false);
@@ -379,7 +381,10 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
           </Text>
           <TouchableOpacity
             style={styles.signInButton}
-            onPress={() => navigation.navigate('Login' as any)}
+            onPress={async () => {
+              await clearSession();
+              onLogout();
+            }}
           >
             <Text style={styles.signInButtonText}>Sign In</Text>
           </TouchableOpacity>

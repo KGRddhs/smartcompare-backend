@@ -20,7 +20,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../types';
-import { healthCheck, streamComparison } from '../services/api';
+import { healthCheck, streamComparison, parseApiError } from '../services/api';
 import api from '../services/api';
 import { logout, getSavedUser, User } from '../services/authService';
 import CategorySelector from '../components/CategorySelector';
@@ -143,7 +143,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         Alert.alert('Error', response.data.error || 'Comparison failed');
       }
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Comparison failed');
+      Alert.alert('Error', parseApiError(error).message);
     } finally {
       setLoading(false);
     }

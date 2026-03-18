@@ -120,7 +120,7 @@ export default function PreferencesScreen({ navigation, route, onComplete, onLog
     switch (step) {
       case 0: return priorities.length >= 1 && priorities.length <= 3;
       case 1: return budget !== '';
-      case 2: return lifestyle.length >= 1;
+      case 2: return true; // lifestyle tags are optional (0+)
       case 3: return brandAttitude !== '';
       default: return false;
     }

@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { login, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
+import { parseApiError } from '../services/api';
 import { AuthStackParamList } from '../types';
 
 type LoginScreenProps = {
@@ -51,7 +52,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
         setError(result.error || 'Google sign-in failed');
       }
     } catch (err: any) {
-      setError(err.message || 'Google sign-in failed');
+      setError(parseApiError(err).message);
     } finally {
       setSocialLoading('');
     }
@@ -68,7 +69,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
         setError(result.error || 'Apple sign-in failed');
       }
     } catch (err: any) {
-      setError(err.message || 'Apple sign-in failed');
+      setError(parseApiError(err).message);
     } finally {
       setSocialLoading('');
     }
@@ -112,7 +113,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
         setError(result.error || 'Login failed');
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      setError(parseApiError(err).message);
     } finally {
       setLoading(false);
     }

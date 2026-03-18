@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { ComparisonResult, ImageIdentifyResult, RateLimitStatus, SubscriptionStatus, UserPreferences } from '../types';
+import { ComparisonResult, ImageIdentifyResult, UserPreferences } from '../types';
 
 // IMPORTANT: Change this to your computer's local IP
 // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
@@ -100,90 +100,6 @@ api.interceptors.response.use(
 );
 
 /**
- * Compare products from images (iOS & Android compatible)
- */
-export async function compareProducts(
-  imageUris: string[],
-  country: string = 'Bahrain'
-): Promise<ComparisonResult> {
-  
-  console.log('=== COMPARE PRODUCTS ===');
-  console.log('Image URIs:', imageUris);
-  
-  const formData = new FormData();
-
-  // Add images to form data
-  for (let i = 0; i < imageUris.length; i++) {
-    const uri = imageUris[i];
-    console.log(`Processing image ${i + 1}: ${uri}`);
-    
-    // Get file name and extension
-    const uriParts = uri.split('/');
-    let fileName = uriParts[uriParts.length - 1];
-    
-    // Handle iOS photo library URIs
-    if (uri.includes('ph://')) {
-      fileName = `photo_${i + 1}.jpg`;
-    }
-    
-    // Get extension
-    const extensionMatch = fileName.match(/\.([^.]+)$/);
-    let extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'jpg';
-    
-    // Normalize extension
-    if (extension === 'jpeg') extension = 'jpg';
-    if (extension === 'heic' || extension === 'heif') extension = 'jpg';
-    
-    // Determine MIME type
-    let mimeType = 'image/jpeg';
-    if (extension === 'png') {
-      mimeType = 'image/png';
-    } else if (extension === 'webp') {
-      mimeType = 'image/webp';
-    }
-    
-    const finalFileName = `product_${i + 1}.${extension}`;
-    
-    console.log(`  -> filename: ${finalFileName}, type: ${mimeType}`);
-    
-    // Append to form data (React Native style)
-    formData.append('images', {
-      uri: uri,
-      type: mimeType,
-      name: finalFileName,
-    } as any);
-  }
-
-  console.log('Sending request to:', `${API_BASE_URL}/api/v1/compare`);
-  
-  try {
-    const response = await api.post<ComparisonResult>(
-      `/api/v1/compare?country=${encodeURIComponent(country)}`,
-      formData,
-      {
-        // Don't set Content-Type — let FormData set it with correct boundary
-        transformRequest: (data) => data,
-      }
-    );
-    
-    console.log('Response status:', response.status);
-    console.log('Response data:', JSON.stringify(response.data, null, 2));
-    
-    return response.data;
-  } catch (error: any) {
-    console.log('=== REQUEST ERROR ===');
-    console.log('Error message:', error.message);
-    
-    if (error.response) {
-      console.log('Response status:', error.response.status);
-      console.log('Response data:', JSON.stringify(error.response.data, null, 2));
-    }
-    
-    throw error;
-  }
-}
-
-/**
  * Identify products from images via GPT-4o-mini vision, then auto-compare if 2+.
  * Uses the new /api/v1/image/identify endpoint.
  */
@@ -244,37 +160,6 @@ export async function identifyFromImages(
 }
 
 /**
- * Quick compare without images (text-based)
- */
-export async function quickCompare(
-  products: { brand: string; name: string; size?: string }[],
-  country: string = 'Bahrain'
-): Promise<ComparisonResult> {
-  const response = await api.post<ComparisonResult>('/api/v1/compare/quick', {
-    products,
-    country,
-  });
-
-  return response.data;
-}
-
-/**
- * Get rate limit status
- */
-export async function getRateLimitStatus(): Promise<RateLimitStatus> {
-  const response = await api.get<RateLimitStatus>('/api/v1/rate-limit/status');
-  return response.data;
-}
-
-/**
- * Get subscription status
- */
-export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
-  const response = await api.get<SubscriptionStatus>('/api/v1/subscription/status');
-  return response.data;
-}
-
-/**
  * Get comparison history
  */
 export async function getComparisonHistory(limit: number = 20, offset: number = 0, search?: string) {
@@ -302,33 +187,6 @@ export async function healthCheck(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * Debug function to test image upload
- */
-export async function debugUpload(imageUris: string[]): Promise<any> {
-  console.log('=== DEBUG UPLOAD ===');
-  
-  const formData = new FormData();
-
-  for (let i = 0; i < imageUris.length; i++) {
-    const uri = imageUris[i];
-    console.log(`Image ${i + 1} URI: ${uri}`);
-    
-    formData.append('images', {
-      uri: uri,
-      type: 'image/jpeg',
-      name: `test_${i + 1}.jpg`,
-    } as any);
-  }
-
-  const response = await api.post('/api/v1/debug/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-  
-  console.log('Debug response:', JSON.stringify(response.data, null, 2));
-  return response.data;
 }
 
 /**
@@ -519,6 +377,25 @@ export async function trackEvents(events: Array<{
   } catch {
     // Fire-and-forget: swallow errors
   }
+}
+
+export function parseApiError(error: any): { message: string; code: string | null } {
+  const data = error?.response?.data;
+  if (data?.error) {
+    return { message: data.error, code: data.code || null };
+  }
+  if (data?.detail) {
+    return { message: typeof data.detail === 'string' ? data.detail : 'Invalid request', code: null };
+  }
+  if (error?.message) {
+    return { message: error.message, code: null };
+  }
+  return { message: 'Something went wrong', code: null };
+}
+
+export async function shareComparison(comparisonId: string): Promise<{ share_token: string; share_url: string }> {
+  const response = await api.post(`/api/v1/share/${comparisonId}`);
+  return response.data;
 }
 
 export default api;

@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { requestPasswordReset } from '../services/authService';
+import { parseApiError } from '../services/api';
 import { AuthStackParamList } from '../types';
 
 type ForgotPasswordScreenProps = {
@@ -41,7 +42,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
       await requestPasswordReset(email.trim().toLowerCase());
       setSent(true);
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      setError(parseApiError(err).message);
     } finally {
       setLoading(false);
     }

@@ -47,6 +47,8 @@ import api, { API_BASE_URL } from './api';
 export interface User {
   id: string;
   email: string;
+  display_name?: string;
+  auth_provider?: string;
   created_at?: string;
   preferences_completed?: boolean;
 }

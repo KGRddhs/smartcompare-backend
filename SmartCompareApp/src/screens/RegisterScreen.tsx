@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { register, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
+import { parseApiError } from '../services/api';
 import { AuthStackParamList } from '../types';
 
 type RegisterScreenProps = {
@@ -53,7 +54,7 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
         setError(result.error || 'Google sign-in failed');
       }
     } catch (err: any) {
-      setError(err.message || 'Google sign-in failed');
+      setError(parseApiError(err).message);
     } finally {
       setSocialLoading('');
     }
@@ -70,7 +71,7 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
         setError(result.error || 'Apple sign-in failed');
       }
     } catch (err: any) {
-      setError(err.message || 'Apple sign-in failed');
+      setError(parseApiError(err).message);
     } finally {
       setSocialLoading('');
     }
@@ -129,7 +130,7 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
         setError(result.error || 'Registration failed');
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      setError(parseApiError(err).message);
     } finally {
       setLoading(false);
     }

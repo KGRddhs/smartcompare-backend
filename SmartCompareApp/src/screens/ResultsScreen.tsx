@@ -17,7 +17,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, Product, Comparison, RatingSource, ComparisonResult, ScoringResult, ProductScores, ScoreBreakdown, PersonalizedInsight } from '../types';
 import FeedbackCard from '../components/FeedbackCard';
-import { trackEvents } from '../services/api';
+import { trackEvents, shareComparison } from '../services/api';
 
 type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
@@ -74,8 +74,20 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   const handleShare = async () => {
     try {
-      const message = `Comparing ${products[0]?.name} vs ${products[1]?.name}\n\nWinner: ${products[winner_index]?.name}\n\n${recommendation}`;
-      await Share.share({ message });
+      let shareMessage = `Comparing ${products[0]?.name} vs ${products[1]?.name}\n\nWinner: ${products[winner_index]?.name}\n\n${recommendation}`;
+
+      const compId = (result as any).comparison_id || (metadata as any)?.comparison_id;
+      if (compId) {
+        try {
+          const { share_url } = await shareComparison(compId);
+          shareMessage += `\n\nView full comparison: ${share_url}`;
+        } catch {
+          // Fall back to text-only sharing
+        }
+      }
+
+      await Share.share({ message: shareMessage });
+      trackEvent('share', { method: compId ? 'link' : 'text_only' });
     } catch (error) {
       console.error('Share error:', error);
     }
@@ -533,6 +545,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <Text style={styles.shareText}>Share</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Category switched banner */}
+      {(result as any).category_switched && (
+        <View style={styles.categorySwitchedBanner}>
+          <Text style={styles.categorySwitchedText}>
+            Category adjusted from {(result as any).selected_category} to {(result as any).category_used}
+          </Text>
+        </View>
+      )}
 
       {/* Tabs */}
       <View style={styles.tabBar}>
@@ -1156,6 +1177,20 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 10,
     textAlign: 'center',
+  },
+  categorySwitchedBanner: {
+    backgroundColor: '#E3F2FD',
+    padding: 10,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categorySwitchedText: {
+    color: '#1565C0',
+    fontSize: 13,
+    flex: 1,
   },
 });
 

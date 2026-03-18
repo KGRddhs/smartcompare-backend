@@ -151,24 +151,6 @@ export interface ScoringResult {
   scoring_method: 'personalized' | 'default';
 }
 
-// --- Rate limiting & subscription ---
-
-export interface RateLimitStatus {
-  allowed: boolean;
-  current_usage: number;
-  daily_limit: number | null;
-  remaining: number | null;
-}
-
-export interface SubscriptionStatus {
-  user_id: string;
-  email: string;
-  subscription_tier: 'free' | 'premium';
-  daily_usage: number;
-  daily_limit: number | null;
-  remaining_comparisons: number | null;
-}
-
 // --- Camera ---
 
 export interface CapturedImage {
@@ -226,13 +208,6 @@ export interface UserPreferences {
 }
 
 // --- Auth types ---
-
-export interface User {
-  id: string;
-  email: string;
-  subscription_tier?: 'free' | 'premium';
-  preferences_completed?: boolean;
-}
 
 export interface AuthSession {
   access_token: string;
