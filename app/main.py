@@ -3,7 +3,7 @@ SmartCompare Backend - Main Application
 Professional product comparison API with multiple input methods
 """
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -28,7 +28,6 @@ from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
 from app.middleware.error_handler import ErrorHandlerMiddleware
 from app.middleware.rate_limiter import limiter
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 # Initialize Sentry (no-op if SENTRY_DSN not set)
@@ -80,9 +79,18 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Admin-Key", "X-Request-ID"],
 )
 
-# Rate limiter exception handler
+# Exception handlers (unified error format)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+from app.middleware.error_handler import (
+    http_exception_handler,
+    validation_exception_handler,
+    rate_limit_handler,
+)
+from fastapi.exceptions import RequestValidationError
+
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 # Error handler (catches unhandled exceptions)
 app.add_middleware(ErrorHandlerMiddleware)
