@@ -47,8 +47,8 @@ class TestSchemaExistence:
         assert "active_ingredient" in CATEGORY_SPEC_SCHEMAS["supplements"]
 
     def test_total_category_count(self):
-        """Should have 8 total categories (4 existing + 4 new)."""
-        assert len(CATEGORY_SPEC_SCHEMAS) == 8
+        """Should have 9 total categories (4 existing + 4 beauty + fashion)."""
+        assert len(CATEGORY_SPEC_SCHEMAS) == 9
 
     def test_all_schemas_are_lists(self):
         """All schemas should be lists of field names."""
@@ -203,12 +203,13 @@ class TestSpecPromptBuilding:
         assert '"ram": null' not in prompt
         assert '"rear_camera": null' not in prompt
 
-    def test_fragrances_prompt_does_not_contain_supplement_fields(self):
-        """Fragrances prompt should NOT contain supplement-specific fields."""
+    def test_fragrances_prompt_does_not_contain_supplement_schema_fields(self):
+        """Fragrances prompt schema should NOT contain supplement-specific fields."""
         from app.services.extraction_service import _build_specs_prompt
         prompt = _build_specs_prompt("Chanel", "No. 5", "", "fragrances", "test context")
-        assert "dosage" not in prompt
-        assert "serving_size" not in prompt
+        # Check JSON schema section — "dosage": null should not appear as a schema field
+        assert '"dosage": null' not in prompt
+        assert '"serving_size": null' not in prompt
 
     def test_prompt_includes_brand_and_name(self):
         """Prompt should reference the product brand and name."""
@@ -399,6 +400,9 @@ async def test_makeup_extraction_live():
         search_context="MAC Ruby Woo lipstick retro matte finish iconic red shade full coverage long-wearing"
     )
 
+    # extract_specs returns (result, usage) tuple since Session 22
+    if isinstance(specs, tuple):
+        specs = specs[0]
     assert isinstance(specs, dict), f"Expected dict, got {type(specs)}"
     makeup_fields = ["finish", "shade_range", "coverage", "skin_type", "waterproof",
                      "long_lasting", "cruelty_free", "vegan", "volume"]
@@ -420,6 +424,8 @@ async def test_skincare_extraction_live():
         search_context="CeraVe moisturizing cream for dry skin hyaluronic acid ceramides fragrance free 16 oz"
     )
 
+    if isinstance(specs, tuple):
+        specs = specs[0]
     assert isinstance(specs, dict)
     skincare_fields = ["skin_type", "skin_concern", "active_ingredient", "fragrance_free", "volume"]
     found = [f for f in skincare_fields if f in specs]
@@ -440,6 +446,8 @@ async def test_haircare_extraction_live():
         search_context="Olaplex No. 3 hair perfector treatment damaged hair bond repair sulfate free paraben free 100ml"
     )
 
+    if isinstance(specs, tuple):
+        specs = specs[0]
     assert isinstance(specs, dict)
     haircare_fields = ["hair_type", "hair_concern", "sulfate_free", "paraben_free", "volume"]
     found = [f for f in haircare_fields if f in specs]
@@ -460,6 +468,8 @@ async def test_fragrance_extraction_live():
         search_context="Chanel No. 5 eau de parfum classic floral aldehyde perfume rose jasmine sandalwood 100ml"
     )
 
+    if isinstance(specs, tuple):
+        specs = specs[0]
     assert isinstance(specs, dict)
     fragrance_fields = ["scent_family", "notes_top", "notes_heart", "notes_base",
                         "longevity", "concentration"]
