@@ -394,21 +394,41 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   };
 
   // Specs comparison tab
-  const SpecsTab = () => (
+  const SpecsTab = () => {
+    const HIDDEN_FIELDS = ['brand', 'model', 'variant', 'category'];
+    const NA_VALUES = ['n/a', 'na', 'null', 'none', 'unknown', ''];
+
+    const filterSpecs = (specs: Record<string, any>) => {
+      return Object.entries(specs).filter(([key, value]) => {
+        if (HIDDEN_FIELDS.includes(key)) return false;
+        if (key.endsWith('_source')) return false;
+        if (value === null || value === undefined) return false;
+        if (typeof value === 'string' && NA_VALUES.includes(value.toLowerCase().trim())) return false;
+        return true;
+      });
+    };
+
+    return (
     <View style={styles.tabContent}>
-      {products.map((product, index) => (
+      {products.map((product, index) => {
+        const filteredSpecs = product.specs ? filterSpecs(product.specs) : [];
+        return (
         <View key={index} style={styles.specsCard}>
           <Text style={styles.specsCardTitle}>{product.name}</Text>
-          {product.specs && Object.entries(product.specs).map(([key, value]) => (
-            value && (
+          {filteredSpecs.map(([key, value]) => (
               <View key={key} style={styles.specRow}>
                 <Text style={styles.specKey}>{key.replace(/_/g, ' ')}</Text>
                 <Text style={styles.specValue}>{String(value)}</Text>
               </View>
-            )
           ))}
+          {filteredSpecs.length === 0 && (
+            <Text style={{ color: '#999', fontStyle: 'italic', padding: 12 }}>
+              No specifications available
+            </Text>
+          )}
         </View>
-      ))}
+        );
+      })}
       
       {/* Advantages comparison */}
       {comparison.specs_comparison && (
@@ -435,7 +455,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         </View>
       )}
     </View>
-  );
+    );
+  };
 
   // Reviews tab (pros/cons)
   const ReviewsTab = () => {

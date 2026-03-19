@@ -26,6 +26,7 @@ const CATEGORIES: Category[] = [
   { value: 'skincare', label: 'Skincare', icon: '\u2728' },
   { value: 'haircare', label: 'Haircare', icon: '\u{1F487}' },
   { value: 'fragrances', label: 'Fragrances', icon: '\u{1F338}' },
+  { value: 'fashion', label: 'Fashion', icon: '\u{1F45C}' },
 ];
 
 export default function CategorySelector({ value, onChange }: CategorySelectorProps) {
