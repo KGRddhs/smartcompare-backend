@@ -68,6 +68,25 @@ RETAILER_TIERS = {
     "iherb": 1.0,
     "vitacost": 1.0,
     "gnc": 1.0,
+    # Tier 1: Luxury fashion official + authorized retailers
+    "hermes": 1.0,
+    "hermès": 1.0,
+    "louis vuitton": 1.0,
+    "louisvuitton": 1.0,
+    "chanel": 1.0,
+    "gucci": 1.0,
+    "prada": 1.0,
+    "dior": 1.0,
+    "burberry": 1.0,
+    "fendi": 1.0,
+    "nordstrom": 1.0,
+    "farfetch": 1.0,
+    "ssense": 1.0,
+    "net-a-porter": 1.0,
+    "harrods": 1.0,
+    "selfridges": 1.0,
+    "sephora": 1.0,
+    "ulta": 1.0,
     # Tier 2: Reputable specialty retailers (score 0.7)
     "newegg": 0.7,
     "b&h": 0.7,
@@ -866,7 +885,7 @@ class StructuredComparisonService:
         if price and price.get("amount"):
             # Sanity check Tier 1 only for high-value products from untrusted retailers
             # Trusted retailers (score >= 1.0: Amazon, Best Buy, etc.) are accepted directly
-            if self._is_high_value_query(full_name) and price.get("retailer_score", 0) < 1.0:
+            if (self._is_high_value_query(full_name) or self._is_luxury_brand(full_name)) and price.get("retailer_score", 0) < 1.0:
                 tier3_estimate, usage = await extract_price_from_training_data(brand, name, variant, region)
                 self._track_gpt_cost(usage)
                 self._sanitize_gpt_price(tier3_estimate)
@@ -1612,7 +1631,13 @@ class StructuredComparisonService:
 
         p_words = self._normalize_words(product_name)
         is_high_value = self._is_high_value_query(product_name)
+        is_luxury = self._is_luxury_brand(product_name)
         min_price = 100.0 if is_high_value else 0
+
+        # For luxury brands: filter out untrusted sellers entirely
+        if is_luxury:
+            min_price = max(min_price, 50.0)  # Luxury items rarely under BHD 50
+
         candidates = []
 
         for item in shopping_items:
@@ -1670,6 +1695,14 @@ class StructuredComparisonService:
             retailer = item.get("source", "")
             retailer_score = self._get_retailer_score(retailer)
 
+            # Boost official brand domains to max trust
+            link = item.get("link", "")
+            if link:
+                domain = self._extract_domain(link)
+                if domain in self.OFFICIAL_BRAND_DOMAINS:
+                    retailer_score = 1.0
+                    logger.debug(f"[PRICE] Official brand domain boost: {domain}")
+
             candidates.append({
                 "amount": round(amount, 2),
                 "currency": currency,
@@ -1697,8 +1730,12 @@ class StructuredComparisonService:
         if not candidates:
             return None
 
-        # Sort: best title match → best retailer quality → lowest price
-        candidates.sort(key=lambda c: (-c["match_score"], -c["retailer_score"], c["amount"]))
+        # Sort: best retailer quality → best title match → lowest price
+        # For luxury brands, retailer trust is most important (official > reseller)
+        if is_luxury:
+            candidates.sort(key=lambda c: (-c["retailer_score"], -c["match_score"], c["amount"]))
+        else:
+            candidates.sort(key=lambda c: (-c["match_score"], -c["retailer_score"], c["amount"]))
         best = candidates[0]
 
         logger.info(
