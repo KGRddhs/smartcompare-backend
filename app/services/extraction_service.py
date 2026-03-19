@@ -213,7 +213,7 @@ CRITICAL RULES:
 - The _source field should reference the [snippet_N] labels shown in the search results above"""
 
 
-PRICE_EXTRACTION_PROMPT = """You are a price extraction expert for GCC markets.
+PRICE_EXTRACTION_PROMPT = """You are a price extraction expert for GCC markets. Your goal is to find the MOST AUTHORITATIVE retail price, not the cheapest one.
 
 PRODUCT: {brand} {name} {variant}
 REGION: {region} ({currency})
@@ -232,16 +232,30 @@ Return ONLY valid JSON:
     "confidence": 0.0
 }}
 
+SOURCE PRIORITY (use the HIGHEST available):
+1. Official brand website (hermes.com, louisvuitton.com, apple.com, chanel.com) — ALWAYS prefer this
+2. Authorized retailers (Nordstrom, Sephora, Harrods, Farfetch, SSENSE, Net-a-Porter, Amazon)
+3. Major GCC retailers (Noon, Jarir, Extra, Sharaf DG, LuLu)
+4. Resellers (eBay, StockX, TheRealReal) — ONLY if nothing else available, flag confidence 0.3
+5. NEVER use: DHgate, AliExpress, Temu, Wish — these sell counterfeits
+
 RULES:
-- Compare ALL prices shown in the results and extract the LOWEST reasonable new retail price
-- Ignore clearly inflated/scalper prices — if one price is 2-3x higher than others, skip it
+- Extract the MOST AUTHORITATIVE price, NOT the lowest. A $630 price from hermes.com is correct; a $94 price from eBay is likely counterfeit/resale.
 - Do NOT convert currencies — return the exact price as shown in the source
 - original_currency: the ACTUAL currency of the price you found (detect from symbols: $ = USD, £ = GBP, € = EUR, BHD/BD = BHD, SAR/SR = SAR, AED = AED, KWD = KWD)
 - currency: always set to "{currency}" (the target currency — conversion happens later)
-- Confidence: 1.0 = exact match from retailer, 0.5 = estimated, 0.0 = not found
-- Return null for amount if no reliable price found
-- retailer: the actual store name, or null if unknown. Do NOT return placeholder text
-- Prefer official retailers over resellers"""
+- Confidence: 1.0 = official brand/authorized retailer, 0.7 = major marketplace, 0.3 = reseller, 0.0 = not found
+- Return null for amount if no reliable price found from Priority 1-3 sources
+- retailer: the actual store name, or null if unknown
+
+DO: Extract $630 from hermes.com (official brand site)
+DON'T: Extract $94 from eBay reseller listing — that's counterfeit/resale pricing
+
+DO: Extract $999 from apple.com or $999 from Amazon (both authorized)
+DON'T: Extract $750 from unknown electronics reseller
+
+DO: Extract BHD 8.500 from iherb.com (authorized supplement retailer)
+DON'T: Extract BHD 2.000 from unverified supplement seller"""
 
 
 PRICE_FALLBACK_PROMPT = """You are a price estimation expert. The product below could NOT be found in any current retailer listing.
