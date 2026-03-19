@@ -21,6 +21,18 @@
 | Admin API key auth (not JWT) | Simple, stateless, no user session needed for admin |
 | GitHub Actions CI | Free for public repos, runs unit tests + syntax check on push/PR |
 
+## AI Quality Decisions (Session 25)
+
+| Decision | Reasoning |
+|----------|-----------|
+| "MOST AUTHORITATIVE" price over "LOWEST reasonable" | Lowest price often came from counterfeit sources (DHgate, Temu). Authoritative prices from official/authorized retailers are more trustworthy. |
+| Luxury brand two-layer defense (category-independent) | `LUXURY_BRAND_KEYWORDS` (30+) + `OFFICIAL_BRAND_DOMAINS` (25+) detect luxury brands across ALL categories, not just fashion. Counterfeit filtering (DHgate/AliExpress/Temu/Wish) + official domain boost in price sorting. |
+| Smart spec field handling over forced N/A | Forcing GPT to fill irrelevant fields (e.g., "power" for a t-shirt) produced meaningless "N/A" values. Omitting irrelevant fields is cleaner. Frontend filters remaining N/A/null/empty. Scoring penalizes when coverage_ratio < 0.5. |
+| Citation cleanup in backend not frontend | `_clean_review_citations()` replaces `[snippet_N]` with "Per domain.com:" before response. Backend owns data quality — frontend shouldn't parse raw citation markers. |
+| Product-type binding in parser prompt | Explicit product-type-to-category mapping (e.g., shoes→fashion) reduces category misdetection vs free-form AI guessing. |
+| Fashion as 9th category with dedicated schema | Fashion products (shoes, bags, clothing) have unique spec fields (material, sole_type, closure, sizing) that don't fit electronics or "other" schemas. |
+| "Other" schema cleanup | Removed electronics-specific fields (power, compatibility, count, included) from "other" schema — they produced forced N/A for non-electronics products. |
+
 ## Code Decisions
 
 | Decision | Reasoning |

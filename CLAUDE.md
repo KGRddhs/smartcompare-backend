@@ -110,14 +110,16 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 1. Serper Shopping API direct extraction (structured prices)
 2. GPT-4o-mini extraction from organic search results (with Tier 3 sanity check)
 3. GPT training data estimate (marked `estimated: true`)
+- **Price prompt philosophy (Session 25):** "MOST AUTHORITATIVE" not "LOWEST reasonable". Source priority hierarchy: official brand sites > authorized retailers > major marketplaces. Counterfeit sources filtered (DHgate, AliExpress, Temu, Wish).
+- Official domain boost: prices from `OFFICIAL_BRAND_DOMAINS` (25+ domains) sorted first in Shopping results.
 - Each price tagged with `source_method`: `local_bhd` (direct BHD price), `converted_usd` (USD→BHD conversion), or `estimated` (GPT training data). `price_method_mismatch` flag set when products have different source methods.
 - Supplements: iHerb direct scrape → Bahrain pharmacy JSON-LD → Serper organic + GPT → Tier 3
 - Non-iHerb brands (HealthAid, Vitabiotics): `_fetch_pharmacy_price()` parses JSON-LD from bn.boots.com product pages
 
 **Rating pipeline (4 tiers):**
 - Tier 0: Expert review JSON-LD scrape (dead code — never called)
-- Tier 1: Serper Shopping, trusted retailers (Amazon, Best Buy, iHerb, Sephora, Ulta)
-- Tier 2: Known retailers (Fragrantica, Sally Beauty, LookFantastic, BeautyBay, Nykaa, Bath & Body Works, Boots, etc.)
+- Tier 1: Serper Shopping, trusted retailers (Amazon, Best Buy, iHerb, Sephora, Ulta, + luxury/fashion retailers)
+- Tier 2: Known retailers (Fragrantica, Sally Beauty, LookFantastic, BeautyBay, Nykaa, Bath & Body Works, Boots, + 18 luxury/fashion retailers)
 - Tier 3: Marketplace (eBay) if review_count > 1000
 - Consensus: 3+ sellers with identical rating → Google product aggregate (verified)
 - Fallback: GPT `average_rating` from reviews (unverified, `extract_method: "gpt_review_aggregate"`)
@@ -147,7 +149,7 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 - Supabase `text_search()` API: use `options={"type": "plain", "config": "english"}` (NOT keyword args); `.limit()` must come BEFORE `.text_search()` in chain
 
 **Key services:**
-- `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/makeup/skincare/haircare/fragrances/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`
+- `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/makeup/skincare/haircare/fragrances/fashion/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`
 - `scoring_service.py` — Deterministic scoring engine. 6 dimensions (price, spec, review, value, reliability, popularity), personalized weights from user preferences. Pure math, $0 cost.
 - `feedback_service.py` — `save_feedback()`, `track_event()`, `track_events_batch()`. Fire-and-forget pattern (asyncio.create_task).
 - `drug_database_service.py` — Bahrain drug database lookup + GPT context formatting (supplements only)
@@ -170,7 +172,7 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 **Location:** `SmartCompareApp/`
 
 **Screens:**
-- `HomeScreen.tsx` — CategorySelector (7 categories), text/camera/URL input tabs, uses SSE streaming (`streamComparison()`). Gear icon navigates to AccountScreen.
+- `HomeScreen.tsx` — CategorySelector (9 categories), text/camera/URL input tabs, uses SSE streaming (`streamComparison()`). Gear icon navigates to AccountScreen.
 - `ResultsScreen.tsx` — Tabs: Overview, Specs, Reviews. Scoring display (ScoreBadge, breakdown bars, winner margin). FeedbackCard below results. Event tracking (tab_switch, source_click, result_view_duration).
 - `CameraScreen.tsx` — Camera capture, calls `POST /api/v1/image/identify`
 - `HistoryScreen.tsx` — Comparison history from Supabase. Shows "Sign In Required" prompt on 401 (not crash).
@@ -180,7 +182,7 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 - `RegisterScreen.tsx` — Email register + Google/Apple sign-in buttons + inline field validation.
 
 **Components:**
-- `CategorySelector.tsx` — Horizontal scrolling chip selector for 7 product categories (Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances)
+- `CategorySelector.tsx` — Horizontal scrolling chip selector for 9 product categories (Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances, Fashion, Other)
 - `FeedbackCard.tsx` — Thumbs up/down + mattered-most chips + optional text. Fire-and-forget submit, collapses after submission.
 
 **Services:**
@@ -247,13 +249,27 @@ Stored as JSONB in `public.users.preferences` column. `preferences_completed` bo
 - Zero extra API cost — preferences ride on existing GPT prompt tokens
 
 ### Category selection (soft validation)
-The frontend provides 7 category options: Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances. The `selected_category` parameter is passed to `/api/v1/text/compare` as a hint, but the backend AI always makes the final category decision via `PRODUCT_PARSER_PROMPT`. If a mismatch is detected (`selected_category != detected_category`), the response includes `category_switched: true` and the frontend shows an info banner. The 4 new beauty categories have dedicated spec schemas in `CATEGORY_SPEC_SCHEMAS` (extraction_service.py). Zero extra API cost -- category detection happens within the existing product parser call.
+The frontend provides 9 category options: Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances, Fashion, Other. The `selected_category` parameter is passed to `/api/v1/text/compare` as a hint, but the backend AI always makes the final category decision via `PRODUCT_PARSER_PROMPT`. Product-type binding (Session 25): the parser prompt maps product types to categories (e.g., "shoes" -> fashion, "perfume" -> fragrances). If a mismatch is detected (`selected_category != detected_category`), the response includes `category_switched: true` and the frontend shows an info banner. Each category has a dedicated spec schema in `CATEGORY_SPEC_SCHEMAS` (extraction_service.py) — fashion has 10 fields, "other" schema cleaned of electronics fields. Zero extra API cost -- category detection happens within the existing product parser call.
 
 ### Sharing (Session 24)
 `POST /api/v1/share/{comparison_id}` creates an 8-char URL-safe token (`secrets.token_urlsafe(6)`) stored in `comparisons.share_token`. `GET /api/v1/share/{token}` returns the comparison data publicly (strips personalization fields). Frontend `shareComparison()` in api.ts gets the share link, falls back to text-only OS sharing if no comparison_id or API fails.
 
 ### History (Session 24)
 `GET /api/v1/comparisons/history` (auth required, paginated, searchable), `GET /api/v1/comparisons/{id}` (full response), `DELETE /api/v1/comparisons/{id}` (ownership check). Frontend HistoryScreen passes stored blob directly to ResultsScreen. On 401, calls `clearSession()` + `onLogout()` to redirect to auth flow.
+
+### Luxury brand detection (Session 25)
+Category-independent two-layer defense against counterfeit pricing:
+- `LUXURY_BRAND_KEYWORDS` (30+ brands): Chanel, Gucci, Louis Vuitton, Hermes, Prada, etc.
+- `OFFICIAL_BRAND_DOMAINS` (25+ domains): chanel.com, gucci.com, louisvuitton.com, etc.
+- `_is_luxury_brand(product_name)` checks product name against keyword list
+- Price extraction: official domain boost (sorted first), counterfeit source filtering (DHgate/AliExpress/Temu/Wish)
+- Works across ALL categories (fragrances, fashion, makeup, etc.), not just fashion
+
+### Citation cleanup (Session 25)
+`_clean_review_citations()` in `structured_comparison_service.py` replaces raw `[snippet_N]` references in review/verdict text with human-readable "Per domain.com:" attributions. Runs in backend before response — frontend receives clean text.
+
+### Smart spec field handling (Session 25)
+Spec extraction prompt instructs GPT to omit irrelevant fields instead of forcing "N/A". Frontend `SpecsTab` filters out N/A/null/empty values and `_source` metadata fields. Scoring applies N/A penalty when `coverage_ratio < 0.5`.
 
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
@@ -296,7 +312,7 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (758 unit, 35 files; plus 14 live_unit + 6 live_db + 10 integration)
+### Test files (809 unit, 39 files; plus 14 live_unit + 6 live_db + 10 integration)
 - `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
@@ -318,7 +334,7 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_unified_search.py` — 4 tests: search sharing (specs/reviews), cost budget tracking
 - `tests/test_category_selection.py` — 46 tests: schema validation, prompt building, API params, category switching, parser prompt, live GPT extraction
 - `tests/test_personalization.py` — 52 tests: preference validation, GET/PUT endpoints, service functions, auth response flag, prompt injection, comparison metadata, valid options
-- `tests/test_scoring_service.py` — 62 tests: 6 score dimensions, personalized weights, category scoring, edge cases, determinism
+- `tests/test_scoring_service.py` — 64 tests: 6 score dimensions, personalized weights, category scoring, edge cases, determinism, N/A penalty
 - `tests/test_feedback.py` — 29 tests: feedback submission, event tracking, validation, batch, fire-and-forget
 - `tests/test_streaming.py` — 16 tests: SSE format, event sequence, generator, endpoint, error handling
 - `tests/test_singleton_state.py` — 3 tests: singleton pattern, cache leak prevention, state reset
@@ -327,6 +343,10 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_history_routes.py` — 15 tests: history list, single, delete, pagination, ownership, auth
 - `tests/test_share_routes.py` — 12 tests: create share link, public access, ownership, collision retry
 - `tests/test_error_middleware.py` — 10 tests: unified error format, HTTP/validation/rate-limit exceptions
+- `tests/test_fashion_category.py` — 12 tests: fashion schema validation, category detection, spec fields
+- `tests/test_luxury_brands.py` — 8 tests: luxury brand detection, official domain matching, counterfeit filtering
+- `tests/test_price_priority.py` — 7 tests: authoritative price sorting, official domain boost, source priority hierarchy
+- `tests/test_citation_cleanup.py` — 13 tests: snippet reference replacement, domain attribution, edge cases
 - `tests/test_integration.py` — 10 tests: live Railway (~$0.10, ~5 min)
 
 ## Known Remaining Bugs (deferred)

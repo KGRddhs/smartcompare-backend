@@ -139,7 +139,7 @@ LOG_LEVEL=INFO                            # Structured logging level (DEBUG/INFO
 ## Automated Tests (pytest)
 
 ```bash
-# All unit tests (fast, free, no API calls) — 411 tests, ~3s
+# All unit tests (fast, free, no API calls) — 809 tests, ~5s
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb scraping, Serper, GPT vision) — adds ~$0.03
@@ -180,8 +180,17 @@ python -m pytest tests/ -v --timeout=180
 | `tests/test_iherb_scraping.py` | 7 | Unit + Live | Word normalization, live iHerb scraping, brand filtering |
 | `tests/test_unified_search.py` | 4 | Unit + Live | Search sharing (specs/reviews reuse), cost budget tracking |
 | `tests/test_singleton_state.py` | 3 | Unit | Singleton pattern, cache leak prevention, state reset between requests |
-| `tests/test_integration.py` | 6 | Integration | Live Railway: phones, laptops, supplements (iHerb + pharmacy), grocery, shoes |
-| **Total** | **411** | | **395 free unit + 10 live_unit + 6 live_db + 6 integration** |
+| `tests/test_iherb_rating.py` | 5 | Unit | iHerb rating extraction from HTML attributes, cache injection |
+| `tests/test_price_source.py` | 10 | Unit | source_method tagging, price_method_mismatch flag |
+| `tests/test_history_routes.py` | 15 | Unit | History list, single, delete, pagination, ownership, auth |
+| `tests/test_share_routes.py` | 12 | Unit | Create share link, public access, ownership, collision retry |
+| `tests/test_error_middleware.py` | 10 | Unit | Unified error format, HTTP/validation/rate-limit exceptions |
+| `tests/test_fashion_category.py` | 12 | Unit | Fashion schema validation, category detection, spec fields |
+| `tests/test_luxury_brands.py` | 8 | Unit | Luxury brand detection, official domain matching, counterfeit filtering |
+| `tests/test_price_priority.py` | 7 | Unit | Authoritative price sorting, official domain boost, source priority |
+| `tests/test_citation_cleanup.py` | 13 | Unit | Snippet reference replacement, domain attribution, edge cases |
+| `tests/test_integration.py` | 10 | Integration | Live Railway: phones, laptops, supplements (iHerb + pharmacy), grocery, shoes, fashion |
+| **Total** | **809** | | **793 free unit + 14 live_unit + 6 live_db + 10 integration** |
 
 ### Pytest Markers
 | Marker | Purpose | Run command |
@@ -253,6 +262,15 @@ npx expo start
 - [x] Spec verification: strict numeric matching for quantifiable fields (Session 17)
 - [x] URL fixes: null for unknown retailers instead of Google fallback (Session 17)
 - [x] Test coverage: 366 → 411 tests (Session 17)
+- [x] Fashion category (9th) with 10-field spec schema (Session 25)
+- [x] Luxury brand detection: LUXURY_BRAND_KEYWORDS + OFFICIAL_BRAND_DOMAINS (Session 25)
+- [x] Price prompt: "MOST AUTHORITATIVE" with source priority hierarchy (Session 25)
+- [x] Counterfeit price filtering (DHgate/AliExpress/Temu/Wish) (Session 25)
+- [x] Smart spec field handling: omit irrelevant fields instead of N/A (Session 25)
+- [x] Citation cleanup: `_clean_review_citations()` replaces [snippet_N] with domain attribution (Session 25)
+- [x] "Other" schema fixed: removed electronics fields (Session 25)
+- [x] N/A penalty in scoring when coverage_ratio < 0.5 (Session 25)
+- [x] Test coverage: 757 → 809 tests (Session 25)
 
 ## Short Term — Config Setup
 - [x] Google Cloud Console: create OAuth client IDs (web + iOS + Android) — Done Session 16

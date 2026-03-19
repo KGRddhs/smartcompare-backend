@@ -106,9 +106,11 @@ SmartCompare must provide COMPLETE, ACTIONABLE product comparisons with:
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      PRICE FALLBACK CHAIN                            │
+│  Priority: "MOST AUTHORITATIVE" (official > authorized > marketplace)│
 │  1. GCC retailers (amazon.ae, noon) → found? done                    │
 │  2. Global search (US, UK, EU) → convert currency                    │
 │  3. MSRP search (launch price) → mark as estimated                   │
+│  Counterfeit filter: DHgate/AliExpress/Temu/Wish excluded            │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -117,7 +119,7 @@ SmartCompare must provide COMPLETE, ACTIONABLE product comparisons with:
 │  Tier 0: Expert review JSON-LD (PCMag/CNET/TechRadar)               │
 │  Tier 1: Serper Shopping — trusted retailers (Amazon/BestBuy)        │
 │  Tier 2: Serper Shopping — known retailers (.com/.ae)                │
-│  Tier 3: Marketplace (eBay/AliExpress) if review_count > 1000       │
+│  Tier 3: Marketplace (eBay) if review_count > 1000                  │
 │  ** WORKING — verified Feb 14 2026 **                               │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
@@ -210,7 +212,7 @@ smartcompare/
 │   ├── app.json                         # EAS plugins: expo-camera, expo-image-picker, expo-image-manipulator, google-signin, apple-auth
 │   └── package.json
 │
-├── tests/                               # 18 test files, 366 tests
+├── tests/                               # 39 test files, 809 tests
 │   ├── conftest.py                      # Auto-loads .env for all tests
 │   ├── test_auth_interceptor.py         # 93 tests (was 45 — added social login, profile, MIME)
 │   ├── test_fact_checking.py            # 48 tests
