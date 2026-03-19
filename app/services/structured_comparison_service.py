@@ -1084,6 +1084,25 @@ class StructuredComparisonService:
         "rtx", "nvidia", "geforce", "radeon", "amd", "gpu",
     }
 
+    # Luxury/designer brand keywords — triggers price guardrails regardless of category
+    LUXURY_BRAND_KEYWORDS = {
+        "louis vuitton", "lv", "hermes", "hermès", "chanel", "gucci", "prada",
+        "dior", "burberry", "fendi", "balenciaga", "versace", "givenchy",
+        "ysl", "saint laurent", "cartier", "rolex", "omega", "patek philippe",
+        "tag heuer", "tiffany", "tom ford", "bottega veneta", "valentino",
+        "celine", "loewe", "moncler", "balmain", "alexander mcqueen",
+    }
+
+    # Official brand website domains — always trust score 1.0 for price
+    OFFICIAL_BRAND_DOMAINS = {
+        "hermes.com", "louisvuitton.com", "chanel.com", "gucci.com", "prada.com",
+        "dior.com", "burberry.com", "fendi.com", "balenciaga.com", "cartier.com",
+        "rolex.com", "omegawatches.com", "tiffany.com", "tomford.com",
+        "apple.com", "samsung.com", "sony.com", "dell.com", "hp.com",
+        "nordstrom.com", "farfetch.com", "ssense.com", "net-a-porter.com",
+        "sephora.com", "harrods.com", "selfridges.com",
+    }
+
     @staticmethod
     def _is_accessory(title: str) -> bool:
         """Check if a shopping result title is an accessory, not the actual product."""
@@ -1134,6 +1153,12 @@ class StructuredComparisonService:
         """Check if the query is for a high-value product (phone, laptop, console)."""
         name_lower = product_name.lower()
         return any(kw in name_lower for kw in StructuredComparisonService.HIGH_VALUE_KEYWORDS)
+
+    @staticmethod
+    def _is_luxury_brand(product_name: str) -> bool:
+        """Check if the product is from a luxury/designer brand (triggers price guardrails)."""
+        name_lower = product_name.lower()
+        return any(brand in name_lower for brand in StructuredComparisonService.LUXURY_BRAND_KEYWORDS)
 
     SUPPLEMENT_KEYWORDS = {
         "vitamin", "supplement", "softgel", "capsule", "mineral",
