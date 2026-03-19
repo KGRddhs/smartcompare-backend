@@ -201,7 +201,8 @@ CRITICAL RULES:
 - Each field must be a SINGLE value, NEVER a list of options (e.g. storage: "128 GB" NOT "128, 256, 512 GB")
 - If the user specified a variant like "512GB", use that config. Otherwise use the base/entry-level config
 - If the product name or variant contains a count/quantity (e.g. "360 Softgels", "120 tablets", "1000mg"), use EXACTLY that number for the "count" field. Do NOT substitute a different count
-- EVERY field MUST have a value. Use search results first, then your training knowledge. null is ONLY acceptable if the spec truly does not exist for this product (e.g. water_resistance for a budget phone that has none)
+- Only include fields that are GENUINELY RELEVANT to this specific product. Omit irrelevant fields rather than writing N/A or null. A hat does not need "power". A phone does not need "care_instructions". Use search results first, then your training knowledge.
+- For well-known products, you KNOW the specs — do NOT return null for fields that clearly apply (e.g. os, weight, water_resistance for smartphones)
 - Be precise with numbers and units
 - Include ONLY the fields listed above, plus the _source citation fields described below
 - ONLY functional specs — NO launch price, MSRP, release date, or marketing names
@@ -210,7 +211,12 @@ CRITICAL RULES:
 - For well-known products (iPhones, Galaxy, Pixel, etc.) you KNOW the specs — do NOT return null for basic fields like os, weight, or water_resistance
 - For EACH spec field, also include a "{{field}}_source" field with the snippet number (e.g. "snippet_1") where you found this value, or "training" if from your own knowledge
 - Example: "battery": "4422 mAh", "battery_source": "snippet_2"
-- The _source field should reference the [snippet_N] labels shown in the search results above"""
+- The _source field should reference the [snippet_N] labels shown in the search results above
+- Category-specific guidance:
+  * Electronics: include all tech specs (display, processor, ram, storage, battery, camera)
+  * Fashion: focus on material, style, craftsmanship, origin, design_details. Skip irrelevant fields.
+  * Supplements: include count, dosage, form, certifications. Skip tech fields.
+  * Fragrances: include scent notes, longevity, sillage, concentration. Skip tech fields."""
 
 
 PRICE_EXTRACTION_PROMPT = """You are a price extraction expert for GCC markets. Your goal is to find the MOST AUTHORITATIVE retail price, not the cheapest one.
