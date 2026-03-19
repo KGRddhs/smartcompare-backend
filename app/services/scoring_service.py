@@ -256,6 +256,13 @@ class ScoringService:
         if scored_fields == 0:
             return 0.0
 
+        # Penalty: if less than half of schema fields have data, penalize score
+        total_fields = len(schema_fields)
+        coverage_ratio = scored_fields / total_fields if total_fields > 0 else 0
+        if coverage_ratio < 0.5:
+            penalty_factor = 0.5 + coverage_ratio  # Range: 0.5 to 1.0
+            return (total_score / scored_fields) * penalty_factor
+
         return total_score / scored_fields
 
     def _score_reliability(self, fact_check: Dict[str, Any]) -> float:
