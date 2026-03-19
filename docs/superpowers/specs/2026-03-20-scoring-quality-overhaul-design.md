@@ -1,7 +1,7 @@
 # Scoring & Quality Overhaul — Session 26
 
 **Date:** 2026-03-20
-**Status:** Draft
+**Status:** Revised (v2 — reviewer fixes applied)
 **Scope:** Full overhaul of scoring engine, price pipeline, review quality, ratings, and verdict generation
 
 ## Problem Statement
@@ -45,7 +45,9 @@ CATEGORY_WEIGHTS = {
 - Electronics: specs & reliability balanced (performance + longevity)
 - Personalization still applies on top (capped at 30% shift via `MAX_WEIGHT_SHIFT_RATIO`)
 
-**Implementation:** In `compute_scores()`, look up `CATEGORY_WEIGHTS[category]` instead of `DEFAULT_WEIGHTS`. Fall back to `DEFAULT_WEIGHTS` (= "other" profile) for unknown categories.
+**Implementation:** In `compute_scores()`, look up `CATEGORY_WEIGHTS[category]` instead of `DEFAULT_WEIGHTS`. Fall back to `CATEGORY_WEIGHTS["other"]` for unknown categories. Delete `DEFAULT_WEIGHTS` — `CATEGORY_WEIGHTS["other"]` is the universal fallback.
+
+**Personalization cap fix:** `MAX_WEIGHT_SHIFT_RATIO` must be calculated relative to the active category weights, NOT the old `DEFAULT_WEIGHTS`. In `_personalize_weights()`, the base for computing the ±30% shift cap must be `CATEGORY_WEIGHTS[category][dim]`, not a global default. Example: fashion `price_score=0.10`, so max shift = ±0.03 (30% of 0.10), not ±0.075 (30% of the old default 0.25).
 
 #### 1B. Price Tier Detection
 
@@ -79,6 +81,12 @@ TIER_EXPECTATIONS = {"budget": 0.6, "mid": 0.7, "premium": 0.8, "luxury": 0.85}
 def _compute_value_score(self, spec_score, price_score, price_tier, is_cross_tier):
     if spec_score == MISSING_SCORE and price_score == MISSING_SCORE:
         return MISSING_SCORE
+
+    # Handle partial missing data
+    if spec_score == MISSING_SCORE and price_score != MISSING_SCORE:
+        return price_score  # Only price data available
+    if price_score == MISSING_SCORE and spec_score != MISSING_SCORE:
+        return spec_score  # Only spec data available
 
     if is_cross_tier:
         # Cross-tier: how well does each product deliver for its tier?
@@ -128,6 +136,10 @@ def compute_dimension_winners(self, scoring_result: dict, product_names: list[st
         s0 = scores[0]["breakdown"].get(dim, 0)
         s1 = scores[1]["breakdown"].get(dim, 0)
         margin = abs(s0 - s1)
+        # Both missing = N/A, not a tie
+        if s0 == MISSING_SCORE and s1 == MISSING_SCORE:
+            winners[dim] = {"winner": "N/A", "margin": None}
+            continue
         if margin < 2.0:  # < 2 point difference = tie
             winners[dim] = {"winner": "tie", "margin": 0}
         elif s0 > s1:
@@ -163,58 +175,60 @@ def _is_counterfeit_listing(title: str) -> bool:
 ```
 
 Applied in:
-- `_extract_price_from_shopping()` — reject Shopping items before price extraction
-- `_strict_title_match()` — add counterfeit check as first condition
+- `_extract_price_from_shopping()` — add as **first filter inside the shopping items loop** (before accessory check at ~line 1694). If `_is_counterfeit_listing(title)` returns True, `continue` to skip the item.
+- `_strict_title_match()` — add counterfeit check as first condition: if `_is_counterfeit_listing(title)` returns True, return False immediately (no match).
 
 #### 2B. Official Domain Targeted Search for Luxury
 
-When `_is_luxury_brand()` is True AND Tier 1 (Shopping) produces no credible price:
+When `_is_luxury_brand()` is True AND Tier 1 (Shopping) produces no credible price (retailer_score < 0.8):
+
+**Reuse existing `OFFICIAL_BRAND_DOMAINS`** (already has 25+ domains). No new regional mapping needed — Serper handles regional routing via the existing region parameter.
+
+**New helper** `_get_official_domain(product_name: str) -> Optional[str]`:
+- Uses same matching logic as existing `_is_luxury_brand()` (substring match against `LUXURY_BRAND_KEYWORDS`)
+- When a keyword matches, looks up the corresponding domain from `OFFICIAL_BRAND_DOMAINS`
+- Returns first matching domain or None
+
+**Integration point:** In `_get_price()` method (~line 890-920), between the Tier 1 Shopping extraction and the Tier 2 GPT organic extraction:
 
 ```python
-OFFICIAL_BRAND_DOMAINS_REGIONAL = {
-    "louis vuitton": ["me.louisvuitton.com", "louisvuitton.com"],
-    "lv": ["me.louisvuitton.com", "louisvuitton.com"],
-    "hermes": ["hermes.com"],
-    "hermès": ["hermes.com"],
-    "chanel": ["chanel.com"],
-    "gucci": ["gucci.com"],
-    "prada": ["prada.com"],
-    "dior": ["dior.com"],
-    "burberry": ["burberry.com"],
-    "fendi": ["fendi.com"],
-    "balenciaga": ["balenciaga.com"],
-    "bottega veneta": ["bottegaveneta.com"],
-    "saint laurent": ["ysl.com"],
-    "valentino": ["valentino.com"],
-    "versace": ["versace.com"],
-    "givenchy": ["givenchy.com"],
-    "celine": ["celine.com"],
-    "loewe": ["loewe.com"],
-    "moncler": ["moncler.com"],
-    "tom ford": ["tomford.com"],
-}
-
-# New step: between Tier 1 fail and Tier 2 (GPT organic)
-if self._is_luxury_brand(full_name) and not tier1_price:
-    domains = self._get_official_domains(full_name)
-    for domain in domains:
-        official_results = await search_web(f"{full_name} site:{domain}")
+# After Tier 1 fails or is rejected by sanity check (~line 920):
+if not price and self._is_luxury_brand(full_name):
+    official_domain = self._get_official_domain(full_name)
+    if official_domain:
+        # Targeted site search (1 Serper credit)
+        official_results = await search_web(f"{full_name} site:{official_domain}")
         if official_results.get("organic"):
-            price = await extract_price_with_gpt(official_results, priority="official")
+            # Reuse existing extract_price() from extraction_service.py
+            price, usage = await extract_price(
+                full_name, official_results["organic"], region_info
+            )
             if price:
-                price["source_method"] = "official_site"
-                price["retailer"] = domain
-                break
+                price["source_method"] = "converted_usd"  # Keep existing taxonomy
+                price["retailer"] = official_domain
+                price["retailer_score"] = 1.0  # Official domain = max trust
+                # Skip Tier 2 organic — we have official price
 ```
+
+**source_method stays in existing taxonomy** (`local_bhd` / `converted_usd` / `estimated`). No new `official_site` value — instead, the `retailer` field and `retailer_score=1.0` indicate official source. This avoids breaking `price_method_mismatch` logic.
+
+**Error handling:** If official site search returns results but GPT price extraction fails, fall through to Tier 2 (existing organic GPT extraction) normally.
 
 Cost: +$0.001 per luxury comparison (1 Serper call) only when Tier 1 fails. Non-luxury unchanged.
 
-#### 2C. Tighter Sanity Thresholds for Luxury
+#### 2C. Smarter Sanity Thresholds for Luxury
+
+Two changes:
+1. **Skip sanity check when retailer_score == 1.0** (official brand domains). If the price comes from hermes.com, it's the real price — don't second-guess it with a GPT estimate.
+2. **Tighter thresholds for non-official luxury sources:**
 
 ```python
-if self._is_luxury_brand(full_name):
-    high_threshold = 1.5   # was 2.0
-    low_threshold = 0.6    # was 0.5
+if price.get("retailer_score", 0) >= 1.0:
+    # Official domain — trust it, skip sanity check
+    pass
+elif self._is_luxury_brand(full_name):
+    high_threshold = 1.8   # was 2.0 — slightly tighter but not so tight it rejects authentic retailers
+    low_threshold = 0.6    # was 0.5 — counterfeits are typically 60%+ cheaper
 else:
     high_threshold = 2.0
     low_threshold = 0.5
@@ -315,27 +329,43 @@ def _clean_review_content(self, reviews: dict) -> dict:
     return reviews
 ```
 
-Called after `_clean_review_citations()` in the response assembly flow (both streaming and non-streaming paths).
+**Call order:** Called BEFORE `_clean_review_citations()`. Logical flow:
+1. `_get_reviews()` — raw GPT extraction
+2. `_clean_review_content()` — remove garbage/short/misclassified items (new)
+3. `_clean_review_citations()` — replace [snippet_N] with domain names (existing)
+
+Applied in both streaming and non-streaming paths, at the same point where `_clean_review_citations()` is currently called (~line 778 in `_fetch_product_data()`).
 
 #### 3C. Derived Ratings When No Real Ratings Exist
 
-In `structured_comparison_service.py`, after scoring is computed but before response assembly:
+**Timing:** After scoring is computed (line ~282) but before response assembly (line ~333). This is a display-only value — it does NOT feed back into the scoring engine. The scoring engine already computed `review_score` with whatever data was available (possibly MISSING_SCORE). The derived rating is purely for the frontend to show something instead of empty.
 
 ```python
-def _derive_rating_from_scores(self, product_scores: dict) -> float:
-    """Compute a rating from scoring data when no real ratings exist.
-    Maps quality indicators (0-100) to a 3.0-4.8 star scale."""
-    spec = product_scores.get("spec_score", 50)
-    review = product_scores.get("review_score", 50)
-    quality_score = spec * 0.4 + review * 0.6
-    rating = 3.0 + (quality_score / 100) * 1.8
-    return round(rating, 1)
+def _derive_rating_from_scores(self, overall_score: float) -> float:
+    """Derive a display rating from the overall score when no real ratings exist.
+    Maps overall score (0-100) to a 2.5-4.8 star scale.
+    Does NOT feed back into scoring — display only."""
+    # Use overall score (already computed from all dimensions)
+    # Range 2.5-4.8: allows low scores for bad products, but caps below 5.0
+    rating = 2.5 + (overall_score / 100) * 2.3
+    return round(min(rating, 4.8), 1)
 ```
 
-When `product["rating"]` is None after the rating pipeline:
-- Compute derived rating from scoring engine output
-- Set `rating_source.name` to a generic source (e.g., "Product analysis")
-- No special UI label — shown same as real ratings per user requirement
+**Integration point:** In `compare_from_text()`, after `compute_scores()` returns at ~line 282, loop products:
+
+```python
+for i, product in enumerate(products):
+    if product.get("rating") is None:
+        overall = scoring_result["scores"][i]["overall"]
+        product["rating"] = self._derive_rating_from_scores(overall)
+        product["rating_source"] = {
+            "name": "Product analysis",
+            "url": None,
+            "extract_method": "score_derived",
+        }
+```
+
+Per user requirement — shown same as real ratings, no "estimated" label in the UI. The `extract_method: "score_derived"` is backend metadata only (not displayed).
 
 #### 3D. Verdict Prompt Overhaul
 
@@ -418,11 +448,15 @@ The `scores` SSE event already sends the full `scoring_result` dict. The new fie
 | Scenario | Handling |
 |----------|----------|
 | Both products luxury (Hermes vs Gucci) | Same tier → `cross_tier: false`, value uses same-tier formula, fashion weights apply |
-| "Other" category + luxury brand | Luxury brand detection is category-independent. Price guardrails still apply. "Other" weights used for scoring. |
-| No price found at all | `price_score = MISSING_SCORE`, value score falls back to spec-only, dimension_winners shows "N/A" for price |
+| "Other" category + luxury brand | Luxury brand detection is category-independent. Price guardrails still apply. `CATEGORY_WEIGHTS["other"]` used for scoring. |
+| No price found at all | `price_score = MISSING_SCORE`, value score falls back to spec-only (Section 1C partial missing handling), dimension_winners shows `{"winner": "N/A", "margin": null}` |
 | Both products same price | `price_score = 75` for both (existing behavior), value score uses spec difference |
 | Products with identical scores | `dimension_winners` shows "tie" with margin 0 |
-| Personalized + category weights | Category weights applied first, then personalization shifts (still capped at 30%) |
+| Both scores MISSING for a dimension | `dimension_winners` shows `{"winner": "N/A", "margin": null}` (not "tie") |
+| Personalized + category weights | Category weights applied first, then personalization shifts capped at ±30% **of the category weight** (not old DEFAULT_WEIGHTS) |
+| Budget-preference user, cross-tier | Budget preferences still apply normally. Cross-tier value formula runs independently; user's budget weight adjustment affects how much value_score contributes to overall, but doesn't change the value formula itself. |
+| Official domain price found | `retailer_score=1.0`, sanity check skipped, falls through to response assembly |
+| Official search finds results but GPT extraction fails | Falls through to Tier 2 (existing organic GPT extraction) normally |
 
 ---
 
@@ -431,7 +465,7 @@ The `scores` SSE event already sends the full `scoring_result` dict. The new fie
 | File | Changes |
 |------|---------|
 | `app/services/scoring_service.py` | `CATEGORY_WEIGHTS`, `PRICE_TIERS`, `TIER_EXPECTATIONS`, `CATEGORY_MIN_COVERAGE`, `_detect_price_tier()`, `_is_cross_tier()`, redesigned `_compute_value_score()`, `compute_dimension_winners()`, updated `compute_scores()`, updated `build_scores_summary()` |
-| `app/services/structured_comparison_service.py` | `COUNTERFEIT_KEYWORDS`, `OFFICIAL_BRAND_DOMAINS_REGIONAL`, `_is_counterfeit_listing()`, `_get_official_domains()`, `_clean_review_content()`, `_derive_rating_from_scores()`, tighter sanity thresholds, counterfeit filtering in `_extract_price_from_shopping()` and `_strict_title_match()`, new fields in response assembly |
+| `app/services/structured_comparison_service.py` | `COUNTERFEIT_KEYWORDS`, `_is_counterfeit_listing()`, `_get_official_domain()`, `_clean_review_content()`, `_derive_rating_from_scores()`, smarter sanity thresholds (skip for official domains), counterfeit filtering in `_extract_price_from_shopping()` and `_strict_title_match()`, official domain targeted search in `_get_price()`, new fields in response assembly |
 | `app/services/extraction_service.py` | Hardened `REVIEWS_EXTRACTION_PROMPT`, hardened price extraction prompt, overhauled verdict prompt structure, updated `build_scores_summary()` call |
 
 ### 7. Tests Required (80%+ coverage target)
