@@ -773,6 +773,13 @@ class StructuredComparisonService:
             result.get("price"), shopping_items
         )
 
+        # Clean review citations for display (replace [snippet_N] with source domain)
+        if result.get("reviews") and isinstance(result["reviews"], dict):
+            result["reviews"] = self._clean_review_citations(
+                result["reviews"],
+                unified_search.get("organic", []) if unified_search else []
+            )
+
         # Assemble fact_check object (pops internal _spec_confidence, _review_verification, _price_verification)
         result["fact_check"] = self._build_fact_check(result)
 
@@ -1143,6 +1150,50 @@ class StructuredComparisonService:
             # Catch: "null", "store name or null", "product url or null", etc.
             if val.lower() == "null" or "or null" in val.lower():
                 price[key] = None
+
+    @staticmethod
+    def _extract_domain(url: str) -> str:
+        """Extract clean domain from URL."""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            domain = parsed.netloc.replace("www.", "")
+            return domain or ""
+        except Exception:
+            return ""
+
+    def _clean_review_citations(self, reviews: dict, search_results: list) -> dict:
+        """Replace [snippet_N] with source domain name in review text fields.
+
+        Only cleans review display fields (common_praises, common_complaints,
+        detailed_praises, detailed_complaints). Does NOT touch spec _source fields.
+        """
+        # Build snippet index → source domain map
+        snippet_source_map = {}
+        for i, result in enumerate(search_results or []):
+            link = result.get("link", "")
+            if link:
+                snippet_source_map[str(i + 1)] = self._extract_domain(link)
+
+        def replace_citation(text: str) -> str:
+            def replacer(match):
+                snippet_num = match.group(1)
+                domain = snippet_source_map.get(snippet_num, "")
+                if domain:
+                    return f"Per {domain}: "
+                return ""
+            return re.sub(r'\[snippet_(\d+)\]\s*', replacer, text)
+
+        cleaned = dict(reviews)
+        for key in ["common_praises", "common_complaints"]:
+            if key in cleaned and isinstance(cleaned[key], list):
+                cleaned[key] = [replace_citation(str(item)) for item in cleaned[key]]
+        for key in ["detailed_praises", "detailed_complaints"]:
+            if key in cleaned and isinstance(cleaned[key], list):
+                for item in cleaned[key]:
+                    if isinstance(item, dict) and "text" in item:
+                        item["text"] = replace_citation(str(item["text"]))
+        return cleaned
 
     @staticmethod
     def _convert_gpt_price_currency(price: Optional[Dict], target_currency: str) -> None:
