@@ -336,7 +336,14 @@ DON'T: "Battery life could be better" (too vague, no citation)
 DO: "[snippet_1] 48MP main sensor captures sharp detail in low light"
 DON'T: "Great camera quality" (generic, no evidence)
 
-- Return null/empty for fields without reliable data from the provided snippets"""
+- Return null/empty for fields without reliable data from the provided snippets
+- If fewer than 3 credible review sources exist in the search results, return fewer items rather than inventing content. Quality over quantity — 2 real citations beat 5 fabricated ones.
+- category_scores aspect guidance by category:
+  * Electronics: camera, battery, display, performance, value, build_quality
+  * Fashion: style, material_quality, craftsmanship, comfort, durability, value
+  * Fragrances: longevity, projection, uniqueness, versatility, value
+  * Supplements: effectiveness, ingredients, taste, absorption, value
+  * Default: quality, value, durability, ease_of_use"""
 
 
 COMPARISON_PROMPT = """You are a product comparison expert. Compare these products with SPECIFIC, DATA-BACKED analysis. Be decisive — users want a clear answer, not fence-sitting.
@@ -404,6 +411,13 @@ RULES:
 - Consider price-to-value ratio heavily for GCC market
 - Value score: 10 = exceptional value, 5 = average, 1 = poor value
 - Be DECISIVE — pick a clear winner and defend it with data
+- best_for categories depend on product type:
+  * Electronics: budget, performance, features, reliability
+  * Fashion: budget, style, craftsmanship, versatility
+  * Fragrances: budget, longevity, occasion_range, uniqueness
+  * Supplements: budget, ingredient_quality, certifications, effectiveness
+  * Default: budget, performance, features, reliability
+- For luxury/designer products, consider brand prestige and craftsmanship in value assessment, not just raw cost per feature
 - personalized_insights: Generate ONLY when personalization context is provided. 2-3 insights, each tied to a different user priority. Each must cite a specific number. If no personalization context, omit this field entirely."""
 
 
