@@ -53,7 +53,7 @@ Extract and return ONLY valid JSON (no markdown, no explanation):
             "brand": "brand name",
             "name": "product name",
             "variant": "variant/size if mentioned (e.g., 128GB, Pro, 2.5kg)",
-            "category": "electronics|grocery|supplements|makeup|skincare|haircare|fragrances|other",
+            "category": "electronics|grocery|supplements|makeup|skincare|haircare|fragrances|fashion|other",
             "search_query": "optimized search query for this product"
         }}
     ],
@@ -66,15 +66,17 @@ RULES:
 - Normalize brand names (e.g., "iphone" → "Apple", "galaxy" → "Samsung")
 - Include variant if specified (storage, size, color, etc.)
 - search_query should be specific for price searches
-- Category detection:
-  * electronics: phones, laptops, TVs, cameras, headphones, tablets
-  * grocery: food, beverages, household items
-  * supplements: vitamins, minerals, health supplements
+- Category detection — match based on PRODUCT TYPE, not brand:
+  * electronics: phones, laptops, TVs, cameras, headphones, tablets, consoles, smartwatches
+  * grocery: food, beverages, household items, cleaning products
+  * supplements: vitamins, minerals, health supplements, protein powder
   * makeup: foundation, lipstick, mascara, eyeshadow, concealer, blush, primer
   * skincare: moisturizer, serum, cleanser, sunscreen, toner, face wash
   * haircare: shampoo, conditioner, hair treatment, styling products, hair oil
   * fragrances: perfume, cologne, eau de toilette, eau de parfum, body spray
+  * fashion: hats, caps, bags, handbags, shoes, sneakers, jackets, coats, scarves, belts, wallets, clothing, dresses, watches, jewelry, sunglasses
   * other: anything not fitting above categories
+- IMPORTANT: Category is determined by PRODUCT TYPE, never by brand. An LV hat is fashion. A Chanel perfume is fragrances. A Rolex watch is fashion.
 - Return valid JSON only"""
 
 
@@ -95,8 +97,8 @@ CATEGORY_SPEC_SCHEMAS = {
         "organic", "shelf_life", "nutrition_calories"
     ],
     "other": [
-        "count", "dimensions", "weight", "material", "color", "warranty",
-        "power", "features", "included", "compatibility", "origin"
+        "dimensions", "weight", "material", "color",
+        "features", "origin", "warranty"
     ],
 
     # Beauty & Personal Care
@@ -151,6 +153,19 @@ CATEGORY_SPEC_SCHEMAS = {
         "occasion",         # day, evening, formal, casual
         "volume",           # ml/oz
         "concentration",    # eau de toilette, eau de parfum, parfum
+    ],
+
+    "fashion": [
+        "material",           # e.g., "100% cotton", "cashmere", "leather"
+        "style",              # e.g., "five-panel cap", "tote bag", "low-top sneaker"
+        "closure_type",       # e.g., "adjustable back strap", "zip", "snap"
+        "size_options",       # e.g., "S/M/L", "One size", "36-44"
+        "care_instructions",  # e.g., "Dry clean only", "Machine wash"
+        "craftsmanship",      # e.g., "Hand-stitched", "Machine-made"
+        "collection_season",  # e.g., "Spring/Summer 2025", "Permanent collection"
+        "origin",             # e.g., "Made in Italy", "Made in France"
+        "color",              # e.g., "Light Grey", "Black"
+        "design_details",     # e.g., "Embroidered LV monogram, mesh back panel"
     ],
 }
 
