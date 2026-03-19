@@ -4,6 +4,54 @@
 
 ---
 
+# SESSION 25: March 19, 2026 — AI Quality Overhaul (Fashion, Luxury, Price, Citations)
+
+## What We Did
+
+Comprehensive fix for AI result quality. Triggered by LV hat vs Hermes hat comparison showing wrong prices ($56 BHD instead of $237 BHD), irrelevant spec fields (Power, Compatibility for hats), and raw `[snippet_N]` citations in reviews. 2 rounds: Round 1 with 2 Opus agents (backend + tests), Round 2 inline. Total: 809 tests (was 757).
+
+### Root Causes Identified
+- No "fashion" category — hats fell into "other" with electronics-style fields
+- Price prompt said "extract the LOWEST reasonable price" — picked counterfeit/reseller prices, ignored official hermes.com $630 price that was IN search results
+- `[snippet_N]` citations rendered raw in frontend — no cleanup layer existed
+- "other" schema had electronics fields (power, compatibility, count, included)
+
+### Round 1 — Backend (7 tasks, 2 Opus agents)
+- **Fashion category**: 9th category with dedicated 10-field schema (material, style, closure_type, size_options, care_instructions, craftsmanship, collection_season, origin, color, design_details)
+- **"Other" schema fixed**: Removed power/compatibility/count/included, added material/features/dimensions/weight/origin/care_instructions
+- **Product-type binding**: Parser prompt now binds product types to categories (can't pick electronics for hats)
+- **Luxury brand detection**: `LUXURY_BRAND_KEYWORDS` (30+ brands), `OFFICIAL_BRAND_DOMAINS` (25+ domains), `_is_luxury_brand()` method — category-independent two-layer defense
+- **Price prompt rewrite**: "MOST AUTHORITATIVE" instead of "LOWEST reasonable". Source priority: official brand sites > authorized retailers > marketplaces > resellers. DO/DON'T examples.
+- **Price extraction backend**: Official domain boost in `_extract_price_from_shopping()`, luxury brand sorting priority, expanded sanity check, counterfeit site filtering
+- **Spec prompt fix**: Changed from "EVERY field MUST have a value" to smart field handling — omit irrelevant fields instead of forcing N/A
+- **Citation cleanup**: `_clean_review_citations()` replaces `[snippet_N]` with source domain name (e.g., "Per hermes.com:") using `_extract_domain()` helper
+- **Review + verdict prompts**: Category-aware `category_scores` aspects, sparse review handling, dynamic `best_for` guidance per category, luxury value assessment
+
+### Round 1 — Tests (4 new test files, 51 tests)
+- `test_fashion_category.py` (12): schema, fields, parser prompt, category switching, product-type binding
+- `test_luxury_brands.py` (19): parametrized detection, case insensitive, accent handling, domains, retailer tiers
+- `test_citation_cleanup.py` (13): snippet→domain replacement, unknown snippet stripping, multiple fields, empty/null handling
+- `test_price_priority.py` (7): official domain priority, non-luxury normal behavior, counterfeit filtering, retailer tier coverage
+
+### Round 2 — Frontend + Scoring (3 tasks, inline)
+- **SpecsTab N/A filtering**: Filters out N/A, null, empty, `_source` fields, and metadata (brand/model/variant/category) before rendering. Empty state when no specs available.
+- **Fashion in CategorySelector**: Added as 8th chip with handbag emoji
+- **Scoring N/A penalty**: When `coverage_ratio < 0.5`, apply `penalty_factor = 0.5 + coverage_ratio` to prevent inflated spec scores for products with mostly-empty fields
+
+### Files Changed
+- `app/services/extraction_service.py` — Fashion schema, "other" fix, price prompt, spec prompt, review prompt, verdict prompt
+- `app/services/structured_comparison_service.py` — Luxury constants, _is_luxury_brand(), _extract_domain(), _clean_review_citations(), price extraction backend, RETAILER_TIERS expansion
+- `app/services/scoring_service.py` — N/A penalty in _score_specs()
+- `SmartCompareApp/src/screens/ResultsScreen.tsx` — SpecsTab N/A filtering
+- `SmartCompareApp/src/components/CategorySelector.tsx` — Fashion category chip
+- `tests/test_fashion_category.py` (NEW), `tests/test_luxury_brands.py` (NEW), `tests/test_citation_cleanup.py` (NEW), `tests/test_price_priority.py` (NEW)
+
+### Test Results
+- 809 passed, 0 failed (free tests)
+- +52 new tests over Session 24's 757
+
+---
+
 # SESSION 24: March 18, 2026 — Backend Completion & Frontend Audit Fixes
 
 ## What We Did
