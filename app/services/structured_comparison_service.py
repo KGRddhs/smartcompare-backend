@@ -1110,6 +1110,21 @@ class StructuredComparisonService:
         "rtx", "nvidia", "geforce", "radeon", "amd", "gpu",
     }
 
+    # Keywords indicating counterfeit/replica/used listings — filter from price results
+    COUNTERFEIT_KEYWORDS = {
+        "replica", "fake", "dupe", "inspired by", "inspired",
+        "knockoff", "knock-off", "imitation", "copy",
+        "look alike", "lookalike", "designer inspired",
+        "unbranded", "generic", "homage", "alternative",
+        "pre-owned", "used", "vintage", "secondhand", "second hand",
+    }
+
+    @staticmethod
+    def _is_counterfeit_listing(title: str) -> bool:
+        """Check if a shopping listing title indicates counterfeit/replica/used product."""
+        title_lower = title.lower()
+        return any(kw in title_lower for kw in StructuredComparisonService.COUNTERFEIT_KEYWORDS)
+
     # Luxury/designer brand keywords — triggers price guardrails regardless of category
     LUXURY_BRAND_KEYWORDS = {
         "louis vuitton", "lv", "hermes", "hermès", "chanel", "gucci", "prada",
@@ -1593,6 +1608,10 @@ class StructuredComparisonService:
         Manufacturer brands (nvidia, amd, intel) are skipped since AIB partners rebrand.
         Hyphens are normalized: 'D-3' matches 'D3'.
         """
+        # Reject counterfeit/replica listings outright
+        if StructuredComparisonService._is_counterfeit_listing(title):
+            return False
+
         title_normalized = title.lower().replace("-", "")
         key_words = [
             w.replace("-", "") for w in product_name.lower().split()
@@ -1715,6 +1734,11 @@ class StructuredComparisonService:
                 )
 
             title = item.get("title", "")
+
+            # FILTER 0: Reject counterfeit/replica/used listings
+            if self._is_counterfeit_listing(title):
+                logger.debug(f"[PRICE] Skipping counterfeit listing: {title[:60]}")
+                continue
 
             # FILTER 1: Reject accessories
             if self._is_accessory(title):
