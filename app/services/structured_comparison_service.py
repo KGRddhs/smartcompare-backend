@@ -923,6 +923,38 @@ class StructuredComparisonService:
                 price["_cached"] = False
                 return price
 
+        # --- Tier 1.5: Official domain targeted search (luxury brands only, 1 Serper credit) ---
+        if not price and self._is_luxury_brand(full_name):
+            official_domain = self._get_official_domain(full_name)
+            if official_domain:
+                logger.info(f"[PRICE] Luxury brand — trying official domain: {official_domain}")
+                try:
+                    official_results = await search_web(f"{full_name} site:{official_domain}")
+                    self.api_calls += 1
+                    self._track_cost(0.001)
+                    if official_results and official_results.get("organic"):
+                        search_context = "\n".join(
+                            f"- {r.get('title', '')}: {r.get('snippet', '')}"
+                            for r in official_results["organic"][:5]
+                        )
+                        official_price, usage = await extract_price(
+                            brand, name, variant, region, search_context
+                        )
+                        self._track_gpt_cost(usage)
+                        self._sanitize_gpt_price(official_price)
+                        self._convert_gpt_price_currency(official_price, currency)
+                        if official_price and official_price.get("amount"):
+                            official_price["retailer"] = official_domain
+                            official_price["retailer_score"] = 1.0
+                            price = official_price
+                            logger.info(f"[PRICE] Official domain price found: {price.get('amount')} from {official_domain}")
+                            price.pop("retailer_score", None)
+                            set_cached(cache_key, price, PRICE_CACHE_TTL)
+                            price["_cached"] = False
+                            return price
+                except Exception as e:
+                    logger.warning(f"[PRICE] Official domain search failed: {e}")
+
         # --- Tier 2: GPT extraction from search context ---
         if is_supplement:
             # Opt B: Supplements — search iHerb via Serper with price-focused query
