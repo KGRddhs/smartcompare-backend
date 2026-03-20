@@ -12,14 +12,17 @@ from app.services.extraction_service import CATEGORY_SPEC_SCHEMAS
 
 logger = logging.getLogger(__name__)
 
-# Default scoring weights (sum to 1.0)
-DEFAULT_WEIGHTS = {
-    "price_score": 0.25,
-    "spec_score": 0.25,
-    "review_score": 0.20,
-    "value_score": 0.15,
-    "reliability_score": 0.10,
-    "popularity_score": 0.05,
+# Category-specific scoring weights (each sums to 1.0)
+CATEGORY_WEIGHTS = {
+    "electronics":  {"price_score": 0.20, "spec_score": 0.25, "review_score": 0.20, "value_score": 0.15, "reliability_score": 0.15, "popularity_score": 0.05},
+    "supplements":  {"price_score": 0.10, "spec_score": 0.15, "review_score": 0.25, "value_score": 0.15, "reliability_score": 0.30, "popularity_score": 0.05},
+    "fashion":      {"price_score": 0.10, "spec_score": 0.15, "review_score": 0.25, "value_score": 0.15, "reliability_score": 0.10, "popularity_score": 0.25},
+    "fragrances":   {"price_score": 0.10, "spec_score": 0.10, "review_score": 0.30, "value_score": 0.15, "reliability_score": 0.10, "popularity_score": 0.25},
+    "grocery":      {"price_score": 0.25, "spec_score": 0.10, "review_score": 0.25, "value_score": 0.25, "reliability_score": 0.10, "popularity_score": 0.05},
+    "makeup":       {"price_score": 0.15, "spec_score": 0.15, "review_score": 0.30, "value_score": 0.15, "reliability_score": 0.10, "popularity_score": 0.15},
+    "skincare":     {"price_score": 0.15, "spec_score": 0.15, "review_score": 0.25, "value_score": 0.15, "reliability_score": 0.20, "popularity_score": 0.10},
+    "haircare":     {"price_score": 0.20, "spec_score": 0.10, "review_score": 0.30, "value_score": 0.20, "reliability_score": 0.10, "popularity_score": 0.10},
+    "other":        {"price_score": 0.20, "spec_score": 0.20, "review_score": 0.25, "value_score": 0.15, "reliability_score": 0.10, "popularity_score": 0.10},
 }
 
 # Priority-based weight adjustments (deltas applied to default weights)
@@ -40,7 +43,7 @@ BUDGET_ADJUSTMENTS = {
     "premium": {"spec_score": 0.10, "review_score": 0.05, "price_score": -0.10},
 }
 
-# Maximum allowed shift ratio from default weight (±30%)
+# Maximum allowed shift ratio from category weight (±30%)
 MAX_WEIGHT_SHIFT_RATIO = 0.30
 
 # Spec fields where higher is better (electronics-focused)
@@ -85,8 +88,8 @@ class ScoringService:
         if not products_data or len(products_data) < 2:
             return self._empty_result(len(products_data))
 
-        weights = self._compute_weights(preferences)
         category = products_data[0].get("category", "other")
+        weights = self._compute_weights(preferences, category)
 
         # Compute raw dimension scores for each product
         raw_scores = []
@@ -108,7 +111,7 @@ class ScoringService:
 
             # Track which dimensions had missing data
             missing_dims = []
-            for dim in DEFAULT_WEIGHTS:
+            for dim in CATEGORY_WEIGHTS["other"]:
                 if raw_scores[i].get(f"_{dim}_missing"):
                     missing_dims.append(dim)
 
@@ -124,7 +127,7 @@ class ScoringService:
         winner_index = overalls.index(max(overalls))
         win_margin = round(abs(overalls[0] - overalls[1]), 1) if len(overalls) >= 2 else 0
 
-        scoring_method = "personalized" if preferences else "default"
+        scoring_method = "personalized" if preferences else "category_weighted"
 
         return {
             "scores": result_products,
@@ -133,9 +136,10 @@ class ScoringService:
             "scoring_method": scoring_method,
         }
 
-    def _compute_weights(self, preferences: Optional[Dict[str, Any]]) -> Dict[str, float]:
-        """Compute scoring weights from user preferences."""
-        weights = dict(DEFAULT_WEIGHTS)
+    def _compute_weights(self, preferences: Optional[Dict[str, Any]], category: str = "other") -> Dict[str, float]:
+        """Compute scoring weights from category defaults + user preferences."""
+        base_weights = CATEGORY_WEIGHTS.get(category, CATEGORY_WEIGHTS["other"])
+        weights = dict(base_weights)
 
         if not preferences:
             return weights
@@ -152,11 +156,11 @@ class ScoringService:
         for dim, delta in budget_adj.items():
             weights[dim] = weights.get(dim, 0) + delta
 
-        # Cap each dimension's shift to ±30% of its default weight
+        # Cap each dimension's shift to ±30% of its CATEGORY weight (not global default)
         for dim in weights:
-            default_val = DEFAULT_WEIGHTS.get(dim, 0)
-            max_val = default_val * (1 + MAX_WEIGHT_SHIFT_RATIO)
-            min_val = default_val * (1 - MAX_WEIGHT_SHIFT_RATIO)
+            cat_default = base_weights.get(dim, 0)
+            max_val = cat_default * (1 + MAX_WEIGHT_SHIFT_RATIO)
+            min_val = cat_default * (1 - MAX_WEIGHT_SHIFT_RATIO)
             weights[dim] = max(0.0, min(max_val, max(min_val, weights[dim])))
 
         # Renormalize to sum to 1.0
@@ -164,7 +168,6 @@ class ScoringService:
         if total > 0:
             weights = {k: v / total for k, v in weights.items()}
         else:
-            # Fallback: equal weights
             n = len(weights)
             weights = {k: 1.0 / n for k in weights}
 
@@ -457,9 +460,9 @@ class ScoringService:
         for i in range(count):
             scores[f"product_{i}"] = {
                 "overall": MISSING_SCORE,
-                "breakdown": {k: MISSING_SCORE for k in DEFAULT_WEIGHTS},
-                "weights_used": dict(DEFAULT_WEIGHTS),
-                "missing_data": list(DEFAULT_WEIGHTS.keys()),
+                "breakdown": {k: MISSING_SCORE for k in CATEGORY_WEIGHTS["other"]},
+                "weights_used": dict(CATEGORY_WEIGHTS["other"]),
+                "missing_data": list(CATEGORY_WEIGHTS["other"].keys()),
             }
         return {
             "scores": scores,

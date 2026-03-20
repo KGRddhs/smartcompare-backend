@@ -6,7 +6,7 @@ import pytest
 from app.services.scoring_service import (
     ScoringService,
     get_scoring_service,
-    DEFAULT_WEIGHTS,
+    CATEGORY_WEIGHTS,
     MISSING_SCORE,
     PRIORITY_ADJUSTMENTS,
     BUDGET_ADJUSTMENTS,
@@ -376,7 +376,7 @@ class TestOverallAndWinner:
     def test_scoring_method_default(self, service):
         products = [_make_product(), _make_product()]
         result = service.compute_scores(products)
-        assert result["scoring_method"] == "default"
+        assert result["scoring_method"] == "category_weighted"
 
     def test_scoring_method_personalized(self, service):
         products = [_make_product(), _make_product()]
@@ -639,7 +639,7 @@ class TestWeightCapping:
             "priorities": ["price", "quality", "durability"],
             "budget": "budget"
         })
-        for dim, default_val in DEFAULT_WEIGHTS.items():
+        for dim, default_val in CATEGORY_WEIGHTS["other"].items():
             if default_val > 0:
                 assert weights[dim] <= default_val * 2.5, \
                     f"{dim} is {weights[dim]:.3f}, default {default_val:.3f} — too aggressive"
@@ -655,11 +655,11 @@ class TestWeightCapping:
     def test_no_preferences_unchanged(self):
         service = ScoringService()
         weights = service._compute_weights(None)
-        for dim, val in DEFAULT_WEIGHTS.items():
+        for dim, val in CATEGORY_WEIGHTS["other"].items():
             assert abs(weights[dim] - val) < 0.001
 
     def test_empty_preferences_unchanged(self):
         service = ScoringService()
         weights = service._compute_weights({})
-        for dim, val in DEFAULT_WEIGHTS.items():
+        for dim, val in CATEGORY_WEIGHTS["other"].items():
             assert abs(weights[dim] - val) < 0.001
