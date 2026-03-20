@@ -759,7 +759,20 @@ async def generate_comparison(
 
         # Append scoring context so GPT can reference deterministic scores
         if scores_summary:
-            prompt += f"\n\n## Scoring Context\n{scores_summary}\nReference these scores in your verdict to support your recommendation with data."
+            prompt += f"""
+
+## Scoring Context
+{scores_summary}
+
+## Verdict Requirements
+1. RECOMMENDATION: State the winner with the score margin. Explain WHO should buy which product and WHY based on the dimension scores.
+2. KEY DIFFERENCES: 3-5 data-backed differences. Reference actual specs, prices, and review findings. Cite which dimension each difference relates to.
+3. VALUE ANALYSIS: Explain the value proposition of each product. If cross-tier, acknowledge that each serves a different market segment — do NOT penalize luxury for being expensive.
+4. BEST FOR: One sentence per product describing the ideal buyer.
+
+Your verdict MUST be consistent with the scores above. If Product A wins on reviews, your text must reflect that. Do NOT contradict the scoring data.
+If this is a cross-tier comparison, frame it as "different products for different needs" rather than "expensive vs cheap."
+"""
 
         # Append personalization section if user has preferences
         if user_preferences:
