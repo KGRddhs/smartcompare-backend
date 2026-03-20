@@ -82,3 +82,29 @@ class TestRetailerTiersCoverage:
         assert RETAILER_TIERS["dhgate"] <= 0.3
         assert RETAILER_TIERS["temu"] <= 0.3
         assert RETAILER_TIERS["wish"] <= 0.3
+
+
+class TestStrictTitleMatch:
+    """Test _strict_title_match rejects counterfeits but accepts legitimate listings."""
+
+    def test_strict_title_match_rejects_replica(self):
+        """Title with 'replica' should be rejected even if product name words match."""
+        assert StructuredComparisonService._strict_title_match(
+            "Hermes Nevada Cap", "Hermes Nevada Cap Replica"
+        ) is False
+
+    def test_strict_title_match_accepts_legitimate(self):
+        """Legitimate title with all key words should pass."""
+        assert StructuredComparisonService._strict_title_match(
+            "Hermes Nevada Cap", "Hermes Nevada H'Cheval Cap - Official Store"
+        ) is True
+
+    def test_strict_title_match_rejects_fake(self):
+        assert StructuredComparisonService._strict_title_match(
+            "Gucci Ace Sneakers", "Fake Gucci Ace Sneakers for Cheap"
+        ) is False
+
+    def test_strict_title_match_rejects_inspired(self):
+        assert StructuredComparisonService._strict_title_match(
+            "Louis Vuitton Wallet", "Designer Inspired Louis Vuitton Wallet"
+        ) is False

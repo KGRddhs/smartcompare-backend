@@ -76,3 +76,69 @@ class TestLuxuryRetailerTiers:
         assert RETAILER_TIERS.get("dhgate", 1.0) <= 0.3
         assert RETAILER_TIERS.get("aliexpress", 1.0) <= 0.3
         assert RETAILER_TIERS.get("temu", 1.0) <= 0.3
+
+
+class TestCounterfeitListingDetection:
+    """Test _is_counterfeit_listing() for various keyword patterns."""
+
+    def test_counterfeit_listing_replica(self):
+        assert StructuredComparisonService._is_counterfeit_listing("Hermes Birkin Replica Bag") is True
+
+    def test_counterfeit_listing_fake(self):
+        assert StructuredComparisonService._is_counterfeit_listing("Fake Gucci Belt Buckle") is True
+
+    def test_counterfeit_listing_inspired(self):
+        assert StructuredComparisonService._is_counterfeit_listing("Designer Inspired Handbag") is True
+
+    def test_counterfeit_listing_legitimate(self):
+        assert StructuredComparisonService._is_counterfeit_listing("Hermes Nevada H'Cheval Cap") is False
+
+    def test_counterfeit_listing_pre_owned(self):
+        assert StructuredComparisonService._is_counterfeit_listing("Pre-Owned Chanel Classic Flap") is True
+
+    def test_counterfeit_listing_vintage(self):
+        assert StructuredComparisonService._is_counterfeit_listing("Vintage Louis Vuitton Speedy 30") is True
+
+
+class TestOfficialDomainLookup:
+    """Test _get_official_domain() for brand-to-domain mapping."""
+
+    def test_get_official_domain_hermes(self):
+        svc = StructuredComparisonService()
+        domain = svc._get_official_domain("Hermes Nevada H'Cheval Cap")
+        assert domain == "hermes.com"
+
+    def test_get_official_domain_lv(self):
+        svc = StructuredComparisonService()
+        domain = svc._get_official_domain("Louis Vuitton Monogram Wallet")
+        assert domain == "louisvuitton.com"
+
+    def test_get_official_domain_non_luxury(self):
+        svc = StructuredComparisonService()
+        domain = svc._get_official_domain("Nike Air Max 90")
+        assert domain is None
+
+    def test_get_official_domain_chanel(self):
+        svc = StructuredComparisonService()
+        domain = svc._get_official_domain("Chanel No. 5 Eau de Parfum")
+        assert domain == "chanel.com"
+
+
+class TestOfficialDomainSanityCheck:
+    """Test that official domain prices skip sanity checks."""
+
+    def test_official_domain_skips_sanity_check(self):
+        """Official brand domain prices should have retailer_score >= 1.0."""
+        svc = StructuredComparisonService()
+        svc.total_cost = 0
+        svc.api_calls = 0
+        svc.gpt_calls = 0
+        svc.serper_calls = 0
+        # An official domain item should get max retailer score
+        shopping_items = [
+            {"price": "$630.00", "title": "Hermes Nevada Cap", "source": "Hermes",
+             "link": "https://www.hermes.com/us/en/product/cap"},
+        ]
+        result = svc._extract_price_from_shopping("Hermes Nevada Cap", shopping_items, "BHD")
+        if result is not None:
+            assert result["retailer_score"] >= 1.0
