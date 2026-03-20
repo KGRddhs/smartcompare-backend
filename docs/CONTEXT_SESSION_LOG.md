@@ -4,6 +4,104 @@
 
 ---
 
+# SESSION 26: March 20, 2026 — Scoring & Quality Overhaul (Category Weights, Price Tiers, Review Cleanup)
+
+## What We Did
+
+Comprehensive overhaul of scoring engine, price pipeline, review quality, and verdict generation. Triggered by Hermes Nevada Cap vs LV Vers Mesh Cap comparison showing fake-looking scores, garbage review text, no ratings, shallow verdict. 4 Opus agents in parallel (scoring-agent, price-agent, review-agent, test-agent) with cross-QA. Total: 944 tests (was 809).
+
+### Root Causes Identified
+- Single `DEFAULT_WEIGHTS` profile for all categories — fashion scored like electronics
+- Value score was naive `(spec + price) / 2` — expensive always = bad
+- No price tier awareness — luxury vs budget compared on same scale
+- Review text contained garbage ("learn more about condition", navigation text, positive text in complaints)
+- No ratings for luxury products — showed empty instead of derived rating
+- Verdict was shallow ("premium vs budget") with no scoring data injection
+
+### Scoring Engine Overhaul (Tasks 1-4, scoring-agent)
+- **CATEGORY_WEIGHTS**: 9 category-specific weight profiles replacing single `DEFAULT_WEIGHTS`
+  - Fashion: popularity=0.25, review=0.25, price=0.10 (brand matters more than price)
+  - Electronics: spec=0.25, price=0.20, reliability=0.15 (specs matter most)
+  - Supplements: reliability=0.30, review=0.25 (trust matters most)
+- **Price tier detection**: budget(<11 BHD), mid(11-57), premium(57-189), luxury(189+)
+- **Tier-aware value score**: Cross-tier uses expectation formula (`50 + (delivery - expected) * 0.8`), same-tier uses 60/40 spec/price blend
+- **CATEGORY_MIN_COVERAGE**: Per-category spec penalty thresholds (electronics=0.5, fashion=0.3)
+- **Dimension winners**: `compute_dimension_winners()` — per-dimension comparison with tie threshold=3.0
+- **Enriched `build_scores_summary()`**: Tier info, dimension leaders, category weights injected into verdict prompt
+- **Personalization cap fix**: `MAX_WEIGHT_SHIFT_RATIO` now caps relative to CATEGORY weights, not old defaults
+- **Derived ratings**: `_derive_rating_from_scores()` — display-only rating (2.5-4.8 range) for products with no real rating
+- **Tier context**: Response includes `tier_context` with price tiers and cross-tier flag
+- **Scoring method**: `category_weighted` (anonymous) or `personalized` (logged in)
+
+### Price Pipeline Fixes (Tasks 5-7, price-agent)
+- **Counterfeit keyword filter**: `COUNTERFEIT_KEYWORDS` (20 terms: replica, fake, dupe, pre-owned, vintage, etc.). First filter in `_extract_price_from_shopping()` before accessory filter. Also in `_strict_title_match()`.
+- **Official domain targeted search (Tier 1.5)**: `_get_official_domain()` maps luxury brand to domain → `site:domain.com` Serper search when Tier 1 fails. +$0.001 cost only for luxury brands.
+- **Smarter sanity thresholds**: Official domain prices (retailer_score >= 1.0) bypass sanity check entirely. Luxury brands use tighter thresholds (1.8x high / 0.6x low vs 2.0x / 0.5x).
+- **Price prompt hardening**: Explicit rejection rules for counterfeit platforms, replica listings, suspiciously cheap luxury prices.
+
+### Review & Verdict Fixes (Tasks 8-11, review-agent)
+- **Review prompt hardening**: CONTENT QUALITY rules (reject navigation text, boilerplate, condition disclaimers, marketing copy, short filler). BAD/GOOD examples. Sentiment alignment: only negative in complaints.
+- **Backend post-processing filter**: `_clean_review_content()` with `GARBAGE_PATTERNS` (10 regex), `NEGATIVE_INDICATORS` (25 words), `POSITIVE_INDICATORS` (18 words). Strips garbage, enforces min 8 words, removes positive-only complaints. Called BEFORE `_clean_review_citations()`.
+- **Verdict prompt overhaul**: Structured scoring context injection with 4 requirements (recommendation, key differences, value analysis, best for). Cross-tier awareness: "different products for different needs" framing.
+- **Streaming parity**: All fixes applied to both streaming and non-streaming paths.
+
+### Tests (Tasks 12-15, test-agent)
+- **68 new tests** across 5 files:
+  - `test_scoring_service.py` +27: category weights, price tiers, value score, dimension winners, coverage, personalization
+  - `test_luxury_brands.py` +15: counterfeit filter, official domain lookup, sanity skip
+  - `test_price_priority.py` +4: title match rejection
+  - `test_review_cleanup.py` (NEW) 19: garbage patterns, sentiment, derived ratings, edge cases
+  - `test_review_prompt_quality.py` +7: prompt rules verification
+
+### Cross-QA Results (Task 16)
+- scoring-agent → review-agent (Tasks 8-11): ALL PASS
+- review-agent → price-agent (Tasks 5-7): ALL PASS
+- price-agent → scoring-agent (Tasks 1-4): ALL PASS
+- Full suite: 944 passed, 0 failed
+
+### Production Verification
+Deployed and tested with `Hermes Nevada Cap vs LV Vers Mesh Cap`:
+- Category: fashion (correct), category weights applied
+- Price tiers: Hermes=premium, LV=mid, cross-tier detected
+- Derived ratings: 3.6 and 3.9 (no more empty)
+- Review praises cite hermes.com, louisvuitton.com (clean, no garbage)
+- Dimension winners working (Price: LV +70, Specs: tie, Value: LV +8)
+- Recommendation: data-backed, acknowledges different market segments
+
+### Known Remaining Issue
+- **Luxury prices still estimated**: Official domain search (Tier 1.5) gets organic URLs but can't extract prices from snippets (luxury sites render prices via JavaScript). Need page scraping with JSON-LD parsing — same pattern as `_fetch_pharmacy_price()`. Proposed fix for Session 27.
+
+### Files Changed
+- `app/services/scoring_service.py` — Full overhaul: CATEGORY_WEIGHTS, price tiers, value score, dimension winners, coverage thresholds, build_scores_summary
+- `app/services/structured_comparison_service.py` — Counterfeit filter, official domain search, sanity thresholds, review post-processing, derived ratings, tier context
+- `app/services/extraction_service.py` — Review prompt hardening, price prompt hardening, verdict prompt overhaul
+- `tests/test_scoring_service.py` (+27), `tests/test_luxury_brands.py` (+15), `tests/test_price_priority.py` (+4), `tests/test_review_cleanup.py` (NEW, 19), `tests/test_review_prompt_quality.py` (+7)
+
+### Commits (15)
+```
+22a4931 fix: remove skip guards from dimension_winners tests
+eee27f5 test: add 7 prompt quality tests
+aec9e76 test: add 19 review cleanup tests
+7d2e200 feat: tier_context, derived ratings, streaming parity
+f30d93c test: add 22 price pipeline tests
+ee77897 feat: category coverage thresholds, dimension winners, enriched summary
+edc5cef test: add 64 counterfeit/domain/prompt tests
+b80d737 test: add 27 scoring service tests
+a976fe0 feat: price tier detection + tier-aware value score
+096c64d feat: smarter sanity thresholds + price prompt hardening
+81122a9 feat: verdict prompt overhaul
+b40dff4 feat: official domain targeted search for luxury
+9f12cf6 feat: review post-processing filter
+1d4583d feat: replace DEFAULT_WEIGHTS with CATEGORY_WEIGHTS
+e673948 feat: counterfeit keyword filter
+```
+
+### Test Results
+- 944 passed, 0 failed (free tests)
+- +135 new tests over Session 25's 809
+
+---
+
 # SESSION 25: March 19, 2026 — AI Quality Overhaul (Fashion, Luxury, Price, Citations)
 
 ## What We Did

@@ -150,7 +150,7 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 
 **Key services:**
 - `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/makeup/skincare/haircare/fragrances/fashion/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`
-- `scoring_service.py` — Deterministic scoring engine. 6 dimensions (price, spec, review, value, reliability, popularity), personalized weights from user preferences. Pure math, $0 cost.
+- `scoring_service.py` — Deterministic scoring engine. 6 dimensions, `CATEGORY_WEIGHTS` (9 category-specific profiles), price tier detection (budget/mid/premium/luxury), tier-aware value scoring, dimension winners. Personalized weights capped at ±30% of category base. Pure math, $0 cost.
 - `feedback_service.py` — `save_feedback()`, `track_event()`, `track_events_batch()`. Fire-and-forget pattern (asyncio.create_task).
 - `drug_database_service.py` — Bahrain drug database lookup + GPT context formatting (supplements only)
 - `serper_service.py` — Serper API calls (`search_product_prices()`, `search_price_organic()`, `search_web()`)
@@ -225,8 +225,17 @@ Target: **$0.009-0.01/comparison** (current: ~$0.010 electronics, ~$0.010 supple
 ### Vision products bypass query parsing
 Camera input passes `vision_products` directly to `compare_from_text()`, skipping `parse_product_query()`. The `size_or_count` field (e.g., "360 Softgels") is appended to the product name in `image_routes.py` before comparison.
 
-### Deterministic scoring (zero cost)
-`scoring_service.py` computes 6 scores (price, spec, review, value, reliability, popularity) from structured data. No API calls — pure math. Weights are personalized from user preferences (priorities, budget, brand_attitude) or fall back to defaults for anonymous users. `MAX_WEIGHT_SHIFT_RATIO = 0.30` caps personalization shifts to ±30% of defaults, preventing extreme distributions. Scores are 0-100, deterministic (same input = same output). Computed after Phase 2, passed into verdict prompt as `scores_summary`. Response includes `scoring` field with per-product breakdown.
+### Deterministic scoring (zero cost, Session 26 overhaul)
+`scoring_service.py` computes 6 scores (price, spec, review, value, reliability, popularity) from structured data. No API calls — pure math.
+- **Category weights**: `CATEGORY_WEIGHTS` — 9 category-specific weight profiles (e.g., fashion: popularity=0.25, electronics: spec=0.25). Replaced single `DEFAULT_WEIGHTS`.
+- **Price tiers**: `PRICE_TIERS` — budget(<11 BHD), mid(11-57), premium(57-189), luxury(189+). Cross-tier detection via `_is_cross_tier()`.
+- **Tier-aware value score**: Cross-tier uses `50 + (delivery - expected) * 0.8` formula. Same-tier uses `spec*0.6 + price*0.4` blend. Handles MISSING_SCORE fallbacks.
+- **Dimension winners**: `compute_dimension_winners()` — per-dimension comparison, tie threshold=3.0, both MISSING → `{"winner": "N/A", "margin": null}`.
+- **Coverage penalty**: `CATEGORY_MIN_COVERAGE` thresholds per category (electronics=0.5, fashion=0.3).
+- **Derived ratings**: `_derive_rating_from_scores()` — display-only (2.5-4.8), not fed back to scoring. `extract_method: "score_derived"`.
+- **Personalization**: `MAX_WEIGHT_SHIFT_RATIO = 0.30` caps shifts relative to CATEGORY base weights. `scoring_method`: "category_weighted" (anon) or "personalized" (logged in).
+- **Enriched verdict prompt**: `build_scores_summary()` injects tier info, dimension leaders, category weights into GPT prompt.
+- Response includes `scoring` field (per-product breakdown), `tier_context`, `dimension_winners`, `price_tiers`.
 
 ### SSE streaming
 `GET /api/v1/text/compare/stream` returns Server-Sent Events. 10 events: status(parsing) → status(fetching) → specs → prices → status(reviews) → reviews → scores → status(verdict) → verdict → complete. Frontend uses fetch+ReadableStream (not EventSource) with fallback to non-streaming. Non-streaming endpoint unchanged.
@@ -257,19 +266,24 @@ The frontend provides 9 category options: Electronics, Grocery, Supplements, Mak
 ### History (Session 24)
 `GET /api/v1/comparisons/history` (auth required, paginated, searchable), `GET /api/v1/comparisons/{id}` (full response), `DELETE /api/v1/comparisons/{id}` (ownership check). Frontend HistoryScreen passes stored blob directly to ResultsScreen. On 401, calls `clearSession()` + `onLogout()` to redirect to auth flow.
 
-### Luxury brand detection (Session 25)
-Category-independent two-layer defense against counterfeit pricing:
+### Luxury brand detection (Session 25 → 26)
+Category-independent multi-layer defense against counterfeit pricing:
 - `LUXURY_BRAND_KEYWORDS` (30+ brands): Chanel, Gucci, Louis Vuitton, Hermes, Prada, etc.
 - `OFFICIAL_BRAND_DOMAINS` (25+ domains): chanel.com, gucci.com, louisvuitton.com, etc.
 - `_is_luxury_brand(product_name)` checks product name against keyword list
-- Price extraction: official domain boost (sorted first), counterfeit source filtering (DHgate/AliExpress/Temu/Wish)
+- **Counterfeit filter** (Session 26): `COUNTERFEIT_KEYWORDS` (20 terms), `_is_counterfeit_listing()` — first filter in shopping extraction and title match
+- **Official domain search** (Session 26): `_get_official_domain()` + Tier 1.5 `site:domain.com` Serper search when Tier 1 Shopping fails (+$0.001)
+- **Sanity thresholds** (Session 26): official domain (retailer_score>=1.0) bypasses sanity check; luxury uses 1.8x/0.6x thresholds
 - Works across ALL categories (fragrances, fashion, makeup, etc.), not just fashion
+- **Known gap**: Official domain search gets URLs but can't extract prices from JS-rendered pages. Fix planned: page scraping with JSON-LD parsing (same pattern as `_fetch_pharmacy_price()`).
 
-### Citation cleanup (Session 25)
-`_clean_review_citations()` in `structured_comparison_service.py` replaces raw `[snippet_N]` references in review/verdict text with human-readable "Per domain.com:" attributions. Runs in backend before response — frontend receives clean text.
+### Review quality (Session 25 → 26)
+- `_clean_review_citations()` replaces `[snippet_N]` with "Per domain.com:" attributions
+- **Review post-processing** (Session 26): `_clean_review_content()` strips garbage text (`GARBAGE_PATTERNS`), enforces min 8 words, removes sentiment misclassification (positive-only in complaints). Called BEFORE `_clean_review_citations()`.
+- Review prompt hardened with CONTENT QUALITY rules, BAD/GOOD examples, sentiment alignment
 
-### Smart spec field handling (Session 25)
-Spec extraction prompt instructs GPT to omit irrelevant fields instead of forcing "N/A". Frontend `SpecsTab` filters out N/A/null/empty values and `_source` metadata fields. Scoring applies N/A penalty when `coverage_ratio < 0.5`.
+### Smart spec field handling (Session 25 → 26)
+Spec extraction prompt instructs GPT to omit irrelevant fields instead of forcing "N/A". Frontend `SpecsTab` filters out N/A/null/empty values and `_source` metadata fields. Scoring applies N/A penalty with `CATEGORY_MIN_COVERAGE` thresholds (electronics=0.5, fashion=0.3, etc.).
 
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
@@ -312,7 +326,7 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (809 unit, 39 files; plus 14 live_unit + 6 live_db + 10 integration)
+### Test files (944 unit, 40 files; plus 14 live_unit + 6 live_db + 10 integration)
 - `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
@@ -320,7 +334,7 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_spec_verification_strict.py` — 27 tests: strict numeric matching, cross-validation, training/no-source handling
 - `tests/test_camera_vision.py` — 26 tests: vision pipeline, JSON cleanup, size_or_count enrichment, HEIC detection, MIME validation, endpoint rejection
 - `tests/test_observability.py` — 24 tests: Sentry init, structured JSON formatter, configure_logging, error handler middleware
-- `tests/test_review_prompt_quality.py` — 22 tests: review + verdict prompt structure, citations, examples, completeness
+- `tests/test_review_prompt_quality.py` — 29 tests: review + verdict prompt structure, citations, examples, completeness, garbage rejection, sentiment alignment
 - `tests/test_url_quality.py` — 18 tests: retailer URL generation, null for unknowns, Serper link extraction
 - `tests/test_security_middleware.py` — 16 tests: request ID generation/preservation, security headers, rate limiting (under/over/429)
 - `tests/test_rating_tiers.py` — 16 tests: tier classification, consensus logic, accessory filtering
@@ -334,7 +348,7 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_unified_search.py` — 4 tests: search sharing (specs/reviews), cost budget tracking
 - `tests/test_category_selection.py` — 46 tests: schema validation, prompt building, API params, category switching, parser prompt, live GPT extraction
 - `tests/test_personalization.py` — 52 tests: preference validation, GET/PUT endpoints, service functions, auth response flag, prompt injection, comparison metadata, valid options
-- `tests/test_scoring_service.py` — 64 tests: 6 score dimensions, personalized weights, category scoring, edge cases, determinism, N/A penalty
+- `tests/test_scoring_service.py` — 91 tests: category weights, price tiers, value score, dimension winners, coverage thresholds, personalization, determinism
 - `tests/test_feedback.py` — 29 tests: feedback submission, event tracking, validation, batch, fire-and-forget
 - `tests/test_streaming.py` — 16 tests: SSE format, event sequence, generator, endpoint, error handling
 - `tests/test_singleton_state.py` — 3 tests: singleton pattern, cache leak prevention, state reset
@@ -344,14 +358,16 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_share_routes.py` — 12 tests: create share link, public access, ownership, collision retry
 - `tests/test_error_middleware.py` — 10 tests: unified error format, HTTP/validation/rate-limit exceptions
 - `tests/test_fashion_category.py` — 12 tests: fashion schema validation, category detection, spec fields
-- `tests/test_luxury_brands.py` — 8 tests: luxury brand detection, official domain matching, counterfeit filtering
-- `tests/test_price_priority.py` — 7 tests: authoritative price sorting, official domain boost, source priority hierarchy
+- `tests/test_luxury_brands.py` — 23 tests: luxury brand detection, official domain matching, counterfeit filtering, counterfeit listing detection, official domain lookup
+- `tests/test_price_priority.py` — 11 tests: authoritative price sorting, official domain boost, source priority hierarchy, title match rejection
 - `tests/test_citation_cleanup.py` — 13 tests: snippet reference replacement, domain attribution, edge cases
+- `tests/test_review_cleanup.py` — 19 tests: garbage pattern filtering, sentiment misclassification, derived ratings, edge cases
 - `tests/test_integration.py` — 10 tests: live Railway (~$0.10, ~5 min)
 
 ## Known Remaining Bugs (deferred)
 
 These are known issues that have been intentionally deferred:
+- **Luxury prices still estimated** (Session 26): Official domain search (Tier 1.5) gets Serper organic URLs from hermes.com/louisvuitton.com but can't extract prices from snippets (JS-rendered). **Proposed fix**: Scrape the actual product page URL from Serper organic results using `curl_cffi`, parse price from JSON-LD `Product` schema or `og:price` meta tags — same pattern as `_fetch_pharmacy_price()`. Cost: +1 HTTP fetch per luxury product (zero API cost).
 - Google Sign-In: Supabase Google provider needs to be enabled in dashboard (client IDs configured in code)
 - Apple Sign-In: deferred — requires Apple Developer subscription ($99/year); code is ready
 

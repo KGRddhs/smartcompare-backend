@@ -33,6 +33,21 @@
 | Fashion as 9th category with dedicated schema | Fashion products (shoes, bags, clothing) have unique spec fields (material, sole_type, closure, sizing) that don't fit electronics or "other" schemas. |
 | "Other" schema cleanup | Removed electronics-specific fields (power, compatibility, count, included) from "other" schema — they produced forced N/A for non-electronics products. |
 
+## Scoring & Quality Decisions (Session 26)
+
+| Decision | Reasoning |
+|----------|-----------|
+| Category-specific weights over single default | Fashion cares about popularity/reviews, electronics about specs/reliability, supplements about reliability/reviews. One-size-fits-all weights produced irrational scores. |
+| Price tier detection (BHD thresholds) | budget/mid/premium/luxury tiers enable cross-tier comparison awareness. Without tiers, expensive = always bad on value. |
+| Tier-aware value score | Cross-tier: expectation-based formula (luxury should deliver 85% quality). Same-tier: 60/40 spec/price blend. Prevents luxury items from always losing on value. |
+| Counterfeit keyword filter as first filter | Must run BEFORE accessory filter — counterfeit check is higher priority and saves processing on rejected items. |
+| Official domain targeted search (Tier 1.5) | When Tier 1 Shopping fails for luxury brands, try `site:domain.com` Serper search. Costs only $0.001 extra, only triggers for luxury. |
+| Official domain bypasses sanity check | Prices from hermes.com/louisvuitton.com are authoritative — don't reject them based on GPT training data estimates. |
+| Derived ratings display-only (not fed to scoring) | Avoids circular dependency. Ratings derived from overall score (2.5-4.8 range) fill the UI gap without corrupting the scoring pipeline. |
+| Dimension winners with 3.0 tie threshold (not 2.0) | On a 0-100 scale, a 2-point difference is noise. 3.0 is a better practical threshold for "meaningfully different." |
+| Review post-processing in backend | Dual defense: GPT prompt rules + backend filter. Prompt rules catch most garbage; backend filter catches what slips through (garbage patterns, sentiment misclassification, short text). |
+| Verdict prompt receives full scoring context | Injecting tier info, dimension winners, category weights into GPT makes verdict data-backed instead of generic. Zero extra cost — rides on existing prompt tokens. |
+
 ## Code Decisions
 
 | Decision | Reasoning |
