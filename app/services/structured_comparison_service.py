@@ -773,6 +773,10 @@ class StructuredComparisonService:
             result.get("price"), shopping_items
         )
 
+        # Clean review content (garbage text, short items, misclassified sentiments)
+        if result.get("reviews") and isinstance(result["reviews"], dict):
+            result["reviews"] = self._clean_review_content(result["reviews"])
+
         # Clean review citations for display (replace [snippet_N] with source domain)
         if result.get("reviews") and isinstance(result["reviews"], dict):
             result["reviews"] = self._clean_review_citations(
@@ -1177,6 +1181,52 @@ class StructuredComparisonService:
         except Exception:
             return ""
 
+    GARBAGE_PATTERNS = [
+        r"learn more about",
+        r"see (full |more )?details",
+        r"click (here|to)",
+        r"read more",
+        r"shop now",
+        r"free (shipping|delivery|returns)",
+        r"add to (cart|bag|wishlist)",
+        r"available (in|at) (stores|select)",
+        r"sign up for",
+        r"join (our|the) (newsletter|waitlist)",
+    ]
+
+    NEGATIVE_INDICATORS = {"bad", "poor", "disappointing", "issue", "problem", "broke", "broken",
+        "flimsy", "cheap", "overpriced", "uncomfortable", "fragile", "peeling",
+        "fading", "cracking", "defect", "flaw", "mediocre", "underwhelming",
+        "lacking", "missing", "difficult", "annoying", "frustrating", "worse", "worst"}
+
+    POSITIVE_INDICATORS = {"great", "excellent", "premium", "beautiful", "perfect", "love",
+        "amazing", "wonderful", "fantastic", "superb", "outstanding", "impressive",
+        "comfortable", "luxurious", "elegant", "sturdy", "durable", "quality"}
+
+    def _clean_review_content(self, reviews: dict) -> dict:
+        """Remove garbage text, short items, and misclassified sentiments from reviews."""
+        import re
+        for section in ["common_praises", "detailed_praises", "common_complaints", "detailed_complaints"]:
+            items = reviews.get(section, [])
+            if not items:
+                continue
+            cleaned = []
+            for item in items:
+                text = item.get("text", "") if isinstance(item, dict) else str(item)
+                if any(re.search(p, text, re.IGNORECASE) for p in self.GARBAGE_PATTERNS):
+                    continue
+                if len(text.split()) < 8:
+                    continue
+                if "complaint" in section:
+                    words = set(text.lower().split())
+                    has_negative = bool(words & self.NEGATIVE_INDICATORS)
+                    has_positive = bool(words & self.POSITIVE_INDICATORS)
+                    if has_positive and not has_negative:
+                        continue
+                cleaned.append(item)
+            reviews[section] = cleaned
+        return reviews
+
     def _clean_review_citations(self, reviews: dict, search_results: list) -> dict:
         """Replace [snippet_N] with source domain name in review text fields.
 
@@ -1244,6 +1294,18 @@ class StructuredComparisonService:
         """Check if the product is from a luxury/designer brand (triggers price guardrails)."""
         name_lower = product_name.lower()
         return any(brand in name_lower for brand in StructuredComparisonService.LUXURY_BRAND_KEYWORDS)
+
+    def _get_official_domain(self, product_name: str) -> Optional[str]:
+        """Return the official brand domain for a luxury product, or None."""
+        name_lower = product_name.lower()
+        for keyword in self.LUXURY_BRAND_KEYWORDS:
+            if keyword in name_lower:
+                for domain in self.OFFICIAL_BRAND_DOMAINS:
+                    domain_base = domain.split(".")[0].replace("-", "")
+                    keyword_clean = keyword.replace(" ", "").replace("-", "")
+                    if keyword_clean in domain_base or domain_base in keyword_clean:
+                        return domain
+        return None
 
     SUPPLEMENT_KEYWORDS = {
         "vitamin", "supplement", "softgel", "capsule", "mineral",
