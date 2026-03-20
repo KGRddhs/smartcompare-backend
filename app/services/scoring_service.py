@@ -63,6 +63,17 @@ LOWER_IS_BETTER = {
 # Default score for missing data
 MISSING_SCORE = 50
 
+# Price tier thresholds (BHD)
+PRICE_TIERS = {
+    "budget":    (0, 11),
+    "mid":       (11, 57),
+    "premium":   (57, 189),
+    "luxury":    (189, float("inf")),
+}
+
+# Expected quality delivery per tier (0-1 scale)
+TIER_EXPECTATIONS = {"budget": 0.6, "mid": 0.7, "premium": 0.8, "luxury": 0.85}
+
 
 class ScoringService:
     """Deterministic scoring engine for product comparisons."""
@@ -129,11 +140,19 @@ class ScoringService:
 
         scoring_method = "personalized" if preferences else "category_weighted"
 
+        # Build price tier metadata
+        price_tiers_map = {}
+        for i, product in enumerate(products_data):
+            name = f"{product.get('brand', '')} {product.get('name', '')}".strip()
+            price_tiers_map[name] = self._price_tiers[i] if hasattr(self, '_price_tiers') and i < len(self._price_tiers) else "mid"
+
         return {
             "scores": result_products,
             "winner_index": winner_index,
             "win_margin": win_margin,
             "scoring_method": scoring_method,
+            "price_tiers": price_tiers_map,
+            "is_cross_tier": self._is_cross_tier_flag if hasattr(self, '_is_cross_tier_flag') else False,
         }
 
     def _compute_weights(self, preferences: Optional[Dict[str, Any]], category: str = "other") -> Dict[str, float]:
@@ -172,6 +191,17 @@ class ScoringService:
             weights = {k: 1.0 / n for k in weights}
 
         return weights
+
+    @staticmethod
+    def _detect_price_tier(price_bhd: float) -> str:
+        for tier, (low, high) in PRICE_TIERS.items():
+            if low <= price_bhd < high:
+                return tier
+        return "luxury"
+
+    @staticmethod
+    def _is_cross_tier(tiers: List[str]) -> bool:
+        return len(set(tiers)) > 1
 
     def _compute_raw_scores(self, product: Dict[str, Any], category: str) -> Dict[str, Any]:
         """Compute raw (un-normalized) dimension scores for a product."""
@@ -333,6 +363,16 @@ class ScoringService:
         products_data: List[Dict[str, Any]],
     ) -> List[Dict[str, float]]:
         """Normalize raw scores to 0-100 scale relative to each other."""
+        # Detect price tiers for value score
+        self._price_tiers = []
+        for rs in raw_scores:
+            price = rs.get("price_raw")
+            if price is not None and price > 0:
+                self._price_tiers.append(self._detect_price_tier(price))
+            else:
+                self._price_tiers.append("mid")  # default tier for missing price
+        self._is_cross_tier_flag = self._is_cross_tier(self._price_tiers)
+
         normalized = []
 
         for i in range(len(raw_scores)):
@@ -353,9 +393,10 @@ class ScoringService:
                 raw_scores, i
             )
 
-            # Value: spec_score / price (higher spec per dollar = better)
+            # Value: tier-aware scoring
             scores["value_score"] = self._compute_value_score(
-                scores["spec_score"], scores["price_score"]
+                scores["spec_score"], scores["price_score"],
+                self._price_tiers[i], self._is_cross_tier_flag
             )
 
             # Reliability: direct 0-1 → 0-100
@@ -445,14 +486,21 @@ class ScoringService:
             return MISSING_SCORE
         return round(max(0, min(100, val * 100)), 1)
 
-    def _compute_value_score(self, spec_score: float, price_score: float) -> float:
-        """Value = combination of spec quality and price affordability."""
+    def _compute_value_score(self, spec_score: float, price_score: float, price_tier: str, is_cross_tier: bool) -> float:
+        """Value = tier-aware combination of spec quality and price affordability."""
         if spec_score == MISSING_SCORE and price_score == MISSING_SCORE:
             return MISSING_SCORE
-
-        # Value is the average of spec and price scores (both already 0-100)
-        # A product with great specs AND great price = great value
-        return round((spec_score + price_score) / 2.0, 1)
+        if spec_score == MISSING_SCORE:
+            return price_score
+        if price_score == MISSING_SCORE:
+            return spec_score
+        if is_cross_tier:
+            expected = TIER_EXPECTATIONS.get(price_tier, 0.7) * 100
+            delivery = spec_score
+            value = 50 + (delivery - expected) * 0.8
+            return round(max(0, min(100, value)), 1)
+        else:
+            return round(spec_score * 0.6 + price_score * 0.4, 1)
 
     def _empty_result(self, count: int) -> Dict[str, Any]:
         """Return empty scoring result for edge cases."""
