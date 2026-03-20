@@ -821,8 +821,6 @@ class TestDimensionWinners:
 
     def test_dimension_winners_clear_winner(self):
         service = ScoringService()
-        if not hasattr(service, 'compute_dimension_winners'):
-            pytest.skip("compute_dimension_winners not yet implemented (TDD red phase)")
         result = {"scores": {
             "product_0": {"breakdown": {"price_score": 80, "spec_score": 60, "review_score": 50, "value_score": 50, "reliability_score": 50, "popularity_score": 50}},
             "product_1": {"breakdown": {"price_score": 40, "spec_score": 90, "review_score": 50, "value_score": 50, "reliability_score": 50, "popularity_score": 50}},
@@ -833,8 +831,6 @@ class TestDimensionWinners:
 
     def test_dimension_winners_tie(self):
         service = ScoringService()
-        if not hasattr(service, 'compute_dimension_winners'):
-            pytest.skip("compute_dimension_winners not yet implemented")
         result = {"scores": {
             "product_0": {"breakdown": {"price_score": 50, "spec_score": 50, "review_score": 50, "value_score": 50, "reliability_score": 50, "popularity_score": 50}},
             "product_1": {"breakdown": {"price_score": 51, "spec_score": 50, "review_score": 50, "value_score": 50, "reliability_score": 50, "popularity_score": 50}},
@@ -844,8 +840,6 @@ class TestDimensionWinners:
 
     def test_dimension_winners_both_missing(self):
         service = ScoringService()
-        if not hasattr(service, 'compute_dimension_winners'):
-            pytest.skip("compute_dimension_winners not yet implemented")
         result = {"scores": {
             "product_0": {"breakdown": {"price_score": MISSING_SCORE, "spec_score": 50, "review_score": 50, "value_score": 50, "reliability_score": 50, "popularity_score": 50}},
             "product_1": {"breakdown": {"price_score": MISSING_SCORE, "spec_score": 50, "review_score": 50, "value_score": 50, "reliability_score": 50, "popularity_score": 50}},
