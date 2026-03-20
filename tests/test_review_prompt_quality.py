@@ -154,3 +154,67 @@ class TestVerdictPromptCompleteness:
         prompt = COMPARISON_PROMPT
         assert "10 =" in prompt or "10=" in prompt
         assert "1 =" in prompt or "1=" in prompt
+
+
+# ===========================================
+# REVIEW PROMPT — GARBAGE & SENTIMENT RULES
+# ===========================================
+
+class TestReviewPromptQualityRules:
+    """Verify review prompt includes garbage rejection and sentiment alignment rules."""
+
+    def test_review_prompt_has_garbage_rejection_rules(self):
+        """Prompt must instruct GPT to reject navigation text and boilerplate."""
+        prompt = REVIEWS_EXTRACTION_PROMPT.lower()
+        assert "learn more" in prompt or "navigation" in prompt or "boilerplate" in prompt
+        assert "click" in prompt or "shop now" in prompt
+        assert "never include" in prompt or "never" in prompt
+
+    def test_review_prompt_has_sentiment_alignment(self):
+        """Prompt must instruct GPT to put only negative items in complaints."""
+        prompt = REVIEWS_EXTRACTION_PROMPT.lower()
+        assert "negative" in prompt and "complaint" in prompt
+        assert "positive" in prompt
+
+    def test_review_prompt_has_min_word_or_substantive_rule(self):
+        """Prompt should require substantive claims, not short generic text."""
+        prompt = REVIEWS_EXTRACTION_PROMPT.lower()
+        assert "specific" in prompt or "substantive" in prompt or "8 word" in prompt
+
+    def test_review_prompt_has_examples(self):
+        """Prompt must include concrete good/bad examples for praises and complaints."""
+        prompt = REVIEWS_EXTRACTION_PROMPT
+        assert "GOOD:" in prompt or "DO:" in prompt
+        assert "BAD:" in prompt or "DON'T:" in prompt
+
+
+# ===========================================
+# PRICE PROMPT — COUNTERFEIT REJECTION
+# ===========================================
+
+class TestPricePromptCounterfeitRejection:
+    """Verify price extraction prompt rejects counterfeit sources."""
+
+    def test_price_prompt_has_counterfeit_rejection(self):
+        """Price prompt must list counterfeit sites to avoid."""
+        from app.services.extraction_service import PRICE_EXTRACTION_PROMPT
+        prompt = PRICE_EXTRACTION_PROMPT.lower()
+        assert "dhgate" in prompt
+        assert "aliexpress" in prompt
+        assert "temu" in prompt
+        assert "counterfeit" in prompt or "never use" in prompt
+
+    def test_price_prompt_has_source_priority(self):
+        """Price prompt must define source priority hierarchy."""
+        from app.services.extraction_service import PRICE_EXTRACTION_PROMPT
+        prompt = PRICE_EXTRACTION_PROMPT
+        assert "SOURCE PRIORITY" in prompt or "source priority" in prompt.lower()
+        assert "official" in prompt.lower()
+        assert "authorized" in prompt.lower()
+
+    def test_price_prompt_has_authoritative_not_lowest(self):
+        """Price prompt must prioritize authoritative over cheapest price."""
+        from app.services.extraction_service import PRICE_EXTRACTION_PROMPT
+        prompt = PRICE_EXTRACTION_PROMPT
+        assert "AUTHORITATIVE" in prompt or "authoritative" in prompt.lower()
+        assert "not the lowest" in prompt.lower() or "not the cheapest" in prompt.lower()
