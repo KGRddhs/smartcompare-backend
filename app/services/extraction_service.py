@@ -343,7 +343,24 @@ DON'T: "Great camera quality" (generic, no evidence)
   * Fashion: style, material_quality, craftsmanship, comfort, durability, value
   * Fragrances: longevity, projection, uniqueness, versatility, value
   * Supplements: effectiveness, ingredients, taste, absorption, value
-  * Default: quality, value, durability, ease_of_use"""
+  * Default: quality, value, durability, ease_of_use
+
+CONTENT QUALITY — NEVER include these in praise OR complaints:
+- Navigation text: "learn more", "see details", "click here", "read more", "shop now"
+- Boilerplate: "free shipping", "easy returns", "available in stores"
+- Condition disclaimers: "learn more about condition", "see seller notes"
+- Marketing copy: "best seller", "limited edition" (unless substantiated by a review)
+- Generic filler: sentences under 8 words with no specific product claim
+
+Each praise/complaint MUST be a specific, substantive claim about the product itself.
+BAD: "Learn more about condition"
+BAD: "Great product"
+GOOD: "The leather feels premium and holds its shape well [snippet_3]"
+GOOD: "Stitching came loose after 2 months of daily wear [snippet_5]"
+
+SENTIMENT ALIGNMENT for complaints:
+- Only include NEGATIVE observations in complaints. A positive statement is NOT a criticism.
+- If a snippet mentions both positive and negative aspects, extract ONLY the negative part for complaints."""
 
 
 COMPARISON_PROMPT = """You are a product comparison expert. Compare these products with SPECIFIC, DATA-BACKED analysis. Be decisive — users want a clear answer, not fence-sitting.
