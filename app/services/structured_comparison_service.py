@@ -894,9 +894,17 @@ class StructuredComparisonService:
 
         price = self._extract_price_from_shopping(full_name, shopping_items, currency)
         if price and price.get("amount"):
-            # Sanity check Tier 1 only for high-value products from untrusted retailers
-            # Trusted retailers (score >= 1.0: Amazon, Best Buy, etc.) are accepted directly
-            if (self._is_high_value_query(full_name) or self._is_luxury_brand(full_name)) and price.get("retailer_score", 0) < 1.0:
+            # Official domain prices (retailer_score >= 1.0) skip sanity check entirely
+            if price.get("retailer_score", 0) >= 1.0:
+                logger.info(f"[PRICE] Official domain price ({price.get('retailer')}) — skipping sanity check")
+            elif (self._is_high_value_query(full_name) or self._is_luxury_brand(full_name)) and price.get("retailer_score", 0) < 1.0:
+                # Luxury brands get tighter thresholds (less tolerance for outliers)
+                if self._is_luxury_brand(full_name):
+                    high_threshold = 1.8
+                    low_threshold = 0.6
+                else:
+                    high_threshold = 2.0
+                    low_threshold = 0.5
                 tier3_estimate, usage = await extract_price_from_training_data(brand, name, variant, region)
                 self._track_gpt_cost(usage)
                 self._sanitize_gpt_price(tier3_estimate)
@@ -904,16 +912,16 @@ class StructuredComparisonService:
                 if tier3_estimate and tier3_estimate.get("amount"):
                     tier1_bhd = _convert_to_bhd(price["amount"], currency)
                     tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
-                    if tier1_bhd > tier3_bhd * 2:
+                    if tier1_bhd > tier3_bhd * high_threshold:
                         logger.info(
                             f"[PRICE] Tier 1 too HIGH: {currency} {price['amount']} from {price.get('retailer')} "
-                            f"vs estimate {currency} {tier3_estimate['amount']} — falling through"
+                            f"vs estimate {currency} {tier3_estimate['amount']} (threshold {high_threshold}x) — falling through"
                         )
                         price = None
-                    elif tier1_bhd < tier3_bhd * 0.5:
+                    elif tier1_bhd < tier3_bhd * low_threshold:
                         logger.info(
                             f"[PRICE] Tier 1 too LOW: {currency} {price['amount']} from {price.get('retailer')} "
-                            f"vs estimate {currency} {tier3_estimate['amount']} — falling through"
+                            f"vs estimate {currency} {tier3_estimate['amount']} (threshold {low_threshold}x) — falling through"
                         )
                         price = None
             if price and price.get("amount"):

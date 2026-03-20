@@ -245,6 +245,13 @@ SOURCE PRIORITY (use the HIGHEST available):
 4. Resellers (eBay, StockX, TheRealReal) — ONLY if nothing else available, flag confidence 0.3
 5. NEVER use: DHgate, AliExpress, Temu, Wish — these sell counterfeits
 
+REJECT these sources entirely — do NOT extract prices from:
+- Reseller/marketplace individual sellers (eBay individuals, Poshmark, Mercari, Vestiaire)
+- Known counterfeit platforms (DHgate, AliExpress, Temu, Wish)
+- Listings with "pre-owned", "used", "vintage" unless user explicitly asked for used
+- Any listing priced at <40% of typical retail for luxury/designer brands
+- Listings with "replica", "fake", "dupe", "inspired" in the title or URL
+
 RULES:
 - Extract the MOST AUTHORITATIVE price, NOT the lowest. A $630 price from hermes.com is correct; a $94 price from eBay is likely counterfeit/resale.
 - Do NOT convert currencies — return the exact price as shown in the source
