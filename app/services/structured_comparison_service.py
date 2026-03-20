@@ -26,7 +26,7 @@ from app.services.extraction_service import (
 from app.services.serper_service import search_product_prices, search_price_organic, search_web
 from app.services.cache_service import get_cached, set_cached
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
-from app.services.scoring_service import get_scoring_service
+from app.services.scoring_service import get_scoring_service, MISSING_SCORE
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
@@ -330,6 +330,20 @@ class StructuredComparisonService:
             price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
             unique_methods = set(m for m in price_methods if m)
 
+            # Derive ratings for products with no real ratings
+            for i, pd_item in enumerate(product_data):
+                if pd_item.get("rating") is None:
+                    key = f"product_{i}"
+                    overall = scoring_result.get("scores", {}).get(key, {}).get("overall", MISSING_SCORE)
+                    pd_item["rating"] = self._derive_rating_from_scores(overall)
+                    pd_item["rating_derived"] = True
+
+            # Build tier context
+            tier_context = {
+                "price_tiers": scoring_result.get("price_tiers", {}),
+                "is_cross_tier": scoring_result.get("is_cross_tier", False),
+            }
+
             return {
                 "success": True,
                 "products": product_data,
@@ -345,6 +359,7 @@ class StructuredComparisonService:
                 "personalization_factors": personalization_factors,
                 "personalized_insights": comparison.get("personalized_insights", []),
                 "price_method_mismatch": len(unique_methods) > 1,
+                "tier_context": tier_context,
                 "metadata": {
                     "query": query,
                     "region": region,
@@ -537,6 +552,20 @@ class StructuredComparisonService:
                 for tag in user_preferences.get("lifestyle", []):
                     personalization_factors.append(f"lifestyle_{tag}")
 
+            # Derive ratings for products with no real ratings
+            for i, pd_item in enumerate(product_data):
+                if pd_item.get("rating") is None:
+                    key = f"product_{i}"
+                    overall = scoring_result.get("scores", {}).get(key, {}).get("overall", MISSING_SCORE)
+                    pd_item["rating"] = self._derive_rating_from_scores(overall)
+                    pd_item["rating_derived"] = True
+
+            # Build tier context
+            tier_context = {
+                "price_tiers": scoring_result.get("price_tiers", {}),
+                "is_cross_tier": scoring_result.get("is_cross_tier", False),
+            }
+
             complete_response = {
                 "success": True,
                 "products": product_data,
@@ -551,6 +580,7 @@ class StructuredComparisonService:
                 "personalized": personalized,
                 "personalization_factors": personalization_factors,
                 "personalized_insights": comparison.get("personalized_insights", []),
+                "tier_context": tier_context,
                 "metadata": {
                     "query": query,
                     "region": region,
@@ -1266,6 +1296,11 @@ class StructuredComparisonService:
                 cleaned.append(item)
             reviews[section] = cleaned
         return reviews
+
+    def _derive_rating_from_scores(self, overall_score: float) -> float:
+        """Derive a synthetic rating (1-5 scale) from overall score when no real rating exists."""
+        rating = 2.5 + (overall_score / 100) * 2.3
+        return round(min(rating, 4.8), 1)
 
     def _clean_review_citations(self, reviews: dict, search_results: list) -> dict:
         """Replace [snippet_N] with source domain name in review text fields.
