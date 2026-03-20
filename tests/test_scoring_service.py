@@ -737,39 +737,32 @@ class TestPriceTierDetection:
     """Test price tier classification and cross-tier detection."""
 
     def test_price_tier_budget(self):
-        # Budget tier: products under ~$15
-        service = ScoringService()
-        if hasattr(service, '_detect_price_tier'):
-            assert service._detect_price_tier(5.0) == "budget"
-        else:
-            # Method not implemented yet — TDD red phase
-            assert hasattr(ScoringService, '_detect_price_tier'), \
-                "_detect_price_tier not yet implemented (TDD red phase)"
+        assert ScoringService._detect_price_tier(5.0) == "budget"
 
     def test_price_tier_mid(self):
-        service = ScoringService()
-        if hasattr(service, '_detect_price_tier'):
-            assert service._detect_price_tier(30.0) == "mid"
+        assert ScoringService._detect_price_tier(30.0) == "mid"
 
     def test_price_tier_premium(self):
-        service = ScoringService()
-        if hasattr(service, '_detect_price_tier'):
-            assert service._detect_price_tier(100.0) == "premium"
+        assert ScoringService._detect_price_tier(100.0) == "premium"
 
     def test_price_tier_luxury(self):
-        service = ScoringService()
-        if hasattr(service, '_detect_price_tier'):
-            assert service._detect_price_tier(500.0) == "luxury"
+        assert ScoringService._detect_price_tier(500.0) == "luxury"
+
+    def test_price_tier_boundary_budget_mid(self):
+        """Boundary between budget and mid tiers."""
+        tier = ScoringService._detect_price_tier(15.0)
+        assert tier in ("budget", "mid")
 
     def test_cross_tier_different(self):
-        service = ScoringService()
-        if hasattr(service, '_is_cross_tier'):
-            assert service._is_cross_tier(["budget", "luxury"]) is True
+        assert ScoringService._is_cross_tier(["budget", "luxury"]) is True
 
     def test_cross_tier_same(self):
-        service = ScoringService()
-        if hasattr(service, '_is_cross_tier'):
-            assert service._is_cross_tier(["luxury", "luxury"]) is False
+        assert ScoringService._is_cross_tier(["luxury", "luxury"]) is False
+
+    def test_cross_tier_adjacent(self):
+        """Adjacent tiers (budget vs mid) may or may not be cross-tier."""
+        result = ScoringService._is_cross_tier(["budget", "mid"])
+        assert isinstance(result, bool)
 
 
 # ===========================================
@@ -780,60 +773,43 @@ class TestValueScoreRedesign:
     """Test cross-tier aware value scoring."""
 
     def test_value_score_cross_tier_luxury(self):
-        """Luxury item with high spec but low price score should still get fair value."""
+        """Luxury item with high spec but low price score — cross-tier aware."""
         service = ScoringService()
-        if hasattr(service, '_compute_value_score') and \
-           len(service._compute_value_score.__code__.co_varnames) > 3:
-            # New signature: (spec, price, tier, is_cross_tier)
-            score = service._compute_value_score(85, 30, "luxury", True)
-            # luxury expected=85, delivery=85 => value=50+(85-85)*0.8=50
-            assert 45 <= score <= 55
-        else:
-            # Current implementation: (spec, price) -> average
-            score = service._compute_value_score(85, 30)
-            assert score == pytest.approx((85 + 30) / 2, abs=0.5)
+        # luxury expected=0.85*100=85, delivery(spec)=85 => value=50+(85-85)*0.8=50
+        score = service._compute_value_score(85, 30, "luxury", True)
+        assert 45 <= score <= 55
 
     def test_value_score_cross_tier_budget(self):
+        """Budget item with good price — cross-tier value should be decent."""
         service = ScoringService()
-        if hasattr(service, '_compute_value_score') and \
-           len(service._compute_value_score.__code__.co_varnames) > 3:
-            score = service._compute_value_score(70, 95, "budget", True)
-            assert score > 55
-        else:
-            score = service._compute_value_score(70, 95)
-            assert score == pytest.approx((70 + 95) / 2, abs=0.5)
+        # budget expected=0.6*100=60, delivery(spec)=70 => value=50+(70-60)*0.8=58
+        score = service._compute_value_score(70, 95, "budget", True)
+        assert score > 55
 
     def test_value_score_same_tier(self):
+        """Same tier: weighted average of spec (0.6) and price (0.4)."""
         service = ScoringService()
-        if hasattr(service, '_compute_value_score') and \
-           len(service._compute_value_score.__code__.co_varnames) > 3:
-            score = service._compute_value_score(80, 60, "mid", False)
-            expected = 80 * 0.6 + 60 * 0.4
-            assert abs(score - expected) < 0.5
-        else:
-            score = service._compute_value_score(80, 60)
-            assert score == pytest.approx((80 + 60) / 2, abs=0.5)
+        score = service._compute_value_score(80, 60, "mid", False)
+        expected = 80 * 0.6 + 60 * 0.4
+        assert abs(score - expected) < 0.5
 
     def test_value_score_missing_spec(self):
+        """Missing spec should fall back to price score only."""
         service = ScoringService()
-        if hasattr(service, '_compute_value_score') and \
-           len(service._compute_value_score.__code__.co_varnames) > 3:
-            score = service._compute_value_score(MISSING_SCORE, 70, "mid", False)
-            assert score == 70
-        else:
-            score = service._compute_value_score(MISSING_SCORE, 70)
-            # Current: average of 50 and 70
-            assert score == pytest.approx((MISSING_SCORE + 70) / 2, abs=0.5)
+        score = service._compute_value_score(MISSING_SCORE, 70, "mid", False)
+        assert score == 70
+
+    def test_value_score_missing_price(self):
+        """Missing price should fall back to spec score only."""
+        service = ScoringService()
+        score = service._compute_value_score(70, MISSING_SCORE, "mid", False)
+        assert score == 70
 
     def test_value_score_both_missing(self):
+        """Both missing should return MISSING_SCORE."""
         service = ScoringService()
-        if hasattr(service, '_compute_value_score') and \
-           len(service._compute_value_score.__code__.co_varnames) > 3:
-            score = service._compute_value_score(MISSING_SCORE, MISSING_SCORE, "mid", False)
-            assert score == MISSING_SCORE
-        else:
-            score = service._compute_value_score(MISSING_SCORE, MISSING_SCORE)
-            assert score == MISSING_SCORE
+        score = service._compute_value_score(MISSING_SCORE, MISSING_SCORE, "mid", False)
+        assert score == MISSING_SCORE
 
 
 # ===========================================
