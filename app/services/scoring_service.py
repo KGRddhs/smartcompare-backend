@@ -74,6 +74,13 @@ PRICE_TIERS = {
 # Expected quality delivery per tier (0-1 scale)
 TIER_EXPECTATIONS = {"budget": 0.6, "mid": 0.7, "premium": 0.8, "luxury": 0.85}
 
+# Category-specific minimum coverage thresholds for spec penalty
+CATEGORY_MIN_COVERAGE = {
+    "electronics": 0.5, "fashion": 0.3, "fragrances": 0.3,
+    "supplements": 0.4, "makeup": 0.35, "skincare": 0.35,
+    "haircare": 0.35, "grocery": 0.3, "other": 0.3,
+}
+
 
 class ScoringService:
     """Deterministic scoring engine for product comparisons."""
@@ -146,6 +153,14 @@ class ScoringService:
             name = f"{product.get('brand', '')} {product.get('name', '')}".strip()
             price_tiers_map[name] = self._price_tiers[i] if hasattr(self, '_price_tiers') and i < len(self._price_tiers) else "mid"
 
+        # Compute dimension winners
+        product_names = [
+            f"{p.get('brand', '')} {p.get('name', '')}".strip()
+            for p in products_data
+        ]
+        result_so_far = {"scores": result_products}
+        dimension_winners = self.compute_dimension_winners(result_so_far, product_names)
+
         return {
             "scores": result_products,
             "winner_index": winner_index,
@@ -153,6 +168,8 @@ class ScoringService:
             "scoring_method": scoring_method,
             "price_tiers": price_tiers_map,
             "is_cross_tier": self._is_cross_tier_flag if hasattr(self, '_is_cross_tier_flag') else False,
+            "dimension_winners": dimension_winners,
+            "category_weights": dict(CATEGORY_WEIGHTS.get(category, CATEGORY_WEIGHTS["other"])),
         }
 
     def _compute_weights(self, preferences: Optional[Dict[str, Any]], category: str = "other") -> Dict[str, float]:
@@ -289,10 +306,11 @@ class ScoringService:
         if scored_fields == 0:
             return 0.0
 
-        # Penalty: if less than half of schema fields have data, penalize score
+        # Penalty: if coverage below category threshold, penalize score
         total_fields = len(schema_fields)
         coverage_ratio = scored_fields / total_fields if total_fields > 0 else 0
-        if coverage_ratio < 0.5:
+        min_coverage = CATEGORY_MIN_COVERAGE.get(schema_key, 0.3)
+        if coverage_ratio < min_coverage:
             penalty_factor = 0.5 + coverage_ratio  # Range: 0.5 to 1.0
             return (total_score / scored_fields) * penalty_factor
 
@@ -519,6 +537,32 @@ class ScoringService:
             "scoring_method": "default",
         }
 
+    def compute_dimension_winners(self, scoring_result: Dict[str, Any], product_names: List[str]) -> Dict[str, Any]:
+        """Compute per-dimension winner between two products."""
+        scores = scoring_result.get("scores", {})
+        if len(scores) < 2 or len(product_names) < 2:
+            return {}
+
+        dims = ["price_score", "spec_score", "review_score", "value_score", "reliability_score", "popularity_score"]
+        winners = {}
+        b0 = scores.get("product_0", {}).get("breakdown", {})
+        b1 = scores.get("product_1", {}).get("breakdown", {})
+
+        for dim in dims:
+            s0 = b0.get(dim, MISSING_SCORE)
+            s1 = b1.get(dim, MISSING_SCORE)
+
+            if s0 == MISSING_SCORE and s1 == MISSING_SCORE:
+                winners[dim] = {"winner": "N/A", "margin": None}
+            elif abs(s0 - s1) < 3.0:
+                winners[dim] = {"winner": "tie", "margin": round(abs(s0 - s1), 1)}
+            elif s0 > s1:
+                winners[dim] = {"winner": product_names[0], "margin": round(s0 - s1, 1)}
+            else:
+                winners[dim] = {"winner": product_names[1], "margin": round(s1 - s0, 1)}
+
+        return winners
+
     @staticmethod
     def _extract_number(text: str) -> Optional[float]:
         """Extract the first number from a text string."""
@@ -548,7 +592,8 @@ class ScoringService:
             ps = scores[key]
             overall = ps["overall"]
             breakdown = ps["breakdown"]
-            lines.append(f"  {name}: {overall}/100 overall")
+            tier = scoring_result.get("price_tiers", {}).get(name, "unknown")
+            lines.append(f"  {name}: {overall}/100 overall (price tier: {tier})")
             dims = []
             for dim in ["price_score", "spec_score", "review_score", "value_score", "reliability_score", "popularity_score"]:
                 dims.append(f"{dim.replace('_score', '')}={breakdown.get(dim, 50)}")
@@ -558,6 +603,19 @@ class ScoringService:
         margin = scoring_result.get("win_margin", 0)
         if len(product_names) >= 2:
             lines.append(f"  Score winner: {product_names[winner_idx]} by {margin} points")
+
+        # Add dimension winners
+        dim_winners = scoring_result.get("dimension_winners", {})
+        if dim_winners:
+            dim_parts = []
+            for dim in ["price_score", "spec_score", "review_score", "value_score", "reliability_score", "popularity_score"]:
+                w = dim_winners.get(dim, {})
+                winner = w.get("winner", "N/A")
+                dim_parts.append(f"{dim.replace('_score', '')}={winner}")
+            lines.append(f"  Dimension leaders: {', '.join(dim_parts)}")
+
+        if scoring_result.get("is_cross_tier"):
+            lines.append("  Note: Products are in different price tiers — value scoring adjusted for tier expectations.")
 
         return "\n".join(lines)
 
