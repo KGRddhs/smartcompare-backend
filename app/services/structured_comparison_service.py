@@ -29,6 +29,7 @@ from app.services.drug_database_service import find_matching_drugs, format_drug_
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
 
 logger = logging.getLogger(__name__)
 
@@ -1217,6 +1218,21 @@ class StructuredComparisonService:
         "nordstrom.com", "farfetch.com", "ssense.com", "net-a-porter.com",
         "sephora.com", "harrods.com", "selfridges.com",
     }
+
+    # Authorized luxury retailers — trusted for cross-validation (Tier 1.5b)
+    AUTHORIZED_LUXURY_RETAILERS = {
+        "farfetch.com", "ssense.com", "net-a-porter.com",
+        "mytheresa.com", "matchesfashion.com", "nordstrom.com",
+    }
+
+    # GCC luxury retailers — regional fallback (Tier 1.5c)
+    GCC_LUXURY_RETAILERS = {
+        "ounass.ae", "namshi.com", "bloomingdales.ae",
+        "level-shoes.com",
+    }
+
+    PAGE_SCRAPE_TIMEOUT = 10  # seconds per individual page fetch
+    TIER_15_BUDGET_TIMEOUT = 20  # seconds total across all Tier 1.5 sub-tiers
 
     @staticmethod
     def _is_accessory(title: str) -> bool:
