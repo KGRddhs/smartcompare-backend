@@ -1140,6 +1140,20 @@ class StructuredComparisonService:
                 set_cached(cache_key, pharmacy_price, PRICE_CACHE_TTL)
                 return pharmacy_price
 
+            # Try page scraping on known retailer URLs from organic results (zero Serper cost)
+            if ENABLE_PAGE_SCRAPE:
+                known_supplement_retailers = {"iherb.com", "bn.boots.com", "bolo.bh", "amazon.com", "noon.com"}
+                for item in (iherb_organic + bh_organic)[:5]:
+                    link = item.get("link", "")
+                    link_domain = urlparse(link).netloc.replace("www.", "")
+                    if link_domain in known_supplement_retailers or link_domain in self.PHARMACY_DOMAINS:
+                        page_price = await self._fetch_page_price(link, full_name, currency)
+                        if page_price and page_price.get("amount"):
+                            page_price["_cached"] = False
+                            logger.info(f"[PRICE] Supplement: page scrape price {currency} {page_price['amount']} from {link_domain}")
+                            set_cached(cache_key, page_price, PRICE_CACHE_TTL)
+                            return page_price
+
             # Combine results for GPT extraction fallback
             combined_organic = iherb_organic + bh_organic
             if combined_organic:
