@@ -7,7 +7,7 @@ from app.services.structured_comparison_service import StructuredComparisonServi
 
 
 # Ensure curl_cffi is available as a mock module so the local import inside
-# _fetch_page_price doesn't raise ModuleNotFoundError.
+# _curl_fetch_html doesn't raise ModuleNotFoundError.
 _mock_curl_get = MagicMock()
 _mock_curl_requests = MagicMock()
 _mock_curl_requests.get = _mock_curl_get
@@ -127,14 +127,6 @@ NO_PRICE_HTML = """
 EMPTY_HTML = ""
 
 
-def _make_mock_response(html, status_code=200):
-    """Create a mock curl_cffi response."""
-    mock_resp = MagicMock()
-    mock_resp.status_code = status_code
-    mock_resp.text = html
-    return mock_resp
-
-
 @pytest.fixture
 def service():
     svc = StructuredComparisonService.__new__(StructuredComparisonService)
@@ -144,46 +136,33 @@ def service():
     return svc
 
 
-def _patch_page_fetch(mock_resp):
-    """Patch asyncio.to_thread to return mock response, bypassing curl_cffi import.
-
-    The actual method does:
-        resp = await asyncio.to_thread(lambda: curl_requests.get(...))
-    We mock asyncio.to_thread to return the mock response directly,
-    so curl_cffi never needs to be imported.
-    """
-    async def fake_to_thread(fn, *args, **kwargs):
-        return mock_resp
-    return patch("asyncio.to_thread", side_effect=fake_to_thread)
-
-
 class TestFetchPagePriceJsonLD:
     """Tests for JSON-LD extraction (Priority 1)."""
 
     @pytest.mark.asyncio
     async def test_jsonld_bhd_product(self, service):
         """JSON-LD with BHD currency extracts correctly without conversion."""
-        mock_resp = _make_mock_response(JSONLD_PRODUCT_HTML)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_PRODUCT_HTML):
             result = await service._fetch_page_price(
-                "https://louisvuitton.com/cap", "Louis Vuitton Vers Mesh Cap", "BHD"
+                "https://shop.example.com/cap", "Louis Vuitton Vers Mesh Cap", "BHD"
             )
         assert result is not None
         assert result["amount"] == 340.0
         assert result["source_method"] == "page_scrape"
-        assert result["retailer"] == "louisvuitton.com"
+        assert result["retailer"] == "shop.example.com"
         assert result["estimated"] is False
         assert result["confidence"] == 1.0
 
     @pytest.mark.asyncio
     async def test_jsonld_usd_conversion(self, service):
         """JSON-LD with USD triggers currency conversion to BHD."""
-        mock_resp = _make_mock_response(JSONLD_USD_HTML)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_USD_HTML):
             result = await service._fetch_page_price(
-                "https://hermes.com/cap", "Hermes Nevada Cap", "BHD"
+                "https://shop.example.com/cap", "Hermes Nevada Cap", "BHD"
             )
         assert result is not None
         # USD 700 should be converted to BHD (approx 263.9 at 0.377 rate)
@@ -193,11 +172,11 @@ class TestFetchPagePriceJsonLD:
     @pytest.mark.asyncio
     async def test_jsonld_out_of_stock(self, service):
         """Out-of-stock products still return price but in_stock=False."""
-        mock_resp = _make_mock_response(JSONLD_OUT_OF_STOCK_HTML)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_OUT_OF_STOCK_HTML):
             result = await service._fetch_page_price(
-                "https://louisvuitton.com/cap", "Louis Vuitton Cap", "BHD"
+                "https://shop.example.com/cap", "Louis Vuitton Cap", "BHD"
             )
         assert result is not None
         assert result["in_stock"] is False
@@ -206,11 +185,11 @@ class TestFetchPagePriceJsonLD:
     @pytest.mark.asyncio
     async def test_jsonld_nested_offers_picks_lowest(self, service):
         """Multiple offers picks the lowest price (handled by _extract_jsonld_price)."""
-        mock_resp = _make_mock_response(JSONLD_NESTED_OFFERS_HTML)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_NESTED_OFFERS_HTML):
             result = await service._fetch_page_price(
-                "https://gucci.com/belt", "Gucci Belt", "USD"
+                "https://shop.example.com/belt", "Gucci Belt", "USD"
             )
         assert result is not None
         assert result["amount"] == 425.0
@@ -222,9 +201,9 @@ class TestFetchPagePriceOpenGraph:
     @pytest.mark.asyncio
     async def test_og_meta_extraction(self, service):
         """OpenGraph meta tags extract price and currency."""
-        mock_resp = _make_mock_response(OG_META_HTML)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=OG_META_HTML):
             result = await service._fetch_page_price(
                 "https://ounass.ae/lv-cap", "Louis Vuitton Cap", "BHD"
             )
@@ -236,11 +215,11 @@ class TestFetchPagePriceOpenGraph:
     @pytest.mark.asyncio
     async def test_product_meta_fallback(self, service):
         """product:price:amount meta tags work as OG fallback."""
-        mock_resp = _make_mock_response(PRODUCT_META_HTML)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=PRODUCT_META_HTML):
             result = await service._fetch_page_price(
-                "https://farfetch.com/lv", "Louis Vuitton Cap", "BHD"
+                "https://shop.example.com/lv", "Louis Vuitton Cap", "BHD"
             )
         assert result is not None
         assert result["amount"] > 0
@@ -252,11 +231,11 @@ class TestFetchPagePriceMicrodata:
     @pytest.mark.asyncio
     async def test_microdata_extraction(self, service):
         """itemprop=price microdata extracts correctly."""
-        mock_resp = _make_mock_response(MICRODATA_HTML)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=MICRODATA_HTML):
             result = await service._fetch_page_price(
-                "https://hermes.com/cap", "Hermes Cap", "BHD"
+                "https://shop.example.com/cap", "Hermes Cap", "BHD"
             )
         assert result is not None
         assert result["amount"] > 0
@@ -269,45 +248,44 @@ class TestFetchPagePriceEdgeCases:
     @pytest.mark.asyncio
     async def test_no_structured_data_returns_none(self, service):
         """Pages with no structured price data return None."""
-        mock_resp = _make_mock_response(NO_PRICE_HTML)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=NO_PRICE_HTML):
             result = await service._fetch_page_price(
-                "https://hermes.com/browse", "Hermes Cap", "BHD"
+                "https://shop.example.com/browse", "Hermes Cap", "BHD"
             )
         assert result is None
 
     @pytest.mark.asyncio
     async def test_http_error_returns_none(self, service):
-        """HTTP 403/404/500 returns None gracefully."""
-        mock_resp = _make_mock_response("", status_code=403)
+        """HTTP 403/404/500 returns None gracefully (curl_fetch_html returns None)."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=None):
             result = await service._fetch_page_price(
-                "https://hermes.com/cap", "Hermes Cap", "BHD"
+                "https://shop.example.com/cap", "Hermes Cap", "BHD"
             )
         assert result is None
 
     @pytest.mark.asyncio
     async def test_timeout_returns_none(self, service):
-        """Network timeout returns None gracefully."""
-        async def raise_timeout(fn, *args, **kwargs):
-            raise Exception("Connection timed out")
+        """Network timeout returns None gracefully (curl_fetch_html handles it)."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("asyncio.to_thread", side_effect=raise_timeout):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=None):
             result = await service._fetch_page_price(
-                "https://hermes.com/cap", "Hermes Cap", "BHD"
+                "https://shop.example.com/cap", "Hermes Cap", "BHD"
             )
         assert result is None
 
     @pytest.mark.asyncio
     async def test_empty_html_returns_none(self, service):
         """Empty HTML returns None."""
-        mock_resp = _make_mock_response(EMPTY_HTML)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=EMPTY_HTML):
             result = await service._fetch_page_price(
-                "https://hermes.com/cap", "Hermes Cap", "BHD"
+                "https://shop.example.com/cap", "Hermes Cap", "BHD"
             )
         assert result is None
 
@@ -316,7 +294,7 @@ class TestFetchPagePriceEdgeCases:
         """Feature flag ENABLE_PAGE_SCRAPE=false disables scraping entirely."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", False):
             result = await service._fetch_page_price(
-                "https://hermes.com/cap", "Hermes Cap", "BHD"
+                "https://shop.example.com/cap", "Hermes Cap", "BHD"
             )
         assert result is None
 
@@ -324,33 +302,33 @@ class TestFetchPagePriceEdgeCases:
     async def test_zero_price_returns_none(self, service):
         """JSON-LD with price=0 is rejected by _extract_jsonld_price."""
         html = JSONLD_PRODUCT_HTML.replace('"340.000"', '"0"')
-        mock_resp = _make_mock_response(html)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=html):
             result = await service._fetch_page_price(
-                "https://louisvuitton.com/cap", "Louis Vuitton Cap", "BHD"
+                "https://shop.example.com/cap", "Louis Vuitton Cap", "BHD"
             )
         assert result is None
 
     @pytest.mark.asyncio
     async def test_domain_extracted_from_url(self, service):
         """Retailer name is the domain extracted from URL with www. stripped."""
-        mock_resp = _make_mock_response(JSONLD_PRODUCT_HTML)
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_PRODUCT_HTML):
             result = await service._fetch_page_price(
-                "https://www.louisvuitton.com/products/cap", "Louis Vuitton Cap", "BHD"
+                "https://www.shop.example.com/products/cap", "Louis Vuitton Cap", "BHD"
             )
         assert result is not None
-        assert result["retailer"] == "louisvuitton.com"  # www. stripped
+        assert result["retailer"] == "shop.example.com"  # www. stripped
 
     @pytest.mark.asyncio
     async def test_url_preserved_in_result(self, service):
         """The original URL is preserved in the result."""
-        mock_resp = _make_mock_response(JSONLD_PRODUCT_HTML)
-        url = "https://louisvuitton.com/products/cap-123"
+        url = "https://shop.example.com/products/cap-123"
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             _patch_page_fetch(mock_resp):
+             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_PRODUCT_HTML):
             result = await service._fetch_page_price(
                 url, "Louis Vuitton Vers Mesh Cap", "BHD"
             )
