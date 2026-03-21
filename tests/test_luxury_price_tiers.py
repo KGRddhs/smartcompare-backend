@@ -166,7 +166,7 @@ class TestTier15Constants:
         assert "ounass.ae" in StructuredComparisonService.GCC_LUXURY_RETAILERS
 
     def test_page_scrape_timeout_defined(self):
-        assert StructuredComparisonService.PAGE_SCRAPE_TIMEOUT == 10
+        assert StructuredComparisonService.PAGE_SCRAPE_TIMEOUT == 5
 
     def test_tier15_budget_timeout_defined(self):
         assert StructuredComparisonService.TIER_15_BUDGET_TIMEOUT == 20
