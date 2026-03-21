@@ -2310,6 +2310,31 @@ fe8d9c2 test: add endpoint-level HEIC rejection tests for /image/identify
 
 ---
 
+### Session 27 — Luxury Price Extraction Fix (March 21, 2026)
+
+**Problem:** Luxury brand prices (LV cap ~340 BHD showing as ~50-160 BHD) because official brand sites are JS-rendered and Serper snippets don't contain prices.
+
+**Root cause:** 4-tier cascade failure:
+1. Serper Shopping returns reseller prices -> filtered by sanity check
+2. Official domain search only reads snippets, not pages -> no prices from JS-rendered sites
+3. Tier 2 GPT extraction uses wrong sanity thresholds for luxury (2.0x instead of 1.8x)
+4. Tier 3 GPT estimate too conservative
+
+**Changes:**
+- NEW: `_fetch_page_price()` — generic page scraper (JSON-LD, OpenGraph, microdata) using curl_cffi
+- ENHANCED: Tier 1.5 now cascades: official brand -> authorized retailers (Farfetch, SSENSE, Net-a-Porter) -> GCC retailers (Ounass, Bloomingdales, Namshi)
+- FIXED: Tier 2 sanity check now uses luxury 1.8x/0.6x thresholds (was using 2.0x/0.5x)
+- NEW: Frontend "(estimated price)" indicator for Tier 3 prices
+- NEW: `ENABLE_PAGE_SCRAPE` feature flag (env var, default true)
+- NEW constants: `AUTHORIZED_LUXURY_RETAILERS`, `GCC_LUXURY_RETAILERS`
+- 20-second budget timeout across all Tier 1.5 sub-tiers
+- Supplement pipeline enhanced with page scraping before GPT fallback
+
+**Cost impact:** +$0.001-0.003 for luxury brands only (within $0.015 budget)
+**Tests:** +38 new tests (page scraping, tier cascade, sanity check) — 982 total free unit tests
+
+---
+
 **END OF KNOWLEDGE TRANSFER**
 
 *Keep this document updated as the project evolves.*
