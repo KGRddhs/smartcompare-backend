@@ -1751,6 +1751,141 @@ class StructuredComparisonService:
 
         return None
 
+    async def _fetch_page_price(
+        self,
+        url: str,
+        product_name: str,
+        currency: str = "BHD",
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch a product page and extract price from structured data.
+
+        Extraction priority:
+        1. JSON-LD Product schema (via existing _extract_jsonld_price)
+        2. OpenGraph meta tags (og:price:amount)
+        3. Microdata (itemprop="price")
+
+        Returns price dict or None. Uses curl_cffi for TLS fingerprinting
+        (same as iHerb scraping). Gated by ENABLE_PAGE_SCRAPE feature flag.
+        """
+        if not ENABLE_PAGE_SCRAPE:
+            return None
+
+        from urllib.parse import urlparse
+        domain = urlparse(url).netloc.replace("www.", "")
+        brand = product_name.split()[0] if product_name else ""
+
+        try:
+            from curl_cffi import requests as curl_requests
+            from bs4 import BeautifulSoup
+
+            logger.info(f"[PRICE] Page scrape: fetching {url}")
+            resp = await asyncio.to_thread(
+                lambda: curl_requests.get(
+                    url,
+                    impersonate="chrome",
+                    timeout=self.PAGE_SCRAPE_TIMEOUT,
+                    allow_redirects=True,
+                )
+            )
+
+            if resp.status_code != 200:
+                logger.info(f"[PRICE] Page scrape: HTTP {resp.status_code} for {domain}")
+                return None
+
+            html = resp.text
+
+            # Priority 1: JSON-LD (reuse existing method)
+            price_data = self._extract_jsonld_price(html, brand, currency)
+            if not price_data:
+                # Try with USD — we'll convert later
+                price_data = self._extract_jsonld_price(html, brand, "USD")
+                if price_data:
+                    price_data["_needs_conversion"] = True
+
+            if price_data and price_data.get("amount"):
+                logger.info(f"[PRICE] Page scrape: JSON-LD price {price_data['amount']} {price_data.get('currency', currency)} from {domain}")
+                result = {
+                    "amount": price_data["amount"],
+                    "original_currency": price_data.get("currency", currency),
+                    "currency": price_data.get("currency", currency),
+                    "retailer": domain,
+                    "url": url,
+                    "in_stock": price_data.get("in_stock", True),
+                    "confidence": 1.0,
+                    "estimated": False,
+                    "source_method": "page_scrape",
+                }
+                # Convert to target currency if needed
+                if price_data.get("_needs_conversion") or result["currency"].upper() != currency.upper():
+                    self._convert_gpt_price_currency(result, currency)
+                return result
+
+            # Priority 2: OpenGraph meta tags
+            soup = BeautifulSoup(html, 'html.parser')
+            og_price = soup.find('meta', property='og:price:amount')
+            og_currency = soup.find('meta', property='og:price:currency')
+            if not og_price:
+                og_price = soup.find('meta', property='product:price:amount')
+                og_currency = soup.find('meta', property='product:price:currency')
+
+            if og_price and og_price.get('content'):
+                try:
+                    amount = float(og_price['content'])
+                    if amount > 0:
+                        detected_currency = og_currency['content'] if og_currency and og_currency.get('content') else "USD"
+                        logger.info(f"[PRICE] Page scrape: OG meta price {amount} {detected_currency} from {domain}")
+                        result = {
+                            "amount": amount,
+                            "original_currency": detected_currency,
+                            "currency": detected_currency,
+                            "retailer": domain,
+                            "url": url,
+                            "in_stock": True,
+                            "confidence": 0.9,
+                            "estimated": False,
+                            "source_method": "page_scrape",
+                        }
+                        if detected_currency.upper() != currency.upper():
+                            self._convert_gpt_price_currency(result, currency)
+                        return result
+                except (ValueError, TypeError):
+                    pass
+
+            # Priority 3: Microdata itemprop="price"
+            price_elem = soup.find(attrs={"itemprop": "price"})
+            if price_elem:
+                price_val = price_elem.get("content") or price_elem.get_text(strip=True)
+                try:
+                    amount = float(price_val.replace(",", "").replace("$", "").replace("£", "").replace("€", ""))
+                    if amount > 0:
+                        # Try to find currency microdata nearby
+                        currency_elem = soup.find(attrs={"itemprop": "priceCurrency"})
+                        detected_currency = currency_elem.get("content", "USD") if currency_elem else "USD"
+                        logger.info(f"[PRICE] Page scrape: microdata price {amount} {detected_currency} from {domain}")
+                        result = {
+                            "amount": amount,
+                            "original_currency": detected_currency,
+                            "currency": detected_currency,
+                            "retailer": domain,
+                            "url": url,
+                            "in_stock": True,
+                            "confidence": 0.8,
+                            "estimated": False,
+                            "source_method": "page_scrape",
+                        }
+                        if detected_currency.upper() != currency.upper():
+                            self._convert_gpt_price_currency(result, currency)
+                        return result
+                except (ValueError, TypeError):
+                    pass
+
+            logger.info(f"[PRICE] Page scrape: no structured price data found at {domain}")
+            return None
+
+        except Exception as e:
+            logger.warning(f"[PRICE] Page scrape failed for {domain}: {e}")
+            return None
+
     @staticmethod
     def _strict_title_match(product_name: str, title: str) -> bool:
         """Key words from the product name must appear in the shopping title.
