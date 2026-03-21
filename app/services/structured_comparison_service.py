@@ -1899,6 +1899,85 @@ class StructuredComparisonService:
             logger.warning(f"[PRICE] curl_cffi fetch failed for {url}: {e}")
             return None
 
+    async def _fetch_rendered_html(self, url: str) -> Optional[str]:
+        """Render a URL via headless browser API and return the HTML.
+
+        Fires Cloudflare Browser Rendering and/or Microlink in parallel.
+        Returns the first valid (>1KB) HTML response, or None.
+        Provider selected by RENDER_PROVIDER env var: "cloudflare", "microlink", or "both".
+        """
+        if not ENABLE_JS_RENDER:
+            return None
+
+        provider = os.environ.get("RENDER_PROVIDER", "both")
+
+        async def _render_cloudflare(render_url: str) -> Optional[str]:
+            cf_account = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+            cf_token = os.environ.get("CLOUDFLARE_API_TOKEN")
+            if not cf_account or not cf_token:
+                return None
+            try:
+                async with httpx.AsyncClient(timeout=self.JS_RENDER_TIMEOUT) as client:
+                    resp = await client.post(
+                        f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/browser-rendering/render",
+                        headers={"Authorization": f"Bearer {cf_token}", "Content-Type": "application/json"},
+                        json={"url": render_url, "waitFor": 3000},
+                    )
+                    if resp.status_code == 200:
+                        # Response may be JSON {"result": "<html>"} or raw HTML
+                        try:
+                            data = resp.json()
+                            html = data.get("result", "") or data.get("html", "")
+                        except Exception:
+                            html = resp.text
+                        if html and len(html) > 1000:
+                            logger.info(f"[PRICE] JS render: cloudflare returned {len(html)//1024}KB for {render_url}")
+                            return html
+                    else:
+                        logger.info(f"[PRICE] JS render: cloudflare HTTP {resp.status_code} for {render_url}")
+            except Exception as e:
+                logger.warning(f"[PRICE] JS render: cloudflare failed: {e}")
+            return None
+
+        async def _render_microlink(render_url: str) -> Optional[str]:
+            try:
+                headers = {}
+                ml_key = os.environ.get("MICROLINK_API_KEY")
+                if ml_key:
+                    headers["x-api-key"] = ml_key
+                async with httpx.AsyncClient(timeout=self.JS_RENDER_TIMEOUT) as client:
+                    resp = await client.get(
+                        "https://api.microlink.io",
+                        params={"url": render_url, "prerender": "true"},
+                        headers=headers,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        html = data.get("data", {}).get("html", "")
+                        if html and len(html) > 1000:
+                            logger.info(f"[PRICE] JS render: microlink returned {len(html)//1024}KB for {render_url}")
+                            return html
+                    else:
+                        logger.info(f"[PRICE] JS render: microlink HTTP {resp.status_code} for {render_url}")
+            except Exception as e:
+                logger.warning(f"[PRICE] JS render: microlink failed: {e}")
+            return None
+
+        if provider == "cloudflare":
+            return await _render_cloudflare(url)
+        elif provider == "microlink":
+            return await _render_microlink(url)
+        else:  # "both" — parallel race, first valid result wins
+            results = await asyncio.gather(
+                _render_cloudflare(url),
+                _render_microlink(url),
+                return_exceptions=True,
+            )
+            for r in results:
+                if isinstance(r, str) and len(r) > 1000:
+                    return r
+            return None
+
     def _extract_price_from_html(
         self, html: str, product_name: str, currency: str, domain: str, url: str
     ) -> Optional[Dict[str, Any]]:
