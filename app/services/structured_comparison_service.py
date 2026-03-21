@@ -32,6 +32,7 @@ from app.services.scoring_service import get_scoring_service, MISSING_SCORE
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
+ENABLE_JS_RENDER = os.environ.get("ENABLE_JS_RENDER", "true").lower() != "false"
 
 logger = logging.getLogger(__name__)
 
@@ -1347,8 +1348,18 @@ class StructuredComparisonService:
         "level-shoes.com",
     }
 
-    PAGE_SCRAPE_TIMEOUT = 10  # seconds per individual page fetch
+    PAGE_SCRAPE_TIMEOUT = 5  # seconds per curl_cffi page fetch (reduced; JS render has separate timeout)
     TIER_15_BUDGET_TIMEOUT = 20  # seconds total across all Tier 1.5 sub-tiers
+
+    # Domains known to block curl_cffi or serve JS shells — skip straight to JS render
+    JS_ONLY_DOMAINS = {
+        "louisvuitton.com", "hermes.com", "chanel.com", "gucci.com",
+        "prada.com", "dior.com", "farfetch.com", "net-a-porter.com",
+        "nordstrom.com", "neimanmarcus.com", "ssense.com", "mytheresa.com",
+        "burberry.com", "balenciaga.com", "fendi.com", "valentino.com",
+    }
+
+    JS_RENDER_TIMEOUT = 8  # seconds per JS rendering provider
 
     @staticmethod
     def _is_accessory(title: str) -> bool:
