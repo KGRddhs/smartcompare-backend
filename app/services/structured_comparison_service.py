@@ -1205,18 +1205,27 @@ class StructuredComparisonService:
                 if tier3_estimate and tier3_estimate.get("amount"):
                     tier2_bhd = _convert_to_bhd(price["amount"], currency)
                     tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
-                    if tier2_bhd > tier3_bhd * 2:
+                    # Luxury brands get tighter thresholds (same as Tier 1 sanity check)
+                    if self._is_luxury_brand(full_name):
+                        high_threshold = 1.8
+                        low_threshold = 0.6
+                    else:
+                        high_threshold = 2.0
+                        low_threshold = 0.5
+                    if tier2_bhd > tier3_bhd * high_threshold:
                         logger.info(
                             f"[PRICE] Tier 2 too HIGH: {currency} {price['amount']} "
-                            f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
+                            f"vs estimate {currency} {tier3_estimate['amount']} "
+                            f"(threshold {high_threshold}x) — using Tier 3"
                         )
                         price = tier3_estimate
                         price["estimated"] = True
                         price["source_method"] = "estimated"
-                    elif tier2_bhd < tier3_bhd * 0.5:
+                    elif tier2_bhd < tier3_bhd * low_threshold:
                         logger.info(
                             f"[PRICE] Tier 2 too LOW: {currency} {price['amount']} "
-                            f"vs estimate {currency} {tier3_estimate['amount']} — using Tier 3"
+                            f"vs estimate {currency} {tier3_estimate['amount']} "
+                            f"(threshold {low_threshold}x) — using Tier 3"
                         )
                         price = tier3_estimate
                         price["estimated"] = True
