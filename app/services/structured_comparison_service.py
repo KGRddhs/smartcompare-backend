@@ -5,11 +5,13 @@ Handles caching, parallel fetching, and assembling complete product data
 import os
 import re
 import json
+import time
 import asyncio
 import logging
 import httpx
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 from app.services.extraction_service import (
     parse_product_query,
@@ -962,37 +964,128 @@ class StructuredComparisonService:
                 price["_cached"] = False
                 return price
 
-        # --- Tier 1.5: Official domain targeted search (luxury brands only, 1 Serper credit) ---
-        if not price and self._is_luxury_brand(full_name):
+        # --- Tier 1.5: Page scraping cascade (luxury brands only) ---
+        if not price and self._is_luxury_brand(full_name) and ENABLE_PAGE_SCRAPE:
+            tier15_start = time.monotonic()
+            tier15_budget = self.TIER_15_BUDGET_TIMEOUT
+
+            # --- Tier 1.5a: Official brand site ---
             official_domain = self._get_official_domain(full_name)
             if official_domain:
-                logger.info(f"[PRICE] Luxury brand — trying official domain: {official_domain}")
+                logger.info(f"[PRICE] Tier 1.5a: trying official domain {official_domain}")
                 try:
                     official_results = await search_web(f"{full_name} site:{official_domain}")
                     self.api_calls += 1
                     self._track_cost(0.001)
                     if official_results and official_results.get("organic"):
-                        search_context = "\n".join(
-                            f"- {r.get('title', '')}: {r.get('snippet', '')}"
-                            for r in official_results["organic"][:5]
-                        )
-                        official_price, usage = await extract_price(
-                            brand, name, variant, region, search_context
-                        )
-                        self._track_gpt_cost(usage)
-                        self._sanitize_gpt_price(official_price)
-                        self._convert_gpt_price_currency(official_price, currency)
-                        if official_price and official_price.get("amount"):
-                            official_price["retailer"] = official_domain
-                            official_price["retailer_score"] = 1.0
-                            price = official_price
-                            logger.info(f"[PRICE] Official domain price found: {price.get('amount')} from {official_domain}")
-                            price.pop("retailer_score", None)
-                            set_cached(cache_key, price, PRICE_CACHE_TTL)
-                            price["_cached"] = False
-                            return price
+                        for organic_item in official_results["organic"][:2]:
+                            page_url = organic_item.get("link")
+                            if not page_url:
+                                continue
+                            page_price = await self._fetch_page_price(page_url, full_name, currency)
+                            if page_price and page_price.get("amount"):
+                                page_price["retailer"] = official_domain
+                                logger.info(f"[PRICE] Tier 1.5a: official price {currency} {page_price['amount']} from {official_domain}")
+                                set_cached(cache_key, page_price, PRICE_CACHE_TTL)
+                                page_price["_cached"] = False
+                                return page_price
                 except Exception as e:
-                    logger.warning(f"[PRICE] Official domain search failed: {e}")
+                    logger.warning(f"[PRICE] Tier 1.5a failed: {e}")
+
+            # Check budget before Tier 1.5b
+            elapsed = time.monotonic() - tier15_start
+            if elapsed >= tier15_budget:
+                logger.info(f"[PRICE] Tier 1.5 budget exhausted ({elapsed:.1f}s), skipping to Tier 2")
+            else:
+                # --- Tier 1.5b: Authorized luxury retailers ---
+                logger.info(f"[PRICE] Tier 1.5b: trying authorized retailers")
+                try:
+                    # Use brand name + retailer names (avoids long site: OR chains)
+                    retailer_query = f"{full_name} farfetch OR ssense OR net-a-porter"
+                    retailer_results = await search_web(retailer_query)
+                    self.api_calls += 1
+                    self._track_cost(0.001)
+                    if retailer_results and retailer_results.get("organic"):
+                        # Filter to only authorized retailer domains
+                        retailer_urls = []
+                        for item in retailer_results["organic"][:5]:
+                            link = item.get("link", "")
+                            link_domain = urlparse(link).netloc.replace("www.", "")
+                            if link_domain in self.AUTHORIZED_LUXURY_RETAILERS or link_domain in self.OFFICIAL_BRAND_DOMAINS:
+                                retailer_urls.append((link, link_domain))
+
+                        if retailer_urls:
+                            # Fetch top 3 in parallel
+                            fetch_tasks = [
+                                self._fetch_page_price(url, full_name, currency)
+                                for url, _ in retailer_urls[:3]
+                            ]
+                            page_prices = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+
+                            # Collect valid prices
+                            valid_prices = []
+                            for i, pp in enumerate(page_prices):
+                                if isinstance(pp, dict) and pp.get("amount"):
+                                    pp["_retailer_domain"] = retailer_urls[i][1]
+                                    valid_prices.append(pp)
+
+                            if len(valid_prices) >= 2:
+                                # Cross-validate: max/min <= 1.15
+                                amounts = [p["amount"] for p in valid_prices]
+                                if max(amounts) / min(amounts) <= 1.15:
+                                    # Prices agree — use lowest
+                                    best = min(valid_prices, key=lambda p: p["amount"])
+                                    logger.info(f"[PRICE] Tier 1.5b: cross-validated price {currency} {best['amount']} ({len(valid_prices)} sources agree)")
+                                    best.pop("_retailer_domain", None)
+                                    set_cached(cache_key, best, PRICE_CACHE_TTL)
+                                    best["_cached"] = False
+                                    return best
+                                else:
+                                    # Prices diverge — use the one from highest-tier retailer
+                                    best = valid_prices[0]
+                                    logger.info(f"[PRICE] Tier 1.5b: single retailer price {currency} {best['amount']} (prices diverged)")
+                                    best.pop("_retailer_domain", None)
+                                    set_cached(cache_key, best, PRICE_CACHE_TTL)
+                                    best["_cached"] = False
+                                    return best
+                            elif len(valid_prices) == 1:
+                                best = valid_prices[0]
+                                logger.info(f"[PRICE] Tier 1.5b: single retailer price {currency} {best['amount']}")
+                                best.pop("_retailer_domain", None)
+                                set_cached(cache_key, best, PRICE_CACHE_TTL)
+                                best["_cached"] = False
+                                return best
+                except Exception as e:
+                    logger.warning(f"[PRICE] Tier 1.5b failed: {e}")
+
+                # Check budget before Tier 1.5c
+                elapsed = time.monotonic() - tier15_start
+                if elapsed >= tier15_budget:
+                    logger.info(f"[PRICE] Tier 1.5 budget exhausted ({elapsed:.1f}s), skipping to Tier 2")
+                else:
+                    # --- Tier 1.5c: GCC luxury retailers ---
+                    logger.info(f"[PRICE] Tier 1.5c: trying GCC retailers")
+                    try:
+                        gcc_query = f"{full_name} ounass OR bloomingdales dubai OR namshi"
+                        gcc_results = await search_web(gcc_query)
+                        self.api_calls += 1
+                        self._track_cost(0.001)
+                        if gcc_results and gcc_results.get("organic"):
+                            for item in gcc_results["organic"][:3]:
+                                link = item.get("link", "")
+                                link_domain = urlparse(link).netloc.replace("www.", "")
+                                if link_domain in self.GCC_LUXURY_RETAILERS:
+                                    gcc_price = await self._fetch_page_price(link, full_name, currency)
+                                    if gcc_price and gcc_price.get("amount"):
+                                        # GCC sites often return AED — conversion handled by _fetch_page_price
+                                        logger.info(f"[PRICE] Tier 1.5c: GCC price {currency} {gcc_price['amount']} from {link_domain}")
+                                        set_cached(cache_key, gcc_price, PRICE_CACHE_TTL)
+                                        gcc_price["_cached"] = False
+                                        return gcc_price
+                    except Exception as e:
+                        logger.warning(f"[PRICE] Tier 1.5c failed: {e}")
+
+            logger.info(f"[PRICE] Tier 1.5 cascade complete, no price found for {full_name}")
 
         # --- Tier 2: GPT extraction from search context ---
         if is_supplement:
@@ -1770,7 +1863,6 @@ class StructuredComparisonService:
         if not ENABLE_PAGE_SCRAPE:
             return None
 
-        from urllib.parse import urlparse
         domain = urlparse(url).netloc.replace("www.", "")
         brand = product_name.split()[0] if product_name else ""
 
