@@ -44,7 +44,7 @@ export interface ProductPrice {
   confidence?: number;
   note?: string;
   unavailable?: boolean;
-  source_method?: 'local_bhd' | 'converted_usd' | 'estimated';
+  source_method?: 'local_bhd' | 'converted_usd' | 'estimated' | 'page_scrape';
 }
 
 export interface Product {

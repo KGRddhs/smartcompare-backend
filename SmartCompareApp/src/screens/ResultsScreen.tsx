@@ -375,7 +375,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         {product.price?.source_method === 'converted_usd' && (
           <Text style={styles.priceNote}>(converted from USD)</Text>
         )}
-        {product.price?.retailer && !product.price?.unavailable && (
+        {(product.price?.estimated === true || product.price?.source_method === 'estimated') && (
+          <Text style={styles.priceNote}>(estimated price)</Text>
+        )}
+        {product.price?.source_method === 'page_scrape' && product.price?.retailer && (
+          <Text style={styles.priceNote}>from {product.price.retailer}</Text>
+        )}
+        {product.price?.retailer && !product.price?.unavailable && product.price?.source_method !== 'page_scrape' && (
           <Text style={styles.retailerText}>{product.price.retailer}</Text>
         )}
         
