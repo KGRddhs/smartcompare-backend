@@ -315,10 +315,27 @@ class StructuredComparisonService:
                     "pros": comparison.pop("product_1_pros", []),
                     "cons": comparison.pop("product_1_cons", []),
                 }
-            
+
+            # Compute value badges per product
+            for i, product in enumerate(product_data):
+                value_score = scoring_result["scores"].get(f"product_{i}", {}).get("breakdown", {}).get("value_score", 50)
+                price_tier = scoring_result.get("price_tiers", {}).get(product.get("name", ""), "mid")
+                product["value_badge"] = scoring_service.compute_value_badge(value_score, price_tier)
+
+            # Compute tradeoff pairs
+            tradeoffs = scoring_service.compute_tradeoff_pairs(
+                scoring_result.get("dimension_winners", {}), product_names, scoring_result.get("winner_index", 0)
+            )
+
+            # Compute confidence
+            from_cache = not nocache  # simplified: if nocache=False, data may be cached
+            confidence = scoring_service.compute_confidence(
+                product_data, shopping_count=len(self._shopping_items_cache), cached=from_cache
+            )
+
             # Calculate timing
             elapsed = (datetime.now() - start_time).total_seconds()
-            
+
             # Build personalization metadata
             personalized = user_preferences is not None and bool(user_preferences)
             personalization_factors = []
@@ -342,39 +359,129 @@ class StructuredComparisonService:
                     pd_item["rating"] = self._derive_rating_from_scores(overall)
                     pd_item["rating_derived"] = True
 
-            # Build tier context
-            tier_context = {
+            # Build new structured response
+            winner_index = comparison.get("winner_index", 0)
+            win_margin = scoring_result.get("win_margin", 0)
+
+            result = {
+                "success": True,
+                "query": query,
+                "category": category_used,
+                "category_switched": category_switched,
+                "original_category": original_category,
+
+                "overview": {
+                    "winner": {
+                        "product_index": winner_index,
+                        "name": comparison.get("winner_declaration", product_names[winner_index] if product_names else ""),
+                        "declaration": comparison.get("winner_declaration", ""),
+                        "reason": comparison.get("winner_reason", ""),
+                        "key_tradeoff": comparison.get("key_tradeoff", ""),
+                        "margin": win_margin,
+                    },
+                    "products": [
+                        {
+                            "brand": pd.get("brand"),
+                            "name": pd.get("name"),
+                            "price": pd.get("price"),
+                            "rating": pd.get("rating"),
+                            "review_count": pd.get("review_count"),
+                            "overall_score": scoring_result.get("scores", {}).get(f"product_{i}", {}).get("overall"),
+                            "value_badge": pd.get("value_badge", "fair_price"),
+                            "value_context": comparison.get("value_context", ""),
+                            "pros": pd.get("pros_cons", {}).get("pros", []),
+                            "cons": pd.get("pros_cons", {}).get("cons", []),
+                            "best_for": comparison.get("best_for", {}).get(f"product_{i}", ""),
+                        }
+                        for i, pd in enumerate(product_data)
+                    ],
+                    "tradeoffs": tradeoffs,
+                    "confidence": confidence,
+                },
+
+                "specs": {
+                    "products": [
+                        {
+                            "brand": pd.get("brand"),
+                            "name": pd.get("name"),
+                            "specs": pd.get("specs"),
+                            "spec_advantages": comparison.get("specs_comparison", {}).get(f"product_{i}_advantages", []),
+                        }
+                        for i, pd in enumerate(product_data)
+                    ],
+                    "specs_comparison": comparison.get("specs_comparison", {}),
+                },
+
+                "reviews": {
+                    "products": [
+                        {
+                            "brand": pd.get("brand"),
+                            "name": pd.get("name"),
+                            "rating": pd.get("rating"),
+                            "review_count": pd.get("review_count"),
+                            "rating_source": pd.get("rating_source"),
+                            "review_summary": pd.get("reviews", {}).get("review_summary", {
+                                "overall_sentiment": "mixed",
+                                "consensus": "",
+                                "highlights": [],
+                                "review_volume": "minimal",
+                                "agreement_level": "moderate",
+                            }),
+                        }
+                        for pd in product_data
+                    ],
+                },
+
+                "scoring": {
+                    "scores": scoring_result.get("scores", {}),
+                    "dimension_winners": scoring_result.get("dimension_winners", {}),
+                    "price_tiers": scoring_result.get("price_tiers", {}),
+                    "is_cross_tier": scoring_result.get("is_cross_tier", False),
+                    "scoring_method": scoring_result.get("scoring_method", "category_weighted"),
+                    "category_weights": scoring_result.get("category_weights", {}),
+                },
+
+                "personalization": {
+                    "personalized": personalized,
+                    "factors": personalization_factors,
+                    "personalized_insights": comparison.get("personalized_insights", []),
+                },
+
+                "metadata": {
+                    "query": query,
+                    "region": region,
+                    "elapsed_ms": round(elapsed * 1000),
+                    "elapsed_seconds": round(elapsed, 2),
+                    "api_calls": self.api_calls,
+                    "total_cost": round(self.total_cost, 6),
+                    "gpt_calls": self.gpt_calls,
+                    "serper_calls": self.serper_calls,
+                    "cached": from_cache,
+                    "fact_check": {
+                        "product_0": product_data[0].get("fact_check", {}),
+                        "product_1": product_data[1].get("fact_check", {}),
+                    },
+                    "timestamp": datetime.now().isoformat(),
+                },
+            }
+
+            # Backward compatibility aliases for old stored comparisons in history
+            result["products"] = product_data
+            result["comparison"] = comparison
+            result["recommendation"] = comparison.get("winner_reason", "")
+            result["key_differences"] = []
+            result["winner_index"] = winner_index
+            result["category_used"] = category_used
+            result["personalized"] = personalized
+            result["personalization_factors"] = personalization_factors
+            result["personalized_insights"] = comparison.get("personalized_insights", [])
+            result["price_method_mismatch"] = len(unique_methods) > 1
+            result["tier_context"] = {
                 "price_tiers": scoring_result.get("price_tiers", {}),
                 "is_cross_tier": scoring_result.get("is_cross_tier", False),
             }
 
-            return {
-                "success": True,
-                "products": product_data,
-                "comparison": comparison,
-                "scoring": scoring_result,
-                "winner_index": comparison.get("winner_index", 0),
-                "recommendation": comparison.get("recommendation", ""),
-                "key_differences": comparison.get("key_differences", []),
-                "category_used": category_used,
-                "category_switched": category_switched,
-                "original_category": original_category,
-                "personalized": personalized,
-                "personalization_factors": personalization_factors,
-                "personalized_insights": comparison.get("personalized_insights", []),
-                "price_method_mismatch": len(unique_methods) > 1,
-                "tier_context": tier_context,
-                "metadata": {
-                    "query": query,
-                    "region": region,
-                    "elapsed_seconds": round(elapsed, 2),
-                    "total_cost": round(self.total_cost, 6),
-                    "api_calls": self.api_calls,
-                    "gpt_calls": self.gpt_calls,
-                    "serper_calls": self.serper_calls,
-                    "timestamp": datetime.now().isoformat()
-                }
-            }
+            return result
 
         except Exception as e:
             logger.error(f"Comparison error: {e}", exc_info=True)
@@ -409,7 +516,7 @@ class StructuredComparisonService:
 
         try:
             # Step 1: Parse the query
-            yield ("status", {"message": "Parsing query..."})
+            yield ("status", {"message": "Parsing query...", "progress": 10})
 
             if vision_products and len(vision_products) >= 2:
                 products = []
@@ -451,29 +558,34 @@ class StructuredComparisonService:
             category_used = detected_category
 
             # Step 2: Fetch product data (Phase 1 + Phase 2 inside _fetch_product_data)
-            yield ("status", {"message": "Fetching specs and prices..."})
+            yield ("status", {"message": "Fetching specs and prices...", "progress": 20})
 
             product_data = await asyncio.gather(
                 self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
                 self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache),
             )
 
-            # Yield specs
-            specs_payload = {}
-            for i, pd in enumerate(product_data):
-                key = f"product_{i}"
-                specs_payload[key] = {
-                    "brand": pd.get("brand"),
-                    "name": pd.get("name"),
-                    "specs": pd.get("specs"),
-                    "fact_check": pd.get("fact_check"),
-                }
-            yield ("specs", specs_payload)
+            # Yield specs (wrapped in specs section format)
+            yield ("specs", {
+                "products": [
+                    {
+                        "brand": pd.get("brand"),
+                        "name": pd.get("name"),
+                        "specs": pd.get("specs"),
+                        "fact_check": pd.get("fact_check"),
+                    }
+                    for pd in product_data
+                ]
+            })
 
-            # Yield prices
+            # Yield prices with value badges
+            scoring_service = get_scoring_service()
             prices_payload = {}
             for i, pd in enumerate(product_data):
                 key = f"product_{i}"
+                # Compute value badge early for streaming
+                value_score = 50  # placeholder until scores computed
+                price_tier = "mid"
                 prices_payload[key] = {
                     "brand": pd.get("brand"),
                     "name": pd.get("name"),
@@ -484,24 +596,30 @@ class StructuredComparisonService:
                 }
             yield ("prices", prices_payload)
 
-            # Yield reviews
-            yield ("status", {"message": "Analyzing reviews..."})
-            reviews_payload = {}
-            for i, pd in enumerate(product_data):
-                key = f"product_{i}"
-                reviews_payload[key] = {
-                    "brand": pd.get("brand"),
-                    "name": pd.get("name"),
-                    "reviews": pd.get("reviews"),
-                    "rating": pd.get("rating"),
-                    "review_count": pd.get("review_count"),
-                    "rating_verified": pd.get("rating_verified"),
-                    "rating_source": pd.get("rating_source"),
-                }
-            yield ("reviews", reviews_payload)
+            # Yield reviews with review_summary format
+            yield ("status", {"message": "Analyzing reviews...", "progress": 50})
+            yield ("reviews", {
+                "products": [
+                    {
+                        "brand": pd.get("brand"),
+                        "name": pd.get("name"),
+                        "rating": pd.get("rating"),
+                        "review_count": pd.get("review_count"),
+                        "rating_verified": pd.get("rating_verified"),
+                        "rating_source": pd.get("rating_source"),
+                        "review_summary": pd.get("reviews", {}).get("review_summary", {
+                            "overall_sentiment": "mixed",
+                            "consensus": "",
+                            "highlights": [],
+                            "review_volume": "minimal",
+                            "agreement_level": "moderate",
+                        }),
+                    }
+                    for pd in product_data
+                ]
+            })
 
             # Step 3: Compute scores (instant, $0)
-            scoring_service = get_scoring_service()
             scoring_result = scoring_service.compute_scores(
                 product_data, preferences=user_preferences
             )
@@ -512,10 +630,22 @@ class StructuredComparisonService:
             scores_summary = scoring_service.build_scores_summary(
                 scoring_result, product_names
             )
-            yield ("scores", scoring_result)
+
+            # Compute confidence for scores event
+            from_cache = not nocache
+            confidence = scoring_service.compute_confidence(
+                product_data, shopping_count=len(self._shopping_items_cache), cached=from_cache
+            )
+            yield ("scores", {
+                "scores": scoring_result.get("scores", {}),
+                "dimension_winners": scoring_result.get("dimension_winners", {}),
+                "winner_index": scoring_result.get("winner_index", 0),
+                "win_margin": scoring_result.get("win_margin", 0),
+                "confidence": confidence,
+            })
 
             # Step 4: Generate verdict
-            yield ("status", {"message": "Generating verdict..."})
+            yield ("status", {"message": "Generating verdict...", "progress": 80})
             comparison, usage = await generate_comparison(
                 product_data[0],
                 product_data[1],
@@ -536,12 +666,36 @@ class StructuredComparisonService:
                     "cons": comparison.pop("product_1_cons", []),
                 }
 
+            # Compute value badges per product
+            for i, product in enumerate(product_data):
+                value_score = scoring_result["scores"].get(f"product_{i}", {}).get("breakdown", {}).get("value_score", 50)
+                price_tier = scoring_result.get("price_tiers", {}).get(product.get("name", ""), "mid")
+                product["value_badge"] = scoring_service.compute_value_badge(value_score, price_tier)
+
+            # Compute tradeoff pairs
+            tradeoffs = scoring_service.compute_tradeoff_pairs(
+                scoring_result.get("dimension_winners", {}), product_names, scoring_result.get("winner_index", 0)
+            )
+
+            winner_index = comparison.get("winner_index", 0)
+            win_margin = scoring_result.get("win_margin", 0)
+
             yield ("verdict", {
-                "comparison": comparison,
-                "winner_index": comparison.get("winner_index", 0),
-                "recommendation": comparison.get("recommendation", ""),
-                "key_differences": comparison.get("key_differences", []),
+                "winner": {
+                    "product_index": winner_index,
+                    "name": comparison.get("winner_declaration", product_names[winner_index] if product_names else ""),
+                    "reason": comparison.get("winner_reason", ""),
+                    "key_tradeoff": comparison.get("key_tradeoff", ""),
+                    "margin": win_margin,
+                },
+                "value_context": comparison.get("value_context", ""),
+                "best_for": comparison.get("best_for", {}),
                 "personalized_insights": comparison.get("personalized_insights", []),
+                # Backward compat
+                "comparison": comparison,
+                "winner_index": winner_index,
+                "recommendation": comparison.get("winner_reason", ""),
+                "key_differences": [],
             })
 
             # Step 5: Build complete response
@@ -564,37 +718,121 @@ class StructuredComparisonService:
                     pd_item["rating"] = self._derive_rating_from_scores(overall)
                     pd_item["rating_derived"] = True
 
-            # Build tier context
-            tier_context = {
-                "price_tiers": scoring_result.get("price_tiers", {}),
-                "is_cross_tier": scoring_result.get("is_cross_tier", False),
-            }
-
             complete_response = {
                 "success": True,
-                "products": product_data,
-                "comparison": comparison,
-                "scoring": scoring_result,
-                "winner_index": comparison.get("winner_index", 0),
-                "recommendation": comparison.get("recommendation", ""),
-                "key_differences": comparison.get("key_differences", []),
-                "category_used": category_used,
+                "query": query,
+                "category": category_used,
                 "category_switched": category_switched,
                 "original_category": original_category,
-                "personalized": personalized,
-                "personalization_factors": personalization_factors,
-                "personalized_insights": comparison.get("personalized_insights", []),
-                "tier_context": tier_context,
+
+                "overview": {
+                    "winner": {
+                        "product_index": winner_index,
+                        "name": comparison.get("winner_declaration", product_names[winner_index] if product_names else ""),
+                        "declaration": comparison.get("winner_declaration", ""),
+                        "reason": comparison.get("winner_reason", ""),
+                        "key_tradeoff": comparison.get("key_tradeoff", ""),
+                        "margin": win_margin,
+                    },
+                    "products": [
+                        {
+                            "brand": pd.get("brand"),
+                            "name": pd.get("name"),
+                            "price": pd.get("price"),
+                            "rating": pd.get("rating"),
+                            "review_count": pd.get("review_count"),
+                            "overall_score": scoring_result.get("scores", {}).get(f"product_{i}", {}).get("overall"),
+                            "value_badge": pd.get("value_badge", "fair_price"),
+                            "value_context": comparison.get("value_context", ""),
+                            "pros": pd.get("pros_cons", {}).get("pros", []),
+                            "cons": pd.get("pros_cons", {}).get("cons", []),
+                            "best_for": comparison.get("best_for", {}).get(f"product_{i}", ""),
+                        }
+                        for i, pd in enumerate(product_data)
+                    ],
+                    "tradeoffs": tradeoffs,
+                    "confidence": confidence,
+                },
+
+                "specs": {
+                    "products": [
+                        {
+                            "brand": pd.get("brand"),
+                            "name": pd.get("name"),
+                            "specs": pd.get("specs"),
+                            "spec_advantages": comparison.get("specs_comparison", {}).get(f"product_{i}_advantages", []),
+                        }
+                        for i, pd in enumerate(product_data)
+                    ],
+                    "specs_comparison": comparison.get("specs_comparison", {}),
+                },
+
+                "reviews": {
+                    "products": [
+                        {
+                            "brand": pd.get("brand"),
+                            "name": pd.get("name"),
+                            "rating": pd.get("rating"),
+                            "review_count": pd.get("review_count"),
+                            "rating_source": pd.get("rating_source"),
+                            "review_summary": pd.get("reviews", {}).get("review_summary", {
+                                "overall_sentiment": "mixed",
+                                "consensus": "",
+                                "highlights": [],
+                                "review_volume": "minimal",
+                                "agreement_level": "moderate",
+                            }),
+                        }
+                        for pd in product_data
+                    ],
+                },
+
+                "scoring": {
+                    "scores": scoring_result.get("scores", {}),
+                    "dimension_winners": scoring_result.get("dimension_winners", {}),
+                    "price_tiers": scoring_result.get("price_tiers", {}),
+                    "is_cross_tier": scoring_result.get("is_cross_tier", False),
+                    "scoring_method": scoring_result.get("scoring_method", "category_weighted"),
+                    "category_weights": scoring_result.get("category_weights", {}),
+                },
+
+                "personalization": {
+                    "personalized": personalized,
+                    "factors": personalization_factors,
+                    "personalized_insights": comparison.get("personalized_insights", []),
+                },
+
                 "metadata": {
                     "query": query,
                     "region": region,
+                    "elapsed_ms": round(elapsed * 1000),
                     "elapsed_seconds": round(elapsed, 2),
-                    "total_cost": round(self.total_cost, 6),
                     "api_calls": self.api_calls,
+                    "total_cost": round(self.total_cost, 6),
                     "gpt_calls": self.gpt_calls,
                     "serper_calls": self.serper_calls,
+                    "cached": from_cache,
+                    "fact_check": {
+                        "product_0": product_data[0].get("fact_check", {}),
+                        "product_1": product_data[1].get("fact_check", {}),
+                    },
                     "timestamp": datetime.now().isoformat(),
                 },
+            }
+
+            # Backward compatibility aliases
+            complete_response["products"] = product_data
+            complete_response["comparison"] = comparison
+            complete_response["recommendation"] = comparison.get("winner_reason", "")
+            complete_response["key_differences"] = []
+            complete_response["winner_index"] = winner_index
+            complete_response["category_used"] = category_used
+            complete_response["personalized"] = personalized
+            complete_response["personalization_factors"] = personalization_factors
+            complete_response["personalized_insights"] = comparison.get("personalized_insights", [])
+            complete_response["tier_context"] = {
+                "price_tiers": scoring_result.get("price_tiers", {}),
+                "is_cross_tier": scoring_result.get("is_cross_tier", False),
             }
 
             yield ("complete", complete_response)

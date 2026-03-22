@@ -27,7 +27,16 @@ def mock_product_data():
             "best_price": 299,
             "currency": "BHD",
             "retailer": "Amazon",
-            "reviews": {"average_rating": 4.5, "total_reviews": 1200, "summary": "Great phone"},
+            "reviews": {
+                "average_rating": 4.5, "total_reviews": 1200,
+                "review_summary": {
+                    "overall_sentiment": "positive",
+                    "consensus": "Great phone overall with excellent camera.",
+                    "highlights": [{"point": "Excellent camera", "sentiment": "positive"}],
+                    "review_volume": "high",
+                    "agreement_level": "strong",
+                },
+            },
             "rating": 4.5,
             "review_count": 1200,
             "rating_verified": True,
@@ -47,7 +56,16 @@ def mock_product_data():
             "best_price": 279,
             "currency": "BHD",
             "retailer": "Noon",
-            "reviews": {"average_rating": 4.3, "total_reviews": 800, "summary": "Good Android phone"},
+            "reviews": {
+                "average_rating": 4.3, "total_reviews": 800,
+                "review_summary": {
+                    "overall_sentiment": "positive",
+                    "consensus": "Good Android phone with great display.",
+                    "highlights": [{"point": "Great display", "sentiment": "positive"}],
+                    "review_volume": "high",
+                    "agreement_level": "moderate",
+                },
+            },
             "rating": 4.3,
             "review_count": 800,
             "rating_verified": True,
@@ -63,12 +81,23 @@ def mock_comparison():
     """Comparison result from generate_comparison."""
     return {
         "winner_index": 0,
-        "recommendation": "iPhone 15 is better overall",
-        "key_differences": ["Better camera", "Higher price"],
+        "winner_declaration": "Apple iPhone 15",
+        "winner_reason": "Stronger camera and faster chip at similar price",
+        "key_tradeoff": "Galaxy S24 has more RAM and better value",
+        "value_context": "Both products are mid-range flagships with competitive pricing",
+        "best_for": {
+            "product_0": "Best if you prioritize camera quality",
+            "product_1": "Best if you want more RAM and better value",
+        },
         "product_0_pros": ["Great camera", "Long battery"],
         "product_0_cons": ["Higher price"],
         "product_1_pros": ["Better value", "More RAM"],
         "product_1_cons": ["Shorter updates"],
+        "specs_comparison": {
+            "product_0_advantages": ["Better camera"],
+            "product_1_advantages": ["More RAM"],
+            "similar": ["Storage"],
+        },
     }
 
 
@@ -77,12 +106,33 @@ def mock_scoring_result():
     """Scoring result from scoring_service."""
     return {
         "scores": {
-            "product_0": {"overall": 78, "breakdown": {"price_score": 70, "spec_score": 80}},
-            "product_1": {"overall": 72, "breakdown": {"price_score": 85, "spec_score": 65}},
+            "product_0": {"overall": 78, "breakdown": {"price_score": 70, "spec_score": 80, "value_score": 65}},
+            "product_1": {"overall": 72, "breakdown": {"price_score": 85, "spec_score": 65, "value_score": 58}},
         },
         "winner_index": 0,
         "win_margin": 6,
-        "scoring_method": "default",
+        "scoring_method": "category_weighted",
+        "dimension_winners": {
+            "price_score": {"winner": "Samsung Galaxy S24", "margin": 15.0},
+            "spec_score": {"winner": "Apple iPhone 15", "margin": 15.0},
+        },
+        "price_tiers": {"iPhone 15": "mid", "Galaxy S24": "mid"},
+        "is_cross_tier": False,
+        "category_weights": {"price_score": 0.2, "spec_score": 0.25},
+    }
+
+
+def _setup_scoring_mock(scoring_svc, mock_scoring_result):
+    """Configure scoring service mock with all required methods."""
+    scoring_svc.compute_scores.return_value = mock_scoring_result
+    scoring_svc.build_scores_summary.return_value = "summary"
+    scoring_svc.compute_value_badge.return_value = "fair_price"
+    scoring_svc.compute_tradeoff_pairs.return_value = []
+    scoring_svc.compute_confidence.return_value = {
+        "price": {"source_count": 2, "method": "retailer_verified", "freshness": "live"},
+        "rating": {"review_count": 1200, "source": "Amazon", "verified": True},
+        "specs": {"verified_pct": 80, "citation_count": 10},
+        "overall": "high",
     }
 
 
@@ -146,8 +196,7 @@ class TestStreamingGenerator:
             mock_fetch.side_effect = mock_product_data
             mock_gen.return_value = (mock_comparison, {"prompt_tokens": 0, "completion_tokens": 0})
             scoring_svc = MagicMock()
-            scoring_svc.compute_scores.return_value = mock_scoring_result
-            scoring_svc.build_scores_summary.return_value = "Product 1 scores 78, Product 2 scores 72"
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
             mock_scoring.return_value = scoring_svc
 
             events = []
@@ -178,8 +227,7 @@ class TestStreamingGenerator:
             mock_fetch.side_effect = mock_product_data
             mock_gen.return_value = (mock_comparison, {"prompt_tokens": 0, "completion_tokens": 0})
             scoring_svc = MagicMock()
-            scoring_svc.compute_scores.return_value = mock_scoring_result
-            scoring_svc.build_scores_summary.return_value = "summary"
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
             mock_scoring.return_value = scoring_svc
 
             event_types = []
@@ -219,8 +267,7 @@ class TestStreamingGenerator:
             mock_fetch.side_effect = mock_product_data
             mock_gen.return_value = (mock_comparison.copy(), {"prompt_tokens": 0, "completion_tokens": 0})
             scoring_svc = MagicMock()
-            scoring_svc.compute_scores.return_value = mock_scoring_result
-            scoring_svc.build_scores_summary.return_value = "summary"
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
             mock_scoring.return_value = scoring_svc
 
             complete_data = None
@@ -230,10 +277,16 @@ class TestStreamingGenerator:
 
             assert complete_data is not None
             assert complete_data["success"] is True
+            # New structured sections
+            assert "overview" in complete_data
+            assert "specs" in complete_data
+            assert "reviews" in complete_data
+            assert "scoring" in complete_data
+            assert "personalization" in complete_data
+            assert "metadata" in complete_data
+            # Backward compat aliases
             assert "products" in complete_data
             assert "comparison" in complete_data
-            assert "scoring" in complete_data
-            assert "metadata" in complete_data
 
     @pytest.mark.asyncio
     async def test_error_on_bad_query(self):
@@ -297,8 +350,7 @@ class TestStreamingGenerator:
             mock_fetch.side_effect = mock_product_data
             mock_gen.return_value = (mock_comparison.copy(), {"prompt_tokens": 0, "completion_tokens": 0})
             scoring_svc = MagicMock()
-            scoring_svc.compute_scores.return_value = mock_scoring_result
-            scoring_svc.build_scores_summary.return_value = "summary"
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
             mock_scoring.return_value = scoring_svc
 
             specs_data = None
@@ -307,10 +359,10 @@ class TestStreamingGenerator:
                     specs_data = data
 
             assert specs_data is not None
-            assert "product_0" in specs_data
-            assert "product_1" in specs_data
-            assert specs_data["product_0"]["specs"]["ram"] == "6GB"
-            assert specs_data["product_1"]["specs"]["ram"] == "8GB"
+            assert "products" in specs_data
+            assert len(specs_data["products"]) == 2
+            assert specs_data["products"][0]["specs"]["ram"] == "6GB"
+            assert specs_data["products"][1]["specs"]["ram"] == "8GB"
 
 
 # ============================================
@@ -466,8 +518,7 @@ class TestStreamingEdgeCases:
             mock_fetch.side_effect = mock_product_data
             mock_gen.return_value = (mock_comparison.copy(), {"prompt_tokens": 0, "completion_tokens": 0})
             scoring_svc = MagicMock()
-            scoring_svc.compute_scores.return_value = mock_scoring_result
-            scoring_svc.build_scores_summary.return_value = "summary"
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
             mock_scoring.return_value = scoring_svc
 
             complete_data = None
@@ -480,3 +531,254 @@ class TestStreamingEdgeCases:
             assert complete_data["category_switched"] is True
             assert complete_data["original_category"] == "grocery"
             assert complete_data["category_used"] == "electronics"
+
+
+# ============================================
+# Test new response structure
+# ============================================
+
+class TestNewResponseStructure:
+    """Tests for the restructured API response format."""
+
+    @pytest.mark.asyncio
+    async def test_response_has_all_sections(self, mock_product_data, mock_comparison, mock_scoring_result):
+        """Complete response must have overview/specs/reviews/scoring/personalization/metadata."""
+        from app.services.structured_comparison_service import StructuredComparisonService
+
+        service = StructuredComparisonService()
+        with patch.object(service, '_fetch_product_data', new_callable=AsyncMock) as mock_fetch, \
+             patch('app.services.structured_comparison_service.parse_product_query', new_callable=AsyncMock) as mock_parse, \
+             patch('app.services.structured_comparison_service.generate_comparison', new_callable=AsyncMock) as mock_gen, \
+             patch('app.services.structured_comparison_service.get_scoring_service') as mock_scoring:
+
+            mock_parse.return_value = ({
+                "products": [
+                    {"brand": "Apple", "name": "iPhone 15", "category": "electronics", "search_query": "Apple iPhone 15"},
+                    {"brand": "Samsung", "name": "Galaxy S24", "category": "electronics", "search_query": "Samsung Galaxy S24"},
+                ],
+                "comparison_type": "value",
+            }, {"prompt_tokens": 0, "completion_tokens": 0})
+            mock_fetch.side_effect = mock_product_data
+            mock_gen.return_value = (mock_comparison.copy(), {"prompt_tokens": 0, "completion_tokens": 0})
+            scoring_svc = MagicMock()
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
+            mock_scoring.return_value = scoring_svc
+
+            complete_data = None
+            async for event_type, data in service.compare_from_text_streaming("iPhone 15 vs Galaxy S24"):
+                if event_type == "complete":
+                    complete_data = data
+
+            assert complete_data is not None
+            for key in ("overview", "specs", "reviews", "scoring", "personalization", "metadata"):
+                assert key in complete_data, f"Missing top-level key: {key}"
+
+    @pytest.mark.asyncio
+    async def test_status_events_include_progress(self, mock_product_data, mock_comparison, mock_scoring_result):
+        """Status events must include progress percentage."""
+        from app.services.structured_comparison_service import StructuredComparisonService
+
+        service = StructuredComparisonService()
+        with patch.object(service, '_fetch_product_data', new_callable=AsyncMock) as mock_fetch, \
+             patch('app.services.structured_comparison_service.parse_product_query', new_callable=AsyncMock) as mock_parse, \
+             patch('app.services.structured_comparison_service.generate_comparison', new_callable=AsyncMock) as mock_gen, \
+             patch('app.services.structured_comparison_service.get_scoring_service') as mock_scoring:
+
+            mock_parse.return_value = ({
+                "products": [
+                    {"brand": "Apple", "name": "iPhone 15", "category": "electronics", "search_query": "Apple iPhone 15"},
+                    {"brand": "Samsung", "name": "Galaxy S24", "category": "electronics", "search_query": "Samsung Galaxy S24"},
+                ],
+                "comparison_type": "value",
+            }, {"prompt_tokens": 0, "completion_tokens": 0})
+            mock_fetch.side_effect = mock_product_data
+            mock_gen.return_value = (mock_comparison.copy(), {"prompt_tokens": 0, "completion_tokens": 0})
+            scoring_svc = MagicMock()
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
+            mock_scoring.return_value = scoring_svc
+
+            status_events = []
+            async for event_type, data in service.compare_from_text_streaming("iPhone 15 vs Galaxy S24"):
+                if event_type == "status":
+                    status_events.append(data)
+
+            for event in status_events:
+                assert "progress" in event, f"Status event missing 'progress': {event}"
+            # Verify progress increases
+            progress_values = [e["progress"] for e in status_events]
+            assert progress_values == sorted(progress_values), "Progress should increase monotonically"
+
+    @pytest.mark.asyncio
+    async def test_overview_winner_structure(self, mock_product_data, mock_comparison, mock_scoring_result):
+        """Overview winner has structured fields."""
+        from app.services.structured_comparison_service import StructuredComparisonService
+
+        service = StructuredComparisonService()
+        with patch.object(service, '_fetch_product_data', new_callable=AsyncMock) as mock_fetch, \
+             patch('app.services.structured_comparison_service.parse_product_query', new_callable=AsyncMock) as mock_parse, \
+             patch('app.services.structured_comparison_service.generate_comparison', new_callable=AsyncMock) as mock_gen, \
+             patch('app.services.structured_comparison_service.get_scoring_service') as mock_scoring:
+
+            mock_parse.return_value = ({
+                "products": [
+                    {"brand": "Apple", "name": "iPhone 15", "category": "electronics", "search_query": "Apple iPhone 15"},
+                    {"brand": "Samsung", "name": "Galaxy S24", "category": "electronics", "search_query": "Samsung Galaxy S24"},
+                ],
+                "comparison_type": "value",
+            }, {"prompt_tokens": 0, "completion_tokens": 0})
+            mock_fetch.side_effect = mock_product_data
+            mock_gen.return_value = (mock_comparison.copy(), {"prompt_tokens": 0, "completion_tokens": 0})
+            scoring_svc = MagicMock()
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
+            mock_scoring.return_value = scoring_svc
+
+            complete_data = None
+            async for event_type, data in service.compare_from_text_streaming("iPhone 15 vs Galaxy S24"):
+                if event_type == "complete":
+                    complete_data = data
+
+            winner = complete_data["overview"]["winner"]
+            assert "product_index" in winner
+            assert "name" in winner
+            assert "reason" in winner
+            assert "key_tradeoff" in winner
+            assert "margin" in winner
+
+    @pytest.mark.asyncio
+    async def test_overview_products_have_value_badge(self, mock_product_data, mock_comparison, mock_scoring_result):
+        """Overview products include value_badge."""
+        from app.services.structured_comparison_service import StructuredComparisonService
+
+        service = StructuredComparisonService()
+        with patch.object(service, '_fetch_product_data', new_callable=AsyncMock) as mock_fetch, \
+             patch('app.services.structured_comparison_service.parse_product_query', new_callable=AsyncMock) as mock_parse, \
+             patch('app.services.structured_comparison_service.generate_comparison', new_callable=AsyncMock) as mock_gen, \
+             patch('app.services.structured_comparison_service.get_scoring_service') as mock_scoring:
+
+            mock_parse.return_value = ({
+                "products": [
+                    {"brand": "Apple", "name": "iPhone 15", "category": "electronics", "search_query": "Apple iPhone 15"},
+                    {"brand": "Samsung", "name": "Galaxy S24", "category": "electronics", "search_query": "Samsung Galaxy S24"},
+                ],
+                "comparison_type": "value",
+            }, {"prompt_tokens": 0, "completion_tokens": 0})
+            mock_fetch.side_effect = mock_product_data
+            mock_gen.return_value = (mock_comparison.copy(), {"prompt_tokens": 0, "completion_tokens": 0})
+            scoring_svc = MagicMock()
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
+            mock_scoring.return_value = scoring_svc
+
+            complete_data = None
+            async for event_type, data in service.compare_from_text_streaming("iPhone 15 vs Galaxy S24"):
+                if event_type == "complete":
+                    complete_data = data
+
+            for product in complete_data["overview"]["products"]:
+                assert "value_badge" in product
+                assert product["value_badge"] in ("great_value", "fair_price", "premium_price", "overpriced")
+                assert "best_for" in product
+
+    @pytest.mark.asyncio
+    async def test_reviews_have_review_summary(self, mock_product_data, mock_comparison, mock_scoring_result):
+        """Reviews products include review_summary with consensus format."""
+        from app.services.structured_comparison_service import StructuredComparisonService
+
+        service = StructuredComparisonService()
+        with patch.object(service, '_fetch_product_data', new_callable=AsyncMock) as mock_fetch, \
+             patch('app.services.structured_comparison_service.parse_product_query', new_callable=AsyncMock) as mock_parse, \
+             patch('app.services.structured_comparison_service.generate_comparison', new_callable=AsyncMock) as mock_gen, \
+             patch('app.services.structured_comparison_service.get_scoring_service') as mock_scoring:
+
+            mock_parse.return_value = ({
+                "products": [
+                    {"brand": "Apple", "name": "iPhone 15", "category": "electronics", "search_query": "Apple iPhone 15"},
+                    {"brand": "Samsung", "name": "Galaxy S24", "category": "electronics", "search_query": "Samsung Galaxy S24"},
+                ],
+                "comparison_type": "value",
+            }, {"prompt_tokens": 0, "completion_tokens": 0})
+            mock_fetch.side_effect = mock_product_data
+            mock_gen.return_value = (mock_comparison.copy(), {"prompt_tokens": 0, "completion_tokens": 0})
+            scoring_svc = MagicMock()
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
+            mock_scoring.return_value = scoring_svc
+
+            complete_data = None
+            async for event_type, data in service.compare_from_text_streaming("iPhone 15 vs Galaxy S24"):
+                if event_type == "complete":
+                    complete_data = data
+
+            for product in complete_data["reviews"]["products"]:
+                assert "review_summary" in product
+                summary = product["review_summary"]
+                assert "overall_sentiment" in summary
+                assert "consensus" in summary
+                assert "highlights" in summary
+
+    @pytest.mark.asyncio
+    async def test_verdict_event_has_structured_winner(self, mock_product_data, mock_comparison, mock_scoring_result):
+        """Verdict event has structured winner fields."""
+        from app.services.structured_comparison_service import StructuredComparisonService
+
+        service = StructuredComparisonService()
+        with patch.object(service, '_fetch_product_data', new_callable=AsyncMock) as mock_fetch, \
+             patch('app.services.structured_comparison_service.parse_product_query', new_callable=AsyncMock) as mock_parse, \
+             patch('app.services.structured_comparison_service.generate_comparison', new_callable=AsyncMock) as mock_gen, \
+             patch('app.services.structured_comparison_service.get_scoring_service') as mock_scoring:
+
+            mock_parse.return_value = ({
+                "products": [
+                    {"brand": "Apple", "name": "iPhone 15", "category": "electronics", "search_query": "Apple iPhone 15"},
+                    {"brand": "Samsung", "name": "Galaxy S24", "category": "electronics", "search_query": "Samsung Galaxy S24"},
+                ],
+                "comparison_type": "value",
+            }, {"prompt_tokens": 0, "completion_tokens": 0})
+            mock_fetch.side_effect = mock_product_data
+            mock_gen.return_value = (mock_comparison.copy(), {"prompt_tokens": 0, "completion_tokens": 0})
+            scoring_svc = MagicMock()
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
+            mock_scoring.return_value = scoring_svc
+
+            verdict_data = None
+            async for event_type, data in service.compare_from_text_streaming("iPhone 15 vs Galaxy S24"):
+                if event_type == "verdict":
+                    verdict_data = data
+
+            assert verdict_data is not None
+            assert "winner" in verdict_data
+            assert "reason" in verdict_data["winner"]
+            assert "key_tradeoff" in verdict_data["winner"]
+            assert "value_context" in verdict_data
+            assert "best_for" in verdict_data
+
+    @pytest.mark.asyncio
+    async def test_scores_event_has_confidence(self, mock_product_data, mock_comparison, mock_scoring_result):
+        """Scores event includes confidence alongside scoring."""
+        from app.services.structured_comparison_service import StructuredComparisonService
+
+        service = StructuredComparisonService()
+        with patch.object(service, '_fetch_product_data', new_callable=AsyncMock) as mock_fetch, \
+             patch('app.services.structured_comparison_service.parse_product_query', new_callable=AsyncMock) as mock_parse, \
+             patch('app.services.structured_comparison_service.generate_comparison', new_callable=AsyncMock) as mock_gen, \
+             patch('app.services.structured_comparison_service.get_scoring_service') as mock_scoring:
+
+            mock_parse.return_value = ({
+                "products": [
+                    {"brand": "Apple", "name": "iPhone 15", "category": "electronics", "search_query": "Apple iPhone 15"},
+                    {"brand": "Samsung", "name": "Galaxy S24", "category": "electronics", "search_query": "Samsung Galaxy S24"},
+                ],
+                "comparison_type": "value",
+            }, {"prompt_tokens": 0, "completion_tokens": 0})
+            mock_fetch.side_effect = mock_product_data
+            mock_gen.return_value = (mock_comparison.copy(), {"prompt_tokens": 0, "completion_tokens": 0})
+            scoring_svc = MagicMock()
+            _setup_scoring_mock(scoring_svc, mock_scoring_result)
+            mock_scoring.return_value = scoring_svc
+
+            scores_data = None
+            async for event_type, data in service.compare_from_text_streaming("iPhone 15 vs Galaxy S24"):
+                if event_type == "scores":
+                    scores_data = data
+
+            assert scores_data is not None
+            assert "confidence" in scores_data
+            assert "overall" in scores_data["confidence"]
