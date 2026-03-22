@@ -98,21 +98,26 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 
 **Core service:** `app/services/structured_comparison_service.py`
 - `StructuredComparisonService` is a **singleton** (`get_comparison_service()`)
-- `compare_from_text(query, region, vision_products?, selected_category?)` — main entry point
-- `compare_from_text_streaming(...)` — async generator yielding SSE events (specs→prices→reviews→scores→verdict→complete)
+- `compare_from_text(query, region, vision_products?, selected_category?, user_id?)` — main entry point
+- `compare_from_text_streaming(..., user_id?)` — async generator yielding SSE events (specs→prices→reviews→scores→verdict→complete)
 - **Pre-fetch:** Unified web search (1 Serper call) shared by specs + reviews — gated by cache check
 - **Phase 1:** specs + price fetched in parallel (specs reuses unified search)
 - **Phase 2:** reviews + rating fetched in parallel (reviews reuses unified search, shopping data from Phase 1 feeds ratings)
-- **Scoring:** deterministic scoring after Phase 2 via `scoring_service.py` (zero API cost)
+- **Scoring:** deterministic scoring after Phase 2 via `scoring_service.py` (zero API cost), plus value badges, tradeoff pairs, confidence indicators
+- **Behavioral profile:** `_fetch_behavior_profile()` before scoring, `_update_behavior_profile()` fire-and-forget after response assembly
 - `_shopping_items_cache` — populated during price search, used by rating/review injection. Cleared per-request.
+- **Response format (Session 29):** Top-level keys: `overview`, `specs`, `reviews`, `scoring`, `personalization`, `metadata`. Backward compat aliases preserved (`products`, `comparison`, `winner_index`, `recommendation`, `key_differences`).
 
-**Price pipeline (3 tiers + pharmacy JSON-LD):**
+**Price pipeline (3 tiers + page scraping + pharmacy JSON-LD):**
 1. Serper Shopping API direct extraction (structured prices)
 2. GPT-4o-mini extraction from organic search results (with Tier 3 sanity check)
 3. GPT training data estimate (marked `estimated: true`)
+- **Page scraping** (Session 27): `_fetch_page_price()` → `_curl_fetch_html()` + `_extract_price_from_html()` extracts JSON-LD/OG/microdata from product pages. Used in Tier 1.5 cascade and supplement pipeline.
+- **JS rendering fallback** (Session 28): `_fetch_rendered_html()` fires Cloudflare Browser Rendering + Microlink in parallel when curl_cffi gets empty JS shells. `JS_ONLY_DOMAINS` (16 luxury domains) skip curl_cffi entirely. `source_method: "page_scrape_rendered"`.
+- **Feature flags**: `ENABLE_PAGE_SCRAPE` (curl_cffi), `ENABLE_JS_RENDER` (headless browser). Both default true. `RENDER_PROVIDER` ("cloudflare"/"microlink"/"both", default "both").
 - **Price prompt philosophy (Session 25):** "MOST AUTHORITATIVE" not "LOWEST reasonable". Source priority hierarchy: official brand sites > authorized retailers > major marketplaces. Counterfeit sources filtered (DHgate, AliExpress, Temu, Wish).
 - Official domain boost: prices from `OFFICIAL_BRAND_DOMAINS` (25+ domains) sorted first in Shopping results.
-- Each price tagged with `source_method`: `local_bhd` (direct BHD price), `converted_usd` (USD→BHD conversion), or `estimated` (GPT training data). `price_method_mismatch` flag set when products have different source methods.
+- Each price tagged with `source_method`: `local_bhd` (direct BHD price), `converted_usd` (USD→BHD conversion), `page_scrape` (curl_cffi HTML), `page_scrape_rendered` (JS-rendered HTML), or `estimated` (GPT training data). `price_method_mismatch` flag set when products have different source methods.
 - Supplements: iHerb direct scrape → Bahrain pharmacy JSON-LD → Serper organic + GPT → Tier 3
 - Non-iHerb brands (HealthAid, Vitabiotics): `_fetch_pharmacy_price()` parses JSON-LD from bn.boots.com product pages
 
@@ -149,8 +154,9 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 - Supabase `text_search()` API: use `options={"type": "plain", "config": "english"}` (NOT keyword args); `.limit()` must come BEFORE `.text_search()` in chain
 
 **Key services:**
-- `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/makeup/skincare/haircare/fragrances/fashion/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`
-- `scoring_service.py` — Deterministic scoring engine. 6 dimensions, `CATEGORY_WEIGHTS` (9 category-specific profiles), price tier detection (budget/mid/premium/luxury), tier-aware value scoring, dimension winners. Personalized weights capped at ±30% of category base. Pure math, $0 cost.
+- `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/makeup/skincare/haircare/fragrances/fashion/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`. Session 29: structured review_summary (consensus-based, no individual attributions) + structured verdict (winner_declaration, winner_reason, key_tradeoff, value_context, best_for).
+- `scoring_service.py` — Deterministic scoring engine. 6 dimensions, `CATEGORY_WEIGHTS` (9 category-specific profiles), price tier detection (budget/mid/premium/luxury), tier-aware value scoring, dimension winners. Personalized weights capped at ±30% of category base. Session 29: `compute_value_badge()`, `compute_tradeoff_pairs()`, `compute_confidence()`, `apply_behavioral_adjustments()` (±10%), `apply_session_signals()` (±5%). Pure math, $0 cost.
+- `behavior_service.py` — Behavioral learning service (Session 29). Decay-weighted profiles (30-day half-life), category affinity, price range, winner agreement, dimension sensitivity, session signals. `build_behavior_profile()`, `compute_session_signals()`.
 - `feedback_service.py` — `save_feedback()`, `track_event()`, `track_events_batch()`. Fire-and-forget pattern (asyncio.create_task).
 - `drug_database_service.py` — Bahrain drug database lookup + GPT context formatting (supplements only)
 - `serper_service.py` — Serper API calls (`search_product_prices()`, `search_price_organic()`, `search_web()`)
@@ -233,12 +239,15 @@ Camera input passes `vision_products` directly to `compare_from_text()`, skippin
 - **Dimension winners**: `compute_dimension_winners()` — per-dimension comparison, tie threshold=3.0, both MISSING → `{"winner": "N/A", "margin": null}`.
 - **Coverage penalty**: `CATEGORY_MIN_COVERAGE` thresholds per category (electronics=0.5, fashion=0.3).
 - **Derived ratings**: `_derive_rating_from_scores()` — display-only (2.5-4.8), not fed back to scoring. `extract_method: "score_derived"`.
-- **Personalization**: `MAX_WEIGHT_SHIFT_RATIO = 0.30` caps shifts relative to CATEGORY base weights. `scoring_method`: "category_weighted" (anon) or "personalized" (logged in).
+- **Personalization**: `MAX_WEIGHT_SHIFT_RATIO = 0.30` caps explicit shifts relative to CATEGORY base weights. `MAX_BEHAVIORAL_SHIFT_RATIO = 0.10`, `MAX_SESSION_SHIFT_RATIO = 0.05`. `scoring_method`: "category_weighted" (anon), "personalized" (explicit prefs), "behavioral" (behavior/session active).
+- **Value badges** (Session 29): `compute_value_badge(value_score, price_tier)` → great_value/fair_price/premium_price/overpriced.
+- **Tradeoff pairs** (Session 29): `compute_tradeoff_pairs()` — pairs winner/loser dimension advantages, margin>5%, max 3, sorted by combined impact.
+- **Confidence indicators** (Session 29): `compute_confidence()` — price source count/method/freshness, rating review_count/verified, specs verified_pct. Overall: high/medium/low.
 - **Enriched verdict prompt**: `build_scores_summary()` injects tier info, dimension leaders, category weights into GPT prompt.
 - Response includes `scoring` field (per-product breakdown), `tier_context`, `dimension_winners`, `price_tiers`.
 
 ### SSE streaming
-`GET /api/v1/text/compare/stream` returns Server-Sent Events. 10 events: status(parsing) → status(fetching) → specs → prices → status(reviews) → reviews → scores → status(verdict) → verdict → complete. Frontend uses fetch+ReadableStream (not EventSource) with fallback to non-streaming. Non-streaming endpoint unchanged.
+`GET /api/v1/text/compare/stream` returns Server-Sent Events. 10 events: status(parsing) → status(fetching) → specs → prices → status(reviews) → reviews → scores → status(verdict) → verdict → complete. Status events include `progress` field (10/20/50/80). Frontend uses fetch+ReadableStream (not EventSource) with fallback to non-streaming. Non-streaming endpoint unchanged.
 
 ### Feedback and event tracking
 `POST /api/v1/feedback` (useful bool, mattered_most[], change_suggestion) + `POST /api/v1/events` (batch event tracking). Both auth-optional, fire-and-forget. FeedbackCard shown in ResultsScreen Overview tab. Events tracked: tab_switch, source_click, result_view_duration. Tables: `comparison_feedback` + `user_events` with RLS.
@@ -256,6 +265,10 @@ Stored as JSONB in `public.users.preferences` column. `preferences_completed` bo
 - `_build_preferences_prompt()` in extraction_service.py appends to verdict prompt
 - Response includes `personalized: true/false` + `personalization_factors` list
 - Zero extra API cost — preferences ride on existing GPT prompt tokens
+- **Three-layer personalization (Session 29):** Explicit preferences (±30% cap) → Behavioral profile (±10% cap) → Session signals (±5% cap) → Category defaults
+- `behavior_profile` JSONB column on `public.users` — decay-weighted (30-day half-life), updated fire-and-forget after each comparison
+- `behavior_service.py`: category affinity, price range, winner agreement, dimension sensitivity
+- `scoring_method`: "category_weighted" (anon), "personalized" (explicit prefs), "behavioral" (behavior/session active)
 
 ### Category selection (soft validation)
 The frontend provides 9 category options: Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances, Fashion, Other. The `selected_category` parameter is passed to `/api/v1/text/compare` as a hint, but the backend AI always makes the final category decision via `PRODUCT_PARSER_PROMPT`. Product-type binding (Session 25): the parser prompt maps product types to categories (e.g., "shoes" -> fashion, "perfume" -> fragrances). If a mismatch is detected (`selected_category != detected_category`), the response includes `category_switched: true` and the frontend shows an info banner. Each category has a dedicated spec schema in `CATEGORY_SPEC_SCHEMAS` (extraction_service.py) — fashion has 10 fields, "other" schema cleaned of electronics fields. Zero extra API cost -- category detection happens within the existing product parser call.
@@ -275,7 +288,9 @@ Category-independent multi-layer defense against counterfeit pricing:
 - **Official domain search** (Session 26): `_get_official_domain()` + Tier 1.5 `site:domain.com` Serper search when Tier 1 Shopping fails (+$0.001)
 - **Sanity thresholds** (Session 26): official domain (retailer_score>=1.0) bypasses sanity check; luxury uses 1.8x/0.6x thresholds
 - Works across ALL categories (fragrances, fashion, makeup, etc.), not just fashion
-- **Known gap**: Official domain search gets URLs but can't extract prices from JS-rendered pages. Fix planned: page scraping with JSON-LD parsing (same pattern as `_fetch_pharmacy_price()`).
+- **Page scraping** (Session 27): `_fetch_page_price()` with `_curl_fetch_html()` + `_extract_price_from_html()` for JSON-LD/OG/microdata extraction
+- **JS rendering** (Session 28): `_fetch_rendered_html()` with Cloudflare + Microlink parallel race for JS-rendered luxury sites. `JS_ONLY_DOMAINS` skips curl_cffi for 16 known luxury domains.
+- **Timeouts**: `PAGE_SCRAPE_TIMEOUT=5` (curl_cffi), `JS_RENDER_TIMEOUT=8` (per provider). Total worst case: 13s within 20s Tier 1.5 budget.
 
 ### Review quality (Session 25 → 26)
 - `_clean_review_citations()` replaces `[snippet_N]` with "Per domain.com:" attributions
@@ -288,6 +303,7 @@ Spec extraction prompt instructs GPT to omit irrelevant fields instead of forcin
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
 **Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO)
+**JS Rendering:** `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Browser Rendering API), `MICROLINK_API_KEY` (optional, for higher limits). Without these, JS rendering gracefully skips.
 
 ### Serper API Credits
 - **Rotated Feb 28 2026**: Fresh 2,500 credits (~625-833 nocache comparisons)
@@ -326,7 +342,7 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (944 unit, 40 files; plus 14 live_unit + 6 live_db + 10 integration)
+### Test files (1088 unit, ~48 files; plus 14 live_unit + 6 live_db + 10 integration)
 - `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
@@ -334,7 +350,7 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_spec_verification_strict.py` — 27 tests: strict numeric matching, cross-validation, training/no-source handling
 - `tests/test_camera_vision.py` — 26 tests: vision pipeline, JSON cleanup, size_or_count enrichment, HEIC detection, MIME validation, endpoint rejection
 - `tests/test_observability.py` — 24 tests: Sentry init, structured JSON formatter, configure_logging, error handler middleware
-- `tests/test_review_prompt_quality.py` — 29 tests: review + verdict prompt structure, citations, examples, completeness, garbage rejection, sentiment alignment
+- `tests/test_review_prompt_quality.py` — 73 tests: review + verdict prompt structure, citations, examples, completeness, garbage rejection, sentiment alignment, review_summary format, structured verdict, normalize edge cases, preferences prompt
 - `tests/test_url_quality.py` — 18 tests: retailer URL generation, null for unknowns, Serper link extraction
 - `tests/test_security_middleware.py` — 16 tests: request ID generation/preservation, security headers, rate limiting (under/over/429)
 - `tests/test_rating_tiers.py` — 16 tests: tier classification, consensus logic, accessory filtering
@@ -348,9 +364,11 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_unified_search.py` — 4 tests: search sharing (specs/reviews), cost budget tracking
 - `tests/test_category_selection.py` — 46 tests: schema validation, prompt building, API params, category switching, parser prompt, live GPT extraction
 - `tests/test_personalization.py` — 52 tests: preference validation, GET/PUT endpoints, service functions, auth response flag, prompt injection, comparison metadata, valid options
-- `tests/test_scoring_service.py` — 91 tests: category weights, price tiers, value score, dimension winners, coverage thresholds, personalization, determinism
+- `tests/test_scoring_service.py` — 122 tests: category weights, price tiers, value score, dimension winners, coverage thresholds, personalization, determinism, value badges, tradeoff pairs, confidence indicators, behavioral weight adjustments
 - `tests/test_feedback.py` — 29 tests: feedback submission, event tracking, validation, batch, fire-and-forget
-- `tests/test_streaming.py` — 16 tests: SSE format, event sequence, generator, endpoint, error handling
+- `tests/test_streaming.py` — 26 tests: SSE format, event sequence, generator, endpoint, error handling, new response structure, progress events
+- `tests/test_behavior_service.py` — 30 tests: decay weight, category affinity, price range, winner agreement, dimension sensitivity, session signals, full profile
+- `tests/test_behavior_integration.py` — 13 tests: scoring param acceptance, weight adjustments, profile fetch/update, route integration
 - `tests/test_singleton_state.py` — 3 tests: singleton pattern, cache leak prevention, state reset
 - `tests/test_iherb_rating.py` — 5 tests: iHerb rating extraction from HTML attributes, cache injection
 - `tests/test_price_source.py` — 10 tests: source_method tagging, price_method_mismatch flag
@@ -362,12 +380,16 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_price_priority.py` — 11 tests: authoritative price sorting, official domain boost, source priority hierarchy, title match rejection
 - `tests/test_citation_cleanup.py` — 13 tests: snippet reference replacement, domain attribution, edge cases
 - `tests/test_review_cleanup.py` — 19 tests: garbage pattern filtering, sentiment misclassification, derived ratings, edge cases
+- `tests/test_js_rendering.py` — 14 tests: _fetch_rendered_html providers, _fetch_page_price JS render fallback, JS_ONLY_DOMAINS, feature flags
+- `tests/test_page_scraping.py` — 15 tests: _fetch_page_price curl_cffi, JSON-LD/OG/microdata extraction
+- `tests/test_luxury_price_tiers.py` — tests for Tier 1.5 cascade, authorized/GCC retailers
 - `tests/test_integration.py` — 10 tests: live Railway (~$0.10, ~5 min)
 
 ## Known Remaining Bugs (deferred)
 
 These are known issues that have been intentionally deferred:
-- **Luxury prices still estimated** (Session 26): Official domain search (Tier 1.5) gets Serper organic URLs from hermes.com/louisvuitton.com but can't extract prices from snippets (JS-rendered). **Proposed fix**: Scrape the actual product page URL from Serper organic results using `curl_cffi`, parse price from JSON-LD `Product` schema or `og:price` meta tags — same pattern as `_fetch_pharmacy_price()`. Cost: +1 HTTP fetch per luxury product (zero API cost).
+- **Luxury JS rendering untested live** (Session 28): JS rendering code deployed with Cloudflare + Microlink. Env vars added to Railway but live test returned cached results (0 API calls). Needs fresh `nocache=true` test after confirming Railway picked up new env vars. Code is correct (1118 tests pass).
+- **value_context identical for all products** (Session 29): `overview.products[i].value_context` uses same string from comparison dict for all products. Minor UX issue — GPT generates one value context, not per-product.
 - Google Sign-In: Supabase Google provider needs to be enabled in dashboard (client IDs configured in code)
 - Apple Sign-In: deferred — requires Apple Developer subscription ($99/year); code is ready
 
