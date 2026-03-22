@@ -343,3 +343,318 @@ class TestStructuredVerdictFormat:
         from app.services.extraction_service import _build_preferences_prompt
         prompt = _build_preferences_prompt({"priorities": ["quality", "durability"], "budget": "mid", "lifestyle": [], "brand_attitude": "function_first"})
         assert "which you" in prompt.lower() or "your priorit" in prompt.lower() or "aligns with" in prompt.lower()
+
+
+# ===========================================
+# EDGE CASES: _normalize_review_response()
+# ===========================================
+
+class TestNormalizeReviewResponseEdgeCases:
+    """Edge case tests for _normalize_review_response() robustness."""
+
+    def test_review_summary_as_string_replaced_with_defaults(self):
+        """If review_summary is a string instead of dict, replace with defaults."""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {"review_summary": "some text", "average_rating": 4.0}
+        result = _normalize_review_response(raw)
+        assert isinstance(result["review_summary"], dict)
+        assert result["review_summary"]["overall_sentiment"] == "mixed"
+        assert result["review_summary"]["highlights"] == []
+
+    def test_review_summary_as_list_replaced_with_defaults(self):
+        """If review_summary is a list instead of dict, replace with defaults."""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {"review_summary": [1, 2, 3]}
+        result = _normalize_review_response(raw)
+        assert isinstance(result["review_summary"], dict)
+        assert result["review_summary"]["consensus"] == ""
+
+    def test_review_summary_as_none_replaced_with_defaults(self):
+        """If review_summary is None, replace with defaults."""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {"review_summary": None}
+        result = _normalize_review_response(raw)
+        assert isinstance(result["review_summary"], dict)
+        assert result["review_summary"]["agreement_level"] == "moderate"
+
+    def test_partial_review_summary_fills_missing(self):
+        """Partial review_summary gets missing fields filled with defaults."""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {"review_summary": {"overall_sentiment": "negative"}}
+        result = _normalize_review_response(raw)
+        assert result["review_summary"]["overall_sentiment"] == "negative"
+        assert result["review_summary"]["consensus"] == ""
+        assert result["review_summary"]["highlights"] == []
+        assert result["review_summary"]["review_volume"] == "minimal"
+        assert result["review_summary"]["agreement_level"] == "moderate"
+
+    def test_highlights_with_missing_sentiment_kept(self):
+        """Highlights without sentiment tag are kept as-is (GPT may omit)."""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {"review_summary": {"highlights": [{"point": "Fast processor"}]}}
+        result = _normalize_review_response(raw)
+        assert len(result["review_summary"]["highlights"]) == 1
+        assert result["review_summary"]["highlights"][0]["point"] == "Fast processor"
+
+    def test_backward_compat_praises_only_positive(self):
+        """Backward compat: common_praises only gets positive highlights."""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {
+            "review_summary": {
+                "highlights": [
+                    {"point": "Great display", "sentiment": "positive"},
+                    {"point": "Slow charging", "sentiment": "negative"},
+                    {"point": "Good build", "sentiment": "positive"},
+                ],
+            },
+        }
+        result = _normalize_review_response(raw)
+        assert len(result["common_praises"]) == 2
+        assert len(result["common_complaints"]) == 1
+
+    def test_backward_compat_not_overwritten_if_present(self):
+        """If common_praises already in data, don't overwrite from highlights."""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {
+            "common_praises": ["Explicit praise"],
+            "review_summary": {
+                "highlights": [
+                    {"point": "From highlight", "sentiment": "positive"},
+                ],
+            },
+        }
+        result = _normalize_review_response(raw)
+        assert result["common_praises"] == ["Explicit praise"]
+
+    def test_empty_data_dict(self):
+        """Completely empty input dict gets all defaults."""
+        from app.services.extraction_service import _normalize_review_response
+        result = _normalize_review_response({})
+        assert "review_summary" in result
+        assert result["review_summary"]["overall_sentiment"] == "mixed"
+        assert result["source_ratings"] == []
+        assert result["common_praises"] == []
+        assert result["common_complaints"] == []
+
+    def test_highlights_with_non_dict_items_skipped_in_compat(self):
+        """Non-dict items in highlights are skipped for backward compat derivation."""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {
+            "review_summary": {
+                "highlights": [
+                    "plain string",
+                    {"point": "Good camera", "sentiment": "positive"},
+                    42,
+                ],
+            },
+        }
+        result = _normalize_review_response(raw)
+        assert len(result["common_praises"]) == 1
+        assert result["common_praises"][0] == "Good camera"
+
+    def test_source_ratings_default_preserved(self):
+        """source_ratings defaults to empty list (used by external injection)."""
+        from app.services.extraction_service import _normalize_review_response
+        result = _normalize_review_response({"average_rating": 3.5})
+        assert result["source_ratings"] == []
+
+    def test_source_ratings_not_overwritten(self):
+        """Existing source_ratings are preserved."""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {"source_ratings": [{"source": "Amazon", "rating": 4.5}]}
+        result = _normalize_review_response(raw)
+        assert len(result["source_ratings"]) == 1
+
+
+# ===========================================
+# EDGE CASES: generate_comparison() parsing
+# ===========================================
+
+class TestGenerateComparisonParsing:
+    """Tests for generate_comparison() GPT response parsing edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_error_returns_default_winner_index(self):
+        """On exception, generate_comparison returns winner_index=0 and error."""
+        from unittest.mock import patch, AsyncMock
+        from app.services.extraction_service import generate_comparison
+        with patch("app.services.extraction_service.get_client") as mock_client:
+            mock_client.side_effect = Exception("API down")
+            result, usage = await generate_comparison({}, {}, "bahrain")
+            assert result["winner_index"] == 0
+            assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_personalized_insights_stripped_without_preferences(self):
+        """Without preferences, personalized_insights is removed from result."""
+        from unittest.mock import patch, AsyncMock, MagicMock
+        from app.services.extraction_service import generate_comparison
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"winner_index": 0, "personalized_insights": [{"focus_area": "price", "product_index": 0, "insight": "test"}]}'
+        mock_response.usage = MagicMock(prompt_tokens=100, completion_tokens=50)
+        with patch("app.services.extraction_service.get_client") as mock_client:
+            mock_client.return_value.chat.completions.create = AsyncMock(return_value=mock_response)
+            result, usage = await generate_comparison({}, {}, "bahrain", user_preferences=None)
+            assert "personalized_insights" not in result
+
+    @pytest.mark.asyncio
+    async def test_personalized_insights_capped_at_3(self):
+        """personalized_insights is capped at 3 items."""
+        from unittest.mock import patch, AsyncMock, MagicMock
+        from app.services.extraction_service import generate_comparison
+        insights = [{"focus_area": f"area_{i}", "product_index": 0, "insight": f"insight {i}"} for i in range(5)]
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({"winner_index": 0, "personalized_insights": insights})
+        mock_response.usage = MagicMock(prompt_tokens=100, completion_tokens=50)
+        with patch("app.services.extraction_service.get_client") as mock_client:
+            mock_client.return_value.chat.completions.create = AsyncMock(return_value=mock_response)
+            result, usage = await generate_comparison({}, {}, "bahrain", user_preferences={"priorities": ["price"]})
+            assert len(result["personalized_insights"]) == 3
+
+    @pytest.mark.asyncio
+    async def test_personalized_insights_none_becomes_empty_list(self):
+        """If GPT returns personalized_insights as null, it becomes []."""
+        from unittest.mock import patch, AsyncMock, MagicMock
+        from app.services.extraction_service import generate_comparison
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"winner_index": 0, "personalized_insights": null}'
+        mock_response.usage = MagicMock(prompt_tokens=100, completion_tokens=50)
+        with patch("app.services.extraction_service.get_client") as mock_client:
+            mock_client.return_value.chat.completions.create = AsyncMock(return_value=mock_response)
+            result, usage = await generate_comparison({}, {}, "bahrain", user_preferences={"priorities": ["quality"]})
+            assert result["personalized_insights"] == []
+
+    @pytest.mark.asyncio
+    async def test_scores_summary_appended_to_prompt(self):
+        """When scores_summary is provided, it's appended to the prompt."""
+        from unittest.mock import patch, AsyncMock, MagicMock
+        from app.services.extraction_service import generate_comparison
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"winner_index": 1}'
+        mock_response.usage = MagicMock(prompt_tokens=200, completion_tokens=50)
+        with patch("app.services.extraction_service.get_client") as mock_client:
+            create_mock = AsyncMock(return_value=mock_response)
+            mock_client.return_value.chat.completions.create = create_mock
+            result, usage = await generate_comparison({}, {}, "bahrain", scores_summary="Product A wins by 8 points")
+            # Verify scores_summary was included in the prompt sent to GPT
+            call_args = create_mock.call_args
+            prompt_sent = call_args[1]["messages"][0]["content"]
+            assert "Product A wins by 8 points" in prompt_sent
+            assert "Scoring Context" in prompt_sent
+
+    @pytest.mark.asyncio
+    async def test_markdown_json_cleaned(self):
+        """GPT response wrapped in ```json is cleaned correctly."""
+        from unittest.mock import patch, AsyncMock, MagicMock
+        from app.services.extraction_service import generate_comparison
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '```json\n{"winner_index": 0, "winner_declaration": "Product A"}\n```'
+        mock_response.usage = MagicMock(prompt_tokens=100, completion_tokens=50)
+        with patch("app.services.extraction_service.get_client") as mock_client:
+            mock_client.return_value.chat.completions.create = AsyncMock(return_value=mock_response)
+            result, usage = await generate_comparison({}, {}, "bahrain")
+            assert result["winner_index"] == 0
+            assert result["winner_declaration"] == "Product A"
+
+    @pytest.mark.asyncio
+    async def test_empty_preferences_strips_insights(self):
+        """Preferences with all empty values strips personalized_insights."""
+        from unittest.mock import patch, AsyncMock, MagicMock
+        from app.services.extraction_service import generate_comparison
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"winner_index": 0, "personalized_insights": [{"focus_area": "x", "product_index": 0, "insight": "y"}]}'
+        mock_response.usage = MagicMock(prompt_tokens=100, completion_tokens=50)
+        with patch("app.services.extraction_service.get_client") as mock_client:
+            mock_client.return_value.chat.completions.create = AsyncMock(return_value=mock_response)
+            result, usage = await generate_comparison({}, {}, "bahrain", user_preferences={"priorities": [], "budget": "", "lifestyle": [], "brand_attitude": ""})
+            assert "personalized_insights" not in result
+
+
+# ===========================================
+# EDGE CASES: _build_preferences_prompt()
+# ===========================================
+
+class TestBuildPreferencesPromptEdgeCases:
+    """Tests for _build_preferences_prompt() with various preference combinations."""
+
+    def test_all_priorities(self):
+        """All 8 priorities are listed comma-separated."""
+        from app.services.extraction_service import _build_preferences_prompt
+        prefs = {"priorities": ["price", "quality", "brand_reputation", "durability", "latest_features", "ease_of_use", "eco_friendly", "health_safety"], "budget": "premium", "lifestyle": ["vegan"], "brand_attitude": "brand_loyal"}
+        prompt = _build_preferences_prompt(prefs)
+        assert "price, quality, brand_reputation" in prompt
+        assert "health_safety" in prompt
+
+    def test_empty_priorities(self):
+        """Empty priorities list produces empty string in prompt."""
+        from app.services.extraction_service import _build_preferences_prompt
+        prefs = {"priorities": [], "budget": "budget", "lifestyle": [], "brand_attitude": "function_first"}
+        prompt = _build_preferences_prompt(prefs)
+        assert "Top priorities:" in prompt
+        assert "function_first" in prompt
+
+    def test_budget_level_shown(self):
+        """Budget level is shown correctly."""
+        from app.services.extraction_service import _build_preferences_prompt
+        for budget in ["budget", "mid", "premium"]:
+            prompt = _build_preferences_prompt({"priorities": ["price"], "budget": budget, "lifestyle": [], "brand_attitude": "best_of_both"})
+            assert budget in prompt
+
+    def test_lifestyle_tags_listed(self):
+        """Multiple lifestyle tags are comma-separated."""
+        from app.services.extraction_service import _build_preferences_prompt
+        prefs = {"priorities": ["quality"], "budget": "mid", "lifestyle": ["vegan", "fitness", "tech_enthusiast"], "brand_attitude": "best_of_both"}
+        prompt = _build_preferences_prompt(prefs)
+        assert "vegan, fitness, tech_enthusiast" in prompt
+
+    def test_empty_lifestyle_shows_none(self):
+        """Empty lifestyle shows 'none specified'."""
+        from app.services.extraction_service import _build_preferences_prompt
+        prefs = {"priorities": ["price"], "budget": "mid", "lifestyle": [], "brand_attitude": "brand_loyal"}
+        prompt = _build_preferences_prompt(prefs)
+        assert "none specified" in prompt
+
+    def test_brand_loyal_instruction(self):
+        """brand_loyal is mentioned and has specific instruction."""
+        from app.services.extraction_service import _build_preferences_prompt
+        prefs = {"priorities": ["brand_reputation"], "budget": "premium", "lifestyle": [], "brand_attitude": "brand_loyal"}
+        prompt = _build_preferences_prompt(prefs)
+        assert "brand_loyal" in prompt
+        assert "brand reputation higher" in prompt.lower()
+
+    def test_function_first_instruction(self):
+        """function_first has instruction to ignore brand."""
+        from app.services.extraction_service import _build_preferences_prompt
+        prefs = {"priorities": ["price"], "budget": "budget", "lifestyle": [], "brand_attitude": "function_first"}
+        prompt = _build_preferences_prompt(prefs)
+        assert "function_first" in prompt
+        assert "ignore brand" in prompt.lower()
+
+    def test_missing_keys_use_defaults(self):
+        """Missing preference keys use defaults gracefully."""
+        from app.services.extraction_service import _build_preferences_prompt
+        prompt = _build_preferences_prompt({})
+        assert "Top priorities:" in prompt
+        assert "Budget level: mid" in prompt
+        assert "Brand attitude: best_of_both" in prompt
+        assert "none specified" in prompt
+
+    def test_aligns_with_instruction_present(self):
+        """The 'aligns with' instruction for best_for is present."""
+        from app.services.extraction_service import _build_preferences_prompt
+        prefs = {"priorities": ["quality"], "budget": "mid", "lifestyle": [], "brand_attitude": "best_of_both"}
+        prompt = _build_preferences_prompt(prefs)
+        assert "aligns" in prompt.lower()
+
+    def test_vegan_lifestyle_conflict_instruction(self):
+        """Prompt mentions lifestyle conflict flagging."""
+        from app.services.extraction_service import _build_preferences_prompt
+        prefs = {"priorities": ["health_safety"], "budget": "mid", "lifestyle": ["vegan"], "brand_attitude": "function_first"}
+        prompt = _build_preferences_prompt(prefs)
+        assert "conflict" in prompt.lower() or "vegan" in prompt.lower()
