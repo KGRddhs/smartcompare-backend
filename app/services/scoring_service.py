@@ -46,6 +46,10 @@ BUDGET_ADJUSTMENTS = {
 # Maximum allowed shift ratio from category weight (±30%)
 MAX_WEIGHT_SHIFT_RATIO = 0.30
 
+# Behavioral and session weight shift caps
+MAX_BEHAVIORAL_SHIFT_RATIO = 0.10  # ±10% of category weight
+MAX_SESSION_SHIFT_RATIO = 0.05     # ±5% of category weight
+
 # Spec fields where higher is better (electronics-focused)
 HIGHER_IS_BETTER = {
     "ram", "storage", "battery", "rear_camera", "front_camera",
@@ -713,6 +717,94 @@ class ScoringService:
             "specs": specs_conf,
             "overall": overall,
         }
+
+    @staticmethod
+    def _apply_capped_adjustments(
+        weights: Dict[str, float],
+        deltas: Dict[str, float],
+        original: Dict[str, float],
+        max_ratio: float,
+    ) -> Dict[str, float]:
+        """Apply deltas to weights with per-dimension capping and renormalization.
+
+        Ensures no dimension shifts more than max_ratio * original[dim] from
+        its original value, even after renormalization.
+        """
+        # Apply clamped deltas
+        for dim in weights:
+            if dim in deltas:
+                max_shift = original[dim] * max_ratio
+                clamped = max(-max_shift, min(max_shift, deltas[dim]))
+                weights[dim] += clamped
+
+        # Renormalize, then re-clamp iteratively (max 3 passes)
+        for _ in range(3):
+            total = sum(weights.values())
+            if total > 0:
+                weights = {k: v / total for k, v in weights.items()}
+            # Check if any dimension exceeds cap after renormalization
+            exceeded = False
+            for dim in weights:
+                max_shift = original[dim] * max_ratio
+                if abs(weights[dim] - original[dim]) > max_shift + 0.0001:
+                    exceeded = True
+                    if weights[dim] > original[dim]:
+                        weights[dim] = original[dim] + max_shift
+                    else:
+                        weights[dim] = original[dim] - max_shift
+            if not exceeded:
+                break
+
+        # Final renormalize
+        total = sum(weights.values())
+        if total > 0:
+            weights = {k: v / total for k, v in weights.items()}
+        return weights
+
+    def apply_behavioral_adjustments(
+        self,
+        weights: Dict[str, float],
+        behavior_profile: Dict[str, Any],
+    ) -> Dict[str, float]:
+        """Apply behavioral profile adjustments to weights (capped at +/-10%)."""
+        sensitivity = behavior_profile.get("dimension_sensitivity", {})
+        if not sensitivity:
+            return weights
+
+        original = dict(weights)
+        avg_sensitivity = sum(sensitivity.values()) / len(sensitivity) if sensitivity else 0
+        deltas: Dict[str, float] = {}
+        for dim in weights:
+            if dim in sensitivity:
+                deltas[dim] = (sensitivity[dim] - avg_sensitivity) * weights[dim]
+
+        return self._apply_capped_adjustments(weights, deltas, original, MAX_BEHAVIORAL_SHIFT_RATIO)
+
+    def apply_session_signals(
+        self,
+        weights: Dict[str, float],
+        session_signals: Dict[str, Any],
+    ) -> Dict[str, float]:
+        """Apply in-session signal adjustments to weights (capped at +/-5%)."""
+        dwell = session_signals.get("tab_dwell_ms", {})
+        if not dwell:
+            return weights
+
+        tab_dim_map = {"specs": "spec_score", "reviews": "review_score", "overview": "price_score"}
+        total_dwell = sum(dwell.values())
+        if total_dwell == 0:
+            return weights
+
+        original = dict(weights)
+        avg_ratio = 1.0 / len(dwell) if dwell else 0
+        deltas: Dict[str, float] = {}
+        for tab, ms in dwell.items():
+            dim = tab_dim_map.get(tab)
+            if dim and dim in weights:
+                ratio = ms / total_dwell
+                deltas[dim] = (ratio - avg_ratio) * weights[dim]
+
+        return self._apply_capped_adjustments(weights, deltas, original, MAX_SESSION_SHIFT_RATIO)
 
     @staticmethod
     def _extract_number(text: str) -> Optional[float]:
