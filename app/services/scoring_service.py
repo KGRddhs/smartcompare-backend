@@ -82,6 +82,16 @@ CATEGORY_MIN_COVERAGE = {
 }
 
 
+DIMENSION_DISPLAY_NAMES = {
+    "price_score": "price",
+    "spec_score": "specs",
+    "review_score": "reviews",
+    "value_score": "value",
+    "reliability_score": "reliability",
+    "popularity_score": "popularity",
+}
+
+
 class ScoringService:
     """Deterministic scoring engine for product comparisons."""
 
@@ -578,6 +588,61 @@ class ScoringService:
             return "premium_price"
         else:
             return "overpriced"
+
+    def compute_tradeoff_pairs(
+        self,
+        dimension_winners: Dict[str, Any],
+        product_names: List[str],
+        winner_index: int,
+    ) -> List[Dict[str, Any]]:
+        """Build tradeoff pairs from dimension winners.
+
+        Pairs each winner-winning dimension with the loser's strongest dimension.
+        Filters margins <= 5, returns max 3 sorted by combined impact.
+        """
+        winner_name = product_names[winner_index]
+        loser_name = product_names[1 - winner_index]
+
+        winner_dims = []
+        loser_dims = []
+
+        for dim, info in dimension_winners.items():
+            if info["winner"] in ("tie", "N/A") or info.get("margin") is None:
+                continue
+            if info["margin"] <= 5:
+                continue
+            entry = {
+                "dimension": dim,
+                "product": info["winner"],
+                "margin": info["margin"],
+            }
+            if info["winner"] == winner_name:
+                winner_dims.append(entry)
+            elif info["winner"] == loser_name:
+                loser_dims.append(entry)
+
+        if not winner_dims or not loser_dims:
+            return []
+
+        # Sort both by margin descending
+        winner_dims.sort(key=lambda x: x["margin"], reverse=True)
+        loser_dims.sort(key=lambda x: x["margin"], reverse=True)
+
+        # Pair them: strongest winner dim with strongest loser dim, etc.
+        pairs = []
+        for i in range(min(len(winner_dims), len(loser_dims), 3)):
+            pairs.append({
+                "winner_wins": winner_dims[i],
+                "loser_wins": loser_dims[i],
+            })
+
+        # Sort by combined margin (most impactful first)
+        pairs.sort(
+            key=lambda p: p["winner_wins"]["margin"] + p["loser_wins"]["margin"],
+            reverse=True,
+        )
+
+        return pairs[:3]
 
     @staticmethod
     def _extract_number(text: str) -> Optional[float]:

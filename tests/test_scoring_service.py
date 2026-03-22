@@ -971,3 +971,131 @@ class TestValueBadges:
         service = ScoringService()
         badge = service.compute_value_badge(value_score=25, price_tier="mid")
         assert badge == "premium_price"
+
+
+# ===========================================
+# TRADEOFF PAIRS
+# ===========================================
+
+class TestTradeoffPairs:
+    """Tests for compute_tradeoff_pairs() dimension-based tradeoff extraction."""
+
+    def test_basic_tradeoff(self):
+        """Two products each winning different dimensions → one tradeoff pair"""
+        service = ScoringService()
+        dimension_winners = {
+            "price_score": {"winner": "Product A", "margin": 15.0},
+            "spec_score": {"winner": "Product B", "margin": 12.0},
+            "review_score": {"winner": "tie", "margin": 2.0},
+            "value_score": {"winner": "Product A", "margin": 8.0},
+            "reliability_score": {"winner": "tie", "margin": 1.0},
+            "popularity_score": {"winner": "Product B", "margin": 6.0},
+        }
+        product_names = ["Product A", "Product B"]
+        tradeoffs = service.compute_tradeoff_pairs(dimension_winners, product_names, winner_index=0)
+        assert len(tradeoffs) >= 1
+        assert tradeoffs[0]["winner_wins"]["product"] == "Product A"
+        assert tradeoffs[0]["loser_wins"]["product"] == "Product B"
+
+    def test_filters_small_margins(self):
+        """Margins <= 5 are excluded"""
+        service = ScoringService()
+        dimension_winners = {
+            "price_score": {"winner": "Product A", "margin": 3.0},
+            "spec_score": {"winner": "Product B", "margin": 4.0},
+            "review_score": {"winner": "tie", "margin": 1.0},
+            "value_score": {"winner": "tie", "margin": 2.0},
+            "reliability_score": {"winner": "tie", "margin": 0.5},
+            "popularity_score": {"winner": "tie", "margin": 1.0},
+        }
+        product_names = ["Product A", "Product B"]
+        tradeoffs = service.compute_tradeoff_pairs(dimension_winners, product_names, winner_index=0)
+        assert len(tradeoffs) == 0
+
+    def test_max_three_tradeoffs(self):
+        """Never more than 3 tradeoff pairs"""
+        service = ScoringService()
+        dimension_winners = {
+            "price_score": {"winner": "Product A", "margin": 20.0},
+            "spec_score": {"winner": "Product B", "margin": 18.0},
+            "review_score": {"winner": "Product A", "margin": 15.0},
+            "value_score": {"winner": "Product B", "margin": 12.0},
+            "reliability_score": {"winner": "Product A", "margin": 10.0},
+            "popularity_score": {"winner": "Product B", "margin": 8.0},
+        }
+        product_names = ["Product A", "Product B"]
+        tradeoffs = service.compute_tradeoff_pairs(dimension_winners, product_names, winner_index=0)
+        assert len(tradeoffs) <= 3
+
+    def test_sorted_by_impact(self):
+        """Tradeoffs sorted by combined margin (most impactful first)"""
+        service = ScoringService()
+        dimension_winners = {
+            "price_score": {"winner": "Product A", "margin": 10.0},
+            "spec_score": {"winner": "Product B", "margin": 25.0},
+            "review_score": {"winner": "Product A", "margin": 20.0},
+            "value_score": {"winner": "Product B", "margin": 8.0},
+            "reliability_score": {"winner": "tie", "margin": 2.0},
+            "popularity_score": {"winner": "tie", "margin": 1.0},
+        }
+        product_names = ["Product A", "Product B"]
+        tradeoffs = service.compute_tradeoff_pairs(dimension_winners, product_names, winner_index=0)
+        assert len(tradeoffs) >= 1
+        first_combined = tradeoffs[0]["winner_wins"]["margin"] + tradeoffs[0]["loser_wins"]["margin"]
+        for t in tradeoffs[1:]:
+            combined = t["winner_wins"]["margin"] + t["loser_wins"]["margin"]
+            assert first_combined >= combined
+
+    def test_no_tradeoff_when_one_side_dominates(self):
+        """If winner wins everything, no tradeoffs to show"""
+        service = ScoringService()
+        dimension_winners = {
+            "price_score": {"winner": "Product A", "margin": 15.0},
+            "spec_score": {"winner": "Product A", "margin": 12.0},
+            "review_score": {"winner": "Product A", "margin": 10.0},
+            "value_score": {"winner": "Product A", "margin": 8.0},
+            "reliability_score": {"winner": "Product A", "margin": 7.0},
+            "popularity_score": {"winner": "Product A", "margin": 6.0},
+        }
+        product_names = ["Product A", "Product B"]
+        tradeoffs = service.compute_tradeoff_pairs(dimension_winners, product_names, winner_index=0)
+        assert len(tradeoffs) == 0
+
+    def test_na_dimensions_excluded(self):
+        """Dimensions with winner='N/A' are skipped"""
+        service = ScoringService()
+        dimension_winners = {
+            "price_score": {"winner": "Product A", "margin": 15.0},
+            "spec_score": {"winner": "N/A", "margin": None},
+            "review_score": {"winner": "Product B", "margin": 10.0},
+            "value_score": {"winner": "tie", "margin": 2.0},
+            "reliability_score": {"winner": "tie", "margin": 1.0},
+            "popularity_score": {"winner": "tie", "margin": 1.0},
+        }
+        product_names = ["Product A", "Product B"]
+        tradeoffs = service.compute_tradeoff_pairs(dimension_winners, product_names, winner_index=0)
+        assert len(tradeoffs) == 1
+        assert tradeoffs[0]["winner_wins"]["dimension"] == "price_score"
+        assert tradeoffs[0]["loser_wins"]["dimension"] == "review_score"
+
+    def test_tradeoff_structure(self):
+        """Each tradeoff has correct structure"""
+        service = ScoringService()
+        dimension_winners = {
+            "price_score": {"winner": "Product A", "margin": 15.0},
+            "spec_score": {"winner": "Product B", "margin": 12.0},
+            "review_score": {"winner": "tie", "margin": 2.0},
+            "value_score": {"winner": "tie", "margin": 2.0},
+            "reliability_score": {"winner": "tie", "margin": 1.0},
+            "popularity_score": {"winner": "tie", "margin": 1.0},
+        }
+        product_names = ["Product A", "Product B"]
+        tradeoffs = service.compute_tradeoff_pairs(dimension_winners, product_names, winner_index=0)
+        assert len(tradeoffs) == 1
+        t = tradeoffs[0]
+        assert "dimension" in t["winner_wins"]
+        assert "product" in t["winner_wins"]
+        assert "margin" in t["winner_wins"]
+        assert "dimension" in t["loser_wins"]
+        assert "product" in t["loser_wins"]
+        assert "margin" in t["loser_wins"]
