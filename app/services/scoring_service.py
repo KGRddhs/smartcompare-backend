@@ -563,6 +563,22 @@ class ScoringService:
 
         return winners
 
+    def compute_value_badge(self, value_score: float, price_tier: str) -> str:
+        """Deterministic value badge from value_score and price tier.
+
+        Returns: 'great_value', 'fair_price', 'premium_price', or 'overpriced'
+        """
+        if value_score >= 75:
+            if price_tier == "luxury":
+                return "fair_price"
+            return "great_value"
+        elif value_score >= 50:
+            return "fair_price"
+        elif value_score >= 25:
+            return "premium_price"
+        else:
+            return "overpriced"
+
     @staticmethod
     def _extract_number(text: str) -> Optional[float]:
         """Extract the first number from a text string."""

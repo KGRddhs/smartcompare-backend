@@ -903,3 +903,71 @@ class TestCoverageThreshold:
         # but the pre-normalization cap should hold
         # We verify the final weight is reasonable (not 2x+ the base)
         assert weights["price_score"] < fashion_base * 2.0
+
+
+# ===========================================
+# VALUE BADGES
+# ===========================================
+
+class TestValueBadges:
+    """Tests for compute_value_badge() deterministic value badge assignment."""
+
+    def test_great_value_non_luxury(self):
+        """value_score >= 75 and non-luxury tier → great_value"""
+        service = ScoringService()
+        badge = service.compute_value_badge(value_score=80, price_tier="mid")
+        assert badge == "great_value"
+
+    def test_great_value_budget(self):
+        """value_score >= 75 and budget tier → great_value"""
+        service = ScoringService()
+        badge = service.compute_value_badge(value_score=75, price_tier="budget")
+        assert badge == "great_value"
+
+    def test_luxury_high_value_gets_fair_price(self):
+        """value_score >= 75 but luxury tier → fair_price (luxury is never 'great value')"""
+        service = ScoringService()
+        badge = service.compute_value_badge(value_score=85, price_tier="luxury")
+        assert badge == "fair_price"
+
+    def test_fair_price_mid_range(self):
+        """value_score 50-74 → fair_price"""
+        service = ScoringService()
+        badge = service.compute_value_badge(value_score=60, price_tier="mid")
+        assert badge == "fair_price"
+
+    def test_fair_price_boundary_50(self):
+        """value_score exactly 50 → fair_price"""
+        service = ScoringService()
+        badge = service.compute_value_badge(value_score=50, price_tier="premium")
+        assert badge == "fair_price"
+
+    def test_premium_price(self):
+        """value_score 25-49 → premium_price"""
+        service = ScoringService()
+        badge = service.compute_value_badge(value_score=35, price_tier="mid")
+        assert badge == "premium_price"
+
+    def test_overpriced(self):
+        """value_score < 25 → overpriced"""
+        service = ScoringService()
+        badge = service.compute_value_badge(value_score=15, price_tier="premium")
+        assert badge == "overpriced"
+
+    def test_overpriced_boundary_24(self):
+        """value_score exactly 24 → overpriced"""
+        service = ScoringService()
+        badge = service.compute_value_badge(value_score=24, price_tier="mid")
+        assert badge == "overpriced"
+
+    def test_boundary_75_non_luxury(self):
+        """value_score exactly 75 non-luxury → great_value"""
+        service = ScoringService()
+        badge = service.compute_value_badge(value_score=75, price_tier="premium")
+        assert badge == "great_value"
+
+    def test_boundary_25(self):
+        """value_score exactly 25 → premium_price"""
+        service = ScoringService()
+        badge = service.compute_value_badge(value_score=25, price_tier="mid")
+        assert badge == "premium_price"
