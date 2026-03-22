@@ -160,7 +160,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   const AspectBadges = ({ index }: { index: number }) => {
     const badges = getProductBadges(index);
-    const isOverallWinner = scoring && scoring.winner_index === index;
+    const scoringWinnerIndex = isNewFormat ? result.overview!.winner.product_index : scoring?.winner_index;
+    const isOverallWinner = scoringWinnerIndex === index;
     if (badges.length === 0 && !isOverallWinner) return null;
 
     return (
@@ -271,17 +272,18 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const ScoringSection = () => {
     if (!scoring) return null;
 
-    const winnerScores = getProductScores(scoring.winner_index);
-    const winnerName = products[scoring.winner_index]?.name;
+    const scoringWinIdx = isNewFormat ? result.overview!.winner.product_index : scoring.winner_index;
+    const winnerScores = getProductScores(scoringWinIdx);
+    const winnerName = products[scoringWinIdx]?.name;
 
     return (
       <View style={styles.scoringSection}>
         <Text style={styles.sectionTitle}>Score Breakdown</Text>
 
-        {scoring.win_margin > 0 && winnerName && (
+        {((isNewFormat ? result.overview!.winner.margin : scoring.win_margin) > 0) && winnerName && (
           <View style={styles.winMarginBanner}>
             <Text style={styles.winMarginText}>
-              {winnerName} wins by {Math.round(scoring.win_margin)} points
+              {winnerName} wins by {Math.round(isNewFormat ? result.overview!.winner.margin : scoring.win_margin)} points
             </Text>
           </View>
         )}
