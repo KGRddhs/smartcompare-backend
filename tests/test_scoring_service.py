@@ -1217,6 +1217,15 @@ class TestConfidenceIndicators:
         conf = service.compute_confidence(products, shopping_count=3, cached=False)
         assert conf["overall"] == "high"
 
+    def test_empty_products_list(self):
+        """Empty products list returns low confidence with safe defaults"""
+        service = ScoringService()
+        conf = service.compute_confidence(products=[], shopping_count=0, cached=False)
+        assert conf["overall"] == "low"
+        assert conf["price"]["method"] == "estimated"
+        assert conf["rating"]["review_count"] == 0
+        assert conf["specs"]["verified_pct"] == 0
+
     @staticmethod
     def _make_strong_product():
         return {
@@ -1227,3 +1236,27 @@ class TestConfidenceIndicators:
             "rating_source": {"name": "Amazon", "url": "https://amazon.com"},
             "fact_check": {"specs_verified": 8, "specs_likely": 2, "specs_unverified": 0, "specs_flagged": 0},
         }
+
+
+class TestTradeoffPairsWinnerIndex:
+    """Edge case: compute_tradeoff_pairs with winner_index=1."""
+
+    def test_winner_index_1(self):
+        """When winner_index=1, Product B is the winner"""
+        service = ScoringService()
+        dimension_winners = {
+            "price_score": {"winner": "Product A", "margin": 15.0},
+            "spec_score": {"winner": "Product B", "margin": 20.0},
+            "review_score": {"winner": "Product B", "margin": 10.0},
+            "value_score": {"winner": "tie", "margin": 2.0},
+            "reliability_score": {"winner": "tie", "margin": 1.0},
+            "popularity_score": {"winner": "tie", "margin": 1.0},
+        }
+        product_names = ["Product A", "Product B"]
+        tradeoffs = service.compute_tradeoff_pairs(dimension_winners, product_names, winner_index=1)
+        assert len(tradeoffs) == 1
+        # Product B is winner, so winner_wins should be Product B
+        assert tradeoffs[0]["winner_wins"]["product"] == "Product B"
+        # Product A is loser, so loser_wins should be Product A
+        assert tradeoffs[0]["loser_wins"]["product"] == "Product A"
+        assert tradeoffs[0]["loser_wins"]["dimension"] == "price_score"

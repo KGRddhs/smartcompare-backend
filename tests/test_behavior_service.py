@@ -121,6 +121,40 @@ class TestSessionSignals:
         assert signals["first_tab_viewed"] is None
         assert signals["tab_dwell_ms"] == {}
 
+    def test_events_missing_metadata_key(self):
+        """tab_switch events without metadata key should not raise KeyError"""
+        service = BehaviorService()
+        events = [
+            {"event_type": "tab_switch"},  # no metadata at all
+            {"event_type": "tab_switch", "metadata": {"to": "specs", "dwell_ms": 5000}},
+        ]
+        signals = service.compute_session_signals(events)
+        # First event has no metadata, so first_tab should come from it safely (None tab)
+        # or skip to the one with metadata — either way, no crash
+        assert "first_tab_viewed" in signals
+        assert "tab_dwell_ms" in signals
+        # The second event should still be counted
+        assert signals["tab_dwell_ms"].get("specs", 0) == 5000
+
+
+class TestCategoryAffinityEdgeCases:
+    """Edge cases for _compute_category_affinity."""
+
+    def test_malformed_created_at_strings(self):
+        """Malformed created_at strings should not crash, use current time as fallback"""
+        service = BehaviorService()
+        comparisons = [
+            {"category_used": "electronics", "created_at": "not-a-date"},
+            {"category_used": "electronics", "created_at": "2026-13-45T99:99:99"},
+            {"category_used": "fragrances", "created_at": ""},
+            {"category_used": "fragrances", "created_at": None},
+        ]
+        affinity = service._compute_category_affinity(comparisons)
+        # Should not crash, and should produce valid affinity
+        assert "electronics" in affinity
+        assert "fragrances" in affinity
+        assert abs(sum(affinity.values()) - 1.0) < 0.01
+
 
 class TestWeightAdjustments:
     """Tests for behavioral weight adjustment application."""
