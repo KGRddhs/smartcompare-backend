@@ -44,7 +44,7 @@ export interface ProductPrice {
   confidence?: number;
   note?: string;
   unavailable?: boolean;
-  source_method?: 'local_bhd' | 'converted_usd' | 'estimated' | 'page_scrape';
+  source_method?: 'local_bhd' | 'converted_usd' | 'estimated' | 'page_scrape' | 'page_scrape_rendered';
 }
 
 export interface Product {
@@ -101,6 +101,123 @@ export interface PersonalizedInsight {
   insight: string;
 }
 
+// --- New structured response types (Session 29) ---
+
+export interface OverviewWinner {
+  product_index: number;
+  name: string;
+  declaration: string;
+  reason: string;
+  key_tradeoff: string;
+  margin: number;
+}
+
+export interface OverviewProduct {
+  brand: string;
+  name: string;
+  price: ProductPrice;
+  rating: number | null;
+  review_count: number | null;
+  overall_score: number | null;
+  value_badge: 'great_value' | 'fair_price' | 'premium_price' | 'overpriced';
+  value_context: string;
+  pros: string[];
+  cons: string[];
+  best_for: string;
+}
+
+export interface TradeoffDimension {
+  dimension: string;
+  product: string;
+  margin: number;
+}
+
+export interface TradeoffPair {
+  winner_wins: TradeoffDimension;
+  loser_wins: TradeoffDimension;
+}
+
+export interface ConfidenceIndicators {
+  price: { source_count: number; method: string; freshness: string };
+  rating: { review_count: number; source: string; verified: boolean };
+  specs: { verified_pct: number; citation_count: number };
+  overall: 'high' | 'medium' | 'low';
+}
+
+export interface OverviewSection {
+  winner: OverviewWinner;
+  products: OverviewProduct[];
+  tradeoffs: TradeoffPair[];
+  confidence: ConfidenceIndicators;
+}
+
+export interface SpecsProduct {
+  brand: string;
+  name: string;
+  specs: Record<string, any>;
+  spec_advantages: string[];
+}
+
+export interface SpecsSection {
+  products: SpecsProduct[];
+  specs_comparison: Record<string, any>;
+}
+
+export interface ReviewHighlight {
+  point: string;
+  sentiment: 'positive' | 'negative';
+}
+
+export interface ReviewSummary {
+  overall_sentiment: 'positive' | 'mixed' | 'negative';
+  consensus: string;
+  highlights: ReviewHighlight[];
+  review_volume: 'high' | 'moderate' | 'low' | 'minimal';
+  agreement_level: 'strong' | 'moderate' | 'divided';
+}
+
+export interface ReviewProduct {
+  brand: string;
+  name: string;
+  rating: number | null;
+  review_count: number | null;
+  rating_source: RatingSource | null;
+  review_summary: ReviewSummary;
+}
+
+export interface ReviewsSection {
+  products: ReviewProduct[];
+}
+
+export interface ScoringSection {
+  scores: Record<string, ProductScores>;
+  dimension_winners: Record<string, DimensionWinner>;
+  price_tiers: Record<string, string>;
+  is_cross_tier: boolean;
+  scoring_method: 'category_weighted' | 'personalized';
+  category_weights: Record<string, number>;
+}
+
+export interface PersonalizationSection {
+  personalized: boolean;
+  factors: string[];
+  personalized_insights: PersonalizedInsight[];
+}
+
+export interface MetadataSection {
+  query: string;
+  region: string;
+  elapsed_ms: number;
+  elapsed_seconds: number;
+  api_calls: number;
+  total_cost: number;
+  gpt_calls: number;
+  serper_calls: number;
+  cached: boolean;
+  fact_check: Record<string, any>;
+  timestamp: string;
+}
+
 export interface ComparisonResult {
   success: boolean;
   products: Product[];
@@ -125,6 +242,11 @@ export interface ComparisonResult {
     timestamp: string;
   };
   error?: string;
+  // New structured response fields (optional for backward compat with history)
+  overview?: OverviewSection;
+  specs?: SpecsSection;
+  reviews?: ReviewsSection;
+  personalization?: PersonalizationSection;
 }
 
 // --- Scoring types ---
@@ -144,11 +266,20 @@ export interface ProductScores {
   weights_used: Record<string, number>;
 }
 
+export interface DimensionWinner {
+  winner: string;
+  margin: number | null;
+}
+
 export interface ScoringResult {
   scores: Record<string, ProductScores>;
   winner_index: number;
   win_margin: number;
-  scoring_method: 'personalized' | 'default';
+  scoring_method: 'personalized' | 'default' | 'category_weighted';
+  dimension_winners?: Record<string, DimensionWinner>;
+  price_tiers?: Record<string, string>;
+  is_cross_tier?: boolean;
+  category_weights?: Record<string, number>;
 }
 
 // --- Camera ---
