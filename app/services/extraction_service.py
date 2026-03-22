@@ -296,7 +296,7 @@ RULES:
 - NEVER return null for amount — always provide an estimate"""
 
 
-REVIEWS_EXTRACTION_PROMPT = """You are a review analysis expert. Extract a FACTUAL review analysis for this product using ONLY the search results provided.
+REVIEWS_EXTRACTION_PROMPT = """You are a professional product analyst. Synthesize review data for this product using ONLY the search results provided. Write as a professional product analyst. Never attribute to individual users or websites in the output.
 
 PRODUCT: {brand} {name} {variant}
 CATEGORY: {category}
@@ -308,66 +308,48 @@ Return ONLY valid JSON:
 {{
     "average_rating": 0.0-5.0 or null,
     "total_reviews": estimated_count or null,
-    "positive_percentage": 0-100 or null,
-    "rating_distribution": null,
-    "category_scores": {{
-        "aspect_name": score_out_of_10
-    }},
-    "common_praises": ["[snippet_N] specific praise with evidence"],
-    "common_complaints": ["[snippet_N] specific complaint with evidence"],
-    "detailed_praises": [
-        {{"text": "specific praise", "frequency": "how often mentioned", "source": "snippet_N"}}
-    ],
-    "detailed_complaints": [
-        {{"text": "specific complaint", "frequency": "how often mentioned", "source": "snippet_N"}}
-    ],
-    "user_quotes": [
-        {{"text": "exact words from snippet", "sentiment": "positive|negative|mixed", "source": "snippet_N", "aspect": "what aspect it covers"}}
-    ],
-    "summary": "2-3 sentence specific, opinionated summary"
+    "review_summary": {{
+        "overall_sentiment": "positive|mixed|negative",
+        "consensus": "2-3 sentence professional brief synthesizing the overall reviewer consensus. No individual attributions.",
+        "highlights": [
+            {{"point": "[snippet_N] specific observation with evidence", "sentiment": "positive|negative"}}
+        ],
+        "review_volume": "high|moderate|low|minimal",
+        "agreement_level": "strong|moderate|divided"
+    }}
 }}
 
 RULES:
-- EVERY praise and complaint MUST cite its source as [snippet_N] — if you cannot cite a snippet, do NOT include the claim
-- category_scores: pick 4-6 aspects relevant to the product category (e.g. for phones: camera, battery, display, performance, value, build quality). Score 1-10 based on review consensus from snippets
-- common_praises/common_complaints: prefix each with [snippet_N] citation. 3-5 items each
-- detailed_praises/detailed_complaints: MUST include "source" field referencing the snippet
-- user_quotes: extract 3-5 EXACT phrases from the search snippets — actual words as written. Do NOT paraphrase, invent, or fabricate quotes
-- rating_distribution: always set to null — real distribution data is injected separately
+- consensus: Synthesize the OVERALL reviewer consensus in 2-3 sentences. Write professionally — do NOT attribute to individual users or websites. Do NOT paraphrase, invent, or fabricate claims.
+- highlights: 4-8 items, each a specific observation with [snippet_N] citation and sentiment tag. If you cannot cite a snippet, do NOT include the claim.
+- overall_sentiment: "positive" if most reviews favorable, "negative" if most unfavorable, "mixed" otherwise
+- review_volume: "high" (500+), "moderate" (50-500), "low" (10-50), "minimal" (<10 or uncertain)
+- agreement_level: "strong" (reviewers broadly agree), "moderate" (some variance), "divided" (polarized opinions)
 - DO NOT generate source_ratings — retailer ratings are injected separately from real data
-- summary: be SPECIFIC and opinionated, referencing actual findings from snippets
+- If fewer than 3 credible review sources exist in the search results, return fewer highlights rather than inventing content. Quality over quantity — 2 real citations beat 5 fabricated ones.
 
-DO: "[snippet_3] Battery drains to 20% by 3pm with heavy camera use"
-DON'T: "Battery life could be better" (too vague, no citation)
+DO: {{"point": "[snippet_3] Battery drains to 20% by 3pm with heavy camera use", "sentiment": "negative"}}
+DON'T: {{"point": "Battery life could be better", "sentiment": "negative"}} (too vague, no citation)
 
-DO: "[snippet_1] 48MP main sensor captures sharp detail in low light"
-DON'T: "Great camera quality" (generic, no evidence)
+DO: {{"point": "[snippet_1] 48MP main sensor captures sharp detail in low light", "sentiment": "positive"}}
+DON'T: {{"point": "Great camera quality", "sentiment": "positive"}} (generic, no evidence)
 
-- Return null/empty for fields without reliable data from the provided snippets
-- If fewer than 3 credible review sources exist in the search results, return fewer items rather than inventing content. Quality over quantity — 2 real citations beat 5 fabricated ones.
-- category_scores aspect guidance by category:
-  * Electronics: camera, battery, display, performance, value, build_quality
-  * Fashion: style, material_quality, craftsmanship, comfort, durability, value
-  * Fragrances: longevity, projection, uniqueness, versatility, value
-  * Supplements: effectiveness, ingredients, taste, absorption, value
-  * Default: quality, value, durability, ease_of_use
-
-CONTENT QUALITY — NEVER include these in praise OR complaints:
+CONTENT QUALITY — NEVER include these in highlights:
 - Navigation text: "learn more", "see details", "click here", "read more", "shop now"
 - Boilerplate: "free shipping", "easy returns", "available in stores"
 - Condition disclaimers: "learn more about condition", "see seller notes"
 - Marketing copy: "best seller", "limited edition" (unless substantiated by a review)
 - Generic filler: sentences under 8 words with no specific product claim
 
-Each praise/complaint MUST be a specific, substantive claim about the product itself.
+Each highlight MUST be a specific, substantive claim about the product itself.
 BAD: "Learn more about condition"
 BAD: "Great product"
-GOOD: "The leather feels premium and holds its shape well [snippet_3]"
-GOOD: "Stitching came loose after 2 months of daily wear [snippet_5]"
+GOOD: "The leather feels premium and holds its shape well"
+GOOD: "Stitching came loose after 2 months of daily wear"
 
-SENTIMENT ALIGNMENT for complaints:
-- Only include NEGATIVE observations in complaints. A positive statement is NOT a criticism.
-- If a snippet mentions both positive and negative aspects, extract ONLY the negative part for complaints."""
+SENTIMENT ALIGNMENT:
+- Tag each highlight with the correct sentiment. A positive observation gets "positive", a negative one gets "negative".
+- If a snippet mentions both positive and negative aspects, create separate highlights for each."""
 
 
 COMPARISON_PROMPT = """You are a product comparison expert. Compare these products with SPECIFIC, DATA-BACKED analysis. Be decisive — users want a clear answer, not fence-sitting.
@@ -384,36 +366,23 @@ Primary concern: {concern}
 Return ONLY valid JSON:
 {{
     "winner_index": 0 or 1,
-    "winner_reason": "clear 1-sentence reason with a specific number or fact",
+    "winner_declaration": "winning product name",
+    "winner_reason": "ONE sentence, under 20 words, with a specific number or fact",
+    "key_tradeoff": "ONE sentence naming the other product's strongest advantage",
+    "value_context": "ONE sentence about price-to-quality relationship for GCC market",
+    "best_for": {{
+        "product_0": "one sentence describing who should buy Product 1",
+        "product_1": "one sentence describing who should buy Product 2"
+    }},
     "product_0_pros": ["specific pro with number/fact", "..."],
     "product_0_cons": ["specific con with number/fact", "..."],
     "product_1_pros": ["specific pro with number/fact", "..."],
     "product_1_cons": ["specific con with number/fact", "..."],
-    "price_comparison": {{
-        "cheaper_index": 0 or 1,
-        "price_difference": "X {currency} (Y%)",
-        "better_value_index": 0 or 1
-    }},
     "specs_comparison": {{
         "product_0_advantages": ["advantage with specific number"],
         "product_1_advantages": ["advantage with specific number"],
         "similar": ["shared feature"]
     }},
-    "value_scores": [0.0-10.0, 0.0-10.0],
-    "best_for": {{
-        "budget": 0 or 1,
-        "performance": 0 or 1,
-        "features": 0 or 1,
-        "reliability": 0 or 1
-    }},
-    "recommendation": "2-3 sentence decisive recommendation",
-    "key_differences": [
-        "difference 1 with numbers",
-        "difference 2 with numbers",
-        "difference 3 with numbers",
-        "difference 4 with numbers",
-        "difference 5 with numbers"
-    ],
     "personalized_insights": [
         {{{{
             "focus_area": "user priority area (e.g., battery_life, price, camera)",
@@ -429,18 +398,13 @@ RULES:
 - DON'T: "Better battery life" (vague, no numbers)
 - DO: "15% cheaper at $799 vs $949 while matching camera quality"
 - DON'T: "Good value for money" (meaningless without numbers)
-- winner_reason MUST cite the single most important numeric advantage
-- recommendation MUST state: who should buy Product 1, who should buy Product 2, and the specific trade-off between them
-- key_differences: each must include actual specs/numbers, not generic descriptions
+- winner_reason MUST be under 20 words and cite the single most important numeric advantage
+- winner_declaration: the full product name of the winner
+- key_tradeoff: ONE sentence naming the losing/other product's single strongest advantage. This acknowledges what the user gives up by choosing the winner.
+- value_context: ONE sentence about price-to-quality for GCC market. If cross-tier, frame as "different products for different needs."
+- best_for: one sentence per product describing the ideal buyer profile
 - Consider price-to-value ratio heavily for GCC market
-- Value score: 10 = exceptional value, 5 = average, 1 = poor value
 - Be DECISIVE — pick a clear winner and defend it with data
-- best_for categories depend on product type:
-  * Electronics: budget, performance, features, reliability
-  * Fashion: budget, style, craftsmanship, versatility
-  * Fragrances: budget, longevity, occasion_range, uniqueness
-  * Supplements: budget, ingredient_quality, certifications, effectiveness
-  * Default: budget, performance, features, reliability
 - For luxury/designer products, consider brand prestige and craftsmanship in value assessment, not just raw cost per feature
 - personalized_insights: Generate ONLY when personalization context is provided. 2-3 insights, each tied to a different user priority. Each must cite a specific number. If no personalization context, omit this field entirely."""
 
@@ -691,31 +655,32 @@ async def extract_reviews(
 
 
 def _normalize_review_response(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize review response for backward compatibility and field presence."""
-    # Ensure common_praises/common_complaints stay as List[str]
-    for key in ("common_praises", "common_complaints"):
-        val = data.get(key)
-        if isinstance(val, list):
-            data[key] = [str(item) if not isinstance(item, str) else item for item in val]
-        else:
-            data[key] = []
+    """Normalize review response ensuring review_summary structure exists with defaults."""
+    # Ensure review_summary dict exists with all sub-fields defaulted
+    summary = data.get("review_summary", {})
+    if not isinstance(summary, dict):
+        summary = {}
+    summary.setdefault("overall_sentiment", "mixed")
+    summary.setdefault("consensus", "")
+    summary.setdefault("highlights", [])
+    summary.setdefault("review_volume", "minimal")
+    summary.setdefault("agreement_level", "moderate")
+    data["review_summary"] = summary
 
-    # Ensure all enhanced fields exist with defaults
-    data.setdefault("rating_distribution", None)
-    data.setdefault("category_scores", None)
+    # Keep source_ratings default for backward compat (injected externally)
     data.setdefault("source_ratings", [])
-    data.setdefault("detailed_praises", [])
-    data.setdefault("detailed_complaints", [])
-    data.setdefault("user_quotes", [])
-    data.setdefault("summary", data.get("summary"))
 
-    # Ensure each user_quote has source, sentiment, and aspect fields
-    quotes = data.get("user_quotes", [])
-    for quote in quotes:
-        quote.setdefault("source", "unknown")
-        quote.setdefault("sentiment", "mixed")
-        quote.setdefault("aspect", "general")
-    data["user_quotes"] = quotes
+    # Backward compat: populate common_praises/complaints from highlights for downstream consumers
+    if "common_praises" not in data:
+        data["common_praises"] = [
+            h["point"] for h in summary.get("highlights", [])
+            if isinstance(h, dict) and h.get("sentiment") == "positive"
+        ]
+    if "common_complaints" not in data:
+        data["common_complaints"] = [
+            h["point"] for h in summary.get("highlights", [])
+            if isinstance(h, dict) and h.get("sentiment") == "negative"
+        ]
 
     return data
 
@@ -735,14 +700,15 @@ def _build_preferences_prompt(user_preferences: Dict[str, Any]) -> str:
 - Lifestyle: {lifestyle}
 - Brand attitude: {brand_attitude}
 
-Based on these preferences, your recommendation MUST:
+Based on these preferences, your verdict MUST:
 1. Explain WHY this product is better FOR THIS USER (not generically)
 2. Reference specific preferences ("You prioritize battery life, and Product A has 5000mAh vs 3349mAh")
 3. Interpret budget contextually: "budget" for phones means <$300, for supplements means <$15
 4. Flag if a product conflicts with lifestyle (e.g., non-vegan supplement for vegan user)
 5. For brand_loyal users: weight established brand reputation higher
 6. For function_first users: ignore brand entirely, focus on specs and value
-7. For best_of_both users: prefer branded options when specs are similar, but recommend better-performing product even if lesser brand"""
+7. For best_of_both users: prefer branded options when specs are similar, but recommend better-performing product even if lesser brand
+8. In best_for, if a product aligns with the user's stated priorities, note which priorities it aligns with"""
 
 
 async def generate_comparison(
@@ -772,9 +738,9 @@ async def generate_comparison(
 {scores_summary}
 
 ## Verdict Requirements
-1. RECOMMENDATION: State the winner with the score margin. Explain WHO should buy which product and WHY based on the dimension scores.
-2. KEY DIFFERENCES: 3-5 data-backed differences. Reference actual specs, prices, and review findings. Cite which dimension each difference relates to.
-3. VALUE ANALYSIS: Explain the value proposition of each product. If cross-tier, acknowledge that each serves a different market segment — do NOT penalize luxury for being expensive.
+1. WINNER REASON: State the winner with the score margin in under 20 words. Cite the single most important numeric advantage.
+2. KEY TRADEOFF: Name the other product's strongest advantage — what the user gives up by choosing the winner.
+3. VALUE CONTEXT: Explain the value proposition. If cross-tier, acknowledge that each serves a different market segment — do NOT penalize luxury for being expensive.
 4. BEST FOR: One sentence per product describing the ideal buyer.
 
 Your verdict MUST be consistent with the scores above. If Product A wins on reviews, your text must reflect that. Do NOT contradict the scoring data.

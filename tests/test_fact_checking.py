@@ -19,59 +19,58 @@ def service():
 
 
 # =====================================================
-# User quotes normalization (_normalize_review_response)
+# Review summary normalization (_normalize_review_response)
 # =====================================================
 
-class TestNormalizeReviewResponseQuotes:
-    def test_user_quotes_get_default_source(self):
-        """Quotes missing 'source' get defaulted to 'unknown'."""
-        data = {
-            "common_praises": [],
-            "common_complaints": [],
-            "user_quotes": [
-                {"text": "Great battery life", "sentiment": "positive"},
-            ],
-        }
+class TestNormalizeReviewResponseSummary:
+    def test_review_summary_defaults_when_missing(self):
+        """Missing review_summary gets populated with defaults."""
+        data = {"average_rating": 4.0}
         result = _normalize_review_response(data)
-        assert result["user_quotes"][0]["source"] == "unknown"
-        assert result["user_quotes"][0]["aspect"] == "general"
+        assert result["review_summary"]["overall_sentiment"] == "mixed"
+        assert result["review_summary"]["consensus"] == ""
+        assert result["review_summary"]["highlights"] == []
+        assert result["review_summary"]["review_volume"] == "minimal"
+        assert result["review_summary"]["agreement_level"] == "moderate"
 
-    def test_user_quotes_preserve_existing_source(self):
-        """Quotes with existing 'source' are not overwritten."""
+    def test_review_summary_preserves_existing(self):
+        """Existing review_summary fields are preserved."""
         data = {
-            "common_praises": [],
-            "common_complaints": [],
-            "user_quotes": [
-                {"text": "Amazing camera", "source": "Amazon", "sentiment": "positive", "aspect": "camera"},
-            ],
+            "review_summary": {
+                "overall_sentiment": "positive",
+                "consensus": "Great product.",
+                "highlights": [{"point": "Fast", "sentiment": "positive"}],
+                "review_volume": "high",
+                "agreement_level": "strong",
+            },
         }
         result = _normalize_review_response(data)
-        assert result["user_quotes"][0]["source"] == "Amazon"
-        assert result["user_quotes"][0]["aspect"] == "camera"
+        assert result["review_summary"]["overall_sentiment"] == "positive"
+        assert result["review_summary"]["consensus"] == "Great product."
+        assert len(result["review_summary"]["highlights"]) == 1
 
-    def test_user_quotes_default_sentiment_and_aspect(self):
-        """Quotes missing sentiment and aspect get defaults."""
+    def test_backward_compat_common_praises_from_highlights(self):
+        """common_praises populated from positive highlights for backward compat."""
         data = {
-            "common_praises": [],
-            "common_complaints": [],
-            "user_quotes": [
-                {"text": "It works fine"},
-            ],
+            "review_summary": {
+                "highlights": [
+                    {"point": "Great camera quality", "sentiment": "positive"},
+                    {"point": "Poor battery", "sentiment": "negative"},
+                ],
+            },
         }
         result = _normalize_review_response(data)
-        assert result["user_quotes"][0]["sentiment"] == "mixed"
-        assert result["user_quotes"][0]["aspect"] == "general"
-        assert result["user_quotes"][0]["source"] == "unknown"
+        assert len(result["common_praises"]) == 1
+        assert "camera" in result["common_praises"][0]
+        assert len(result["common_complaints"]) == 1
+        assert "battery" in result["common_complaints"][0]
 
-    def test_empty_user_quotes_unchanged(self):
-        """Empty user_quotes list stays empty."""
-        data = {
-            "common_praises": [],
-            "common_complaints": [],
-            "user_quotes": [],
-        }
+    def test_empty_review_summary(self):
+        """Empty review_summary dict gets populated with defaults."""
+        data = {"review_summary": {}}
         result = _normalize_review_response(data)
-        assert result["user_quotes"] == []
+        assert result["review_summary"]["overall_sentiment"] == "mixed"
+        assert result["review_summary"]["highlights"] == []
 
 
 # =====================================================

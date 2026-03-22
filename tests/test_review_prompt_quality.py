@@ -8,7 +8,7 @@ class TestReviewPromptStructure:
     """Verify the review prompt enforces citation and specificity rules."""
 
     def test_prompt_requires_snippet_citations(self):
-        """Prompt must instruct GPT to cite [snippet_N] for praises/complaints."""
+        """Prompt must instruct GPT to cite [snippet_N] for highlights."""
         prompt = REVIEWS_EXTRACTION_PROMPT
         assert "snippet_" in prompt.lower() or "[snippet_" in prompt
         assert "cite" in prompt.lower() or "citation" in prompt.lower() or "reference" in prompt.lower()
@@ -27,13 +27,12 @@ class TestReviewPromptStructure:
         assert has_good or has_bad, "Prompt should include examples of good vs bad output"
 
     def test_prompt_requires_evidence_per_claim(self):
-        """Each praise/complaint must reference which snippet it came from."""
+        """Each highlight must reference which snippet it came from."""
         prompt = REVIEWS_EXTRACTION_PROMPT
-        # The detailed_praises/complaints format should include a source/snippet field
         assert "source" in prompt.lower() or "snippet" in prompt.lower()
 
     def test_prompt_warns_against_paraphrasing(self):
-        """Prompt must warn against GPT paraphrasing quotes as real user words."""
+        """Prompt must warn against GPT paraphrasing or fabricating claims."""
         prompt = REVIEWS_EXTRACTION_PROMPT
         assert "paraphras" in prompt.lower() or "fabricat" in prompt.lower() or "invent" in prompt.lower()
 
@@ -42,7 +41,7 @@ class TestVerdictPromptStructure:
     """Verify the comparison verdict prompt enforces specificity."""
 
     def test_prompt_requires_tradeoff_analysis(self):
-        """Prompt must mandate trade-off: 'A wins for X, B wins for Y'."""
+        """Prompt must mandate trade-off analysis."""
         prompt = COMPARISON_PROMPT.lower()
         assert "trade" in prompt or "wins for" in prompt or "better for" in prompt
 
@@ -75,29 +74,18 @@ class TestReviewPromptCompleteness:
         """Prompt JSON template must contain all expected output fields."""
         prompt = REVIEWS_EXTRACTION_PROMPT
         required_fields = [
-            "average_rating", "total_reviews", "positive_percentage",
-            "rating_distribution", "category_scores", "common_praises",
-            "common_complaints", "detailed_praises", "detailed_complaints",
-            "user_quotes", "summary"
+            "average_rating", "total_reviews",
+            "review_summary", "overall_sentiment",
+            "consensus", "highlights", "review_volume",
+            "agreement_level"
         ]
         for field in required_fields:
             assert field in prompt, f"Missing JSON field: {field}"
-
-    def test_rating_distribution_set_to_null(self):
-        """rating_distribution must be hardcoded to null in the JSON template."""
-        prompt = REVIEWS_EXTRACTION_PROMPT
-        assert '"rating_distribution": null' in prompt
 
     def test_prompt_forbids_source_ratings_generation(self):
         """Prompt must explicitly forbid GPT from generating source_ratings."""
         prompt = REVIEWS_EXTRACTION_PROMPT
         assert "do not generate source_ratings" in prompt.lower()
-
-    def test_detailed_fields_have_source_key(self):
-        """detailed_praises and detailed_complaints must include 'source' key in template."""
-        prompt = REVIEWS_EXTRACTION_PROMPT
-        # The JSON template for detailed items should show "source" as a field
-        assert '"source":' in prompt or '"source"' in prompt
 
     def test_prompt_requests_json_only(self):
         """Prompt must instruct GPT to return ONLY valid JSON."""
@@ -109,9 +97,9 @@ class TestVerdictPromptCompleteness:
     """Verify the verdict prompt has all required JSON fields and template variables."""
 
     def test_prompt_has_template_variables(self):
-        """Prompt must have {product1_json}, {product2_json}, {region}, {concern}, {currency}."""
+        """Prompt must have {product1_json}, {product2_json}, {region}, {concern}."""
         prompt = COMPARISON_PROMPT
-        for var in ["{product1_json}", "{product2_json}", "{region}", "{concern}", "{currency}"]:
+        for var in ["{product1_json}", "{product2_json}", "{region}", "{concern}"]:
             assert var in prompt, f"Missing template variable: {var}"
 
     def test_prompt_json_has_required_fields(self):
@@ -121,18 +109,17 @@ class TestVerdictPromptCompleteness:
             "winner_index", "winner_reason",
             "product_0_pros", "product_0_cons",
             "product_1_pros", "product_1_cons",
-            "price_comparison", "specs_comparison",
-            "value_scores", "best_for",
-            "recommendation", "key_differences"
+            "specs_comparison",
+            "best_for", "winner_declaration",
+            "key_tradeoff", "value_context"
         ]
         for field in required_fields:
             assert field in prompt, f"Missing JSON field: {field}"
 
     def test_prompt_has_best_for_categories(self):
-        """best_for must include budget, performance, features, reliability."""
+        """best_for must include product_0 and product_1."""
         prompt = COMPARISON_PROMPT
-        for cat in ["budget", "performance", "features", "reliability"]:
-            assert cat in prompt.lower(), f"Missing best_for category: {cat}"
+        assert "product_0" in prompt and "product_1" in prompt
 
     def test_prompt_mentions_gcc_market(self):
         """Prompt must mention GCC market for regional pricing context."""
@@ -148,12 +135,6 @@ class TestVerdictPromptCompleteness:
         """Prompt must instruct GPT to return ONLY valid JSON."""
         prompt = COMPARISON_PROMPT
         assert "return only valid json" in prompt.lower()
-
-    def test_prompt_has_value_score_scale(self):
-        """Prompt must define value score scale (1-10)."""
-        prompt = COMPARISON_PROMPT
-        assert "10 =" in prompt or "10=" in prompt
-        assert "1 =" in prompt or "1=" in prompt
 
 
 # ===========================================
@@ -171,9 +152,9 @@ class TestReviewPromptQualityRules:
         assert "never include" in prompt or "never" in prompt
 
     def test_review_prompt_has_sentiment_alignment(self):
-        """Prompt must instruct GPT to put only negative items in complaints."""
+        """Prompt must instruct GPT to align sentiment tags correctly."""
         prompt = REVIEWS_EXTRACTION_PROMPT.lower()
-        assert "negative" in prompt and "complaint" in prompt
+        assert "negative" in prompt
         assert "positive" in prompt
 
     def test_review_prompt_has_min_word_or_substantive_rule(self):
@@ -182,7 +163,7 @@ class TestReviewPromptQualityRules:
         assert "specific" in prompt or "substantive" in prompt or "8 word" in prompt
 
     def test_review_prompt_has_examples(self):
-        """Prompt must include concrete good/bad examples for praises and complaints."""
+        """Prompt must include concrete good/bad examples for highlights."""
         prompt = REVIEWS_EXTRACTION_PROMPT
         assert "GOOD:" in prompt or "DO:" in prompt
         assert "BAD:" in prompt or "DON'T:" in prompt
@@ -218,3 +199,147 @@ class TestPricePromptCounterfeitRejection:
         prompt = PRICE_EXTRACTION_PROMPT
         assert "AUTHORITATIVE" in prompt or "authoritative" in prompt.lower()
         assert "not the lowest" in prompt.lower() or "not the cheapest" in prompt.lower()
+
+
+# ===========================================
+# REVIEW SUMMARY FORMAT (new structured format)
+# ===========================================
+
+class TestReviewSummaryFormat:
+    """Tests for the new review_summary structured output format."""
+
+    def test_review_prompt_requires_consensus(self):
+        """REVIEWS_EXTRACTION_PROMPT must request 'consensus' field"""
+        from app.services.extraction_service import REVIEWS_EXTRACTION_PROMPT
+        assert "consensus" in REVIEWS_EXTRACTION_PROMPT
+        assert "overall_sentiment" in REVIEWS_EXTRACTION_PROMPT
+
+    def test_review_prompt_requires_highlights(self):
+        """REVIEWS_EXTRACTION_PROMPT must request 'highlights' with sentiment tags"""
+        from app.services.extraction_service import REVIEWS_EXTRACTION_PROMPT
+        assert "highlights" in REVIEWS_EXTRACTION_PROMPT
+        assert "sentiment" in REVIEWS_EXTRACTION_PROMPT
+
+    def test_review_prompt_requires_review_volume(self):
+        """REVIEWS_EXTRACTION_PROMPT must request 'review_volume' field"""
+        from app.services.extraction_service import REVIEWS_EXTRACTION_PROMPT
+        assert "review_volume" in REVIEWS_EXTRACTION_PROMPT
+
+    def test_review_prompt_requires_agreement_level(self):
+        """REVIEWS_EXTRACTION_PROMPT must request 'agreement_level' field"""
+        from app.services.extraction_service import REVIEWS_EXTRACTION_PROMPT
+        assert "agreement_level" in REVIEWS_EXTRACTION_PROMPT
+
+    def test_review_prompt_forbids_individual_attribution(self):
+        """REVIEWS_EXTRACTION_PROMPT must forbid individual user attribution"""
+        from app.services.extraction_service import REVIEWS_EXTRACTION_PROMPT
+        assert "Never attribute" in REVIEWS_EXTRACTION_PROMPT or "never attribute" in REVIEWS_EXTRACTION_PROMPT
+
+    def test_review_prompt_professional_tone(self):
+        """REVIEWS_EXTRACTION_PROMPT must request professional product analyst tone"""
+        from app.services.extraction_service import REVIEWS_EXTRACTION_PROMPT
+        assert "professional" in REVIEWS_EXTRACTION_PROMPT.lower() or "analyst" in REVIEWS_EXTRACTION_PROMPT.lower()
+
+    def test_normalize_review_response_new_format(self):
+        """_normalize_review_response handles new review_summary format"""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {
+            "review_summary": {
+                "overall_sentiment": "positive",
+                "consensus": "Great product overall.",
+                "highlights": [
+                    {"point": "Battery is excellent", "sentiment": "positive"},
+                    {"point": "Heavy weight", "sentiment": "negative"},
+                ],
+                "review_volume": "high",
+                "agreement_level": "strong",
+            },
+            "average_rating": 4.5,
+            "total_reviews": 1000,
+        }
+        result = _normalize_review_response(raw)
+        assert "review_summary" in result
+        assert result["review_summary"]["overall_sentiment"] == "positive"
+        assert len(result["review_summary"]["highlights"]) == 2
+        assert result["review_summary"]["review_volume"] == "high"
+
+    def test_normalize_review_response_defaults(self):
+        """_normalize_review_response provides defaults for missing review_summary fields"""
+        from app.services.extraction_service import _normalize_review_response
+        raw = {"average_rating": None}
+        result = _normalize_review_response(raw)
+        assert "review_summary" in result
+        assert result["review_summary"]["overall_sentiment"] == "mixed"
+        assert result["review_summary"]["consensus"] == ""
+        assert result["review_summary"]["highlights"] == []
+        assert result["review_summary"]["review_volume"] == "minimal"
+        assert result["review_summary"]["agreement_level"] == "moderate"
+
+    def test_review_prompt_drops_old_fields(self):
+        """REVIEWS_EXTRACTION_PROMPT no longer requests detailed_praises/complaints/user_quotes"""
+        from app.services.extraction_service import REVIEWS_EXTRACTION_PROMPT
+        assert "detailed_praises" not in REVIEWS_EXTRACTION_PROMPT
+        assert "detailed_complaints" not in REVIEWS_EXTRACTION_PROMPT
+        assert "user_quotes" not in REVIEWS_EXTRACTION_PROMPT
+        assert "category_scores" not in REVIEWS_EXTRACTION_PROMPT
+
+    def test_review_prompt_keeps_average_rating_for_fact_check(self):
+        """average_rating and total_reviews still requested for fact-checking"""
+        from app.services.extraction_service import REVIEWS_EXTRACTION_PROMPT
+        assert "average_rating" in REVIEWS_EXTRACTION_PROMPT
+        assert "total_reviews" in REVIEWS_EXTRACTION_PROMPT
+
+
+# ===========================================
+# STRUCTURED VERDICT FORMAT (new format)
+# ===========================================
+
+class TestStructuredVerdictFormat:
+    """Tests for the new structured verdict prompt output format."""
+
+    def test_verdict_prompt_requires_winner_declaration(self):
+        """COMPARISON_PROMPT must request 'winner_declaration' field"""
+        from app.services.extraction_service import COMPARISON_PROMPT
+        assert "winner_declaration" in COMPARISON_PROMPT
+
+    def test_verdict_prompt_requires_winner_reason(self):
+        """COMPARISON_PROMPT must request 'winner_reason' field"""
+        from app.services.extraction_service import COMPARISON_PROMPT
+        assert "winner_reason" in COMPARISON_PROMPT
+
+    def test_verdict_prompt_requires_key_tradeoff(self):
+        """COMPARISON_PROMPT must request 'key_tradeoff' field"""
+        from app.services.extraction_service import COMPARISON_PROMPT
+        assert "key_tradeoff" in COMPARISON_PROMPT
+
+    def test_verdict_prompt_requires_value_context(self):
+        """COMPARISON_PROMPT must request 'value_context' field"""
+        from app.services.extraction_service import COMPARISON_PROMPT
+        assert "value_context" in COMPARISON_PROMPT
+
+    def test_verdict_prompt_requires_best_for(self):
+        """COMPARISON_PROMPT must request 'best_for' as per-product strings"""
+        from app.services.extraction_service import COMPARISON_PROMPT
+        assert "best_for" in COMPARISON_PROMPT
+
+    def test_verdict_prompt_word_limit_on_reason(self):
+        """COMPARISON_PROMPT enforces under 20 words for winner_reason"""
+        from app.services.extraction_service import COMPARISON_PROMPT
+        assert "20 words" in COMPARISON_PROMPT or "under 20" in COMPARISON_PROMPT
+
+    def test_verdict_prompt_tradeoff_references_other_product(self):
+        """COMPARISON_PROMPT requires key_tradeoff to name the other product's advantage"""
+        from app.services.extraction_service import COMPARISON_PROMPT
+        assert "losing" in COMPARISON_PROMPT.lower() or "loser" in COMPARISON_PROMPT.lower() or "other product" in COMPARISON_PROMPT.lower()
+
+    def test_verdict_drops_old_recommendation_field(self):
+        """COMPARISON_PROMPT should not have free-form 'recommendation' paragraph"""
+        from app.services.extraction_service import COMPARISON_PROMPT
+        # New prompt replaces recommendation with winner_reason + value_context + best_for
+        assert '"recommendation"' not in COMPARISON_PROMPT
+
+    def test_preferences_prompt_best_for_personalization(self):
+        """_build_preferences_prompt adds personalization instruction for best_for"""
+        from app.services.extraction_service import _build_preferences_prompt
+        prompt = _build_preferences_prompt({"priorities": ["quality", "durability"], "budget": "mid", "lifestyle": [], "brand_attitude": "function_first"})
+        assert "which you" in prompt.lower() or "your priorit" in prompt.lower() or "aligns with" in prompt.lower()
