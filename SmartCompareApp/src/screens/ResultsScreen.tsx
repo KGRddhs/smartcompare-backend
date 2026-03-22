@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList, Product, Comparison, RatingSource, ComparisonResult, ScoringResult, ProductScores, ScoreBreakdown, PersonalizedInsight } from '../types';
+import { RootStackParamList, Product, Comparison, RatingSource, ComparisonResult, ScoringResult, ProductScores, ScoreBreakdown, PersonalizedInsight, OverviewProduct, ReviewSummary, ReviewHighlight } from '../types';
 import FeedbackCard from '../components/FeedbackCard';
 import { trackEvents, shareComparison } from '../services/api';
 
@@ -28,7 +28,16 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
-  const { products, comparison, winner_index, recommendation, key_differences, metadata } = result;
+  // Detect new structured format vs old flat format
+  const isNewFormat = !!result?.overview?.winner;
+
+  // Extract data — new format uses structured sections, old format uses flat fields
+  const products = result.products;
+  const comparison = result.comparison;
+  const winner_index = isNewFormat ? result.overview!.winner.product_index : result.winner_index;
+  const recommendation = isNewFormat ? result.overview!.winner.reason : result.recommendation;
+  const key_differences = result.key_differences;
+  const metadata = result.metadata;
 
   // Event tracking
   const mountTimeRef = useRef(Date.now());
@@ -74,7 +83,10 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   const handleShare = async () => {
     try {
-      let shareMessage = `Comparing ${products[0]?.name} vs ${products[1]?.name}\n\nWinner: ${products[winner_index]?.name}\n\n${recommendation}`;
+      const winnerName = isNewFormat
+        ? result.overview!.winner.name
+        : products[winner_index]?.name;
+      let shareMessage = `Comparing ${products[0]?.name} vs ${products[1]?.name}\n\nWinner: ${winnerName}\n\n${recommendation}`;
 
       const compId = (result as any).comparison_id || (metadata as any)?.comparison_id;
       if (compId) {
@@ -350,10 +362,26 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     return <View style={styles.ratingContainer}>{ratingContent}</View>;
   };
 
+  // Value badge colors
+  const VALUE_BADGE_COLORS: Record<string, { bg: string; text: string }> = {
+    great_value: { bg: '#E8F5E9', text: '#2E7D32' },
+    fair_price: { bg: '#E3F2FD', text: '#1565C0' },
+    premium_price: { bg: '#FFF3E0', text: '#E65100' },
+    overpriced: { bg: '#FFEBEE', text: '#C62828' },
+  };
+
+  const VALUE_BADGE_LABELS: Record<string, string> = {
+    great_value: 'Great Value',
+    fair_price: 'Fair Price',
+    premium_price: 'Premium',
+    overpriced: 'Overpriced',
+  };
+
   // Product card component
   const ProductCard = ({ product, index }: { product: Product; index: number }) => {
     const isWinner = index === winner_index;
     const valueScore = comparison.value_scores?.[index];
+    const overviewProduct = isNewFormat ? result.overview!.products[index] : null;
 
     return (
       <View style={[styles.productCard, isWinner && styles.winnerCard]}>
@@ -378,23 +406,40 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         {(product.price?.estimated === true || product.price?.source_method === 'estimated') && (
           <Text style={styles.priceNote}>(estimated price)</Text>
         )}
-        {product.price?.source_method === 'page_scrape' && product.price?.retailer && (
+        {(product.price?.source_method === 'page_scrape' || product.price?.source_method === 'page_scrape_rendered') && product.price?.retailer && (
           <Text style={styles.priceNote}>from {product.price.retailer}</Text>
         )}
-        {product.price?.retailer && !product.price?.unavailable && product.price?.source_method !== 'page_scrape' && (
+        {product.price?.retailer && !product.price?.unavailable && product.price?.source_method !== 'page_scrape' && product.price?.source_method !== 'page_scrape_rendered' && (
           <Text style={styles.retailerText}>{product.price.retailer}</Text>
         )}
-        
+
+        {/* Value Badge (new format) */}
+        {overviewProduct?.value_badge && (
+          <View style={[styles.valueBadge, { backgroundColor: VALUE_BADGE_COLORS[overviewProduct.value_badge]?.bg || '#F5F5F5' }]}>
+            <Text style={[styles.valueBadgeText, { color: VALUE_BADGE_COLORS[overviewProduct.value_badge]?.text || '#666' }]}>
+              {VALUE_BADGE_LABELS[overviewProduct.value_badge] || overviewProduct.value_badge}
+            </Text>
+          </View>
+        )}
+        {overviewProduct?.value_context ? (
+          <Text style={styles.priceNote}>{overviewProduct.value_context}</Text>
+        ) : null}
+
         {/* Rating with source */}
         <RatingDisplay product={product} />
-        
-        {/* Value Score */}
-        {valueScore !== undefined && (
+
+        {/* Value Score (old format) */}
+        {!isNewFormat && valueScore !== undefined && (
           <View style={styles.valueScoreContainer}>
             <Text style={styles.valueScoreLabel}>Value Score</Text>
             <Text style={styles.valueScoreText}>{valueScore}/10</Text>
           </View>
         )}
+
+        {/* Best For (new format) */}
+        {overviewProduct?.best_for ? (
+          <Text style={styles.bestForText}>Best for: {overviewProduct.best_for}</Text>
+        ) : null}
       </View>
     );
   };
@@ -414,13 +459,19 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       });
     };
 
+    // New format: use result.specs.products
+    const specsProducts = isNewFormat ? result.specs!.products : null;
+
     return (
     <View style={styles.tabContent}>
-      {products.map((product, index) => {
-        const filteredSpecs = product.specs ? filterSpecs(product.specs) : [];
+      {(specsProducts || products).map((item: any, index: number) => {
+        const specs = isNewFormat ? item.specs : item.specs;
+        const filteredSpecs = specs ? filterSpecs(specs) : [];
+        const specAdvantages = isNewFormat ? (item as any).spec_advantages : null;
+
         return (
         <View key={index} style={styles.specsCard}>
-          <Text style={styles.specsCardTitle}>{product.name}</Text>
+          <Text style={styles.specsCardTitle}>{item.name}</Text>
           {filteredSpecs.map(([key, value]) => (
               <View key={key} style={styles.specRow}>
                 <Text style={styles.specKey}>{key.replace(/_/g, ' ')}</Text>
@@ -432,29 +483,37 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               No specifications available
             </Text>
           )}
+          {/* Spec advantages (new format, per product) */}
+          {specAdvantages && specAdvantages.length > 0 && (
+            <View style={styles.specAdvantagesInline}>
+              {specAdvantages.map((adv: string, i: number) => (
+                <Text key={i} style={styles.advantageItem}>+ {adv}</Text>
+              ))}
+            </View>
+          )}
         </View>
         );
       })}
-      
-      {/* Advantages comparison */}
-      {comparison.specs_comparison && (
+
+      {/* Advantages comparison (old format) */}
+      {!isNewFormat && comparison.specs_comparison && (
         <View style={styles.advantagesSection}>
           <Text style={styles.sectionTitle}>Advantages</Text>
-          
+
           {comparison.specs_comparison.product_0_advantages?.length > 0 && (
             <View style={styles.advantageCard}>
               <Text style={styles.advantageTitle}>{products[0]?.name}</Text>
               {comparison.specs_comparison.product_0_advantages.map((adv, i) => (
-                <Text key={i} style={styles.advantageItem}>✓ {adv}</Text>
+                <Text key={i} style={styles.advantageItem}>+ {adv}</Text>
               ))}
             </View>
           )}
-          
+
           {comparison.specs_comparison.product_1_advantages?.length > 0 && (
             <View style={styles.advantageCard}>
               <Text style={styles.advantageTitle}>{products[1]?.name}</Text>
               {comparison.specs_comparison.product_1_advantages.map((adv, i) => (
-                <Text key={i} style={styles.advantageItem}>✓ {adv}</Text>
+                <Text key={i} style={styles.advantageItem}>+ {adv}</Text>
               ))}
             </View>
           )}
@@ -466,6 +525,97 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   // Reviews tab (pros/cons)
   const ReviewsTab = () => {
+    // New format: use structured review summaries
+    if (isNewFormat && result.reviews?.products) {
+      const reviewProducts = result.reviews.products;
+      const hasAnyData = reviewProducts.some((rp: any) =>
+        rp.rating || rp.review_summary?.consensus || (rp.review_summary?.highlights?.length > 0)
+      );
+
+      if (!hasAnyData) {
+        return (
+          <View style={styles.tabContent}>
+            <View style={styles.emptyStateCard}>
+              <Ionicons name="chatbubble-ellipses-outline" size={40} color="#CCC" />
+              <Text style={styles.emptyStateText}>Reviews not available for these products</Text>
+            </View>
+          </View>
+        );
+      }
+
+      return (
+        <View style={styles.tabContent}>
+          {reviewProducts.map((rp: any, index: number) => {
+            const summary: ReviewSummary | undefined = rp.review_summary;
+            return (
+              <View key={index} style={styles.reviewCard}>
+                <Text style={styles.reviewCardTitle}>{rp.name}</Text>
+
+                {/* Rating */}
+                {rp.rating != null && (
+                  <View style={styles.reviewRatingSection}>
+                    <View style={styles.ratingRow}>
+                      <Text style={styles.ratingText}>{rp.rating.toFixed(1)}/5</Text>
+                      {rp.review_count != null && (
+                        <Text style={styles.reviewCountText}>({rp.review_count.toLocaleString()} reviews)</Text>
+                      )}
+                    </View>
+                    {rp.rating_source?.name && (
+                      <TouchableOpacity
+                        style={styles.sourceLink}
+                        onPress={() => rp.rating_source?.url && openRatingSource(rp.rating_source)}
+                        disabled={!rp.rating_source?.url}
+                      >
+                        <Text style={styles.sourceText}>{rp.rating_source.name}</Text>
+                        {rp.rating_source?.url && <Ionicons name="open-outline" size={12} color="#2196F3" />}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {/* Review volume badge */}
+                {summary?.review_volume && (
+                  <View style={styles.reviewVolumeBadge}>
+                    <Text style={styles.reviewVolumeText}>
+                      {summary.review_volume.charAt(0).toUpperCase() + summary.review_volume.slice(1)} review volume
+                    </Text>
+                  </View>
+                )}
+
+                {/* Consensus */}
+                {summary?.consensus ? (
+                  <Text style={styles.consensusText}>{summary.consensus}</Text>
+                ) : null}
+
+                {/* Highlights */}
+                {summary?.highlights && summary.highlights.length > 0 && (
+                  <View style={styles.prosConsSection}>
+                    {summary.highlights.map((h: ReviewHighlight, i: number) => (
+                      <Text
+                        key={i}
+                        style={[
+                          styles.highlightItem,
+                          { color: h.sentiment === 'positive' ? '#2E7D32' : '#C62828' },
+                        ]}
+                      >
+                        {h.sentiment === 'positive' ? '+' : '-'} {h.point}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+
+                {/* Divided opinions note */}
+                {summary?.agreement_level === 'divided' && (
+                  <Text style={styles.dividedNote}>Note: User opinions are divided on this product</Text>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      );
+    }
+
+    // Old format fallback
     const hasAnyReviews = products.some(p =>
       (p.pros && p.pros.length > 0) ||
       (p.cons && p.cons.length > 0) ||
@@ -501,9 +651,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             {/* Pros */}
             {product.pros && product.pros.length > 0 && (
               <View style={styles.prosConsSection}>
-                <Text style={styles.prosTitle}>👍 Pros</Text>
+                <Text style={styles.prosTitle}>Pros</Text>
                 {product.pros.map((pro, i) => (
-                  <Text key={i} style={styles.proItem}>• {pro}</Text>
+                  <Text key={i} style={styles.proItem}>+ {pro}</Text>
                 ))}
               </View>
             )}
@@ -511,9 +661,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             {/* Cons */}
             {product.cons && product.cons.length > 0 && (
               <View style={styles.prosConsSection}>
-                <Text style={styles.consTitle}>👎 Cons</Text>
+                <Text style={styles.consTitle}>Cons</Text>
                 {product.cons.map((con, i) => (
-                  <Text key={i} style={styles.conItem}>• {con}</Text>
+                  <Text key={i} style={styles.conItem}>- {con}</Text>
                 ))}
               </View>
             )}
@@ -523,7 +673,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               <View style={styles.prosConsSection}>
                 <Text style={styles.prosTitle}>Praised For</Text>
                 {product.reviews.common_praises.map((praise: string, i: number) => (
-                  <Text key={i} style={styles.proItem}>• {praise}</Text>
+                  <Text key={i} style={styles.proItem}>+ {praise}</Text>
                 ))}
               </View>
             )}
@@ -533,7 +683,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               <View style={styles.prosConsSection}>
                 <Text style={styles.consTitle}>Criticized For</Text>
                 {product.reviews.common_complaints.map((complaint: string, i: number) => (
-                  <Text key={i} style={styles.conItem}>• {complaint}</Text>
+                  <Text key={i} style={styles.conItem}>- {complaint}</Text>
                 ))}
               </View>
             )}
@@ -544,7 +694,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 <Text style={styles.prosTitle}>What Users Love</Text>
                 {product.reviews.detailed_praises.map((praise: any, i: number) => (
                   <View key={i}>
-                    <Text style={styles.proItem}>• {praise.text}</Text>
+                    <Text style={styles.proItem}>+ {praise.text}</Text>
                     {praise.quote && (
                       <Text style={[styles.proItem, { fontStyle: 'italic', color: '#666', marginLeft: 16 }]}>
                         "{praise.quote}"
@@ -607,6 +757,46 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               ))}
             </View>
 
+            {/* Confidence indicator (new format) */}
+            {isNewFormat && result.overview!.confidence?.overall && (
+              <View style={styles.confidenceBanner}>
+                <Ionicons
+                  name={result.overview!.confidence.overall === 'high' ? 'shield-checkmark-outline' : 'alert-circle-outline'}
+                  size={16}
+                  color={result.overview!.confidence.overall === 'high' ? '#2E7D32' : result.overview!.confidence.overall === 'medium' ? '#E65100' : '#C62828'}
+                />
+                <Text style={[styles.confidenceText, {
+                  color: result.overview!.confidence.overall === 'high' ? '#2E7D32' : result.overview!.confidence.overall === 'medium' ? '#E65100' : '#C62828'
+                }]}>
+                  {result.overview!.confidence.overall.charAt(0).toUpperCase() + result.overview!.confidence.overall.slice(1)} confidence data
+                </Text>
+              </View>
+            )}
+
+            {/* Tradeoffs (new format) */}
+            {isNewFormat && result.overview!.tradeoffs?.length > 0 && (
+              <View style={styles.tradeoffsSection}>
+                <Text style={styles.sectionTitle}>Tradeoffs</Text>
+                {result.overview!.tradeoffs.map((tradeoff, i) => (
+                  <View key={i} style={styles.tradeoffRow}>
+                    <View style={styles.tradeoffItem}>
+                      <Text style={styles.tradeoffProduct}>{tradeoff.winner_wins.product}</Text>
+                      <Text style={styles.tradeoffDim}>
+                        {tradeoff.winner_wins.dimension.replace(/_/g, ' ')} (+{Math.round(tradeoff.winner_wins.margin)})
+                      </Text>
+                    </View>
+                    <Text style={styles.tradeoffVs}>vs</Text>
+                    <View style={styles.tradeoffItem}>
+                      <Text style={styles.tradeoffProduct}>{tradeoff.loser_wins.product}</Text>
+                      <Text style={styles.tradeoffDim}>
+                        {tradeoff.loser_wins.dimension.replace(/_/g, ' ')} (+{Math.round(tradeoff.loser_wins.margin)})
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* Personalized Insight Cards (or preference prompt) */}
             {result.personalized_insights && result.personalized_insights.length > 0 ? (
               <View style={styles.insightsSection}>
@@ -623,20 +813,25 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
             {/* Recommendation */}
             <View style={styles.recommendationSection}>
-              <Text style={styles.sectionTitle}>💡 Recommendation</Text>
+              <Text style={styles.sectionTitle}>Recommendation</Text>
               <Text style={styles.recommendationText}>{recommendation}</Text>
+              {isNewFormat && result.overview!.winner.key_tradeoff ? (
+                <Text style={styles.tradeoffNote}>{result.overview!.winner.key_tradeoff}</Text>
+              ) : null}
             </View>
 
-            {/* Key Differences */}
-            <View style={styles.differencesSection}>
-              <Text style={styles.sectionTitle}>🔍 Key Differences</Text>
-              {key_differences?.map((diff, index) => (
-                <Text key={index} style={styles.differenceItem}>• {diff}</Text>
-              ))}
-            </View>
+            {/* Key Differences (old format only) */}
+            {!isNewFormat && key_differences?.length > 0 && (
+              <View style={styles.differencesSection}>
+                <Text style={styles.sectionTitle}>Key Differences</Text>
+                {key_differences.map((diff, index) => (
+                  <Text key={index} style={styles.differenceItem}>• {diff}</Text>
+                ))}
+              </View>
+            )}
 
-            {/* Best For */}
-            {comparison.best_for && (
+            {/* Best For (old format only) */}
+            {!isNewFormat && comparison.best_for && (
               <View style={styles.bestForSection}>
                 <Text style={styles.sectionTitle}>Best For</Text>
                 <View style={styles.bestForGrid}>
@@ -1204,6 +1399,119 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 10,
     textAlign: 'center',
+  },
+  // Value badge
+  valueBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  valueBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  bestForText: {
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+    marginTop: 6,
+  },
+  // Confidence banner
+  confidenceBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF',
+    marginHorizontal: 10,
+    marginBottom: 5,
+    padding: 10,
+    borderRadius: 8,
+  },
+  confidenceText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  // Tradeoffs
+  tradeoffsSection: {
+    backgroundColor: '#FFF',
+    margin: 10,
+    padding: 15,
+    borderRadius: 12,
+  },
+  tradeoffRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  tradeoffItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  tradeoffProduct: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+  },
+  tradeoffDim: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  tradeoffVs: {
+    fontSize: 11,
+    color: '#999',
+    marginHorizontal: 8,
+  },
+  tradeoffNote: {
+    fontSize: 13,
+    color: '#888',
+    fontStyle: 'italic',
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  // Spec advantages inline
+  specAdvantagesInline: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  // Review new format styles
+  reviewVolumeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  reviewVolumeText: {
+    fontSize: 10,
+    color: '#666',
+    fontWeight: '500',
+  },
+  consensusText: {
+    fontSize: 13,
+    color: '#555',
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  highlightItem: {
+    fontSize: 13,
+    marginBottom: 4,
+    marginLeft: 4,
+    lineHeight: 20,
+  },
+  dividedNote: {
+    fontSize: 11,
+    color: '#E65100',
+    fontStyle: 'italic',
+    marginTop: 8,
   },
   categorySwitchedBanner: {
     backgroundColor: '#E3F2FD',
