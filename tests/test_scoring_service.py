@@ -1099,3 +1099,131 @@ class TestTradeoffPairs:
         assert "dimension" in t["loser_wins"]
         assert "product" in t["loser_wins"]
         assert "margin" in t["loser_wins"]
+
+
+# ===========================================
+# CONFIDENCE INDICATORS
+# ===========================================
+
+class TestConfidenceIndicators:
+    """Tests for compute_confidence() data confidence assembly."""
+
+    def test_high_confidence_all_strong(self):
+        """All data strong → overall 'high'"""
+        service = ScoringService()
+        products = [
+            {
+                "price": {"source_method": "local_bhd", "retailer": "Amazon"},
+                "rating": 4.5,
+                "review_count": 1200,
+                "rating_verified": True,
+                "rating_source": {"name": "Amazon", "url": "https://amazon.com"},
+                "fact_check": {"specs_verified": 8, "specs_likely": 2, "specs_unverified": 0, "specs_flagged": 0},
+            }
+        ]
+        conf = service.compute_confidence(products, shopping_count=3, cached=False)
+        assert conf["overall"] == "high"
+        assert conf["price"]["source_count"] == 3
+        assert conf["price"]["method"] == "retailer_verified"
+        assert conf["rating"]["review_count"] == 1200
+        assert conf["rating"]["verified"] is True
+        assert conf["specs"]["verified_pct"] > 70
+
+    def test_medium_confidence_one_weak(self):
+        """One weak signal → overall 'medium'"""
+        service = ScoringService()
+        products = [
+            {
+                "price": {"source_method": "estimated", "retailer": None},
+                "rating": 4.5,
+                "review_count": 500,
+                "rating_verified": True,
+                "rating_source": {"name": "Amazon", "url": "https://amazon.com"},
+                "fact_check": {"specs_verified": 8, "specs_likely": 2, "specs_unverified": 0, "specs_flagged": 0},
+            }
+        ]
+        conf = service.compute_confidence(products, shopping_count=0, cached=False)
+        assert conf["overall"] == "medium"
+        assert conf["price"]["method"] == "estimated"
+
+    def test_low_confidence_two_weak(self):
+        """Two+ weak signals → overall 'low'"""
+        service = ScoringService()
+        products = [
+            {
+                "price": {"source_method": "estimated", "retailer": None},
+                "rating": None,
+                "review_count": 0,
+                "rating_verified": False,
+                "rating_source": None,
+                "fact_check": {"specs_verified": 1, "specs_likely": 1, "specs_unverified": 5, "specs_flagged": 3},
+            }
+        ]
+        conf = service.compute_confidence(products, shopping_count=0, cached=False)
+        assert conf["overall"] == "low"
+
+    def test_freshness_live(self):
+        """Non-cached → 'live'"""
+        service = ScoringService()
+        products = [self._make_strong_product()]
+        conf = service.compute_confidence(products, shopping_count=3, cached=False)
+        assert conf["price"]["freshness"] == "live"
+
+    def test_freshness_cached(self):
+        """Cached → 'cached'"""
+        service = ScoringService()
+        products = [self._make_strong_product()]
+        conf = service.compute_confidence(products, shopping_count=3, cached=True)
+        assert conf["price"]["freshness"] == "cached"
+
+    def test_source_method_converted(self):
+        """converted_usd source method → 'converted'"""
+        service = ScoringService()
+        products = [
+            {
+                "price": {"source_method": "converted_usd", "retailer": "BestBuy"},
+                "rating": 4.0,
+                "review_count": 300,
+                "rating_verified": True,
+                "rating_source": {"name": "BestBuy", "url": "https://bestbuy.com"},
+                "fact_check": {"specs_verified": 5, "specs_likely": 3, "specs_unverified": 2, "specs_flagged": 0},
+            }
+        ]
+        conf = service.compute_confidence(products, shopping_count=2, cached=False)
+        assert conf["price"]["method"] == "converted"
+
+    def test_specs_verified_pct_calculation(self):
+        """Verified percentage calculated correctly"""
+        service = ScoringService()
+        products = [
+            {
+                "price": {"source_method": "local_bhd", "retailer": "Amazon"},
+                "rating": 4.5,
+                "review_count": 100,
+                "rating_verified": True,
+                "rating_source": {"name": "Amazon", "url": "https://amazon.com"},
+                "fact_check": {"specs_verified": 6, "specs_likely": 2, "specs_unverified": 1, "specs_flagged": 1},
+            }
+        ]
+        conf = service.compute_confidence(products, shopping_count=2, cached=False)
+        # 6 verified out of 10 total = 60%
+        assert conf["specs"]["verified_pct"] == 60
+        assert conf["specs"]["citation_count"] == 10
+
+    def test_multiple_products_uses_first(self):
+        """With two products, uses first product for primary confidence"""
+        service = ScoringService()
+        products = [self._make_strong_product(), self._make_strong_product()]
+        conf = service.compute_confidence(products, shopping_count=3, cached=False)
+        assert conf["overall"] == "high"
+
+    @staticmethod
+    def _make_strong_product():
+        return {
+            "price": {"source_method": "local_bhd", "retailer": "Amazon"},
+            "rating": 4.5,
+            "review_count": 1000,
+            "rating_verified": True,
+            "rating_source": {"name": "Amazon", "url": "https://amazon.com"},
+            "fact_check": {"specs_verified": 8, "specs_likely": 2, "specs_unverified": 0, "specs_flagged": 0},
+        }

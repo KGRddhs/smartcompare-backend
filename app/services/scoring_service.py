@@ -644,6 +644,76 @@ class ScoringService:
 
         return pairs[:3]
 
+    def compute_confidence(
+        self,
+        products: List[Dict[str, Any]],
+        shopping_count: int = 0,
+        cached: bool = False,
+    ) -> Dict[str, Any]:
+        """Assemble confidence indicators from existing product data.
+
+        Returns dict with price, rating, specs, and overall confidence.
+        """
+        product = products[0] if products else {}
+        price_data = product.get("price", {})
+        fact_check = product.get("fact_check", {})
+
+        # Price confidence
+        source_method = price_data.get("source_method", "estimated")
+        if source_method in ("local_bhd", "page_scrape", "page_scrape_rendered"):
+            method = "retailer_verified"
+        elif source_method == "converted_usd":
+            method = "converted"
+        else:
+            method = "estimated"
+
+        price_conf = {
+            "source_count": shopping_count,
+            "method": method,
+            "freshness": "live" if not cached else "cached",
+        }
+        price_strong = shopping_count >= 2 and method != "estimated"
+
+        # Rating confidence
+        review_count = product.get("review_count") or 0
+        rating_verified = product.get("rating_verified", False)
+        rating_source = product.get("rating_source")
+        rating_conf = {
+            "review_count": review_count,
+            "source": rating_source.get("name") if rating_source else None,
+            "verified": rating_verified,
+        }
+        rating_strong = review_count >= 50 and rating_verified
+
+        # Specs confidence
+        verified = fact_check.get("specs_verified", 0)
+        likely = fact_check.get("specs_likely", 0)
+        unverified = fact_check.get("specs_unverified", 0)
+        flagged = fact_check.get("specs_flagged", 0)
+        total = verified + likely + unverified + flagged
+        verified_pct = round((verified / total) * 100) if total > 0 else 0
+        specs_conf = {
+            "verified_pct": verified_pct,
+            "citation_count": total,
+        }
+        specs_strong = verified_pct >= 60
+
+        # Overall
+        strong_count = sum([price_strong, rating_strong, specs_strong])
+        if strong_count >= 3:
+            overall = "high"
+        elif strong_count >= 2:
+            overall = "medium"
+        else:
+            overall = "low"
+
+        return {
+            "price": price_conf,
+            "rating": rating_conf,
+            "specs": specs_conf,
+            "overall": overall,
+        }
+
     @staticmethod
     def _extract_number(text: str) -> Optional[float]:
         """Extract the first number from a text string."""
