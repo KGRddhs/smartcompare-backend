@@ -103,6 +103,8 @@ class ScoringService:
         self,
         products_data: List[Dict[str, Any]],
         preferences: Optional[Dict[str, Any]] = None,
+        behavior_profile: Optional[Dict[str, Any]] = None,
+        session_signals: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Compute scores for a list of products.
@@ -113,6 +115,10 @@ class ScoringService:
                 fact_check, rating_verified, rating_source, etc.
             preferences: Optional user preferences dict with:
                 priorities (list), budget (str), lifestyle (list), brand_attitude (str)
+            behavior_profile: Optional behavioral profile dict from user history.
+                Applied as ±10% weight adjustment after explicit preferences.
+            session_signals: Optional in-session signals dict from current session.
+                Applied as ±5% weight adjustment after behavioral adjustments.
 
         Returns:
             Dict with per-product scores, winner, and metadata.
@@ -122,6 +128,12 @@ class ScoringService:
 
         category = products_data[0].get("category", "other")
         weights = self._compute_weights(preferences, category)
+
+        # Apply behavioral and session adjustments (layered on top of explicit preferences)
+        if behavior_profile:
+            weights = self.apply_behavioral_adjustments(weights, behavior_profile)
+        if session_signals:
+            weights = self.apply_session_signals(weights, session_signals)
 
         # Compute raw dimension scores for each product
         raw_scores = []
@@ -159,7 +171,12 @@ class ScoringService:
         winner_index = overalls.index(max(overalls))
         win_margin = round(abs(overalls[0] - overalls[1]), 1) if len(overalls) >= 2 else 0
 
-        scoring_method = "personalized" if preferences else "category_weighted"
+        if behavior_profile or session_signals:
+            scoring_method = "behavioral"
+        elif preferences:
+            scoring_method = "personalized"
+        else:
+            scoring_method = "category_weighted"
 
         # Build price tier metadata
         price_tiers_map = {}

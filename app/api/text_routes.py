@@ -92,6 +92,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         include_reviews=body.include_reviews,
         include_pros_cons=body.include_pros_cons,
         user_preferences=user_prefs,
+        user_id=user.get("id") if user else None,
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -170,6 +171,7 @@ async def text_compare_get(
         nocache=nocache,
         selected_category=selected_category,
         user_preferences=user_prefs,
+        user_id=user.get("id") if user else None,
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -250,6 +252,7 @@ async def text_compare_stream(
             nocache=nocache,
             selected_category=selected_category,
             user_preferences=user_prefs,
+            user_id=user.get("id") if user else None,
         ):
             if event_type == "complete":
                 complete_response = data

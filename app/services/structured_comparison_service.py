@@ -208,6 +208,7 @@ class StructuredComparisonService:
         selected_category: Optional[str] = None,
         vision_products: Optional[List[Dict]] = None,
         user_preferences: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Main entry point for text-based comparisons.
@@ -215,6 +216,8 @@ class StructuredComparisonService:
         Args:
             vision_products: If provided (from camera input), skip parse_product_query
                              and use these directly. Each dict has brand, name, visible_price, confidence.
+            user_id: If provided, fetches behavioral profile for weight adjustments
+                     and triggers fire-and-forget profile update after comparison.
 
         Example: compare_from_text("iPhone 15 vs Galaxy S24", "bahrain")
         """
@@ -281,10 +284,17 @@ class StructuredComparisonService:
                 self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache)
             )
             
+            # Fetch behavioral profile if user is logged in
+            behavior_profile = None
+            if user_id:
+                behavior_profile = await self._fetch_behavior_profile(user_id)
+
             # Step 3: Compute deterministic scores (pure math, $0 cost)
             scoring_service = get_scoring_service()
             scoring_result = scoring_service.compute_scores(
-                product_data, preferences=user_preferences
+                product_data,
+                preferences=user_preferences,
+                behavior_profile=behavior_profile,
             )
             product_names = [
                 f"{p.get('brand', '')} {p.get('name', '')}".strip()
@@ -481,6 +491,10 @@ class StructuredComparisonService:
                 "is_cross_tier": scoring_result.get("is_cross_tier", False),
             }
 
+            # Fire-and-forget: update behavioral profile after comparison
+            if user_id:
+                asyncio.create_task(self._update_behavior_profile(user_id))
+
             return result
 
         except Exception as e:
@@ -502,6 +516,7 @@ class StructuredComparisonService:
         selected_category: Optional[str] = None,
         vision_products: Optional[List[Dict]] = None,
         user_preferences: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
     ):
         """
         Async generator version of compare_from_text that yields partial results.
@@ -619,9 +634,16 @@ class StructuredComparisonService:
                 ]
             })
 
+            # Fetch behavioral profile if user is logged in
+            behavior_profile = None
+            if user_id:
+                behavior_profile = await self._fetch_behavior_profile(user_id)
+
             # Step 3: Compute scores (instant, $0)
             scoring_result = scoring_service.compute_scores(
-                product_data, preferences=user_preferences
+                product_data,
+                preferences=user_preferences,
+                behavior_profile=behavior_profile,
             )
             product_names = [
                 f"{p.get('brand', '')} {p.get('name', '')}".strip()
@@ -835,6 +857,10 @@ class StructuredComparisonService:
                 "is_cross_tier": scoring_result.get("is_cross_tier", False),
             }
 
+            # Fire-and-forget: update behavioral profile after comparison
+            if user_id:
+                asyncio.create_task(self._update_behavior_profile(user_id))
+
             yield ("complete", complete_response)
 
         except Exception as e:
@@ -844,6 +870,43 @@ class StructuredComparisonService:
                 "error": str(e),
                 "total_cost": self.total_cost,
             })
+
+    async def _fetch_behavior_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch user's behavioral profile from Supabase."""
+        try:
+            from app.services.database_service import get_supabase_client
+            supabase = get_supabase_client()
+            result = supabase.table("users").select("behavior_profile").eq("id", user_id).single().execute()
+            if result.data and result.data.get("behavior_profile"):
+                return result.data["behavior_profile"]
+        except Exception as e:
+            logger.debug(f"Failed to fetch behavior profile: {e}")
+        return None
+
+    async def _update_behavior_profile(self, user_id: str):
+        """Fire-and-forget: update user's behavioral profile after comparison."""
+        try:
+            from app.services.behavior_service import get_behavior_service
+            from app.services.database_service import get_supabase_client
+
+            behavior_service = get_behavior_service()
+            supabase = get_supabase_client()
+
+            # Fetch user's comparison history, feedback, and events
+            comparisons = supabase.table("comparisons").select("category_used, products, created_at").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute()
+            feedback = supabase.table("comparison_feedback").select("useful").eq("user_id", user_id).execute()
+            events = supabase.table("user_events").select("event_type, metadata").eq("user_id", user_id).order("created_at", desc=True).limit(200).execute()
+
+            profile = await behavior_service.build_behavior_profile(
+                comparisons.data or [],
+                feedback.data or [],
+                events.data or [],
+            )
+
+            # Upsert profile
+            supabase.table("users").update({"behavior_profile": profile}).eq("id", user_id).execute()
+        except Exception as e:
+            logger.warning(f"Failed to update behavior profile: {e}")
 
     async def _fetch_product_data(
         self,
