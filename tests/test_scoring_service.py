@@ -997,6 +997,23 @@ class TestTradeoffPairs:
         assert tradeoffs[0]["winner_wins"]["product"] == "Product A"
         assert tradeoffs[0]["loser_wins"]["product"] == "Product B"
 
+    def test_winner_index_one(self):
+        """Tradeoff pairs work correctly when winner_index=1"""
+        service = ScoringService()
+        dimension_winners = {
+            "price_score": {"winner": "Product A", "margin": 15.0},
+            "spec_score": {"winner": "Product B", "margin": 12.0},
+            "review_score": {"winner": "tie", "margin": 2.0},
+            "value_score": {"winner": "tie", "margin": 2.0},
+            "reliability_score": {"winner": "tie", "margin": 1.0},
+            "popularity_score": {"winner": "tie", "margin": 1.0},
+        }
+        product_names = ["Product A", "Product B"]
+        tradeoffs = service.compute_tradeoff_pairs(dimension_winners, product_names, winner_index=1)
+        assert len(tradeoffs) == 1
+        assert tradeoffs[0]["winner_wins"]["product"] == "Product B"
+        assert tradeoffs[0]["loser_wins"]["product"] == "Product A"
+
     def test_filters_small_margins(self):
         """Margins <= 5 are excluded"""
         service = ScoringService()

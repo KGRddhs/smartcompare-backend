@@ -106,7 +106,10 @@ class BehaviorService:
     def compute_session_signals(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Compute in-session signals from event list."""
         tab_switches = [e for e in events if e.get("event_type") == "tab_switch"]
-        first_tab = tab_switches[0].get("metadata", {}).get("to") if tab_switches else None
+        first_tab = next(
+            (e.get("metadata", {}).get("to") for e in tab_switches if e.get("metadata", {}).get("to")),
+            None,
+        )
 
         dwell_by_tab: Dict[str, int] = {}
         for e in tab_switches:

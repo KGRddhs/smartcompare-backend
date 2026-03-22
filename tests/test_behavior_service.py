@@ -98,6 +98,18 @@ class TestBehaviorProfile:
         assert agreement["disagreed"] == 0
         assert agreement["agreement_rate"] == 0.0
 
+    def test_malformed_created_at(self):
+        """Malformed created_at strings are handled gracefully (use current time weight)"""
+        service = BehaviorService()
+        comparisons = [
+            {"category_used": "electronics", "created_at": "not-a-date"},
+            {"category_used": "electronics", "created_at": ""},
+            {"category_used": "fragrances", "created_at": None},
+        ]
+        affinity = service._compute_category_affinity(comparisons)
+        assert "electronics" in affinity
+        assert "fragrances" in affinity
+
 
 class TestSessionSignals:
     """Tests for in-session signal computation."""
@@ -135,6 +147,16 @@ class TestSessionSignals:
         assert "tab_dwell_ms" in signals
         # The second event should still be counted
         assert signals["tab_dwell_ms"].get("specs", 0) == 5000
+
+    def test_events_missing_metadata(self):
+        """Events without metadata key don't crash"""
+        service = BehaviorService()
+        events = [
+            {"event_type": "tab_switch"},
+            {"event_type": "tab_switch", "metadata": {"to": "specs", "dwell_ms": 5000}},
+        ]
+        signals = service.compute_session_signals(events)
+        assert signals["first_tab_viewed"] == "specs"
 
 
 class TestCategoryAffinityEdgeCases:
