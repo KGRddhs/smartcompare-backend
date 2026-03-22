@@ -227,8 +227,8 @@ JSONB column on `users` table: `behavior_profile`
 **Data sources (all existing):**
 - `category_affinity` — from `comparisons` table (count per category)
 - `price_range_preference` — from comparison result prices
-- `winner_agreement` — from `comparison_feedback` (thumbs up/down)
-- `dimension_sensitivity` — from `user_events` tab_switch/dwell patterns
+- `winner_agreement` — from `comparison_feedback`. Current schema has `useful` (boolean) — interpret `useful=true` as agreed with winner, `useful=false` as disagreed. No new feedback signal needed.
+- `dimension_sensitivity` — from `user_events` tab dwell patterns. Formula: normalize dwell time per tab proportionally (e.g., specs 8000ms out of 13000ms total = 0.62 → maps to `spec_score` weight affinity). Only tabs with >2s dwell count.
 - Recalculated after each comparison via `update_behavior_profile()`
 
 #### Layer 3: In-Session Signals (new)
@@ -267,7 +267,9 @@ normalize(final_weights)  # sum to 1.0
 Total max shift from category defaults: ~45% — still grounded in category logic.
 
 ### Behavioral Decay
-- 30-day half-life: a comparison from 60 days ago counts as 25% of a recent one
+- 30-day half-life using exponential decay: `weight = 0.5 ^ (days_ago / 30)`
+- Applied at read-time when aggregating (not at write-time), so raw data is preserved
+- A comparison from 60 days ago: `0.5 ^ (60/30) = 0.25` (25% weight)
 - Prevents stale behavior from dominating if preferences change
 
 ### Files Modified/Created
@@ -399,7 +401,9 @@ Flat blob — comparison data, scoring, products, reviews, personalization all m
 - **`metadata`** — debug/cost info separated from main result
 
 ### Backward Compatibility
-Old fields (`comparison.recommendation`, `comparison.key_differences`) kept as aliases during migration, then removed.
+- Old fields (`comparison.recommendation`, `comparison.key_differences`) kept as aliases during migration, then removed.
+- Review fields (`detailed_praises`, `detailed_complaints`, `user_quotes`) are dropped in the new format. Since frontend is updated simultaneously and old stored comparisons in history are served as-is (stored blobs), no backward compat shim needed — history displays whatever format was stored at comparison time.
+- `specs_comparison` field preserved from current implementation (populated by GPT `generate_comparison()` call). Not restructured in this spec.
 
 ### Files Modified
 - `app/services/structured_comparison_service.py`: response assembly in `compare_from_text()` and `compare_from_text_streaming()`
@@ -452,7 +456,7 @@ Event 10: complete → Full response (canonical, overwrites partial state)
 |-------|-------------|-----------|
 | **backend-ai** | Verdict prompt, review prompt, extraction_service.py | QAs **backend-scoring** |
 | **backend-scoring** | Value badges, tradeoffs, confidence, behavioral profile in scoring_service.py | QAs **backend-ai** |
-| **backend-api** | Response restructure, SSE streaming, behavioral service, DB schema | QAs **frontend** |
+| **backend-api** | Response restructure, SSE streaming, behavioral service, DB schema. **Sole owner of `structured_comparison_service.py`** — backend-scoring only modifies `scoring_service.py`. | QAs **frontend** |
 | **frontend** | ResultsScreen (Overview/Specs/Reviews), streaming consumption, progressive rendering | QAs **backend-api** |
 
 ### Workflow Rules
