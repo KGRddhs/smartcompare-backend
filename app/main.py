@@ -302,13 +302,23 @@ async def render_price_test(url: str = "https://www.chanel.com/us/fashion/handba
         price = svc._extract_price_from_html(rendered_html, "Chanel Classic Flap", "BHD", result["domain"], url)
         result["extracted_price"] = price
 
-        # HTML snippet around "price" keyword
+        # HTML snippet around "price" keyword (all occurrences)
         html_lower = rendered_html.lower()
-        price_idx = html_lower.find('"price"')
-        if price_idx == -1:
-            price_idx = html_lower.find('price')
-        if price_idx >= 0:
-            result["html_around_price"] = rendered_html[max(0, price_idx-50):price_idx+200]
+        price_snippets = []
+        search_start = 0
+        while len(price_snippets) < 5:
+            idx = html_lower.find('price', search_start)
+            if idx == -1:
+                break
+            price_snippets.append(rendered_html[max(0, idx-30):idx+100])
+            search_start = idx + 10
+        result["price_snippets"] = price_snippets
+
+        # Also check for currency symbols
+        for sym in ['$', '£', '€', 'BHD', 'USD']:
+            idx = rendered_html.find(sym)
+            if idx >= 0:
+                result[f"found_{sym}"] = rendered_html[max(0, idx-30):idx+50]
     else:
         result["error"] = "Cloudflare render returned no HTML"
 
