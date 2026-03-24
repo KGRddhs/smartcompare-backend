@@ -231,11 +231,24 @@ async def render_test():
         results["microlink"]["error"] = str(e)
     results["microlink"]["latency_ms"] = int((time.monotonic() - start) * 1000)
 
-    # --- Feature flags ---
+    # --- Feature flags + credential debug ---
     results["feature_flags"] = {
         "ENABLE_PAGE_SCRAPE": os.environ.get("ENABLE_PAGE_SCRAPE", "true"),
         "ENABLE_JS_RENDER": os.environ.get("ENABLE_JS_RENDER", "true"),
         "RENDER_PROVIDER": os.environ.get("RENDER_PROVIDER", "both"),
+    }
+    # Masked credentials for debugging (first 6 + last 4 chars only)
+    def _mask(val):
+        if not val:
+            return None
+        if len(val) <= 10:
+            return val[:2] + "***"
+        return val[:6] + "..." + val[-4:]
+    results["credentials_debug"] = {
+        "cf_account_id": _mask(cf_account),
+        "cf_token": _mask(cf_token),
+        "cf_account_id_len": len(cf_account) if cf_account else 0,
+        "cf_token_len": len(cf_token) if cf_token else 0,
     }
 
     return results
