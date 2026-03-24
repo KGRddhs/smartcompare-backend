@@ -325,6 +325,90 @@ async def render_price_test(url: str = "https://www.chanel.com/us/fashion/handba
     return result
 
 
+@app.get("/health/scrape-test")
+async def scrape_test(url: str = "https://us.louisvuitton.com/eng-us/products/neverfull-mm-monogram-nvprod4900001v"):
+    """Diagnostic: test Cloudflare /scrape endpoint with price CSS selectors.
+
+    Tries multiple common price selectors to find which ones return data.
+    Remove after confirming setup works.
+    """
+    import httpx
+    import time
+
+    cf_account = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+    cf_token = os.environ.get("CLOUDFLARE_API_TOKEN")
+    if not cf_account or not cf_token:
+        return {"error": "Cloudflare credentials not configured"}
+
+    # Common price CSS selectors used by luxury/e-commerce sites
+    price_selectors = [
+        {"selector": "[data-price]", "label": "data-price attr"},
+        {"selector": "[itemprop='price']", "label": "microdata price"},
+        {"selector": ".product-price", "label": "class product-price"},
+        {"selector": ".price", "label": "class price"},
+        {"selector": "[class*='price']", "label": "class contains price"},
+        {"selector": "[class*='Price']", "label": "class contains Price"},
+        {"selector": "[class*='amount']", "label": "class contains amount"},
+        {"selector": "span[class*='price']", "label": "span price"},
+        {"selector": "[data-qa*='price']", "label": "data-qa price"},
+        {"selector": "[data-testid*='price']", "label": "data-testid price"},
+        {"selector": "script[type='application/ld+json']", "label": "JSON-LD"},
+        {"selector": "meta[property='og:price:amount']", "label": "OG price"},
+        {"selector": "meta[property='product:price:amount']", "label": "product:price meta"},
+    ]
+
+    elements = [{"selector": s["selector"]} for s in price_selectors]
+
+    result = {"url": url, "selectors_tested": len(price_selectors)}
+
+    start = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/browser-rendering/scrape",
+                headers={"Authorization": f"Bearer {cf_token}", "Content-Type": "application/json"},
+                json={
+                    "url": url,
+                    "elements": elements,
+                    "gotoOptions": {"waitUntil": "networkidle0"},
+                },
+            )
+            result["status"] = resp.status_code
+            result["latency_ms"] = int((time.monotonic() - start) * 1000)
+
+            if resp.status_code == 200:
+                data = resp.json()
+                scrape_results = data.get("result", [])
+                result["hits"] = []
+                for i, sr in enumerate(scrape_results):
+                    selector_label = price_selectors[i]["label"]
+                    selector_css = price_selectors[i]["selector"]
+                    matches = sr.get("results", [])
+                    if matches:
+                        result["hits"].append({
+                            "selector": selector_css,
+                            "label": selector_label,
+                            "count": len(matches),
+                            "samples": [
+                                {
+                                    "text": m.get("text", "")[:200],
+                                    "html": m.get("html", "")[:300],
+                                    "attributes": m.get("attributes", [])[:5],
+                                }
+                                for m in matches[:3]
+                            ]
+                        })
+                result["total_hits"] = len(result["hits"])
+                result["empty_selectors"] = len(price_selectors) - len(result["hits"])
+            else:
+                result["error"] = resp.text[:500]
+    except Exception as e:
+        result["error"] = str(e)
+        result["latency_ms"] = int((time.monotonic() - start) * 1000)
+
+    return result
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
