@@ -182,9 +182,9 @@ async def render_test():
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.post(
-                    f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/browser-rendering/render",
+                    f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/browser-rendering/content",
                     headers={"Authorization": f"Bearer {cf_token}", "Content-Type": "application/json"},
-                    json={"url": test_url, "waitFor": 3000},
+                    json={"url": test_url, "gotoOptions": {"waitUntil": "networkidle0"}},
                 )
                 results["cloudflare"]["status"] = resp.status_code
                 if resp.status_code == 200:

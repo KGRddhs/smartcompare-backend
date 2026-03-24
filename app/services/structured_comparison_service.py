@@ -2220,9 +2220,9 @@ class StructuredComparisonService:
             try:
                 async with httpx.AsyncClient(timeout=self.JS_RENDER_TIMEOUT) as client:
                     resp = await client.post(
-                        f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/browser-rendering/render",
+                        f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/browser-rendering/content",
                         headers={"Authorization": f"Bearer {cf_token}", "Content-Type": "application/json"},
-                        json={"url": render_url, "waitFor": 3000},
+                        json={"url": render_url, "gotoOptions": {"waitUntil": "networkidle0"}},
                     )
                     if resp.status_code == 200:
                         # Response may be JSON {"result": "<html>"} or raw HTML
