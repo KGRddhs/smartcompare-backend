@@ -289,8 +289,9 @@ Category-independent multi-layer defense against counterfeit pricing:
 - **Sanity thresholds** (Session 26): official domain (retailer_score>=1.0) bypasses sanity check; luxury uses 1.8x/0.6x thresholds
 - Works across ALL categories (fragrances, fashion, makeup, etc.), not just fashion
 - **Page scraping** (Session 27): `_fetch_page_price()` with `_curl_fetch_html()` + `_extract_price_from_html()` for JSON-LD/OG/microdata extraction
-- **JS rendering** (Session 28): `_fetch_rendered_html()` with Cloudflare + Microlink parallel race for JS-rendered luxury sites. `JS_ONLY_DOMAINS` skips curl_cffi for 16 known luxury domains.
+- **JS rendering** (Session 28→30): `_fetch_rendered_html()` with Cloudflare + Microlink parallel race. Cloudflare endpoint: `/browser-rendering/content` (NOT `/render`), body: `{"url": ..., "gotoOptions": {"waitUntil": "networkidle0"}}`. Also has `/scrape` endpoint for CSS selector extraction. `JS_ONLY_DOMAINS` skips curl_cffi for 16 known luxury domains. **Limitation discovered Session 30:** luxury SPAs return empty shells even after JS rendering — prices loaded via XHR, not in DOM.
 - **Timeouts**: `PAGE_SCRAPE_TIMEOUT=5` (curl_cffi), `JS_RENDER_TIMEOUT=8` (per provider). Total worst case: 13s within 20s Tier 1.5 budget.
+- **Temporary diagnostic endpoints** (Session 30): `/health/render-test`, `/health/render-price-test`, `/health/scrape-test` in `app/main.py`. Remove after luxury price investigation is complete.
 
 ### Review quality (Session 25 → 26)
 - `_clean_review_citations()` replaces `[snippet_N]` with "Per domain.com:" attributions
@@ -303,7 +304,7 @@ Spec extraction prompt instructs GPT to omit irrelevant fields instead of forcin
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
 **Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO)
-**JS Rendering:** `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Browser Rendering API), `MICROLINK_API_KEY` (optional, for higher limits). Without these, JS rendering gracefully skips.
+**JS Rendering:** `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Browser Rendering API — token needs **`Account > Browser Rendering > Edit`** permission, NOT `Workers AI > Edit`), `MICROLINK_API_KEY` (optional, for higher limits). Without these, JS rendering gracefully skips.
 
 ### Serper API Credits
 - **Rotated Feb 28 2026**: Fresh 2,500 credits (~625-833 nocache comparisons)
@@ -388,7 +389,7 @@ python -m pytest tests/ -v --timeout=180
 ## Known Remaining Bugs (deferred)
 
 These are known issues that have been intentionally deferred:
-- **Luxury JS rendering untested live** (Session 28): JS rendering code deployed with Cloudflare + Microlink. Env vars added to Railway but live test returned cached results (0 API calls). Needs fresh `nocache=true` test after confirming Railway picked up new env vars. Code is correct (1118 tests pass).
+- **Luxury official site prices still estimated** (Session 30): Cloudflare Browser Rendering API now works (token fixed: needs `Browser Rendering - Edit` permission, NOT `Workers AI - Edit`; endpoint is `/browser-rendering/content`, NOT `/render`). However, luxury SPAs (LV, Chanel, Dior, Gucci) load prices via async XHR/GraphQL after hydration — rendered HTML contains zero price data. Farfetch/Gucci block even Cloudflare's headless browser. **GCC retailers (Ounass, Bloomingdales) remain the best working source** for luxury prices. Next steps: try ZenRows (14-day free trial, anti-bot proxy) or expand GCC retailer coverage. Diagnostic endpoints at `/health/render-test`, `/health/render-price-test`, `/health/scrape-test` — remove after investigation complete.
 - **value_context identical for all products** (Session 29): `overview.products[i].value_context` uses same string from comparison dict for all products. Minor UX issue — GPT generates one value context, not per-product.
 - Google Sign-In: Supabase Google provider needs to be enabled in dashboard (client IDs configured in code)
 - Apple Sign-In: deferred — requires Apple Developer subscription ($99/year); code is ready
