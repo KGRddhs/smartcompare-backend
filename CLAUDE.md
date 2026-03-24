@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## PENDING PLAN: Firecrawl Price Resolution (Session 31)
+- **Plan**: `docs/superpowers/plans/2026-03-24-firecrawl-price-resolution.md` — reviewed 2x, committed
+- **Spec**: `docs/superpowers/specs/2026-03-24-firecrawl-price-resolution-design.md`
+- **Execute**: Use `superpowers:subagent-driven-development` skill. Phase 0 validation spike first, then 4 Opus agents.
+- **Env vars needed**: `FIRECRAWL_API_KEY` (firecrawl.dev free), `SCRAPEDO_API_TOKEN` (scrape.do free)
+- **Replaces**: Cloudflare/Microlink JS rendering (confirmed broken Session 30)
+
 ## Project Purpose
 
 SmartCompare — An INTELLIGENT product comparison engine for the GCC market (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman). The goal: if users still go to Google or ChatGPT after using SmartCompare, we failed.
@@ -160,7 +167,7 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 - `feedback_service.py` — `save_feedback()`, `track_event()`, `track_events_batch()`. Fire-and-forget pattern (asyncio.create_task).
 - `drug_database_service.py` — Bahrain drug database lookup + GPT context formatting (supplements only)
 - `serper_service.py` — Serper API calls (`search_product_prices()`, `search_price_organic()`, `search_web()`)
-- `cache_service.py` — Upstash Redis caching, monthly budget tracking
+- `cache_service.py` — Upstash Redis caching, monthly budget tracking. **IMPORTANT**: exposes helper functions `_redis_get(key)`, `_redis_set(key, value, ex)`, `_redis_incr(key)`, `_redis_expire(key, seconds)` — there is NO raw Redis client getter. All new code must use these helpers.
 - `openai_service.py` — GPT-4o-mini vision for camera identification (`detail: "auto"`, OCR-focused prompt)
 - `database_service.py` — Supabase client singleton (`get_supabase_client()`)
 - `sentry_service.py` — `init_sentry()` (opt-in via `SENTRY_DSN` env var)
@@ -215,6 +222,9 @@ Ratings come from real Serper Shopping data or GPT review aggregation (marked un
 
 ### `product.price` is an object, not a number
 Backend returns `{ amount, currency, retailer, url, estimated }`. Frontend code must access `product.price.amount`, not `product.price` directly.
+
+### GCC_REGIONS keys (extraction_service.py)
+Keys are: `bahrain`, `saudi_arabia`, `uae`, `kuwait`, `qatar`, `oman`. Note: it's `saudi_arabia` NOT `saudi`.
 
 ### Singleton service state
 `StructuredComparisonService` is a singleton. `total_cost`, `api_calls`, and `_shopping_items_cache` are reset at the start of each `compare_from_text()` call. Any new per-request state must also be reset there.
@@ -304,7 +314,8 @@ Spec extraction prompt instructs GPT to omit irrelevant fields instead of forcin
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
 **Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO)
-**JS Rendering:** `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Browser Rendering API — token needs **`Account > Browser Rendering > Edit`** permission, NOT `Workers AI > Edit`), `MICROLINK_API_KEY` (optional, for higher limits). Without these, JS rendering gracefully skips.
+**JS Rendering (being replaced):** `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Browser Rendering API — token needs **`Account > Browser Rendering > Edit`** permission, NOT `Workers AI > Edit`), `MICROLINK_API_KEY` (optional, for higher limits). Without these, JS rendering gracefully skips.
+**Price Scraping (pending Session 31):** `FIRECRAWL_API_KEY` (firecrawl.dev, 500 lifetime free), `SCRAPEDO_API_TOKEN` (scrape.do, 1000/mo free), `ENABLE_FIRECRAWL` (default true), `ENABLE_SCRAPEDO` (default true). Will replace Cloudflare/Microlink vars after plan execution.
 
 ### Serper API Credits
 - **Rotated Feb 28 2026**: Fresh 2,500 credits (~625-833 nocache comparisons)
@@ -389,7 +400,7 @@ python -m pytest tests/ -v --timeout=180
 ## Known Remaining Bugs (deferred)
 
 These are known issues that have been intentionally deferred:
-- **Luxury official site prices still estimated** (Session 30): Cloudflare Browser Rendering API now works (token fixed: needs `Browser Rendering - Edit` permission, NOT `Workers AI - Edit`; endpoint is `/browser-rendering/content`, NOT `/render`). However, luxury SPAs (LV, Chanel, Dior, Gucci) load prices via async XHR/GraphQL after hydration — rendered HTML contains zero price data. Farfetch/Gucci block even Cloudflare's headless browser. **GCC retailers (Ounass, Bloomingdales) remain the best working source** for luxury prices. Next steps: try ZenRows (14-day free trial, anti-bot proxy) or expand GCC retailer coverage. Diagnostic endpoints at `/health/render-test`, `/health/render-price-test`, `/health/scrape-test` — remove after investigation complete.
+- **Luxury official site prices still estimated** (Session 30→31): Cloudflare/Microlink confirmed broken — luxury SPAs load prices via XHR, not DOM. **Implementation plan ready**: `docs/superpowers/plans/2026-03-24-firecrawl-price-resolution.md` — Firecrawl Smart Wait + Scrape.do rendering + GCC retailer expansion. Diagnostic endpoints `/health/render-test`, `/health/render-price-test`, `/health/scrape-test` in `app/main.py` — will be removed during plan execution (Task 6).
 - **value_context identical for all products** (Session 29): `overview.products[i].value_context` uses same string from comparison dict for all products. Minor UX issue — GPT generates one value context, not per-product.
 - Google Sign-In: Supabase Google provider needs to be enabled in dashboard (client IDs configured in code)
 - Apple Sign-In: deferred — requires Apple Developer subscription ($99/year); code is ready
