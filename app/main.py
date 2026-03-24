@@ -254,6 +254,67 @@ async def render_test():
     return results
 
 
+@app.get("/health/render-price-test")
+async def render_price_test(url: str = "https://www.chanel.com/us/fashion/handbags/c/1x1x1/"):
+    """Diagnostic: render a URL via Cloudflare and attempt price extraction.
+
+    Tests the full pipeline: render → extract JSON-LD/OG/microdata.
+    Remove after confirming setup works.
+    """
+    import httpx
+    import time
+    from urllib.parse import urlparse
+    from app.services.structured_comparison_service import get_comparison_service
+
+    svc = get_comparison_service()
+    result = {"url": url, "domain": urlparse(url).netloc.replace("www.", "")}
+
+    # Step 1: Render via Cloudflare
+    start = time.monotonic()
+    rendered_html = await svc._fetch_rendered_html(url)
+    result["render_latency_ms"] = int((time.monotonic() - start) * 1000)
+    result["rendered"] = rendered_html is not None
+    result["html_size"] = len(rendered_html) if rendered_html else 0
+
+    if rendered_html:
+        # Check what structured data exists
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(rendered_html, 'html.parser')
+
+        # JSON-LD scripts
+        jsonld_scripts = soup.find_all('script', type='application/ld+json')
+        result["jsonld_count"] = len(jsonld_scripts)
+        result["jsonld_preview"] = [s.string[:200] if s.string else "" for s in jsonld_scripts[:3]]
+
+        # OG meta tags
+        og_price = soup.find('meta', property='og:price:amount')
+        og_currency = soup.find('meta', property='og:price:currency')
+        result["og_price"] = og_price.get('content') if og_price else None
+        result["og_currency"] = og_currency.get('content') if og_currency else None
+
+        # Microdata
+        price_spans = soup.find_all(attrs={"itemprop": "price"})
+        result["microdata_prices"] = [
+            {"content": s.get("content", s.text[:50])} for s in price_spans[:3]
+        ]
+
+        # Try actual extraction
+        price = svc._extract_price_from_html(rendered_html, "Chanel Classic Flap", "BHD", result["domain"], url)
+        result["extracted_price"] = price
+
+        # HTML snippet around "price" keyword
+        html_lower = rendered_html.lower()
+        price_idx = html_lower.find('"price"')
+        if price_idx == -1:
+            price_idx = html_lower.find('price')
+        if price_idx >= 0:
+            result["html_around_price"] = rendered_html[max(0, price_idx-50):price_idx+200]
+    else:
+        result["error"] = "Cloudflare render returned no HTML"
+
+    return result
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
