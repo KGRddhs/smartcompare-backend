@@ -2210,7 +2210,7 @@ class StructuredComparisonService:
         if not ENABLE_JS_RENDER:
             return None
 
-        provider = os.environ.get("RENDER_PROVIDER", "cloudflare")
+        provider = os.environ.get("RENDER_PROVIDER", "both")
 
         async def _render_cloudflare(render_url: str) -> Optional[str]:
             cf_account = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
