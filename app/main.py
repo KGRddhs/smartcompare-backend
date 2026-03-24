@@ -154,6 +154,93 @@ async def health_check():
     }
 
 
+@app.get("/health/render-test")
+async def render_test():
+    """Diagnostic: test JS rendering providers (Cloudflare Browser Rendering + Microlink).
+
+    Tests credential availability and live rendering of a simple page.
+    Remove this endpoint after confirming the setup works.
+    """
+    import httpx
+    import asyncio
+    import time
+
+    results = {
+        "cloudflare": {"configured": False, "status": None, "error": None, "html_size": 0, "latency_ms": 0},
+        "microlink": {"configured": False, "status": None, "error": None, "html_size": 0, "latency_ms": 0},
+    }
+
+    test_url = "https://www.hermes.com/us/en/category/women/bags-and-small-leather-goods/bags-and-clutches/"
+
+    # --- Cloudflare Browser Rendering ---
+    cf_account = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+    cf_token = os.environ.get("CLOUDFLARE_API_TOKEN")
+    results["cloudflare"]["configured"] = bool(cf_account and cf_token)
+
+    if cf_account and cf_token:
+        start = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/browser-rendering/render",
+                    headers={"Authorization": f"Bearer {cf_token}", "Content-Type": "application/json"},
+                    json={"url": test_url, "waitFor": 3000},
+                )
+                results["cloudflare"]["status"] = resp.status_code
+                if resp.status_code == 200:
+                    try:
+                        data = resp.json()
+                        html = data.get("result", "") or data.get("html", "") or resp.text
+                    except Exception:
+                        html = resp.text
+                    results["cloudflare"]["html_size"] = len(html)
+                    # Check for price-like content
+                    results["cloudflare"]["has_price_data"] = "$" in html or "price" in html.lower()[:5000]
+                else:
+                    results["cloudflare"]["error"] = resp.text[:300]
+        except Exception as e:
+            results["cloudflare"]["error"] = str(e)
+        results["cloudflare"]["latency_ms"] = int((time.monotonic() - start) * 1000)
+
+    # --- Microlink ---
+    ml_key = os.environ.get("MICROLINK_API_KEY")
+    results["microlink"]["configured"] = True  # works without key (free tier)
+    results["microlink"]["has_api_key"] = bool(ml_key)
+
+    start = time.monotonic()
+    try:
+        headers = {}
+        if ml_key:
+            headers["x-api-key"] = ml_key
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://api.microlink.io",
+                params={"url": test_url, "prerender": "true"},
+                headers=headers,
+            )
+            results["microlink"]["status"] = resp.status_code
+            if resp.status_code == 200:
+                data = resp.json()
+                html = data.get("data", {}).get("html", "")
+                results["microlink"]["html_size"] = len(html)
+                results["microlink"]["has_price_data"] = "$" in html or "price" in html.lower()[:5000]
+                results["microlink"]["microlink_status"] = data.get("status")
+            else:
+                results["microlink"]["error"] = resp.text[:300]
+    except Exception as e:
+        results["microlink"]["error"] = str(e)
+    results["microlink"]["latency_ms"] = int((time.monotonic() - start) * 1000)
+
+    # --- Feature flags ---
+    results["feature_flags"] = {
+        "ENABLE_PAGE_SCRAPE": os.environ.get("ENABLE_PAGE_SCRAPE", "true"),
+        "ENABLE_JS_RENDER": os.environ.get("ENABLE_JS_RENDER", "true"),
+        "RENDER_PROVIDER": os.environ.get("RENDER_PROVIDER", "both"),
+    }
+
+    return results
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
