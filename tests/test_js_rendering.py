@@ -1,33 +1,13 @@
-"""Tests for JS rendering fallback in _fetch_page_price."""
+"""Tests for Firecrawl/Scrape.do integration in the price cascade.
+
+Replaces old Cloudflare/Microlink JS rendering tests (removed Session 31).
+_fetch_page_price is now curl_cffi only. JS rendering (Firecrawl/Scrape.do)
+is handled at the cascade level in _get_price().
+"""
 import pytest
-import os
-from unittest.mock import patch, MagicMock, AsyncMock
-import app.services.structured_comparison_service as scs_module
-from app.services.structured_comparison_service import (
-    StructuredComparisonService, ENABLE_PAGE_SCRAPE, ENABLE_JS_RENDER,
-)
+from unittest.mock import patch, AsyncMock
+from app.services.structured_comparison_service import StructuredComparisonService
 
-
-class MockAsyncClient:
-    """Mock httpx.AsyncClient that supports async context manager."""
-    def __init__(self, mock_client):
-        self._mock = mock_client
-    def __call__(self, *args, **kwargs):
-        return self
-    async def __aenter__(self):
-        return self._mock
-    async def __aexit__(self, *args):
-        pass
-
-
-def _patch_httpx(mock_client):
-    """Patch httpx module in structured_comparison_service with mock async client."""
-    mock_httpx = MagicMock()
-    mock_httpx.AsyncClient = MockAsyncClient(mock_client)
-    return patch.object(scs_module, "httpx", mock_httpx)
-
-
-# --- HTML fixtures (same as test_page_scraping.py) ---
 
 JSONLD_PRODUCT_HTML = """
 <html><head>
@@ -54,10 +34,8 @@ Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium dolor
 Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit.</body></html>
 """
 
-SMALL_HTML = "<html><body>tiny</body></html>"
-
 NO_PRICE_HTML = """<html><head><title>Browse Luxury</title></head>
-<body><p>Shop our collection.</p></body></html>""" + " " * 1500  # Pad to >1KB
+<body><p>Shop our collection.</p></body></html>""" + " " * 1500
 
 
 @pytest.fixture
@@ -69,191 +47,112 @@ def service():
     return svc
 
 
-class TestFetchRenderedHtml:
-    """Tests for _fetch_rendered_html() — parallel JS rendering."""
+class TestFetchPagePriceCurlOnly:
+    """_fetch_page_price is now curl_cffi only — no JS render fallback."""
 
     @pytest.mark.asyncio
-    async def test_cloudflare_success(self, service):
-        """Cloudflare returns valid HTML."""
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"result": JSONLD_PRODUCT_HTML}
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_resp
-
-        with patch.dict(os.environ, {"CLOUDFLARE_ACCOUNT_ID": "test123", "CLOUDFLARE_API_TOKEN": "tok", "RENDER_PROVIDER": "cloudflare"}):
-            with _patch_httpx(mock_client):
-                result = await service._fetch_rendered_html("https://louisvuitton.com/cap")
-        assert result is not None
-        assert len(result) > 1000
-        assert "Louis Vuitton" in result
-
-    @pytest.mark.asyncio
-    async def test_microlink_success(self, service):
-        """Microlink returns valid HTML."""
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"data": {"html": JSONLD_PRODUCT_HTML}}
-
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_resp
-
-        with patch.dict(os.environ, {"RENDER_PROVIDER": "microlink"}):
-            with _patch_httpx(mock_client):
-                result = await service._fetch_rendered_html("https://louisvuitton.com/cap")
-        assert result is not None
-        assert "Louis Vuitton" in result
-
-    @pytest.mark.asyncio
-    async def test_both_fail_returns_none(self, service):
-        """Both providers fail -> returns None."""
-        mock_resp = MagicMock()
-        mock_resp.status_code = 500
-        mock_resp.json.return_value = {}
-
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_resp
-        mock_client.post.return_value = mock_resp
-
-        with patch.dict(os.environ, {"RENDER_PROVIDER": "both", "CLOUDFLARE_ACCOUNT_ID": "", "CLOUDFLARE_API_TOKEN": ""}):
-            with _patch_httpx(mock_client):
-                result = await service._fetch_rendered_html("https://louisvuitton.com/cap")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_small_html_rejected(self, service):
-        """HTML < 1000 bytes is treated as empty/blocked."""
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"result": SMALL_HTML}
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_resp
-
-        with patch.dict(os.environ, {"CLOUDFLARE_ACCOUNT_ID": "test", "CLOUDFLARE_API_TOKEN": "tok", "RENDER_PROVIDER": "cloudflare"}):
-            with _patch_httpx(mock_client):
-                result = await service._fetch_rendered_html("https://hermes.com/cap")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_feature_flag_disabled(self, service):
-        """ENABLE_JS_RENDER=false disables rendering."""
-        with patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False):
-            result = await service._fetch_rendered_html("https://louisvuitton.com/cap")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_no_cloudflare_credentials_skips(self, service):
-        """Missing Cloudflare env vars -> returns None for cloudflare provider."""
-        with patch.dict(os.environ, {"RENDER_PROVIDER": "cloudflare"}, clear=False):
-            # Ensure CF vars are absent
-            env = os.environ.copy()
-            env.pop("CLOUDFLARE_ACCOUNT_ID", None)
-            env.pop("CLOUDFLARE_API_TOKEN", None)
-            with patch.dict(os.environ, env, clear=True):
-                result = await service._fetch_rendered_html("https://louisvuitton.com/cap")
-        assert result is None
-
-
-class TestFetchPagePriceWithJsRender:
-    """Integration: _fetch_page_price with JS rendering fallback."""
-
-    @pytest.mark.asyncio
-    async def test_curl_success_skips_js_render(self, service):
-        """When curl_cffi finds a price, JS rendering is never called."""
+    async def test_curl_success_returns_price(self, service):
+        """When curl_cffi finds a price, it returns it directly."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", True), \
-             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_PRODUCT_HTML), \
-             patch.object(service, '_fetch_rendered_html', new_callable=AsyncMock) as mock_render:
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_PRODUCT_HTML):
             result = await service._fetch_page_price(
-                "https://iherb.com/product", "Louis Vuitton Cap", "BHD"
+                "https://ounass.ae/product/cap", "Louis Vuitton Cap", "BHD"
             )
         assert result is not None
         assert result["amount"] == 340.0
-        assert result["source_method"] == "page_scrape"  # NOT page_scrape_rendered
-        mock_render.assert_not_called()
+        assert result["source_method"] == "page_scrape"
 
     @pytest.mark.asyncio
-    async def test_curl_fails_triggers_js_render(self, service):
-        """When curl_cffi returns no data, JS rendering is tried."""
+    async def test_curl_html_no_price_returns_got_html(self, service):
+        """curl_cffi gets HTML but no price -> returns _got_html marker for Scrape.do."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", True), \
-             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=None), \
-             patch.object(service, '_fetch_rendered_html', new_callable=AsyncMock, return_value=JSONLD_PRODUCT_HTML):
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=NO_PRICE_HTML):
             result = await service._fetch_page_price(
-                "https://unknown-shop.com/product", "Louis Vuitton Cap", "BHD"
+                "https://ounass.ae/product/cap", "Louis Vuitton Cap", "BHD"
             )
         assert result is not None
-        assert result["source_method"] == "page_scrape_rendered"
+        assert result.get("_got_html") is True
 
     @pytest.mark.asyncio
-    async def test_js_only_domain_skips_curl(self, service):
-        """JS_ONLY_DOMAINS skip curl_cffi entirely."""
+    async def test_curl_fails_returns_none(self, service):
+        """curl_cffi fails entirely -> None (not a Scrape.do candidate)."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", True), \
-             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock) as mock_curl, \
-             patch.object(service, '_fetch_rendered_html', new_callable=AsyncMock, return_value=JSONLD_PRODUCT_HTML):
+             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=None):
             result = await service._fetch_page_price(
-                "https://louisvuitton.com/cap", "Louis Vuitton Cap", "BHD"
-            )
-        mock_curl.assert_not_called()
-        assert result is not None
-        assert result["source_method"] == "page_scrape_rendered"
-
-    @pytest.mark.asyncio
-    async def test_both_fail_returns_none(self, service):
-        """curl_cffi + JS render both fail -> None."""
-        with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", True), \
-             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=None), \
-             patch.object(service, '_fetch_rendered_html', new_callable=AsyncMock, return_value=None):
-            result = await service._fetch_page_price(
-                "https://unknown-shop.com/product", "Louis Vuitton Cap", "BHD"
+                "https://ounass.ae/product/cap", "Louis Vuitton Cap", "BHD"
             )
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_js_render_disabled_only_curl(self, service):
-        """ENABLE_JS_RENDER=false -> only curl_cffi attempted."""
-        with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
-             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=None), \
-             patch.object(service, '_fetch_rendered_html', new_callable=AsyncMock) as mock_render:
+    async def test_page_scrape_disabled(self, service):
+        """ENABLE_PAGE_SCRAPE=False -> None immediately."""
+        with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", False):
             result = await service._fetch_page_price(
-                "https://unknown-shop.com/product", "Louis Vuitton Cap", "BHD"
-            )
-        assert result is None
-        mock_render.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_rendered_html_no_price_returns_none(self, service):
-        """JS render returns HTML but no structured price -> None."""
-        with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", True), \
-             patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=None), \
-             patch.object(service, '_fetch_rendered_html', new_callable=AsyncMock, return_value=NO_PRICE_HTML):
-            result = await service._fetch_page_price(
-                "https://louisvuitton.com/browse", "Louis Vuitton Cap", "BHD"
+                "https://ounass.ae/product/cap", "Louis Vuitton Cap", "BHD"
             )
         assert result is None
 
 
-class TestJsOnlyDomains:
-    """Verify JS_ONLY_DOMAINS constant."""
+class TestDeadCodeRemoved:
+    """Verify old Cloudflare/Microlink code is completely removed."""
 
-    def test_luxury_brands_in_js_only(self):
-        """Key luxury brands are in JS_ONLY_DOMAINS."""
-        domains = StructuredComparisonService.JS_ONLY_DOMAINS
-        assert "louisvuitton.com" in domains
-        assert "hermes.com" in domains
-        assert "chanel.com" in domains
-        assert "farfetch.com" in domains
-        assert "nordstrom.com" in domains
+    def test_no_fetch_rendered_html_method(self):
+        """_fetch_rendered_html is deleted."""
+        svc = StructuredComparisonService.__new__(StructuredComparisonService)
+        assert not hasattr(svc, '_fetch_rendered_html')
 
-    def test_non_luxury_not_in_js_only(self):
-        """Non-luxury domains are NOT in JS_ONLY_DOMAINS."""
-        domains = StructuredComparisonService.JS_ONLY_DOMAINS
-        assert "iherb.com" not in domains
-        assert "amazon.com" not in domains
-        assert "bn.boots.com" not in domains
+    def test_no_js_only_domains(self):
+        """JS_ONLY_DOMAINS set is deleted."""
+        assert not hasattr(StructuredComparisonService, 'JS_ONLY_DOMAINS')
+
+    def test_no_js_render_timeout(self):
+        """JS_RENDER_TIMEOUT constant is deleted."""
+        import app.services.structured_comparison_service as mod
+        assert not hasattr(mod, 'JS_RENDER_TIMEOUT')
+
+    def test_no_enable_js_render_flag(self):
+        """ENABLE_JS_RENDER flag is deleted."""
+        import app.services.structured_comparison_service as mod
+        assert not hasattr(mod, 'ENABLE_JS_RENDER')
+
+    def test_no_render_provider_references(self):
+        """RENDER_PROVIDER env var no longer used in service code."""
+        import app.services.structured_comparison_service as mod
+        import inspect
+        source = inspect.getsource(mod)
+        assert "RENDER_PROVIDER" not in source
+
+    def test_no_cloudflare_references_in_service(self):
+        """No CLOUDFLARE_ACCOUNT_ID/API_TOKEN references in service code."""
+        import app.services.structured_comparison_service as mod
+        import inspect
+        source = inspect.getsource(mod)
+        assert "CLOUDFLARE_ACCOUNT_ID" not in source
+        assert "CLOUDFLARE_API_TOKEN" not in source
+
+    def test_no_microlink_references_in_service(self):
+        """No MICROLINK_API_KEY references in service code."""
+        import app.services.structured_comparison_service as mod
+        import inspect
+        source = inspect.getsource(mod)
+        assert "MICROLINK_API_KEY" not in source
+
+
+class TestNewServicesImported:
+    """Verify Firecrawl and Scrape.do services are properly imported."""
+
+    def test_firecrawl_service_imported(self):
+        import app.services.structured_comparison_service as mod
+        assert hasattr(mod, 'firecrawl_service')
+
+    def test_scrapedo_service_imported(self):
+        import app.services.structured_comparison_service as mod
+        assert hasattr(mod, 'scrapedo_service')
+
+    def test_budget_functions_imported(self):
+        import app.services.structured_comparison_service as mod
+        assert hasattr(mod, 'has_budget')
+        assert hasattr(mod, 'record_usage')
+        assert hasattr(mod, 'record_failure')
+        assert hasattr(mod, 'record_success')
+        assert hasattr(mod, 'is_circuit_closed')

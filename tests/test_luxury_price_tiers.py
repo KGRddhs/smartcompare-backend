@@ -181,3 +181,44 @@ class TestTier15Constants:
     def test_level_shoes_in_gcc(self):
         """level-shoes.com is a GCC luxury retailer."""
         assert "level-shoes.com" in StructuredComparisonService.GCC_LUXURY_RETAILERS
+
+    def test_expanded_gcc_retailers_harveynichols(self):
+        """harveynichols.com added in Session 31 expansion."""
+        assert "harveynichols.com" in StructuredComparisonService.GCC_LUXURY_RETAILERS
+
+    def test_expanded_gcc_retailers_galerieslafayette(self):
+        """galerieslafayette.ae added in Session 31 expansion."""
+        assert "galerieslafayette.ae" in StructuredComparisonService.GCC_LUXURY_RETAILERS
+
+    def test_expanded_gcc_retailers_theluxurycloset(self):
+        """theluxurycloset.com added in Session 31 expansion."""
+        assert "theluxurycloset.com" in StructuredComparisonService.GCC_LUXURY_RETAILERS
+
+    def test_expanded_gcc_retailers_boutique1(self):
+        """boutique1.com added in Session 31 expansion."""
+        assert "boutique1.com" in StructuredComparisonService.GCC_LUXURY_RETAILERS
+
+    def test_gcc_retailers_count(self):
+        """GCC luxury retailers should have 9 domains after expansion."""
+        gcc = StructuredComparisonService.GCC_LUXURY_RETAILERS
+        assert len(gcc) == 9
+
+
+class TestFirecrawlTier:
+    """Verify Firecrawl is used in Tier 1.5a for official brand sites."""
+
+    def test_firecrawl_service_available_check(self):
+        """firecrawl_service.is_available() checks env vars."""
+        from app.services import firecrawl_service
+        with patch.dict("os.environ", {}, clear=True):
+            assert firecrawl_service.is_available() is False
+        with patch.dict("os.environ", {"FIRECRAWL_API_KEY": "test"}):
+            assert firecrawl_service.is_available() is True
+
+    def test_scrapedo_service_available_check(self):
+        """scrapedo_service.is_available() checks env vars."""
+        from app.services import scrapedo_service
+        with patch.dict("os.environ", {}, clear=True):
+            assert scrapedo_service.is_available() is False
+        with patch.dict("os.environ", {"SCRAPEDO_API_TOKEN": "test"}):
+            assert scrapedo_service.is_available() is True
