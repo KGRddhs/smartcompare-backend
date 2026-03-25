@@ -6,7 +6,7 @@ for Redis access. Gracefully degrades if Redis is unavailable.
 import json
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from app.services.cache_service import _redis_get, _redis_set, _redis_incr, _redis_expire
@@ -53,7 +53,7 @@ def _budget_key(provider: str) -> str:
     config = PROVIDER_CONFIGS.get(provider, {})
     if config.get("is_lifetime"):
         return f"budget:{provider}:lifetime"
-    month = datetime.utcnow().strftime("%Y-%m")
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
     return f"budget:{provider}:{month}"
 
 
