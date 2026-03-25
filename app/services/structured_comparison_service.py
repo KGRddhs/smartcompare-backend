@@ -29,10 +29,14 @@ from app.services.serper_service import search_product_prices, search_price_orga
 from app.services.cache_service import get_cached, set_cached
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
+from app.services.api_budget_service import (
+    has_budget, record_usage, record_failure, record_success,
+    is_circuit_closed,
+)
+from app.services import firecrawl_service, scrapedo_service
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
-ENABLE_JS_RENDER = os.environ.get("ENABLE_JS_RENDER", "true").lower() != "false"
 
 logger = logging.getLogger(__name__)
 
@@ -1186,6 +1190,13 @@ class StructuredComparisonService:
         2. GPT extraction from search results text
         3. GPT training data fallback (estimated, confidence 0.5)
         """
+        # Gate 0: Input validation
+        if not self._validate_price_query(brand, name, region):
+            return {
+                "amount": 0, "currency": "BHD", "estimated": True,
+                "source_method": "validation_rejected",
+            }
+
         cache_key = get_price_cache_key(brand, name, variant, region)
 
         # Check cache
@@ -1270,6 +1281,7 @@ class StructuredComparisonService:
         if not price and self._is_luxury_brand(full_name) and ENABLE_PAGE_SCRAPE:
             tier15_start = time.monotonic()
             tier15_budget = self.TIER_15_BUDGET_TIMEOUT
+            failed_curl_urls = []  # URLs where curl got HTML but no price — Scrape.do candidates
 
             # --- Tier 1.5a: Official brand site ---
             official_domain = self._get_official_domain(full_name)
@@ -1282,10 +1294,33 @@ class StructuredComparisonService:
                     if official_results and official_results.get("organic"):
                         for organic_item in official_results["organic"][:2]:
                             page_url = organic_item.get("link")
-                            if not page_url:
+                            if not page_url or not self._validate_scrape_url(page_url):
                                 continue
+
+                            # Try Firecrawl first (Smart Wait catches XHR-loaded prices)
+                            if firecrawl_service.is_available() and is_circuit_closed("firecrawl") and has_budget("firecrawl"):
+                                html, status = await firecrawl_service.scrape_page_with_status(page_url)
+                                # Always count usage if we got a 200 (API credit was spent)
+                                if status == 200:
+                                    record_usage("firecrawl")
+                                if html:
+                                    record_success("firecrawl")
+                                    price = self._extract_price_from_html(html, full_name, currency, official_domain, page_url)
+                                    if price:
+                                        price["source_method"] = "firecrawl"
+                                        price["retailer"] = official_domain
+                                        logger.info(f"[PRICE] Tier 1.5a: Firecrawl price {currency} {price['amount']} from {official_domain}")
+                                        set_cached(cache_key, price, PRICE_CACHE_TTL)
+                                        price["_cached"] = False
+                                        return price
+                                elif status in (429, 503) or status == 0:
+                                    record_failure("firecrawl")
+                                # If Firecrawl got 200 but no price, that's NOT a circuit failure — continue
+
+                            # Fallback: curl_cffi for non-SPA official sites
                             page_price = await self._fetch_page_price(page_url, full_name, currency)
                             if page_price and page_price.get("amount"):
+                                page_price.pop("_got_html", None)  # Clean up internal marker
                                 page_price["retailer"] = official_domain
                                 logger.info(f"[PRICE] Tier 1.5a: official price {currency} {page_price['amount']} from {official_domain}")
                                 set_cached(cache_key, page_price, PRICE_CACHE_TTL)
@@ -1330,6 +1365,10 @@ class StructuredComparisonService:
                                 if isinstance(pp, dict) and pp.get("amount"):
                                     pp["_retailer_domain"] = retailer_urls[i][1]
                                     valid_prices.append(pp)
+                                elif isinstance(pp, dict) and pp.get("_got_html"):
+                                    # curl_cffi got HTML but no price — JS render may help
+                                    failed_curl_urls.append(retailer_urls[i][0])
+                                # If pp is None (curl failed) or Exception → NOT a Scrape.do candidate
 
                             if len(valid_prices) >= 2:
                                 # Cross-validate: max/min <= 1.15
@@ -1384,8 +1423,45 @@ class StructuredComparisonService:
                                         set_cached(cache_key, gcc_price, PRICE_CACHE_TTL)
                                         gcc_price["_cached"] = False
                                         return gcc_price
+                                    elif gcc_price and gcc_price.get("_got_html"):
+                                        failed_curl_urls.append(link)
+                                    # If gcc_price is None → curl itself failed, don't retry with Scrape.do
                     except Exception as e:
                         logger.warning(f"[PRICE] Tier 1.5c failed: {e}")
+
+                    # --- Tier 1.5d: Scrape.do rendering fallback ---
+                    # Only fires if curl_cffi found URLs but extraction failed (not timeouts)
+                    elapsed = time.monotonic() - tier15_start
+                    if (failed_curl_urls and elapsed < tier15_budget
+                            and scrapedo_service.is_available()
+                            and is_circuit_closed("scrapedo") and has_budget("scrapedo")):
+                        # Prioritize GCC retailer URLs (more likely to have prices in rendered DOM)
+                        gcc_domains = self.GCC_LUXURY_RETAILERS
+                        sorted_urls = sorted(
+                            failed_curl_urls,
+                            key=lambda u: 0 if urlparse(u).netloc.replace("www.", "") in gcc_domains else 1,
+                        )
+                        for retry_url in sorted_urls[:2]:
+                            if not self._validate_scrape_url(retry_url):
+                                continue
+                            retry_domain = urlparse(retry_url).netloc.replace("www.", "")
+                            logger.info(f"[PRICE] Tier 1.5d: Scrape.do retry on {retry_domain}")
+                            html, status = await scrapedo_service.render_page_with_status(retry_url)
+                            # Always count usage on 200 (API credit spent even if no price)
+                            if status == 200:
+                                record_usage("scrapedo")
+                            if html:
+                                record_success("scrapedo")
+                                price = self._extract_price_from_html(html, full_name, currency, retry_domain, retry_url)
+                                if price:
+                                    price["source_method"] = "scrapedo_rendered"
+                                    logger.info(f"[PRICE] Tier 1.5d: Scrape.do price {currency} {price['amount']} from {retry_domain}")
+                                    set_cached(cache_key, price, PRICE_CACHE_TTL)
+                                    price["_cached"] = False
+                                    return price
+                            elif status in (429, 503) or status == 0:
+                                record_failure("scrapedo")
+                                break  # Don't burn another credit if provider is struggling
 
             logger.info(f"[PRICE] Tier 1.5 cascade complete, no price found for {full_name}")
 
@@ -1645,22 +1721,13 @@ class StructuredComparisonService:
 
     # GCC luxury retailers — regional fallback (Tier 1.5c)
     GCC_LUXURY_RETAILERS = {
-        "ounass.ae", "namshi.com", "bloomingdales.ae",
-        "level-shoes.com",
+        "ounass.ae", "ounass.com", "namshi.com", "bloomingdales.ae",
+        "level-shoes.com", "harveynichols.com", "galerieslafayette.ae",
+        "theluxurycloset.com", "boutique1.com",
     }
 
     PAGE_SCRAPE_TIMEOUT = 5  # seconds per curl_cffi page fetch (reduced; JS render has separate timeout)
     TIER_15_BUDGET_TIMEOUT = 20  # seconds total across all Tier 1.5 sub-tiers
-
-    # Domains known to block curl_cffi or serve JS shells — skip straight to JS render
-    JS_ONLY_DOMAINS = {
-        "louisvuitton.com", "hermes.com", "chanel.com", "gucci.com",
-        "prada.com", "dior.com", "farfetch.com", "net-a-porter.com",
-        "nordstrom.com", "neimanmarcus.com", "ssense.com", "mytheresa.com",
-        "burberry.com", "balenciaga.com", "fendi.com", "valentino.com",
-    }
-
-    JS_RENDER_TIMEOUT = 8  # seconds per JS rendering provider
 
     @staticmethod
     def _is_accessory(title: str) -> bool:
@@ -1694,6 +1761,42 @@ class StructuredComparisonService:
             return domain or ""
         except Exception:
             return ""
+
+    @staticmethod
+    def _validate_price_query(brand: str, name: str, region: str) -> bool:
+        """Gate 0: Reject garbage queries before wasting API credits."""
+        full_name = f"{brand} {name}".strip()
+        if len(full_name) < 3 or len(full_name) > 200:
+            logger.warning(f"[PRICE] Gate 0: rejected query (length {len(full_name)}): {full_name[:50]}")
+            return False
+        if not full_name[0].isalpha():
+            logger.warning(f"[PRICE] Gate 0: rejected query (starts non-alpha): {full_name[:50]}")
+            return False
+        if region not in GCC_REGIONS:
+            logger.warning(f"[PRICE] Gate 0: rejected region: {region}")
+            return False
+        return True
+
+    @staticmethod
+    def _validate_scrape_url(url: str) -> bool:
+        """Reject URLs that waste rendering credits (search/category pages)."""
+        if not url:
+            return False
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https"):
+                return False
+            if not parsed.netloc or "." not in parsed.netloc:
+                return False
+            path_lower = parsed.path.lower()
+            blocked_patterns = ["/search", "/category", "/collection", "/c/", "/s?k=", "/browse"]
+            # NOTE: "/shop/" intentionally excluded — many GCC retailers use /shop/ in product URLs
+            if any(p in path_lower for p in blocked_patterns):
+                logger.info(f"[PRICE] URL validation: rejected non-product URL: {url[:80]}")
+                return False
+            return True
+        except Exception:
+            return False
 
     GARBAGE_PATTERNS = [
         r"learn more about",
@@ -2200,85 +2303,6 @@ class StructuredComparisonService:
             logger.warning(f"[PRICE] curl_cffi fetch failed for {url}: {e}")
             return None
 
-    async def _fetch_rendered_html(self, url: str) -> Optional[str]:
-        """Render a URL via headless browser API and return the HTML.
-
-        Fires Cloudflare Browser Rendering and/or Microlink in parallel.
-        Returns the first valid (>1KB) HTML response, or None.
-        Provider selected by RENDER_PROVIDER env var: "cloudflare", "microlink", or "both".
-        """
-        if not ENABLE_JS_RENDER:
-            return None
-
-        provider = os.environ.get("RENDER_PROVIDER", "both")
-
-        async def _render_cloudflare(render_url: str) -> Optional[str]:
-            cf_account = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
-            cf_token = os.environ.get("CLOUDFLARE_API_TOKEN")
-            if not cf_account or not cf_token:
-                return None
-            try:
-                async with httpx.AsyncClient(timeout=self.JS_RENDER_TIMEOUT) as client:
-                    resp = await client.post(
-                        f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/browser-rendering/content",
-                        headers={"Authorization": f"Bearer {cf_token}", "Content-Type": "application/json"},
-                        json={"url": render_url, "gotoOptions": {"waitUntil": "networkidle0"}},
-                    )
-                    if resp.status_code == 200:
-                        # Response may be JSON {"result": "<html>"} or raw HTML
-                        try:
-                            data = resp.json()
-                            html = data.get("result", "") or data.get("html", "")
-                        except Exception:
-                            html = resp.text
-                        if html and len(html) > 1000:
-                            logger.info(f"[PRICE] JS render: cloudflare returned {len(html)//1024}KB for {render_url}")
-                            return html
-                    else:
-                        logger.info(f"[PRICE] JS render: cloudflare HTTP {resp.status_code} for {render_url}")
-            except Exception as e:
-                logger.warning(f"[PRICE] JS render: cloudflare failed: {e}")
-            return None
-
-        async def _render_microlink(render_url: str) -> Optional[str]:
-            try:
-                headers = {}
-                ml_key = os.environ.get("MICROLINK_API_KEY")
-                if ml_key:
-                    headers["x-api-key"] = ml_key
-                async with httpx.AsyncClient(timeout=self.JS_RENDER_TIMEOUT) as client:
-                    resp = await client.get(
-                        "https://api.microlink.io",
-                        params={"url": render_url, "prerender": "true"},
-                        headers=headers,
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        html = data.get("data", {}).get("html", "")
-                        if html and len(html) > 1000:
-                            logger.info(f"[PRICE] JS render: microlink returned {len(html)//1024}KB for {render_url}")
-                            return html
-                    else:
-                        logger.info(f"[PRICE] JS render: microlink HTTP {resp.status_code} for {render_url}")
-            except Exception as e:
-                logger.warning(f"[PRICE] JS render: microlink failed: {e}")
-            return None
-
-        if provider == "cloudflare":
-            return await _render_cloudflare(url)
-        elif provider == "microlink":
-            return await _render_microlink(url)
-        else:  # "both" — parallel race, first valid result wins
-            results = await asyncio.gather(
-                _render_cloudflare(url),
-                _render_microlink(url),
-                return_exceptions=True,
-            )
-            for r in results:
-                if isinstance(r, str) and len(r) > 1000:
-                    return r
-            return None
-
     def _extract_price_from_html(
         self, html: str, product_name: str, currency: str, domain: str, url: str
     ) -> Optional[Dict[str, Any]]:
@@ -2371,51 +2395,31 @@ class StructuredComparisonService:
         product_name: str,
         currency: str = "BHD",
     ) -> Optional[Dict[str, Any]]:
-        """Fetch a product page and extract price from structured data.
+        """Fetch a product page via curl_cffi and extract price from structured data.
 
-        Two-stage approach:
-        1. curl_cffi (fast, free) — skipped for JS_ONLY_DOMAINS
-        2. JS rendering fallback (Cloudflare/Microlink in parallel)
-
-        Extraction uses _extract_price_from_html() for both stages.
+        Uses _extract_price_from_html() for JSON-LD/OG/microdata parsing.
         Gated by ENABLE_PAGE_SCRAPE feature flag.
+        JS rendering (Firecrawl/Scrape.do) is handled at the cascade level in _get_price().
+
+        Returns:
+            - Dict with price data if found
+            - {"_got_html": True} if curl_cffi fetched HTML but no price (Scrape.do candidate)
+            - None if curl_cffi failed to fetch (not a Scrape.do candidate)
         """
         if not ENABLE_PAGE_SCRAPE:
             return None
 
         domain = urlparse(url).netloc.replace("www.", "")
+        html = await self._curl_fetch_html(url)
+        if html:
+            price = self._extract_price_from_html(html, product_name, currency, domain, url)
+            if price:
+                logger.info(f"[PRICE] Page scrape: curl_cffi price {currency} {price['amount']} from {domain}")
+                return price
+            logger.info(f"[PRICE] Page scrape: curl_cffi no structured data from {domain}")
+            return {"_got_html": True}  # Signal: HTML fetched but no price — JS render may help
 
-        # Fast path: skip curl_cffi for known JS-only domains
-        if domain not in self.JS_ONLY_DOMAINS:
-            html = await self._curl_fetch_html(url)
-            if html:
-                price = self._extract_price_from_html(html, product_name, currency, domain, url)
-                if price:
-                    logger.info(f"[PRICE] Page scrape: curl_cffi price {currency} {price['amount']} from {domain}")
-                    return price
-                logger.info(f"[PRICE] Page scrape: curl_cffi no structured data from {domain}, trying JS render")
-        else:
-            logger.info(f"[PRICE] Page scrape: skipping curl_cffi for {domain} (JS_ONLY_DOMAINS)")
-
-        # JS rendering fallback
-        if ENABLE_JS_RENDER:
-            start = time.monotonic()
-            rendered_html = await self._fetch_rendered_html(url)
-            elapsed = time.monotonic() - start
-            if rendered_html:
-                logger.info(f"[PRICE] JS render: got {len(rendered_html)//1024}KB HTML in {elapsed:.1f}s from {domain}")
-                price = self._extract_price_from_html(rendered_html, product_name, currency, domain, url)
-                if price:
-                    price["source_method"] = "page_scrape_rendered"
-                    logger.info(f"[PRICE] JS render: extracted price {currency} {price['amount']} from {domain} ({elapsed:.1f}s)")
-                    return price
-                else:
-                    logger.info(f"[PRICE] JS render: HTML rendered but no structured price from {domain}")
-            else:
-                logger.info(f"[PRICE] JS render: providers failed for {domain} ({elapsed:.1f}s)")
-
-        logger.info(f"[PRICE] Page scrape: no price found from {domain}")
-        return None
+        return None  # curl_cffi itself failed — JS render won't help either
 
     @staticmethod
     def _strict_title_match(product_name: str, title: str) -> bool:
