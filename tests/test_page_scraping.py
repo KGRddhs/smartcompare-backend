@@ -143,7 +143,6 @@ class TestFetchPagePriceJsonLD:
     async def test_jsonld_bhd_product(self, service):
         """JSON-LD with BHD currency extracts correctly without conversion."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_PRODUCT_HTML):
             result = await service._fetch_page_price(
                 "https://shop.example.com/cap", "Louis Vuitton Vers Mesh Cap", "BHD"
@@ -159,7 +158,6 @@ class TestFetchPagePriceJsonLD:
     async def test_jsonld_usd_conversion(self, service):
         """JSON-LD with USD triggers currency conversion to BHD."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_USD_HTML):
             result = await service._fetch_page_price(
                 "https://shop.example.com/cap", "Hermes Nevada Cap", "BHD"
@@ -173,7 +171,6 @@ class TestFetchPagePriceJsonLD:
     async def test_jsonld_out_of_stock(self, service):
         """Out-of-stock products still return price but in_stock=False."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_OUT_OF_STOCK_HTML):
             result = await service._fetch_page_price(
                 "https://shop.example.com/cap", "Louis Vuitton Cap", "BHD"
@@ -186,7 +183,6 @@ class TestFetchPagePriceJsonLD:
     async def test_jsonld_nested_offers_picks_lowest(self, service):
         """Multiple offers picks the lowest price (handled by _extract_jsonld_price)."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_NESTED_OFFERS_HTML):
             result = await service._fetch_page_price(
                 "https://shop.example.com/belt", "Gucci Belt", "USD"
@@ -202,7 +198,6 @@ class TestFetchPagePriceOpenGraph:
     async def test_og_meta_extraction(self, service):
         """OpenGraph meta tags extract price and currency."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=OG_META_HTML):
             result = await service._fetch_page_price(
                 "https://ounass.ae/lv-cap", "Louis Vuitton Cap", "BHD"
@@ -216,7 +211,6 @@ class TestFetchPagePriceOpenGraph:
     async def test_product_meta_fallback(self, service):
         """product:price:amount meta tags work as OG fallback."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=PRODUCT_META_HTML):
             result = await service._fetch_page_price(
                 "https://shop.example.com/lv", "Louis Vuitton Cap", "BHD"
@@ -232,7 +226,6 @@ class TestFetchPagePriceMicrodata:
     async def test_microdata_extraction(self, service):
         """itemprop=price microdata extracts correctly."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=MICRODATA_HTML):
             result = await service._fetch_page_price(
                 "https://shop.example.com/cap", "Hermes Cap", "BHD"
@@ -246,21 +239,19 @@ class TestFetchPagePriceEdgeCases:
     """Tests for error handling and edge cases."""
 
     @pytest.mark.asyncio
-    async def test_no_structured_data_returns_none(self, service):
-        """Pages with no structured price data return None."""
+    async def test_no_structured_data_returns_got_html(self, service):
+        """Pages with HTML but no price return _got_html signal (Scrape.do candidate)."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=NO_PRICE_HTML):
             result = await service._fetch_page_price(
                 "https://shop.example.com/browse", "Hermes Cap", "BHD"
             )
-        assert result is None
+        assert result == {"_got_html": True}
 
     @pytest.mark.asyncio
     async def test_http_error_returns_none(self, service):
         """HTTP 403/404/500 returns None gracefully (curl_fetch_html returns None)."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=None):
             result = await service._fetch_page_price(
                 "https://shop.example.com/cap", "Hermes Cap", "BHD"
@@ -271,7 +262,6 @@ class TestFetchPagePriceEdgeCases:
     async def test_timeout_returns_none(self, service):
         """Network timeout returns None gracefully (curl_fetch_html handles it)."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=None):
             result = await service._fetch_page_price(
                 "https://shop.example.com/cap", "Hermes Cap", "BHD"
@@ -282,7 +272,6 @@ class TestFetchPagePriceEdgeCases:
     async def test_empty_html_returns_none(self, service):
         """Empty HTML returns None."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=EMPTY_HTML):
             result = await service._fetch_page_price(
                 "https://shop.example.com/cap", "Hermes Cap", "BHD"
@@ -299,22 +288,20 @@ class TestFetchPagePriceEdgeCases:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_zero_price_returns_none(self, service):
-        """JSON-LD with price=0 is rejected by _extract_jsonld_price."""
+    async def test_zero_price_returns_got_html(self, service):
+        """JSON-LD with price=0 is rejected — returns _got_html signal."""
         html = JSONLD_PRODUCT_HTML.replace('"340.000"', '"0"')
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=html):
             result = await service._fetch_page_price(
                 "https://shop.example.com/cap", "Louis Vuitton Cap", "BHD"
             )
-        assert result is None
+        assert result == {"_got_html": True}
 
     @pytest.mark.asyncio
     async def test_domain_extracted_from_url(self, service):
         """Retailer name is the domain extracted from URL with www. stripped."""
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_PRODUCT_HTML):
             result = await service._fetch_page_price(
                 "https://www.shop.example.com/products/cap", "Louis Vuitton Cap", "BHD"
@@ -327,7 +314,6 @@ class TestFetchPagePriceEdgeCases:
         """The original URL is preserved in the result."""
         url = "https://shop.example.com/products/cap-123"
         with patch("app.services.structured_comparison_service.ENABLE_PAGE_SCRAPE", True), \
-             patch("app.services.structured_comparison_service.ENABLE_JS_RENDER", False), \
              patch.object(service, '_curl_fetch_html', new_callable=AsyncMock, return_value=JSONLD_PRODUCT_HTML):
             result = await service._fetch_page_price(
                 url, "Louis Vuitton Vers Mesh Cap", "BHD"
