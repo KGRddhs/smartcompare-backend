@@ -1,8 +1,11 @@
 """Admin routes — analytics endpoints protected by API key."""
 import os
 import logging
+from datetime import datetime
 from fastapi import APIRouter, Header, HTTPException, Depends, Query
 
+from app.services.api_budget_service import get_usage_summary
+from app.services.database_service import get_supabase_client
 from app.services.analytics_service import (
     get_daily_stats,
     get_popular_queries,
@@ -67,3 +70,42 @@ async def product_stats(
 ):
     """Most compared products and category breakdown."""
     return await get_product_stats(limit)
+
+
+@router.get("/costs")
+async def api_costs(_=Depends(verify_admin_key)):
+    """API cost dashboard — provider budgets, circuit breakers, monthly spend."""
+    summary = get_usage_summary()
+
+    month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0).isoformat()
+
+    # OpenAI cost: sum from comparisons table this month
+    openai_cost = 0.0
+    try:
+        supabase = get_supabase_client()
+        if supabase:
+            result = supabase.table("comparisons").select("metadata").gte("created_at", month_start).execute()
+            for row in (result.data or []):
+                meta = row.get("metadata") or {}
+                openai_cost += meta.get("total_cost", 0)
+    except Exception as e:
+        logger.warning(f"[ADMIN] Failed to fetch OpenAI costs: {e}")
+
+    # Comparison count this month
+    comp_count = 0
+    try:
+        supabase = get_supabase_client()
+        if supabase:
+            result = supabase.table("comparisons").select("id", count="exact").gte("created_at", month_start).execute()
+            comp_count = result.count or 0
+    except Exception:
+        pass
+
+    summary["openai"] = {"cost_usd": round(openai_cost, 4), "source": "comparisons.metadata.total_cost"}
+    summary["comparisons_this_month"] = comp_count
+    summary["avg_cost_per_comparison"] = round(openai_cost / comp_count, 4) if comp_count > 0 else 0
+    summary["fixed_costs_monthly"] = 30.00  # Railway $5 + Supabase $25
+    summary["estimated_monthly_total"] = round(summary["fixed_costs_monthly"] + openai_cost, 2)
+    summary["period"] = datetime.utcnow().strftime("%Y-%m")
+
+    return summary
