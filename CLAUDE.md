@@ -2,13 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## PENDING PLAN: Firecrawl Price Resolution (Session 31)
-- **Plan**: `docs/superpowers/plans/2026-03-24-firecrawl-price-resolution.md` — reviewed 2x, committed
-- **Spec**: `docs/superpowers/specs/2026-03-24-firecrawl-price-resolution-design.md`
-- **Execute**: Use `superpowers:subagent-driven-development` skill. Phase 0 validation spike first, then 4 Opus agents.
-- **Env vars needed**: `FIRECRAWL_API_KEY` (firecrawl.dev free), `SCRAPEDO_API_TOKEN` (scrape.do free)
-- **Replaces**: Cloudflare/Microlink JS rendering (confirmed broken Session 30)
-
 ## Project Purpose
 
 SmartCompare — An INTELLIGENT product comparison engine for the GCC market (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman). The goal: if users still go to Google or ChatGPT after using SmartCompare, we failed.
@@ -89,15 +82,17 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 
 ### Backend (FastAPI + Python 3.12)
 
-**Entry:** `app/main.py` (v2.3.0) — loads env vars, configures middleware stack, registers 8 routers:
+**Entry:** `app/main.py` (v2.4.0) — loads env vars, configures middleware stack, registers 10 routers:
 - `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow + SSE streaming, rate limited)
 - `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited, HEIC detection)
 - `/api/v1/url/*` — `url_routes.py` (single URL compare only, multi-compare stub removed)
-- `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social-login). Rate limited: login 5/min, register 3/min.
+- `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social-login, **account deletion**, resend-verification). Rate limited: login 5/min, register 3/min, delete 1/min.
 - `/api/v1/comparisons/*` — `history_routes.py` → comparison history (GET list, GET single, DELETE). Auth required.
 - `/api/v1/share/*` — `share_routes.py` → POST create share link (auth), GET public share (no auth, strips personalization)
 - `/api/v1/feedback`, `/api/v1/events` — `feedback_routes.py` → feedback collection + event tracking
-- `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints (X-Admin-Key auth)
+- `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints + cost dashboard (X-Admin-Key auth)
+- `/api/v1/legal/*` — `legal_routes.py` → GET privacy policy + terms of service (no auth, reads markdown files)
+- `/api/v1/app/*` — `version_routes.py` → GET version check (min/latest/force_update from env vars, no auth)
 
 **Middleware stack** (outermost → innermost): RequestID → SecurityHeaders → ErrorHandler → CORS → slowapi rate limiter
 
@@ -120,8 +115,11 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 2. GPT-4o-mini extraction from organic search results (with Tier 3 sanity check)
 3. GPT training data estimate (marked `estimated: true`)
 - **Page scraping** (Session 27): `_fetch_page_price()` → `_curl_fetch_html()` + `_extract_price_from_html()` extracts JSON-LD/OG/microdata from product pages. Used in Tier 1.5 cascade and supplement pipeline.
-- **JS rendering fallback** (Session 28): `_fetch_rendered_html()` fires Cloudflare Browser Rendering + Microlink in parallel when curl_cffi gets empty JS shells. `JS_ONLY_DOMAINS` (16 luxury domains) skip curl_cffi entirely. `source_method: "page_scrape_rendered"`.
-- **Feature flags**: `ENABLE_PAGE_SCRAPE` (curl_cffi), `ENABLE_JS_RENDER` (headless browser). Both default true. `RENDER_PROVIDER` ("cloudflare"/"microlink"/"both", default "both").
+- **Firecrawl Smart Wait** (Session 32): `firecrawl_service.scrape_page_with_status()` renders SPA pages via Firecrawl `/v1/scrape` API. Used in Tier 1.5a for official brand sites. `source_method: "firecrawl"`.
+- **Scrape.do fallback** (Session 32): `scrapedo_service.render_page_with_status()` renders pages with residential proxies. Used in Tier 1.5d only when curl_cffi fetched HTML but found no price (`failed_curl_urls`). `source_method: "scrapedo_rendered"`.
+- **API budget + circuit breakers** (Session 32): `api_budget_service.py` tracks credits (Firecrawl 450/lifetime, Scrape.do 900/mo, Serper 2200/lifetime) and circuit breakers (3 failures → 10min cooldown). Fail-open on Redis unavailability.
+- **Gate 0 validation**: `_validate_price_query()` rejects garbage queries, `_validate_scrape_url()` rejects search/category pages before burning scrape credits.
+- **Feature flag**: `ENABLE_PAGE_SCRAPE` (curl_cffi). Firecrawl/Scrape.do availability checked via `is_available()` (env var + feature flag).
 - **Price prompt philosophy (Session 25):** "MOST AUTHORITATIVE" not "LOWEST reasonable". Source priority hierarchy: official brand sites > authorized retailers > major marketplaces. Counterfeit sources filtered (DHgate, AliExpress, Temu, Wish).
 - Official domain boost: prices from `OFFICIAL_BRAND_DOMAINS` (25+ domains) sorted first in Shopping results.
 - Each price tagged with `source_method`: `local_bhd` (direct BHD price), `converted_usd` (USD→BHD conversion), `page_scrape` (curl_cffi HTML), `page_scrape_rendered` (JS-rendered HTML), or `estimated` (GPT training data). `price_method_mismatch` flag set when products have different source methods.
@@ -161,17 +159,22 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 - Supabase `text_search()` API: use `options={"type": "plain", "config": "english"}` (NOT keyword args); `.limit()` must come BEFORE `.text_search()` in chain
 
 **Key services:**
-- `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (electronics/grocery/supplements/makeup/skincare/haircare/fragrances/fashion/other), `extract_specs()`, `extract_reviews()`, `generate_comparison()`. Session 29: structured review_summary (consensus-based, no individual attributions) + structured verdict (winner_declaration, winner_reason, key_tradeoff, value_context, best_for).
-- `scoring_service.py` — Deterministic scoring engine. 6 dimensions, `CATEGORY_WEIGHTS` (9 category-specific profiles), price tier detection (budget/mid/premium/luxury), tier-aware value scoring, dimension winners. Personalized weights capped at ±30% of category base. Session 29: `compute_value_badge()`, `compute_tradeoff_pairs()`, `compute_confidence()`, `apply_behavioral_adjustments()` (±10%), `apply_session_signals()` (±5%). Pure math, $0 cost.
+- `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (9 categories), `extract_specs()`, `extract_reviews()`, `generate_comparison(category=...)`. Injects category-specific prompt personality + trust rules into verdict. Structured review_summary (consensus-based) + structured verdict (winner_declaration, winner_reason, key_tradeoff, value_context, best_for).
+- `scoring_service.py` — Deterministic scoring engine. **Category-specific 6 dimensions per category** (Session 33): `CATEGORY_DIMENSIONS` maps each category to unique dimension keys (e.g., electronics: performance/value/build_quality/feature/ecosystem/futureproof; fragrances: character/longevity/projection/versatility/wear_value/presentation). `_DIMENSION_SIGNAL_MAP` maps 5 raw signals → category-specific keys. `CATEGORY_DIMENSION_WEIGHTS` (aliased as `CATEGORY_WEIGHTS`), `CATEGORY_PRIORITY_ADJUSTMENTS` (8 priorities × 9 categories), `CATEGORY_BUDGET_ADJUSTMENTS`, `DIMENSION_DISPLAY_NAMES`. Price tier detection, tier-aware value scoring, dimension winners. Personalized weights capped at ±30%. `compute_value_badge()`, `compute_tradeoff_pairs()`, `compute_confidence()`, `apply_behavioral_adjustments()` (±10%), `apply_session_signals()` (±5%). Pure math, $0 cost.
+- `prompt_personalities.py` — `CATEGORY_PROMPT_PERSONALITIES` dict (9 categories), `UNIVERSAL_TRUST_RULES`, `build_personality_prompt(category)`. Each category gets a different comparison "language" (electronics=numbers/benchmarks, fragrances=evocative descriptions, makeup=real-world experience).
+- `trust_validation_service.py` — `validate_verdict(verdict, scoring_result, category)`. Cross-checks GPT winner alignment and dimension claims against deterministic scores. Zero extra cost.
 - `behavior_service.py` — Behavioral learning service (Session 29). Decay-weighted profiles (30-day half-life), category affinity, price range, winner agreement, dimension sensitivity, session signals. `build_behavior_profile()`, `compute_session_signals()`.
 - `feedback_service.py` — `save_feedback()`, `track_event()`, `track_events_batch()`. Fire-and-forget pattern (asyncio.create_task).
 - `drug_database_service.py` — Bahrain drug database lookup + GPT context formatting (supplements only)
 - `serper_service.py` — Serper API calls (`search_product_prices()`, `search_price_organic()`, `search_web()`)
 - `cache_service.py` — Upstash Redis caching, monthly budget tracking. **IMPORTANT**: exposes helper functions `_redis_get(key)`, `_redis_set(key, value, ex)`, `_redis_incr(key)`, `_redis_expire(key, seconds)` — there is NO raw Redis client getter. All new code must use these helpers.
 - `openai_service.py` — GPT-4o-mini vision for camera identification (`detail: "auto"`, OCR-focused prompt)
-- `database_service.py` — Supabase client singleton (`get_supabase_client()`)
+- `database_service.py` — Supabase client singleton (`get_supabase_client()`), `delete_user_data_cascade(user_id)` for account deletion
 - `sentry_service.py` — `init_sentry()` (opt-in via `SENTRY_DSN` env var)
 - `analytics_service.py` — Admin analytics queries (`get_daily_stats()`, `get_popular_queries()`, etc.)
+- `api_budget_service.py` — Credit tracking + circuit breakers for Firecrawl, Scrape.do, Serper. Uses cache_service Redis helpers.
+- `firecrawl_service.py` — Thin async wrapper around Firecrawl `/v1/scrape` with Smart Wait (5s waitFor, 15s timeout).
+- `scrapedo_service.py` — Thin async wrapper around Scrape.do `render=true` API (15s timeout).
 
 **Middleware** (`app/middleware/`):
 - `request_id.py` — UUID generation per request, X-Request-ID header
@@ -241,20 +244,33 @@ Target: **$0.009-0.01/comparison** (current: ~$0.010 electronics, ~$0.010 supple
 ### Vision products bypass query parsing
 Camera input passes `vision_products` directly to `compare_from_text()`, skipping `parse_product_query()`. The `size_or_count` field (e.g., "360 Softgels") is appended to the product name in `image_routes.py` before comparison.
 
-### Deterministic scoring (zero cost, Session 26 overhaul)
-`scoring_service.py` computes 6 scores (price, spec, review, value, reliability, popularity) from structured data. No API calls — pure math.
-- **Category weights**: `CATEGORY_WEIGHTS` — 9 category-specific weight profiles (e.g., fashion: popularity=0.25, electronics: spec=0.25). Replaced single `DEFAULT_WEIGHTS`.
+### Deterministic scoring (zero cost, Session 26 → 33 overhaul)
+`scoring_service.py` computes **category-specific scores** from structured data. No API calls — pure math.
+- **Category-specific dimensions (Session 33)**: Each of 9 categories has its own 6 scoring dimensions. `CATEGORY_DIMENSIONS` defines keys (e.g., electronics: `performance_score`, `value_score`, `build_quality_score`, `feature_score`, `ecosystem_score`, `futureproof_score`). Old universal keys (`price_score`, `spec_score`, etc.) NO LONGER EXIST except in "other" category.
+- **Signal mapping**: `_DIMENSION_SIGNAL_MAP` maps 5 raw signals (spec, price, review, reliability, popularity) to category-specific dimension keys. `_compute_raw_scores()` extracts signals, `_normalize_scores()` maps to category dimensions.
+- **Category weights**: `CATEGORY_DIMENSION_WEIGHTS` (aliased as `CATEGORY_WEIGHTS`) — per-category weight profiles summing to 1.0. `CATEGORY_PRIORITY_ADJUSTMENTS` (8 priorities × 9 categories), `CATEGORY_BUDGET_ADJUSTMENTS` (budget/mid/premium × 9 categories).
 - **Price tiers**: `PRICE_TIERS` — budget(<11 BHD), mid(11-57), premium(57-189), luxury(189+). Cross-tier detection via `_is_cross_tier()`.
-- **Tier-aware value score**: Cross-tier uses `50 + (delivery - expected) * 0.8` formula. Same-tier uses `spec*0.6 + price*0.4` blend. Handles MISSING_SCORE fallbacks.
-- **Dimension winners**: `compute_dimension_winners()` — per-dimension comparison, tie threshold=3.0, both MISSING → `{"winner": "N/A", "margin": null}`.
+- **Tier-aware value score**: Cross-tier uses `50 + (delivery - expected) * 0.8` formula. Same-tier uses `spec*0.6 + price*0.4` blend.
+- **Dimension winners**: `compute_dimension_winners(result, names, category)` — per-dimension comparison, tie threshold=3.0.
 - **Coverage penalty**: `CATEGORY_MIN_COVERAGE` thresholds per category (electronics=0.5, fashion=0.3).
-- **Derived ratings**: `_derive_rating_from_scores()` — display-only (2.5-4.8), not fed back to scoring. `extract_method: "score_derived"`.
-- **Personalization**: `MAX_WEIGHT_SHIFT_RATIO = 0.30` caps explicit shifts relative to CATEGORY base weights. `MAX_BEHAVIORAL_SHIFT_RATIO = 0.10`, `MAX_SESSION_SHIFT_RATIO = 0.05`. `scoring_method`: "category_weighted" (anon), "personalized" (explicit prefs), "behavioral" (behavior/session active).
-- **Value badges** (Session 29): `compute_value_badge(value_score, price_tier)` → great_value/fair_price/premium_price/overpriced.
-- **Tradeoff pairs** (Session 29): `compute_tradeoff_pairs()` — pairs winner/loser dimension advantages, margin>5%, max 3, sorted by combined impact.
-- **Confidence indicators** (Session 29): `compute_confidence()` — price source count/method/freshness, rating review_count/verified, specs verified_pct. Overall: high/medium/low.
-- **Enriched verdict prompt**: `build_scores_summary()` injects tier info, dimension leaders, category weights into GPT prompt.
-- Response includes `scoring` field (per-product breakdown), `tier_context`, `dimension_winners`, `price_tiers`.
+- **Personalization**: `MAX_WEIGHT_SHIFT_RATIO = 0.30`, `MAX_BEHAVIORAL_SHIFT_RATIO = 0.10`, `MAX_SESSION_SHIFT_RATIO = 0.05`.
+- **Value badges**: `compute_value_badge()` → great_value/fair_price/premium_price/overpriced.
+- **Tradeoff pairs**: `compute_tradeoff_pairs()` — margin>5%, max 3, sorted by combined impact.
+- **Confidence indicators**: `compute_confidence()` — price/rating/specs/overall (high/medium/low).
+- **Enriched verdict prompt**: `build_scores_summary()` injects tier info, dimension leaders (using `DIMENSION_DISPLAY_NAMES`), category weights.
+- **Rollback**: V1 universal 6-dimension system preserved in `docs/ROLLBACK_SCORING_V1.md`.
+
+### Prompt personalities + trust validation (Session 33)
+- Each category gets a different comparison "language" via `prompt_personalities.py`
+- Electronics: quantifiable benchmarks. Makeup: real-world experience. Fragrances: evocative descriptions. Supplements: clinical evidence + Bahrain registration.
+- `build_personality_prompt(category)` injects into verdict prompt — zero extra cost
+- `trust_validation_service.py`: `validate_verdict()` cross-checks GPT claims against deterministic scores post-generation
+- Returns: `winner_aligned`, `claims_validated`, `claims_softened`, `claims_flagged`, `confidence_adjustment`
+
+### Account deletion + auth hardening (Session 33)
+- `DELETE /api/v1/auth/account` — cascade deletes user_events, comparison_feedback, comparisons, search_logs, clears preferences/behavior_profile, deletes auth user. Rate limited 1/min.
+- Password strength: 10+ chars, 1 uppercase, 1 lowercase, 1 digit. Applied to register + change password.
+- `POST /api/v1/auth/resend-verification` — rate limited 3/min.
 
 ### SSE streaming
 `GET /api/v1/text/compare/stream` returns Server-Sent Events. 10 events: status(parsing) → status(fetching) → specs → prices → status(reviews) → reviews → scores → status(verdict) → verdict → complete. Status events include `progress` field (10/20/50/80). Frontend uses fetch+ReadableStream (not EventSource) with fallback to non-streaming. Non-streaming endpoint unchanged.
@@ -299,9 +315,9 @@ Category-independent multi-layer defense against counterfeit pricing:
 - **Sanity thresholds** (Session 26): official domain (retailer_score>=1.0) bypasses sanity check; luxury uses 1.8x/0.6x thresholds
 - Works across ALL categories (fragrances, fashion, makeup, etc.), not just fashion
 - **Page scraping** (Session 27): `_fetch_page_price()` with `_curl_fetch_html()` + `_extract_price_from_html()` for JSON-LD/OG/microdata extraction
-- **JS rendering** (Session 28→30): `_fetch_rendered_html()` with Cloudflare + Microlink parallel race. Cloudflare endpoint: `/browser-rendering/content` (NOT `/render`), body: `{"url": ..., "gotoOptions": {"waitUntil": "networkidle0"}}`. Also has `/scrape` endpoint for CSS selector extraction. `JS_ONLY_DOMAINS` skips curl_cffi for 16 known luxury domains. **Limitation discovered Session 30:** luxury SPAs return empty shells even after JS rendering — prices loaded via XHR, not in DOM.
-- **Timeouts**: `PAGE_SCRAPE_TIMEOUT=5` (curl_cffi), `JS_RENDER_TIMEOUT=8` (per provider). Total worst case: 13s within 20s Tier 1.5 budget.
-- **Temporary diagnostic endpoints** (Session 30): `/health/render-test`, `/health/render-price-test`, `/health/scrape-test` in `app/main.py`. Remove after luxury price investigation is complete.
+- **Firecrawl + Scrape.do** (Session 32): Replaced Cloudflare/Microlink. Firecrawl Tier 1.5a (official sites), Scrape.do Tier 1.5d (failed curl URLs only). Circuit breakers + budget tracking via `api_budget_service.py`.
+- **Expanded GCC retailers** (Session 32): `GCC_LUXURY_RETAILERS` now 9 domains: ounass, namshi, bloomingdales, level-shoes, harveynichols, galerieslafayette, theluxurycloset, boutique1.
+- **Timeouts**: `PAGE_SCRAPE_TIMEOUT=5` (curl_cffi), `FIRECRAWL_TIMEOUT=15`, `SCRAPEDO_TIMEOUT=15`.
 
 ### Review quality (Session 25 → 26)
 - `_clean_review_citations()` replaces `[snippet_N]` with "Per domain.com:" attributions
@@ -314,8 +330,8 @@ Spec extraction prompt instructs GPT to omit irrelevant fields instead of forcin
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
 **Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO)
-**JS Rendering (being replaced):** `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Browser Rendering API — token needs **`Account > Browser Rendering > Edit`** permission, NOT `Workers AI > Edit`), `MICROLINK_API_KEY` (optional, for higher limits). Without these, JS rendering gracefully skips.
-**Price Scraping (pending Session 31):** `FIRECRAWL_API_KEY` (firecrawl.dev, 500 lifetime free), `SCRAPEDO_API_TOKEN` (scrape.do, 1000/mo free), `ENABLE_FIRECRAWL` (default true), `ENABLE_SCRAPEDO` (default true). Will replace Cloudflare/Microlink vars after plan execution.
+**Price Scraping:** `FIRECRAWL_API_KEY` (firecrawl.dev, 500 lifetime free), `SCRAPEDO_API_TOKEN` (scrape.do, 1000/mo free), `ENABLE_FIRECRAWL` (default true), `ENABLE_SCRAPEDO` (default true). Without these, scraping gracefully skips.
+**Version Check:** `APP_MIN_VERSION`, `APP_LATEST_VERSION`, `APP_FORCE_UPDATE` (all optional, used by `/api/v1/app/version`)
 
 ### Serper API Credits
 - **Rotated Feb 28 2026**: Fresh 2,500 credits (~625-833 nocache comparisons)
@@ -336,7 +352,7 @@ Spec extraction prompt instructs GPT to omit irrelevant fields instead of forcin
 
 ### Run commands
 ```bash
-# All free unit tests (453 tests, ~5s, $0)
+# All free unit tests (~1418 tests, ~10s, $0)
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb, Serper, GPT vision — ~$0.03)
@@ -354,7 +370,7 @@ python -m pytest tests/ -v --timeout=180
 
 **Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` so all tests pick up Supabase credentials.
 
-### Test files (1088 unit, ~48 files; plus 14 live_unit + 6 live_db + 10 integration)
+### Test files (~1418 unit, ~63 files; plus 14 live_unit + 6 live_db + 10 integration)
 - `tests/test_auth_interceptor.py` — 93 tests: auth endpoints, token verify, optional/required user, profile, password, social login, MIME detection edge cases
 - `tests/test_fact_checking.py` — 48 tests: spec citation verification, shopping cross-validation, review sentiment, price verification, fact_check assembly
 - `tests/test_error_paths.py` — 31 tests: currency conversion, freshness, price parsing, supplement detection, title/number matching
@@ -376,7 +392,7 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_unified_search.py` — 4 tests: search sharing (specs/reviews), cost budget tracking
 - `tests/test_category_selection.py` — 46 tests: schema validation, prompt building, API params, category switching, parser prompt, live GPT extraction
 - `tests/test_personalization.py` — 52 tests: preference validation, GET/PUT endpoints, service functions, auth response flag, prompt injection, comparison metadata, valid options
-- `tests/test_scoring_service.py` — 122 tests: category weights, price tiers, value score, dimension winners, coverage thresholds, personalization, determinism, value badges, tradeoff pairs, confidence indicators, behavioral weight adjustments
+- `tests/test_scoring_service.py` — 122 tests: category-specific dimension weights, price tiers, value score, dimension winners, coverage thresholds, personalization, determinism, value badges, tradeoff pairs, confidence indicators, behavioral weight adjustments
 - `tests/test_feedback.py` — 29 tests: feedback submission, event tracking, validation, batch, fire-and-forget
 - `tests/test_streaming.py` — 26 tests: SSE format, event sequence, generator, endpoint, error handling, new response structure, progress events
 - `tests/test_behavior_service.py` — 30 tests: decay weight, category affinity, price range, winner agreement, dimension sensitivity, session signals, full profile
@@ -392,15 +408,30 @@ python -m pytest tests/ -v --timeout=180
 - `tests/test_price_priority.py` — 11 tests: authoritative price sorting, official domain boost, source priority hierarchy, title match rejection
 - `tests/test_citation_cleanup.py` — 13 tests: snippet reference replacement, domain attribution, edge cases
 - `tests/test_review_cleanup.py` — 19 tests: garbage pattern filtering, sentiment misclassification, derived ratings, edge cases
-- `tests/test_js_rendering.py` — 14 tests: _fetch_rendered_html providers, _fetch_page_price JS render fallback, JS_ONLY_DOMAINS, feature flags
-- `tests/test_page_scraping.py` — 15 tests: _fetch_page_price curl_cffi, JSON-LD/OG/microdata extraction
-- `tests/test_luxury_price_tiers.py` — tests for Tier 1.5 cascade, authorized/GCC retailers
+- `tests/test_js_rendering.py` — 14 tests: Firecrawl/Scrape.do architecture verification, dead code removal assertions (Session 32 rewrite)
+- `tests/test_page_scraping.py` — 15 tests: _fetch_page_price curl_cffi only, _got_html signal, JSON-LD/OG/microdata extraction (Session 32 update)
+- `tests/test_luxury_price_tiers.py` — tests for Tier 1.5 cascade, authorized/GCC retailers, expanded domains (Session 32 update)
+- `tests/test_api_budget_service.py` — 51 tests: credit tracking, circuit breaker states, Redis fail-open, budget keys, usage summary
+- `tests/test_firecrawl_service.py` — 28 tests: scrape_page, scrape_page_with_status, is_available, error handling, boundary cases
+- `tests/test_scrapedo_service.py` — 25 tests: render_page, render_page_with_status, is_available, error handling
+- `tests/test_cascade_hardening.py` — 29 tests: Gate 0, Firecrawl gating, circuit breaker classification, Scrape.do Tier 1.5d, dead code
+- `tests/test_input_validation.py` — 30 tests: _validate_price_query boundaries, _validate_scrape_url patterns
+- `tests/test_cost_dashboard.py` — 8 tests: /api/v1/admin/costs endpoint auth, response format
+- `tests/test_category_dimensions.py` — 28 tests: CATEGORY_DIMENSIONS config, weights, priority adjustments, display names, backward compat aliases
+- `tests/test_scoring_edge_cases.py` — 25 tests: all-category scoring, empty specs, null prices, extreme personalization, behavioral edges
+- `tests/test_prompt_personalities.py` — 12 tests: all 9 categories have personalities, required keys, trust rules, category-specific content
+- `tests/test_trust_validation.py` — 11 tests: winner alignment, misalignment, dimension claims, confidence adjustment
+- `tests/test_trust_edge_cases.py` — 9 tests: None values, empty scoring, single product, all tied, unknown category
+- `tests/test_personality_edge_cases.py` — 9 tests: empty/None/mixed-case category, token budget, uniqueness
+- `tests/test_account_deletion.py` — 21 tests: deletion auth, cascade, password strength, resend verification
+- `tests/test_legal_routes.py` — 7 tests: privacy/terms endpoints, no auth required, content validation
+- `tests/test_version_routes.py` — 7 tests: version endpoint, env var reading, defaults
 - `tests/test_integration.py` — 10 tests: live Railway (~$0.10, ~5 min)
 
 ## Known Remaining Bugs (deferred)
 
 These are known issues that have been intentionally deferred:
-- **Luxury official site prices still estimated** (Session 30→31): Cloudflare/Microlink confirmed broken — luxury SPAs load prices via XHR, not DOM. **Implementation plan ready**: `docs/superpowers/plans/2026-03-24-firecrawl-price-resolution.md` — Firecrawl Smart Wait + Scrape.do rendering + GCC retailer expansion. Diagnostic endpoints `/health/render-test`, `/health/render-price-test`, `/health/scrape-test` in `app/main.py` — will be removed during plan execution (Task 6).
+- **Luxury prices pending validation** (Session 32): Firecrawl + Scrape.do implemented but not yet tested with real API keys. Phase 0 validation spike needed: sign up at firecrawl.dev + scrape.do, add keys to .env, test 3 luxury URLs. Then add keys to Railway and deploy.
 - **value_context identical for all products** (Session 29): `overview.products[i].value_context` uses same string from comparison dict for all products. Minor UX issue — GPT generates one value context, not per-product.
 - Google Sign-In: Supabase Google provider needs to be enabled in dashboard (client IDs configured in code)
 - Apple Sign-In: deferred — requires Apple Developer subscription ($99/year); code is ready

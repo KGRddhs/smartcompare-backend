@@ -689,6 +689,10 @@ class StructuredComparisonService:
             )
             self._track_gpt_cost(usage)
 
+            # Trust validation: cross-check GPT claims against scores
+            from app.services.trust_validation_service import validate_verdict
+            verdict_validation = validate_verdict(comparison, scoring_result, detected_category)
+
             if include_pros_cons:
                 product_data[0]["pros_cons"] = {
                     "pros": comparison.pop("product_0_pros", []),
@@ -849,6 +853,7 @@ class StructuredComparisonService:
                         "product_0": product_data[0].get("fact_check", {}),
                         "product_1": product_data[1].get("fact_check", {}),
                     },
+                    "verdict_validation": verdict_validation,
                     "timestamp": datetime.now().isoformat(),
                 },
             }
