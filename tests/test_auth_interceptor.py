@@ -227,14 +227,12 @@ async def test_verify_token_returns_none_on_exception():
 
 @pytest.mark.asyncio
 async def test_register_rejects_short_password():
-    """Register endpoint rejects passwords shorter than 6 chars."""
-    from fastapi import HTTPException
-    from app.api.auth_routes import register, RegisterRequest
+    """Register endpoint rejects passwords shorter than 10 chars."""
+    from app.api.auth_routes import RegisterRequest
+    from pydantic import ValidationError
 
-    with pytest.raises(HTTPException) as exc_info:
-        await register(_mock_request(), RegisterRequest(email="test@example.com", password="12345"))
-    assert exc_info.value.status_code == 400
-    assert "at least 6 characters" in exc_info.value.detail
+    with pytest.raises(ValidationError):
+        RegisterRequest(email="test@example.com", password="Short1")
 
 
 @pytest.mark.asyncio
@@ -275,7 +273,7 @@ async def test_register_success():
         "session": {"access_token": "tok", "refresh_token": "ref"},
     }
     with patch("app.api.auth_routes.register_user", new_callable=AsyncMock, return_value=mock_result):
-        result = await register(_mock_request(), RegisterRequest(email="new@example.com", password="password123"))
+        result = await register(_mock_request(), RegisterRequest(email="new@example.com", password="Password123"))
     assert result["success"] is True
     assert result["user"]["email"] == "new@example.com"
 
@@ -288,7 +286,7 @@ async def test_register_failure_returns_400():
     with patch("app.api.auth_routes.register_user", new_callable=AsyncMock,
                return_value={"success": False, "error": "Email already registered"}):
         with pytest.raises(HTTPException) as exc_info:
-            await register(_mock_request(), RegisterRequest(email="dup@example.com", password="password123"))
+            await register(_mock_request(), RegisterRequest(email="dup@example.com", password="Password123"))
     assert exc_info.value.status_code == 400
     assert "Email already registered" in exc_info.value.detail
 
@@ -841,7 +839,7 @@ async def test_change_password_success():
     with patch("app.api.auth_routes.change_user_password", new_callable=AsyncMock,
                return_value={"success": True, "message": "Password changed successfully"}):
         result = await change_password(
-            body=ChangePasswordRequest(current_password="oldpass123", new_password="newpass123"),
+            body=ChangePasswordRequest(current_password="oldpass123", new_password="NewPass1234"),
             current_user=mock_user
         )
     assert result["success"] is True
@@ -866,7 +864,7 @@ async def test_change_password_wrong_current():
                return_value={"success": False, "error": "Current password is incorrect"}):
         with pytest.raises(HTTPException) as exc_info:
             await change_password(
-                body=ChangePasswordRequest(current_password="wrong", new_password="newpass123"),
+                body=ChangePasswordRequest(current_password="wrong", new_password="NewPass1234"),
                 current_user=mock_user
             )
     assert exc_info.value.status_code == 400
@@ -1264,11 +1262,11 @@ async def test_change_password_passes_correct_user_info():
     with patch("app.api.auth_routes.change_user_password", new_callable=AsyncMock,
                return_value={"success": True, "message": "Changed"}) as mock_svc:
         await change_password(
-            body=ChangePasswordRequest(current_password="old", new_password="newpass"),
+            body=ChangePasswordRequest(current_password="old", new_password="NewPass1234"),
             current_user=mock_user
         )
 
-    mock_svc.assert_called_once_with("u-99", "pass@test.com", "old", "newpass")
+    mock_svc.assert_called_once_with("u-99", "pass@test.com", "old", "NewPass1234")
 
 
 @pytest.mark.asyncio
@@ -1544,11 +1542,11 @@ async def test_social_login_message_includes_provider():
 
 
 @pytest.mark.asyncio
-async def test_change_password_new_password_exactly_6_chars():
-    """New password with exactly 6 chars (minimum) should be valid."""
+async def test_change_password_new_password_exactly_10_chars():
+    """New password with exactly 10 chars (minimum) should be valid if it meets strength rules."""
     from app.api.auth_routes import ChangePasswordRequest
-    req = ChangePasswordRequest(current_password="whatever", new_password="123456")
-    assert req.new_password == "123456"
+    req = ChangePasswordRequest(current_password="whatever", new_password="Abcdefgh1x")
+    assert req.new_password == "Abcdefgh1x"
 
 
 @pytest.mark.asyncio

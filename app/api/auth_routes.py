@@ -22,6 +22,8 @@ from app.services.auth_service import (
     sign_in_with_social,
     get_user_preferences,
     save_user_preferences,
+    delete_user_account,
+    resend_verification_email,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,9 +35,27 @@ router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 # Request/Response Models
 # ============================================
 
+def _validate_password_strength(password: str) -> str:
+    """Validate password meets strength requirements."""
+    if len(password) < 10:
+        raise ValueError("Password must be at least 10 characters")
+    if not any(c.isupper() for c in password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not any(c.islower() for c in password):
+        raise ValueError("Password must contain at least one lowercase letter")
+    if not any(c.isdigit() for c in password):
+        raise ValueError("Password must contain at least one number")
+    return password
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=10)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, v):
+        return _validate_password_strength(v)
 
 
 class LoginRequest(BaseModel):
@@ -61,7 +81,12 @@ class UpdateEmailRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
-    new_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=10)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password_strength(cls, v):
+        return _validate_password_strength(v)
 
 
 VALID_PRIORITIES = ["price", "quality", "brand_reputation", "durability", "latest_features", "ease_of_use", "eco_friendly", "health_safety"]
@@ -188,16 +213,10 @@ async def get_optional_user(authorization: Optional[str] = Header(None)):
 async def register(request: Request, body: RegisterRequest):
     """
     Register a new user.
-    
-    - Email must be valid
-    - Password must be at least 6 characters
-    """
-    if len(body.password) < 6:
-        raise HTTPException(
-            status_code=400,
-            detail="Password must be at least 6 characters"
-        )
 
+    - Email must be valid
+    - Password must be at least 10 characters with uppercase, lowercase, and number
+    """
     result = await register_user(body.email, body.password)
     
     if not result["success"]:
@@ -360,6 +379,34 @@ async def social_login(request: Request, body: SocialLoginRequest):
     if not result["success"]:
         raise HTTPException(status_code=401, detail=result["error"])
     return result
+
+
+@router.delete("/account")
+@limiter.limit("1/minute")
+async def delete_account(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete user account and all associated data (App Store requirement)."""
+    try:
+        await delete_user_account(current_user["id"])
+        return {"success": True, "message": "Account and all associated data deleted"}
+    except Exception as e:
+        logger.error(f"Account deletion failed for user {current_user['id']}: {e}")
+        raise HTTPException(status_code=500, detail="Account deletion failed")
+
+
+@router.post("/resend-verification")
+@limiter.limit("3/minute")
+async def resend_verification(request: Request, body: PasswordResetRequest):
+    """Resend email verification link."""
+    try:
+        await resend_verification_email(body.email)
+        return {"success": True, "message": "Verification email sent if account exists"}
+    except Exception as e:
+        logger.error(f"Resend verification error: {e}")
+        # Always return success to avoid email enumeration
+        return {"success": True, "message": "Verification email sent if account exists"}
 
 
 # ============================================

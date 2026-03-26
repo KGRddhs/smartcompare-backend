@@ -36,7 +36,7 @@ async def get_user_by_id(user_id: str) -> Optional[Dict]:
         response = client.table("users").select("*").eq("id", user_id).single().execute()
         return response.data
     except Exception as e:
-        print(f"Error getting user: {e}")
+        logger.error(f"Error getting user: {e}")
         return None
 
 
@@ -47,7 +47,7 @@ async def get_user_by_email(email: str) -> Optional[Dict]:
         response = client.table("users").select("*").eq("email", email).single().execute()
         return response.data
     except Exception as e:
-        print(f"Error getting user by email: {e}")
+        logger.error(f"Error getting user by email: {e}")
         return None
 
 
@@ -61,7 +61,7 @@ async def create_user(email: str, subscription_tier: str = "free") -> Optional[D
         }).execute()
         return response.data[0] if response.data else None
     except Exception as e:
-        print(f"Error creating user: {e}")
+        logger.error(f"Error creating user: {e}")
         return None
 
 
@@ -83,8 +83,33 @@ async def update_user_subscription(
         client.table("users").update(update_data).eq("id", user_id).execute()
         return True
     except Exception as e:
-        print(f"Error updating subscription: {e}")
+        logger.error(f"Error updating subscription: {e}")
         return False
+
+
+# ============================================
+# Account Deletion
+# ============================================
+
+async def delete_user_data_cascade(user_id: str) -> bool:
+    """Delete all user data across all tables. Returns True on success."""
+    client = get_supabase_client()
+    try:
+        # Delete in dependency order (child tables first)
+        client.table("user_events").delete().eq("user_id", user_id).execute()
+        client.table("comparison_feedback").delete().eq("user_id", user_id).execute()
+        client.table("comparisons").delete().eq("user_id", user_id).execute()
+        client.table("search_logs").delete().eq("user_id", user_id).execute()
+        # Clear user preferences and behavior profile (keep row for auth deletion)
+        client.table("users").update({
+            "preferences": None,
+            "behavior_profile": None,
+            "preferences_completed": False,
+        }).eq("id", user_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error in cascade delete for user {user_id}: {e}")
+        raise
 
 
 # ============================================
@@ -160,7 +185,7 @@ async def get_user_comparisons(
         response = query.range(offset, offset + limit - 1).execute()
         return response.data or []
     except Exception as e:
-        print(f"Error getting comparisons: {e}")
+        logger.error(f"Error getting comparisons: {e}")
         return []
 
 
@@ -177,7 +202,7 @@ async def get_comparison_by_id(comparison_id: str) -> Optional[Dict]:
         )
         return response.data
     except Exception as e:
-        print(f"Error getting comparison: {e}")
+        logger.error(f"Error getting comparison: {e}")
         return None
 
 
@@ -194,7 +219,7 @@ async def delete_comparison(comparison_id: str, user_id: str) -> bool:
         )
         return len(response.data) > 0 if response.data else False
     except Exception as e:
-        print(f"Error deleting comparison: {e}")
+        logger.error(f"Error deleting comparison: {e}")
         return False
 
 
@@ -291,7 +316,7 @@ async def get_user_comparison_count(user_id: str) -> int:
         )
         return response.count or 0
     except Exception as e:
-        print(f"Error counting comparisons: {e}")
+        logger.error(f"Error counting comparisons: {e}")
         return 0
 
 
@@ -369,7 +394,7 @@ async def upsert_product(
         ).execute()
         return response.data[0]["id"] if response.data else None
     except Exception as e:
-        print(f"Error upserting product: {e}")
+        logger.error(f"Error upserting product: {e}")
         return None
 
 

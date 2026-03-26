@@ -221,7 +221,7 @@ async def verify_token(access_token: str) -> Optional[Dict]:
         return None
         
     except Exception as e:
-        print(f"Token verification failed: {e}")
+        logger.warning(f"Token verification failed: {e}")
         return None
 
 
@@ -232,7 +232,7 @@ async def get_user_profile(user_id: str) -> Optional[Dict]:
         response = admin.table("users").select("*").eq("id", user_id).single().execute()
         return response.data
     except Exception as e:
-        print(f"Error getting user profile: {e}")
+        logger.error(f"Error getting user profile: {e}")
         return None
 
 
@@ -372,6 +372,24 @@ async def save_user_preferences(user_id: str, preferences: Dict) -> Dict:
         return {"success": True, "message": "Preferences saved"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+async def delete_user_account(user_id: str) -> bool:
+    """Delete user account and all associated data."""
+    from app.services.database_service import delete_user_data_cascade
+    # First delete all user data
+    await delete_user_data_cascade(user_id)
+    # Then delete the auth user via admin client
+    admin = get_admin_client()
+    admin.auth.admin.delete_user(user_id)
+    return True
+
+
+async def resend_verification_email(email: str) -> bool:
+    """Resend email verification link."""
+    client = get_auth_client()
+    client.auth.resend({"type": "signup", "email": email})
+    return True
 
 
 async def request_password_reset(email: str) -> Dict:
