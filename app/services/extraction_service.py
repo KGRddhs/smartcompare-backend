@@ -718,6 +718,7 @@ async def generate_comparison(
     concern: str = "value",
     user_preferences: Optional[Dict[str, Any]] = None,
     scores_summary: Optional[str] = None,
+    category: str = "other",
 ) -> Dict[str, Any]:
     """Generate detailed comparison between two products."""
     try:
@@ -729,6 +730,10 @@ async def generate_comparison(
             currency=GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])["currency"],
             concern=concern
         )
+
+        # Append category-specific personality prompt
+        from app.services.prompt_personalities import build_personality_prompt
+        prompt += build_personality_prompt(category)
 
         # Append scoring context so GPT can reference deterministic scores
         if scores_summary:

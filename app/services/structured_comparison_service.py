@@ -316,8 +316,13 @@ class StructuredComparisonService:
                 parsed.get("comparison_type", "value") if not vision_products else "value",
                 user_preferences=user_preferences,
                 scores_summary=scores_summary,
+                category=detected_category,
             )
             self._track_gpt_cost(usage)
+
+            # Trust validation: cross-check GPT claims against scores
+            from app.services.trust_validation_service import validate_verdict
+            verdict_validation = validate_verdict(comparison, scoring_result, detected_category)
 
             # Extract pros/cons from comparison result into product data
             if include_pros_cons:
@@ -475,6 +480,7 @@ class StructuredComparisonService:
                         "product_0": product_data[0].get("fact_check", {}),
                         "product_1": product_data[1].get("fact_check", {}),
                     },
+                    "verdict_validation": verdict_validation,
                     "timestamp": datetime.now().isoformat(),
                 },
             }
@@ -679,6 +685,7 @@ class StructuredComparisonService:
                 parsed.get("comparison_type", "value") if not vision_products else "value",
                 user_preferences=user_preferences,
                 scores_summary=scores_summary,
+                category=detected_category,
             )
             self._track_gpt_cost(usage)
 
