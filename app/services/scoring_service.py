@@ -12,35 +12,175 @@ from app.services.extraction_service import CATEGORY_SPEC_SCHEMAS
 
 logger = logging.getLogger(__name__)
 
-# Category-specific scoring weights (each sums to 1.0)
-CATEGORY_WEIGHTS = {
-    "electronics":  {"price_score": 0.20, "spec_score": 0.25, "review_score": 0.20, "value_score": 0.15, "reliability_score": 0.15, "popularity_score": 0.05},
-    "supplements":  {"price_score": 0.10, "spec_score": 0.15, "review_score": 0.25, "value_score": 0.15, "reliability_score": 0.30, "popularity_score": 0.05},
-    "fashion":      {"price_score": 0.10, "spec_score": 0.15, "review_score": 0.25, "value_score": 0.15, "reliability_score": 0.10, "popularity_score": 0.25},
-    "fragrances":   {"price_score": 0.10, "spec_score": 0.10, "review_score": 0.30, "value_score": 0.15, "reliability_score": 0.10, "popularity_score": 0.25},
-    "grocery":      {"price_score": 0.25, "spec_score": 0.10, "review_score": 0.25, "value_score": 0.25, "reliability_score": 0.10, "popularity_score": 0.05},
-    "makeup":       {"price_score": 0.15, "spec_score": 0.15, "review_score": 0.30, "value_score": 0.15, "reliability_score": 0.10, "popularity_score": 0.15},
-    "skincare":     {"price_score": 0.15, "spec_score": 0.15, "review_score": 0.25, "value_score": 0.15, "reliability_score": 0.20, "popularity_score": 0.10},
-    "haircare":     {"price_score": 0.20, "spec_score": 0.10, "review_score": 0.30, "value_score": 0.20, "reliability_score": 0.10, "popularity_score": 0.10},
-    "other":        {"price_score": 0.20, "spec_score": 0.20, "review_score": 0.25, "value_score": 0.15, "reliability_score": 0.10, "popularity_score": 0.10},
+# Category-specific scoring dimensions (each category has 6)
+CATEGORY_DIMENSIONS = {
+    "electronics": [
+        "performance_score", "value_score", "build_quality_score",
+        "feature_score", "ecosystem_score", "futureproof_score",
+    ],
+    "grocery": [
+        "nutrition_score", "ingredient_score", "taste_score",
+        "serving_value_score", "dietary_score", "availability_score",
+    ],
+    "supplements": [
+        "efficacy_score", "safety_score", "dosage_score",
+        "serving_value_score", "form_score", "trust_score",
+    ],
+    "makeup": [
+        "shade_score", "longevity_score", "skin_compat_score",
+        "finish_score", "ingredient_safety_score", "perf_value_score",
+    ],
+    "skincare": [
+        "actives_score", "evidence_score", "skin_compat_score",
+        "formulation_score", "sensory_score", "results_value_score",
+    ],
+    "haircare": [
+        "hair_match_score", "results_score", "ingredient_score",
+        "scent_score", "multi_value_score", "scalp_score",
+    ],
+    "fragrances": [
+        "character_score", "longevity_score", "projection_score",
+        "versatility_score", "wear_value_score", "presentation_score",
+    ],
+    "fashion": [
+        "craft_score", "fit_score", "style_score",
+        "durability_score", "heritage_score", "cpw_score",
+    ],
+    "other": [
+        "function_score", "build_score", "review_score",
+        "value_score", "reliability_score", "feature_match_score",
+    ],
 }
 
-# Priority-based weight adjustments (deltas applied to default weights)
-PRIORITY_ADJUSTMENTS = {
-    "price": {"price_score": 0.15, "spec_score": -0.10, "value_score": 0.05},
-    "quality": {"spec_score": 0.15, "review_score": 0.05, "price_score": -0.15},
-    "brand_reputation": {"reliability_score": 0.10, "popularity_score": 0.10, "value_score": -0.15},
-    "durability": {"spec_score": 0.10, "reliability_score": 0.10, "price_score": -0.10, "value_score": -0.05},
-    "latest_features": {"spec_score": 0.15, "price_score": -0.10, "popularity_score": 0.05},
-    "ease_of_use": {"review_score": 0.10, "spec_score": -0.05, "popularity_score": 0.05},
-    "eco_friendly": {"reliability_score": 0.05, "review_score": 0.05, "price_score": -0.05},
-    "health_safety": {"reliability_score": 0.10, "review_score": 0.05, "price_score": -0.10},
+# Weights per category (each sums to 1.0)
+CATEGORY_DIMENSION_WEIGHTS = {
+    "electronics":  {"performance_score": 0.25, "value_score": 0.20, "build_quality_score": 0.15, "feature_score": 0.20, "ecosystem_score": 0.10, "futureproof_score": 0.10},
+    "grocery":      {"nutrition_score": 0.25, "ingredient_score": 0.20, "taste_score": 0.20, "serving_value_score": 0.15, "dietary_score": 0.15, "availability_score": 0.05},
+    "supplements":  {"efficacy_score": 0.30, "safety_score": 0.25, "dosage_score": 0.15, "serving_value_score": 0.10, "form_score": 0.10, "trust_score": 0.10},
+    "makeup":       {"shade_score": 0.20, "longevity_score": 0.25, "skin_compat_score": 0.20, "finish_score": 0.15, "ingredient_safety_score": 0.10, "perf_value_score": 0.10},
+    "skincare":     {"actives_score": 0.25, "evidence_score": 0.20, "skin_compat_score": 0.20, "formulation_score": 0.15, "sensory_score": 0.10, "results_value_score": 0.10},
+    "haircare":     {"hair_match_score": 0.25, "results_score": 0.25, "ingredient_score": 0.15, "scent_score": 0.15, "multi_value_score": 0.10, "scalp_score": 0.10},
+    "fragrances":   {"character_score": 0.25, "longevity_score": 0.25, "projection_score": 0.15, "versatility_score": 0.15, "wear_value_score": 0.10, "presentation_score": 0.10},
+    "fashion":      {"craft_score": 0.25, "fit_score": 0.20, "style_score": 0.20, "durability_score": 0.15, "heritage_score": 0.10, "cpw_score": 0.10},
+    "other":        {"function_score": 0.25, "build_score": 0.15, "review_score": 0.25, "value_score": 0.15, "reliability_score": 0.10, "feature_match_score": 0.10},
 }
 
+# Backward compatibility alias — existing code imports CATEGORY_WEIGHTS
+CATEGORY_WEIGHTS = CATEGORY_DIMENSION_WEIGHTS
+
+# Per-category priority adjustments (8 priorities x 9 categories)
+CATEGORY_PRIORITY_ADJUSTMENTS = {
+    "electronics": {
+        "price": {"value_score": 0.15, "performance_score": -0.10},
+        "quality": {"performance_score": 0.10, "build_quality_score": 0.10, "value_score": -0.10},
+        "brand_reputation": {"ecosystem_score": 0.10, "futureproof_score": 0.05, "value_score": -0.10},
+        "durability": {"build_quality_score": 0.15, "futureproof_score": 0.05, "performance_score": -0.10},
+        "latest_features": {"feature_score": 0.10, "futureproof_score": 0.10, "value_score": -0.10},
+        "ease_of_use": {"ecosystem_score": 0.10, "feature_score": 0.05, "futureproof_score": -0.10},
+        "eco_friendly": {"build_quality_score": 0.05, "ecosystem_score": 0.05, "performance_score": -0.05},
+        "health_safety": {"build_quality_score": 0.10, "value_score": -0.05},
+    },
+    "grocery": {
+        "price": {"serving_value_score": 0.15, "nutrition_score": -0.10},
+        "quality": {"nutrition_score": 0.10, "ingredient_score": 0.10, "serving_value_score": -0.10},
+        "brand_reputation": {"taste_score": 0.10, "availability_score": 0.05, "serving_value_score": -0.10},
+        "durability": {"ingredient_score": 0.05, "dietary_score": 0.05, "taste_score": -0.05},
+        "latest_features": {"nutrition_score": 0.05, "ingredient_score": 0.05, "availability_score": -0.05},
+        "ease_of_use": {"availability_score": 0.10, "taste_score": 0.05, "ingredient_score": -0.10},
+        "eco_friendly": {"ingredient_score": 0.10, "dietary_score": 0.05, "serving_value_score": -0.10},
+        "health_safety": {"nutrition_score": 0.10, "dietary_score": 0.10, "taste_score": -0.10},
+    },
+    "supplements": {
+        "price": {"serving_value_score": 0.15, "efficacy_score": -0.10},
+        "quality": {"efficacy_score": 0.10, "dosage_score": 0.10, "serving_value_score": -0.10},
+        "brand_reputation": {"trust_score": 0.10, "safety_score": 0.05, "serving_value_score": -0.10},
+        "durability": {"safety_score": 0.10, "trust_score": 0.05, "form_score": -0.10},
+        "latest_features": {"efficacy_score": 0.10, "dosage_score": 0.05, "form_score": -0.10},
+        "ease_of_use": {"form_score": 0.15, "dosage_score": -0.10},
+        "eco_friendly": {"safety_score": 0.05, "trust_score": 0.05, "serving_value_score": -0.05},
+        "health_safety": {"safety_score": 0.10, "efficacy_score": 0.05, "serving_value_score": -0.10},
+    },
+    "makeup": {
+        "price": {"perf_value_score": 0.15, "shade_score": -0.10},
+        "quality": {"longevity_score": 0.10, "finish_score": 0.10, "perf_value_score": -0.10},
+        "brand_reputation": {"finish_score": 0.10, "shade_score": 0.05, "perf_value_score": -0.10},
+        "durability": {"longevity_score": 0.15, "ingredient_safety_score": 0.05, "shade_score": -0.10},
+        "latest_features": {"shade_score": 0.10, "finish_score": 0.05, "perf_value_score": -0.10},
+        "ease_of_use": {"finish_score": 0.10, "skin_compat_score": 0.05, "shade_score": -0.10},
+        "eco_friendly": {"ingredient_safety_score": 0.10, "skin_compat_score": 0.05, "perf_value_score": -0.10},
+        "health_safety": {"ingredient_safety_score": 0.10, "skin_compat_score": 0.10, "longevity_score": -0.10},
+    },
+    "skincare": {
+        "price": {"results_value_score": 0.15, "actives_score": -0.10},
+        "quality": {"actives_score": 0.10, "formulation_score": 0.10, "results_value_score": -0.10},
+        "brand_reputation": {"evidence_score": 0.10, "formulation_score": 0.05, "results_value_score": -0.10},
+        "durability": {"formulation_score": 0.10, "actives_score": 0.05, "sensory_score": -0.10},
+        "latest_features": {"actives_score": 0.10, "evidence_score": 0.05, "sensory_score": -0.10},
+        "ease_of_use": {"sensory_score": 0.10, "formulation_score": 0.05, "actives_score": -0.10},
+        "eco_friendly": {"formulation_score": 0.10, "skin_compat_score": 0.05, "results_value_score": -0.10},
+        "health_safety": {"skin_compat_score": 0.10, "formulation_score": 0.10, "sensory_score": -0.10},
+    },
+    "haircare": {
+        "price": {"multi_value_score": 0.15, "hair_match_score": -0.10},
+        "quality": {"results_score": 0.10, "ingredient_score": 0.10, "multi_value_score": -0.10},
+        "brand_reputation": {"results_score": 0.10, "scent_score": 0.05, "multi_value_score": -0.10},
+        "durability": {"ingredient_score": 0.10, "scalp_score": 0.05, "scent_score": -0.10},
+        "latest_features": {"ingredient_score": 0.10, "results_score": 0.05, "multi_value_score": -0.10},
+        "ease_of_use": {"scent_score": 0.10, "multi_value_score": 0.05, "ingredient_score": -0.10},
+        "eco_friendly": {"ingredient_score": 0.10, "scalp_score": 0.05, "multi_value_score": -0.10},
+        "health_safety": {"scalp_score": 0.10, "ingredient_score": 0.10, "scent_score": -0.10},
+    },
+    "fragrances": {
+        "price": {"wear_value_score": 0.15, "character_score": -0.10},
+        "quality": {"character_score": 0.10, "longevity_score": 0.10, "wear_value_score": -0.10},
+        "brand_reputation": {"presentation_score": 0.10, "character_score": 0.05, "wear_value_score": -0.10},
+        "durability": {"longevity_score": 0.15, "projection_score": 0.05, "presentation_score": -0.10},
+        "latest_features": {"character_score": 0.10, "versatility_score": 0.05, "presentation_score": -0.10},
+        "ease_of_use": {"versatility_score": 0.10, "projection_score": 0.05, "character_score": -0.10},
+        "eco_friendly": {"character_score": 0.05, "presentation_score": 0.05, "wear_value_score": -0.05},
+        "health_safety": {"character_score": 0.05, "versatility_score": 0.05, "wear_value_score": -0.05},
+    },
+    "fashion": {
+        "price": {"cpw_score": 0.15, "craft_score": -0.10},
+        "quality": {"craft_score": 0.10, "durability_score": 0.10, "cpw_score": -0.10},
+        "brand_reputation": {"heritage_score": 0.10, "craft_score": 0.05, "cpw_score": -0.10},
+        "durability": {"durability_score": 0.15, "craft_score": 0.05, "style_score": -0.10},
+        "latest_features": {"style_score": 0.10, "fit_score": 0.05, "heritage_score": -0.10},
+        "ease_of_use": {"fit_score": 0.10, "style_score": 0.05, "heritage_score": -0.10},
+        "eco_friendly": {"craft_score": 0.05, "durability_score": 0.05, "cpw_score": -0.05},
+        "health_safety": {"fit_score": 0.10, "durability_score": 0.05, "style_score": -0.10},
+    },
+    "other": {
+        "price": {"value_score": 0.15, "function_score": -0.10},
+        "quality": {"function_score": 0.10, "build_score": 0.10, "value_score": -0.10},
+        "brand_reputation": {"reliability_score": 0.10, "review_score": 0.05, "value_score": -0.10},
+        "durability": {"build_score": 0.10, "reliability_score": 0.10, "feature_match_score": -0.10},
+        "latest_features": {"feature_match_score": 0.10, "function_score": 0.05, "value_score": -0.10},
+        "ease_of_use": {"review_score": 0.10, "feature_match_score": 0.05, "build_score": -0.10},
+        "eco_friendly": {"reliability_score": 0.05, "review_score": 0.05, "value_score": -0.05},
+        "health_safety": {"reliability_score": 0.10, "build_score": 0.05, "value_score": -0.10},
+    },
+}
+
+# Budget adjustments per category (same keys as category dimension weights)
+CATEGORY_BUDGET_ADJUSTMENTS = {
+    "electronics": {"budget": {"value_score": 0.10, "performance_score": -0.05}, "mid": {}, "premium": {"performance_score": 0.10, "value_score": -0.05}},
+    "grocery": {"budget": {"serving_value_score": 0.10, "nutrition_score": -0.05}, "mid": {}, "premium": {"nutrition_score": 0.10, "serving_value_score": -0.05}},
+    "supplements": {"budget": {"serving_value_score": 0.10, "efficacy_score": -0.05}, "mid": {}, "premium": {"efficacy_score": 0.10, "serving_value_score": -0.05}},
+    "makeup": {"budget": {"perf_value_score": 0.10, "shade_score": -0.05}, "mid": {}, "premium": {"longevity_score": 0.10, "perf_value_score": -0.05}},
+    "skincare": {"budget": {"results_value_score": 0.10, "actives_score": -0.05}, "mid": {}, "premium": {"actives_score": 0.10, "results_value_score": -0.05}},
+    "haircare": {"budget": {"multi_value_score": 0.10, "results_score": -0.05}, "mid": {}, "premium": {"results_score": 0.10, "multi_value_score": -0.05}},
+    "fragrances": {"budget": {"wear_value_score": 0.10, "character_score": -0.05}, "mid": {}, "premium": {"character_score": 0.10, "wear_value_score": -0.05}},
+    "fashion": {"budget": {"cpw_score": 0.10, "craft_score": -0.05}, "mid": {}, "premium": {"craft_score": 0.10, "cpw_score": -0.05}},
+    "other": {"budget": {"value_score": 0.10, "function_score": -0.05}, "mid": {}, "premium": {"function_score": 0.10, "value_score": -0.05}},
+}
+
+# Legacy aliases for backward compatibility
+PRIORITY_ADJUSTMENTS = CATEGORY_PRIORITY_ADJUSTMENTS.get("other", {})
 BUDGET_ADJUSTMENTS = {
-    "budget": {"price_score": 0.10, "value_score": 0.10, "spec_score": -0.10},
-    "mid": {},  # No adjustment for mid-range
-    "premium": {"spec_score": 0.10, "review_score": 0.05, "price_score": -0.10},
+    "budget": CATEGORY_BUDGET_ADJUSTMENTS["other"]["budget"],
+    "mid": CATEGORY_BUDGET_ADJUSTMENTS["other"]["mid"],
+    "premium": CATEGORY_BUDGET_ADJUSTMENTS["other"]["premium"],
 }
 
 # Maximum allowed shift ratio from category weight (±30%)
@@ -50,19 +190,38 @@ MAX_WEIGHT_SHIFT_RATIO = 0.30
 MAX_BEHAVIORAL_SHIFT_RATIO = 0.10  # ±10% of category weight
 MAX_SESSION_SHIFT_RATIO = 0.05     # ±5% of category weight
 
-# Spec fields where higher is better (electronics-focused)
-HIGHER_IS_BETTER = {
-    "ram", "storage", "battery", "rear_camera", "front_camera",
-    "count", "dosage", "serving_size",
-    "nutrition_protein", "shelf_life",
-    "shade_range", "spf", "volume", "longevity",
+# Spec fields higher/lower-is-better — organized by category
+HIGHER_IS_BETTER_BY_CATEGORY = {
+    "electronics": {"ram", "storage", "battery", "rear_camera", "front_camera"},
+    "grocery": {"nutrition_protein", "shelf_life"},
+    "supplements": {"count", "dosage", "serving_size"},
+    "makeup": {"shade_range", "spf", "volume"},
+    "skincare": {"spf", "volume"},
+    "haircare": {"volume"},
+    "fragrances": {"longevity", "volume"},
+    "fashion": set(),
+    "other": set(),
 }
 
-# Spec fields where lower is better
-LOWER_IS_BETTER = {
-    "weight",  # Lighter electronics = better (usually)
-    "nutrition_calories", "nutrition_fat", "nutrition_carbs",
+LOWER_IS_BETTER_BY_CATEGORY = {
+    "electronics": {"weight"},
+    "grocery": {"nutrition_calories", "nutrition_fat", "nutrition_carbs"},
+    "supplements": {"nutrition_calories"},
+    "makeup": set(),
+    "skincare": set(),
+    "haircare": set(),
+    "fragrances": set(),
+    "fashion": set(),
+    "other": set(),
 }
+
+# Legacy flat sets for backward compatibility
+HIGHER_IS_BETTER = set()
+for _s in HIGHER_IS_BETTER_BY_CATEGORY.values():
+    HIGHER_IS_BETTER |= _s
+LOWER_IS_BETTER = set()
+for _s in LOWER_IS_BETTER_BY_CATEGORY.values():
+    LOWER_IS_BETTER |= _s
 
 # Default score for missing data
 MISSING_SCORE = 50
@@ -87,12 +246,33 @@ CATEGORY_MIN_COVERAGE = {
 
 
 DIMENSION_DISPLAY_NAMES = {
-    "price_score": "price",
-    "spec_score": "specs",
-    "review_score": "reviews",
-    "value_score": "value",
-    "reliability_score": "reliability",
-    "popularity_score": "popularity",
+    # Electronics
+    "performance_score": "performance", "build_quality_score": "build quality",
+    "feature_score": "features", "ecosystem_score": "ecosystem", "futureproof_score": "future-proofing",
+    # Grocery
+    "nutrition_score": "nutrition", "ingredient_score": "ingredients", "taste_score": "taste",
+    "serving_value_score": "value per serving", "dietary_score": "dietary fit", "availability_score": "availability",
+    # Supplements
+    "efficacy_score": "efficacy", "safety_score": "safety", "dosage_score": "dosage",
+    "form_score": "form", "trust_score": "trust",
+    # Makeup
+    "shade_score": "shade match", "skin_compat_score": "skin compatibility",
+    "finish_score": "finish", "ingredient_safety_score": "ingredient safety", "perf_value_score": "performance value",
+    # Skincare
+    "actives_score": "active ingredients", "evidence_score": "efficacy evidence",
+    "formulation_score": "formulation", "sensory_score": "sensory experience", "results_value_score": "results value",
+    # Haircare
+    "hair_match_score": "hair type match", "results_score": "results", "scent_score": "scent",
+    "multi_value_score": "multi-benefit value", "scalp_score": "scalp safety",
+    # Fragrances
+    "character_score": "scent character", "longevity_score": "longevity", "projection_score": "projection",
+    "versatility_score": "versatility", "wear_value_score": "value per wear", "presentation_score": "presentation",
+    # Fashion
+    "craft_score": "craftsmanship", "fit_score": "fit & comfort", "style_score": "style",
+    "durability_score": "durability", "heritage_score": "brand heritage", "cpw_score": "cost per wear",
+    # Other / Shared
+    "function_score": "core function", "build_score": "build quality", "review_score": "reviews",
+    "value_score": "value", "reliability_score": "reliability", "feature_match_score": "feature match",
 }
 
 
