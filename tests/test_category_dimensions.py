@@ -137,3 +137,126 @@ class TestCategoryDimensions:
         """CATEGORY_WEIGHTS should be an alias for CATEGORY_DIMENSION_WEIGHTS."""
         from app.services.scoring_service import CATEGORY_WEIGHTS
         assert CATEGORY_WEIGHTS is CATEGORY_DIMENSION_WEIGHTS
+
+
+from app.services.scoring_service import ScoringService
+
+
+class TestCategoryScoring:
+    """Test that scoring uses category-specific dimensions."""
+
+    def _make_product(self, category, price=50, rating=4.0, review_count=100, specs=None):
+        return {
+            "category": category,
+            "brand": "TestBrand",
+            "name": "TestProduct",
+            "price": {"amount": price, "currency": "BHD"},
+            "rating": rating,
+            "review_count": review_count,
+            "specs": specs or {},
+            "reviews": {"source_ratings": [{"rating": rating}]},
+            "fact_check": {"specs_verified": 5, "specs_likely": 2, "specs_flagged": 0, "specs_unverified": 0, "price_verified": True, "review_sentiment_consistent": True},
+        }
+
+    def test_electronics_returns_electronics_dimensions(self):
+        svc = ScoringService()
+        products = [
+            self._make_product("electronics", price=100, rating=4.5, specs={"processor": "A17", "ram": "8 GB", "battery": "4422 mAh"}),
+            self._make_product("electronics", price=80, rating=4.0, specs={"processor": "Snapdragon 8", "ram": "6 GB", "battery": "3500 mAh"}),
+        ]
+        result = svc.compute_scores(products)
+        breakdown = result["scores"]["product_0"]["breakdown"]
+        assert "performance_score" in breakdown
+        assert "value_score" in breakdown
+        assert "build_quality_score" in breakdown
+        assert "price_score" not in breakdown  # old dimension gone
+
+    def test_makeup_returns_makeup_dimensions(self):
+        svc = ScoringService()
+        products = [
+            self._make_product("makeup", price=30, rating=4.2, specs={"shade_range": "40 shades", "finish": "matte"}),
+            self._make_product("makeup", price=25, rating=4.0, specs={"shade_range": "24 shades", "finish": "dewy"}),
+        ]
+        result = svc.compute_scores(products)
+        breakdown = result["scores"]["product_0"]["breakdown"]
+        assert "shade_score" in breakdown
+        assert "longevity_score" in breakdown
+        assert "skin_compat_score" in breakdown
+
+    def test_fragrances_returns_fragrance_dimensions(self):
+        svc = ScoringService()
+        products = [
+            self._make_product("fragrances", price=120, rating=4.5, specs={"longevity": "8 hours", "sillage": "strong"}),
+            self._make_product("fragrances", price=90, rating=4.0, specs={"longevity": "4 hours", "sillage": "moderate"}),
+        ]
+        result = svc.compute_scores(products)
+        breakdown = result["scores"]["product_0"]["breakdown"]
+        assert "character_score" in breakdown
+        assert "longevity_score" in breakdown
+        assert "projection_score" in breakdown
+
+    def test_personalization_uses_category_priority_adjustments(self):
+        svc = ScoringService()
+        products = [
+            self._make_product("electronics", price=100, specs={"processor": "A17", "ram": "8 GB"}),
+            self._make_product("electronics", price=80, specs={"processor": "SD8", "ram": "6 GB"}),
+        ]
+        # Quality priority in electronics should boost performance_score
+        prefs = {"priorities": ["quality"], "budget": "premium"}
+        result = svc.compute_scores(products, preferences=prefs)
+        weights = result["scores"]["product_0"]["weights_used"]
+        default_perf = 0.25  # from CATEGORY_DIMENSION_WEIGHTS
+        assert weights["performance_score"] >= default_perf, "quality priority should boost performance"
+
+    def test_scoring_deterministic(self):
+        svc = ScoringService()
+        products = [
+            self._make_product("skincare", price=40, rating=4.3, specs={"active_ingredient": "retinol 0.3%", "skin_type": "all"}),
+            self._make_product("skincare", price=35, rating=4.1, specs={"active_ingredient": "niacinamide 5%", "skin_type": "sensitive"}),
+        ]
+        r1 = svc.compute_scores(products)
+        r2 = svc.compute_scores(products)
+        assert r1["scores"]["product_0"]["overall"] == r2["scores"]["product_0"]["overall"]
+
+    def test_dimension_winners_uses_new_keys(self):
+        svc = ScoringService()
+        products = [
+            self._make_product("fashion", price=200, rating=4.5, specs={"material": "full-grain leather", "craftsmanship": "hand-stitched"}),
+            self._make_product("fashion", price=80, rating=4.0, specs={"material": "bonded leather", "craftsmanship": "machine-made"}),
+        ]
+        result = svc.compute_scores(products)
+        dim_winners = result["dimension_winners"]
+        assert "craft_score" in dim_winners
+        assert "fit_score" in dim_winners
+        assert "price_score" not in dim_winners  # old key gone
+
+    def test_build_scores_summary_uses_new_keys(self):
+        svc = ScoringService()
+        products = [
+            self._make_product("supplements", price=25, rating=4.5, specs={"dosage": "500mg", "form": "capsule"}),
+            self._make_product("supplements", price=20, rating=4.0, specs={"dosage": "250mg", "form": "gummy"}),
+        ]
+        result = svc.compute_scores(products)
+        summary = svc.build_scores_summary(result, ["Product A", "Product B"])
+        assert "efficacy" in summary or "safety" in summary
+        assert "price=" not in summary  # old format gone
+
+    def test_category_weights_returned_in_result(self):
+        svc = ScoringService()
+        products = [
+            self._make_product("grocery", price=5, rating=4.0),
+            self._make_product("grocery", price=4, rating=3.8),
+        ]
+        result = svc.compute_scores(products)
+        assert "category_weights" in result
+        assert "nutrition_score" in result["category_weights"]
+
+    def test_other_category_fallback(self):
+        svc = ScoringService()
+        products = [
+            self._make_product("unknown_xyz", price=50, rating=4.0),
+            self._make_product("unknown_xyz", price=40, rating=3.8),
+        ]
+        result = svc.compute_scores(products)
+        breakdown = result["scores"]["product_0"]["breakdown"]
+        assert "function_score" in breakdown  # falls back to "other" dims

@@ -62,9 +62,9 @@ class TestBehaviorIntegration:
         # Score with behavior profile
         behavior_profile = {
             "dimension_sensitivity": {
-                "spec_score": 0.6,
-                "price_score": 0.3,
-                "review_score": 0.1,
+                "performance_score": 0.6,
+                "value_score": 0.3,
+                "futureproof_score": 0.1,
             },
         }
         result_with = service.compute_scores(products, behavior_profile=behavior_profile)
@@ -108,7 +108,7 @@ class TestBehaviorIntegration:
         from app.services.structured_comparison_service import StructuredComparisonService
 
         service = StructuredComparisonService()
-        mock_profile = {"dimension_sensitivity": {"spec_score": 0.5}}
+        mock_profile = {"dimension_sensitivity": {"performance_score": 0.5}}
 
         with patch('app.services.database_service.get_supabase_client') as mock_sb:
             mock_client = MagicMock()

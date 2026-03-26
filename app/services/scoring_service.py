@@ -277,7 +277,11 @@ DIMENSION_DISPLAY_NAMES = {
 
 
 class ScoringService:
-    """Deterministic scoring engine for product comparisons."""
+    """Deterministic scoring engine for product comparisons.
+
+    Uses category-specific dimensions (6 per category) instead of a universal set.
+    Each category has its own dimension keys, weights, and priority adjustments.
+    """
 
     def compute_scores(
         self,
@@ -286,27 +290,13 @@ class ScoringService:
         behavior_profile: Optional[Dict[str, Any]] = None,
         session_signals: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Compute scores for a list of products.
-
-        Args:
-            products_data: List of product dicts (from _fetch_product_data).
-                Each has: specs, price, reviews, rating, review_count,
-                fact_check, rating_verified, rating_source, etc.
-            preferences: Optional user preferences dict with:
-                priorities (list), budget (str), lifestyle (list), brand_attitude (str)
-            behavior_profile: Optional behavioral profile dict from user history.
-                Applied as ±10% weight adjustment after explicit preferences.
-            session_signals: Optional in-session signals dict from current session.
-                Applied as ±5% weight adjustment after behavioral adjustments.
-
-        Returns:
-            Dict with per-product scores, winner, and metadata.
-        """
+        """Compute scores for a list of products using category-specific dimensions."""
         if not products_data or len(products_data) < 2:
             return self._empty_result(len(products_data))
 
         category = products_data[0].get("category", "other")
+        if category not in CATEGORY_DIMENSIONS:
+            category = "other"
         weights = self._compute_weights(preferences, category)
 
         # Apply behavioral and session adjustments (layered on top of explicit preferences)
@@ -321,23 +311,21 @@ class ScoringService:
             raw_scores.append(self._compute_raw_scores(product, category))
 
         # Normalize scores relative to each other (0-100 scale)
-        normalized = self._normalize_scores(raw_scores, products_data)
+        normalized = self._normalize_scores(raw_scores, products_data, category)
 
         # Compute overall weighted score for each product
+        dims = CATEGORY_DIMENSIONS.get(category, CATEGORY_DIMENSIONS["other"])
         result_products = {}
         for i, product in enumerate(products_data):
             product_key = f"product_{i}"
             breakdown = normalized[i]
             overall = sum(
-                breakdown[dim] * weights[dim] for dim in weights
+                breakdown.get(dim, MISSING_SCORE) * weights.get(dim, 0) for dim in weights
             )
             overall = round(max(0, min(100, overall)), 1)
 
             # Track which dimensions had missing data
-            missing_dims = []
-            for dim in CATEGORY_WEIGHTS["other"]:
-                if raw_scores[i].get(f"_{dim}_missing"):
-                    missing_dims.append(dim)
+            missing_dims = [dim for dim in dims if raw_scores[i].get(f"_{dim}_missing")]
 
             result_products[product_key] = {
                 "overall": overall,
@@ -370,7 +358,7 @@ class ScoringService:
             for p in products_data
         ]
         result_so_far = {"scores": result_products}
-        dimension_winners = self.compute_dimension_winners(result_so_far, product_names)
+        dimension_winners = self.compute_dimension_winners(result_so_far, product_names, category)
 
         return {
             "scores": result_products,
@@ -380,30 +368,36 @@ class ScoringService:
             "price_tiers": price_tiers_map,
             "is_cross_tier": self._is_cross_tier_flag if hasattr(self, '_is_cross_tier_flag') else False,
             "dimension_winners": dimension_winners,
-            "category_weights": dict(CATEGORY_WEIGHTS.get(category, CATEGORY_WEIGHTS["other"])),
+            "category_weights": dict(CATEGORY_DIMENSION_WEIGHTS.get(category, CATEGORY_DIMENSION_WEIGHTS["other"])),
         }
 
     def _compute_weights(self, preferences: Optional[Dict[str, Any]], category: str = "other") -> Dict[str, float]:
         """Compute scoring weights from category defaults + user preferences."""
-        base_weights = CATEGORY_WEIGHTS.get(category, CATEGORY_WEIGHTS["other"])
+        if category not in CATEGORY_DIMENSION_WEIGHTS:
+            category = "other"
+        base_weights = CATEGORY_DIMENSION_WEIGHTS[category]
         weights = dict(base_weights)
 
         if not preferences:
             return weights
 
-        # Apply priority adjustments (stack for multiple priorities)
+        # Apply category-specific priority adjustments (stack for multiple priorities)
+        cat_priority_adj = CATEGORY_PRIORITY_ADJUSTMENTS.get(category, {})
         for priority in preferences.get("priorities", []):
-            adjustments = PRIORITY_ADJUSTMENTS.get(priority, {})
+            adjustments = cat_priority_adj.get(priority, {})
             for dim, delta in adjustments.items():
-                weights[dim] = weights.get(dim, 0) + delta
+                if dim in weights:
+                    weights[dim] = weights[dim] + delta
 
-        # Apply budget adjustment
+        # Apply category-specific budget adjustment
         budget = preferences.get("budget", "mid")
-        budget_adj = BUDGET_ADJUSTMENTS.get(budget, {})
+        cat_budget_adj = CATEGORY_BUDGET_ADJUSTMENTS.get(category, {})
+        budget_adj = cat_budget_adj.get(budget, {})
         for dim, delta in budget_adj.items():
-            weights[dim] = weights.get(dim, 0) + delta
+            if dim in weights:
+                weights[dim] = weights[dim] + delta
 
-        # Cap each dimension's shift to ±30% of its CATEGORY weight (not global default)
+        # Cap each dimension's shift to +/-30% of its CATEGORY weight
         for dim in weights:
             cat_default = base_weights.get(dim, 0)
             max_val = cat_default * (1 + MAX_WEIGHT_SHIFT_RATIO)
@@ -432,53 +426,57 @@ class ScoringService:
         return len(set(tiers)) > 1
 
     def _compute_raw_scores(self, product: Dict[str, Any], category: str) -> Dict[str, Any]:
-        """Compute raw (un-normalized) dimension scores for a product."""
+        """Compute raw (un-normalized) signal scores for a product.
+
+        Extracts 5 universal signals: price, spec, review, reliability, popularity.
+        These are then mapped to category-specific dimensions in _normalize_scores.
+        """
         scores: Dict[str, Any] = {}
 
-        # Price score (raw: actual price amount, lower = better)
+        # Price signal (raw: actual price amount, lower = better)
         price_data = product.get("price")
         if price_data and isinstance(price_data, dict) and price_data.get("amount"):
             try:
                 scores["price_raw"] = float(price_data["amount"])
             except (ValueError, TypeError):
                 scores["price_raw"] = None
-                scores["_price_score_missing"] = True
+                scores["_price_missing"] = True
         else:
             scores["price_raw"] = None
-            scores["_price_score_missing"] = True
+            scores["_price_missing"] = True
 
-        # Spec score (raw: category-specific aggregate)
+        # Spec signal (raw: category-specific aggregate)
         specs = product.get("specs")
         if specs and isinstance(specs, dict):
             scores["spec_raw"] = self._score_specs(specs, category)
         else:
             scores["spec_raw"] = None
-            scores["_spec_score_missing"] = True
+            scores["_spec_missing"] = True
 
-        # Review score (raw: rating out of 5)
+        # Review signal (raw: rating out of 5)
         rating = product.get("rating")
         if rating is not None:
             try:
                 scores["review_raw"] = float(rating)
             except (ValueError, TypeError):
                 scores["review_raw"] = None
-                scores["_review_score_missing"] = True
+                scores["_review_missing"] = True
         else:
             scores["review_raw"] = None
-            scores["_review_score_missing"] = True
+            scores["_review_missing"] = True
 
-        # Reliability score (from fact_check)
+        # Reliability signal (from fact_check)
         fact_check = product.get("fact_check")
         if fact_check and isinstance(fact_check, dict):
             scores["reliability_raw"] = self._score_reliability(fact_check)
         else:
             scores["reliability_raw"] = None
-            scores["_reliability_score_missing"] = True
+            scores["_reliability_missing"] = True
 
-        # Popularity score (from review_count + source_ratings count)
+        # Popularity signal (from review_count + source_ratings count)
         scores["popularity_raw"] = self._score_popularity(product)
         if scores["popularity_raw"] is None:
-            scores["_popularity_score_missing"] = True
+            scores["_popularity_missing"] = True
 
         return scores
 
@@ -486,6 +484,9 @@ class ScoringService:
         """Score specs on a 0-1 scale based on category-specific logic."""
         schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
         schema_fields = CATEGORY_SPEC_SCHEMAS[schema_key]
+
+        higher = HIGHER_IS_BETTER_BY_CATEGORY.get(category, set())
+        lower = LOWER_IS_BETTER_BY_CATEGORY.get(category, set())
 
         total_score = 0.0
         scored_fields = 0
@@ -497,32 +498,27 @@ class ScoringService:
 
             numeric = self._extract_number(str(value))
             if numeric is not None:
-                if field in HIGHER_IS_BETTER:
-                    # Higher = better; raw numeric stored for normalization
+                if field in higher:
                     total_score += numeric
                     scored_fields += 1
-                elif field in LOWER_IS_BETTER:
-                    # Lower = better; invert by using negative
+                elif field in lower:
                     total_score -= numeric
                     scored_fields += 1
                 else:
-                    # Neutral field — having data is slightly positive
                     total_score += 1
                     scored_fields += 1
             else:
-                # Non-numeric field with data — counts as having info
                 total_score += 1
                 scored_fields += 1
 
         if scored_fields == 0:
             return 0.0
 
-        # Penalty: if coverage below category threshold, penalize score
         total_fields = len(schema_fields)
         coverage_ratio = scored_fields / total_fields if total_fields > 0 else 0
         min_coverage = CATEGORY_MIN_COVERAGE.get(schema_key, 0.3)
         if coverage_ratio < min_coverage:
-            penalty_factor = 0.5 + coverage_ratio  # Range: 0.5 to 1.0
+            penalty_factor = 0.5 + coverage_ratio
             return (total_score / scored_fields) * penalty_factor
 
         return total_score / scored_fields
@@ -538,14 +534,11 @@ class ScoringService:
         if total == 0:
             return 0.5
 
-        # Weighted: verified=1.0, likely=0.7, unverified=0.3, flagged=0.0
         score = (verified * 1.0 + likely * 0.7 + unverified * 0.3 + flagged * 0.0) / total
 
-        # Bonus for verified price
         if fact_check.get("price_verified"):
             score = min(1.0, score + 0.1)
 
-        # Bonus for consistent review sentiment
         if fact_check.get("review_sentiment_consistent") is True:
             score = min(1.0, score + 0.05)
         elif fact_check.get("review_sentiment_consistent") is False:
@@ -574,24 +567,79 @@ class ScoringService:
             except (ValueError, TypeError):
                 count = 0
 
-        # Log scale for review count (1000 reviews = 1.0, 100 = 0.66, 10 = 0.33)
         import math
         if count > 0:
-            count_score = min(1.0, math.log10(count) / 3.0)  # log10(1000) = 3
+            count_score = min(1.0, math.log10(count) / 3.0)
         else:
             count_score = 0.0
 
-        # Source count bonus (more retailers = more popular)
         source_bonus = min(0.2, source_count * 0.05)
 
         return min(1.0, count_score + source_bonus)
+
+    # ---- Dimension mapping: raw signals → category-specific dimension keys ----
+    # Each category maps its 6 dimensions to one of the 5 raw signals.
+    # "value"-type dims use the tier-aware value formula (spec+price combo).
+    # "spec"-type dims use spec_raw, "review"-type use review_raw, etc.
+
+    _DIMENSION_SIGNAL_MAP = {
+        "electronics": {
+            "performance_score": "spec", "value_score": "value",
+            "build_quality_score": "reliability", "feature_score": "spec_secondary",
+            "ecosystem_score": "popularity", "futureproof_score": "review",
+        },
+        "grocery": {
+            "nutrition_score": "spec", "ingredient_score": "reliability",
+            "taste_score": "review", "serving_value_score": "value",
+            "dietary_score": "spec_secondary", "availability_score": "popularity",
+        },
+        "supplements": {
+            "efficacy_score": "spec", "safety_score": "reliability",
+            "dosage_score": "spec_secondary", "serving_value_score": "value",
+            "form_score": "review", "trust_score": "popularity",
+        },
+        "makeup": {
+            "shade_score": "spec", "longevity_score": "review",
+            "skin_compat_score": "reliability", "finish_score": "spec_secondary",
+            "ingredient_safety_score": "popularity", "perf_value_score": "value",
+        },
+        "skincare": {
+            "actives_score": "spec", "evidence_score": "reliability",
+            "skin_compat_score": "review", "formulation_score": "spec_secondary",
+            "sensory_score": "popularity", "results_value_score": "value",
+        },
+        "haircare": {
+            "hair_match_score": "spec", "results_score": "review",
+            "ingredient_score": "reliability", "scent_score": "spec_secondary",
+            "multi_value_score": "value", "scalp_score": "popularity",
+        },
+        "fragrances": {
+            "character_score": "spec", "longevity_score": "spec_secondary",
+            "projection_score": "review", "versatility_score": "reliability",
+            "wear_value_score": "value", "presentation_score": "popularity",
+        },
+        "fashion": {
+            "craft_score": "spec", "fit_score": "review",
+            "style_score": "popularity", "durability_score": "reliability",
+            "heritage_score": "spec_secondary", "cpw_score": "value",
+        },
+        "other": {
+            "function_score": "spec", "build_score": "reliability",
+            "review_score": "review", "value_score": "value",
+            "reliability_score": "spec_secondary", "feature_match_score": "popularity",
+        },
+    }
 
     def _normalize_scores(
         self,
         raw_scores: List[Dict[str, Any]],
         products_data: List[Dict[str, Any]],
+        category: str = "other",
     ) -> List[Dict[str, float]]:
-        """Normalize raw scores to 0-100 scale relative to each other."""
+        """Normalize raw scores to category-specific dimensions on 0-100 scale."""
+        if category not in CATEGORY_DIMENSIONS:
+            category = "other"
+
         # Detect price tiers for value score
         self._price_tiers = []
         for rs in raw_scores:
@@ -599,44 +647,60 @@ class ScoringService:
             if price is not None and price > 0:
                 self._price_tiers.append(self._detect_price_tier(price))
             else:
-                self._price_tiers.append("mid")  # default tier for missing price
+                self._price_tiers.append("mid")
         self._is_cross_tier_flag = self._is_cross_tier(self._price_tiers)
 
-        normalized = []
+        # Compute intermediate normalized signals
+        price_scores = [self._normalize_price(raw_scores, i) for i in range(len(raw_scores))]
+        spec_scores = [self._normalize_dimension(raw_scores, i, "spec_raw", higher_better=True) for i in range(len(raw_scores))]
+        review_scores = [self._normalize_review(raw_scores, i) for i in range(len(raw_scores))]
+        reliability_scores = [self._normalize_direct(raw_scores, i, "reliability_raw") for i in range(len(raw_scores))]
+        popularity_scores = [self._normalize_direct(raw_scores, i, "popularity_raw") for i in range(len(raw_scores))]
 
+        # Compute spec_secondary: blended spec and review for variety
+        spec_secondary_scores = []
+        for i in range(len(raw_scores)):
+            s = spec_scores[i]
+            r = review_scores[i]
+            if s == MISSING_SCORE and r == MISSING_SCORE:
+                spec_secondary_scores.append(MISSING_SCORE)
+            elif s == MISSING_SCORE:
+                spec_secondary_scores.append(r)
+            elif r == MISSING_SCORE:
+                spec_secondary_scores.append(s)
+            else:
+                spec_secondary_scores.append(round(s * 0.6 + r * 0.4, 1))
+
+        # Value scores (tier-aware)
+        value_scores = [
+            self._compute_value_score(spec_scores[i], price_scores[i], self._price_tiers[i], self._is_cross_tier_flag)
+            for i in range(len(raw_scores))
+        ]
+
+        signal_arrays = {
+            "price": price_scores,
+            "spec": spec_scores,
+            "review": review_scores,
+            "reliability": reliability_scores,
+            "popularity": popularity_scores,
+            "spec_secondary": spec_secondary_scores,
+            "value": value_scores,
+        }
+
+        # Map signals to category-specific dimension keys
+        dim_signal_map = self._DIMENSION_SIGNAL_MAP.get(category, self._DIMENSION_SIGNAL_MAP["other"])
+        dims = CATEGORY_DIMENSIONS[category]
+
+        normalized = []
         for i in range(len(raw_scores)):
             scores = {}
+            for dim in dims:
+                signal = dim_signal_map.get(dim, "spec")
+                scores[dim] = signal_arrays[signal][i]
 
-            # Price: lower is better, relative to competitors
-            scores["price_score"] = self._normalize_price(
-                raw_scores, i
-            )
-
-            # Spec: relative comparison
-            scores["spec_score"] = self._normalize_dimension(
-                raw_scores, i, "spec_raw", higher_better=True
-            )
-
-            # Review: rating/5 * 100
-            scores["review_score"] = self._normalize_review(
-                raw_scores, i
-            )
-
-            # Value: tier-aware scoring
-            scores["value_score"] = self._compute_value_score(
-                scores["spec_score"], scores["price_score"],
-                self._price_tiers[i], self._is_cross_tier_flag
-            )
-
-            # Reliability: direct 0-1 → 0-100
-            scores["reliability_score"] = self._normalize_direct(
-                raw_scores, i, "reliability_raw"
-            )
-
-            # Popularity: direct 0-1 → 0-100
-            scores["popularity_score"] = self._normalize_direct(
-                raw_scores, i, "popularity_raw"
-            )
+                # Mark missing data flag for tracking
+                if scores[dim] == MISSING_SCORE:
+                    raw_scores[i][f"_{dim}_missing"] = True
 
             normalized.append(scores)
 
@@ -658,16 +722,12 @@ class ScoringService:
         if max_price == 0:
             return MISSING_SCORE
 
-        # Lower price = better score
-        # score = (1 - price/max_price) * 100
-        # But we want minimum to still get a decent score, not 0
         min_price = min(prices)
         if max_price == min_price:
-            return 75.0  # Both same price
+            return 75.0
 
-        # Linear interpolation: cheapest = 100, most expensive = 30
-        ratio = (current - min_price) / (max_price - min_price)  # 0 = cheapest, 1 = most expensive
-        return round(100 - ratio * 70, 1)  # Range: 30-100
+        ratio = (current - min_price) / (max_price - min_price)
+        return round(100 - ratio * 70, 1)
 
     def _normalize_dimension(
         self, raw_scores: List[Dict], idx: int, key: str, higher_better: bool = True
@@ -687,14 +747,13 @@ class ScoringService:
         min_val = min(values)
 
         if max_val == min_val:
-            return 70.0  # Tied
+            return 70.0
 
         if higher_better:
             ratio = (current - min_val) / (max_val - min_val)
         else:
             ratio = (max_val - current) / (max_val - min_val)
 
-        # Map ratio 0-1 → score 30-100
         return round(30 + ratio * 70, 1)
 
     def _normalize_review(self, raw_scores: List[Dict], idx: int) -> float:
@@ -703,9 +762,7 @@ class ScoringService:
         if rating is None:
             return MISSING_SCORE
 
-        # Clamp to 1-5 range
         rating = max(1.0, min(5.0, rating))
-        # Map 1-5 → 20-100
         return round((rating - 1.0) / 4.0 * 80 + 20, 1)
 
     def _normalize_direct(self, raw_scores: List[Dict], idx: int, key: str) -> float:
@@ -733,13 +790,15 @@ class ScoringService:
 
     def _empty_result(self, count: int) -> Dict[str, Any]:
         """Return empty scoring result for edge cases."""
+        dims = CATEGORY_DIMENSIONS["other"]
+        other_weights = CATEGORY_DIMENSION_WEIGHTS["other"]
         scores = {}
         for i in range(count):
             scores[f"product_{i}"] = {
                 "overall": MISSING_SCORE,
-                "breakdown": {k: MISSING_SCORE for k in CATEGORY_WEIGHTS["other"]},
-                "weights_used": dict(CATEGORY_WEIGHTS["other"]),
-                "missing_data": list(CATEGORY_WEIGHTS["other"].keys()),
+                "breakdown": {k: MISSING_SCORE for k in dims},
+                "weights_used": dict(other_weights),
+                "missing_data": list(dims),
             }
         return {
             "scores": scores,
@@ -748,17 +807,25 @@ class ScoringService:
             "scoring_method": "default",
         }
 
-    def compute_dimension_winners(self, scoring_result: Dict[str, Any], product_names: List[str]) -> Dict[str, Any]:
+    def compute_dimension_winners(self, scoring_result: Dict[str, Any], product_names: List[str], category: str = "other") -> Dict[str, Any]:
         """Compute per-dimension winner between two products."""
         scores = scoring_result.get("scores", {})
         if len(scores) < 2 or len(product_names) < 2:
             return {}
 
-        dims = ["price_score", "spec_score", "review_score", "value_score", "reliability_score", "popularity_score"]
-        winners = {}
+        if category not in CATEGORY_DIMENSIONS:
+            category = "other"
+
+        # Infer category from breakdown keys if not provided explicitly
         b0 = scores.get("product_0", {}).get("breakdown", {})
         b1 = scores.get("product_1", {}).get("breakdown", {})
 
+        dims = CATEGORY_DIMENSIONS[category]
+        # Fallback: if breakdown keys don't match category dims, use whatever keys are there
+        if b0 and not any(d in b0 for d in dims):
+            dims = list(b0.keys())
+
+        winners = {}
         for dim in dims:
             s0 = b0.get(dim, MISSING_SCORE)
             s1 = b1.get(dim, MISSING_SCORE)
@@ -825,11 +892,9 @@ class ScoringService:
         if not winner_dims or not loser_dims:
             return []
 
-        # Sort both by margin descending
         winner_dims.sort(key=lambda x: x["margin"], reverse=True)
         loser_dims.sort(key=lambda x: x["margin"], reverse=True)
 
-        # Pair them: strongest winner dim with strongest loser dim, etc.
         pairs = []
         for i in range(min(len(winner_dims), len(loser_dims), 3)):
             pairs.append({
@@ -837,7 +902,6 @@ class ScoringService:
                 "loser_wins": loser_dims[i],
             })
 
-        # Sort by combined margin (most impactful first)
         pairs.sort(
             key=lambda p: p["winner_wins"]["margin"] + p["loser_wins"]["margin"],
             reverse=True,
@@ -851,15 +915,11 @@ class ScoringService:
         shopping_count: int = 0,
         cached: bool = False,
     ) -> Dict[str, Any]:
-        """Assemble confidence indicators from existing product data.
-
-        Returns dict with price, rating, specs, and overall confidence.
-        """
+        """Assemble confidence indicators from existing product data."""
         product = products[0] if products else {}
         price_data = product.get("price", {})
         fact_check = product.get("fact_check", {})
 
-        # Price confidence
         source_method = price_data.get("source_method", "estimated")
         if source_method in ("local_bhd", "page_scrape", "page_scrape_rendered"):
             method = "retailer_verified"
@@ -875,7 +935,6 @@ class ScoringService:
         }
         price_strong = shopping_count >= 2 and method != "estimated"
 
-        # Rating confidence
         review_count = product.get("review_count") or 0
         rating_verified = product.get("rating_verified", False)
         rating_source = product.get("rating_source")
@@ -886,7 +945,6 @@ class ScoringService:
         }
         rating_strong = review_count >= 50 and rating_verified
 
-        # Specs confidence
         verified = fact_check.get("specs_verified", 0)
         likely = fact_check.get("specs_likely", 0)
         unverified = fact_check.get("specs_unverified", 0)
@@ -899,7 +957,6 @@ class ScoringService:
         }
         specs_strong = verified_pct >= 60
 
-        # Overall
         strong_count = sum([price_strong, rating_strong, specs_strong])
         if strong_count >= 3:
             overall = "high"
@@ -922,24 +979,17 @@ class ScoringService:
         original: Dict[str, float],
         max_ratio: float,
     ) -> Dict[str, float]:
-        """Apply deltas to weights with per-dimension capping and renormalization.
-
-        Ensures no dimension shifts more than max_ratio * original[dim] from
-        its original value, even after renormalization.
-        """
-        # Apply clamped deltas
+        """Apply deltas to weights with per-dimension capping and renormalization."""
         for dim in weights:
             if dim in deltas:
                 max_shift = original[dim] * max_ratio
                 clamped = max(-max_shift, min(max_shift, deltas[dim]))
                 weights[dim] += clamped
 
-        # Renormalize, then re-clamp iteratively (max 3 passes)
         for _ in range(3):
             total = sum(weights.values())
             if total > 0:
                 weights = {k: v / total for k, v in weights.items()}
-            # Check if any dimension exceeds cap after renormalization
             exceeded = False
             for dim in weights:
                 max_shift = original[dim] * max_ratio
@@ -952,7 +1002,6 @@ class ScoringService:
             if not exceeded:
                 break
 
-        # Final renormalize
         total = sum(weights.values())
         if total > 0:
             weights = {k: v / total for k, v in weights.items()}
@@ -963,7 +1012,10 @@ class ScoringService:
         weights: Dict[str, float],
         behavior_profile: Dict[str, Any],
     ) -> Dict[str, float]:
-        """Apply behavioral profile adjustments to weights (capped at +/-10%)."""
+        """Apply behavioral profile adjustments to weights (capped at +/-10%).
+
+        Operates on whichever dimension keys are present in weights dict.
+        """
         sensitivity = behavior_profile.get("dimension_sensitivity", {})
         if not sensitivity:
             return weights
@@ -982,12 +1034,27 @@ class ScoringService:
         weights: Dict[str, float],
         session_signals: Dict[str, Any],
     ) -> Dict[str, float]:
-        """Apply in-session signal adjustments to weights (capped at +/-5%)."""
+        """Apply in-session signal adjustments to weights (capped at +/-5%).
+
+        Operates on whichever dimension keys are present in weights dict.
+        Tab-to-dimension mapping finds the first matching key in the weights.
+        """
         dwell = session_signals.get("tab_dwell_ms", {})
         if not dwell:
             return weights
 
-        tab_dim_map = {"specs": "spec_score", "reviews": "review_score", "overview": "price_score"}
+        # Dynamic tab → dimension mapping: find the best match in current weights
+        # "specs" tab → first spec-like dim, "reviews" → first review-like dim
+        dim_keys = list(weights.keys())
+        tab_dim_map = {}
+        for tab in dwell:
+            if tab == "specs" and len(dim_keys) > 0:
+                tab_dim_map[tab] = dim_keys[0]  # First dim is typically spec-related
+            elif tab == "reviews" and len(dim_keys) > 2:
+                tab_dim_map[tab] = dim_keys[2]  # Third dim is typically review-related
+            elif tab == "overview" and len(dim_keys) > 3:
+                tab_dim_map[tab] = dim_keys[3]  # Fourth dim as price/value proxy
+
         total_dwell = sum(dwell.values())
         if total_dwell == 0:
             return weights
@@ -1008,7 +1075,6 @@ class ScoringService:
         """Extract the first number from a text string."""
         if not text:
             return None
-        # Match numbers like 4422, 6.1, 3,274, 128
         match = re.search(r'[\d,]+\.?\d*', text.replace(",", ""))
         if match:
             try:
@@ -1025,6 +1091,16 @@ class ScoringService:
         lines = ["Product scores (deterministic, 0-100 scale):"]
         scores = scoring_result["scores"]
 
+        # Detect category from breakdown keys
+        sample_breakdown = scores.get("product_0", {}).get("breakdown", {})
+        category = "other"
+        for cat, dims in CATEGORY_DIMENSIONS.items():
+            if set(dims) == set(sample_breakdown.keys()):
+                category = cat
+                break
+
+        dims = CATEGORY_DIMENSIONS.get(category, CATEGORY_DIMENSIONS["other"])
+
         for i, name in enumerate(product_names):
             key = f"product_{i}"
             if key not in scores:
@@ -1034,24 +1110,25 @@ class ScoringService:
             breakdown = ps["breakdown"]
             tier = scoring_result.get("price_tiers", {}).get(name, "unknown")
             lines.append(f"  {name}: {overall}/100 overall (price tier: {tier})")
-            dims = []
-            for dim in ["price_score", "spec_score", "review_score", "value_score", "reliability_score", "popularity_score"]:
-                dims.append(f"{dim.replace('_score', '')}={breakdown.get(dim, 50)}")
-            lines.append(f"    Breakdown: {', '.join(dims)}")
+            dim_strs = []
+            for dim in dims:
+                display = DIMENSION_DISPLAY_NAMES.get(dim, dim.replace("_score", ""))
+                dim_strs.append(f"{display}={breakdown.get(dim, 50)}")
+            lines.append(f"    Breakdown: {', '.join(dim_strs)}")
 
         winner_idx = scoring_result.get("winner_index", 0)
         margin = scoring_result.get("win_margin", 0)
         if len(product_names) >= 2:
             lines.append(f"  Score winner: {product_names[winner_idx]} by {margin} points")
 
-        # Add dimension winners
         dim_winners = scoring_result.get("dimension_winners", {})
         if dim_winners:
             dim_parts = []
-            for dim in ["price_score", "spec_score", "review_score", "value_score", "reliability_score", "popularity_score"]:
+            for dim in dims:
                 w = dim_winners.get(dim, {})
                 winner = w.get("winner", "N/A")
-                dim_parts.append(f"{dim.replace('_score', '')}={winner}")
+                display = DIMENSION_DISPLAY_NAMES.get(dim, dim.replace("_score", ""))
+                dim_parts.append(f"{display}={winner}")
             lines.append(f"  Dimension leaders: {', '.join(dim_parts)}")
 
         if scoring_result.get("is_cross_tier"):
