@@ -23,6 +23,8 @@ from app.api.admin_routes import router as admin_router  # Admin analytics
 from app.api.feedback_routes import router as feedback_router  # Feedback + events
 from app.api.history_routes import router as history_router  # Comparison history
 from app.api.share_routes import router as share_router  # Comparison sharing
+from app.api.legal_routes import router as legal_router  # Legal (privacy, terms)
+from app.api.version_routes import router as version_router  # App version check
 
 # Import middleware
 from app.middleware.request_id import RequestIDMiddleware
@@ -111,6 +113,8 @@ app.include_router(admin_router, prefix="/api/v1/admin")  # /api/v1/admin/*
 app.include_router(feedback_router)  # /api/v1/feedback, /api/v1/events
 app.include_router(history_router)  # /api/v1/comparisons/*
 app.include_router(share_router)   # /api/v1/share/*
+app.include_router(legal_router)   # /api/v1/legal/*
+app.include_router(version_router) # /api/v1/app/*
 
 
 @app.get("/")
