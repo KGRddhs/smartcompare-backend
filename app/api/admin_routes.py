@@ -1,4 +1,5 @@
 """Admin routes — analytics endpoints protected by API key."""
+import hmac
 import os
 import logging
 from datetime import datetime, timezone
@@ -22,7 +23,7 @@ router = APIRouter(tags=["admin"])
 def verify_admin_key(x_admin_key: str = Header(...)):
     """Verify the admin API key from X-Admin-Key header."""
     expected = os.getenv("ADMIN_API_KEY", "")
-    if not expected or x_admin_key != expected:
+    if not expected or not hmac.compare_digest(x_admin_key, expected):
         raise HTTPException(status_code=403, detail="Invalid admin key")
     return True
 

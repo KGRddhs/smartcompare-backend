@@ -61,8 +61,8 @@ app = FastAPI(
     Amazon, Noon, Carrefour, Sharaf DG, Lulu Hypermarket, Extra, Jarir, Xcite
     """,
     version="2.1.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url=None if os.getenv("RAILWAY_ENVIRONMENT") else "/docs",
+    redoc_url=None if os.getenv("RAILWAY_ENVIRONMENT") else "/redoc",
 )
 
 # -- Middleware (order matters: outermost added last) --

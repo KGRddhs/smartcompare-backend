@@ -8,6 +8,7 @@ from pydantic import BaseModel, HttpUrl
 from starlette.requests import Request
 
 from app.middleware.rate_limiter import limiter
+from app.utils.url_validator import validate_external_url
 
 from app.services.url_extraction_service import (
     extract_from_url,
@@ -86,7 +87,10 @@ async def extract_product(request: Request, body: URLExtractRequest):
     - Images
     """
     logger.info(f"URL extraction request: {body.url}")
-    
+
+    if not validate_external_url(body.url):
+        raise HTTPException(status_code=400, detail="URL blocked by security policy")
+
     result = await extract_from_url(body.url)
     
     if not result.get("success"):
@@ -105,6 +109,9 @@ async def extract_product_get(
     url: str = Query(..., description="Product URL to extract")
 ):
     """GET version of extract for easy testing."""
+    if not validate_external_url(url):
+        raise HTTPException(status_code=400, detail="URL blocked by security policy")
+
     result = await extract_from_url(url)
     
     if not result.get("success"):
@@ -137,7 +144,10 @@ async def compare_urls(request: Request, body: URLCompareRequest):
     - Key differences
     """
     logger.info(f"URL comparison request: {body.url1} vs {body.url2}")
-    
+
+    if not validate_external_url(body.url1) or not validate_external_url(body.url2):
+        raise HTTPException(status_code=400, detail="URL blocked by security policy")
+
     result = await compare_from_urls(
         body.url1,
         body.url2,
@@ -162,6 +172,9 @@ async def compare_urls_get(
     region: str = Query("bahrain", description="Region for pricing context")
 ):
     """GET version of compare for easy testing."""
+    if not validate_external_url(url1) or not validate_external_url(url2):
+        raise HTTPException(status_code=400, detail="URL blocked by security policy")
+
     result = await compare_from_urls(url1, url2, region)
     
     if not result.get("success"):

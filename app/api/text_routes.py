@@ -15,6 +15,7 @@ from app.services.structured_comparison_service import (
     get_regional_prices
 )
 from app.api.auth_routes import get_optional_user
+from app.api.admin_routes import verify_admin_key
 from app.services.auth_service import get_user_preferences
 from app.services.database_service import save_comparison, log_search
 from app.middleware.rate_limiter import limiter
@@ -254,6 +255,10 @@ async def text_compare_stream(
             user_preferences=user_prefs,
             user_id=user.get("id") if user else None,
         ):
+            if await request.is_disconnected():
+                logger.info(f"[SSE] Client disconnected during stream for query: {q}")
+                return
+
             if event_type == "complete":
                 complete_response = data
             if event_type == "error":
@@ -373,7 +378,8 @@ async def get_gcc_prices(
 
 @router.delete("/cache")
 async def flush_product_cache(
-    q: str = Query(..., description="Product query, e.g., 'rtx 3090'")
+    q: str = Query(..., description="Product query, e.g., 'rtx 3090'"),
+    _admin: bool = Depends(verify_admin_key),
 ):
     """
     Flush cached price/specs/reviews for a product.
@@ -407,7 +413,8 @@ async def flush_product_cache(
 
 @router.get("/parse")
 async def parse_query(
-    q: str = Query(..., description="Query to parse, e.g., 'iPhone 15 vs S24'")
+    q: str = Query(..., description="Query to parse, e.g., 'iPhone 15 vs S24'"),
+    _admin: bool = Depends(verify_admin_key),
 ):
     """
     Debug endpoint: Parse a query without running full comparison.
