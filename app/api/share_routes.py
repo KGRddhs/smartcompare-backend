@@ -2,6 +2,7 @@
 Share Routes - Public comparison sharing endpoints
 """
 import logging
+from uuid import UUID
 from fastapi import APIRouter, HTTPException, Depends
 
 from app.api.auth_routes import get_current_user
@@ -16,12 +17,12 @@ SHARE_BASE_URL = "https://web-production-58776.up.railway.app/api/v1/share"
 
 @router.post("/{comparison_id}")
 async def share_comparison(
-    comparison_id: str,
+    comparison_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Generate a share link for a comparison. Requires ownership."""
     try:
-        token = await create_share_token(comparison_id, current_user["id"])
+        token = await create_share_token(str(comparison_id), current_user["id"])
     except PermissionError:
         raise HTTPException(status_code=403, detail="Not authorized to share this comparison")
 

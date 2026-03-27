@@ -264,10 +264,17 @@ async def refresh(request: RefreshRequest):
 
 
 @router.post("/logout")
-async def logout(current_user: dict = Depends(get_current_user)):
+async def logout(request: Request, current_user: dict = Depends(get_current_user)):
     """
     Logout current user.
     """
+    try:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            await logout_user(token)
+    except Exception as e:
+        logger.warning(f"Logout sign-out failed (non-critical): {e}")
     return {"success": True, "message": "Logged out successfully"}
 
 

@@ -2,6 +2,7 @@
 History Routes - Comparison history endpoints (restored from deleted routes.py)
 """
 import logging
+from uuid import UUID
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional
 
@@ -57,11 +58,11 @@ async def list_comparisons(
 
 @router.get("/{comparison_id}")
 async def get_comparison(
-    comparison_id: str,
+    comparison_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Get a single comparison with full response data."""
-    comparison = await get_comparison_by_id(comparison_id)
+    comparison = await get_comparison_by_id(str(comparison_id))
 
     if not comparison:
         raise HTTPException(status_code=404, detail="Comparison not found")
@@ -84,12 +85,12 @@ async def get_comparison(
 
 @router.delete("/{comparison_id}")
 async def remove_comparison(
-    comparison_id: str,
+    comparison_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Delete a comparison from history (ownership check)."""
     # First check it exists and belongs to user
-    comparison = await get_comparison_by_id(comparison_id)
+    comparison = await get_comparison_by_id(str(comparison_id))
 
     if not comparison:
         raise HTTPException(status_code=404, detail="Comparison not found")
@@ -97,7 +98,7 @@ async def remove_comparison(
     if comparison.get("user_id") != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized to delete this comparison")
 
-    deleted = await delete_comparison(comparison_id, current_user["id"])
+    deleted = await delete_comparison(str(comparison_id), current_user["id"])
     if not deleted:
         raise HTTPException(status_code=500, detail="Failed to delete comparison")
 

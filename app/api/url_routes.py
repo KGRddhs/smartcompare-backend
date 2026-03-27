@@ -5,6 +5,9 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, HttpUrl
+from starlette.requests import Request
+
+from app.middleware.rate_limiter import limiter
 
 from app.services.url_extraction_service import (
     extract_from_url,
@@ -62,7 +65,8 @@ async def list_supported_retailers():
 
 
 @router.post("/extract")
-async def extract_product(request: URLExtractRequest):
+@limiter.limit("10/minute")
+async def extract_product(request: Request, body: URLExtractRequest):
     """
     Extract product information from a single URL.
     
@@ -81,9 +85,9 @@ async def extract_product(request: URLExtractRequest):
     - Reviews/ratings
     - Images
     """
-    logger.info(f"URL extraction request: {request.url}")
+    logger.info(f"URL extraction request: {body.url}")
     
-    result = await extract_from_url(request.url)
+    result = await extract_from_url(body.url)
     
     if not result.get("success"):
         raise HTTPException(
@@ -95,7 +99,9 @@ async def extract_product(request: URLExtractRequest):
 
 
 @router.get("/extract")
+@limiter.limit("10/minute")
 async def extract_product_get(
+    request: Request,
     url: str = Query(..., description="Product URL to extract")
 ):
     """GET version of extract for easy testing."""
@@ -111,7 +117,8 @@ async def extract_product_get(
 
 
 @router.post("/compare")
-async def compare_urls(request: URLCompareRequest):
+@limiter.limit("10/minute")
+async def compare_urls(request: Request, body: URLCompareRequest):
     """
     Compare two products from their URLs.
     
@@ -129,12 +136,12 @@ async def compare_urls(request: URLCompareRequest):
     - Winner recommendation
     - Key differences
     """
-    logger.info(f"URL comparison request: {request.url1} vs {request.url2}")
+    logger.info(f"URL comparison request: {body.url1} vs {body.url2}")
     
     result = await compare_from_urls(
-        request.url1,
-        request.url2,
-        request.region
+        body.url1,
+        body.url2,
+        body.region
     )
     
     if not result.get("success"):
@@ -147,7 +154,9 @@ async def compare_urls(request: URLCompareRequest):
 
 
 @router.get("/compare")
+@limiter.limit("10/minute")
 async def compare_urls_get(
+    request: Request,
     url1: str = Query(..., description="First product URL"),
     url2: str = Query(..., description="Second product URL"),
     region: str = Query("bahrain", description="Region for pricing context")

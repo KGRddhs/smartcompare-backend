@@ -2,6 +2,7 @@
 Feedback Routes - Comparison feedback and event tracking endpoints
 """
 import asyncio
+import json
 import logging
 from typing import List, Optional
 
@@ -36,7 +37,7 @@ class FeedbackRequest(BaseModel):
     useful: bool
     comparison_id: Optional[str] = None
     mattered_most: List[str] = Field(default_factory=list)
-    change_suggestion: Optional[str] = None
+    change_suggestion: Optional[str] = Field(None, max_length=1000)
 
     @field_validator("mattered_most")
     @classmethod
@@ -54,6 +55,13 @@ class EventItem(BaseModel):
     event_type: str
     event_data: dict = Field(default_factory=dict)
     comparison_id: Optional[str] = None
+
+    @field_validator("event_data")
+    @classmethod
+    def validate_event_data_size(cls, v: dict) -> dict:
+        if len(json.dumps(v, default=str)) > 10_000:
+            raise ValueError("event_data too large (max 10KB)")
+        return v
 
     @field_validator("event_type")
     @classmethod

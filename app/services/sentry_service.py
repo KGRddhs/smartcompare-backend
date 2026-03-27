@@ -1,8 +1,18 @@
 """Sentry integration -- error monitoring and performance tracing."""
 import os
+import re
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_tokens_from_breadcrumb(breadcrumb, hint):
+    """Redact tokens from Sentry breadcrumb URLs."""
+    if breadcrumb.get("data") and isinstance(breadcrumb["data"], dict):
+        url = breadcrumb["data"].get("url", "")
+        if url:
+            breadcrumb["data"]["url"] = re.sub(r'token=[^&]+', 'token=REDACTED', url)
+    return breadcrumb
 
 
 def init_sentry():
@@ -27,6 +37,7 @@ def init_sentry():
             environment=os.getenv("RAILWAY_ENVIRONMENT", "development"),
             release=os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown"),
             send_default_pii=False,
+            before_breadcrumb=_strip_tokens_from_breadcrumb,
         )
         logger.info("Sentry initialized successfully")
     except ImportError:

@@ -180,7 +180,8 @@ async def get_user_comparisons(
         )
 
         if search:
-            query = query.ilike("query", f"%{search}%")
+            escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            query = query.ilike("query", f"%{escaped}%")
 
         response = query.range(offset, offset + limit - 1).execute()
         return response.data or []
