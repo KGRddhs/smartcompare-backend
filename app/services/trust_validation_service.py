@@ -45,6 +45,8 @@ def validate_verdict(
     softened = 0
     flagged = 0
 
+    verdict_winner = verdict.get("winner_index", 0)
+
     for dim in dims:
         s0 = b0.get(dim, MISSING_SCORE)
         s1 = b1.get(dim, MISSING_SCORE)
@@ -56,7 +58,11 @@ def validate_verdict(
             # Scores are essentially tied — any strong claim is overclaiming
             softened += 1
         else:
-            validated += 1
+            score_dim_leader = 0 if s0 > s1 else 1
+            if score_dim_leader != verdict_winner and gap >= 10.0:
+                flagged += 1
+            else:
+                validated += 1
 
     # Confidence adjustment
     confidence_adjustment = None

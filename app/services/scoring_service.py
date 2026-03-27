@@ -311,7 +311,7 @@ class ScoringService:
             raw_scores.append(self._compute_raw_scores(product, category))
 
         # Normalize scores relative to each other (0-100 scale)
-        normalized = self._normalize_scores(raw_scores, products_data, category)
+        normalized, price_tiers, is_cross_tier = self._normalize_scores(raw_scores, products_data, category)
 
         # Compute overall weighted score for each product
         dims = CATEGORY_DIMENSIONS.get(category, CATEGORY_DIMENSIONS["other"])
@@ -350,7 +350,7 @@ class ScoringService:
         price_tiers_map = {}
         for i, product in enumerate(products_data):
             name = f"{product.get('brand', '')} {product.get('name', '')}".strip()
-            price_tiers_map[name] = self._price_tiers[i] if hasattr(self, '_price_tiers') and i < len(self._price_tiers) else "mid"
+            price_tiers_map[name] = price_tiers[i] if i < len(price_tiers) else "mid"
 
         # Compute dimension winners
         product_names = [
@@ -366,7 +366,7 @@ class ScoringService:
             "win_margin": win_margin,
             "scoring_method": scoring_method,
             "price_tiers": price_tiers_map,
-            "is_cross_tier": self._is_cross_tier_flag if hasattr(self, '_is_cross_tier_flag') else False,
+            "is_cross_tier": is_cross_tier,
             "dimension_winners": dimension_winners,
             "category_weights": dict(CATEGORY_DIMENSION_WEIGHTS.get(category, CATEGORY_DIMENSION_WEIGHTS["other"])),
         }
@@ -635,20 +635,23 @@ class ScoringService:
         raw_scores: List[Dict[str, Any]],
         products_data: List[Dict[str, Any]],
         category: str = "other",
-    ) -> List[Dict[str, float]]:
-        """Normalize raw scores to category-specific dimensions on 0-100 scale."""
+    ):
+        """Normalize raw scores to category-specific dimensions on 0-100 scale.
+        
+        Returns (normalized, price_tiers, is_cross_tier_flag) tuple.
+        """
         if category not in CATEGORY_DIMENSIONS:
             category = "other"
 
         # Detect price tiers for value score
-        self._price_tiers = []
+        price_tiers = []
         for rs in raw_scores:
             price = rs.get("price_raw")
             if price is not None and price > 0:
-                self._price_tiers.append(self._detect_price_tier(price))
+                price_tiers.append(self._detect_price_tier(price))
             else:
-                self._price_tiers.append("mid")
-        self._is_cross_tier_flag = self._is_cross_tier(self._price_tiers)
+                price_tiers.append("mid")
+        is_cross_tier_flag = self._is_cross_tier(price_tiers)
 
         # Compute intermediate normalized signals
         price_scores = [self._normalize_price(raw_scores, i) for i in range(len(raw_scores))]
@@ -673,7 +676,7 @@ class ScoringService:
 
         # Value scores (tier-aware)
         value_scores = [
-            self._compute_value_score(spec_scores[i], price_scores[i], self._price_tiers[i], self._is_cross_tier_flag)
+            self._compute_value_score(spec_scores[i], price_scores[i], price_tiers[i], is_cross_tier_flag)
             for i in range(len(raw_scores))
         ]
 
@@ -704,7 +707,7 @@ class ScoringService:
 
             normalized.append(scores)
 
-        return normalized
+        return normalized, price_tiers, is_cross_tier_flag
 
     def _normalize_price(self, raw_scores: List[Dict], idx: int) -> float:
         """Normalize price score: lower price = higher score."""

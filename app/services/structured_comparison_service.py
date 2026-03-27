@@ -3443,11 +3443,10 @@ def _convert_to_bhd(amount: float, currency: str) -> float:
 # SINGLETON INSTANCE
 # ============================================
 
-_service_instance = None
-
 def get_comparison_service() -> StructuredComparisonService:
-    """Get or create the comparison service instance."""
-    global _service_instance
-    if _service_instance is None:
-        _service_instance = StructuredComparisonService()
-    return _service_instance
+    """Create a new comparison service instance per request.
+
+    Not a singleton — each request gets its own instance to prevent
+    race conditions on mutable state (total_cost, _shopping_items_cache).
+    """
+    return StructuredComparisonService()

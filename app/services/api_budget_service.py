@@ -85,12 +85,15 @@ def has_budget(provider: str) -> bool:
 
 
 def record_usage(provider: str, count: int = 1) -> None:
-    """Record API usage after successful call."""
+    """Record API usage after successful call (atomic operation)."""
     try:
         key = _budget_key(provider)
-        for _ in range(count):
-            _redis_incr(key)
-        # Set TTL for monthly keys
+        from app.services.cache_service import redis_client
+        if redis_client:
+            redis_client.incrby(key, count)
+        else:
+            for _ in range(count):
+                _redis_incr(key)
         config = PROVIDER_CONFIGS.get(provider, {})
         if not config.get("is_lifetime"):
             _redis_expire(key, _MONTHLY_TTL)

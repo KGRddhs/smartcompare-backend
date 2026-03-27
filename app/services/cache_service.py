@@ -305,18 +305,15 @@ def get_monthly_cost() -> float:
 
 
 def add_api_cost(cost: float) -> float:
-    """Add to monthly API cost tracker."""
+    """Add to monthly API cost tracker (atomic operation)."""
     if not redis_client:
         return 0.0
-    
     month = datetime.now().strftime("%Y-%m")
     key = f"cost:{month}"
-    
     try:
-        current = get_monthly_cost()
-        new_total = current + cost
-        _redis_set(key, str(new_total), ex=32 * 86400)
-        return new_total
+        new_total = redis_client.incrbyfloat(key, cost)
+        _redis_expire(key, 32 * 86400)
+        return float(new_total)
     except Exception as e:
         logger.error(f"Error adding API cost: {e}")
         return 0.0
