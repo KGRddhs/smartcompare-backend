@@ -85,21 +85,21 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 **Entry:** `app/main.py` — loads env vars, configures middleware stack, registers 10 routers (in `app/api/`):
 - `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow + SSE streaming, rate limited)
 - `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited, HEIC detection)
-- `/api/v1/url/*` — `url_routes.py` (single URL compare only, multi-compare stub removed)
+- `/api/v1/url/*` — `url_routes.py` (single URL compare only, SSRF-protected, rate limited 10/min)
 - `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social-login, **account deletion**, resend-verification). Rate limited: login 5/min, register 3/min, delete 1/min.
 - `/api/v1/comparisons/*` — `history_routes.py` → comparison history (GET list, GET single, DELETE). Auth required.
 - `/api/v1/share/*` — `share_routes.py` → POST create share link (auth), GET public share (no auth, strips personalization)
 - `/api/v1/feedback`, `/api/v1/events` — `feedback_routes.py` → feedback collection + event tracking
-- `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints + cost dashboard (X-Admin-Key auth)
+- `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints + cost dashboard (X-Admin-Key auth, timing-safe `hmac.compare_digest`)
 - `/api/v1/legal/*` — `legal_routes.py` → GET privacy policy + terms of service (no auth, reads markdown files)
 - `/api/v1/app/*` — `version_routes.py` → GET version check (min/latest/force_update from env vars, no auth)
 
-**Middleware stack** (outermost → innermost): RequestID → SecurityHeaders → ErrorHandler → CORS → slowapi rate limiter
+**Middleware stack** (outermost → innermost): RequestID → SecurityHeaders (HSTS, CSP, X-Frame-Options) → ErrorHandler → CORS → slowapi rate limiter
 
 **Unified error format:** All error responses use `{ success: false, error: "message", code: "ERROR_CODE", request_id: "uuid" }`. Codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `RATE_LIMITED`, `VALIDATION_ERROR`, `INTERNAL_ERROR`. Frontend `parseApiError()` handles both `.error` (new) and `.detail` (legacy FastAPI) formats.
 
-**Core service:** `app/services/structured_comparison_service.py`
-- `StructuredComparisonService` is a **singleton** (`get_comparison_service()`)
+**Core service:** `app/services/structured_comparison_service.py` (1,454 lines — orchestrator only)
+- `StructuredComparisonService` — **per-request instances** via `get_comparison_service()` (NOT singleton, for concurrency safety)
 - `compare_from_text(query, region, vision_products?, selected_category?, user_id?)` — main entry point
 - `compare_from_text_streaming(..., user_id?)` — async generator yielding SSE events (specs→prices→reviews→scores→verdict→complete)
 - **Pre-fetch:** Unified web search (1 Serper call) shared by specs + reviews — gated by cache check
@@ -110,12 +110,19 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 - `_shopping_items_cache` — populated during price search, used by rating/review injection. Cleared per-request.
 - **Response format:** Top-level keys: `overview`, `specs`, `reviews`, `scoring`, `personalization`, `metadata`. Backward compat aliases preserved (`products`, `comparison`, `winner_index`, `recommendation`, `key_differences`).
 
+**Decomposed modules** (extracted from monolith in Session 35):
+- `price_service.py` (932 lines) — All pricing: tiers, currency conversion, page scraping, iHerb, pharmacy JSON-LD
+- `rating_service.py` (292 lines) — Tiered rating extraction, Google consensus, retailer classification
+- `review_service.py` (227 lines) — Review fetching, content cleaning, citation replacement
+- `fact_check_service.py` (217 lines) — Citation verification, cross-validation, confidence computation
+- `response_builder.py` (190 lines) — `build_comparison_response()` for both sync and streaming paths
+
 **Price pipeline (3 tiers + page scraping + pharmacy JSON-LD):**
 1. Serper Shopping API direct extraction (structured prices)
 2. GPT-4o-mini extraction from organic search results (with Tier 3 sanity check)
 3. GPT training data estimate (marked `estimated: true`)
 - **Page scraping**: `_fetch_page_price()` → `_curl_fetch_html()` + `_extract_price_from_html()` extracts JSON-LD/OG/microdata from product pages. Used in Tier 1.5 cascade and supplement pipeline.
-- **Firecrawl Smart Wait**: `firecrawl_service.scrape_page_with_status()` renders SPA pages via Firecrawl `/v1/scrape` API. Used in Tier 1.5a for official brand sites. `source_method: "firecrawl"`.
+- **Firecrawl Smart Wait**: `firecrawl_service.scrape_page_with_status()` renders SPA pages via Firecrawl `/v1/scrape` API. Used in Tier 1.5a for official brand sites. `source_method: "firecrawl"`. **Timeout: 30s** (luxury SPAs like LV/Gucci need >15s to render). Validated: LV (14,600 AED), Gucci ($3,450), Bloomingdales (AED 560).
 - **Scrape.do fallback**: `scrapedo_service.render_page_with_status()` renders pages with residential proxies. Used in Tier 1.5d only when curl_cffi fetched HTML but found no price (`failed_curl_urls`). `source_method: "scrapedo_rendered"`.
 - **API budget + circuit breakers**: `api_budget_service.py` tracks credits (Firecrawl 450/lifetime, Scrape.do 900/mo, Serper 2200/lifetime) and circuit breakers (3 failures → 10min cooldown). Fail-open on Redis unavailability.
 - **Gate 0 validation**: `_validate_price_query()` rejects garbage queries, `_validate_scrape_url()` rejects search/category pages before burning scrape credits.
@@ -143,12 +150,16 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 - `prompt_personalities.py` — Per-category comparison "language". `build_personality_prompt(category)`.
 - `trust_validation_service.py` — Cross-checks GPT claims against deterministic scores. Zero cost.
 - `behavior_service.py` — Decay-weighted profiles (30-day half-life). Category affinity, price range, dimension sensitivity.
-- `cache_service.py` — **IMPORTANT**: use `_redis_get()`, `_redis_set()`, `_redis_incr()`, `_redis_expire()` helpers. NO raw Redis client getter.
-- `api_budget_service.py` — Credit tracking + circuit breakers for Firecrawl, Scrape.do, Serper.
+- `cache_service.py` — **IMPORTANT**: use `_redis_get()`, `_redis_set()`, `_redis_incr()`, `_redis_expire()` helpers for general use. `api_budget_service` uses `redis_client.incrby()`/`incrbyfloat()` directly for atomic operations.
+- `api_budget_service.py` — Credit tracking + circuit breakers for Firecrawl, Scrape.do, Serper. Uses atomic Redis ops.
+- `exchange_rate_service.py` — Daily rates from frankfurter.app, Redis-cached 24h, hardcoded GCC fallbacks. `get_rate(from_currency, to_currency="BHD")`.
 - `firecrawl_service.py` / `scrapedo_service.py` — Firecrawl Smart Wait + Scrape.do JS rendering wrappers.
 - Other services: `serper_service`, `database_service`, `feedback_service`, `drug_database_service`, `openai_service`, `sentry_service`, `analytics_service`
 
-**Middleware** (`app/middleware/`): request_id, security headers, rate_limiter (slowapi, 10/min on compare), error_handler (Sentry capture), logging_config (structured JSON)
+**Security** (`app/utils/`):
+- `url_validator.py` — SSRF protection: resolves hostnames, blocks private/loopback/link-local IPs, allows only http/https
+
+**Middleware** (`app/middleware/`): request_id, security headers (HSTS, CSP, X-Frame-Options, nosniff), rate_limiter (slowapi, 10/min on compare), error_handler (Sentry capture + token stripping in breadcrumbs), logging_config (structured JSON)
 
 ### Frontend (React Native + Expo)
 
@@ -179,8 +190,8 @@ Backend returns `{ amount, currency, retailer, url, estimated }`. Frontend code 
 ### GCC_REGIONS keys (extraction_service.py)
 Keys are: `bahrain`, `saudi_arabia`, `uae`, `kuwait`, `qatar`, `oman`. Note: it's `saudi_arabia` NOT `saudi`.
 
-### Singleton service state
-`StructuredComparisonService` is a singleton. `total_cost`, `api_calls`, and `_shopping_items_cache` are reset at the start of each `compare_from_text()` call. Any new per-request state must also be reset there.
+### Per-request service instances
+`get_comparison_service()` returns a **new instance per call** (not a singleton). Each request gets fresh `total_cost`, `api_calls`, `_shopping_items_cache`. No manual reset needed.
 
 ### Cost budget + caching
 Target: **$0.01/comparison**. Achieved via unified search (1 Serper call shared by specs + reviews in `_fetch_product_data()`). Track with `self.total_cost` and `self._track_cost()`. `?nocache=true` bypasses Redis cache (7-day TTL for specs/reviews). Camera input passes `vision_products` directly, skipping `parse_product_query()`.
@@ -197,8 +208,8 @@ Target: **$0.01/comparison**. Achieved via unified search (1 Serper call shared 
 ### Prompt personalities + trust validation
 Each category gets unique GPT comparison tone via `build_personality_prompt(category)` — zero extra cost. `validate_verdict()` cross-checks GPT claims against deterministic scores (returns `winner_aligned`, `claims_flagged`, `confidence_adjustment`).
 
-### Auth hardening
-Account deletion cascades through all user data (App Store requirement, rate limited 1/min). Password: 10+ chars, 1 upper, 1 lower, 1 digit. Resend verification: rate limited 3/min.
+### Auth + security hardening
+Account deletion cascades through all user data (App Store requirement, rate limited 1/min). Password: 10+ chars, 1 upper, 1 lower, 1 digit. Resend verification: rate limited 3/min. History/share routes use `UUID` path params (not bare strings). Swagger docs disabled in production. SQL LIKE wildcards escaped in search. Feedback `change_suggestion` capped at 1000 chars, event_data at 10KB.
 
 ### SSE streaming
 `GET /api/v1/text/compare/stream` → 10 SSE events with `progress` field (10/20/50/80). Frontend uses fetch+ReadableStream (not EventSource) with fallback to non-streaming.
@@ -228,7 +239,7 @@ Reviews: `_clean_review_content()` strips garbage (min 8 words), fixes sentiment
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
 **Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO)
-**Price Scraping:** `FIRECRAWL_API_KEY` (firecrawl.dev, 500 lifetime free), `SCRAPEDO_API_TOKEN` (scrape.do, 1000/mo free), `ENABLE_FIRECRAWL` (default true), `ENABLE_SCRAPEDO` (default true). Without these, scraping gracefully skips.
+**Price Scraping:** `FIRECRAWL_API_KEY` (firecrawl.dev, 500 lifetime free — deployed), `SCRAPEDO_API_TOKEN` (scrape.do, 1000/mo free — deployed, but timing out on GCC sites), `ENABLE_FIRECRAWL` (default true), `ENABLE_SCRAPEDO` (default true). Both keys live in Railway since Session 34.
 **Version Check:** `APP_MIN_VERSION`, `APP_LATEST_VERSION`, `APP_FORCE_UPDATE` (all optional, used by `/api/v1/app/version`)
 
 ### Serper API Credits
@@ -237,7 +248,7 @@ Reviews: `_clean_review_content()` strips garbage (min 8 words), fixes sentiment
 ## Tests
 
 ```bash
-# Free unit tests (~1400+ tests, ~10s, $0)
+# Free unit tests (~1560+ tests, ~14s, $0)
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Live unit tests (iHerb, Serper, GPT — ~$0.03)
@@ -252,13 +263,13 @@ python -m pytest tests/ -v --timeout=180
 
 - `python -m py_compile <file>` for syntax checks, `npx tsc --noEmit` for frontend types
 - `conftest.py` auto-loads `.env` via python-dotenv
-- ~60 test files named `test_<feature>.py`, one per service. 80%+ coverage for new features.
+- ~65 test files named `test_<feature>.py`, one per service. 80%+ coverage for new features.
 - No regressions: all existing tests must pass before merging
 
 ## Known Remaining Bugs (deferred)
 
 These are known issues that have been intentionally deferred:
-- **Luxury prices pending validation**: Firecrawl + Scrape.do implemented but not yet tested with real API keys. Phase 0 validation needed: sign up at firecrawl.dev + scrape.do, add keys to .env, test 3 luxury URLs. Then add keys to Railway and deploy.
+- **Scrape.do timing out**: Scrape.do free tier times out (15s) on GCC luxury retailers (Ounass, Bloomingdales). Firecrawl works — it's the primary scraper. Scrape.do is Tier 1.5d fallback only.
 - **value_context identical for all products**: `overview.products[i].value_context` uses same string from comparison dict for all products. Minor UX issue.
 - Google Sign-In: Supabase Google provider needs to be enabled in dashboard (client IDs configured in code)
 - Apple Sign-In: deferred — requires Apple Developer subscription ($99/year); code is ready
