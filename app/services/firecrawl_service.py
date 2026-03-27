@@ -11,7 +11,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 FIRECRAWL_API_URL = "https://api.firecrawl.dev/v1/scrape"
-FIRECRAWL_TIMEOUT = 15  # seconds — Smart Wait needs time for XHR
+FIRECRAWL_TIMEOUT = 30  # seconds — luxury SPAs (LV, Chanel) need longer to render
 FIRECRAWL_WAIT_MS = 5000  # ms to wait for dynamic content after page load
 
 

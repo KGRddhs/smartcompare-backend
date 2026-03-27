@@ -4,6 +4,136 @@
 
 ---
 
+# SESSION 34: March 27, 2026 — CLAUDE.md Optimization (Context Quality Audit)
+
+## What We Did
+
+Intensive audit and optimization of CLAUDE.md using the claude-md-management skill, backed by 3 parallel research agents that verified `.claude/rules/` mechanics, risk assessment, and current directory structure.
+
+### Research Findings (Verified)
+- **`.claude/rules/` without `paths:` frontmatter** loads ALL files at startup → same token cost as monolithic, but fragmented context → net negative for tightly coupled projects
+- **`.claude/rules/` with `paths:` frontmatter** lazy-loads → saves tokens BUT partial context risk for coupled services (pricing ↔ scoring ↔ behavior ↔ personalization)
+- **Decision: Keep monolithic CLAUDE.md, trim aggressively.** Our project profile (single dev, tight coupling, rapid iteration across 33 sessions) matches the failure pattern for split approaches, not the success pattern (large teams, loosely coupled microservices).
+- **CONTEXT_SESSION_LOG.md (2,426 lines) is safe** — lives in `docs/`, NOT auto-loaded. Only read on-demand when investigating history.
+
+### CLAUDE.md Changes (441 → 267 lines, 39% reduction)
+- **Removed**: 56-line test file catalog (not actionable, discoverable via pytest)
+- **Removed**: 20+ "Session N" references throughout (history, not guidance)
+- **Removed**: Duplicated luxury brand detection section (already in Architecture price pipeline)
+- **Removed**: Dead code reference (Tier 0: "never called")
+- **Condensed**: Scoring internals (15 → 6 lines), personalization (17 → 5 lines), key services (17 → 10 lines), middleware (6 → 1 line), frontend screens (10 → 1 line), rating pipeline (8 → 2 lines)
+- **Merged**: Cost budget + unified search + cache bypass → 1 section. Sharing + history → 1 section. Review + spec quality → 1 section.
+- **Fixed**: Added missing `ForgotPasswordScreen.tsx`, corrected route paths to `app/api/`, removed stale version number from entry point
+- **Quality score**: 64/100 (C) → 89/100 (B+)
+
+### MEMORY.md Changes (Deduplication)
+- Replaced near-clone of CLAUDE.md with lean reference pointing to CLAUDE.md as source of truth
+- Kept only: session learnings, gotchas, key decisions, and information NOT in CLAUDE.md
+- Purpose redefined: session-specific learnings and cross-session patterns, not architecture docs
+
+### Key Decision: Why NOT Split
+Risk matrix results for our project:
+| Risk | Rating |
+|------|--------|
+| Context fragmentation (coupled services) | HIGH |
+| Maintenance overhead (update 4+ files per refactor) | HIGH |
+| Hallucination from partial context | MEDIUM-HIGH |
+| Migration errors (orphaned instructions) | MEDIUM-HIGH |
+| Monolithic actually better for our profile | HIGH |
+
+### Files Changed
+- Modified: `CLAUDE.md` (441 → 267 lines)
+- Modified: `docs/CONTEXT_SESSION_LOG.md` (added Session 34)
+- Modified: `~/.claude/projects/.../memory/MEMORY.md` (deduplicated)
+
+---
+
+# SESSION 33: March 26, 2026 — Category-Specific Comparison Languages (Scoring V2 + Prompt Personalities + Trust Validation)
+
+## What We Did
+
+Replaced universal 6-dimension scoring with category-specific dimensions (unique 6 per category), added prompt personalities for GPT verdict tone, trust validation to cross-check GPT claims, plus backend production hardening (account deletion, legal endpoints, version check). 4 Opus agents (backend-scoring, backend-prompts, backend-production, test-qa) with cross-QA. Total: 1418 tests (was 1295).
+
+### Category-Specific Scoring V2 (Tasks 1-2, backend-scoring)
+- **`CATEGORY_DIMENSIONS`**: 9 categories × 6 unique dimension keys each
+  - Electronics: performance_score, value_score, build_quality_score, feature_score, ecosystem_score, futureproof_score
+  - Fragrances: character_score, longevity_score, projection_score, versatility_score, wear_value_score, presentation_score
+  - Supplements: efficacy_score, purity_score, bioavailability_score, safety_score, value_per_dose_score, evidence_score
+  - (etc. for all 9 categories)
+- **`_DIMENSION_SIGNAL_MAP`**: Maps 5 raw signals (spec/price/review/reliability/popularity) → category-specific dimension keys
+- **`CATEGORY_DIMENSION_WEIGHTS`**: Per-category weight profiles (aliased as `CATEGORY_WEIGHTS` for backward compat)
+- **`CATEGORY_PRIORITY_ADJUSTMENTS`**: 8 priorities × 9 categories (replaces universal `PRIORITY_ADJUSTMENTS`)
+- **`DIMENSION_DISPLAY_NAMES`**: User-friendly labels for all 49 unique dimension keys
+- `compute_dimension_winners(category=)`, `build_scores_summary()` updated for category-specific dimensions
+- **Rollback preserved**: `docs/ROLLBACK_SCORING_V1.md` captures entire V1 system
+
+### Prompt Personalities (Tasks 3-4, backend-prompts)
+- **`prompt_personalities.py`**: `CATEGORY_PROMPT_PERSONALITIES` — each category gets unique tone/language in GPT verdict
+  - Electronics: "technical analyst" (benchmarks, specs, measurable differences)
+  - Fragrances: "experienced fragrance enthusiast" (evocative descriptions, projection, longevity)
+  - Fashion: "style-conscious editor" (material quality, versatility, cost-per-wear)
+- **`UNIVERSAL_TRUST_RULES`**: Applied to all categories — no unverified claims, cite data sources
+- `build_personality_prompt(category)` returns combined personality + trust rules string
+- Injected via `extraction_service.py` `generate_comparison(category=...)` into verdict prompt
+
+### Trust Validation (Tasks 3-4, backend-prompts + test-qa cross-QA)
+- **`trust_validation_service.py`**: `validate_verdict()` cross-checks GPT verdict against deterministic scores
+  - `winner_aligned`: GPT winner matches scoring winner
+  - `claims_validated`: dimensions where GPT and scores agree directionally
+  - `claims_softened`: dimensions where scores are essentially tied (gap < 3)
+  - `claims_flagged`: dimensions where GPT contradicted scores
+  - `confidence_adjustment`: suggested confidence change if misaligned
+- Wired into `structured_comparison_service.py` response metadata
+- Bug fix: None handling for breakdown values (caught by cross-QA)
+
+### Backend Production Hardening (Tasks 5-7, backend-production)
+- **Account deletion**: `delete_user_data_cascade(user_id)` — cascades through user_events → comparison_feedback → comparisons → search_logs → auth user. App Store requirement.
+- **Password strength**: 10+ chars, 1 uppercase, 1 lowercase, 1 digit (register + change password)
+- **Email verification**: `POST /api/v1/auth/resend-verification` — rate limited 3/min
+- **Legal endpoints**: `GET /api/v1/legal/privacy` + `/terms` — serve markdown files, no auth required
+- **Version check**: `GET /api/v1/app/version` — `APP_MIN_VERSION`, `APP_LATEST_VERSION`, `APP_FORCE_UPDATE` env vars
+- **Dead code removed**: `comparison_service.py` (289 lines, never imported anywhere)
+- `database_service.py`: all `print()` → `logger`
+
+### Testing (Task 8, test-qa)
+- 9 new test files: test_category_dimensions, test_scoring_edge_cases, test_prompt_personalities, test_trust_validation, test_trust_edge_cases, test_personality_edge_cases, test_account_deletion, test_legal_routes, test_version_routes
+- Cross-QA: test-qa reviewed backend-production's work, backend-production reviewed test-qa's work
+- Trust validation None bug found by cross-QA, fixed
+
+### Files Changed
+- Modified: `app/services/scoring_service.py` (V2 dimensions), `app/services/extraction_service.py` (personality injection), `app/services/structured_comparison_service.py` (trust validation integration), `app/services/database_service.py` (cascade delete + logging), `app/api/auth_routes.py` (password strength + email verify + account delete), `app/main.py` (new routers)
+- Created: `app/services/prompt_personalities.py`, `app/services/trust_validation_service.py`, `app/api/legal_routes.py`, `app/api/version_routes.py`, `app/legal/privacy_policy.md`, `app/legal/terms_of_service.md`, `docs/ROLLBACK_SCORING_V1.md`
+- Deleted: `app/services/comparison_service.py` (dead code)
+- 9 new test files in `tests/`
+
+### Commits
+- `fe94683` — feat: add prompt personalities + trust validation per category
+- `ebb9888` — feat: add account deletion, password strength, email verification
+- `eec2d9d` — feat: add legal endpoints + version check for app store readiness
+- `c5712ab` — chore: delete dead comparison_service.py (289 lines, never imported)
+- `5e7c0c4` — test: add edge case + cross-QA tests for scoring, personalities, trust
+- `128583b` — docs: update CLAUDE.md for Session 33 + integrate trust validation
+
+---
+
+# SESSION 32: March 25-26, 2026 — Firecrawl Price Resolution (Executed Session 31 Plan)
+
+## What We Did
+
+Executed the Firecrawl plan from Session 31. Replaced Cloudflare Browser Rendering + Microlink with Firecrawl Smart Wait (Tier 1.5a) + Scrape.do (Tier 1.5d). Added API budget tracking with circuit breakers, Gate 0 input validation, expanded GCC retailer coverage, admin cost dashboard. 1295 tests passing (was ~1295 before, many new + some replaced).
+
+### Key Changes
+- `firecrawl_service.py`: Thin async wrapper around Firecrawl `/v1/scrape` with Smart Wait (5s waitFor, 15s timeout)
+- `scrapedo_service.py`: Thin async wrapper around Scrape.do `render=true` API (15s timeout)
+- `api_budget_service.py`: Credit tracking (Firecrawl 450/lifetime, Scrape.do 900/mo, Serper 2200/lifetime) + circuit breakers (3 failures → 10min cooldown)
+- Gate 0: `_validate_price_query()` + `_validate_scrape_url()` prevent wasted scrape credits
+- GCC retailers expanded to 9 domains (added level-shoes, harveynichols, galerieslafayette, theluxurycloset, boutique1)
+- Admin cost dashboard: `GET /api/v1/admin/costs`
+- Removed: `_fetch_rendered_html()`, `JS_ONLY_DOMAINS`, `ENABLE_JS_RENDER`, 3 diagnostic endpoints
+- **Status**: Code complete, tests passing. Pending Phase 0 validation with real API keys.
+
+---
+
 # SESSION 26: March 20, 2026 — Scoring & Quality Overhaul (Category Weights, Price Tiers, Review Cleanup)
 
 ## What We Did
