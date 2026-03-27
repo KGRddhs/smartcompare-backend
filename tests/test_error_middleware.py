@@ -23,7 +23,7 @@ def test_explicit_404_returns_unified_format():
     try:
         with patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=None):
             client = _get_test_client()
-            resp = client.get("/api/v1/comparisons/nonexistent")
+            resp = client.get("/api/v1/comparisons/00000000-0000-0000-0000-000000000000")
             assert resp.status_code == 404
             data = resp.json()
             assert data["success"] is False
@@ -63,7 +63,7 @@ def test_error_response_has_request_id():
     try:
         with patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=None):
             client = _get_test_client()
-            resp = client.get("/api/v1/comparisons/nonexistent")
+            resp = client.get("/api/v1/comparisons/00000000-0000-0000-0000-000000000000")
             data = resp.json()
             assert "request_id" in data
             assert data["request_id"] != "unknown"
@@ -74,14 +74,14 @@ def test_error_response_has_request_id():
 def test_403_forbidden_format():
     """403 Forbidden returns unified format."""
     mock_comparison = {
-        "id": "comp-abc", "user_id": "other-user", "query": "test",
+        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "user_id": "other-user", "query": "test",
         "product_names": [], "input_type": "text", "full_response": {}, "created_at": "2026-01-01"
     }
     app.dependency_overrides[get_current_user] = lambda: {"id": "user-1", "email": "t@t.com"}
     try:
         with patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=mock_comparison):
             client = _get_test_client()
-            resp = client.get("/api/v1/comparisons/comp-abc")
+            resp = client.get("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
             assert resp.status_code == 403
             data = resp.json()
             assert data["success"] is False
@@ -107,7 +107,7 @@ def test_error_format_fields_on_explicit_404():
     try:
         with patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=None):
             client = _get_test_client()
-            resp = client.get("/api/v1/comparisons/nonexistent")
+            resp = client.get("/api/v1/comparisons/00000000-0000-0000-0000-000000000000")
             data = resp.json()
             expected_keys = {"success", "error", "code", "request_id"}
             assert set(data.keys()) == expected_keys

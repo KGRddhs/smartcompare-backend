@@ -29,15 +29,19 @@ def run_async(coro):
         loop.close()
 
 
-class TestSingletonPattern:
-    def test_get_comparison_service_returns_same_instance(self):
-        """get_comparison_service() should return the same instance."""
-        import app.services.structured_comparison_service as mod
-        mod._service_instance = None  # Reset for test
+class TestPerRequestInstances:
+    def test_get_comparison_service_returns_new_instance_per_call(self):
+        """get_comparison_service() should return a new instance per call (no singleton)."""
         s1 = get_comparison_service()
         s2 = get_comparison_service()
-        assert s1 is s2
-        mod._service_instance = None  # Cleanup
+        assert s1 is not s2
+
+    def test_instances_have_independent_state(self):
+        """Per-request instances should not share mutable state."""
+        s1 = get_comparison_service()
+        s2 = get_comparison_service()
+        s1.total_cost = 0.05
+        assert s2.total_cost == 0.0
 
 
 class TestStateReset:

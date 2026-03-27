@@ -197,7 +197,7 @@ def test_fetch_pharmacy_price_returns_none_for_no_pharmacy_urls(service):
     serper_organic = [
         {"title": "Some result", "link": "https://www.amazon.com/something"},
     ]
-    with patch("app.services.structured_comparison_service.search_web", new_callable=AsyncMock) as mock_search:
+    with patch("app.services.price_service.search_web", new_callable=AsyncMock) as mock_search:
         mock_search.return_value = {"organic": []}
         result = asyncio.get_event_loop().run_until_complete(
             service._fetch_pharmacy_price(serper_organic, "HealthAid", "HealthAid D3", "BHD")

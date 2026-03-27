@@ -321,9 +321,14 @@ async def test_refresh_success():
 
 @pytest.mark.asyncio
 async def test_logout_returns_success():
-    """Logout endpoint returns success (static response, auth checked by dependency)."""
+    """Logout endpoint returns success and calls logout_user with token."""
     from app.api.auth_routes import logout
-    result = await logout(current_user={"id": "user-1", "email": "test@example.com"})
+    from unittest.mock import MagicMock, AsyncMock, patch
+    mock_request = MagicMock()
+    mock_request.headers = MagicMock()
+    mock_request.headers.get = MagicMock(return_value="Bearer fake-token")
+    with patch("app.api.auth_routes.logout_user", new_callable=AsyncMock) as mock_logout:
+        result = await logout(request=mock_request, current_user={"id": "user-1", "email": "test@example.com"})
     assert result["success"] is True
     assert "Logged out" in result["message"]
 

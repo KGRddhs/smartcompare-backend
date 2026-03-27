@@ -58,11 +58,14 @@ class TestCitationCleanup:
         assert "ebay.com" in cleaned["common_complaints"][0]
 
     def test_handles_detailed_praises(self, service, mock_search_results):
+        """FIX M6: detailed_praises no longer cleaned (dead code removed).
+        Citations pass through unchanged."""
         reviews = {"detailed_praises": [
             {"text": "[snippet_1] Excellent craftsmanship", "frequency": "often"}
         ]}
         cleaned = service._clean_review_citations(reviews, mock_search_results)
-        assert "hermes.com" in cleaned["detailed_praises"][0]["text"]
+        # detailed_praises passes through unchanged
+        assert "[snippet_1]" in cleaned["detailed_praises"][0]["text"]
 
     def test_preserves_non_citation_fields(self, service, mock_search_results):
         reviews = {
@@ -91,12 +94,14 @@ class TestCitationCleanup:
         assert "hermes.com" in cleaned["common_praises"][0]
 
     def test_handles_detailed_complaints(self, service, mock_search_results):
+        """FIX M6: detailed_complaints no longer cleaned (dead code removed).
+        Citations pass through unchanged."""
         reviews = {"detailed_complaints": [
             {"text": "[snippet_2] Shipping was slow", "frequency": "sometimes"}
         ]}
         cleaned = service._clean_review_citations(reviews, mock_search_results)
-        assert "amazon.com" in cleaned["detailed_complaints"][0]["text"]
-        assert "[snippet_2]" not in cleaned["detailed_complaints"][0]["text"]
+        # detailed_complaints passes through unchanged
+        assert "[snippet_2]" in cleaned["detailed_complaints"][0]["text"]
 
     def test_multiple_citations_in_one_string(self, service, mock_search_results):
         reviews = {"common_praises": [

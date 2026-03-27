@@ -12,7 +12,7 @@ MOCK_USER = {"id": "user-123", "email": "test@example.com"}
 MOCK_OTHER_USER = {"id": "user-999", "email": "other@example.com"}
 
 MOCK_COMPARISON = {
-    "id": "comp-abc",
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "query": "iPhone 15 vs Galaxy S24",
     "product_names": ["Apple iPhone 15", "Samsung Galaxy S24"],
     "input_type": "text",
@@ -30,7 +30,7 @@ MOCK_COMPARISON = {
 
 MOCK_COMPARISON_LIST = [
     {
-        "id": "comp-abc",
+        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         "query": "iPhone 15 vs Galaxy S24",
         "product_names": ["Apple iPhone 15", "Samsung Galaxy S24"],
         "input_type": "text",
@@ -156,7 +156,7 @@ def test_get_comparison_requires_auth():
     """GET /comparisons/{id} without auth returns 401."""
     _cleanup_overrides()
     client = TestClient(app)
-    resp = client.get("/api/v1/comparisons/comp-abc")
+    resp = client.get("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
     assert resp.status_code == 401
 
 
@@ -165,11 +165,11 @@ def test_get_comparison_success(mock_get):
     """GET /comparisons/{id} returns full comparison with full_response."""
     client = _get_client_with_user()
     try:
-        resp = client.get("/api/v1/comparisons/comp-abc")
+        resp = client.get("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
-        assert data["comparison"]["id"] == "comp-abc"
+        assert data["comparison"]["id"] == "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         assert "full_response" in data["comparison"]
         assert data["comparison"]["full_response"]["success"] is True
     finally:
@@ -181,7 +181,7 @@ def test_get_comparison_not_found(mock_get):
     """GET /comparisons/{id} returns 404 if not found."""
     client = _get_client_with_user()
     try:
-        resp = client.get("/api/v1/comparisons/nonexistent")
+        resp = client.get("/api/v1/comparisons/00000000-0000-0000-0000-000000000000")
         assert resp.status_code == 404
     finally:
         _cleanup_overrides()
@@ -192,7 +192,7 @@ def test_get_comparison_forbidden(mock_get):
     """GET /comparisons/{id} returns 403 if not owner."""
     client = _get_client_with_user(MOCK_OTHER_USER)
     try:
-        resp = client.get("/api/v1/comparisons/comp-abc")
+        resp = client.get("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         assert resp.status_code == 403
     finally:
         _cleanup_overrides()
@@ -207,7 +207,7 @@ def test_delete_comparison_requires_auth():
     """DELETE /comparisons/{id} without auth returns 401."""
     _cleanup_overrides()
     client = TestClient(app)
-    resp = client.delete("/api/v1/comparisons/comp-abc")
+    resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
     assert resp.status_code == 401
 
 
@@ -217,10 +217,10 @@ def test_delete_comparison_success(mock_get, mock_del):
     """DELETE /comparisons/{id} deletes owned comparison."""
     client = _get_client_with_user()
     try:
-        resp = client.delete("/api/v1/comparisons/comp-abc")
+        resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         assert resp.status_code == 200
         assert resp.json()["success"] is True
-        mock_del.assert_called_once_with("comp-abc", "user-123")
+        mock_del.assert_called_once_with("a1b2c3d4-e5f6-7890-abcd-ef1234567890", "user-123")
     finally:
         _cleanup_overrides()
 
@@ -230,7 +230,7 @@ def test_delete_comparison_not_found(mock_get):
     """DELETE /comparisons/{id} returns 404 if not found."""
     client = _get_client_with_user()
     try:
-        resp = client.delete("/api/v1/comparisons/nonexistent")
+        resp = client.delete("/api/v1/comparisons/00000000-0000-0000-0000-000000000000")
         assert resp.status_code == 404
     finally:
         _cleanup_overrides()
@@ -241,7 +241,7 @@ def test_delete_comparison_forbidden(mock_get):
     """DELETE /comparisons/{id} returns 403 if not owner."""
     client = _get_client_with_user(MOCK_OTHER_USER)
     try:
-        resp = client.delete("/api/v1/comparisons/comp-abc")
+        resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         assert resp.status_code == 403
     finally:
         _cleanup_overrides()
@@ -253,7 +253,7 @@ def test_delete_comparison_db_failure(mock_get, mock_del):
     """DELETE /comparisons/{id} returns 500 if DB delete fails."""
     client = _get_client_with_user()
     try:
-        resp = client.delete("/api/v1/comparisons/comp-abc")
+        resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         assert resp.status_code == 500
     finally:
         _cleanup_overrides()

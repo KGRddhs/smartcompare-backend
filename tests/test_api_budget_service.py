@@ -33,11 +33,15 @@ def mock_redis_helpers():
     def fake_expire(key, seconds):
         return True
 
+    mock_client = MagicMock()
+    mock_client.incrby = MagicMock(side_effect=lambda key, count: fake_incr(key) if count == 1 else [fake_incr(key) for _ in range(count)][-1])
+
     with patch("app.services.api_budget_service._redis_get", side_effect=fake_get) as m_get, \
          patch("app.services.api_budget_service._redis_set", side_effect=fake_set) as m_set, \
          patch("app.services.api_budget_service._redis_incr", side_effect=fake_incr) as m_incr, \
-         patch("app.services.api_budget_service._redis_expire", side_effect=fake_expire) as m_expire:
-        yield {"get": m_get, "set": m_set, "incr": m_incr, "expire": m_expire, "store": store}
+         patch("app.services.api_budget_service._redis_expire", side_effect=fake_expire) as m_expire, \
+         patch("app.services.cache_service.redis_client", mock_client):
+        yield {"get": m_get, "set": m_set, "incr": m_incr, "expire": m_expire, "store": store, "client": mock_client}
 
 
 class TestBudgetKey:
@@ -100,11 +104,13 @@ class TestHasBudget:
 class TestRecordUsage:
     def test_increments_counter(self, mock_redis_helpers):
         record_usage("firecrawl")
-        mock_redis_helpers["incr"].assert_called_once()
+        mock_redis_helpers["client"].incrby.assert_called_once()
 
     def test_multiple_increments(self, mock_redis_helpers):
         record_usage("firecrawl", count=3)
-        assert mock_redis_helpers["incr"].call_count == 3
+        mock_redis_helpers["client"].incrby.assert_called_once_with(
+            _budget_key("firecrawl"), 3
+        )
 
     def test_sets_ttl_for_monthly_provider(self, mock_redis_helpers):
         record_usage("scrapedo")  # monthly, not lifetime

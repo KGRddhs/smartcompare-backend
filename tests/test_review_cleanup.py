@@ -159,14 +159,15 @@ class TestReviewCleanupEdgeCases:
         assert "luxurious" in cleaned["common_praises"][0]
 
     def test_dict_items_with_text_key(self, service):
-        """Detailed praises/complaints as dicts with 'text' key."""
+        """detailed_praises/detailed_complaints are no longer processed (FIX M6: dead code removed).
+        They pass through unchanged since extraction never populates them."""
         reviews = {"detailed_praises": [
             {"text": "Learn more about condition and see seller notes for details", "source": "snippet_1"},
             {"text": "The leather quality is exceptional and ages beautifully over time with use", "source": "snippet_2"},
         ]}
         cleaned = service._clean_review_content(reviews)
-        assert len(cleaned["detailed_praises"]) == 1
-        assert cleaned["detailed_praises"][0]["source"] == "snippet_2"
+        # FIX M6: detailed_praises passes through unchanged (dead code removed)
+        assert len(cleaned["detailed_praises"]) == 2
 
     def test_empty_sections(self, service):
         reviews = {"common_praises": [], "common_complaints": []}

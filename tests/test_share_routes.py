@@ -12,7 +12,7 @@ MOCK_USER = {"id": "user-123", "email": "test@example.com"}
 MOCK_OTHER_USER = {"id": "user-999", "email": "other@example.com"}
 
 MOCK_COMPARISON = {
-    "id": "comp-abc",
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "query": "iPhone 15 vs Galaxy S24",
     "product_names": ["Apple iPhone 15", "Samsung Galaxy S24"],
     "input_type": "text",
@@ -28,7 +28,7 @@ MOCK_COMPARISON = {
 }
 
 MOCK_SHARED = {
-    "id": "comp-abc",
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "query": "iPhone 15 vs Galaxy S24",
     "product_names": ["Apple iPhone 15", "Samsung Galaxy S24"],
     "input_type": "text",
@@ -61,7 +61,7 @@ def test_share_requires_auth():
     """POST /share/{id} without auth returns 401."""
     _cleanup_overrides()
     client = TestClient(app)
-    resp = client.post("/api/v1/share/comp-abc")
+    resp = client.post("/api/v1/share/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
     assert resp.status_code == 401
 
 
@@ -70,7 +70,7 @@ def test_share_success(mock_create):
     """POST /share/{id} returns share token and URL."""
     client = _get_client_with_user()
     try:
-        resp = client.post("/api/v1/share/comp-abc")
+        resp = client.post("/api/v1/share/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
@@ -85,7 +85,7 @@ def test_share_forbidden(mock_create):
     """POST /share/{id} returns 403 if not owner."""
     client = _get_client_with_user()
     try:
-        resp = client.post("/api/v1/share/comp-abc")
+        resp = client.post("/api/v1/share/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         assert resp.status_code == 403
     finally:
         _cleanup_overrides()
@@ -96,7 +96,7 @@ def test_share_not_found(mock_create):
     """POST /share/{id} returns 404 if comparison doesn't exist."""
     client = _get_client_with_user()
     try:
-        resp = client.post("/api/v1/share/nonexistent")
+        resp = client.post("/api/v1/share/00000000-0000-0000-0000-000000000000")
         assert resp.status_code == 404
     finally:
         _cleanup_overrides()
@@ -145,7 +145,7 @@ def test_share_url_contains_base_url(mock_create):
     """POST /share/{id} returns share_url with correct base URL."""
     client = _get_client_with_user()
     try:
-        resp = client.post("/api/v1/share/comp-abc")
+        resp = client.post("/api/v1/share/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         assert resp.status_code == 200
         data = resp.json()
         assert data["share_url"].startswith("https://web-production-58776.up.railway.app/api/v1/share/")
@@ -163,7 +163,7 @@ def test_get_shared_comparison_strips_personalization():
     """get_shared_comparison removes personalization keys from full_response."""
     mock_response = MagicMock()
     mock_response.data = {
-        "id": "comp-abc",
+        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         "query": "test",
         "product_names": [],
         "input_type": "text",
@@ -197,7 +197,7 @@ def test_get_shared_comparison_strips_personalization():
 def test_create_share_token_ownership_check():
     """create_share_token raises PermissionError for wrong user."""
     mock_comparison = {
-        "id": "comp-abc",
+        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         "user_id": "user-123",
         "share_token": None,
     }
@@ -206,14 +206,14 @@ def test_create_share_token_ownership_check():
         from app.services.database_service import create_share_token
         with pytest.raises(PermissionError):
             asyncio.get_event_loop().run_until_complete(
-                create_share_token("comp-abc", "wrong-user")
+                create_share_token("a1b2c3d4-e5f6-7890-abcd-ef1234567890", "wrong-user")
             )
 
 
 def test_create_share_token_returns_existing():
     """create_share_token returns existing token if already shared."""
     mock_comparison = {
-        "id": "comp-abc",
+        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         "user_id": "user-123",
         "share_token": "existing_tok",
     }
@@ -221,7 +221,7 @@ def test_create_share_token_returns_existing():
     with patch("app.services.database_service.get_comparison_by_id", new_callable=AsyncMock, return_value=mock_comparison):
         from app.services.database_service import create_share_token
         result = asyncio.get_event_loop().run_until_complete(
-            create_share_token("comp-abc", "user-123")
+            create_share_token("a1b2c3d4-e5f6-7890-abcd-ef1234567890", "user-123")
         )
         assert result == "existing_tok"
 

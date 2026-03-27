@@ -319,14 +319,23 @@ class TestFeedbackEdgeCases:
         assert resp.status_code == 200
 
     def test_feedback_long_change_suggestion(self, client):
-        """Very long change_suggestion text should be accepted."""
-        long_text = "A" * 5000
+        """change_suggestion respects max_length=1000."""
+        text_at_limit = "A" * 1000
         with patch("app.services.feedback_service.get_supabase_client"):
             resp = client.post("/api/v1/feedback", json={
                 "useful": True,
-                "change_suggestion": long_text,
+                "change_suggestion": text_at_limit,
             })
         assert resp.status_code == 200
+
+    def test_feedback_change_suggestion_over_limit(self, client):
+        """change_suggestion over 1000 chars is rejected."""
+        long_text = "A" * 1001
+        resp = client.post("/api/v1/feedback", json={
+            "useful": True,
+            "change_suggestion": long_text,
+        })
+        assert resp.status_code == 422
 
     def test_events_batch_exactly_50(self, client):
         """Exactly 50 events (at the limit) should succeed."""
