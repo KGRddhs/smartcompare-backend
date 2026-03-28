@@ -1,5 +1,6 @@
 /**
  * FeedbackCard - Inline feedback collection shown below comparison results
+ * Restyled with Qaren design system (theme + i18n)
  */
 import React, { useState } from 'react';
 import {
@@ -9,10 +10,15 @@ import {
   TouchableOpacity,
   TextInput,
 } from 'react-native';
+import { ThumbsUp, ThumbsDown } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
+import { colors, spacing, radii, typography, shadows } from '../theme';
 import { submitFeedback } from '../services/api';
 
 const MATTERED_OPTIONS = [
-  'price', 'specs', 'reviews', 'brand', 'value', 'ratings',
+  { key: 'accurate', i18nKey: 'results.feedback.accurate' },
+  { key: 'detailed', i18nKey: 'results.feedback.detailed' },
+  { key: 'fast', i18nKey: 'results.feedback.fast' },
 ] as const;
 
 interface FeedbackCardProps {
@@ -22,6 +28,7 @@ interface FeedbackCardProps {
 }
 
 export default function FeedbackCard({ comparisonId, submitted: parentSubmitted, onSubmitted }: FeedbackCardProps) {
+  const { t } = useTranslation();
   const [localSubmitted, setLocalSubmitted] = useState(false);
   const submitted = parentSubmitted ?? localSubmitted;
   const [useful, setUseful] = useState<boolean | null>(null);
@@ -32,7 +39,7 @@ export default function FeedbackCard({ comparisonId, submitted: parentSubmitted,
   if (submitted) {
     return (
       <View style={styles.card}>
-        <Text style={styles.thanksText}>Thanks for your feedback!</Text>
+        <Text style={styles.thanksText}>{t('results.feedback.thanks')}</Text>
       </View>
     );
   }
@@ -54,7 +61,7 @@ export default function FeedbackCard({ comparisonId, submitted: parentSubmitted,
         change_suggestion: suggestion.trim() || undefined,
       });
     } catch {
-      // Fire-and-forget — don't block UI on failure
+      // Fire-and-forget
     }
     setLocalSubmitted(true);
     onSubmitted?.();
@@ -63,7 +70,7 @@ export default function FeedbackCard({ comparisonId, submitted: parentSubmitted,
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Was this comparison useful?</Text>
+      <Text style={styles.title}>{t('results.feedback.title')}</Text>
 
       {/* Thumbs up/down */}
       <View style={styles.thumbsRow}>
@@ -71,42 +78,40 @@ export default function FeedbackCard({ comparisonId, submitted: parentSubmitted,
           style={[styles.thumbButton, useful === true && styles.thumbSelected]}
           onPress={() => setUseful(true)}
         >
-          <Text style={styles.thumbText}>Yes</Text>
+          <ThumbsUp size={20} color={useful === true ? colors.accent : colors.text.secondary} />
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.thumbButton, useful === false && styles.thumbSelectedNo]}
           onPress={() => setUseful(false)}
         >
-          <Text style={styles.thumbText}>No</Text>
+          <ThumbsDown size={20} color={useful === false ? colors.destructive : colors.text.secondary} />
         </TouchableOpacity>
       </View>
 
       {/* Mattered most chips (optional) */}
       {useful !== null && (
         <>
-          <Text style={styles.subLabel}>What mattered most? (optional)</Text>
           <View style={styles.chipsRow}>
             {MATTERED_OPTIONS.map((item) => (
               <TouchableOpacity
-                key={item}
-                style={[styles.chip, matteredMost.includes(item) && styles.chipSelected]}
-                onPress={() => toggleMattered(item)}
+                key={item.key}
+                style={[styles.chip, matteredMost.includes(item.key) && styles.chipSelected]}
+                onPress={() => toggleMattered(item.key)}
               >
                 <Text
-                  style={[styles.chipText, matteredMost.includes(item) && styles.chipTextSelected]}
+                  style={[styles.chipText, matteredMost.includes(item.key) && styles.chipTextSelected]}
                 >
-                  {item.charAt(0).toUpperCase() + item.slice(1)}
+                  {t(item.i18nKey)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
           {/* Optional text input */}
-          <Text style={styles.subLabel}>Anything to improve? (optional)</Text>
           <TextInput
             style={styles.textInput}
             placeholder="Tell us what could be better..."
-            placeholderTextColor="#999"
+            placeholderTextColor={colors.text.placeholder}
             value={suggestion}
             onChangeText={setSuggestion}
             multiline
@@ -120,7 +125,7 @@ export default function FeedbackCard({ comparisonId, submitted: parentSubmitted,
             disabled={submitting}
           >
             <Text style={styles.submitText}>
-              {submitting ? 'Sending...' : 'Submit Feedback'}
+              {submitting ? '...' : 'Submit'}
             </Text>
           </TouchableOpacity>
         </>
@@ -131,105 +136,98 @@ export default function FeedbackCard({ comparisonId, submitted: parentSubmitted,
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFF',
-    margin: 10,
-    padding: 15,
-    borderRadius: 12,
+    backgroundColor: colors.bg.secondary,
+    marginHorizontal: spacing.base,
+    marginVertical: spacing.sm,
+    padding: spacing.base,
+    borderRadius: radii.card,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border.light,
+    ...shadows.card,
   },
   title: {
-    fontSize: 15,
+    ...typography.body,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
+    color: colors.text.primary,
+    marginBottom: spacing.md,
   },
   thumbsRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
+    gap: spacing.md,
+    marginBottom: spacing.md,
   },
   thumbButton: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingVertical: spacing.md,
+    borderRadius: radii.button,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border.light,
     alignItems: 'center',
+    backgroundColor: colors.bg.primary,
   },
   thumbSelected: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#4CAF50',
+    backgroundColor: colors.accentLight,
+    borderColor: colors.accent,
   },
   thumbSelectedNo: {
-    backgroundColor: '#FFEBEE',
-    borderColor: '#F44336',
-  },
-  thumbText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333',
-  },
-  subLabel: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 8,
+    backgroundColor: '#FEF2F2',
+    borderColor: colors.destructive,
   },
   chipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radii.chip,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    backgroundColor: '#FAFAFA',
+    borderColor: colors.border.light,
+    backgroundColor: colors.bg.primary,
   },
   chipSelected: {
-    backgroundColor: '#E3F2FD',
-    borderColor: '#2196F3',
+    backgroundColor: colors.accentLight,
+    borderColor: colors.accent,
   },
   chipText: {
-    fontSize: 12,
-    color: '#666',
+    ...typography.caption,
+    color: colors.text.secondary,
   },
   chipTextSelected: {
-    color: '#2196F3',
+    color: colors.accent,
     fontWeight: '600',
   },
   textInput: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 13,
-    color: '#333',
-    marginBottom: 12,
+    backgroundColor: colors.bg.primary,
+    borderRadius: radii.input,
+    padding: spacing.md,
+    ...typography.caption,
+    color: colors.text.primary,
+    marginBottom: spacing.md,
     minHeight: 60,
     textAlignVertical: 'top',
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border.light,
   },
   submitButton: {
-    backgroundColor: '#2196F3',
-    paddingVertical: 10,
-    borderRadius: 8,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md,
+    borderRadius: radii.button,
     alignItems: 'center',
   },
   submitDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   submitText: {
-    color: '#FFF',
-    fontSize: 14,
+    color: '#FFFFFF',
+    ...typography.body,
     fontWeight: '600',
   },
   thanksText: {
-    fontSize: 14,
-    color: '#4CAF50',
+    ...typography.body,
+    color: colors.accent,
     fontWeight: '500',
     textAlign: 'center',
   },

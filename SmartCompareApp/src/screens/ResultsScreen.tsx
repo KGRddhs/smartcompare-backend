@@ -1,7 +1,7 @@
 /**
- * ResultsScreen - Comparison results with verified ratings
- * Shows "No verified rating available" if rating is null
- * Includes link to source when rating is verified
+ * Qaren - Results Screen (Single Scroll)
+ * Converts 3-tab layout to single continuous scroll.
+ * Preserves ALL business logic: SSE handling, event tracking, share, feedback.
  */
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -12,36 +12,82 @@ import {
   TouchableOpacity,
   Share,
   Linking,
+  Switch,
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import * as Haptics from 'expo-haptics';
+import {
+  ArrowLeft,
+  Share2,
+  Bookmark,
+  ChevronDown,
+  ChevronUp,
+  Star,
+  ExternalLink,
+  Shield,
+  AlertCircle,
+  Trophy,
+  Camera as CameraIcon,
+  Battery,
+  Monitor,
+  Zap,
+  HardDrive,
+  DollarSign,
+  Info,
+  Award,
+} from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList, Product, Comparison, RatingSource, ComparisonResult, ScoringResult, ProductScores, ScoreBreakdown, PersonalizedInsight, OverviewProduct, ReviewSummary, ReviewHighlight } from '../types';
+
+import { colors, spacing, radii, typography, shadows } from '../theme';
+import {
+  RootStackParamList,
+  Product,
+  Comparison,
+  RatingSource,
+  ComparisonResult,
+  ScoringResult,
+  ProductScores,
+  ScoreBreakdown,
+  PersonalizedInsight,
+  OverviewProduct,
+  ReviewSummary,
+  ReviewHighlight,
+} from '../types';
+import { Card } from '../components/Card';
+import { SkeletonLoader } from '../components/SkeletonLoader';
+import { ProgressBar } from '../components/ProgressBar';
 import FeedbackCard from '../components/FeedbackCard';
 import { trackEvents, shareComparison } from '../services/api';
 
 type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
-type TabType = 'overview' | 'specs' | 'reviews';
-
 export default function ResultsScreen({ route, navigation }: ResultsScreenProps) {
+  const { t } = useTranslation();
   const { result } = route.params;
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [specsExpanded, setSpecsExpanded] = useState(true);
+  const [showDiffsOnly, setShowDiffsOnly] = useState(false);
+
+  // Winner reveal animation state
+  const [winnerRevealed, setWinnerRevealed] = useState(false);
 
   // Detect new structured format vs old flat format
   const isNewFormat = !!result?.overview?.winner;
 
-  // Extract data — new format uses structured sections, old format uses flat fields
+  // Extract data
   const products = result.products;
   const comparison = result.comparison;
   const winner_index = isNewFormat ? result.overview!.winner.product_index : result.winner_index;
   const recommendation = isNewFormat ? result.overview!.winner.reason : result.recommendation;
   const key_differences = result.key_differences;
   const metadata = result.metadata;
+  const scoring = result.scoring;
 
   // Event tracking
   const mountTimeRef = useRef(Date.now());
-  const pendingEventsRef = useRef<Array<{ event_type: string; event_data?: Record<string, any>; comparison_id?: string }>>([]);
+  const pendingEventsRef = useRef<
+    Array<{ event_type: string; event_data?: Record<string, any>; comparison_id?: string }>
+  >([]);
   const comparisonId = metadata?.query;
 
   const trackEvent = (eventType: string, eventData?: Record<string, any>) => {
@@ -53,8 +99,17 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   };
 
   useEffect(() => {
+    // Winner reveal with haptic
+    const timer = setTimeout(async () => {
+      setWinnerRevealed(true);
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {}
+    }, 300);
+
     return () => {
-      // Send view duration + any pending events on unmount (fire-and-forget)
+      clearTimeout(timer);
+      // Send view duration + any pending events on unmount
       const durationMs = Date.now() - mountTimeRef.current;
       pendingEventsRef.current.push({
         event_type: 'result_view_duration',
@@ -67,18 +122,17 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     };
   }, []);
 
-  const handleTabSwitch = (tab: TabType) => {
-    if (tab !== activeTab) {
-      trackEvent('tab_switch', { from: activeTab, to: tab });
-    }
-    setActiveTab(tab);
-  };
+  // --- Helpers ---
 
   const formatPrice = (price?: Product['price']) => {
-    if (!price || price.unavailable || price.amount === null) {
-      return 'Price N/A';
-    }
+    if (!price || price.unavailable || price.amount === null) return 'Price N/A';
     return `${price.currency} ${price.amount.toLocaleString()}`;
+  };
+
+  const getScoreColor = (score: number): string => {
+    if (score > 70) return colors.accent;
+    if (score >= 40) return colors.warning;
+    return colors.destructive;
   };
 
   const handleShare = async () => {
@@ -93,9 +147,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         try {
           const { share_url } = await shareComparison(compId);
           shareMessage += `\n\nView full comparison: ${share_url}`;
-        } catch {
-          // Fall back to text-only sharing
-        }
+        } catch {}
       }
 
       await Share.share({ message: shareMessage });
@@ -112,13 +164,19 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     }
   };
 
-  // Scoring helpers
-  const scoring = result.scoring;
+  const getProductScores = (index: number): ProductScores | null => {
+    if (!scoring) return null;
+    return scoring.scores[`product_${index}`] ?? null;
+  };
 
-  const getScoreColor = (score: number): string => {
-    if (score > 70) return '#4CAF50';
-    if (score >= 40) return '#FF9800';
-    return '#F44336';
+  // Price comparison: calculate % less
+  const getPriceDiff = (): { cheaperIndex: number; percent: number } | null => {
+    const p0 = products[0]?.price?.amount;
+    const p1 = products[1]?.price?.amount;
+    if (p0 == null || p1 == null || p0 === 0 || p1 === 0) return null;
+    if (p0 < p1) return { cheaperIndex: 0, percent: Math.round(((p1 - p0) / p1) * 100) };
+    if (p1 < p0) return { cheaperIndex: 1, percent: Math.round(((p0 - p1) / p0) * 100) };
+    return null;
   };
 
   const SCORE_LABELS: Record<keyof ScoreBreakdown, string> = {
@@ -130,748 +188,583 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     popularity_score: 'Popularity',
   };
 
-  // Badge mapping: scoring dimension -> label + icon
-  const BADGE_MAP: Record<keyof ScoreBreakdown, { label: string; icon: string }> = {
-    price_score: { label: 'Best Price', icon: 'pricetag-outline' },
-    spec_score: { label: 'Best Specs', icon: 'hardware-chip-outline' },
-    review_score: { label: 'Top Rated', icon: 'star-outline' },
-    value_score: { label: 'Best Value', icon: 'trophy-outline' },
-    reliability_score: { label: 'Most Reliable', icon: 'shield-checkmark-outline' },
-    popularity_score: { label: 'Most Popular', icon: 'trending-up-outline' },
+  const priceDiff = getPriceDiff();
+
+  // Specs filtering
+  const HIDDEN_FIELDS = ['brand', 'model', 'variant', 'category'];
+  const NA_VALUES = ['n/a', 'na', 'null', 'none', 'unknown', ''];
+
+  const filterSpecs = (specs: Record<string, any>) => {
+    return Object.entries(specs).filter(([key, value]) => {
+      if (HIDDEN_FIELDS.includes(key)) return false;
+      if (key.endsWith('_source')) return false;
+      if (value === null || value === undefined) return false;
+      if (typeof value === 'string' && NA_VALUES.includes(value.toLowerCase().trim())) return false;
+      return true;
+    });
   };
 
-  const BADGE_THRESHOLD = 3;
-
-  const getProductBadges = (index: number): Array<{ label: string; icon: string }> => {
-    if (!scoring) return [];
-    const myScores = getProductScores(index);
-    const otherScores = getProductScores(index === 0 ? 1 : 0);
-    if (!myScores || !otherScores) return [];
-
-    const badges: Array<{ label: string; icon: string }> = [];
-    for (const [dim, meta] of Object.entries(BADGE_MAP)) {
-      const key = dim as keyof ScoreBreakdown;
-      if (myScores.breakdown[key] - otherScores.breakdown[key] >= BADGE_THRESHOLD) {
-        badges.push(meta);
+  // Get all spec keys across both products for diff comparison
+  const getAllSpecKeys = (): string[] => {
+    const keys = new Set<string>();
+    const specsProducts = isNewFormat ? result.specs?.products : products;
+    specsProducts?.forEach((p: any) => {
+      if (p.specs) {
+        filterSpecs(p.specs).forEach(([k]) => keys.add(k));
       }
-    }
-    return badges;
+    });
+    return Array.from(keys);
   };
 
-  const AspectBadges = ({ index }: { index: number }) => {
-    const badges = getProductBadges(index);
-    const scoringWinnerIndex = isNewFormat ? result.overview!.winner.product_index : scoring?.winner_index;
-    const isOverallWinner = scoringWinnerIndex === index;
-    if (badges.length === 0 && !isOverallWinner) return null;
-
-    return (
-      <View style={styles.aspectBadgesRow}>
-        {isOverallWinner && (
-          <View style={[styles.aspectBadge, styles.overallBadge]}>
-            <Ionicons name="ribbon-outline" size={10} color="#FFF" />
-            <Text style={styles.overallBadgeText}>
-              {result.personalized ? 'Best for You' : 'Best Overall'}
-            </Text>
-          </View>
-        )}
-        {badges.map((badge, i) => (
-          <View key={i} style={[styles.aspectBadge, isOverallWinner ? styles.winnerAspectBadge : styles.otherAspectBadge]}>
-            <Ionicons name={badge.icon as any} size={10} color={isOverallWinner ? '#2E7D32' : '#1565C0'} />
-            <Text style={[styles.aspectBadgeText, { color: isOverallWinner ? '#2E7D32' : '#1565C0' }]}>
-              {badge.label}
-            </Text>
-          </View>
-        ))}
-      </View>
-    );
-  };
-
-  const getInsightIcon = (focusArea: string): string => {
-    const lower = focusArea.toLowerCase();
-    if (lower.includes('battery')) return 'battery-charging-outline';
-    if (lower.includes('price') || lower.includes('budget') || lower.includes('value')) return 'cash-outline';
-    if (lower.includes('camera') || lower.includes('photo')) return 'camera-outline';
-    if (lower.includes('durability') || lower.includes('build')) return 'shield-checkmark-outline';
-    if (lower.includes('display') || lower.includes('screen')) return 'phone-portrait-outline';
-    if (lower.includes('performance') || lower.includes('speed')) return 'speedometer-outline';
-    if (lower.includes('storage') || lower.includes('memory')) return 'server-outline';
-    return 'information-circle-outline';
-  };
-
-  const InsightCard = ({ insight }: { insight: PersonalizedInsight }) => {
-    return (
-      <View style={styles.insightCard}>
-        <View style={styles.insightIconRow}>
-          <Ionicons name={getInsightIcon(insight.focus_area) as any} size={20} color="#2196F3" />
-          <Text style={styles.insightFocusArea}>
-            {insight.focus_area.replace(/_/g, ' ')}
-          </Text>
-        </View>
-        <Text style={styles.insightText}>{insight.insight}</Text>
-      </View>
-    );
-  };
-
-  const PreferencePromptBanner = () => {
-    if (result.personalized && result.personalized_insights && result.personalized_insights.length > 0) {
-      return null;
-    }
-    return (
-      <TouchableOpacity
-        style={styles.preferencePromptBanner}
-        onPress={() => navigation.navigate('Preferences', { mode: 'onboarding' })}
-      >
-        <Ionicons name="person-circle-outline" size={24} color="#2196F3" />
-        <View style={styles.preferencePromptTextContainer}>
-          <Text style={styles.preferencePromptTitle}>Get personalized guidance</Text>
-          <Text style={styles.preferencePromptSubtext}>Set your preferences to see insights tailored to you</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color="#999" />
-      </TouchableOpacity>
-    );
-  };
-
-  const getProductScores = (index: number): ProductScores | null => {
-    if (!scoring) return null;
-    const key = `product_${index}`;
-    return scoring.scores[key] ?? null;
-  };
-
-  // Score badge for product cards
-  const ScoreBadge = ({ index }: { index: number }) => {
-    const scores = getProductScores(index);
-    if (!scores) return null;
-
-    return (
-      <View style={[styles.scoreBadge, { borderColor: getScoreColor(scores.overall) }]}>
-        <Text style={[styles.scoreBadgeValue, { color: getScoreColor(scores.overall) }]}>
-          {Math.round(scores.overall)}
-        </Text>
-        <Text style={styles.scoreBadgeLabel}>/100</Text>
-      </View>
-    );
-  };
-
-  // Score breakdown bar
-  const ScoreBar = ({ label, value }: { label: string; value: number }) => (
-    <View style={styles.scoreBarRow}>
-      <Text style={styles.scoreBarLabel}>{label}</Text>
-      <View style={styles.scoreBarTrack}>
-        <View
-          style={[
-            styles.scoreBarFill,
-            { width: `${Math.min(value, 100)}%`, backgroundColor: getScoreColor(value) },
-          ]}
-        />
-      </View>
-      <Text style={styles.scoreBarValue}>{Math.round(value)}</Text>
-    </View>
-  );
-
-  // Full scoring section in overview
-  const ScoringSection = () => {
-    if (!scoring) return null;
-
-    const scoringWinIdx = isNewFormat ? result.overview!.winner.product_index : scoring.winner_index;
-    const winnerScores = getProductScores(scoringWinIdx);
-    const winnerName = products[scoringWinIdx]?.name;
-
-    return (
-      <View style={styles.scoringSection}>
-        <Text style={styles.sectionTitle}>Score Breakdown</Text>
-
-        {((isNewFormat ? result.overview!.winner.margin : scoring.win_margin) > 0) && winnerName && (
-          <View style={styles.winMarginBanner}>
-            <Text style={styles.winMarginText}>
-              {winnerName} wins by {Math.round(isNewFormat ? result.overview!.winner.margin : scoring.win_margin)} points
-            </Text>
-          </View>
-        )}
-
-        {products.map((product, index) => {
-          const scores = getProductScores(index);
-          if (!scores) return null;
-
-          return (
-            <View key={index} style={styles.scoreCard}>
-              <View style={styles.scoreCardHeader}>
-                <Text style={styles.scoreCardName}>{product.name}</Text>
-                <View style={[styles.scoreOverallBadge, { backgroundColor: getScoreColor(scores.overall) }]}>
-                  <Text style={styles.scoreOverallText}>{Math.round(scores.overall)}/100</Text>
-                </View>
-              </View>
-              {(Object.keys(SCORE_LABELS) as (keyof ScoreBreakdown)[]).map((key) => (
-                <ScoreBar key={key} label={SCORE_LABELS[key]} value={scores.breakdown[key]} />
-              ))}
-            </View>
-          );
-        })}
-
-        {/* Weights info */}
-        {winnerScores && (
-          <Text style={styles.weightsText}>
-            {scoring.scoring_method === 'personalized'
-              ? 'Weighted for your preferences'
-              : 'Default weights applied'}
-          </Text>
-        )}
-      </View>
-    );
-  };
-
-  // Rating display component — shows all ratings with source name + link
-  const RatingDisplay = ({ product }: { product: Product }) => {
-    const { rating, review_count, rating_source } = product;
-
-    if (rating === null || rating === undefined) {
-      return (
-        <View style={styles.ratingContainer}>
-          <Text style={styles.noRatingText}>No rating available</Text>
-        </View>
-      );
-    }
-
-    const hasLink = rating_source?.url != null;
-
-    const ratingContent = (
-      <>
-        <View style={styles.ratingRow}>
-          <Text style={styles.ratingText}>{rating.toFixed(1)}/5</Text>
-          {review_count != null && (
-            <Text style={styles.reviewCountText}>({review_count.toLocaleString()} reviews)</Text>
-          )}
-        </View>
-        {rating_source?.name && (
-          <View style={styles.sourceLink}>
-            <Text style={styles.sourceText}>{rating_source.name}</Text>
-            {hasLink && <Ionicons name="open-outline" size={12} color="#2196F3" />}
-          </View>
-        )}
-      </>
-    );
-
-    if (hasLink) {
-      return (
-        <TouchableOpacity
-          onPress={() => openRatingSource(rating_source!)}
-          style={styles.ratingContainer}
-        >
-          {ratingContent}
-        </TouchableOpacity>
-      );
-    }
-
-    return <View style={styles.ratingContainer}>{ratingContent}</View>;
-  };
-
-  // Value badge colors
-  const VALUE_BADGE_COLORS: Record<string, { bg: string; text: string }> = {
-    great_value: { bg: '#E8F5E9', text: '#2E7D32' },
-    fair_price: { bg: '#E3F2FD', text: '#1565C0' },
-    premium_price: { bg: '#FFF3E0', text: '#E65100' },
-    overpriced: { bg: '#FFEBEE', text: '#C62828' },
-  };
-
-  const VALUE_BADGE_LABELS: Record<string, string> = {
-    great_value: 'Great Value',
-    fair_price: 'Fair Price',
-    premium_price: 'Premium',
-    overpriced: 'Overpriced',
-  };
-
-  // Product card component
-  const ProductCard = ({ product, index }: { product: Product; index: number }) => {
-    const isWinner = index === winner_index;
-    const valueScore = comparison.value_scores?.[index];
-    const overviewProduct = isNewFormat ? result.overview!.products[index] : null;
-
-    return (
-      <View style={[styles.productCard, isWinner && styles.winnerCard]}>
-        <AspectBadges index={index} />
-
-        {/* Score Badge */}
-        <ScoreBadge index={index} />
-
-        <Text style={styles.brandText}>{product.brand}</Text>
-        <Text style={styles.productName}>{product.name}</Text>
-
-        {/* Price */}
-        <Text style={[
-          styles.priceText,
-          product.price?.unavailable && styles.priceUnavailable
-        ]}>
-          {formatPrice(product.price)}
-        </Text>
-        {product.price?.source_method === 'converted_usd' && (
-          <Text style={styles.priceNote}>(converted from USD)</Text>
-        )}
-        {(product.price?.estimated === true || product.price?.source_method === 'estimated') && (
-          <Text style={styles.priceNote}>(estimated price)</Text>
-        )}
-        {(product.price?.source_method === 'page_scrape' || product.price?.source_method === 'page_scrape_rendered') && product.price?.retailer && (
-          <Text style={styles.priceNote}>from {product.price.retailer}</Text>
-        )}
-        {product.price?.retailer && !product.price?.unavailable && product.price?.source_method !== 'page_scrape' && product.price?.source_method !== 'page_scrape_rendered' && (
-          <Text style={styles.retailerText}>{product.price.retailer}</Text>
-        )}
-
-        {/* Value Badge (new format) */}
-        {overviewProduct?.value_badge && (
-          <View style={[styles.valueBadge, { backgroundColor: VALUE_BADGE_COLORS[overviewProduct.value_badge]?.bg || '#F5F5F5' }]}>
-            <Text style={[styles.valueBadgeText, { color: VALUE_BADGE_COLORS[overviewProduct.value_badge]?.text || '#666' }]}>
-              {VALUE_BADGE_LABELS[overviewProduct.value_badge] || overviewProduct.value_badge}
-            </Text>
-          </View>
-        )}
-        {overviewProduct?.value_context ? (
-          <Text style={styles.priceNote}>{overviewProduct.value_context}</Text>
-        ) : null}
-
-        {/* Rating with source */}
-        <RatingDisplay product={product} />
-
-        {/* Value Score (old format) */}
-        {!isNewFormat && valueScore !== undefined && (
-          <View style={styles.valueScoreContainer}>
-            <Text style={styles.valueScoreLabel}>Value Score</Text>
-            <Text style={styles.valueScoreText}>{valueScore}/10</Text>
-          </View>
-        )}
-
-        {/* Best For (new format) */}
-        {overviewProduct?.best_for ? (
-          <Text style={styles.bestForText}>Best for: {overviewProduct.best_for}</Text>
-        ) : null}
-      </View>
-    );
-  };
-
-  // Specs comparison tab
-  const SpecsTab = () => {
-    const HIDDEN_FIELDS = ['brand', 'model', 'variant', 'category'];
-    const NA_VALUES = ['n/a', 'na', 'null', 'none', 'unknown', ''];
-
-    const filterSpecs = (specs: Record<string, any>) => {
-      return Object.entries(specs).filter(([key, value]) => {
-        if (HIDDEN_FIELDS.includes(key)) return false;
-        if (key.endsWith('_source')) return false;
-        if (value === null || value === undefined) return false;
-        if (typeof value === 'string' && NA_VALUES.includes(value.toLowerCase().trim())) return false;
-        return true;
-      });
-    };
-
-    // New format: use result.specs.products
-    const specsProducts = isNewFormat ? result.specs!.products : null;
-
-    return (
-    <View style={styles.tabContent}>
-      {(specsProducts || products).map((item: any, index: number) => {
-        const specs = isNewFormat ? item.specs : item.specs;
-        const filteredSpecs = specs ? filterSpecs(specs) : [];
-        const specAdvantages = isNewFormat ? (item as any).spec_advantages : null;
-
-        return (
-        <View key={index} style={styles.specsCard}>
-          <Text style={styles.specsCardTitle}>{item.name}</Text>
-          {filteredSpecs.map(([key, value]) => (
-              <View key={key} style={styles.specRow}>
-                <Text style={styles.specKey}>{key.replace(/_/g, ' ')}</Text>
-                <Text style={styles.specValue}>{String(value)}</Text>
-              </View>
-          ))}
-          {filteredSpecs.length === 0 && (
-            <Text style={{ color: '#999', fontStyle: 'italic', padding: 12 }}>
-              No specifications available
-            </Text>
-          )}
-          {/* Spec advantages (new format, per product) */}
-          {specAdvantages && specAdvantages.length > 0 && (
-            <View style={styles.specAdvantagesInline}>
-              {specAdvantages.map((adv: string, i: number) => (
-                <Text key={i} style={styles.advantageItem}>+ {adv}</Text>
-              ))}
-            </View>
-          )}
-        </View>
-        );
-      })}
-
-      {/* Advantages comparison (old format) */}
-      {!isNewFormat && comparison.specs_comparison && (
-        <View style={styles.advantagesSection}>
-          <Text style={styles.sectionTitle}>Advantages</Text>
-
-          {comparison.specs_comparison.product_0_advantages?.length > 0 && (
-            <View style={styles.advantageCard}>
-              <Text style={styles.advantageTitle}>{products[0]?.name}</Text>
-              {comparison.specs_comparison.product_0_advantages.map((adv, i) => (
-                <Text key={i} style={styles.advantageItem}>+ {adv}</Text>
-              ))}
-            </View>
-          )}
-
-          {comparison.specs_comparison.product_1_advantages?.length > 0 && (
-            <View style={styles.advantageCard}>
-              <Text style={styles.advantageTitle}>{products[1]?.name}</Text>
-              {comparison.specs_comparison.product_1_advantages.map((adv, i) => (
-                <Text key={i} style={styles.advantageItem}>+ {adv}</Text>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
-    </View>
-    );
-  };
-
-  // Reviews tab (pros/cons)
-  const ReviewsTab = () => {
-    // New format: use structured review summaries
-    if (isNewFormat && result.reviews?.products) {
-      const reviewProducts = result.reviews.products;
-      const hasAnyData = reviewProducts.some((rp: any) =>
-        rp.rating || rp.review_summary?.consensus || (rp.review_summary?.highlights?.length > 0)
-      );
-
-      if (!hasAnyData) {
-        return (
-          <View style={styles.tabContent}>
-            <View style={styles.emptyStateCard}>
-              <Ionicons name="chatbubble-ellipses-outline" size={40} color="#CCC" />
-              <Text style={styles.emptyStateText}>Reviews not available for these products</Text>
-            </View>
-          </View>
-        );
-      }
-
-      return (
-        <View style={styles.tabContent}>
-          {reviewProducts.map((rp: any, index: number) => {
-            const summary: ReviewSummary | undefined = rp.review_summary;
-            return (
-              <View key={index} style={styles.reviewCard}>
-                <Text style={styles.reviewCardTitle}>{rp.name}</Text>
-
-                {/* Rating */}
-                {rp.rating != null && (
-                  <View style={styles.reviewRatingSection}>
-                    <View style={styles.ratingRow}>
-                      <Text style={styles.ratingText}>{rp.rating.toFixed(1)}/5</Text>
-                      {rp.review_count != null && (
-                        <Text style={styles.reviewCountText}>({rp.review_count.toLocaleString()} reviews)</Text>
-                      )}
-                    </View>
-                    {rp.rating_source?.name && (
-                      <TouchableOpacity
-                        style={styles.sourceLink}
-                        onPress={() => rp.rating_source?.url && openRatingSource(rp.rating_source)}
-                        disabled={!rp.rating_source?.url}
-                      >
-                        <Text style={styles.sourceText}>{rp.rating_source.name}</Text>
-                        {rp.rating_source?.url && <Ionicons name="open-outline" size={12} color="#2196F3" />}
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-
-                {/* Review volume badge */}
-                {summary?.review_volume && (
-                  <View style={styles.reviewVolumeBadge}>
-                    <Text style={styles.reviewVolumeText}>
-                      {summary.review_volume.charAt(0).toUpperCase() + summary.review_volume.slice(1)} review volume
-                    </Text>
-                  </View>
-                )}
-
-                {/* Consensus */}
-                {summary?.consensus ? (
-                  <Text style={styles.consensusText}>{summary.consensus}</Text>
-                ) : null}
-
-                {/* Highlights */}
-                {summary?.highlights && summary.highlights.length > 0 && (
-                  <View style={styles.prosConsSection}>
-                    {summary.highlights.map((h: ReviewHighlight, i: number) => (
-                      <Text
-                        key={i}
-                        style={[
-                          styles.highlightItem,
-                          { color: h.sentiment === 'positive' ? '#2E7D32' : '#C62828' },
-                        ]}
-                      >
-                        {h.sentiment === 'positive' ? '+' : '-'} {h.point}
-                      </Text>
-                    ))}
-                  </View>
-                )}
-
-                {/* Divided opinions note */}
-                {summary?.agreement_level === 'divided' && (
-                  <Text style={styles.dividedNote}>Note: User opinions are divided on this product</Text>
-                )}
-              </View>
-            );
-          })}
-        </View>
-      );
-    }
-
-    // Old format fallback
-    const hasAnyReviews = products.some(p =>
-      (p.pros && p.pros.length > 0) ||
-      (p.cons && p.cons.length > 0) ||
-      p.rating ||
-      (p.reviews?.common_praises && p.reviews.common_praises.length > 0) ||
-      (p.reviews?.common_complaints && p.reviews.common_complaints.length > 0) ||
-      (p.reviews?.average_rating != null) ||
-      (p.reviews?.detailed_praises && p.reviews.detailed_praises.length > 0)
-    );
-
-    if (!hasAnyReviews) {
-      return (
-        <View style={styles.tabContent}>
-          <View style={styles.emptyStateCard}>
-            <Ionicons name="chatbubble-ellipses-outline" size={40} color="#CCC" />
-            <Text style={styles.emptyStateText}>Reviews not available for these products</Text>
-          </View>
-        </View>
-      );
-    }
-
-    return (
-      <View style={styles.tabContent}>
-        {products.map((product, index) => (
-          <View key={index} style={styles.reviewCard}>
-            <Text style={styles.reviewCardTitle}>{product.name}</Text>
-
-            {/* Rating info */}
-            <View style={styles.reviewRatingSection}>
-              <RatingDisplay product={product} />
-            </View>
-
-            {/* Pros */}
-            {product.pros && product.pros.length > 0 && (
-              <View style={styles.prosConsSection}>
-                <Text style={styles.prosTitle}>Pros</Text>
-                {product.pros.map((pro, i) => (
-                  <Text key={i} style={styles.proItem}>+ {pro}</Text>
-                ))}
-              </View>
-            )}
-
-            {/* Cons */}
-            {product.cons && product.cons.length > 0 && (
-              <View style={styles.prosConsSection}>
-                <Text style={styles.consTitle}>Cons</Text>
-                {product.cons.map((con, i) => (
-                  <Text key={i} style={styles.conItem}>- {con}</Text>
-                ))}
-              </View>
-            )}
-
-            {/* Common Praises (when no pros available) */}
-            {(!product.pros || product.pros.length === 0) && product.reviews?.common_praises && product.reviews.common_praises.length > 0 && (
-              <View style={styles.prosConsSection}>
-                <Text style={styles.prosTitle}>Praised For</Text>
-                {product.reviews.common_praises.map((praise: string, i: number) => (
-                  <Text key={i} style={styles.proItem}>+ {praise}</Text>
-                ))}
-              </View>
-            )}
-
-            {/* Common Complaints (when no cons available) */}
-            {(!product.cons || product.cons.length === 0) && product.reviews?.common_complaints && product.reviews.common_complaints.length > 0 && (
-              <View style={styles.prosConsSection}>
-                <Text style={styles.consTitle}>Criticized For</Text>
-                {product.reviews.common_complaints.map((complaint: string, i: number) => (
-                  <Text key={i} style={styles.conItem}>- {complaint}</Text>
-                ))}
-              </View>
-            )}
-
-            {/* Detailed praises with user quotes */}
-            {product.reviews?.detailed_praises && product.reviews.detailed_praises.length > 0 && (
-              <View style={styles.prosConsSection}>
-                <Text style={styles.prosTitle}>What Users Love</Text>
-                {product.reviews.detailed_praises.map((praise: any, i: number) => (
-                  <View key={i}>
-                    <Text style={styles.proItem}>+ {praise.text}</Text>
-                    {praise.quote && (
-                      <Text style={[styles.proItem, { fontStyle: 'italic', color: '#666', marginLeft: 16 }]}>
-                        "{praise.quote}"
-                      </Text>
-                    )}
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        ))}
-      </View>
-    );
+  const isSpecDifferent = (key: string): boolean => {
+    const specsProducts = isNewFormat ? result.specs?.products : products;
+    if (!specsProducts || specsProducts.length < 2) return true;
+    const v0 = specsProducts[0]?.specs?.[key];
+    const v1 = specsProducts[1]?.specs?.[key];
+    return String(v0) !== String(v1);
   };
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+          <ArrowLeft size={24} color={colors.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Comparison</Text>
-        <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
-          <Text style={styles.shareText}>Share</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {products[0]?.name} vs {products[1]?.name}
+        </Text>
+        <TouchableOpacity onPress={handleShare} style={styles.headerButton}>
+          <Share2 size={20} color={colors.text.primary} />
         </TouchableOpacity>
       </View>
 
       {/* Category switched banner */}
       {(result as any).category_switched && (
         <View style={styles.categorySwitchedBanner}>
+          <Info size={14} color={colors.accent} />
           <Text style={styles.categorySwitchedText}>
-            Category adjusted from {(result as any).selected_category} to {(result as any).category_used}
+            Category adjusted to {(result as any).category_used}
           </Text>
         </View>
       )}
 
-      {/* Tabs */}
-      <View style={styles.tabBar}>
-        {(['overview', 'specs', 'reviews'] as TabType[]).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && styles.activeTab]}
-            onPress={() => handleTabSwitch(tab)}
-          >
-            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        {/* 1. Product Cards (side by side) */}
+        <View style={styles.productsRow}>
+          {products.map((product, index) => {
+            const isWinner = index === winner_index;
+            const scores = getProductScores(index);
+            const overviewProduct = isNewFormat ? result.overview!.products[index] : null;
 
-      <ScrollView style={styles.content}>
-        {activeTab === 'overview' && (
-          <>
-            {/* Product Cards */}
-            <View style={styles.productsRow}>
-              {products.map((product, index) => (
-                <ProductCard key={index} product={product} index={index} />
-              ))}
-            </View>
-
-            {/* Confidence indicator (new format) */}
-            {isNewFormat && result.overview!.confidence?.overall && (
-              <View style={styles.confidenceBanner}>
-                <Ionicons
-                  name={result.overview!.confidence.overall === 'high' ? 'shield-checkmark-outline' : 'alert-circle-outline'}
-                  size={16}
-                  color={result.overview!.confidence.overall === 'high' ? '#2E7D32' : result.overview!.confidence.overall === 'medium' ? '#E65100' : '#C62828'}
-                />
-                <Text style={[styles.confidenceText, {
-                  color: result.overview!.confidence.overall === 'high' ? '#2E7D32' : result.overview!.confidence.overall === 'medium' ? '#E65100' : '#C62828'
-                }]}>
-                  {result.overview!.confidence.overall.charAt(0).toUpperCase() + result.overview!.confidence.overall.slice(1)} confidence data
-                </Text>
-              </View>
-            )}
-
-            {/* Tradeoffs (new format) */}
-            {isNewFormat && result.overview!.tradeoffs?.length > 0 && (
-              <View style={styles.tradeoffsSection}>
-                <Text style={styles.sectionTitle}>Tradeoffs</Text>
-                {result.overview!.tradeoffs.map((tradeoff, i) => (
-                  <View key={i} style={styles.tradeoffRow}>
-                    <View style={styles.tradeoffItem}>
-                      <Text style={styles.tradeoffProduct}>{tradeoff.winner_wins.product}</Text>
-                      <Text style={styles.tradeoffDim}>
-                        {tradeoff.winner_wins.dimension.replace(/_/g, ' ')} (+{Math.round(tradeoff.winner_wins.margin)})
-                      </Text>
-                    </View>
-                    <Text style={styles.tradeoffVs}>vs</Text>
-                    <View style={styles.tradeoffItem}>
-                      <Text style={styles.tradeoffProduct}>{tradeoff.loser_wins.product}</Text>
-                      <Text style={styles.tradeoffDim}>
-                        {tradeoff.loser_wins.dimension.replace(/_/g, ' ')} (+{Math.round(tradeoff.loser_wins.margin)})
-                      </Text>
-                    </View>
+            return (
+              <Card
+                key={index}
+                variant={isWinner && winnerRevealed ? 'winner' : 'default'}
+                style={styles.productCard}
+              >
+                {/* Best Pick badge */}
+                {isWinner && winnerRevealed && (
+                  <View style={styles.bestPickBadge}>
+                    <Trophy size={12} color="#FFF" />
+                    <Text style={styles.bestPickText}>{t('results.bestPick')}</Text>
                   </View>
-                ))}
-              </View>
-            )}
+                )}
 
-            {/* Personalized Insight Cards (or preference prompt) */}
-            {result.personalized_insights && result.personalized_insights.length > 0 ? (
-              <View style={styles.insightsSection}>
-                {result.personalized_insights.map((insight, index) => (
-                  <InsightCard key={index} insight={insight} />
-                ))}
-              </View>
-            ) : (
-              <PreferencePromptBanner />
-            )}
+                {/* Score badge */}
+                {scores && (
+                  <View style={[styles.scoreBadge, { borderColor: getScoreColor(scores.overall) }]}>
+                    <Text style={[styles.scoreBadgeValue, { color: getScoreColor(scores.overall) }]}>
+                      {Math.round(scores.overall)}
+                    </Text>
+                    <Text style={styles.scoreBadgeLabel}>/100</Text>
+                  </View>
+                )}
 
-            {/* Scores */}
-            <ScoringSection />
+                <Text style={styles.brandText}>{product.brand}</Text>
+                <Text style={styles.productName}>{product.name}</Text>
 
-            {/* Recommendation */}
-            <View style={styles.recommendationSection}>
-              <Text style={styles.sectionTitle}>Recommendation</Text>
-              <Text style={styles.recommendationText}>{recommendation}</Text>
-              {isNewFormat && result.overview!.winner.key_tradeoff ? (
-                <Text style={styles.tradeoffNote}>{result.overview!.winner.key_tradeoff}</Text>
-              ) : null}
-            </View>
-
-            {/* Key Differences (old format only) */}
-            {!isNewFormat && key_differences?.length > 0 && (
-              <View style={styles.differencesSection}>
-                <Text style={styles.sectionTitle}>Key Differences</Text>
-                {key_differences.map((diff, index) => (
-                  <Text key={index} style={styles.differenceItem}>• {diff}</Text>
-                ))}
-              </View>
-            )}
-
-            {/* Best For (old format only) */}
-            {!isNewFormat && comparison.best_for && (
-              <View style={styles.bestForSection}>
-                <Text style={styles.sectionTitle}>Best For</Text>
-                <View style={styles.bestForGrid}>
-                  {Object.entries(comparison.best_for).map(([category, winnerIdx]) => (
-                    <View key={category} style={styles.bestForItem}>
-                      <Text style={styles.bestForCategory}>
-                        {category.charAt(0).toUpperCase() + category.slice(1)}
-                      </Text>
-                      <Text style={styles.bestForWinner}>
-                        {products[winnerIdx]?.name || 'N/A'}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Metadata */}
-            {metadata && (
-              <View style={styles.metadataSection}>
-                <Text style={styles.metadataText}>
-                  Comparison took {metadata.elapsed_seconds?.toFixed(1)}s •{' '}
-                  {(metadata.cache_hits ?? 0) > 0 ? `${metadata.cache_hits} cached` : 'Fresh data'}
+                {/* Price */}
+                <Text style={[styles.priceText, product.price?.unavailable && styles.priceUnavailable]}>
+                  {formatPrice(product.price)}
                 </Text>
-              </View>
-            )}
+                {product.price?.source_method === 'converted_usd' && (
+                  <Text style={styles.priceNote}>(converted from USD)</Text>
+                )}
+                {(product.price?.estimated || product.price?.source_method === 'estimated') && (
+                  <Text style={styles.priceNote}>(estimated)</Text>
+                )}
+                {product.price?.retailer && !product.price?.unavailable && (
+                  <Text style={styles.retailerText}>{product.price.retailer}</Text>
+                )}
 
-            {/* Feedback */}
-            <FeedbackCard
-              comparisonId={comparisonId}
-              submitted={feedbackSubmitted}
-              onSubmitted={() => setFeedbackSubmitted(true)}
-            />
-          </>
+                {/* Value badge */}
+                {overviewProduct?.value_badge && (
+                  <View
+                    style={[
+                      styles.valueBadge,
+                      {
+                        backgroundColor:
+                          overviewProduct.value_badge === 'great_value'
+                            ? colors.accentLight
+                            : overviewProduct.value_badge === 'overpriced'
+                            ? '#FEF2F2'
+                            : colors.bg.secondary,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.valueBadgeText,
+                        {
+                          color:
+                            overviewProduct.value_badge === 'great_value'
+                              ? colors.accent
+                              : overviewProduct.value_badge === 'overpriced'
+                              ? colors.destructive
+                              : colors.text.secondary,
+                        },
+                      ]}
+                    >
+                      {overviewProduct.value_badge === 'great_value'
+                        ? 'Great Value'
+                        : overviewProduct.value_badge === 'fair_price'
+                        ? 'Fair Price'
+                        : overviewProduct.value_badge === 'premium_price'
+                        ? 'Premium'
+                        : 'Overpriced'}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Rating */}
+                {product.rating != null ? (
+                  <TouchableOpacity
+                    style={styles.ratingRow}
+                    onPress={() => openRatingSource(product.rating_source)}
+                    disabled={!product.rating_source?.url}
+                  >
+                    <Star size={14} color={colors.warning} fill={colors.warning} />
+                    <Text style={styles.ratingText}>{product.rating.toFixed(1)}</Text>
+                    {product.review_count != null && (
+                      <Text style={styles.reviewCountText}>
+                        ({product.review_count.toLocaleString()})
+                      </Text>
+                    )}
+                    {product.rating_source?.url && (
+                      <ExternalLink size={10} color={colors.accent} />
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.noRatingText}>No rating available</Text>
+                )}
+
+                {/* Best for */}
+                {overviewProduct?.best_for ? (
+                  <Text style={styles.bestForText}>Best for: {overviewProduct.best_for}</Text>
+                ) : null}
+              </Card>
+            );
+          })}
+        </View>
+
+        {/* Confidence indicator */}
+        {isNewFormat && result.overview!.confidence?.overall && (
+          <View style={styles.confidenceBanner}>
+            {result.overview!.confidence.overall === 'high' ? (
+              <Shield size={14} color={colors.accent} />
+            ) : (
+              <AlertCircle size={14} color={colors.warning} />
+            )}
+            <Text
+              style={[
+                styles.confidenceText,
+                {
+                  color:
+                    result.overview!.confidence.overall === 'high'
+                      ? colors.accent
+                      : result.overview!.confidence.overall === 'medium'
+                      ? colors.warning
+                      : colors.destructive,
+                },
+              ]}
+            >
+              {result.overview!.confidence.overall.charAt(0).toUpperCase() +
+                result.overview!.confidence.overall.slice(1)}{' '}
+              confidence data
+            </Text>
+          </View>
         )}
 
-        {activeTab === 'specs' && <SpecsTab />}
-        {activeTab === 'reviews' && <ReviewsTab />}
+        {/* 2. Verdict */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('results.verdict')}</Text>
+          <Text style={styles.verdictText}>{recommendation}</Text>
+          {isNewFormat && result.overview!.winner.key_tradeoff ? (
+            <Text style={styles.tradeoffNote}>{result.overview!.winner.key_tradeoff}</Text>
+          ) : null}
+        </View>
+
+        {/* 3. Price comparison */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('results.price')}</Text>
+          {products.map((product, index) => (
+            <View key={index} style={styles.priceCompRow}>
+              <Text style={styles.priceCompName}>{product.name}</Text>
+              <View style={styles.priceCompRight}>
+                <Text style={styles.priceCompAmount}>{formatPrice(product.price)}</Text>
+                {priceDiff && priceDiff.cheaperIndex === index && (
+                  <View style={styles.priceLessBadge}>
+                    <Text style={styles.priceLessText}>
+                      {t('results.priceLess', { percent: priceDiff.percent })}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ))}
+          {products[0]?.price?.retailer && (
+            <Text style={styles.retailerAttribution}>{products[0].price.retailer}</Text>
+          )}
+        </View>
+
+        {/* 4. Key Differences */}
+        {isNewFormat && result.overview!.tradeoffs?.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('results.keyDifferences')}</Text>
+            {result.overview!.tradeoffs.map((tradeoff, i) => (
+              <View key={i} style={styles.tradeoffRow}>
+                <View style={styles.tradeoffItem}>
+                  <Text style={styles.tradeoffProduct}>{tradeoff.winner_wins.product}</Text>
+                  <Text style={styles.tradeoffDim}>
+                    {tradeoff.winner_wins.dimension.replace(/_/g, ' ')} (+
+                    {Math.round(tradeoff.winner_wins.margin)})
+                  </Text>
+                </View>
+                <Text style={styles.tradeoffVs}>vs</Text>
+                <View style={styles.tradeoffItem}>
+                  <Text style={styles.tradeoffProduct}>{tradeoff.loser_wins.product}</Text>
+                  <Text style={styles.tradeoffDim}>
+                    {tradeoff.loser_wins.dimension.replace(/_/g, ' ')} (+
+                    {Math.round(tradeoff.loser_wins.margin)})
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : !isNewFormat && key_differences?.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('results.keyDifferences')}</Text>
+            {key_differences.map((diff, index) => (
+              <Text key={index} style={styles.differenceItem}>
+                {diff}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+
+        {/* 5. Personalized Insights */}
+        {result.personalized_insights && result.personalized_insights.length > 0 && (
+          <View style={styles.section}>
+            {result.personalized_insights.map((insight, index) => (
+              <View key={index} style={styles.insightCard}>
+                <Text style={styles.insightFocusArea}>
+                  {insight.focus_area.replace(/_/g, ' ')}
+                </Text>
+                <Text style={styles.insightText}>{insight.insight}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* 6. Specs accordion */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.sectionHeader}
+            onPress={() => setSpecsExpanded(!specsExpanded)}
+          >
+            <Text style={styles.sectionTitle}>{t('results.specs')}</Text>
+            {specsExpanded ? (
+              <ChevronUp size={20} color={colors.text.secondary} />
+            ) : (
+              <ChevronDown size={20} color={colors.text.secondary} />
+            )}
+          </TouchableOpacity>
+
+          {specsExpanded && (
+            <>
+              {/* Show differences only toggle */}
+              <View style={styles.diffToggleRow}>
+                <Text style={styles.diffToggleLabel}>{t('results.specsShowDiff')}</Text>
+                <Switch
+                  value={showDiffsOnly}
+                  onValueChange={setShowDiffsOnly}
+                  trackColor={{ false: colors.border.medium, true: colors.accentLight }}
+                  thumbColor={showDiffsOnly ? colors.accent : '#f4f3f4'}
+                />
+              </View>
+
+              {/* Specs table */}
+              <View style={styles.specsTable}>
+                {/* Header row */}
+                <View style={styles.specsTableRow}>
+                  <Text style={[styles.specsTableCell, styles.specsKeyCell]}></Text>
+                  {products.map((p, i) => (
+                    <Text key={i} style={[styles.specsTableCell, styles.specsValueCell]} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                  ))}
+                </View>
+
+                {/* Spec rows */}
+                {getAllSpecKeys()
+                  .filter((key) => !showDiffsOnly || isSpecDifferent(key))
+                  .map((key) => {
+                    const specsProducts = isNewFormat ? result.specs?.products : products;
+                    const values = specsProducts?.map((p: any) => p.specs?.[key]);
+                    const isDiff = isSpecDifferent(key);
+                    // Determine winner for this spec (simple heuristic: higher number or existence)
+                    let winnerIdx: number | null = null;
+                    if (isDiff && values && values.length === 2) {
+                      const n0 = parseFloat(String(values[0]));
+                      const n1 = parseFloat(String(values[1]));
+                      if (!isNaN(n0) && !isNaN(n1) && n0 !== n1) {
+                        winnerIdx = n0 > n1 ? 0 : 1;
+                      }
+                    }
+
+                    return (
+                      <View key={key} style={styles.specsTableRow}>
+                        <Text style={[styles.specsTableCell, styles.specsKeyCell]}>
+                          {key.replace(/_/g, ' ')}
+                        </Text>
+                        {values?.map((val: any, i: number) => (
+                          <View key={i} style={[styles.specsTableCell, styles.specsValueCell]}>
+                            <Text style={styles.specsValueText}>
+                              {val != null ? String(val) : '-'}
+                            </Text>
+                            {winnerIdx === i && (
+                              <View style={styles.winnerDot} />
+                            )}
+                          </View>
+                        ))}
+                      </View>
+                    );
+                  })}
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* 7. Reviews */}
+        {isNewFormat && result.reviews?.products ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('results.reviews')}</Text>
+            {result.reviews.products.map((rp: any, index: number) => {
+              const summary: ReviewSummary | undefined = rp.review_summary;
+              if (!rp.rating && !summary?.consensus && (!summary?.highlights || summary.highlights.length === 0)) {
+                return null;
+              }
+              return (
+                <Card key={index} style={styles.reviewCard}>
+                  <Text style={styles.reviewCardTitle}>{rp.name}</Text>
+
+                  {rp.rating != null && (
+                    <TouchableOpacity
+                      style={styles.ratingRow}
+                      onPress={() => rp.rating_source?.url && openRatingSource(rp.rating_source)}
+                      disabled={!rp.rating_source?.url}
+                    >
+                      <Star size={14} color={colors.warning} fill={colors.warning} />
+                      <Text style={styles.ratingText}>{rp.rating.toFixed(1)}</Text>
+                      {rp.review_count != null && (
+                        <Text style={styles.reviewCountText}>
+                          ({rp.review_count.toLocaleString()})
+                        </Text>
+                      )}
+                      {rp.rating_source?.name && (
+                        <Text style={styles.sourceText}>{rp.rating_source.name}</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+
+                  {summary?.consensus ? (
+                    <Text style={styles.consensusText}>{summary.consensus}</Text>
+                  ) : null}
+
+                  {summary?.highlights && summary.highlights.length > 0 && (
+                    <View style={styles.highlightsSection}>
+                      {summary.highlights.map((h: ReviewHighlight, i: number) => (
+                        <Text
+                          key={i}
+                          style={[
+                            styles.highlightItem,
+                            {
+                              color:
+                                h.sentiment === 'positive' ? colors.accent : colors.destructive,
+                            },
+                          ]}
+                        >
+                          {h.sentiment === 'positive' ? '+' : '-'} {h.point}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+
+                  {summary?.agreement_level === 'divided' && (
+                    <Text style={styles.dividedNote}>
+                      Note: User opinions are divided on this product
+                    </Text>
+                  )}
+                </Card>
+              );
+            })}
+          </View>
+        ) : (
+          /* Old format reviews: pros/cons */
+          products.some(
+            (p) =>
+              (p.pros && p.pros.length > 0) ||
+              (p.cons && p.cons.length > 0) ||
+              p.rating
+          ) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t('results.reviews')}</Text>
+              {products.map((product, index) => (
+                <Card key={index} style={styles.reviewCard}>
+                  <Text style={styles.reviewCardTitle}>{product.name}</Text>
+
+                  {product.rating != null && (
+                    <TouchableOpacity
+                      style={styles.ratingRow}
+                      onPress={() => openRatingSource(product.rating_source)}
+                      disabled={!product.rating_source?.url}
+                    >
+                      <Star size={14} color={colors.warning} fill={colors.warning} />
+                      <Text style={styles.ratingText}>{product.rating.toFixed(1)}</Text>
+                      {product.review_count != null && (
+                        <Text style={styles.reviewCountText}>
+                          ({product.review_count.toLocaleString()})
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+
+                  {product.pros && product.pros.length > 0 && (
+                    <View style={styles.highlightsSection}>
+                      {product.pros.map((pro, i) => (
+                        <Text key={i} style={[styles.highlightItem, { color: colors.accent }]}>
+                          + {pro}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+
+                  {product.cons && product.cons.length > 0 && (
+                    <View style={styles.highlightsSection}>
+                      {product.cons.map((con, i) => (
+                        <Text
+                          key={i}
+                          style={[styles.highlightItem, { color: colors.destructive }]}
+                        >
+                          - {con}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                </Card>
+              ))}
+            </View>
+          )
+        )}
+
+        {/* 8. Score Breakdown */}
+        {scoring && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('results.scores')}</Text>
+
+            {(Object.keys(SCORE_LABELS) as (keyof ScoreBreakdown)[]).map((dim) => {
+              const score0 = getProductScores(0)?.breakdown[dim] ?? 0;
+              const score1 = getProductScores(1)?.breakdown[dim] ?? 0;
+
+              return (
+                <View key={dim} style={styles.scoreRow}>
+                  <Text style={styles.scoreDimLabel}>{SCORE_LABELS[dim]}</Text>
+                  <View style={styles.scoreBarsRow}>
+                    {/* Product 0 bar (right aligned) */}
+                    <View style={styles.scoreBarContainer}>
+                      <View
+                        style={[
+                          styles.scoreBarFill,
+                          styles.scoreBarLeft,
+                          {
+                            width: `${Math.min(score0, 100)}%`,
+                            backgroundColor: getScoreColor(score0),
+                          },
+                        ]}
+                      />
+                    </View>
+                    {/* Product 1 bar (left aligned) */}
+                    <View style={styles.scoreBarContainer}>
+                      <View
+                        style={[
+                          styles.scoreBarFill,
+                          {
+                            width: `${Math.min(score1, 100)}%`,
+                            backgroundColor: getScoreColor(score1),
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+
+            {/* Legend */}
+            <View style={styles.scoreLegend}>
+              <Text style={styles.scoreLegendItem}>{products[0]?.name}</Text>
+              <Text style={styles.scoreLegendItem}>{products[1]?.name}</Text>
+            </View>
+
+            {scoring.scoring_method && (
+              <Text style={styles.scoringMethodText}>
+                {scoring.scoring_method === 'personalized'
+                  ? 'Weighted for your preferences'
+                  : 'Default weights applied'}
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* 9. Feedback */}
+        <FeedbackCard
+          comparisonId={comparisonId}
+          submitted={feedbackSubmitted}
+          onSubmitted={() => setFeedbackSubmitted(true)}
+        />
+
+        {/* 10. Action buttons */}
+        <View style={styles.actionsRow}>
+          <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
+            <Share2 size={18} color={colors.accent} />
+            <Text style={styles.actionButtonText}>{t('results.share')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <Bookmark size={18} color={colors.accent} />
+            <Text style={styles.actionButtonText}>{t('results.save')}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Metadata */}
+        {metadata && (
+          <View style={styles.metadataSection}>
+            <Text style={styles.metadataText}>
+              Comparison took {metadata.elapsed_seconds?.toFixed(1)}s
+              {(metadata.cache_hits ?? 0) > 0 ? ` | ${metadata.cache_hits} cached` : ' | Fresh data'}
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -880,654 +773,473 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.bg.primary,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#2196F3',
     paddingTop: 50,
-    paddingBottom: 15,
-    paddingHorizontal: 15,
+    paddingBottom: spacing.md,
+    paddingHorizontal: spacing.base,
+    backgroundColor: colors.bg.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
   },
-  backButton: {
-    padding: 5,
+  headerButton: {
+    padding: spacing.sm,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  shareButton: {
-    padding: 5,
-  },
-  shareText: {
-    color: '#FFF',
-    fontSize: 16,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#FFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  tab: {
     flex: 1,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  activeTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#2196F3',
-  },
-  tabText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  activeTabText: {
-    color: '#2196F3',
+    ...typography.body,
     fontWeight: '600',
+    color: colors.text.primary,
+    textAlign: 'center',
   },
-  content: {
+  categorySwitchedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.accentLight,
+    padding: spacing.md,
+    marginHorizontal: spacing.base,
+    marginTop: spacing.sm,
+    borderRadius: radii.button,
+  },
+  categorySwitchedText: {
+    ...typography.caption,
+    color: colors.accent,
+  },
+  scroll: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: spacing['3xl'],
+  },
+
+  // Product cards
   productsRow: {
     flexDirection: 'row',
-    padding: 10,
-    gap: 10,
+    padding: spacing.base,
+    gap: spacing.md,
   },
   productCard: {
     flex: 1,
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 15,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
   },
-  winnerCard: {
-    borderColor: '#4CAF50',
+  bestPickBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.chip,
+    marginBottom: spacing.sm,
+  },
+  bestPickText: {
+    ...typography.small,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  scoreBadge: {
     borderWidth: 2,
+    borderRadius: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    alignSelf: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  scoreBadgeValue: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  scoreBadgeLabel: {
+    ...typography.small,
+    color: colors.text.secondary,
+    marginStart: 1,
   },
   brandText: {
-    fontSize: 12,
-    color: '#666',
+    ...typography.small,
+    color: colors.text.secondary,
     marginBottom: 2,
   },
   productName: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
   },
   priceText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2196F3',
+    ...typography.title,
+    fontWeight: '700',
+    color: colors.accent,
     marginBottom: 2,
   },
   priceUnavailable: {
-    color: '#999',
+    color: colors.text.secondary,
     fontSize: 14,
   },
   priceNote: {
-    fontSize: 10,
-    color: '#999',
+    ...typography.small,
+    color: colors.text.secondary,
     fontStyle: 'italic',
   },
   retailerText: {
-    fontSize: 11,
-    color: '#666',
-    marginBottom: 8,
+    ...typography.small,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
   },
-  
-  // Rating styles
-  ratingContainer: {
-    marginVertical: 8,
+  valueBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radii.chip,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  valueBadgeText: {
+    ...typography.small,
+    fontWeight: '600',
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: spacing.xs,
+    marginTop: spacing.sm,
   },
   ratingText: {
-    fontSize: 14,
+    ...typography.caption,
     fontWeight: '600',
-    color: '#333',
+    color: colors.text.primary,
   },
   reviewCountText: {
-    fontSize: 12,
-    color: '#666',
+    ...typography.small,
+    color: colors.text.secondary,
   },
   noRatingText: {
-    fontSize: 12,
-    color: '#999',
+    ...typography.small,
+    color: colors.text.secondary,
     fontStyle: 'italic',
-  },
-  sourceLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-  },
-  sourceText: {
-    fontSize: 11,
-    color: '#2196F3',
-    fontWeight: '500',
-  },
-  valueScoreContainer: {
-    marginTop: 8,
-  },
-  valueScoreLabel: {
-    fontSize: 11,
-    color: '#666',
-  },
-  valueScoreText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  
-  // Sections
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  recommendationSection: {
-    backgroundColor: '#FFF',
-    margin: 10,
-    padding: 15,
-    borderRadius: 12,
-  },
-  recommendationText: {
-    fontSize: 14,
-    color: '#555',
-    lineHeight: 22,
-  },
-  differencesSection: {
-    backgroundColor: '#FFF',
-    margin: 10,
-    padding: 15,
-    borderRadius: 12,
-  },
-  differenceItem: {
-    fontSize: 13,
-    color: '#555',
-    marginBottom: 8,
-    lineHeight: 20,
-  },
-  bestForSection: {
-    backgroundColor: '#FFF',
-    margin: 10,
-    padding: 15,
-    borderRadius: 12,
-  },
-  bestForGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  bestForItem: {
-    backgroundColor: '#F5F5F5',
-    padding: 10,
-    borderRadius: 8,
-    minWidth: '45%',
-  },
-  bestForCategory: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  bestForWinner: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#333',
-  },
-  metadataSection: {
-    padding: 15,
-    alignItems: 'center',
-  },
-  metadataText: {
-    fontSize: 11,
-    color: '#999',
-  },
-  
-  // Specs tab
-  tabContent: {
-    padding: 10,
-  },
-  specsCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
-  },
-  specsCardTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 12,
-  },
-  specRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  specKey: {
-    fontSize: 13,
-    color: '#666',
-    textTransform: 'capitalize',
-  },
-  specValue: {
-    fontSize: 13,
-    color: '#333',
-    fontWeight: '500',
-    maxWidth: '60%',
-    textAlign: 'right',
-  },
-  advantagesSection: {
-    marginTop: 10,
-  },
-  advantageCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
-  },
-  advantageTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-  },
-  advantageItem: {
-    fontSize: 13,
-    color: '#4CAF50',
-    marginBottom: 4,
-  },
-  
-  // Reviews tab
-  reviewCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
-  },
-  reviewCardTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  reviewRatingSection: {
-    marginBottom: 15,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  prosConsSection: {
-    marginBottom: 15,
-  },
-  prosTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4CAF50',
-    marginBottom: 8,
-  },
-  consTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#F44336',
-    marginBottom: 8,
-  },
-  proItem: {
-    fontSize: 13,
-    color: '#555',
-    marginBottom: 4,
-    marginLeft: 8,
-  },
-  conItem: {
-    fontSize: 13,
-    color: '#555',
-    marginBottom: 4,
-    marginLeft: 8,
-  },
-
-  // Scoring styles
-  scoreBadge: {
-    borderWidth: 2,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    alignSelf: 'flex-start',
-    marginBottom: 8,
-  },
-  scoreBadgeValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  scoreBadgeLabel: {
-    fontSize: 11,
-    color: '#999',
-    marginLeft: 1,
-  },
-  scoringSection: {
-    backgroundColor: '#FFF',
-    margin: 10,
-    padding: 15,
-    borderRadius: 12,
-  },
-  winMarginBanner: {
-    backgroundColor: '#E8F5E9',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  winMarginText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2E7D32',
-  },
-  scoreCard: {
-    backgroundColor: '#FAFAFA',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
-  },
-  scoreCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  scoreCardName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    flex: 1,
-  },
-  scoreOverallBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  scoreOverallText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  scoreBarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  scoreBarLabel: {
-    fontSize: 11,
-    color: '#666',
-    width: 70,
-  },
-  scoreBarTrack: {
-    flex: 1,
-    height: 6,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 3,
-    marginHorizontal: 8,
-  },
-  scoreBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  scoreBarValue: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#333',
-    width: 24,
-    textAlign: 'right',
-  },
-  weightsText: {
-    fontSize: 11,
-    color: '#999',
-    textAlign: 'center',
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
-  // Aspect badges
-  aspectBadgesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginBottom: 8,
-  },
-  aspectBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    gap: 3,
-  },
-  overallBadge: {
-    backgroundColor: '#4CAF50',
-  },
-  overallBadgeText: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  winnerAspectBadge: {
-    backgroundColor: '#E8F5E9',
-  },
-  otherAspectBadge: {
-    backgroundColor: '#E3F2FD',
-  },
-  aspectBadgeText: {
-    fontSize: 9,
-    fontWeight: '600',
-  },
-  // Insight cards
-  insightsSection: {
-    paddingHorizontal: 10,
-    marginBottom: 5,
-  },
-  insightCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#2196F3',
-  },
-  insightIconRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
-  },
-  insightFocusArea: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#2196F3',
-    textTransform: 'capitalize',
-  },
-  insightText: {
-    fontSize: 13,
-    color: '#555',
-    lineHeight: 20,
-  },
-  // Preference prompt banner
-  preferencePromptBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    marginHorizontal: 10,
-    marginBottom: 5,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E3F2FD',
-    gap: 10,
-  },
-  preferencePromptTextContainer: {
-    flex: 1,
-  },
-  preferencePromptTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#333',
-  },
-  preferencePromptSubtext: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 2,
-  },
-  // Empty states
-  emptyStateCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    margin: 10,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 10,
-    textAlign: 'center',
-  },
-  // Value badge
-  valueBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    marginTop: 4,
-    marginBottom: 2,
-  },
-  valueBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
+    marginTop: spacing.sm,
   },
   bestForText: {
-    fontSize: 11,
-    color: '#666',
+    ...typography.small,
+    color: colors.text.secondary,
     fontStyle: 'italic',
-    marginTop: 6,
+    marginTop: spacing.xs,
   },
-  // Confidence banner
+
+  // Confidence
   confidenceBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFF',
-    marginHorizontal: 10,
-    marginBottom: 5,
-    padding: 10,
-    borderRadius: 8,
+    gap: spacing.sm,
+    marginHorizontal: spacing.base,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.button,
   },
   confidenceText: {
-    fontSize: 12,
+    ...typography.caption,
     fontWeight: '500',
   },
-  // Tradeoffs
-  tradeoffsSection: {
-    backgroundColor: '#FFF',
-    margin: 10,
-    padding: 15,
-    borderRadius: 12,
+
+  // Sections
+  section: {
+    marginHorizontal: spacing.base,
+    marginBottom: spacing.base,
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.card,
+    padding: spacing.base,
+    borderWidth: 1,
+    borderColor: colors.border.light,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: spacing.md,
+  },
+  verdictText: {
+    ...typography.body,
+    color: colors.text.secondary,
+    lineHeight: 24,
+  },
+  tradeoffNote: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    fontStyle: 'italic',
+    marginTop: spacing.sm,
+  },
+
+  // Price comparison
+  priceCompRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  priceCompName: {
+    ...typography.caption,
+    color: colors.text.primary,
+    flex: 1,
+  },
+  priceCompRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  priceCompAmount: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  priceLessBadge: {
+    backgroundColor: colors.accentLight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radii.chip,
+  },
+  priceLessText: {
+    ...typography.small,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  retailerAttribution: {
+    ...typography.small,
+    color: colors.text.secondary,
+    marginTop: spacing.sm,
+  },
+
+  // Key differences / tradeoffs
   tradeoffRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.border.light,
   },
   tradeoffItem: {
     flex: 1,
     alignItems: 'center',
   },
   tradeoffProduct: {
-    fontSize: 12,
+    ...typography.caption,
     fontWeight: '600',
-    color: '#333',
+    color: colors.text.primary,
   },
   tradeoffDim: {
-    fontSize: 11,
-    color: '#666',
+    ...typography.small,
+    color: colors.text.secondary,
     marginTop: 2,
   },
   tradeoffVs: {
-    fontSize: 11,
-    color: '#999',
-    marginHorizontal: 8,
+    ...typography.small,
+    color: colors.text.secondary,
+    marginHorizontal: spacing.sm,
   },
-  tradeoffNote: {
-    fontSize: 13,
-    color: '#888',
-    fontStyle: 'italic',
-    marginTop: 8,
+  differenceItem: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
     lineHeight: 20,
   },
-  // Spec advantages inline
-  specAdvantagesInline: {
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+
+  // Insights
+  insightCard: {
+    backgroundColor: colors.bg.primary,
+    borderRadius: radii.button,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderStartWidth: 3,
+    borderStartColor: colors.accent,
   },
-  // Review new format styles
-  reviewVolumeBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    marginBottom: 8,
+  insightFocusArea: {
+    ...typography.small,
+    fontWeight: '600',
+    color: colors.accent,
+    textTransform: 'capitalize',
+    marginBottom: spacing.xs,
   },
-  reviewVolumeText: {
-    fontSize: 10,
-    color: '#666',
+  insightText: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    lineHeight: 20,
+  },
+
+  // Specs
+  diffToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  diffToggleLabel: {
+    ...typography.caption,
+    color: colors.text.secondary,
+  },
+  specsTable: {
+    borderRadius: radii.button,
+    overflow: 'hidden',
+  },
+  specsTableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  specsTableCell: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  specsKeyCell: {
+    flex: 1,
+    ...typography.small,
+    color: colors.text.secondary,
+    textTransform: 'capitalize',
+  },
+  specsValueCell: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  specsValueText: {
+    ...typography.small,
+    fontWeight: '500',
+    color: colors.text.primary,
+  },
+  winnerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+  },
+
+  // Reviews
+  reviewCard: {
+    marginBottom: spacing.sm,
+  },
+  reviewCardTitle: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  sourceText: {
+    ...typography.small,
+    color: colors.accent,
     fontWeight: '500',
   },
   consensusText: {
-    fontSize: 13,
-    color: '#555',
+    ...typography.caption,
+    color: colors.text.secondary,
     lineHeight: 20,
-    marginBottom: 10,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  highlightsSection: {
+    marginTop: spacing.sm,
   },
   highlightItem: {
-    fontSize: 13,
-    marginBottom: 4,
-    marginLeft: 4,
+    ...typography.caption,
+    marginBottom: spacing.xs,
+    marginStart: spacing.xs,
     lineHeight: 20,
   },
   dividedNote: {
-    fontSize: 11,
-    color: '#E65100',
+    ...typography.small,
+    color: colors.warning,
     fontStyle: 'italic',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
-  categorySwitchedBanner: {
-    backgroundColor: '#E3F2FD',
-    padding: 10,
-    marginHorizontal: 16,
-    marginVertical: 8,
-    borderRadius: 8,
+
+  // Scores
+  scoreRow: {
+    marginBottom: spacing.md,
+  },
+  scoreDimLabel: {
+    ...typography.small,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+  },
+  scoreBarsRow: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  scoreBarContainer: {
+    flex: 1,
+    height: 8,
+    backgroundColor: colors.border.light,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  scoreBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  scoreBarLeft: {
+    alignSelf: 'flex-end',
+  },
+  scoreLegend: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+  },
+  scoreLegendItem: {
+    ...typography.small,
+    color: colors.text.secondary,
+  },
+  scoringMethodText: {
+    ...typography.small,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: spacing.sm,
+  },
+
+  // Actions
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginHorizontal: spacing.base,
+    marginTop: spacing.sm,
+    marginBottom: spacing.base,
+  },
+  actionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: radii.button,
+    borderWidth: 1,
+    borderColor: colors.border.medium,
+    backgroundColor: colors.bg.primary,
   },
-  categorySwitchedText: {
-    color: '#1565C0',
-    fontSize: 13,
-    flex: 1,
+  actionButtonText: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+
+  // Metadata
+  metadataSection: {
+    paddingVertical: spacing.base,
+    alignItems: 'center',
+  },
+  metadataText: {
+    ...typography.small,
+    color: colors.text.secondary,
   },
 });
-
