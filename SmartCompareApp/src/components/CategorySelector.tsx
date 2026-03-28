@@ -6,6 +6,8 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { colors, spacing, radii, typography } from '../theme';
 
 interface CategorySelectorProps {
   value: string | null;
@@ -14,25 +16,27 @@ interface CategorySelectorProps {
 
 interface Category {
   value: string;
-  label: string;
+  i18nKey: string;
   icon: string;
 }
 
 const CATEGORIES: Category[] = [
-  { value: 'electronics', label: 'Electronics', icon: '\u{1F4F1}' },
-  { value: 'grocery', label: 'Grocery', icon: '\u{1F6D2}' },
-  { value: 'supplements', label: 'Supplements', icon: '\u{1F48A}' },
-  { value: 'makeup', label: 'Makeup', icon: '\u{1F484}' },
-  { value: 'skincare', label: 'Skincare', icon: '\u2728' },
-  { value: 'haircare', label: 'Haircare', icon: '\u{1F487}' },
-  { value: 'fragrances', label: 'Fragrances', icon: '\u{1F338}' },
-  { value: 'fashion', label: 'Fashion', icon: '\u{1F45C}' },
+  { value: 'electronics', i18nKey: 'home.categories.electronics', icon: '\u{1F4F1}' },
+  { value: 'grocery', i18nKey: 'home.categories.grocery', icon: '\u{1F6D2}' },
+  { value: 'supplements', i18nKey: 'home.categories.supplements', icon: '\u{1F48A}' },
+  { value: 'makeup', i18nKey: 'home.categories.makeup', icon: '\u{1F484}' },
+  { value: 'skincare', i18nKey: 'home.categories.skincare', icon: '\u2728' },
+  { value: 'haircare', i18nKey: 'home.categories.haircare', icon: '\u{1F487}' },
+  { value: 'fragrances', i18nKey: 'home.categories.fragrances', icon: '\u{1F338}' },
+  { value: 'fashion', i18nKey: 'home.categories.fashion', icon: '\u{1F45C}' },
+  { value: 'other', i18nKey: 'home.categories.other', icon: '\u{1F4E6}' },
 ];
 
 export default function CategorySelector({ value, onChange }: CategorySelectorProps) {
+  const { t } = useTranslation();
+
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>What are you comparing?</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -50,7 +54,7 @@ export default function CategorySelector({ value, onChange }: CategorySelectorPr
             >
               <Text style={styles.chipIcon}>{cat.icon}</Text>
               <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>
-                {cat.label}
+                {t(cat.i18nKey)}
               </Text>
             </TouchableOpacity>
           );
@@ -62,52 +66,37 @@ export default function CategorySelector({ value, onChange }: CategorySelectorPr
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-    paddingHorizontal: 4,
+    marginBottom: spacing.base,
   },
   scrollContent: {
-    paddingHorizontal: 4,
+    paddingHorizontal: spacing.xs,
+    gap: spacing.sm,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    marginRight: 8,
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.chip,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.base,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderColor: colors.border.light,
   },
   chipActive: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
   chipIcon: {
     fontSize: 16,
-    marginRight: 6,
+    marginEnd: spacing.xs,
   },
   chipText: {
-    fontSize: 13,
+    ...typography.caption,
     fontWeight: '500',
-    color: '#333',
+    color: colors.text.primary,
   },
   chipTextActive: {
-    color: '#FFF',
+    color: '#FFFFFF',
     fontWeight: '600',
   },
 });

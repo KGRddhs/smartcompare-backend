@@ -1,55 +1,86 @@
 /**
- * SmartCompare - Home Screen
- * Multi-input: Camera, Text, URL
+ * Qaren - Home Screen (Camera-First)
+ * Absorbs camera functionality from old CameraScreen.
+ * Layout: logo + search bar + category chips + camera viewfinder + capture + mode chips + counter
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
-  TextInput,
-  ActivityIndicator,
   Alert,
+  ActivityIndicator,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+  Image,
+  TextInput,
+  Modal,
 } from 'react-native';
+import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
+import { Camera, Search, Link2, RotateCcw, ImageIcon, X } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
-import { RootStackParamList } from '../types';
-import { healthCheck, streamComparison, parseApiError } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { colors, spacing, radii, typography, shadows } from '../theme';
+import { RootStackParamList, CapturedImage, IdentifiedProduct } from '../types';
+import { healthCheck, streamComparison, parseApiError, identifyFromImages } from '../services/api';
 import api from '../services/api';
-import { logout, getSavedUser, User } from '../services/authService';
+import { getSavedUser, User } from '../services/authService';
 import CategorySelector from '../components/CategorySelector';
+import { SearchOverlay } from '../components/SearchOverlay';
+import { ComparisonCounter } from '../components/ComparisonCounter';
+import { useComparisonCounter } from '../hooks/useComparisonCounter';
+
+const RECENT_SEARCHES_KEY = '@qaren_recent_searches';
+const MAX_RECENT = 5;
+const MIN_IMAGES = 2;
+const MAX_IMAGES = 4;
 
 type HomeScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
-  onLogout: () => void;
+  onLogout?: () => void;
 };
 
-type InputMethod = 'camera' | 'text' | 'url';
+type InputMode = 'scan' | 'url';
 
 export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
+  const { t } = useTranslation();
   const [user, setUser] = useState<User | null>(null);
   const [serverOnline, setServerOnline] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+  const [statusMessage, setStatusMessage] = useState('');
+
+  // Camera state (absorbed from CameraScreen)
+  const [permission, requestPermission] = useCameraPermissions();
+  const [capturedImages, setCapturedImages] = useState<CapturedImage[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [facing, setFacing] = useState<CameraType>('back');
+  const [detectedProduct, setDetectedProduct] = useState<IdentifiedProduct | null>(null);
+  const cameraRef = useRef<CameraView>(null);
+
   // Input states
-  const [inputMethod, setInputMethod] = useState<InputMethod>('camera');
-  const [textQuery, setTextQuery] = useState('');
-  const [url1, setUrl1] = useState('');
-  const [url2, setUrl2] = useState('');
+  const [inputMode, setInputMode] = useState<InputMode>('scan');
   const [selectedCategory, setSelectedCategory] = useState<string>('electronics');
-  const [statusMessage, setStatusMessage] = useState<string>('');
-  const abortRef = React.useRef<(() => void) | null>(null);
+  const [searchOverlayVisible, setSearchOverlayVisible] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [urlInput, setUrlInput] = useState('');
+  const [url2Input, setUrl2Input] = useState('');
+  const abortRef = useRef<(() => void) | null>(null);
+
+  // Comparison counter
+  const { used, total, canCompare, shouldShowPaywall, increment } = useComparisonCounter();
 
   useFocusEffect(
     useCallback(() => {
       checkServer();
       loadUser();
+      loadRecentSearches();
     }, [])
   );
 
@@ -62,32 +93,141 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
     try {
       const isHealthy = await healthCheck();
       setServerOnline(isHealthy);
-    } catch (error) {
+    } catch {
       setServerOnline(false);
     }
   };
 
-  // Camera comparison
-  const handleCameraCompare = () => {
-    if (!serverOnline) {
-      Alert.alert('Server Offline', 'Please check your connection.');
-      return;
-    }
-    navigation.navigate('Camera');
+  const loadRecentSearches = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(RECENT_SEARCHES_KEY);
+      if (stored) setRecentSearches(JSON.parse(stored));
+    } catch {}
   };
 
-  // Text comparison (streaming)
-  const handleTextCompare = () => {
-    if (!textQuery.trim()) {
-      Alert.alert('Enter Products', 'Example: "iPhone 15 vs Galaxy S24"');
+  const saveRecentSearch = async (query: string) => {
+    const updated = [query, ...recentSearches.filter((s) => s !== query)].slice(0, MAX_RECENT);
+    setRecentSearches(updated);
+    await AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+  };
+
+  // --- Camera functions (from CameraScreen) ---
+
+  const takePicture = async () => {
+    if (cameraRef.current && capturedImages.length < MAX_IMAGES) {
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+          exif: false,
+          imageType: 'jpg',
+        });
+        if (photo) {
+          if (detectedProduct) setDetectedProduct(null);
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setCapturedImages((prev) => [
+            ...prev,
+            { uri: photo.uri, width: photo.width, height: photo.height },
+          ]);
+        }
+      } catch (error) {
+        console.error('Error taking picture:', error);
+        Alert.alert('Error', 'Failed to take picture. Please try again.');
+      }
+    }
+  };
+
+  const pickFromGallery = async () => {
+    const remainingSlots = MAX_IMAGES - capturedImages.length;
+    if (remainingSlots <= 0) {
+      Alert.alert('Maximum Reached', `You can only compare up to ${MAX_IMAGES} products.`);
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: remainingSlots,
+      quality: 0.8,
+      exif: false,
+    });
+    if (!result.canceled && result.assets) {
+      if (detectedProduct) setDetectedProduct(null);
+      const newImages: CapturedImage[] = result.assets.map((asset) => ({
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+      }));
+      setCapturedImages((prev) => [...prev, ...newImages]);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setDetectedProduct(null);
+    setCapturedImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const toggleCameraFacing = () => {
+    setFacing((current) => (current === 'back' ? 'front' : 'back'));
+  };
+
+  const handleIdentifyAndCompare = async () => {
+    if (capturedImages.length < MIN_IMAGES) {
+      Alert.alert('Need More Products', `Please capture at least ${MIN_IMAGES} products to compare.`);
+      return;
+    }
+    if (!canCompare) {
+      navigation.navigate('Paywall' as any);
       return;
     }
 
+    setIsProcessing(true);
+    setDetectedProduct(null);
+
+    try {
+      const imageUris = capturedImages.map((img) => img.uri);
+      const result = await identifyFromImages(imageUris, 'bahrain');
+
+      if (result.action === 'comparison' && result.success) {
+        await increment();
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        navigation.navigate('Results', { result });
+      } else if (result.action === 'need_second_product' && result.success) {
+        setDetectedProduct(result.products[0]);
+      } else {
+        const errorMsg =
+          ('error' in result && result.error) ||
+          'Could not identify products. Try clearer photos.';
+        Alert.alert('Identification Failed', errorMsg);
+      }
+    } catch (error: any) {
+      if (error.response?.status === 429) {
+        Alert.alert('Rate Limited', 'Too many requests. Please wait a moment.');
+      } else if (error.message?.includes('Network')) {
+        Alert.alert('Connection Error', 'Could not connect to server.');
+      } else {
+        Alert.alert('Error', parseApiError(error).message);
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // --- Text comparison (SSE streaming) ---
+
+  const handleTextCompare = (query: string) => {
+    if (!query.trim()) return;
+    if (!canCompare) {
+      navigation.navigate('Paywall' as any);
+      return;
+    }
+
+    setSearchOverlayVisible(false);
+    saveRecentSearch(query);
     setLoading(true);
-    setStatusMessage('Starting comparison...');
+    setStatusMessage(t('results.loading.finding'));
     let navigated = false;
 
-    const { subscribe, abort } = streamComparison(textQuery.trim(), {
+    const { subscribe, abort } = streamComparison(query.trim(), {
       selected_category: selectedCategory,
     });
     abortRef.current = abort;
@@ -96,12 +236,13 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
       onStatus: (message) => {
         setStatusMessage(typeof message === 'string' ? message : String(message));
       },
-      onComplete: (data) => {
+      onComplete: async (data) => {
         abortRef.current = null;
         setLoading(false);
         setStatusMessage('');
         if (!navigated && data.success) {
           navigated = true;
+          await increment();
           navigation.navigate('Results', { result: data });
         } else if (!data.success) {
           Alert.alert('Error', data.error || 'Comparison failed');
@@ -116,28 +257,32 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
     });
   };
 
-  // URL comparison
+  // --- URL comparison ---
+
   const handleUrlCompare = async () => {
-    if (!url1.trim() || !url2.trim()) {
+    if (!urlInput.trim() || !url2Input.trim()) {
       Alert.alert('Enter URLs', 'Paste product URLs from Amazon, Noon, etc.');
       return;
     }
-    
-    if (!url1.startsWith('http') || !url2.startsWith('http')) {
+    if (!urlInput.startsWith('http') || !url2Input.startsWith('http')) {
       Alert.alert('Invalid URL', 'URLs must start with http:// or https://');
       return;
     }
-    
+    if (!canCompare) {
+      navigation.navigate('Paywall' as any);
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await api.post('/api/v1/url/compare', {
-        url1: url1.trim(),
-        url2: url2.trim(),
+        url1: urlInput.trim(),
+        url2: url2Input.trim(),
         region: 'bahrain',
         selected_category: selectedCategory,
       });
-      
       if (response.data.success) {
+        await increment();
         navigation.navigate('Results', { result: response.data });
       } else {
         Alert.alert('Error', response.data.error || 'Comparison failed');
@@ -149,220 +294,228 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-          onLogout();
-        }
-      }
-    ]);
-  };
+  // --- Render ---
 
-  const renderInputMethod = () => {
-    switch (inputMethod) {
-      case 'camera':
-        return (
-          <View style={styles.inputSection}>
-            <Text style={styles.inputDescription}>
-              Take photos of 2-4 products to compare
+  const cameraPermissionGranted = permission?.granted;
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Header: logo + search bar */}
+      <View style={styles.header}>
+        <Text style={styles.logo}>{t('app.name')}</Text>
+        <TouchableOpacity
+          style={styles.searchBar}
+          onPress={() => setSearchOverlayVisible(true)}
+          activeOpacity={0.7}
+        >
+          <Search size={18} color={colors.text.placeholder} />
+          <Text style={styles.searchPlaceholder}>{t('home.search.placeholder')}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Category chips */}
+      <CategorySelector value={selectedCategory} onChange={setSelectedCategory} />
+
+      {/* Camera viewfinder or permission request */}
+      <View style={styles.cameraArea}>
+        {!cameraPermissionGranted ? (
+          <View style={styles.permissionCard}>
+            <Camera size={48} color={colors.text.secondary} />
+            <Text style={styles.permissionTitle}>Camera Permission Needed</Text>
+            <Text style={styles.permissionText}>
+              Qaren needs camera access to photograph products for comparison.
             </Text>
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={handleCameraCompare}
-              disabled={!serverOnline || loading}
-            >
-              <Text style={styles.primaryButtonText}>📷 Open Camera</Text>
+            <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+              <Text style={styles.permissionButtonText}>Grant Permission</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.galleryFallback} onPress={pickFromGallery}>
+              <Text style={styles.galleryFallbackText}>Or pick from gallery</Text>
             </TouchableOpacity>
           </View>
-        );
-      
-      case 'text':
-        return (
-          <View style={styles.inputSection}>
-            <Text style={styles.inputDescription}>
-              Type products to compare
-            </Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder='e.g., "iPhone 15 vs Galaxy S24"'
-              placeholderTextColor="#999"
-              value={textQuery}
-              onChangeText={setTextQuery}
-              editable={!loading}
-            />
-            <TouchableOpacity
-              style={[styles.primaryButton, loading && styles.buttonDisabled]}
-              onPress={handleTextCompare}
-              disabled={!serverOnline || loading}
-            >
-              {loading ? (
-                <View style={styles.loadingRow}>
-                  <ActivityIndicator color="#FFF" size="small" />
-                  {statusMessage ? (
-                    <Text style={styles.statusMessageText}>{statusMessage}</Text>
-                  ) : null}
-                </View>
-              ) : (
-                <Text style={styles.primaryButtonText}>Compare</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        );
+        ) : inputMode === 'scan' ? (
+          <View style={styles.cameraContainer}>
+            <CameraView ref={cameraRef} style={styles.camera} facing={facing}>
+              {/* Overlay instruction */}
+              <View style={styles.cameraOverlay}>
+                <Text style={styles.cameraOverlayText}>
+                  {capturedImages.length === 0
+                    ? 'Point at first product'
+                    : `Product ${capturedImages.length + 1} of ${MAX_IMAGES}`}
+                </Text>
+              </View>
+            </CameraView>
 
-      case 'url':
-        return (
-          <View style={styles.inputSection}>
-            <Text style={styles.inputDescription}>
-              Paste product URLs from any store
-            </Text>
+            {/* Detected product banner */}
+            {detectedProduct && (
+              <View style={styles.detectedBanner}>
+                <Text style={styles.detectedTitle}>
+                  Found: {detectedProduct.brand} {detectedProduct.name}
+                </Text>
+                <Text style={styles.detectedSubtitle}>
+                  Only 1 product identified. Take another photo of a different product.
+                </Text>
+                <TouchableOpacity
+                  style={styles.retakeButton}
+                  onPress={() => setDetectedProduct(null)}
+                >
+                  <Text style={styles.retakeButtonText}>Take Another Photo</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Captured images preview strip */}
+            {capturedImages.length > 0 && !detectedProduct && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.previewStrip}
+                contentContainerStyle={styles.previewStripContent}
+              >
+                {capturedImages.map((image, index) => (
+                  <View key={index} style={styles.previewItem}>
+                    <Image source={{ uri: image.uri }} style={styles.previewImage} />
+                    <TouchableOpacity
+                      style={styles.removeButton}
+                      onPress={() => removeImage(index)}
+                    >
+                      <X size={10} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            {/* Camera controls */}
+            {!detectedProduct && (
+              <View style={styles.cameraControls}>
+                {isProcessing ? (
+                  <View style={styles.processingContainer}>
+                    <ActivityIndicator size="large" color={colors.accent} />
+                    <Text style={styles.processingText}>Identifying products...</Text>
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.captureRow}>
+                      {/* Gallery */}
+                      <TouchableOpacity style={styles.sideButton} onPress={pickFromGallery}>
+                        <ImageIcon size={22} color="#FFF" />
+                      </TouchableOpacity>
+
+                      {/* Capture button (emerald ring) */}
+                      <TouchableOpacity
+                        style={[
+                          styles.captureButton,
+                          capturedImages.length >= MAX_IMAGES && styles.captureButtonDisabled,
+                        ]}
+                        onPress={takePicture}
+                        disabled={capturedImages.length >= MAX_IMAGES}
+                      >
+                        <View style={styles.captureButtonInner} />
+                      </TouchableOpacity>
+
+                      {/* Flip camera */}
+                      <TouchableOpacity style={styles.sideButton} onPress={toggleCameraFacing}>
+                        <RotateCcw size={22} color="#FFF" />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Compare button */}
+                    {capturedImages.length >= MIN_IMAGES && (
+                      <TouchableOpacity
+                        style={styles.compareButton}
+                        onPress={handleIdentifyAndCompare}
+                      >
+                        <Text style={styles.compareButtonText}>
+                          Compare {capturedImages.length} Products
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
+              </View>
+            )}
+          </View>
+        ) : (
+          /* URL input mode */
+          <View style={styles.urlContainer}>
             <TextInput
-              style={styles.textInput}
+              style={styles.urlInput}
               placeholder="Product 1 URL (Amazon, Noon, etc.)"
-              placeholderTextColor="#999"
-              value={url1}
-              onChangeText={setUrl1}
+              placeholderTextColor={colors.text.placeholder}
+              value={urlInput}
+              onChangeText={setUrlInput}
               autoCapitalize="none"
               autoCorrect={false}
               editable={!loading}
             />
             <TextInput
-              style={styles.textInput}
+              style={styles.urlInput}
               placeholder="Product 2 URL"
-              placeholderTextColor="#999"
-              value={url2}
-              onChangeText={setUrl2}
+              placeholderTextColor={colors.text.placeholder}
+              value={url2Input}
+              onChangeText={setUrl2Input}
               autoCapitalize="none"
               autoCorrect={false}
               editable={!loading}
             />
             <TouchableOpacity
-              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              style={[styles.urlCompareButton, loading && { opacity: 0.5 }]}
               onPress={handleUrlCompare}
               disabled={!serverOnline || loading}
             >
               {loading ? (
-                <ActivityIndicator color="#FFF" />
+                <ActivityIndicator color="#FFF" size="small" />
               ) : (
-                <Text style={styles.primaryButtonText}>🔗 Compare URLs</Text>
+                <Text style={styles.urlCompareButtonText}>Compare URLs</Text>
               )}
             </TouchableOpacity>
           </View>
-        );
-    }
-  };
+        )}
+      </View>
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.title}>SmartCompare</Text>
-              <Text style={styles.subtitle}>AI-Powered Product Comparison</Text>
-            </View>
-            <TouchableOpacity style={styles.profileButton} onPress={() => navigation.navigate('Account')}>
-              <Text style={styles.profileEmoji}>&#9881;</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Status */}
-          <View style={styles.statusBar}>
-            <Text style={[styles.statusDot, serverOnline ? styles.online : styles.offline]}>●</Text>
-            <Text style={styles.statusText}>
-              {serverOnline ? 'Online' : 'Offline'}
-            </Text>
-            {user && (
-              <Text style={styles.userEmail}> • {user.email}</Text>
-            )}
-          </View>
-
-          {/* Category Selector */}
-          <CategorySelector
-            value={selectedCategory}
-            onChange={setSelectedCategory}
-          />
-
-          {/* Input Method Selector */}
-          <View style={styles.methodSelector}>
-            <TouchableOpacity
-              style={[styles.methodTab, inputMethod === 'camera' && styles.methodTabActive]}
-              onPress={() => setInputMethod('camera')}
-            >
-              <Text style={[styles.methodTabText, inputMethod === 'camera' && styles.methodTabTextActive]}>
-                📷 Camera
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.methodTab, inputMethod === 'text' && styles.methodTabActive]}
-              onPress={() => setInputMethod('text')}
-            >
-              <Text style={[styles.methodTabText, inputMethod === 'text' && styles.methodTabTextActive]}>
-                ⌨️ Text
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.methodTab, inputMethod === 'url' && styles.methodTabActive]}
-              onPress={() => setInputMethod('url')}
-            >
-              <Text style={[styles.methodTabText, inputMethod === 'url' && styles.methodTabTextActive]}>
-                🔗 URL
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Input Area */}
-          <View style={styles.inputCard}>
-            {renderInputMethod()}
-          </View>
-
-          {/* Examples */}
-          <View style={styles.examplesCard}>
-            <Text style={styles.examplesTitle}>
-              {inputMethod === 'camera' && '📷 How Camera Works:'}
-              {inputMethod === 'text' && '⌨️ Text Examples:'}
-              {inputMethod === 'url' && '🔗 Supported Stores:'}
-            </Text>
-            {inputMethod === 'camera' && (
-              <>
-                <Text style={styles.exampleItem}>1. Point at 2-4 products</Text>
-                <Text style={styles.exampleItem}>2. AI identifies them automatically</Text>
-                <Text style={styles.exampleItem}>3. Get comparison with prices</Text>
-              </>
-            )}
-            {inputMethod === 'text' && (
-              <>
-                <Text style={styles.exampleItem}>• "iPhone 15 vs Galaxy S24"</Text>
-                <Text style={styles.exampleItem}>• "MacBook Air vs Dell XPS 13"</Text>
-                <Text style={styles.exampleItem}>• "Nido milk vs Almarai milk"</Text>
-              </>
-            )}
-            {inputMethod === 'url' && (
-              <>
-                <Text style={styles.exampleItem}>• Amazon (amazon.ae, amazon.sa)</Text>
-                <Text style={styles.exampleItem}>• Noon (noon.com)</Text>
-                <Text style={styles.exampleItem}>• Carrefour, Sharaf DG, Lulu</Text>
-              </>
-            )}
-          </View>
-
-          {/* History Button */}
+      {/* Mode chips + counter */}
+      <View style={styles.bottomBar}>
+        <View style={styles.modeChips}>
           <TouchableOpacity
-            style={styles.historyButton}
-            onPress={() => navigation.navigate('History')}
+            style={[styles.modeChip, inputMode === 'scan' && styles.modeChipActive]}
+            onPress={() => setInputMode('scan')}
           >
-            <Text style={styles.historyButtonText}>📜 View History</Text>
+            <Camera size={14} color={inputMode === 'scan' ? '#FFF' : colors.text.secondary} />
+            <Text style={[styles.modeChipText, inputMode === 'scan' && styles.modeChipTextActive]}>
+              {t('home.scan')}
+            </Text>
           </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <TouchableOpacity
+            style={[styles.modeChip, inputMode === 'url' && styles.modeChipActive]}
+            onPress={() => setInputMode('url')}
+          >
+            <Link2 size={14} color={inputMode === 'url' ? '#FFF' : colors.text.secondary} />
+            <Text style={[styles.modeChipText, inputMode === 'url' && styles.modeChipTextActive]}>
+              {t('home.url')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <ComparisonCounter used={used} total={total} />
+      </View>
+
+      {/* Loading status overlay */}
+      {loading && statusMessage ? (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="small" color={colors.accent} />
+          <Text style={styles.loadingText}>{statusMessage}</Text>
+        </View>
+      ) : null}
+
+      {/* Search overlay */}
+      <Modal visible={searchOverlayVisible} animationType="slide" statusBarTranslucent>
+        <SearchOverlay
+          visible={searchOverlayVisible}
+          onClose={() => setSearchOverlayVisible(false)}
+          onSubmit={handleTextCompare}
+          recentSearches={recentSearches}
+        />
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -370,185 +523,314 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+    backgroundColor: colors.bg.primary,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginTop: 10,
-    marginBottom: 16,
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    gap: spacing.md,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
+  logo: {
+    ...typography.title,
+    fontWeight: '700',
+    color: colors.text.primary,
   },
-  subtitle: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 2,
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.input,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.light,
   },
-  profileButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFF',
+  searchPlaceholder: {
+    ...typography.body,
+    color: colors.text.placeholder,
+  },
+
+  // Camera area
+  cameraArea: {
+    flex: 1,
+    marginHorizontal: spacing.base,
+    borderRadius: radii.card,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  cameraContainer: {
+    flex: 1,
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    top: spacing.lg,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  cameraOverlayText: {
+    color: '#FFF',
+    ...typography.body,
+    fontWeight: '600',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.chip,
+  },
+
+  // Detected product banner
+  detectedBanner: {
+    backgroundColor: '#1C1C1E',
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+  },
+  detectedTitle: {
+    color: colors.accent,
+    ...typography.body,
+    fontWeight: '700',
+    marginBottom: spacing.xs,
+  },
+  detectedSubtitle: {
+    color: '#AAA',
+    ...typography.caption,
+    textAlign: 'center',
+    marginBottom: spacing.base,
+  },
+  retakeButton: {
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.button,
+  },
+  retakeButtonText: {
+    color: '#FFF',
+    ...typography.body,
+    fontWeight: '600',
+  },
+
+  // Preview strip
+  previewStrip: {
+    maxHeight: 80,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+  },
+  previewStripContent: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  previewItem: {
+    position: 'relative',
+  },
+  previewImage: {
+    width: 56,
+    height: 56,
+    borderRadius: spacing.sm,
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  removeButton: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: colors.destructive,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  profileEmoji: {
-    fontSize: 18,
+
+  // Camera controls
+  cameraControls: {
+    backgroundColor: '#000',
+    paddingVertical: spacing.base,
+    paddingHorizontal: spacing.lg,
   },
-  statusBar: {
+  captureRow: {
     flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: spacing.md,
   },
-  statusDot: {
-    fontSize: 12,
-    marginRight: 4,
-  },
-  online: {
-    color: '#34C759',
-  },
-  offline: {
-    color: '#FF3B30',
-  },
-  statusText: {
-    fontSize: 13,
-    color: '#666',
-  },
-  userEmail: {
-    fontSize: 13,
-    color: '#666',
-  },
-  methodSelector: {
-    flexDirection: 'row',
-    backgroundColor: '#E5E5EA',
-    borderRadius: 10,
-    padding: 4,
-    marginBottom: 16,
-  },
-  methodTab: {
-    flex: 1,
-    paddingVertical: 10,
+  captureButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 4,
+    borderColor: colors.accent,
     alignItems: 'center',
-    borderRadius: 8,
+    justifyContent: 'center',
+    marginHorizontal: spacing.xl,
   },
-  methodTabActive: {
+  captureButtonDisabled: {
+    opacity: 0.3,
+  },
+  captureButtonInner: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#FFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
-  methodTabText: {
-    fontSize: 13,
-    color: '#666',
+  sideButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compareButton: {
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md,
+    borderRadius: radii.button,
+    alignItems: 'center',
+  },
+  compareButtonText: {
+    color: '#FFF',
+    ...typography.body,
+    fontWeight: '700',
+  },
+  processingContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+  },
+  processingText: {
+    color: '#FFF',
+    ...typography.body,
+    marginTop: spacing.md,
+  },
+
+  // URL mode
+  urlContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.xl,
+    gap: spacing.md,
+  },
+  urlInput: {
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.input,
+    padding: spacing.base,
+    ...typography.body,
+    color: colors.text.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  urlCompareButton: {
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md,
+    borderRadius: radii.button,
+    alignItems: 'center',
+  },
+  urlCompareButtonText: {
+    color: '#FFF',
+    ...typography.body,
+    fontWeight: '600',
+  },
+
+  // Permission card
+  permissionCard: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing['3xl'],
+    backgroundColor: colors.bg.secondary,
+  },
+  permissionTitle: {
+    ...typography.title,
+    color: colors.text.primary,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  permissionText: {
+    ...typography.body,
+    textAlign: 'center',
+    color: colors.text.secondary,
+    marginBottom: spacing.xl,
+  },
+  permissionButton: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing['2xl'],
+    paddingVertical: spacing.md,
+    borderRadius: radii.button,
+  },
+  permissionButtonText: {
+    color: '#FFF',
+    ...typography.body,
+    fontWeight: '700',
+  },
+  galleryFallback: {
+    marginTop: spacing.base,
+    padding: spacing.md,
+  },
+  galleryFallbackText: {
+    color: colors.accent,
+    ...typography.caption,
+  },
+
+  // Bottom bar
+  bottomBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  modeChips: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  modeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radii.chip,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    backgroundColor: colors.bg.secondary,
+  },
+  modeChipActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  modeChipText: {
+    ...typography.caption,
+    color: colors.text.secondary,
     fontWeight: '500',
   },
-  methodTabTextActive: {
-    color: '#007AFF',
-    fontWeight: '600',
-  },
-  inputCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  inputSection: {
-    alignItems: 'center',
-  },
-  inputDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  textInput: {
-    width: '100%',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 15,
-    color: '#1A1A1A',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  primaryButton: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 10,
-    width: '100%',
-    alignItems: 'center',
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  primaryButtonText: {
+  modeChipTextActive: {
     color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  examplesCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  examplesTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  exampleItem: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 4,
-    paddingLeft: 8,
-  },
-  historyButton: {
-    backgroundColor: '#FFF',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  historyButtonText: {
-    color: '#333',
-    fontSize: 15,
     fontWeight: '600',
   },
-  loadingRow: {
+
+  // Loading overlay
+  loadingOverlay: {
+    position: 'absolute',
+    bottom: 80,
+    left: spacing.xl,
+    right: spacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: spacing.sm,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
+    borderRadius: radii.chip,
   },
-  statusMessageText: {
+  loadingText: {
     color: '#FFF',
-    fontSize: 13,
-    marginLeft: 4,
+    ...typography.caption,
   },
 });
