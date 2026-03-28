@@ -1,9 +1,9 @@
 /**
- * SmartCompare - History Screen
- * Display past comparisons with view, delete, and re-compare options
+ * Qaren - History Screen
+ * Past comparisons with date grouping, search, delete, and staggered animation
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,41 +14,45 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  Modal,
-  ScrollView,
   TextInput,
+  SectionList,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { useFocusEffect } from '@react-navigation/native';
-import { RootStackParamList, Product } from '../types';
+import { Search, Trash2, RotateCcw, ChevronRight, Camera } from 'lucide-react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { colors, spacing, radii, typography, shadows } from '../theme';
 import { getComparisonHistory, deleteComparison, parseApiError } from '../services/api';
 import { clearSession } from '../services/authService';
 
-type HistoryScreenProps = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'History'>;
-  onLogout: () => void;
-};
-
 interface HistoryItem {
   id: string;
-  full_response: any;  // Complete API response blob
+  full_response: any;
   query: string;
   input_type: string;
   product_names: string[];
   created_at: string;
 }
 
+interface HistorySection {
+  title: string;
+  data: HistoryItem[];
+}
+
+interface HistoryScreenProps {
+  navigation: any;
+  onLogout: () => void;
+}
+
 export default function HistoryScreen({ navigation, onLogout }: HistoryScreenProps) {
+  const { t } = useTranslation();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [total, setTotal] = useState(0);
-  const [selectedItem, setSelectedItem] = useState<HistoryItem | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [authError, setAuthError] = useState(false);
 
-  // Reload history when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadHistory();
@@ -69,7 +73,7 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
         setTotal(0);
       } else {
         console.error('Error loading history:', error);
-        Alert.alert('Error', parseApiError(error).message);
+        Alert.alert(t('common.error'), parseApiError(error).message);
       }
     } finally {
       setLoading(false);
@@ -82,7 +86,19 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     loadHistory();
   };
 
-  const formatDate = (dateString: string) => {
+  const getDateGroup = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffDays === 0) return t('history.today');
+    if (diffDays === 1) return t('history.yesterday');
+    if (diffDays < 7) return t('history.thisWeek');
+    return t('history.older');
+  };
+
+  const formatTimeAgo = (dateString: string): string => {
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -90,10 +106,10 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffMins < 1) return t('history.ago', { time: '<1m' });
+    if (diffMins < 60) return t('history.ago', { time: `${diffMins}m` });
+    if (diffHours < 24) return t('history.ago', { time: `${diffHours}h` });
+    if (diffDays < 7) return t('history.ago', { time: `${diffDays}d` });
 
     return date.toLocaleDateString('en-US', {
       month: 'short',
@@ -102,49 +118,50 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     });
   };
 
-  const formatPrice = (product: any) => {
-    if (!product || product.price === null || product.price === undefined) {
-      return 'N/A';
-    }
+  const formatPrice = (product: any): string => {
+    if (!product || product.price === null || product.price === undefined) return 'N/A';
     if (typeof product.price === 'object') {
-      if (product.price.amount === null || product.price.amount === undefined) {
-        return 'N/A';
-      }
+      if (product.price.amount === null || product.price.amount === undefined) return 'N/A';
       return `${product.price.amount.toFixed(2)} ${product.price.currency || 'BHD'}`;
     }
     return `${(product.price as number).toFixed(2)} BHD`;
   };
 
-  const openDetails = (item: HistoryItem) => {
-    setSelectedItem(item);
-    setModalVisible(true);
-  };
+  const sections: HistorySection[] = useMemo(() => {
+    const groups: Record<string, HistoryItem[]> = {};
+    const order = [t('history.today'), t('history.yesterday'), t('history.thisWeek'), t('history.older')];
+
+    for (const item of history) {
+      const group = getDateGroup(item.created_at);
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(item);
+    }
+
+    return order
+      .filter((title) => groups[title]?.length)
+      .map((title) => ({ title, data: groups[title] }));
+  }, [history, t]);
 
   const viewAsResult = (item: HistoryItem) => {
-    setModalVisible(false);
-    // Pass the full stored blob directly — same shape as live response
-    navigation.navigate('Results', {
-      result: item.full_response,
-    });
+    navigation.navigate('Results', { result: item.full_response });
   };
 
-  const handleDelete = async (item: HistoryItem) => {
+  const handleDelete = (item: HistoryItem) => {
     Alert.alert(
-      'Delete Comparison',
-      'Are you sure you want to delete this comparison?',
+      t('history.delete'),
+      t('profile.deleteConfirm'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('history.delete'),
           style: 'destructive',
           onPress: async () => {
             try {
               await deleteComparison(item.id);
               setHistory((prev) => prev.filter((h) => h.id !== item.id));
               setTotal((prev) => prev - 1);
-              setModalVisible(false);
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete comparison');
+            } catch {
+              Alert.alert(t('common.error'), 'Failed to delete comparison');
             }
           },
         },
@@ -152,193 +169,80 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     );
   };
 
-  const renderItem = ({ item }: { item: HistoryItem }) => {
+  const renderItem = ({ item, index }: { item: HistoryItem; index: number }) => {
     const products = item.full_response?.products || [];
-    const winner_index = item.full_response?.comparison?.winner_index ?? item.full_response?.winner_index ?? 0;
-    const winner = products[winner_index];
+    const winnerIndex = item.full_response?.comparison?.winner_index ?? item.full_response?.winner_index ?? 0;
+    const winner = products[winnerIndex];
 
     return (
-      <TouchableOpacity style={styles.historyCard} onPress={() => openDetails(item)}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.dateText}>{formatDate(item.created_at)}</Text>
-          <View style={[
-            styles.sourceBadge,
-            { backgroundColor: item.input_type === 'camera' ? '#5856D6' : '#34C759' }
-          ]}>
-            <Text style={styles.sourceBadgeText}>{item.input_type || 'text'}</Text>
-          </View>
-        </View>
-
-        <View style={styles.vsContainer}>
-          <View style={styles.productSummary}>
-            <Text style={styles.productLabel}>Product 1</Text>
-            <Text style={styles.productSummaryName} numberOfLines={1}>
-              {products[0]?.brand} {products[0]?.name}
-            </Text>
-            <Text style={styles.productSummaryPrice}>{formatPrice(products[0])}</Text>
-          </View>
-
-          <Text style={styles.vsText}>VS</Text>
-
-          <View style={styles.productSummary}>
-            <Text style={styles.productLabel}>Product 2</Text>
-            <Text style={styles.productSummaryName} numberOfLines={1}>
-              {products[1]?.brand} {products[1]?.name}
-            </Text>
-            <Text style={styles.productSummaryPrice}>{formatPrice(products[1])}</Text>
-          </View>
-        </View>
-
-        {winner && (
-          <View style={styles.winnerRow}>
-            <Text style={styles.winnerEmoji}>🏆</Text>
-            <Text style={styles.winnerName} numberOfLines={1}>
-              {winner?.brand} {winner?.name}
-            </Text>
-            <Text style={styles.winnerPrice}>{formatPrice(winner)}</Text>
-          </View>
-        )}
-
-        <View style={styles.tapHint}>
-          <Text style={styles.tapHintText}>Tap to view details</Text>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const renderModal = () => {
-    if (!selectedItem) return null;
-
-    const products = selectedItem.full_response?.products || [];
-    const comparison = selectedItem.full_response?.comparison || {};
-    const winner_index = comparison.winner_index ?? 0;
-    const recommendation = comparison.recommendation || '';
-    const key_differences = comparison.key_differences || [];
-
-    return (
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Comparison Details</Text>
-                <TouchableOpacity onPress={() => setModalVisible(false)}>
-                  <Text style={styles.closeButton}>✕</Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.modalDate}>
-                {new Date(selectedItem.created_at).toLocaleString()}
+      <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => viewAsResult(item)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.cardContent}>
+            <View style={styles.cardTop}>
+              <Text style={styles.cardQuery} numberOfLines={1}>
+                {products[0]?.brand} {products[0]?.name} vs {products[1]?.brand} {products[1]?.name}
               </Text>
+              <Text style={styles.cardTime}>{formatTimeAgo(item.created_at)}</Text>
+            </View>
 
-              {/* Winner Banner */}
-              {products[winner_index] && (
-                <View style={styles.modalWinnerBanner}>
-                  <Text style={styles.modalWinnerEmoji}>🏆</Text>
-                  <Text style={styles.modalWinnerLabel}>Winner</Text>
-                  <Text style={styles.modalWinnerName}>
-                    {products[winner_index]?.brand}{' '}
-                    {products[winner_index]?.name}
-                  </Text>
-                  <Text style={styles.modalWinnerPrice}>
-                    {formatPrice(products[winner_index])}
-                  </Text>
-                </View>
-              )}
-
-              {/* Products */}
-              <Text style={styles.modalSectionTitle}>Products Compared</Text>
-              {products.map((product: any, index: number) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.modalProductCard,
-                    index === winner_index && styles.modalProductWinner
-                  ]}
-                >
-                  {index === winner_index && (
-                    <View style={styles.winnerBadge}>
-                      <Text style={styles.winnerBadgeText}>WINNER</Text>
-                    </View>
-                  )}
-                  <Text style={styles.modalProductBrand}>{product.brand}</Text>
-                  <Text style={styles.modalProductName}>{product.name}</Text>
-                  <Text style={styles.modalProductPrice}>{formatPrice(product)}</Text>
-                </View>
-              ))}
-
-              {/* Recommendation */}
-              {recommendation ? (
-                <>
-                  <Text style={styles.modalSectionTitle}>Recommendation</Text>
-                  <View style={styles.modalRecommendation}>
-                    <Text style={styles.modalRecommendationText}>
-                      {recommendation}
-                    </Text>
-                  </View>
-                </>
-              ) : null}
-
-              {/* Key Differences */}
-              {key_differences.length > 0 && (
-                <>
-                  <Text style={styles.modalSectionTitle}>Key Differences</Text>
-                  <View style={styles.modalDifferences}>
-                    {key_differences.map((diff: string, index: number) => (
-                      <Text key={index} style={styles.modalDifferenceItem}>
-                        {'\u2022'} {diff}
-                      </Text>
-                    ))}
-                  </View>
-                </>
-              )}
-
-              {/* Actions */}
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.modalActionButton}
-                  onPress={() => viewAsResult(selectedItem)}
-                >
-                  <Text style={styles.modalActionText}>View Full Results</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.modalActionButton, { backgroundColor: '#FF3B30' }]}
-                  onPress={() => handleDelete(selectedItem)}
-                >
-                  <Text style={styles.modalActionText}>Delete</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.modalActionButton, styles.modalActionSecondary]}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={styles.modalActionTextSecondary}>Close</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+            {winner && (
+              <Text style={styles.cardWinner} numberOfLines={1}>
+                {t('history.winner', { name: `${winner.brand} ${winner.name}` })} · {formatPrice(winner)}
+              </Text>
+            )}
           </View>
-        </View>
-      </Modal>
+
+          <View style={styles.cardActions}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleDelete(item)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Trash2 size={16} color={colors.text.secondary} />
+            </TouchableOpacity>
+            <ChevronRight size={16} color={colors.text.placeholder} />
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
     );
   };
+
+  const renderSectionHeader = ({ section }: { section: HistorySection }) => (
+    <Text style={styles.sectionHeader}>{section.title}</Text>
+  );
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyTitle}>No Comparisons Yet</Text>
-      <Text style={styles.emptyText}>
-        Your comparison history will appear here after you compare products.
-      </Text>
+      <View style={styles.emptyIcon}>
+        <Camera size={32} color={colors.text.placeholder} />
+        <Search size={20} color={colors.text.placeholder} style={{ marginStart: -8, marginTop: -8 }} />
+      </View>
+      <Text style={styles.emptyTitle}>{t('history.empty.title')}</Text>
       <TouchableOpacity
-        style={styles.startButton}
-        onPress={() => navigation.navigate('Camera')}
+        style={styles.emptyCta}
+        onPress={() => navigation.navigate('HomeTab')}
       >
-        <Text style={styles.startButtonText}>Start Comparing</Text>
+        <Text style={styles.emptyCtaText}>{t('history.empty.cta')}</Text>
+        <ChevronRight size={16} color={colors.bg.primary} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderAuthError = () => (
+    <View style={styles.authContainer}>
+      <Text style={styles.authTitle}>{t('common.signInRequired')}</Text>
+      <TouchableOpacity
+        style={styles.authButton}
+        onPress={async () => {
+          await clearSession();
+          onLogout();
+        }}
+      >
+        <Text style={styles.authButtonText}>{t('auth.signIn')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -347,8 +251,7 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.loadingText}>Loading history...</Text>
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -357,52 +260,46 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Comparison History</Text>
-        <Text style={styles.headerSubtitle}>{total} comparison{total !== 1 ? 's' : ''}</Text>
+        <Text style={styles.headerTitle}>{t('history.title')}</Text>
       </View>
 
       <View style={styles.searchContainer}>
+        <Search size={16} color={colors.text.placeholder} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search comparisons..."
-          placeholderTextColor="#999"
+          placeholder={t('history.search')}
+          placeholderTextColor={colors.text.placeholder}
           value={searchQuery}
           onChangeText={setSearchQuery}
-          onSubmitEditing={() => { setLoading(true); loadHistory(); }}
+          onSubmitEditing={() => {
+            setLoading(true);
+            loadHistory();
+          }}
           returnKeyType="search"
         />
       </View>
 
       {authError ? (
-        <View style={styles.authPrompt}>
-          <Text style={styles.authPromptTitle}>Sign In Required</Text>
-          <Text style={styles.authPromptText}>
-            Sign in to view your comparison history.
-          </Text>
-          <TouchableOpacity
-            style={styles.signInButton}
-            onPress={async () => {
-              await clearSession();
-              onLogout();
-            }}
-          >
-            <Text style={styles.signInButtonText}>Sign In</Text>
-          </TouchableOpacity>
-        </View>
+        renderAuthError()
+      ) : history.length === 0 ? (
+        renderEmpty()
       ) : (
-        <FlatList
-          data={history}
+        <SectionList
+          sections={sections}
           renderItem={renderItem}
+          renderSectionHeader={renderSectionHeader}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          ListEmptyComponent={renderEmpty}
+          stickySectionHeadersEnabled={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.accent}
+            />
           }
         />
       )}
-
-      {renderModal()}
     </SafeAreaView>
   );
 }
@@ -410,357 +307,143 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.bg.primary,
   },
   header: {
-    padding: 20,
-    backgroundColor: '#FFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.base,
+    paddingBottom: spacing.md,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
+    ...typography.display,
+    color: colors.text.primary,
   },
   searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#FFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.base,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.input,
+    gap: spacing.sm,
   },
   searchInput: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: '#333',
+    flex: 1,
+    ...typography.body,
+    color: colors.text.primary,
+    paddingVertical: 0,
   },
   listContent: {
-    padding: 16,
-    flexGrow: 1,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing['3xl'],
   },
-  historyCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  sectionHeader: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.text.secondary,
+    textTransform: 'uppercase',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
-  cardHeader: {
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.card,
+    padding: spacing.base,
+    marginBottom: spacing.sm,
+  },
+  cardContent: {
+    flex: 1,
+  },
+  cardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.xs,
   },
-  dateText: {
-    fontSize: 12,
-    color: '#999',
-  },
-  sourceBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  sourceBadgeText: {
-    color: '#FFF',
-    fontSize: 10,
+  cardQuery: {
+    ...typography.body,
     fontWeight: '600',
-    textTransform: 'uppercase',
+    color: colors.text.primary,
+    flex: 1,
+    marginEnd: spacing.sm,
   },
-  vsContainer: {
+  cardTime: {
+    ...typography.small,
+    color: colors.text.secondary,
+  },
+  cardWinner: {
+    ...typography.caption,
+    color: colors.text.secondary,
+  },
+  cardActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    gap: spacing.md,
+    marginStart: spacing.md,
   },
-  productSummary: {
-    flex: 1,
-  },
-  productLabel: {
-    fontSize: 10,
-    color: '#999',
-    textTransform: 'uppercase',
-  },
-  productSummaryName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#333',
-    marginTop: 2,
-  },
-  productSummaryPrice: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    marginTop: 2,
-  },
-  vsText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#999',
-    marginHorizontal: 10,
-  },
-  winnerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E8F5E9',
-    padding: 10,
-    borderRadius: 8,
-  },
-  winnerEmoji: {
-    fontSize: 16,
-    marginRight: 8,
-  },
-  winnerName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2E7D32',
-  },
-  winnerPrice: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2E7D32',
-  },
-  tapHint: {
-    marginTop: 10,
-    alignItems: 'center',
-  },
-  tapHintText: {
-    fontSize: 11,
-    color: '#999',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    color: '#666',
+  actionButton: {
+    padding: spacing.xs,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: spacing['2xl'],
+  },
+  emptyIcon: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: spacing.lg,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.title,
+    color: colors.text.primary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xl,
   },
-  startButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+  emptyCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radii.button,
+    gap: spacing.xs,
   },
-  startButtonText: {
-    color: '#FFF',
+  emptyCtaText: {
+    ...typography.body,
     fontWeight: '600',
+    color: colors.bg.primary,
   },
-  authPrompt: {
+  authContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    paddingHorizontal: spacing.xl,
   },
-  authPromptTitle: {
-    fontSize: 20,
+  authTitle: {
+    ...typography.title,
+    color: colors.text.primary,
+    marginBottom: spacing.xl,
+  },
+  authButton: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing['2xl'],
+    paddingVertical: spacing.md,
+    borderRadius: radii.button,
+  },
+  authButtonText: {
+    ...typography.body,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    color: colors.bg.primary,
   },
-  authPromptText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  signInButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  signInButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  // Modal Styles
-  modalOverlay: {
+  loadingContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '85%',
-    padding: 20,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-  },
-  closeButton: {
-    fontSize: 24,
-    color: '#999',
-    padding: 4,
-  },
-  modalDate: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 16,
-  },
-  modalWinnerBanner: {
-    backgroundColor: '#34C759',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalWinnerEmoji: {
-    fontSize: 32,
-  },
-  modalWinnerLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    textTransform: 'uppercase',
-    marginTop: 4,
-  },
-  modalWinnerName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFF',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  modalWinnerPrice: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#FFF',
-    marginTop: 4,
-  },
-  modalSectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginTop: 16,
-    marginBottom: 10,
-  },
-  modalProductCard: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
-  },
-  modalProductWinner: {
-    borderWidth: 2,
-    borderColor: '#34C759',
-  },
-  winnerBadge: {
-    position: 'absolute',
-    top: -8,
-    right: 8,
-    backgroundColor: '#34C759',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  winnerBadgeText: {
-    color: '#FFF',
-    fontSize: 9,
-    fontWeight: 'bold',
-  },
-  modalProductBrand: {
-    fontSize: 12,
-    color: '#666',
-  },
-  modalProductName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1A1A1A',
-  },
-  modalProductPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    marginTop: 4,
-  },
-  modalRecommendation: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
-    padding: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: '#007AFF',
-  },
-  modalRecommendationText: {
-    fontSize: 14,
-    color: '#333',
-    lineHeight: 20,
-  },
-  modalDifferences: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
-    padding: 12,
-  },
-  modalDifferenceItem: {
-    fontSize: 13,
-    color: '#333',
-    marginBottom: 6,
-    lineHeight: 18,
-  },
-  modalActions: {
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  modalActionButton: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  modalActionText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  modalActionSecondary: {
-    backgroundColor: '#F5F5F5',
-  },
-  modalActionTextSecondary: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
