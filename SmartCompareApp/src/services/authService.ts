@@ -60,9 +60,9 @@ export interface AuthResponse {
   error?: string;
 }
 
-const USER_STORAGE_KEY = '@smartcompare_user';
-const TOKEN_STORAGE_KEY = '@smartcompare_token';
-const REFRESH_TOKEN_KEY = '@smartcompare_refresh_token';
+const USER_STORAGE_KEY = '@qaren_user';
+const TOKEN_STORAGE_KEY = '@qaren_token';
+const REFRESH_TOKEN_KEY = '@qaren_refresh_token';
 
 /**
  * Register a new user

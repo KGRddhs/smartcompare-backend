@@ -363,3 +363,22 @@ export type AuthStackParamList = {
   Register: undefined;
   ForgotPassword: undefined;
 };
+
+// --- Onboarding types ---
+
+export interface OnboardingData {
+  language: 'en' | 'ar';
+  region: 'bahrain' | 'saudi_arabia' | 'uae' | 'kuwait' | 'qatar' | 'oman';
+  priorities: string[];
+  budget: 'budget' | 'mid' | 'premium';
+  lifestyle: string[];
+  brand_attitude: 'brand_loyal' | 'function_first' | 'best_of_both';
+}
+
+// --- Navigation types update ---
+
+export type MainTabParamList = {
+  HomeTab: undefined;
+  HistoryTab: undefined;
+  ProfileTab: undefined;
+};
