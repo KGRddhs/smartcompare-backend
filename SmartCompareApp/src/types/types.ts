@@ -356,6 +356,7 @@ export type RootStackParamList = {
   Profile: undefined;
   Account: undefined;
   Preferences: { mode: 'onboarding' | 'edit' };
+  Onboarding: undefined;
 };
 
 export type AuthStackParamList = {
