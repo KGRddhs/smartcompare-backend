@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "SmartCompareApp",
-    "slug": "SmartCompareApp",
+    "name": "Qaren",
+    "slug": "qaren",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,12 +13,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "bundleIdentifier": "com.smartcompare.app",
+      "bundleIdentifier": "com.qaren.app",
       "supportsTablet": true,
       "usesAppleSignIn": true
     },
     "android": {
-      "package": "com.smartcompare.app",
+      "package": "com.qaren.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -31,16 +31,17 @@
     },
     "plugins": [
       "expo-secure-store",
+      "expo-localization",
       [
         "expo-camera",
         {
-          "cameraPermission": "SmartCompare needs camera access to photograph products for comparison."
+          "cameraPermission": "Qaren needs camera access to photograph products for comparison."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "SmartCompare needs photo library access to identify products from your photos."
+          "photosPermission": "Qaren needs photo library access to identify products from your photos."
         }
       ],
       [
