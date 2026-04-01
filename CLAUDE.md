@@ -70,13 +70,16 @@ curl -s "https://web-production-58776.up.railway.app/api/v1/text/compare?q=iPhon
 ### Frontend (React Native / Expo)
 ```bash
 cd SmartCompareApp
-npx expo start                    # Dev server
+npx expo start                    # Dev server (use --clear after dep changes)
 npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
+npx expo install --check          # Verify deps match SDK version
+npx expo-doctor                   # Full project health check
 ```
 
 ### Dependencies
 - Backend: `pip install -r requirements.txt` (Railway uses this, NOT pyproject.toml)
 - Frontend: `npm install` in `SmartCompareApp/`
+- **Expo version alignment:** All native packages MUST match Expo SDK version. Use `npx expo install <pkg>` (not `npm install`) for native deps. JS/native version mismatch causes cryptic `NativeWorklets`/`HostFunction` crashes in Expo Go.
 
 ## Architecture
 
@@ -165,9 +168,15 @@ npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
 
 **Location:** `SmartCompareApp/`
 
-**Screens:** HomeScreen (category selector + text/camera/URL input + SSE streaming), ResultsScreen (Overview/Specs/Reviews tabs + scoring + FeedbackCard), CameraScreen, HistoryScreen (401 → "Sign In Required"), AccountScreen, PreferencesScreen (4-card onboarding), LoginScreen, RegisterScreen, ForgotPasswordScreen.
+**App name:** Qaren (قارن). Bilingual EN/AR with full RTL support.
 
-**Key components:** `CategorySelector.tsx` (9 categories horizontal chips), `FeedbackCard.tsx` (thumbs + chips + optional text).
+**Navigation:** Bottom tabs (Home/History/Profile) via `@react-navigation/bottom-tabs`. Results as modal. Auth stack (Login/Register/ForgotPassword). Splash → Onboarding → Auth → Main flow in `App.tsx`.
+
+**Screens (10):** SplashScreen (logo animation), OnboardingScreen (6-step wizard), LoginScreen, RegisterScreen, ForgotPasswordScreen, HomeScreen (camera-first + search overlay + categories), ResultsScreen (single-scroll + skeleton loading + winner reveal), HistoryScreen (date-grouped FlatList), ProfileScreen (settings/language/account), PaywallScreen (bottom sheet placeholder).
+
+**Design system:** `src/theme/index.ts` (emerald #10B981 accent, Inter+Cairo fonts). Components: Button, Card, Chip, SkeletonLoader, ProgressBar, IconButton, ComparisonCounter, SearchOverlay. i18n: `src/i18n/` (180+ keys EN/AR).
+
+**Deleted screens:** CameraScreen (absorbed into HomeScreen), AccountScreen (replaced by ProfileScreen), PreferencesScreen (replaced by OnboardingScreen).
 
 **Services:**
 - `api.ts` — Axios to Railway (120s timeout). SSE via `streamComparison()` (fetch+ReadableStream, fallback to non-streaming). JPEG transcoding before upload.
