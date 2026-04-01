@@ -1,219 +1,204 @@
 /**
- * SmartCompare - Main App Entry Point
- * With Authentication Flow + Preferences Onboarding
+ * Qaren - Main App Entry Point
+ * Bottom tabs navigation with splash, auth, and onboarding flows
  */
 
-import React, { useState, useEffect } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, View } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { I18nManager } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Home, Clock, User as UserIcon } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
+import { StatusBar } from 'expo-status-bar';
 
-// Import screens
-import HomeScreen from './src/screens/HomeScreen';
-import CameraScreen from './src/screens/CameraScreen';
-import ResultsScreen from './src/screens/ResultsScreen';
-import HistoryScreen from './src/screens/HistoryScreen';
-import AccountScreen from './src/screens/AccountScreen';
+// Theme & i18n
+import { useAppFonts } from './src/theme/fonts';
+import { colors, typography } from './src/theme';
+import { getSavedLanguage } from './src/i18n';
+import './src/i18n'; // Initialize i18next
+
+// Screens
+import SplashScreen from './src/screens/SplashScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
-import PreferencesScreen from './src/screens/PreferencesScreen';
+import HomeScreen from './src/screens/HomeScreen';
+import ResultsScreen from './src/screens/ResultsScreen';
+import HistoryScreen from './src/screens/HistoryScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
 
-// Import auth service
-import { verifyAuth, getSavedUser, clearSession, User, configureGoogleSignIn } from './src/services/authService';
+// Types
+import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/types';
 
-// Configure Google Sign-In at module level (before any component renders)
+// Auth
+import { verifyAuth, initializeAuth, clearSession, configureGoogleSignIn, type User } from './src/services/authService';
+
+// Configure Google Sign-In at module level
 configureGoogleSignIn();
 
-// Import types
-import { RootStackParamList, AuthStackParamList } from './src/types';
-
-const RootStack = createNativeStackNavigator<RootStackParamList>();
+const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 
-// Auth Navigator (Login, Register, Forgot Password)
+// Auth Navigator - Login, Register, ForgotPassword
 function AuthNavigator({ onLoginSuccess }: { onLoginSuccess: () => void }) {
   return (
-    <AuthStack.Navigator
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
+    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="Login">
         {(props) => <LoginScreen {...props} onLoginSuccess={onLoginSuccess} />}
       </AuthStack.Screen>
       <AuthStack.Screen name="Register">
         {(props) => <RegisterScreen {...props} onRegisterSuccess={onLoginSuccess} />}
       </AuthStack.Screen>
-      <AuthStack.Screen
-        name="ForgotPassword"
-        component={ForgotPasswordScreen}
-      />
+      <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </AuthStack.Navigator>
   );
 }
 
-// Main App Navigator (Home, Camera, Results, History)
-function MainNavigator({ onLogout }: { onLogout: () => void }) {
+// Main Tabs Navigator - Home, History, Profile
+function MainTabs({ onLogout }: { onLogout: () => void }) {
+  const { t } = useTranslation();
   return (
-    <RootStack.Navigator
-      initialRouteName="Home"
+    <Tab.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: '#007AFF',
+        headerShown: false,
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.text.placeholder,
+        tabBarStyle: {
+          borderTopColor: colors.border.light,
+          backgroundColor: colors.bg.primary,
         },
-        headerTintColor: '#FFF',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
+        tabBarLabelStyle: { ...typography.small, fontWeight: '500' },
       }}
     >
-      <RootStack.Screen name="Home" options={{ headerShown: false }}>
-        {(props) => <HomeScreen {...props} onLogout={onLogout} />}
-      </RootStack.Screen>
-      <RootStack.Screen
-        name="Camera"
-        component={CameraScreen}
+      <Tab.Screen
+        name="HomeTab"
+        component={HomeScreen}
         options={{
-          title: 'Capture Products',
-          headerStyle: {
-            backgroundColor: '#000',
-          },
+          tabBarLabel: t('app.name'),
+          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
         }}
       />
-      <RootStack.Screen
-        name="Results"
-        component={ResultsScreen}
+      <Tab.Screen
+        name="HistoryTab"
         options={{
-          title: 'Results',
-          headerBackTitle: 'Back',
-        }}
-      />
-      <RootStack.Screen
-        name="History"
-        options={{
-          title: 'History',
+          tabBarLabel: t('history.title'),
+          tabBarIcon: ({ color, size }) => <Clock size={size} color={color} />,
         }}
       >
         {(props) => <HistoryScreen {...props} onLogout={onLogout} />}
-      </RootStack.Screen>
-      <RootStack.Screen
-        name="Account"
+      </Tab.Screen>
+      <Tab.Screen
+        name="ProfileTab"
         options={{
-          title: 'Account Settings',
+          tabBarLabel: t('profile.title'),
+          tabBarIcon: ({ color, size }) => <UserIcon size={size} color={color} />,
         }}
       >
-        {(props) => <AccountScreen {...props} onLogout={onLogout} />}
-      </RootStack.Screen>
-      <RootStack.Screen
-        name="Preferences"
-        component={PreferencesScreen}
-        options={{
-          title: 'Preferences',
-          headerBackTitle: 'Back',
-        }}
-      />
-    </RootStack.Navigator>
+        {(props) => <ProfileScreen {...props} onLogout={onLogout} />}
+      </Tab.Screen>
+    </Tab.Navigator>
   );
 }
 
 export default function App() {
+  const fontsLoaded = useAppFonts();
+  const [showSplash, setShowSplash] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [needsPreferences, setNeedsPreferences] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const checkAuthStatus = async () => {
-    try {
-      const savedUser = await getSavedUser();
-
-      if (savedUser) {
-        const verifiedUser = await verifyAuth();
-
-        if (verifiedUser) {
-          setUser(verifiedUser);
-          setIsAuthenticated(true);
-          setNeedsPreferences(!verifiedUser.preferences_completed);
-        } else {
-          setIsAuthenticated(false);
-        }
-      } else {
-        setIsAuthenticated(false);
+    async function init() {
+      // Set language + RTL before rendering
+      const lang = await getSavedLanguage();
+      const { default: i18n } = await import('./src/i18n');
+      await i18n.changeLanguage(lang);
+      const shouldBeRTL = lang === 'ar';
+      if (I18nManager.isRTL !== shouldBeRTL) {
+        I18nManager.allowRTL(true);
+        I18nManager.forceRTL(shouldBeRTL);
       }
-    } catch (error) {
-      console.error('Auth check error:', error);
-      setIsAuthenticated(false);
-    } finally {
+
+      // Auth check
+      try {
+        const authUser = await initializeAuth();
+        if (authUser) {
+          setUser(authUser);
+          setIsAuthenticated(true);
+          setNeedsPreferences(!authUser.preferences_completed);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      }
       setIsLoading(false);
     }
-  };
+    init();
+  }, []);
 
-  const handleLoginSuccess = async () => {
-    const savedUser = await getSavedUser();
-    if (savedUser) {
-      setUser(savedUser);
-      setNeedsPreferences(!savedUser.preferences_completed);
+  const handleSplashFinish = useCallback(() => {
+    setShowSplash(false);
+  }, []);
+
+  const handleLoginSuccess = useCallback(async () => {
+    try {
+      const authUser = await verifyAuth();
+      if (authUser) {
+        setUser(authUser);
+        setNeedsPreferences(!authUser.preferences_completed);
+        setIsAuthenticated(true);
+      }
+    } catch (error) {
+      console.error('Login verification error:', error);
     }
-    // Set authenticated AFTER checking preferences to avoid flash of wrong navigator
-    setIsAuthenticated(true);
-  };
+  }, []);
 
-  const handlePreferencesComplete = () => {
-    setNeedsPreferences(false);
-  };
-
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await clearSession();
     setIsAuthenticated(false);
     setNeedsPreferences(false);
     setUser(null);
-  };
+  }, []);
 
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F5F5' }}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
-  }
+  const handlePreferencesComplete = useCallback(() => {
+    setNeedsPreferences(false);
+  }, []);
 
-  if (!isAuthenticated) {
-    return (
-      <NavigationContainer>
-        <StatusBar style="auto" />
-        <AuthNavigator onLoginSuccess={handleLoginSuccess} />
-      </NavigationContainer>
-    );
-  }
-
-  if (needsPreferences) {
-    return (
-      <NavigationContainer>
-        <StatusBar style="auto" />
-        <RootStack.Navigator screenOptions={{ headerShown: false }}>
-          <RootStack.Screen name="Preferences" options={{ headerShown: false }}>
-            {(props) => (
-              <PreferencesScreen
-                {...props}
-                onComplete={handlePreferencesComplete}
-                onLogout={handleLogout}
-              />
-            )}
-          </RootStack.Screen>
-        </RootStack.Navigator>
-      </NavigationContainer>
-    );
+  // Show splash during font loading, initial auth check, or splash animation
+  if (!fontsLoaded || isLoading || showSplash) {
+    return <SplashScreen onFinish={handleSplashFinish} />;
   }
 
   return (
     <NavigationContainer>
       <StatusBar style="auto" />
-      <MainNavigator onLogout={handleLogout} />
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {!isAuthenticated ? (
+          <Stack.Screen name="Auth">
+            {(props) => <AuthNavigator {...props} onLoginSuccess={handleLoginSuccess} />}
+          </Stack.Screen>
+        ) : needsPreferences ? (
+          <Stack.Screen name="Onboarding">
+            {(props) => (
+              <OnboardingScreen {...props} onComplete={handlePreferencesComplete} />
+            )}
+          </Stack.Screen>
+        ) : (
+          <>
+            <Stack.Screen name="Main">
+              {(props) => <MainTabs {...props} onLogout={handleLogout} />}
+            </Stack.Screen>
+            <Stack.Screen
+              name="Results"
+              component={ResultsScreen}
+              options={{ presentation: 'modal' }}
+            />
+          </>
+        )}
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }

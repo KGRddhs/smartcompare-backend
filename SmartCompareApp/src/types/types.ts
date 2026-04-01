@@ -348,21 +348,30 @@ export interface AuthSession {
 
 // --- Navigation types ---
 
+// Root stack with Auth, Onboarding, Main tabs, and Results modal
 export type RootStackParamList = {
-  Home: undefined;
-  Camera: undefined;
+  Auth: undefined;
+  Onboarding: undefined;
+  Main: undefined;
   Results: { result: ComparisonResult };
+  // Legacy screen names for backward compatibility with screen components
+  Home: undefined;
   History: undefined;
   Profile: undefined;
-  Account: undefined;
-  Preferences: { mode: 'onboarding' | 'edit' };
-  Onboarding: undefined;
 };
 
+// Auth stack for login flow
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
   ForgotPassword: undefined;
+};
+
+// Main tabs (inside Main screen)
+export type MainTabParamList = {
+  HomeTab: undefined;
+  HistoryTab: undefined;
+  ProfileTab: undefined;
 };
 
 // --- Onboarding types ---
@@ -375,11 +384,3 @@ export interface OnboardingData {
   lifestyle: string[];
   brand_attitude: 'brand_loyal' | 'function_first' | 'best_of_both';
 }
-
-// --- Navigation types update ---
-
-export type MainTabParamList = {
-  HomeTab: undefined;
-  HistoryTab: undefined;
-  ProfileTab: undefined;
-};
