@@ -1,5 +1,6 @@
 /**
- * SmartCompare - Register Screen
+ * Qaren - Register Screen
+ * Restyled with theme tokens + i18n. All auth logic preserved.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -15,10 +16,13 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { register, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import { parseApiError } from '../services/api';
 import { AuthStackParamList } from '../types';
+import { colors, spacing, radii, typography, shadows } from '../theme';
+import { Button } from '../components/Button';
 
 type RegisterScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Register'>;
@@ -26,6 +30,7 @@ type RegisterScreenProps = {
 };
 
 export default function RegisterScreen({ navigation, onRegisterSuccess }: RegisterScreenProps) {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -87,7 +92,7 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
     const trimmedEmail = email.trim();
 
     if (!trimmedEmail) {
-      setEmailError('Email is required');
+      setEmailError(t('auth.email') + ' is required');
       hasError = true;
     } else if (!validateEmail(trimmedEmail)) {
       setEmailError('Invalid email format');
@@ -97,10 +102,10 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
     }
 
     if (!password) {
-      setPasswordError('Password is required');
+      setPasswordError(t('auth.password') + ' is required');
       hasError = true;
-    } else if (password.length < 6) {
-      setPasswordError('Password must be at least 6 characters');
+    } else if (password.length < 10 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      setPasswordError('Password must be at least 10 characters with 1 uppercase, 1 lowercase, and 1 digit');
       hasError = true;
     } else {
       setPasswordError('');
@@ -149,13 +154,13 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
           <View style={styles.content}>
             {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.logo}>SmartCompare</Text>
-              <Text style={styles.subtitle}>Create your account</Text>
+              <Text style={styles.logo}>قارن</Text>
+              <Text style={styles.subtitle}>{t('splash.tagline')}</Text>
             </View>
 
             {/* Register Form */}
             <View style={styles.form}>
-              <Text style={styles.title}>Sign Up</Text>
+              <Text style={styles.title}>{t('auth.signUp')}</Text>
 
               {error ? (
                 <View style={styles.errorContainer}>
@@ -164,11 +169,11 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
               ) : null}
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Email</Text>
+                <Text style={styles.label}>{t('auth.email')}</Text>
                 <TextInput
                   style={[styles.input, emailError ? styles.inputError : null]}
-                  placeholder="Enter your email"
-                  placeholderTextColor="#999"
+                  placeholder={t('auth.email')}
+                  placeholderTextColor={colors.text.placeholder}
                   value={email}
                   onChangeText={(text) => { setEmail(text); setEmailError(''); }}
                   keyboardType="email-address"
@@ -180,11 +185,11 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Password</Text>
+                <Text style={styles.label}>{t('auth.password')}</Text>
                 <TextInput
                   style={[styles.input, passwordError ? styles.inputError : null]}
-                  placeholder="Create a password (min 6 characters)"
-                  placeholderTextColor="#999"
+                  placeholder={t('auth.password')}
+                  placeholderTextColor={colors.text.placeholder}
                   value={password}
                   onChangeText={(text) => { setPassword(text); setPasswordError(''); }}
                   secureTextEntry
@@ -194,11 +199,11 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Confirm Password</Text>
+                <Text style={styles.label}>{t('auth.confirmPassword')}</Text>
                 <TextInput
                   style={[styles.input, confirmError ? styles.inputError : null]}
-                  placeholder="Confirm your password"
-                  placeholderTextColor="#999"
+                  placeholder={t('auth.confirmPassword')}
+                  placeholderTextColor={colors.text.placeholder}
                   value={confirmPassword}
                   onChangeText={(text) => { setConfirmPassword(text); setConfirmError(''); }}
                   secureTextEntry
@@ -207,49 +212,42 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
                 {confirmError ? <Text style={styles.fieldError}>{confirmError}</Text> : null}
               </View>
 
-              <TouchableOpacity
-                style={[styles.registerButton, loading && styles.buttonDisabled]}
+              <Button
+                title={t('auth.register')}
                 onPress={handleRegister}
                 disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <Text style={styles.registerButtonText}>Create Account</Text>
-                )}
-              </TouchableOpacity>
+                loading={loading}
+              />
 
               {/* Social Sign-In */}
               <View style={styles.dividerRow}>
                 <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>or</Text>
+                <Text style={styles.dividerText}>{t('common.or')}</Text>
                 <View style={styles.dividerLine} />
               </View>
 
-              <TouchableOpacity
-                style={styles.socialButton}
+              <Button
+                title={t('auth.googleSignIn')}
+                variant="secondary"
                 onPress={handleGoogleSignIn}
                 disabled={!!socialLoading || loading}
-              >
-                {socialLoading === 'google' ? (
-                  <ActivityIndicator size="small" color="#333" />
-                ) : (
-                  <Text style={styles.socialButtonText}>Continue with Google</Text>
-                )}
-              </TouchableOpacity>
+                loading={socialLoading === 'google'}
+              />
 
               {showApple && (
-                <TouchableOpacity
-                  style={[styles.socialButton, styles.appleSocialButton]}
-                  onPress={handleAppleSignIn}
-                  disabled={!!socialLoading || loading}
-                >
-                  {socialLoading === 'apple' ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <Text style={[styles.socialButtonText, styles.appleSocialText]}>Continue with Apple</Text>
-                  )}
-                </TouchableOpacity>
+                <View style={styles.socialSpacer}>
+                  <TouchableOpacity
+                    style={styles.appleButton}
+                    onPress={handleAppleSignIn}
+                    disabled={!!socialLoading || loading}
+                  >
+                    {socialLoading === 'apple' ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={styles.appleButtonText}>{t('auth.appleSignIn')}</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               )}
 
               {/* Benefits */}
@@ -264,9 +262,9 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
 
             {/* Login Link */}
             <View style={styles.footer}>
-              <Text style={styles.footerText}>Already have an account?</Text>
+              <Text style={styles.footerText}>{t('auth.hasAccount')}</Text>
               <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                <Text style={styles.loginLink}>Login</Text>
+                <Text style={styles.loginLink}>{t('auth.signIn')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -279,7 +277,7 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.bg.secondary,
   },
   keyboardView: {
     flex: 1,
@@ -289,158 +287,134 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 24,
+    padding: spacing.xl,
     justifyContent: 'center',
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: spacing['2xl'],
   },
   logo: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#007AFF',
+    fontSize: 36,
+    fontWeight: '700',
+    color: colors.text.primary,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 8,
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginTop: spacing.sm,
   },
   form: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: colors.bg.primary,
+    borderRadius: radii.card,
+    padding: spacing.xl,
+    ...shadows.card,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginBottom: 24,
+    ...typography.title,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: spacing.xl,
     textAlign: 'center',
   },
   errorContainer: {
-    backgroundColor: '#FFEBEE',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
+    backgroundColor: '#FEF2F2',
+    borderRadius: spacing.sm,
+    padding: spacing.md,
+    marginBottom: spacing.base,
   },
   errorText: {
-    color: '#C62828',
-    fontSize: 14,
+    ...typography.caption,
+    color: colors.destructive,
     textAlign: 'center',
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: spacing.base,
   },
   label: {
-    fontSize: 14,
+    ...typography.caption,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
   },
   input: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 16,
-    color: '#1A1A1A',
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.input,
+    padding: spacing.md,
+    ...typography.body,
+    color: colors.text.primary,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border.light,
   },
   inputError: {
-    borderColor: '#FF3B30',
+    borderColor: colors.destructive,
   },
   fieldError: {
-    color: '#FF3B30',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  registerButton: {
-    backgroundColor: '#34C759',
-    borderRadius: 10,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  registerButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
+    ...typography.small,
+    color: colors.destructive,
+    marginTop: spacing.xs,
   },
   benefits: {
-    marginTop: 20,
-    paddingTop: 16,
+    marginTop: spacing.lg,
+    paddingTop: spacing.base,
     borderTopWidth: 1,
-    borderTopColor: '#EEE',
+    borderTopColor: colors.border.light,
   },
   benefitsTitle: {
-    fontSize: 14,
+    ...typography.caption,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
   },
   benefitItem: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 4,
+    ...typography.small,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 24,
+    marginTop: spacing.xl,
   },
   footerText: {
-    color: '#666',
-    fontSize: 14,
+    ...typography.caption,
+    color: colors.text.secondary,
   },
   loginLink: {
-    color: '#007AFF',
-    fontSize: 14,
+    ...typography.caption,
+    color: colors.accent,
     fontWeight: '600',
-    marginLeft: 4,
+    marginStart: spacing.xs,
   },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16,
+    marginVertical: spacing.base,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#DDD',
+    backgroundColor: colors.border.light,
   },
   dividerText: {
-    marginHorizontal: 12,
-    color: '#888',
-    fontSize: 14,
+    marginHorizontal: spacing.md,
+    ...typography.caption,
+    color: colors.text.placeholder,
   },
-  socialButton: {
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginBottom: 10,
-    backgroundColor: '#FFF',
+  socialSpacer: {
+    marginTop: spacing.sm,
   },
-  socialButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
-  },
-  appleSocialButton: {
+  appleButton: {
     backgroundColor: '#000',
-    borderColor: '#000',
+    borderRadius: radii.button,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
   },
-  appleSocialText: {
+  appleButtonText: {
+    ...typography.body,
+    fontWeight: '600',
     color: '#FFF',
   },
 });
