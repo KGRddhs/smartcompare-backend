@@ -14,6 +14,7 @@ import {
   Linking,
   Switch,
 } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import {
   ArrowLeft,
@@ -99,13 +100,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   };
 
   useEffect(() => {
-    // Winner reveal with haptic
+    // Winner reveal with haptic feedback
     const timer = setTimeout(async () => {
       setWinnerRevealed(true);
       try {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       } catch {}
-    }, 300);
+    }, 800);
 
     return () => {
       clearTimeout(timer);
@@ -251,7 +252,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* 1. Product Cards (side by side) */}
-        <View style={styles.productsRow}>
+        <Animated.View entering={FadeIn.duration(400)} style={styles.productsRow}>
           {products.map((product, index) => {
             const isWinner = index === winner_index;
             const scores = getProductScores(index);
@@ -366,7 +367,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               </Card>
             );
           })}
-        </View>
+        </Animated.View>
 
         {/* Confidence indicator */}
         {isNewFormat && result.overview!.confidence?.overall && (
@@ -397,16 +398,16 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         )}
 
         {/* 2. Verdict */}
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={styles.section}>
           <Text style={styles.sectionTitle}>{t('results.verdict')}</Text>
           <Text style={styles.verdictText}>{recommendation}</Text>
           {isNewFormat && result.overview!.winner.key_tradeoff ? (
             <Text style={styles.tradeoffNote}>{result.overview!.winner.key_tradeoff}</Text>
           ) : null}
-        </View>
+        </Animated.View>
 
         {/* 3. Price comparison */}
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(300).duration(400)} style={styles.section}>
           <Text style={styles.sectionTitle}>{t('results.price')}</Text>
           {products.map((product, index) => (
             <View key={index} style={styles.priceCompRow}>
@@ -426,11 +427,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           {products[0]?.price?.retailer && (
             <Text style={styles.retailerAttribution}>{products[0].price.retailer}</Text>
           )}
-        </View>
+        </Animated.View>
 
         {/* 4. Key Differences */}
         {isNewFormat && result.overview!.tradeoffs?.length > 0 ? (
-          <View style={styles.section}>
+          <Animated.View entering={FadeInDown.delay(400).duration(400)} style={styles.section}>
             <Text style={styles.sectionTitle}>{t('results.keyDifferences')}</Text>
             {result.overview!.tradeoffs.map((tradeoff, i) => (
               <View key={i} style={styles.tradeoffRow}>
@@ -451,21 +452,21 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 </View>
               </View>
             ))}
-          </View>
+          </Animated.View>
         ) : !isNewFormat && key_differences?.length > 0 ? (
-          <View style={styles.section}>
+          <Animated.View entering={FadeInDown.delay(400).duration(400)} style={styles.section}>
             <Text style={styles.sectionTitle}>{t('results.keyDifferences')}</Text>
             {key_differences.map((diff, index) => (
               <Text key={index} style={styles.differenceItem}>
                 {diff}
               </Text>
             ))}
-          </View>
+          </Animated.View>
         ) : null}
 
         {/* 5. Personalized Insights */}
         {result.personalized_insights && result.personalized_insights.length > 0 && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeInDown.delay(500).duration(400)} style={styles.section}>
             {result.personalized_insights.map((insight, index) => (
               <View key={index} style={styles.insightCard}>
                 <Text style={styles.insightFocusArea}>
@@ -474,11 +475,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 <Text style={styles.insightText}>{insight.insight}</Text>
               </View>
             ))}
-          </View>
+          </Animated.View>
         )}
 
         {/* 6. Specs accordion */}
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(600).duration(400)} style={styles.section}>
           <TouchableOpacity
             style={styles.sectionHeader}
             onPress={() => setSpecsExpanded(!specsExpanded)}
@@ -554,11 +555,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               </View>
             </>
           )}
-        </View>
+        </Animated.View>
 
         {/* 7. Reviews */}
         {isNewFormat && result.reviews?.products ? (
-          <View style={styles.section}>
+          <Animated.View entering={FadeInDown.delay(700).duration(400)} style={styles.section}>
             <Text style={styles.sectionTitle}>{t('results.reviews')}</Text>
             {result.reviews.products.map((rp: any, index: number) => {
               const summary: ReviewSummary | undefined = rp.review_summary;
@@ -619,7 +620,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 </Card>
               );
             })}
-          </View>
+          </Animated.View>
         ) : (
           /* Old format reviews: pros/cons */
           products.some(
@@ -628,7 +629,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               (p.cons && p.cons.length > 0) ||
               p.rating
           ) && (
-            <View style={styles.section}>
+            <Animated.View entering={FadeInDown.delay(700).duration(400)} style={styles.section}>
               <Text style={styles.sectionTitle}>{t('results.reviews')}</Text>
               {products.map((product, index) => (
                 <Card key={index} style={styles.reviewCard}>
@@ -674,13 +675,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                   )}
                 </Card>
               ))}
-            </View>
+            </Animated.View>
           )
         )}
 
         {/* 8. Score Breakdown */}
         {scoring && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeInDown.delay(800).duration(400)} style={styles.section}>
             <Text style={styles.sectionTitle}>{t('results.scores')}</Text>
 
             {(Object.keys(SCORE_LABELS) as (keyof ScoreBreakdown)[]).map((dim) => {
@@ -734,7 +735,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                   : 'Default weights applied'}
               </Text>
             )}
-          </View>
+          </Animated.View>
         )}
 
         {/* 9. Feedback */}
