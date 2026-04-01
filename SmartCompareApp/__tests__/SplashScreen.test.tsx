@@ -4,6 +4,8 @@
  */
 
 import React from 'react';
+import { render } from '@testing-library/react-native';
+import SplashScreen from '../src/screens/SplashScreen';
 
 // Mock react-native-reanimated before imports
 jest.mock('react-native-reanimated', () => {
@@ -33,22 +35,33 @@ describe('SplashScreen', () => {
   });
 
   it('should render the logo text', () => {
-    // TODO: render SplashScreen and verify logo is present
-    expect(true).toBe(true);
+    const mockOnFinish = jest.fn();
+    const { getByText } = render(<SplashScreen onFinish={mockOnFinish} />);
+    expect(getByText('قارن')).toBeTruthy();
   });
 
   it('should render the tagline', () => {
-    // TODO: render SplashScreen and verify tagline text
-    expect(true).toBe(true);
+    const mockOnFinish = jest.fn();
+    const { getByText } = render(<SplashScreen onFinish={mockOnFinish} />);
+    expect(getByText('Compare smarter')).toBeTruthy();
   });
 
   it('should call onFinish after 1.5 seconds', () => {
-    // TODO: render SplashScreen, advance timers by 1500ms, verify onFinish called
-    expect(true).toBe(true);
+    const mockOnFinish = jest.fn();
+    render(<SplashScreen onFinish={mockOnFinish} />);
+
+    expect(mockOnFinish).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1500);
+    expect(mockOnFinish).toHaveBeenCalledTimes(1);
   });
 
   it('should clean up timer on unmount', () => {
-    // TODO: render SplashScreen, unmount before timer fires, verify no errors
-    expect(true).toBe(true);
+    const mockOnFinish = jest.fn();
+    const { unmount } = render(<SplashScreen onFinish={mockOnFinish} />);
+
+    unmount();
+    jest.advanceTimersByTime(1500);
+    // onFinish should NOT be called after unmount
+    expect(mockOnFinish).not.toHaveBeenCalled();
   });
 });

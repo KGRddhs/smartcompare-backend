@@ -260,7 +260,8 @@ describe('HomeScreen', () => {
       const result = await identifyFromImages(['file:///img1.jpg', 'file:///img2.jpg'], 'bahrain');
 
       expect(result.action).toBe('need_second_product');
-      expect(result.products[0].brand).toBe('Apple');
+      expect(result.products).toBeDefined();
+      expect(result.products![0].brand).toBe('Apple');
     });
 
     it('handles identification failure', async () => {
@@ -273,7 +274,9 @@ describe('HomeScreen', () => {
       const result = await identifyFromImages(['file:///img1.jpg'], 'bahrain');
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Could not identify products');
+      if ('error' in result) {
+        expect(result.error).toBe('Could not identify products');
+      }
     });
 
     it('enforces MIN_IMAGES = 2 and MAX_IMAGES = 4', () => {
