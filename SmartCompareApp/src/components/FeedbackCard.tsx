@@ -110,7 +110,7 @@ export default function FeedbackCard({ comparisonId, submitted: parentSubmitted,
           {/* Optional text input */}
           <TextInput
             style={styles.textInput}
-            placeholder="Tell us what could be better..."
+            placeholder={t('results.feedback.placeholder')}
             placeholderTextColor={colors.text.placeholder}
             value={suggestion}
             onChangeText={setSuggestion}
@@ -125,7 +125,7 @@ export default function FeedbackCard({ comparisonId, submitted: parentSubmitted,
             disabled={submitting}
           >
             <Text style={styles.submitText}>
-              {submitting ? '...' : 'Submit'}
+              {submitting ? '...' : t('results.feedback.submit')}
             </Text>
           </TouchableOpacity>
         </>

@@ -126,7 +126,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // --- Helpers ---
 
   const formatPrice = (price?: Product['price']) => {
-    if (!price || price.unavailable || price.amount === null) return 'Price N/A';
+    if (!price || price.unavailable || price.amount === null) return t('results.priceNA');
     return `${price.currency} ${price.amount.toLocaleString()}`;
   };
 
@@ -290,10 +290,10 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                   {formatPrice(product.price)}
                 </Text>
                 {product.price?.source_method === 'converted_usd' && (
-                  <Text style={styles.priceNote}>(converted from USD)</Text>
+                  <Text style={styles.priceNote}>{t('results.convertedUSD')}</Text>
                 )}
                 {(product.price?.estimated || product.price?.source_method === 'estimated') && (
-                  <Text style={styles.priceNote}>(estimated)</Text>
+                  <Text style={styles.priceNote}>{t('results.estimated')}</Text>
                 )}
                 {product.price?.retailer && !product.price?.unavailable && (
                   <Text style={styles.retailerText}>{product.price.retailer}</Text>
@@ -328,12 +328,12 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                       ]}
                     >
                       {overviewProduct.value_badge === 'great_value'
-                        ? 'Great Value'
+                        ? t('results.value.greatValue')
                         : overviewProduct.value_badge === 'fair_price'
-                        ? 'Fair Price'
+                        ? t('results.value.fairPrice')
                         : overviewProduct.value_badge === 'premium_price'
-                        ? 'Premium'
-                        : 'Overpriced'}
+                        ? t('results.value.premium')
+                        : t('results.value.overpriced')}
                     </Text>
                   </View>
                 )}
@@ -357,7 +357,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                     )}
                   </TouchableOpacity>
                 ) : (
-                  <Text style={styles.noRatingText}>No rating available</Text>
+                  <Text style={styles.noRatingText}>{t('results.noRating')}</Text>
                 )}
 
                 {/* Best for */}
@@ -390,9 +390,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 },
               ]}
             >
-              {result.overview!.confidence.overall.charAt(0).toUpperCase() +
-                result.overview!.confidence.overall.slice(1)}{' '}
-              confidence data
+              {t(`results.confidence.${result.overview!.confidence.overall}`)}
             </Text>
           </View>
         )}
@@ -614,7 +612,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
                   {summary?.agreement_level === 'divided' && (
                     <Text style={styles.dividedNote}>
-                      Note: User opinions are divided on this product
+                      {t('results.reviews.divided')}
                     </Text>
                   )}
                 </Card>
@@ -731,8 +729,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             {scoring.scoring_method && (
               <Text style={styles.scoringMethodText}>
                 {scoring.scoring_method === 'personalized'
-                  ? 'Weighted for your preferences'
-                  : 'Default weights applied'}
+                  ? t('results.scoring.personalized')
+                  : t('results.scoring.default')}
               </Text>
             )}
           </Animated.View>

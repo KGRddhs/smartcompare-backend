@@ -132,7 +132,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         }
       } catch (error) {
         console.error('Error taking picture:', error);
-        Alert.alert('Error', 'Failed to take picture. Please try again.');
+        Alert.alert(t('common.error'), t('home.errors.camera'));
       }
     }
   };
@@ -203,9 +203,9 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
       if (error.response?.status === 429) {
         Alert.alert('Rate Limited', 'Too many requests. Please wait a moment.');
       } else if (error.message?.includes('Network')) {
-        Alert.alert('Connection Error', 'Could not connect to server.');
+        Alert.alert(t('common.error'), t('home.errors.connection'));
       } else {
-        Alert.alert('Error', parseApiError(error).message);
+        Alert.alert(t('common.error'), parseApiError(error).message);
       }
     } finally {
       setIsProcessing(false);
@@ -245,14 +245,14 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
           await increment();
           navigation.navigate('Results', { result: data });
         } else if (!data.success) {
-          Alert.alert('Error', data.error || 'Comparison failed');
+          Alert.alert(t('common.error'), data.error || t('home.errors.comparison'));
         }
       },
       onError: (error) => {
         abortRef.current = null;
         setLoading(false);
         setStatusMessage('');
-        Alert.alert('Error', error.message || 'Comparison failed');
+        Alert.alert(t('common.error'), error.message || t('home.errors.comparison'));
       },
     });
   };
@@ -285,10 +285,10 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         await increment();
         navigation.navigate('Results', { result: response.data });
       } else {
-        Alert.alert('Error', response.data.error || 'Comparison failed');
+        Alert.alert(t('common.error'), response.data.error || t('home.errors.comparison'));
       }
     } catch (error: any) {
-      Alert.alert('Error', parseApiError(error).message);
+      Alert.alert(t('common.error'), parseApiError(error).message);
     } finally {
       setLoading(false);
     }

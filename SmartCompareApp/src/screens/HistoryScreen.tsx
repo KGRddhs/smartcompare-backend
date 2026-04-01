@@ -161,7 +161,7 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
               setHistory((prev) => prev.filter((h) => h.id !== item.id));
               setTotal((prev) => prev - 1);
             } catch {
-              Alert.alert(t('common.error'), 'Failed to delete comparison');
+              Alert.alert(t('common.error'), t('history.deleteError'));
             }
           },
         },
