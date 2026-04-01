@@ -7,12 +7,8 @@ import React from 'react';
 import { render } from '@testing-library/react-native';
 import SplashScreen from '../src/screens/SplashScreen';
 
-// Mock react-native-reanimated before imports
-jest.mock('react-native-reanimated', () => {
-  const Reanimated = require('react-native-reanimated/mock');
-  Reanimated.default.call = () => {};
-  return Reanimated;
-});
+// Use our local mock instead of package mock
+jest.mock('react-native-reanimated');
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({

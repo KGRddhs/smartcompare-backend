@@ -8,6 +8,7 @@ module.exports = {
       tsconfig: {
         jsx: 'react',
       },
+      isolatedModules: true,
     },
   },
   transformIgnorePatterns: [

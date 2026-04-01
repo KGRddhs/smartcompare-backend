@@ -8,11 +8,8 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import OnboardingScreen from '../src/screens/OnboardingScreen';
 import { savePreferences } from '../src/services/api';
 
-jest.mock('react-native-reanimated', () => {
-  const Reanimated = require('react-native-reanimated/mock');
-  Reanimated.default.call = () => {};
-  return Reanimated;
-});
+// Use our local mock instead of package mock
+jest.mock('react-native-reanimated');
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
