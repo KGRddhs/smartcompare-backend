@@ -68,17 +68,26 @@ app = FastAPI(
 # -- Middleware (order matters: outermost added last) --
 
 # CORS (innermost -- runs first on response)
-ALLOWED_ORIGINS = [
+_DEFAULT_ORIGINS = [
     "https://web-production-58776.up.railway.app",
     "http://localhost:8000",
     "http://localhost:19006",   # Expo web
     "http://localhost:8081",    # Metro bundler
 ]
+
+def _get_allowed_origins() -> list:
+    """Get CORS origins from env var or defaults."""
+    env_origins = os.getenv("CORS_ORIGINS", "")
+    if env_origins:
+        return [o.strip() for o in env_origins.split(",") if o.strip()]
+    return _DEFAULT_ORIGINS
+
+ALLOWED_ORIGINS = _get_allowed_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Admin-Key", "X-Request-ID"],
 )
 
