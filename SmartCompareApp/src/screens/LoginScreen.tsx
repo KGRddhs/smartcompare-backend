@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { usePreventScreenCapture } from 'expo-screen-capture';
 import { login, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import { parseApiError } from '../services/api';
 import { AuthStackParamList } from '../types';
@@ -30,6 +31,7 @@ type LoginScreenProps = {
 
 export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenProps) {
   const { t } = useTranslation();
+  usePreventScreenCapture();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -96,8 +98,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
     if (!password) {
       setPasswordError(t('auth.password') + ' is required');
       hasError = true;
-    } else if (password.length < 6) {
-      setPasswordError('Password must be at least 6 characters');
+    } else if (password.length < 10 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      setPasswordError(t('auth.passwordRequirements') || 'Password must be 10+ characters with uppercase, lowercase, and number');
       hasError = true;
     } else {
       setPasswordError('');

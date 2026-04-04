@@ -6,10 +6,14 @@
 import axios from 'axios';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { ComparisonResult, ImageIdentifyResult, UserPreferences } from '../types';
+import { setupCertificatePinning } from './certificatePinning';
 
 // IMPORTANT: Change this to your computer's local IP
 // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
 export const API_BASE_URL = 'https://web-production-58776.up.railway.app';
+
+// Initialize certificate pinning (no-op in Expo Go, active in dev/prod builds)
+setupCertificatePinning();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -26,7 +30,7 @@ api.interceptors.request.use(
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     } else if (config.url?.includes('/preferences')) {
-      console.warn('[API] No token available for preferences request!');
+      if (__DEV__) console.warn('[API] No token available for preferences request!');
     }
     return config;
   },
@@ -107,8 +111,8 @@ export async function identifyFromImages(
   imageUris: string[],
   region: string = 'bahrain'
 ): Promise<ImageIdentifyResult> {
-  console.log('=== IDENTIFY FROM IMAGES ===');
-  console.log(`${imageUris.length} image(s), region=${region}`);
+  if (__DEV__) console.log('=== IDENTIFY FROM IMAGES ===');
+  if (__DEV__) console.log(`${imageUris.length} image(s), region=${region}`);
 
   const formData = new FormData();
 
@@ -150,12 +154,12 @@ export async function identifyFromImages(
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('Identify response error:', response.status, errorText);
+    if (__DEV__) console.error('Identify response error:', response.status, errorText);
     throw new Error(`Server error ${response.status}: ${errorText}`);
   }
 
   const data: ImageIdentifyResult = await response.json();
-  console.log('Identify response action:', (data as any).action);
+  if (__DEV__) console.log('Identify response action:', (data as any).action);
   return data;
 }
 
@@ -200,8 +204,8 @@ export async function updateProfile(displayName: string): Promise<{ success: boo
 /**
  * Update user email (sends verification to new address)
  */
-export async function updateEmail(newEmail: string): Promise<{ success: boolean; message?: string; error?: string }> {
-  const response = await api.put('/api/v1/auth/email', { new_email: newEmail });
+export async function updateEmail(newEmail: string, currentPassword: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  const response = await api.put('/api/v1/auth/email', { new_email: newEmail, current_password: currentPassword });
   return response.data;
 }
 
@@ -323,7 +327,7 @@ export function streamComparison(
       } catch (err: any) {
         if (err.name === 'AbortError') return;
         // Fallback to non-streaming
-        console.log('SSE failed, falling back to non-streaming:', err.message);
+        if (__DEV__) console.log('SSE failed, falling back to non-streaming:', err.message);
         try {
           const response = await api.get('/api/v1/text/compare', {
             params: {
