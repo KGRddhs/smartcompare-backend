@@ -137,7 +137,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
 @limiter.limit("10/minute")
 async def text_compare_get(
     request: Request,
-    q: str = Query(..., description="Comparison query, e.g., 'iPhone 15 vs S24'"),
+    q: str = Query(..., max_length=500, description="Comparison query, e.g., 'iPhone 15 vs S24'"),
     region: str = Query("bahrain", description="GCC region for pricing"),
     specs: bool = Query(True, description="Include specifications"),
     reviews: bool = Query(True, description="Include reviews"),
@@ -214,7 +214,7 @@ async def text_compare_get(
 @limiter.limit("10/minute")
 async def text_compare_stream(
     request: Request,
-    q: str = Query(..., description="Comparison query, e.g., 'iPhone 15 vs S24'"),
+    q: str = Query(..., max_length=500, description="Comparison query, e.g., 'iPhone 15 vs S24'"),
     region: str = Query("bahrain", description="GCC region for pricing"),
     specs: bool = Query(True, description="Include specifications"),
     reviews: bool = Query(True, description="Include reviews"),
@@ -378,7 +378,7 @@ async def get_gcc_prices(
 
 @router.delete("/cache")
 async def flush_product_cache(
-    q: str = Query(..., description="Product query, e.g., 'rtx 3090'"),
+    q: str = Query(..., max_length=500, description="Product query, e.g., 'rtx 3090'"),
     _admin: bool = Depends(verify_admin_key),
 ):
     """
@@ -413,7 +413,7 @@ async def flush_product_cache(
 
 @router.get("/parse")
 async def parse_query(
-    q: str = Query(..., description="Query to parse, e.g., 'iPhone 15 vs S24'"),
+    q: str = Query(..., max_length=500, description="Query to parse, e.g., 'iPhone 15 vs S24'"),
     _admin: bool = Depends(verify_admin_key),
 ):
     """

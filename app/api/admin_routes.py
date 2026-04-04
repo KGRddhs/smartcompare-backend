@@ -3,10 +3,12 @@ import hmac
 import os
 import logging
 from datetime import datetime, timezone
+from starlette.requests import Request
 from fastapi import APIRouter, Header, HTTPException, Depends, Query
 
 from app.services.api_budget_service import get_usage_summary
 from app.services.database_service import get_supabase_client
+from app.middleware.rate_limiter import limiter
 from app.services.analytics_service import (
     get_daily_stats,
     get_popular_queries,
@@ -29,7 +31,9 @@ def verify_admin_key(x_admin_key: str = Header(...)):
 
 
 @router.get("/stats/daily")
+@limiter.limit("30/minute")
 async def daily_stats(
+    request: Request,
     days: int = Query(30, ge=1, le=365),
     _=Depends(verify_admin_key),
 ):
@@ -38,7 +42,9 @@ async def daily_stats(
 
 
 @router.get("/stats/popular")
+@limiter.limit("30/minute")
 async def popular_queries(
+    request: Request,
     limit: int = Query(20, ge=1, le=100),
     _=Depends(verify_admin_key),
 ):
@@ -47,7 +53,9 @@ async def popular_queries(
 
 
 @router.get("/stats/costs")
+@limiter.limit("30/minute")
 async def cost_trends(
+    request: Request,
     days: int = Query(30, ge=1, le=365),
     _=Depends(verify_admin_key),
 ):
@@ -56,7 +64,9 @@ async def cost_trends(
 
 
 @router.get("/stats/errors")
+@limiter.limit("30/minute")
 async def error_stats(
+    request: Request,
     days: int = Query(7, ge=1, le=90),
     _=Depends(verify_admin_key),
 ):
@@ -65,7 +75,9 @@ async def error_stats(
 
 
 @router.get("/stats/products")
+@limiter.limit("30/minute")
 async def product_stats(
+    request: Request,
     limit: int = Query(20, ge=1, le=100),
     _=Depends(verify_admin_key),
 ):
@@ -74,7 +86,8 @@ async def product_stats(
 
 
 @router.get("/costs")
-async def api_costs(_=Depends(verify_admin_key)):
+@limiter.limit("30/minute")
+async def api_costs(request: Request, _=Depends(verify_admin_key)):
     """API cost dashboard — provider budgets, circuit breakers, monthly spend."""
     summary = get_usage_summary()
 

@@ -106,15 +106,16 @@ async def identify_and_compare(
         vision_result = await identify_products(image_data_list)
     except Exception as e:
         logger.error(f"[IMAGE] Vision call failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Image analysis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Image analysis failed. Please try again.")
 
     if vision_result.get("error"):
         logger.error(f"[IMAGE] Vision parse error: {vision_result['error']}")
+        if vision_result.get("raw_response"):
+            logger.debug(f"[IMAGE] Raw response (server-only): {vision_result['raw_response']}")
         return {
             "success": False,
             "action": "error",
-            "error": vision_result["error"],
-            "raw_response": vision_result.get("raw_response"),
+            "error": "Could not identify products in the image. Please try a clearer photo.",
             "vision_cost": vision_result.get("cost", 0),
         }
 

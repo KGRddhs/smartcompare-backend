@@ -358,7 +358,7 @@ async def get_user_preferences(user_id: str) -> Dict:
         return {"success": False, "error": "User not found"}
     except Exception as e:
         logger.error(f"[AUTH] get_user_preferences failed for user {user_id}: {e}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to load preferences"}
 
 
 async def save_user_preferences(user_id: str, preferences: Dict) -> Dict:
@@ -371,7 +371,8 @@ async def save_user_preferences(user_id: str, preferences: Dict) -> Dict:
         }).eq("id", user_id).execute()
         return {"success": True, "message": "Preferences saved"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        logger.error(f"[AUTH] save_user_preferences failed for user {user_id}: {e}")
+        return {"success": False, "error": "Failed to save preferences"}
 
 
 async def delete_user_account(user_id: str) -> bool:
