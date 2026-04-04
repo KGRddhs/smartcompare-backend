@@ -50,7 +50,15 @@
           "iosUrlScheme": "com.googleusercontent.apps.21336192767-38hi4t1ac23089iau7jdog1f43oc7rdm"
         }
       ],
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "networkInspector": false
+          }
+        }
+      ]
     ]
   }
 }
