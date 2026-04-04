@@ -264,8 +264,16 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
       Alert.alert('Enter URLs', 'Paste product URLs from Amazon, Noon, etc.');
       return;
     }
-    if (!urlInput.startsWith('http') || !url2Input.startsWith('http')) {
-      Alert.alert('Invalid URL', 'URLs must start with http:// or https://');
+    const isValidUrl = (url: string): boolean => {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    };
+    if (!isValidUrl(urlInput.trim()) || !isValidUrl(url2Input.trim())) {
+      Alert.alert('Invalid URL', 'Please enter valid product URLs (http:// or https://)');
       return;
     }
     if (!canCompare) {

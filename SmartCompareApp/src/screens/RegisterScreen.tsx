@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { usePreventScreenCapture } from 'expo-screen-capture';
 import { register, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import { parseApiError } from '../services/api';
 import { AuthStackParamList } from '../types';
@@ -31,6 +32,7 @@ type RegisterScreenProps = {
 
 export default function RegisterScreen({ navigation, onRegisterSuccess }: RegisterScreenProps) {
   const { t } = useTranslation();
+  usePreventScreenCapture();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
