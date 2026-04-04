@@ -1,5 +1,9 @@
 """
-Database Service - Supabase integration for storing comparisons and user data
+Database Service - Supabase integration for storing comparisons and user data.
+
+Two client paths:
+  - get_user_supabase_client(access_token): anon key + user JWT -> RLS enforced
+  - get_admin_supabase_client(): service-role key -> bypasses RLS (admin only)
 """
 import logging
 import os
@@ -9,20 +13,39 @@ from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
-# Initialize Supabase client
+# Initialize Supabase credentials
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")  # Use service key for backend
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
-supabase: Optional[Client] = None
+# Admin client singleton (for health check, admin analytics, anonymous inserts)
+_admin_client: Optional[Client] = None
 
-def get_supabase_client() -> Client:
-    """Get or create Supabase client"""
-    global supabase
-    if supabase is None:
-        if not SUPABASE_URL or not SUPABASE_KEY:
+
+def get_admin_supabase_client() -> Client:
+    """Get Supabase client with service-role key. ONLY for admin operations."""
+    global _admin_client
+    if _admin_client is None:
+        if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
             raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    return supabase
+        _admin_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    return _admin_client
+
+
+def get_user_supabase_client(access_token: str) -> Client:
+    """Get Supabase client with anon key + user JWT. RLS is enforced."""
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
+    client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    client.postgrest.auth(access_token)
+    return client
+
+
+# Backward compat alias -- routes that haven't been migrated yet
+def get_supabase_client() -> Client:
+    """DEPRECATED: Use get_admin_supabase_client() or get_user_supabase_client(token).
+    Returns admin client for backward compatibility."""
+    return get_admin_supabase_client()
 
 
 # ============================================
@@ -92,20 +115,10 @@ async def update_user_subscription(
 # ============================================
 
 async def delete_user_data_cascade(user_id: str) -> bool:
-    """Delete all user data across all tables. Returns True on success."""
-    client = get_supabase_client()
+    """Delete all user data atomically via Postgres function. Returns True on success."""
+    client = get_admin_supabase_client()
     try:
-        # Delete in dependency order (child tables first)
-        client.table("user_events").delete().eq("user_id", user_id).execute()
-        client.table("comparison_feedback").delete().eq("user_id", user_id).execute()
-        client.table("comparisons").delete().eq("user_id", user_id).execute()
-        client.table("search_logs").delete().eq("user_id", user_id).execute()
-        # Clear user preferences and behavior profile (keep row for auth deletion)
-        client.table("users").update({
-            "preferences": None,
-            "behavior_profile": None,
-            "preferences_completed": False,
-        }).eq("id", user_id).execute()
+        client.rpc("delete_user_cascade", {"target_user_id": user_id}).execute()
         return True
     except Exception as e:
         logger.error(f"Error in cascade delete for user {user_id}: {e}")
@@ -168,10 +181,11 @@ async def get_user_comparisons(
     limit: int = 20,
     offset: int = 0,
     search: Optional[str] = None,
+    access_token: Optional[str] = None,
 ) -> List[Dict]:
     """Get user's comparison history, optionally filtered by product name search."""
     try:
-        client = get_supabase_client()
+        client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
         query = (
             client.table("comparisons")
             .select("*")
@@ -190,10 +204,10 @@ async def get_user_comparisons(
         return []
 
 
-async def get_comparison_by_id(comparison_id: str) -> Optional[Dict]:
+async def get_comparison_by_id(comparison_id: str, access_token: Optional[str] = None) -> Optional[Dict]:
     """Get a specific comparison by ID"""
     try:
-        client = get_supabase_client()
+        client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
         response = (
             client.table("comparisons")
             .select("*")
@@ -207,10 +221,10 @@ async def get_comparison_by_id(comparison_id: str) -> Optional[Dict]:
         return None
 
 
-async def delete_comparison(comparison_id: str, user_id: str) -> bool:
+async def delete_comparison(comparison_id: str, user_id: str, access_token: Optional[str] = None) -> bool:
     """Delete a comparison (only if owned by user)."""
     try:
-        client = get_supabase_client()
+        client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
         response = (
             client.table("comparisons")
             .delete()
@@ -224,7 +238,7 @@ async def delete_comparison(comparison_id: str, user_id: str) -> bool:
         return False
 
 
-async def create_share_token(comparison_id: str, user_id: str) -> Optional[str]:
+async def create_share_token(comparison_id: str, user_id: str, access_token: Optional[str] = None) -> Optional[str]:
     """
     Generate a share token for a comparison.
     Verifies ownership. Returns existing token if already shared.
@@ -233,7 +247,7 @@ async def create_share_token(comparison_id: str, user_id: str) -> Optional[str]:
     import secrets
 
     try:
-        client = get_supabase_client()
+        client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
 
         # Fetch comparison and verify ownership
         comparison = await get_comparison_by_id(comparison_id)
@@ -249,7 +263,7 @@ async def create_share_token(comparison_id: str, user_id: str) -> Optional[str]:
 
         # Generate and store token (retry on collision)
         for attempt in range(3):
-            token = secrets.token_urlsafe(6)  # 8 chars
+            token = secrets.token_urlsafe(16)  # ~22 chars, 128-bit entropy
             try:
                 response = (
                     client.table("comparisons")
@@ -279,7 +293,7 @@ async def get_shared_comparison(share_token: str) -> Optional[Dict]:
     Strips personalization fields from full_response.
     """
     try:
-        client = get_supabase_client()
+        client = get_admin_supabase_client()
         response = (
             client.table("comparisons")
             .select("id, query, product_names, input_type, full_response, created_at")
@@ -305,10 +319,10 @@ async def get_shared_comparison(share_token: str) -> Optional[Dict]:
         return None
 
 
-async def get_user_comparison_count(user_id: str) -> int:
+async def get_user_comparison_count(user_id: str, access_token: Optional[str] = None) -> int:
     """Get total number of comparisons for a user"""
     try:
-        client = get_supabase_client()
+        client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
         response = (
             client.table("comparisons")
             .select("id", count="exact")

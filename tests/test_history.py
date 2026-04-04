@@ -153,7 +153,7 @@ def test_get_user_comparisons_with_search():
     mock_client = MagicMock()
     mock_client.table.return_value = mock_table
 
-    with patch("app.services.database_service.get_supabase_client", return_value=mock_client):
+    with patch("app.services.database_service.get_admin_supabase_client", return_value=mock_client):
         from app.services.database_service import get_user_comparisons
         result = run_async(get_user_comparisons("user-123", search="iphone"))
 
@@ -174,7 +174,7 @@ def test_get_user_comparisons_without_search():
     mock_client = MagicMock()
     mock_client.table.return_value = mock_table
 
-    with patch("app.services.database_service.get_supabase_client", return_value=mock_client):
+    with patch("app.services.database_service.get_admin_supabase_client", return_value=mock_client):
         from app.services.database_service import get_user_comparisons
         result = run_async(get_user_comparisons("user-123"))
 
@@ -192,7 +192,7 @@ def test_delete_comparison_own():
     mock_client = MagicMock()
     mock_client.table.return_value = mock_table
 
-    with patch("app.services.database_service.get_supabase_client", return_value=mock_client):
+    with patch("app.services.database_service.get_admin_supabase_client", return_value=mock_client):
         from app.services.database_service import delete_comparison
         result = run_async(delete_comparison("comp-1", "user-123"))
 
@@ -210,7 +210,7 @@ def test_delete_comparison_not_found():
     mock_client = MagicMock()
     mock_client.table.return_value = mock_table
 
-    with patch("app.services.database_service.get_supabase_client", return_value=mock_client):
+    with patch("app.services.database_service.get_admin_supabase_client", return_value=mock_client):
         from app.services.database_service import delete_comparison
         result = run_async(delete_comparison("comp-999", "user-123"))
 
@@ -222,7 +222,7 @@ def test_delete_comparison_handles_error():
     mock_client = MagicMock()
     mock_client.table.side_effect = Exception("DB error")
 
-    with patch("app.services.database_service.get_supabase_client", return_value=mock_client):
+    with patch("app.services.database_service.get_admin_supabase_client", return_value=mock_client):
         from app.services.database_service import delete_comparison
         result = run_async(delete_comparison("comp-1", "user-123"))
 
