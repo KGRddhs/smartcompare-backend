@@ -182,7 +182,7 @@ def test_get_shared_comparison_strips_personalization():
     mock_client = MagicMock()
     mock_client.table.return_value = mock_table
 
-    with patch("app.services.database_service.get_supabase_client", return_value=mock_client):
+    with patch("app.services.database_service.get_admin_supabase_client", return_value=mock_client):
         from app.services.database_service import get_shared_comparison
         result = asyncio.get_event_loop().run_until_complete(get_shared_comparison("token123"))
 

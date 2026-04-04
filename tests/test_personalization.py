@@ -405,7 +405,7 @@ class TestPreferenceServiceFunctions:
             result = await get_user_preferences("user-1")
 
         assert result["success"] is False
-        assert "DB error" in result["error"]
+        assert result["error"] == "Failed to load preferences"
 
     @pytest.mark.asyncio
     async def test_get_user_preferences_empty_preferences(self):
@@ -463,7 +463,7 @@ class TestPreferenceServiceFunctions:
             result = await save_user_preferences("user-1", {"priorities": ["price"], "budget": "mid", "lifestyle": [], "brand_attitude": "function_first"})
 
         assert result["success"] is False
-        assert "Connection lost" in result["error"]
+        assert result["error"] == "Failed to save preferences"
 
 
 # ============================================

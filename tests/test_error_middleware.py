@@ -72,7 +72,7 @@ def test_error_response_has_request_id():
 
 
 def test_403_forbidden_format():
-    """403 Forbidden returns unified format."""
+    """Unauthorized access returns 404 (merged 403/404 to prevent enumeration)."""
     mock_comparison = {
         "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "user_id": "other-user", "query": "test",
         "product_names": [], "input_type": "text", "full_response": {}, "created_at": "2026-01-01"
@@ -82,10 +82,10 @@ def test_403_forbidden_format():
         with patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=mock_comparison):
             client = _get_test_client()
             resp = client.get("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
-            assert resp.status_code == 403
+            assert resp.status_code == 404
             data = resp.json()
             assert data["success"] is False
-            assert data["code"] == "FORBIDDEN"
+            assert data["code"] == "NOT_FOUND"
     finally:
         app.dependency_overrides.clear()
 

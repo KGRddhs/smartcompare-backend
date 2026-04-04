@@ -103,7 +103,12 @@ def test_list_history_with_search(mock_get, mock_count):
     try:
         resp = client.get("/api/v1/comparisons/history?search=iphone")
         assert resp.status_code == 200
-        mock_get.assert_called_once_with(user_id="user-123", limit=20, offset=0, search="iphone")
+        # access_token is now threaded through from Authorization header
+        call_kwargs = mock_get.call_args.kwargs
+        assert call_kwargs["user_id"] == "user-123"
+        assert call_kwargs["limit"] == 20
+        assert call_kwargs["offset"] == 0
+        assert call_kwargs["search"] == "iphone"
     finally:
         _cleanup_overrides()
 
@@ -116,7 +121,11 @@ def test_list_history_pagination(mock_get, mock_count):
     try:
         resp = client.get("/api/v1/comparisons/history?limit=5&offset=10")
         assert resp.status_code == 200
-        mock_get.assert_called_once_with(user_id="user-123", limit=5, offset=10, search=None)
+        call_kwargs = mock_get.call_args.kwargs
+        assert call_kwargs["user_id"] == "user-123"
+        assert call_kwargs["limit"] == 5
+        assert call_kwargs["offset"] == 10
+        assert call_kwargs["search"] is None
         data = resp.json()
         assert data["limit"] == 5
         assert data["offset"] == 10
@@ -189,11 +198,11 @@ def test_get_comparison_not_found(mock_get):
 
 @patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=MOCK_COMPARISON)
 def test_get_comparison_forbidden(mock_get):
-    """GET /comparisons/{id} returns 403 if not owner."""
+    """GET /comparisons/{id} returns 404 (not 403) if not owner — merged to prevent enumeration."""
     client = _get_client_with_user(MOCK_OTHER_USER)
     try:
         resp = client.get("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
-        assert resp.status_code == 403
+        assert resp.status_code == 404
     finally:
         _cleanup_overrides()
 
@@ -220,7 +229,9 @@ def test_delete_comparison_success(mock_get, mock_del):
         resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         assert resp.status_code == 200
         assert resp.json()["success"] is True
-        mock_del.assert_called_once_with("a1b2c3d4-e5f6-7890-abcd-ef1234567890", "user-123")
+        call_args = mock_del.call_args
+        assert call_args[0][0] == "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        assert call_args[0][1] == "user-123"
     finally:
         _cleanup_overrides()
 
@@ -238,11 +249,11 @@ def test_delete_comparison_not_found(mock_get):
 
 @patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=MOCK_COMPARISON)
 def test_delete_comparison_forbidden(mock_get):
-    """DELETE /comparisons/{id} returns 403 if not owner."""
+    """DELETE /comparisons/{id} returns 404 (not 403) if not owner — merged to prevent enumeration."""
     client = _get_client_with_user(MOCK_OTHER_USER)
     try:
         resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
-        assert resp.status_code == 403
+        assert resp.status_code == 404
     finally:
         _cleanup_overrides()
 

@@ -165,40 +165,30 @@ class TestResendVerification:
 
 class TestCascadeDelete:
 
-    @patch("app.services.database_service.get_supabase_client")
+    @patch("app.services.database_service.get_admin_supabase_client")
     @pytest.mark.asyncio
     async def test_cascade_delete_calls_all_tables(self, mock_client):
         from app.services.database_service import delete_user_data_cascade
 
-        # Build mock chain
-        mock_table = MagicMock()
-        mock_delete_chain = MagicMock()
-        mock_delete_chain.eq.return_value.execute.return_value = MagicMock(data=[])
-        mock_table.delete.return_value = mock_delete_chain
-
-        mock_update_chain = MagicMock()
-        mock_update_chain.eq.return_value.execute.return_value = MagicMock(data=[])
-        mock_table.update.return_value = mock_update_chain
-
-        mock_client.return_value.table.return_value = mock_table
+        # Now uses RPC call instead of individual table deletes
+        mock_rpc = MagicMock()
+        mock_rpc.execute.return_value = MagicMock(data=None)
+        mock_client.return_value.rpc.return_value = mock_rpc
 
         result = await delete_user_data_cascade("user-123")
         assert result is True
 
-        # Verify all tables were accessed
-        table_calls = [call[0][0] for call in mock_client.return_value.table.call_args_list]
-        assert "user_events" in table_calls
-        assert "comparison_feedback" in table_calls
-        assert "comparisons" in table_calls
-        assert "search_logs" in table_calls
-        assert "users" in table_calls
+        # Verify RPC was called with correct function and params
+        mock_client.return_value.rpc.assert_called_once_with(
+            "delete_user_cascade", {"target_user_id": "user-123"}
+        )
 
-    @patch("app.services.database_service.get_supabase_client")
+    @patch("app.services.database_service.get_admin_supabase_client")
     @pytest.mark.asyncio
     async def test_cascade_delete_raises_on_error(self, mock_client):
         from app.services.database_service import delete_user_data_cascade
 
-        mock_client.return_value.table.side_effect = Exception("DB error")
+        mock_client.return_value.rpc.side_effect = Exception("DB error")
 
         with pytest.raises(Exception, match="DB error"):
             await delete_user_data_cascade("user-123")
