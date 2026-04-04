@@ -24,8 +24,9 @@ Agent 1: backend-security (general-purpose, Opus)
          sentry_service.py, main.py, migrations/010_enable_rls.sql
 
 Agent 2: frontend-security (general-purpose, Opus)
-  Files: authService.ts, api.ts, LoginScreen.tsx, HomeScreen.tsx,
-         RegisterScreen.tsx, ForgotPasswordScreen.tsx, ProfileScreen.tsx
+  Files: authService.ts, api.ts, certificatePinning.ts, LoginScreen.tsx,
+         HomeScreen.tsx, RegisterScreen.tsx, ForgotPasswordScreen.tsx, ProfileScreen.tsx,
+         app.json
 
 Agent 3: test-security (general-purpose, Opus)
   Files: tests/test_security_regression.py, tests/test_rls_policies.py
@@ -56,7 +57,8 @@ Agent 4: qa-security (general-purpose, Opus)
 | File | Responsibility |
 |------|---------------|
 | `migrations/010_enable_rls.sql` | RLS policies for all user-data tables + atomic cascade delete function |
-| `tests/test_security_regression.py` | 18+ regression tests for all security fixes |
+| `SmartCompareApp/src/services/certificatePinning.ts` | SSL certificate pinning via intermediate SPKI hashes |
+| `tests/test_security_regression.py` | 20+ regression tests for all security fixes |
 | `tests/test_rls_policies.py` | RLS policy enforcement tests (mocked) |
 
 ### Modified Files
@@ -1257,9 +1259,115 @@ git commit -m "security: screenshot protection on auth screens (L3), URL validat
 
 ---
 
+### Task 9: Certificate Pinning (Layer 8) — frontend-security
+
+**Owner:** frontend-security
+**Files:**
+- Create: `SmartCompareApp/src/services/certificatePinning.ts`
+- Modify: `SmartCompareApp/src/services/api.ts`
+- Modify: `SmartCompareApp/app.json`
+- Modify: `SmartCompareApp/package.json`
+
+> **Note:** Cert pinning requires an EAS development build to test. It does NOT work in Expo Go. The code will be written and committed, but functional testing happens after `npx eas build`.
+
+- [ ] **Step 1: Install dependencies**
+
+Run: `cd SmartCompareApp && npx expo install react-native-ssl-public-key-pinning expo-build-properties`
+
+- [ ] **Step 2: Update app.json — add plugins**
+
+Add `expo-build-properties` plugin to disable iOS network inspector (conflicts with pinning in dev builds):
+
+```json
+[
+  "expo-build-properties",
+  {
+    "ios": {
+      "networkInspector": false
+    }
+  }
+]
+```
+
+Add to the existing `plugins` array in `app.json`.
+
+- [ ] **Step 3: Create certificatePinning.ts**
+
+```typescript
+/**
+ * Certificate Pinning — pins Let's Encrypt intermediate SPKI hashes.
+ *
+ * We pin the INTERMEDIATE certs (E8 primary, E5 backup), NOT the leaf cert.
+ * Leaf certs rotate every 90 days; intermediates are stable for years.
+ *
+ * To extract current hashes (run if Railway changes CA):
+ *   echo | openssl s_client -servername web-production-58776.up.railway.app \
+ *     -connect web-production-58776.up.railway.app:443 -showcerts 2>/dev/null | \
+ *     csplit -z -f /tmp/cert_ - '/-----BEGIN CERTIFICATE-----/' '{*}'
+ *   openssl x509 -in /tmp/cert_02 -noout -pubkey | \
+ *     openssl pkey -pubin -outform DER | openssl dgst -sha256 -binary | base64
+ */
+import { initializeSslPinning } from 'react-native-ssl-public-key-pinning';
+
+// Let's Encrypt intermediate SPKI SHA256 hashes (base64)
+const LE_E8_INTERMEDIATE = 'iFvwVyJSxnQdyaUvUERIf+8qk7gRze3612JMwoO3zdU=';
+const LE_E5_INTERMEDIATE = 'NYbU7PBwV4y9J67c4guWTki8FJ+uudrXL0a4V4aRcrg=';
+
+let pinningInitialized = false;
+
+export async function setupCertificatePinning(): Promise<void> {
+  if (pinningInitialized) return;
+
+  try {
+    await initializeSslPinning({
+      'web-production-58776.up.railway.app': {
+        includeSubdomains: true,
+        publicKeyHashes: [
+          LE_E8_INTERMEDIATE,  // Primary: Let's Encrypt E8 (current issuer)
+          LE_E5_INTERMEDIATE,  // Backup: Let's Encrypt E5
+        ],
+      },
+    });
+    pinningInitialized = true;
+    if (__DEV__) console.log('[SECURITY] Certificate pinning initialized');
+  } catch (error) {
+    // Graceful degradation — app works but without pinning protection
+    // This is expected in Expo Go where native modules aren't available
+    if (__DEV__) console.warn('[SECURITY] Certificate pinning unavailable:', error);
+  }
+}
+```
+
+- [ ] **Step 4: Initialize pinning in api.ts**
+
+In `SmartCompareApp/src/services/api.ts`, add import at top:
+```typescript
+import { setupCertificatePinning } from './certificatePinning';
+```
+
+Add initialization call before the axios instance creation (after line 11):
+```typescript
+// Initialize certificate pinning (no-op in Expo Go, active in dev/prod builds)
+setupCertificatePinning();
+```
+
+- [ ] **Step 5: TypeScript check**
+
+Run: `cd SmartCompareApp && npx tsc --noEmit`
+Expected: 0 errors
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add SmartCompareApp/src/services/certificatePinning.ts SmartCompareApp/src/services/api.ts SmartCompareApp/app.json SmartCompareApp/package.json SmartCompareApp/package-lock.json
+git commit -m "security: add certificate pinning for Railway backend (Layer 8, intermediate SPKI)"
+```
+
+---
+
 ## Phase 3: Security Tests
 
-### Task 9: Security Regression Tests — test-security
+### Task 10: Security Regression Tests — test-security
 
 **Owner:** test-security
 **Files:**
@@ -1577,6 +1685,21 @@ class TestCodeSecurityGuards:
         assert "SecureStore" in source
         # TOKEN_STORAGE_KEY should be used with SecureStore, not AsyncStorage
         assert "SecureStore.setItemAsync(TOKEN_STORAGE_KEY" in source or "SecureStore.getItemAsync(TOKEN_STORAGE_KEY" in source
+
+    def test_certificate_pinning_configured(self):
+        """certificatePinning.ts must exist and pin intermediate certs."""
+        source = Path("SmartCompareApp/src/services/certificatePinning.ts").read_text()
+        assert "initializeSslPinning" in source
+        # Must pin intermediate certs (E8 + E5), NOT the leaf cert
+        assert "iFvwVyJSxnQdyaUvUERIf" in source  # E8 intermediate
+        assert "NYbU7PBwV4y9J67c4guW" in source     # E5 backup intermediate
+        # Must NOT pin leaf cert (rotates every 90 days)
+        assert "i+9suBX/dDafsZIMvCHq" not in source
+
+    def test_certificate_pinning_imported_in_api(self):
+        """api.ts must import and call setupCertificatePinning."""
+        source = Path("SmartCompareApp/src/services/api.ts").read_text()
+        assert "setupCertificatePinning" in source
 ```
 
 - [ ] **Step 2: Run the test suite**
@@ -1588,12 +1711,12 @@ Expected: All pass (some may need adjustments based on exact code changes — fi
 
 ```bash
 git add tests/test_security_regression.py
-git commit -m "test: add security regression tests (18 guards against protection removal)"
+git commit -m "test: add security regression tests (20 guards against protection removal)"
 ```
 
 ---
 
-### Task 10: Run Full Test Suite — qa-security
+### Task 11: Run Full Test Suite — qa-security
 
 **Owner:** qa-security
 
@@ -1637,6 +1760,7 @@ Verify each finding is addressed:
 - [ ] L3: Auth screens use `usePreventScreenCapture()`
 - [ ] L4: `HomeScreen.tsx` uses `new URL()` for validation
 - [ ] L5: Apple nonce uses `crypto.getRandomBytesAsync(32)`
+- [ ] Layer 8: `certificatePinning.ts` pins E8+E5 intermediates, imported in `api.ts`
 
 - [ ] **Step 5: If any check fails, send work back to the owning agent with specific feedback**
 
