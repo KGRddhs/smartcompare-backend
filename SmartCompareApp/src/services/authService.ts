@@ -4,6 +4,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 // Native modules loaded lazily — crashes Expo Go if imported at top level
 let GoogleSignin: any = null;
@@ -15,7 +16,7 @@ function getGoogleSignin() {
     try {
       GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
     } catch {
-      console.warn('Google Sign-In native module not available (Expo Go?)');
+      if (__DEV__) console.warn('Google Sign-In native module not available (Expo Go?)');
     }
   }
   return GoogleSignin;
@@ -26,7 +27,7 @@ function getAppleAuth() {
     try {
       AppleAuthentication = require('expo-apple-authentication');
     } catch {
-      console.warn('Apple Authentication module not available');
+      if (__DEV__) console.warn('Apple Authentication module not available');
     }
   }
   return AppleAuthentication;
@@ -37,7 +38,7 @@ function getCrypto() {
     try {
       Crypto = require('expo-crypto');
     } catch {
-      console.warn('Expo Crypto module not available');
+      if (__DEV__) console.warn('Expo Crypto module not available');
     }
   }
   return Crypto;
@@ -76,14 +77,14 @@ export async function register(email: string, password: string): Promise<AuthRes
 
     if (response.data.user) {
       await saveUser(response.data.user);
-      console.log('[AUTH] Register - access_token present:', !!response.data.session?.access_token);
+      if (__DEV__) console.log('[AUTH] Register - access_token present:', !!response.data.session?.access_token);
       if (response.data.session?.access_token) {
         await saveToken(response.data.session.access_token);
       } else {
-        console.warn('[AUTH] No access_token after register — email confirmation may be required');
+        if (__DEV__) console.warn('[AUTH] No access_token after register — email confirmation may be required');
       }
       if (response.data.session?.refresh_token) {
-        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
+        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
       }
       return {
         success: true,
@@ -97,7 +98,7 @@ export async function register(email: string, password: string): Promise<AuthRes
       error: response.data.error || 'Registration failed',
     };
   } catch (error: any) {
-    console.error('Register error:', error);
+    if (__DEV__) console.error('Register error:', error);
     return {
       success: false,
       error: error.response?.data?.detail || error.message || 'Registration failed',
@@ -117,14 +118,14 @@ export async function login(email: string, password: string): Promise<AuthRespon
 
     if (response.data.user) {
       await saveUser(response.data.user);
-      console.log('[AUTH] Login - access_token present:', !!response.data.session?.access_token);
+      if (__DEV__) console.log('[AUTH] Login - access_token present:', !!response.data.session?.access_token);
       if (response.data.session?.access_token) {
         await saveToken(response.data.session.access_token);
       } else {
-        console.warn('[AUTH] No access_token after login');
+        if (__DEV__) console.warn('[AUTH] No access_token after login');
       }
       if (response.data.session?.refresh_token) {
-        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
+        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
       }
       return {
         success: true,
@@ -138,7 +139,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
       error: response.data.error || 'Login failed',
     };
   } catch (error: any) {
-    console.error('Login error:', error);
+    if (__DEV__) console.error('Login error:', error);
     return {
       success: false,
       error: error.response?.data?.detail || error.message || 'Login failed',
@@ -160,11 +161,11 @@ export async function logout(): Promise<void> {
         });
       } catch (e) {
         // Ignore server logout errors
-        console.log('Server logout failed, clearing local session');
+        if (__DEV__) console.log('Server logout failed, clearing local session');
       }
     }
   } catch (error) {
-    console.error('Logout error:', error);
+    if (__DEV__) console.error('Logout error:', error);
   } finally {
     // Always clear local storage
     await clearSession();
@@ -176,7 +177,7 @@ export async function logout(): Promise<void> {
  */
 export async function refreshSession(): Promise<AuthResponse> {
   try {
-    const refreshToken = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+    const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
     if (!refreshToken) {
       return { success: false, error: 'No refresh token found' };
     }
@@ -189,7 +190,7 @@ export async function refreshSession(): Promise<AuthResponse> {
       // Always save new tokens — this is critical for the 401 interceptor
       await saveToken(response.data.session.access_token);
       if (response.data.session.refresh_token) {
-        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
+        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, response.data.session.refresh_token);
       }
       // Save user if provided, otherwise keep cached user
       if (response.data.user) {
@@ -205,7 +206,7 @@ export async function refreshSession(): Promise<AuthResponse> {
 
     return { success: false, error: 'Refresh failed' };
   } catch (error: any) {
-    console.log('Session refresh failed:', error.message);
+    if (__DEV__) console.log('Session refresh failed:', error.message);
     
     // If 401, session is invalid - clear it silently
     if (error.response?.status === 401) {
@@ -244,7 +245,7 @@ export async function getSavedUser(): Promise<User | null> {
       return JSON.parse(userJson);
     }
   } catch (error) {
-    console.error('Error getting saved user:', error);
+    if (__DEV__) console.error('Error getting saved user:', error);
   }
   return null;
 }
@@ -256,7 +257,7 @@ async function saveUser(user: User): Promise<void> {
   try {
     await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
   } catch (error) {
-    console.error('Error saving user:', error);
+    if (__DEV__) console.error('Error saving user:', error);
   }
 }
 
@@ -265,9 +266,9 @@ async function saveUser(user: User): Promise<void> {
  */
 export async function getToken(): Promise<string | null> {
   try {
-    return await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
+    return await SecureStore.getItemAsync(TOKEN_STORAGE_KEY);
   } catch (error) {
-    console.error('Error getting token:', error);
+    if (__DEV__) console.error('Error getting token:', error);
     return null;
   }
 }
@@ -277,9 +278,9 @@ export async function getToken(): Promise<string | null> {
  */
 async function saveToken(token: string): Promise<void> {
   try {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, token);
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, token);
   } catch (error) {
-    console.error('Error saving token:', error);
+    if (__DEV__) console.error('Error saving token:', error);
   }
 }
 
@@ -288,9 +289,11 @@ async function saveToken(token: string): Promise<void> {
  */
 export async function clearSession(): Promise<void> {
   try {
-    await AsyncStorage.multiRemove([USER_STORAGE_KEY, TOKEN_STORAGE_KEY, REFRESH_TOKEN_KEY]);
+    await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
+    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+    await AsyncStorage.removeItem(USER_STORAGE_KEY); // User profile is non-secret
   } catch (error) {
-    console.error('Error clearing session:', error);
+    if (__DEV__) console.error('Error clearing session:', error);
   }
 }
 
@@ -322,7 +325,7 @@ export async function initializeAuth(): Promise<User | null> {
     // For other errors (network), return cached user
     return user;
   } catch (error) {
-    console.error('Auth initialization error:', error);
+    if (__DEV__) console.error('Auth initialization error:', error);
     return null;
   }
 }
@@ -358,14 +361,6 @@ export async function requestPasswordReset(email: string): Promise<void> {
  * Configure Google Sign-In. Call once at app startup.
  * Uses Google Web Client ID from Google Cloud Console.
  */
-// ============================================================
-// SETUP REQUIRED: Enable Google provider in Supabase Dashboard
-// Project: qulajmyxdbdkchvecmvc
-// Path: Authentication → Providers → Google → Enable
-// Web Client ID: 21336192767-i9prqks93nrdmb9rg7ho2v1md9bgqgsv.apps.googleusercontent.com
-// iOS Client ID: 21336192767-38hi4t1ac23089iau7jdog1f43oc7rdm.apps.googleusercontent.com
-// Without this, Google sign-in will fail with "Authentication failed"
-// ============================================================
 export function configureGoogleSignIn() {
   const gs = getGoogleSignin();
   if (!gs) return;
@@ -381,8 +376,21 @@ export function configureGoogleSignIn() {
 export async function signInWithGoogle(): Promise<AuthResponse> {
   try {
     const gs = getGoogleSignin();
+    const crypto = getCrypto();
     if (!gs) return { success: false, error: 'Google Sign-In not available (requires development build)' };
+
     await gs.hasPlayServices();
+
+    // Generate cryptographic nonce for replay protection
+    let nonce: string | undefined;
+    if (crypto) {
+      const randomBytes = await crypto.getRandomBytesAsync(32);
+      const rawNonce = Array.from(new Uint8Array(randomBytes))
+        .map((b: number) => b.toString(16).padStart(2, '0'))
+        .join('');
+      nonce = rawNonce;
+    }
+
     const signInResult = await gs.signIn();
     const idToken = signInResult.data?.idToken;
 
@@ -390,11 +398,13 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
       return { success: false, error: 'Failed to get Google ID token' };
     }
 
-    // Send to our backend, which handles Supabase signInWithIdToken
+    const body: Record<string, string> = { provider: 'google', id_token: idToken };
+    if (nonce) body.nonce = nonce;
+
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: 'google', id_token: idToken }),
+      body: JSON.stringify(body),
     });
 
     const data = await response.json();
@@ -402,7 +412,7 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
     if (data.success && data.session?.access_token) {
       await saveToken(data.session.access_token);
       if (data.session.refresh_token) {
-        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, data.session.refresh_token);
+        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, data.session.refresh_token);
       }
       if (data.user) await saveUser(data.user);
     }
@@ -444,8 +454,10 @@ export async function signInWithApple(): Promise<AuthResponse> {
     const crypto = getCrypto();
     if (!apple || !crypto) return { success: false, error: 'Apple Sign-In not available (requires development build)' };
 
-    // Generate nonce for security
-    const rawNonce = Math.random().toString(36).substring(2, 15);
+    // Generate cryptographic nonce (not Math.random)
+    const rawNonce = Array.from(new Uint8Array(await crypto.getRandomBytesAsync(32)))
+      .map((b: number) => b.toString(16).padStart(2, '0'))
+      .join('');
     const hashedNonce = await crypto.digestStringAsync(
       crypto.CryptoDigestAlgorithm.SHA256,
       rawNonce
@@ -480,7 +492,7 @@ export async function signInWithApple(): Promise<AuthResponse> {
     if (data.success && data.session?.access_token) {
       await saveToken(data.session.access_token);
       if (data.session.refresh_token) {
-        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, data.session.refresh_token);
+        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, data.session.refresh_token);
       }
       if (data.user) await saveUser(data.user);
     }
