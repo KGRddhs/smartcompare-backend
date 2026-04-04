@@ -93,7 +93,7 @@ npx expo-doctor                   # Full project health check
 - `/api/v1/comparisons/*` — `history_routes.py` → comparison history (GET list, GET single, DELETE). Auth required.
 - `/api/v1/share/*` — `share_routes.py` → POST create share link (auth), GET public share (no auth, strips personalization)
 - `/api/v1/feedback`, `/api/v1/events` — `feedback_routes.py` → feedback collection + event tracking
-- `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints + cost dashboard (X-Admin-Key auth, timing-safe `hmac.compare_digest`)
+- `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints + cost dashboard (X-Admin-Key auth, timing-safe `hmac.compare_digest`, rate limited 30/min)
 - `/api/v1/legal/*` — `legal_routes.py` → GET privacy policy + terms of service (no auth, reads markdown files)
 - `/api/v1/app/*` — `version_routes.py` → GET version check (min/latest/force_update from env vars, no auth)
 
@@ -157,12 +157,13 @@ npx expo-doctor                   # Full project health check
 - `api_budget_service.py` — Credit tracking + circuit breakers for Firecrawl, Scrape.do, Serper. Uses atomic Redis ops.
 - `exchange_rate_service.py` — Daily rates from frankfurter.app, Redis-cached 24h, hardcoded GCC fallbacks. `get_rate(from_currency, to_currency="BHD")`.
 - `firecrawl_service.py` / `scrapedo_service.py` — Firecrawl Smart Wait + Scrape.do JS rendering wrappers.
-- Other services: `serper_service`, `database_service`, `feedback_service`, `drug_database_service`, `openai_service`, `sentry_service`, `analytics_service`
+- `database_service.py` — Dual Supabase client (`get_user_supabase_client(token)` for RLS, `get_admin_supabase_client()` for admin ops). Share tokens, cascade delete, history queries.
+- Other services: `serper_service`, `feedback_service`, `drug_database_service`, `openai_service`, `sentry_service`, `analytics_service`
 
 **Security** (`app/utils/`):
 - `url_validator.py` — SSRF protection: resolves hostnames, blocks private/loopback/link-local IPs, allows only http/https
 
-**Middleware** (`app/middleware/`): request_id, security headers (HSTS, CSP, X-Frame-Options, nosniff), rate_limiter (slowapi, 10/min on compare), error_handler (Sentry capture + token stripping in breadcrumbs), logging_config (structured JSON)
+**Middleware** (`app/middleware/`): request_id, security headers (HSTS, CSP, X-Frame-Options, nosniff), rate_limiter (slowapi, 10/min on compare), error_handler (Sentry capture + `before_send` JWT/key scrubbing), logging_config (structured JSON)
 
 ### Frontend (React Native + Expo)
 
@@ -180,7 +181,8 @@ npx expo-doctor                   # Full project health check
 
 **Services:**
 - `api.ts` — Axios to Railway (120s timeout). SSE via `streamComparison()` (fetch+ReadableStream, fallback to non-streaming). JPEG transcoding before upload.
-- `authService.ts` — Supabase auth + social login. `verifyAuth()` returns `User | null` (NOT boolean). Tokens in AsyncStorage.
+- `authService.ts` — Supabase auth + social login. `verifyAuth()` returns `User | null` (NOT boolean). Tokens in `expo-secure-store` (NOT AsyncStorage). OAuth nonces via `expo-crypto`. All console.log wrapped in `__DEV__` guards.
+- `certificatePinning.ts` — SSL pinning for Railway backend (LE intermediate SPKI). Initialized once from `api.ts`.
 
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls intelligently.
@@ -217,8 +219,13 @@ Target: **$0.01/comparison**. Achieved via unified search (1 Serper call shared 
 ### Prompt personalities + trust validation
 Each category gets unique GPT comparison tone via `build_personality_prompt(category)` — zero extra cost. `validate_verdict()` cross-checks GPT claims against deterministic scores (returns `winner_aligned`, `claims_flagged`, `confidence_adjustment`).
 
-### Auth + security hardening
-Account deletion cascades through all user data (App Store requirement, rate limited 1/min). Password: 10+ chars, 1 upper, 1 lower, 1 digit. Resend verification: rate limited 3/min. History/share routes use `UUID` path params (not bare strings). Swagger docs disabled in production. SQL LIKE wildcards escaped in search. Feedback `change_suggestion` capped at 1000 chars, event_data at 10KB.
+### Auth + security hardening (Session 38)
+**Dual Supabase client:** `get_user_supabase_client(access_token)` (anon key + JWT, RLS enforced) vs `get_admin_supabase_client()` (service-role, admin-only). User-facing DB functions accept `access_token` param. Old `get_supabase_client()` is deprecated alias for admin client.
+**RLS active:** All user-data tables have row-level security policies (applied via `migrations/010_enable_rls.sql`). Cascade delete via `delete_user_cascade()` SECURITY DEFINER function called through `.rpc()`.
+**Token security:** Tokens stored in `expo-secure-store` (Keychain/Keystore), NOT AsyncStorage. Token revocation on logout via Redis blacklist (`revoked:{sha256(token)}`, 1hr TTL). `verify_token()` checks blacklist before Supabase validation.
+**Certificate pinning:** `certificatePinning.ts` pins Let's Encrypt E8+E5 intermediate SPKI hashes. Requires EAS dev build (no-op in Expo Go). See `docs/SECURITY_HARDENING_CONTEXT.md` for SPKI hashes and rotation process.
+**Other:** Account deletion cascades atomically (App Store requirement, rate limited 1/min). Password: 10+ chars, 1 upper, 1 lower, 1 digit. Email change requires current password. Admin endpoints rate limited 30/min. History routes use `hmac.compare_digest` + merged 404/403. Swagger docs disabled in prod. SQL LIKE wildcards escaped. Sentry `before_send` scrubs JWT/API keys from events. CORS origins configurable via `CORS_ORIGINS` env var.
+**Regression tests:** `tests/test_security_regression.py` (57 tests) — guards against removing protections. Do NOT delete or skip these tests.
 
 ### SSE streaming
 `GET /api/v1/text/compare/stream` → 10 SSE events with `progress` field (10/20/50/80). Frontend uses fetch+ReadableStream (not EventSource) with fallback to non-streaming.
@@ -237,7 +244,7 @@ Account deletion cascades through all user data (App Store requirement, rate lim
 9 categories: Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances, Fashion, Other. `selected_category` is a hint — backend AI makes final decision via `PRODUCT_PARSER_PROMPT`. Mismatch → `category_switched: true` + frontend info banner. Each category has a dedicated spec schema in `CATEGORY_SPEC_SCHEMAS` (extraction_service.py). Zero extra API cost.
 
 ### Sharing + History
-Sharing: 8-char URL-safe token in `comparisons.share_token`, public access strips personalization. History: paginated, searchable, ownership-checked. On 401, clears session + redirects to auth.
+Sharing: 22-char URL-safe token (128-bit, `token_urlsafe(16)`) in `comparisons.share_token`, public access strips personalization. History: paginated, searchable, ownership-checked. On 401, clears session + redirects to auth.
 
 ### Luxury brand detection
 `_is_luxury_brand()` + `COUNTERFEIT_KEYWORDS` filter across ALL categories. Tier 1.5 cascade: official brand → authorized retailers → GCC retailers (9 domains). See price pipeline above for details.
@@ -247,7 +254,7 @@ Reviews: `_clean_review_content()` strips garbage (min 8 words), fixes sentiment
 
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
-**Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO)
+**Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO), `CORS_ORIGINS` (comma-separated allowed origins, defaults to Railway + localhost)
 **Price Scraping:** `FIRECRAWL_API_KEY` (firecrawl.dev, 500 lifetime free — deployed), `SCRAPEDO_API_TOKEN` (scrape.do, 1000/mo free — deployed, but timing out on GCC sites), `ENABLE_FIRECRAWL` (default true), `ENABLE_SCRAPEDO` (default true). Both keys live in Railway since Session 34.
 **Version Check:** `APP_MIN_VERSION`, `APP_LATEST_VERSION`, `APP_FORCE_UPDATE` (all optional, used by `/api/v1/app/version`)
 
@@ -257,7 +264,7 @@ Reviews: `_clean_review_content()` strips garbage (min 8 words), fixes sentiment
 ## Tests
 
 ```bash
-# Free unit tests (~1560+ tests, ~14s, $0)
+# Free unit tests (~1618+ tests, ~23s, $0)
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Live unit tests (iHerb, Serper, GPT — ~$0.03)
