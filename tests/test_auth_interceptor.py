@@ -640,7 +640,7 @@ async def test_logout_user_success():
 
 @pytest.mark.asyncio
 async def test_logout_user_error():
-    """logout_user returns error on exception."""
+    """logout_user still returns success even if sign_out fails (token is revoked via Redis)."""
     from app.services.auth_service import logout_user
 
     mock_client = MagicMock()
@@ -649,8 +649,8 @@ async def test_logout_user_error():
     with patch("app.services.auth_service.get_auth_client", return_value=mock_client):
         result = await logout_user("some-token")
 
-    assert result["success"] is False
-    assert "Network error" in result["error"]
+    assert result["success"] is True
+    assert result["message"] == "Logged out successfully"
 
 
 @pytest.mark.asyncio
@@ -771,7 +771,7 @@ async def test_update_email_success():
     with patch("app.api.auth_routes.update_user_email", new_callable=AsyncMock,
                return_value={"success": True, "message": "Verification email sent to new address"}):
         result = await update_email(
-            body=UpdateEmailRequest(new_email="new@example.com"),
+            body=UpdateEmailRequest(new_email="new@example.com", current_password="MyPassword1"),
             current_user=mock_user
         )
     assert result["success"] is True
@@ -783,7 +783,7 @@ async def test_update_email_validates_format():
     from app.api.auth_routes import UpdateEmailRequest
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
-        UpdateEmailRequest(new_email="not-an-email")
+        UpdateEmailRequest(new_email="not-an-email", current_password="MyPassword1")
 
 
 @pytest.mark.asyncio
@@ -791,11 +791,13 @@ async def test_update_email_already_in_use():
     """update_user_email returns friendly error for duplicate email."""
     from app.services.auth_service import update_user_email
 
+    mock_auth = MagicMock()
     mock_admin = MagicMock()
     mock_admin.auth.admin.update_user_by_id.side_effect = Exception("User already registered")
 
-    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
-        result = await update_user_email("user-1", "taken@example.com")
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_email("user-1", "old@example.com", "password123", "taken@example.com")
 
     assert result["success"] is False
     assert "already exists" in result["error"]
@@ -806,10 +808,12 @@ async def test_update_email_service_success():
     """update_user_email returns success on normal call."""
     from app.services.auth_service import update_user_email
 
+    mock_auth = MagicMock()
     mock_admin = MagicMock()
 
-    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
-        result = await update_user_email("user-1", "new@example.com")
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_email("user-1", "old@example.com", "password123", "new@example.com")
 
     assert result["success"] is True
     mock_admin.auth.admin.update_user_by_id.assert_called_once_with(
@@ -822,11 +826,13 @@ async def test_update_email_service_generic_error():
     """update_user_email returns categorized error for non-duplicate errors."""
     from app.services.auth_service import update_user_email
 
+    mock_auth = MagicMock()
     mock_admin = MagicMock()
     mock_admin.auth.admin.update_user_by_id.side_effect = Exception("Network timeout")
 
-    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
-        result = await update_user_email("user-1", "new@example.com")
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_email("user-1", "old@example.com", "password123", "new@example.com")
 
     assert result["success"] is False
     # "Network timeout" is not in the network terms but "timeout" IS
@@ -1153,16 +1159,18 @@ async def test_update_profile_service_failure_returns_gracefully():
 
 @pytest.mark.asyncio
 async def test_update_email_service_failure_returns_gracefully():
-    """update_email endpoint returns service error without raising."""
+    """update_email endpoint raises HTTPException on service error."""
     from app.api.auth_routes import update_email, UpdateEmailRequest
+    from fastapi import HTTPException
     mock_user = {"id": "user-1", "email": "old@example.com"}
     with patch("app.api.auth_routes.update_user_email", new_callable=AsyncMock,
                return_value={"success": False, "error": "Rate limited"}):
-        result = await update_email(
-            body=UpdateEmailRequest(new_email="new@example.com"),
-            current_user=mock_user
-        )
-    assert result["success"] is False
+        with pytest.raises(HTTPException) as exc_info:
+            await update_email(
+                body=UpdateEmailRequest(new_email="new@example.com", current_password="MyPassword1"),
+                current_user=mock_user
+            )
+        assert exc_info.value.status_code == 500
 
 
 @pytest.mark.asyncio
@@ -1354,10 +1362,12 @@ async def test_update_email_same_email_succeeds():
     """Updating to the same email should still succeed (Supabase handles it)."""
     from app.services.auth_service import update_user_email
 
+    mock_auth = MagicMock()
     mock_admin = MagicMock()
 
-    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
-        result = await update_user_email("user-1", "same@example.com")
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_email("user-1", "same@example.com", "password123", "same@example.com")
 
     assert result["success"] is True
     mock_admin.auth.admin.update_user_by_id.assert_called_once_with(
@@ -1568,11 +1578,13 @@ async def test_update_email_admin_api_error_with_unknown_message():
     """update_user_email with unrecognized error returns generic categorized message."""
     from app.services.auth_service import update_user_email
 
+    mock_auth = MagicMock()
     mock_admin = MagicMock()
     mock_admin.auth.admin.update_user_by_id.side_effect = Exception("Internal server error 500")
 
-    with patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
-        result = await update_user_email("user-1", "new@example.com")
+    with patch("app.services.auth_service.get_auth_client", return_value=mock_auth), \
+         patch("app.services.auth_service.get_admin_client", return_value=mock_admin):
+        result = await update_user_email("user-1", "old@example.com", "password123", "new@example.com")
 
     assert result["success"] is False
     # Now categorized — unknown errors get generic message (no raw string leak)

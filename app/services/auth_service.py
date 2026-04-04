@@ -1,6 +1,7 @@
 """
 Auth Service - Supabase Authentication
 """
+import hashlib
 import logging
 import os
 from typing import Optional, Dict
@@ -207,19 +208,24 @@ async def refresh_session(refresh_token: str) -> Dict:
 async def verify_token(access_token: str) -> Optional[Dict]:
     """
     Verify JWT token and return user data.
-    Returns None if token is invalid.
+    Returns None if token is invalid or revoked.
     """
     try:
+        # Check revocation blacklist first (fast Redis lookup)
+        if _is_token_revoked(access_token):
+            logger.info("Token rejected: revoked via logout")
+            return None
+
         client = get_auth_client()
         response = client.auth.get_user(access_token)
-        
+
         if response.user:
             return {
                 "id": response.user.id,
                 "email": response.user.email,
             }
         return None
-        
+
     except Exception as e:
         logger.warning(f"Token verification failed: {e}")
         return None
@@ -237,13 +243,41 @@ async def get_user_profile(user_id: str) -> Optional[Dict]:
 
 
 async def logout_user(access_token: str) -> Dict:
-    """Logout user and invalidate session."""
+    """Logout user -- revoke token via Redis blacklist + Supabase sign_out."""
     try:
+        # Add token to revocation blacklist (TTL = 1 hour, matching Supabase default JWT expiry)
+        _revoke_token(access_token)
+
         client = get_auth_client()
         client.auth.sign_out()
         return {"success": True, "message": "Logged out successfully"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        # Even if Supabase sign_out fails, token is blacklisted
+        logger.warning(f"Supabase sign_out failed (token still revoked): {e}")
+        return {"success": True, "message": "Logged out successfully"}
+
+
+def _revoke_token(token: str) -> None:
+    """Add token hash to Redis revocation list with 1-hour TTL."""
+    try:
+        from app.services.cache_service import redis_client
+        if redis_client:
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            redis_client.setex(f"revoked:{token_hash}", 3600, "1")
+    except Exception as e:
+        logger.warning(f"Failed to revoke token in Redis (non-fatal): {e}")
+
+
+def _is_token_revoked(token: str) -> bool:
+    """Check if token has been revoked."""
+    try:
+        from app.services.cache_service import redis_client
+        if redis_client:
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            return redis_client.get(f"revoked:{token_hash}") is not None
+        return False  # Fail-open if Redis unavailable
+    except Exception:
+        return False  # Fail-open
 
 
 async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -> Dict:
@@ -320,13 +354,21 @@ async def change_user_password(user_id: str, email: str, current_password: str, 
         return _categorize_auth_error(e, "change_password")
 
 
-async def update_user_email(user_id: str, new_email: str) -> Dict:
-    """Update email via Supabase Admin API (sends verification to new email)."""
+async def update_user_email(user_id: str, current_email: str, current_password: str, new_email: str) -> Dict:
+    """Update email via Supabase Admin API. Requires password verification first."""
     try:
+        # Verify current password before allowing email change
+        auth_client = get_auth_client()
+        auth_client.auth.sign_in_with_password({"email": current_email, "password": current_password})
+
+        # Password verified -- proceed with email update
         admin = get_admin_client()
         admin.auth.admin.update_user_by_id(user_id, {"email": new_email})
         return {"success": True, "message": "Verification email sent to new address"}
     except Exception as e:
+        error_msg = str(e).lower()
+        if "invalid login credentials" in error_msg:
+            return {"success": False, "error": "Current password is incorrect"}
         return _categorize_auth_error(e, "update_email")
 
 

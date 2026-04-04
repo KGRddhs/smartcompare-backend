@@ -77,6 +77,7 @@ class UpdateProfileRequest(BaseModel):
 
 class UpdateEmailRequest(BaseModel):
     new_email: EmailStr
+    current_password: str = Field(..., min_length=1)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -358,8 +359,14 @@ async def update_email(
     body: UpdateEmailRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Update user email. Supabase sends a verification email to the new address."""
-    result = await update_user_email(current_user["id"], str(body.new_email))
+    """Update user email. Requires current password for verification."""
+    result = await update_user_email(
+        current_user["id"], current_user["email"],
+        body.current_password, str(body.new_email)
+    )
+    if not result["success"]:
+        status = 400 if "password" in result.get("error", "").lower() else 500
+        raise HTTPException(status_code=status, detail=result["error"])
     return result
 
 
