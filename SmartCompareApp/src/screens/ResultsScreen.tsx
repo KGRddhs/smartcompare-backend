@@ -59,6 +59,7 @@ import { SkeletonLoader } from '../components/SkeletonLoader';
 import { ProgressBar } from '../components/ProgressBar';
 import FeedbackCard from '../components/FeedbackCard';
 import { trackEvents, shareComparison } from '../services/api';
+import { getUsageStatus, UsageStatus } from '../services/usageService';
 
 type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
@@ -71,6 +72,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   // Winner reveal animation state
   const [winnerRevealed, setWinnerRevealed] = useState(false);
+  const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
+
+  useEffect(() => {
+    getUsageStatus().then(setUsageStatus);
+  }, []);
 
   // Detect new structured format vs old flat format
   const isNewFormat = !!result?.overview?.winner;
@@ -762,6 +768,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               Comparison took {metadata.elapsed_seconds?.toFixed(1)}s
               {(metadata.cache_hits ?? 0) > 0 ? ` | ${metadata.cache_hits} cached` : ' | Fresh data'}
             </Text>
+            {usageStatus && (
+              <Text style={styles.metadataText}>
+                {usageStatus.remaining.daily} comparisons remaining today
+              </Text>
+            )}
           </View>
         )}
       </ScrollView>

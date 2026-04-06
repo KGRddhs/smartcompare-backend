@@ -32,6 +32,7 @@ import { RootStackParamList, CapturedImage, IdentifiedProduct } from '../types';
 import { healthCheck, streamComparison, parseApiError, identifyFromImages } from '../services/api';
 import api from '../services/api';
 import { getSavedUser, User } from '../services/authService';
+import { isUsageLimitError, getUsageLimitDetail } from '../services/usageService';
 import CategorySelector from '../components/CategorySelector';
 import { SearchOverlay } from '../components/SearchOverlay';
 import { ComparisonCounter } from '../components/ComparisonCounter';
@@ -200,7 +201,10 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         Alert.alert('Identification Failed', errorMsg);
       }
     } catch (error: any) {
-      if (error.response?.status === 429) {
+      if (isUsageLimitError(error)) {
+        const detail = getUsageLimitDetail(error);
+        navigation.navigate('Paywall' as any, { initialUsage: detail });
+      } else if (error.response?.status === 429) {
         Alert.alert('Rate Limited', 'Too many requests. Please wait a moment.');
       } else if (error.message?.includes('Network')) {
         Alert.alert(t('common.error'), t('home.errors.connection'));
@@ -248,10 +252,15 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
           Alert.alert(t('common.error'), data.error || t('home.errors.comparison'));
         }
       },
-      onError: (error) => {
+      onError: (error: any) => {
         abortRef.current = null;
         setLoading(false);
         setStatusMessage('');
+        if (isUsageLimitError(error)) {
+          const detail = getUsageLimitDetail(error);
+          navigation.navigate('Paywall' as any, { initialUsage: detail });
+          return;
+        }
         Alert.alert(t('common.error'), error.message || t('home.errors.comparison'));
       },
     });
@@ -296,7 +305,12 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         Alert.alert(t('common.error'), response.data.error || t('home.errors.comparison'));
       }
     } catch (error: any) {
-      Alert.alert(t('common.error'), parseApiError(error).message);
+      if (isUsageLimitError(error)) {
+        const detail = getUsageLimitDetail(error);
+        navigation.navigate('Paywall' as any, { initialUsage: detail });
+      } else {
+        Alert.alert(t('common.error'), parseApiError(error).message);
+      }
     } finally {
       setLoading(false);
     }

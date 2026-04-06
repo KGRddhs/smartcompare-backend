@@ -54,6 +54,11 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Handle USAGE_LIMIT specifically — let caller handle paywall trigger
+    if (error.response?.status === 429 && error.response?.data?.detail?.code === 'USAGE_LIMIT') {
+      return Promise.reject(error);
+    }
+
     // Only retry once, and only for 401s
     if (error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error);
