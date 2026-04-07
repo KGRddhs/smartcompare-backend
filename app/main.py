@@ -25,6 +25,7 @@ from app.api.history_routes import router as history_router  # Comparison histor
 from app.api.share_routes import router as share_router  # Comparison sharing
 from app.api.legal_routes import router as legal_router  # Legal (privacy, terms)
 from app.api.version_routes import router as version_router  # App version check
+from app.api.usage_routes import router as usage_router      # Usage tracking
 
 # Import middleware
 from app.middleware.request_id import RequestIDMiddleware
@@ -124,6 +125,7 @@ app.include_router(history_router)  # /api/v1/comparisons/*
 app.include_router(share_router)   # /api/v1/share/*
 app.include_router(legal_router)   # /api/v1/legal/*
 app.include_router(version_router) # /api/v1/app/*
+app.include_router(usage_router)   # /api/v1/usage/*
 
 
 @app.get("/")

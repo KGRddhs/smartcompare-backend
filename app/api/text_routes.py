@@ -19,6 +19,7 @@ from app.api.admin_routes import verify_admin_key
 from app.services.auth_service import get_user_preferences
 from app.services.database_service import save_comparison, log_search
 from app.middleware.rate_limiter import limiter
+from app.services.usage_service import check_usage_allowed, record_comparison
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,20 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             f"prefs_result: {prefs_result}"
         )
 
+    # Usage check for authenticated users
+    if user and user.get("id"):
+        usage_check = await check_usage_allowed(user["id"], user.get("access_token", ""))
+        if not usage_check["allowed"]:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": f"Comparison limit reached ({usage_check['reason']})",
+                    "code": "USAGE_LIMIT",
+                    "tier": usage_check["tier"],
+                    "remaining": usage_check["remaining"],
+                }
+            )
+
     result = await service.compare_from_text(
         query=body.query,
         region=body.region,
@@ -129,6 +144,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             full_response=result, query=body.query,
             input_type="text", user_id=user_id,
         ))
+        asyncio.create_task(record_comparison(user_id, user.get("access_token", "")))
 
     return result
 
@@ -162,6 +178,20 @@ async def text_compare_get(
             f"[PREFS] Authenticated user {user.get('id', 'unknown')} has no preferences. "
             f"prefs_result: {prefs_result}"
         )
+
+    # Usage check for authenticated users
+    if user and user.get("id"):
+        usage_check = await check_usage_allowed(user["id"], user.get("access_token", ""))
+        if not usage_check["allowed"]:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": f"Comparison limit reached ({usage_check['reason']})",
+                    "code": "USAGE_LIMIT",
+                    "tier": usage_check["tier"],
+                    "remaining": usage_check["remaining"],
+                }
+            )
 
     result = await service.compare_from_text(
         query=q,
@@ -206,6 +236,7 @@ async def text_compare_get(
             full_response=result, query=q,
             input_type="text", user_id=user_id,
         ))
+        asyncio.create_task(record_comparison(user_id, user.get("access_token", "")))
 
     return result
 
@@ -239,6 +270,20 @@ async def text_compare_stream(
             f"[PREFS] Authenticated user {user.get('id', 'unknown')} has no preferences. "
             f"prefs_result: {prefs_result}"
         )
+
+    # Usage check for authenticated users
+    if user and user.get("id"):
+        usage_check = await check_usage_allowed(user["id"], user.get("access_token", ""))
+        if not usage_check["allowed"]:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": f"Comparison limit reached ({usage_check['reason']})",
+                    "code": "USAGE_LIMIT",
+                    "tier": usage_check["tier"],
+                    "remaining": usage_check["remaining"],
+                }
+            )
 
     async def event_generator() -> AsyncGenerator[str, None]:
         complete_response = None
@@ -286,6 +331,7 @@ async def text_compare_stream(
                     full_response=complete_response, query=q,
                     input_type="text_stream", user_id=user_id,
                 ))
+                asyncio.create_task(record_comparison(user_id, user.get("access_token", "")))
         elif had_error:
             asyncio.create_task(log_search(
                 query=q, input_type="text_stream", user_id=user_id,
