@@ -2,12 +2,13 @@
 import hmac
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from starlette.requests import Request
 from fastapi import APIRouter, Header, HTTPException, Depends, Query
+from typing import Optional
 
 from app.services.api_budget_service import get_usage_summary
-from app.services.database_service import get_supabase_client
+from app.services.database_service import get_supabase_client, get_admin_supabase_client
 from app.middleware.rate_limiter import limiter
 from app.services.analytics_service import (
     get_daily_stats,
@@ -123,3 +124,49 @@ async def api_costs(request: Request, _=Depends(verify_admin_key)):
     summary["period"] = datetime.now(timezone.utc).strftime("%Y-%m")
 
     return summary
+
+
+@router.get("/audit-log")
+@limiter.limit("30/minute")
+async def get_audit_log(
+    request: Request,
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    days: int = Query(7, ge=1, le=90, description="Look back N days"),
+    limit: int = Query(100, ge=1, le=500, description="Max entries"),
+    _admin=Depends(verify_admin_key),
+):
+    """Query audit log entries with filters."""
+    client = get_admin_supabase_client()
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    query = client.table("admin_audit_log").select("*").gte("created_at", since).order("created_at", desc=True).limit(limit)
+
+    if event_type:
+        query = query.eq("event_type", event_type)
+    if user_id:
+        query = query.eq("user_id", user_id)
+
+    result = query.execute()
+    return {"entries": result.data, "count": len(result.data)}
+
+
+@router.get("/audit-log/summary")
+@limiter.limit("30/minute")
+async def get_audit_log_summary(
+    request: Request,
+    days: int = Query(7, ge=1, le=90, description="Look back N days"),
+    _admin=Depends(verify_admin_key),
+):
+    """Get aggregated audit event counts by type."""
+    client = get_admin_supabase_client()
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    result = client.table("admin_audit_log").select("event_type").gte("created_at", since).execute()
+
+    counts = {}
+    for row in result.data:
+        et = row["event_type"]
+        counts[et] = counts.get(et, 0) + 1
+
+    return {"period_days": days, "event_counts": counts, "total": sum(counts.values())}
