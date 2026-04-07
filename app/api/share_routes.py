@@ -3,10 +3,12 @@ Share Routes - Public comparison sharing endpoints
 """
 import logging
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Path
+from starlette.requests import Request
 
 from app.api.auth_routes import get_current_user
 from app.services.database_service import create_share_token, get_shared_comparison
+from app.middleware.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,9 @@ SHARE_BASE_URL = "https://web-production-58776.up.railway.app/api/v1/share"
 
 
 @router.post("/{comparison_id}")
+@limiter.limit("10/minute")
 async def share_comparison(
+    request: Request,
     comparison_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -37,7 +41,11 @@ async def share_comparison(
 
 
 @router.get("/{token}")
-async def view_shared_comparison(token: str):
+@limiter.limit("30/minute")
+async def view_shared_comparison(
+    request: Request,
+    token: str = Path(..., pattern=r"^[A-Za-z0-9_-]{18,30}$"),
+):
     """View a shared comparison. No auth required."""
     comparison = await get_shared_comparison(token)
 

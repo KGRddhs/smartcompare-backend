@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from typing import Optional, Dict, AsyncGenerator
-from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -384,9 +384,11 @@ async def quick_compare(request: Request, body: QuickCompareRequest):
 
 
 @router.get("/prices/{product}")
+@limiter.limit("20/minute")
 async def get_gcc_prices(
-    product: str,
-    variant: Optional[str] = Query(None, description="Product variant, e.g., '256GB'")
+    request: Request,
+    product: str = Path(..., max_length=100),
+    variant: Optional[str] = Query(None, max_length=50, description="Product variant, e.g., '256GB'")
 ):
     """
     Get prices for a product across all GCC regions.

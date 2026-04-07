@@ -5,6 +5,7 @@ import hmac
 import logging
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Depends, Query, Header
+from starlette.requests import Request
 from typing import Optional
 
 from app.api.auth_routes import get_current_user
@@ -14,6 +15,7 @@ from app.services.database_service import (
     get_user_comparison_count,
     delete_comparison,
 )
+from app.middleware.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +30,10 @@ def _extract_token(authorization: Optional[str] = Header(None)) -> Optional[str]
 
 
 @router.get("/history")
+@limiter.limit("30/minute")
 async def list_comparisons(
-    search: Optional[str] = Query(None, description="Filter by query text"),
+    request: Request,
+    search: Optional[str] = Query(None, max_length=100, description="Filter by query text"),
     limit: int = Query(20, ge=1, le=50, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     current_user: dict = Depends(get_current_user),
@@ -66,7 +70,9 @@ async def list_comparisons(
 
 
 @router.get("/{comparison_id}")
+@limiter.limit("20/minute")
 async def get_comparison(
+    request: Request,
     comparison_id: UUID,
     current_user: dict = Depends(get_current_user),
     token: Optional[str] = Depends(_extract_token),
@@ -95,7 +101,9 @@ async def get_comparison(
 
 
 @router.delete("/{comparison_id}")
+@limiter.limit("20/minute")
 async def remove_comparison(
+    request: Request,
     comparison_id: UUID,
     current_user: dict = Depends(get_current_user),
     token: Optional[str] = Depends(_extract_token),

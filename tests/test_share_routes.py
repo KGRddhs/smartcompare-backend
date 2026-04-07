@@ -112,7 +112,7 @@ def test_view_shared_success(mock_get):
     """GET /share/{token} returns comparison without auth."""
     _cleanup_overrides()
     client = TestClient(app)
-    resp = client.get("/api/v1/share/abc12xyz")
+    resp = client.get("/api/v1/share/abc12xyzABC12xyzABCD")
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
@@ -127,7 +127,7 @@ def test_view_shared_invalid_token(mock_get):
     """GET /share/{token} returns 404 for invalid token."""
     _cleanup_overrides()
     client = TestClient(app)
-    resp = client.get("/api/v1/share/invalid_token")
+    resp = client.get("/api/v1/share/invalid_token_abcdefgh")
     assert resp.status_code == 404
 
 
@@ -136,7 +136,7 @@ def test_view_shared_no_auth_needed():
     _cleanup_overrides()
     client = TestClient(app)
     # Should not return 401 (may return 404 since token doesn't exist)
-    resp = client.get("/api/v1/share/sometoken")
+    resp = client.get("/api/v1/share/sometoken_abcdefghijk")
     assert resp.status_code != 401
 
 

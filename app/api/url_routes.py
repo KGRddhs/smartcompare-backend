@@ -187,28 +187,37 @@ async def compare_urls_get(
 
 
 @router.post("/detect")
-async def detect_retailer_endpoint(request: URLExtractRequest):
+@limiter.limit("20/minute")
+async def detect_retailer_endpoint(request: Request, body: URLExtractRequest):
     """
     Detect retailer from URL without full extraction.
-    
+
     Useful for validating URLs before processing.
     """
-    retailer = detect_retailer(request.url)
-    
+    if not validate_external_url(body.url):
+        raise HTTPException(status_code=400, detail="URL blocked by security policy")
+
+    retailer = detect_retailer(body.url)
+
     return {
-        "url": request.url,
+        "url": body.url,
         "retailer": retailer,
         "supported": retailer["key"] != "unknown"
     }
 
 
 @router.get("/detect")
+@limiter.limit("20/minute")
 async def detect_retailer_get(
+    request: Request,
     url: str = Query(..., description="URL to detect retailer")
 ):
     """GET version of detect for easy testing."""
+    if not validate_external_url(url):
+        raise HTTPException(status_code=400, detail="URL blocked by security policy")
+
     retailer = detect_retailer(url)
-    
+
     return {
         "url": url,
         "retailer": retailer,
