@@ -242,7 +242,12 @@ async def test_login_raises_401_on_failure():
     from app.api.auth_routes import login, LoginRequest
 
     with patch("app.api.auth_routes.login_user", new_callable=AsyncMock,
-               return_value={"success": False, "error": "Invalid email or password"}):
+               return_value={"success": False, "error": "Invalid email or password"}), \
+         patch("app.api.auth_routes.check_account_locked", new_callable=AsyncMock,
+               return_value={"locked": False, "retry_after": 0}), \
+         patch("app.api.auth_routes.track_failed_login", new_callable=AsyncMock,
+               return_value={"locked": False, "attempts": 1}), \
+         patch("app.api.auth_routes.log_audit_event", new_callable=AsyncMock):
         with pytest.raises(HTTPException) as exc_info:
             await login(_mock_request(), LoginRequest(email="test@example.com", password="wrong-password"))
     assert exc_info.value.status_code == 401
@@ -257,7 +262,7 @@ async def test_refresh_raises_401_on_failure():
     with patch("app.api.auth_routes.refresh_session", new_callable=AsyncMock,
                return_value={"success": False, "error": "Invalid refresh token"}):
         with pytest.raises(HTTPException) as exc_info:
-            await refresh(RefreshRequest(refresh_token="bad-token"))
+            await refresh(_mock_request(), RefreshRequest(refresh_token="bad-token"))
     assert exc_info.value.status_code == 401
 
 
@@ -300,7 +305,11 @@ async def test_login_success():
         "user": {"id": "user-1", "email": "user@example.com"},
         "session": {"access_token": "tok", "refresh_token": "ref"},
     }
-    with patch("app.api.auth_routes.login_user", new_callable=AsyncMock, return_value=mock_result):
+    with patch("app.api.auth_routes.login_user", new_callable=AsyncMock, return_value=mock_result), \
+         patch("app.api.auth_routes.check_account_locked", new_callable=AsyncMock,
+               return_value={"locked": False, "retry_after": 0}), \
+         patch("app.api.auth_routes.clear_failed_logins", new_callable=AsyncMock), \
+         patch("app.api.auth_routes.log_audit_event", new_callable=AsyncMock):
         result = await login(_mock_request(), LoginRequest(email="user@example.com", password="correct-password"))
     assert result["success"] is True
 
@@ -314,7 +323,7 @@ async def test_refresh_success():
         "session": {"access_token": "new-tok", "refresh_token": "new-ref"},
     }
     with patch("app.api.auth_routes.refresh_session", new_callable=AsyncMock, return_value=mock_result):
-        result = await refresh(RefreshRequest(refresh_token="valid-refresh"))
+        result = await refresh(_mock_request(), RefreshRequest(refresh_token="valid-refresh"))
     assert result["success"] is True
     assert result["session"]["access_token"] == "new-tok"
 

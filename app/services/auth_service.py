@@ -7,7 +7,12 @@ import os
 from typing import Optional, Dict
 from supabase import create_client, Client
 
+from app.services.cache_service import redis_client
+
 logger = logging.getLogger(__name__)
+
+LOCKOUT_THRESHOLD = 5
+LOCKOUT_WINDOW_SECONDS = 900  # 15 minutes
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
@@ -446,3 +451,59 @@ async def request_password_reset(email: str) -> Dict:
         }
     except Exception as e:
         return _categorize_auth_error(e, "password_reset")
+
+
+# ============================================
+# Brute-Force Lockout
+# ============================================
+
+def _login_attempt_key(email: str) -> str:
+    """Hash email for Redis key to avoid storing PII in cache."""
+    email_hash = hashlib.sha256(email.lower().encode()).hexdigest()[:16]
+    return f"failed_login:{email_hash}"
+
+
+async def check_account_locked(email: str) -> dict:
+    """Check if account is locked due to too many failed login attempts.
+
+    Returns: {"locked": bool, "retry_after": int (seconds) or 0}
+    Fails open if Redis unavailable (does not block users).
+    """
+    if not redis_client:
+        return {"locked": False, "retry_after": 0}
+    try:
+        key = _login_attempt_key(email)
+        attempts = redis_client.get(key)
+        if attempts and int(attempts) >= LOCKOUT_THRESHOLD:
+            ttl = redis_client.ttl(key)
+            return {"locked": True, "retry_after": max(ttl, 0)}
+        return {"locked": False, "retry_after": 0}
+    except Exception:
+        return {"locked": False, "retry_after": 0}
+
+
+async def track_failed_login(email: str) -> dict:
+    """Increment failed login counter. Returns lockout status.
+
+    Returns: {"locked": bool, "attempts": int}
+    """
+    if not redis_client:
+        return {"locked": False, "attempts": 0}
+    try:
+        key = _login_attempt_key(email)
+        count = redis_client.incr(key)
+        if count == 1:
+            redis_client.expire(key, LOCKOUT_WINDOW_SECONDS)
+        return {"locked": count >= LOCKOUT_THRESHOLD, "attempts": count}
+    except Exception:
+        return {"locked": False, "attempts": 0}
+
+
+async def clear_failed_logins(email: str) -> None:
+    """Reset failed login counter after successful login."""
+    if not redis_client:
+        return
+    try:
+        redis_client.delete(_login_attempt_key(email))
+    except Exception:
+        pass

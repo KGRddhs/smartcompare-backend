@@ -1,6 +1,8 @@
 """
 Auth Routes - Authentication endpoints
 """
+import asyncio
+import hashlib
 import logging
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -24,7 +26,11 @@ from app.services.auth_service import (
     save_user_preferences,
     delete_user_account,
     resend_verification_email,
+    check_account_locked,
+    track_failed_login,
+    clear_failed_logins,
 )
+from app.services.audit_service import log_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -237,23 +243,57 @@ async def login(request: Request, body: LoginRequest):
 
     Returns access_token and refresh_token on success.
     """
+    # Check brute-force lockout BEFORE attempting login
+    lockout = await check_account_locked(body.email)
+    if lockout["locked"]:
+        asyncio.create_task(log_audit_event(
+            event_type="brute_force_lockout",
+            ip_address=request.client.host if request.client else None,
+            endpoint="/api/v1/auth/login",
+            details={"email_hash": hashlib.sha256(body.email.lower().encode()).hexdigest()[:16]}
+        ))
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "Account temporarily locked due to too many failed attempts",
+                "code": "ACCOUNT_LOCKED",
+                "retry_after": lockout["retry_after"]
+            }
+        )
+
     result = await login_user(body.email, body.password)
-    
+
     if not result["success"]:
+        await track_failed_login(body.email)
+        asyncio.create_task(log_audit_event(
+            event_type="login_failed",
+            ip_address=request.client.host if request.client else None,
+            endpoint="/api/v1/auth/login",
+            details={"reason": result.get("error", "unknown")}
+        ))
         raise HTTPException(
             status_code=401,
             detail=result.get("error", "Login failed")
         )
-    
+
+    # Success — clear lockout counter
+    await clear_failed_logins(body.email)
+    asyncio.create_task(log_audit_event(
+        event_type="login_success",
+        user_id=result.get("user", {}).get("id"),
+        ip_address=request.client.host if request.client else None,
+        endpoint="/api/v1/auth/login",
+    ))
     return result
 
 
 @router.post("/refresh", response_model=AuthResponse)
-async def refresh(request: RefreshRequest):
+@limiter.limit("10/minute")
+async def refresh(request: Request, body: RefreshRequest):
     """
     Refresh an expired access token using refresh token.
     """
-    result = await refresh_session(request.refresh_token)
+    result = await refresh_session(body.refresh_token)
     
     if not result["success"]:
         raise HTTPException(
