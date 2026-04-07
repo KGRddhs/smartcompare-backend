@@ -161,6 +161,7 @@ npx expo-doctor                   # Full project health check
 - `database_service.py` — Dual Supabase client (`get_user_supabase_client(token)` for RLS, `get_admin_supabase_client()` for admin ops). Share tokens, cascade delete, history queries.
 - `usage_service.py` — Freemium tier enforcement. Free: 3 lifetime + 10/month + 3/day. Premium: 70/month + 10/day. Redis counters + Supabase persistence. `check_usage_allowed()`, `record_comparison()`, `get_usage_status()`.
 - `audit_service.py` — Fire-and-forget security event logging to `admin_audit_log` table. Events: login, lockout, usage_limit, injection_attempt.
+- `product_data_service.py` — L2 DB cache for specs (30d), prices (24h), reviews (14d). Redis miss → DB check → API call. Prices append (history), specs/reviews upsert. Fire-and-forget saves.
 - Other services: `serper_service`, `feedback_service`, `drug_database_service`, `openai_service`, `sentry_service`, `analytics_service`
 
 **Security** (`app/utils/`):
@@ -190,7 +191,7 @@ npx expo-doctor                   # Full project health check
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls intelligently.
 - **Serper** — Google Search + Shopping API ($0.001/call). Don't search for what you already have.
-- **Supabase** — PostgreSQL (users, comparisons, products, prices, specs, reviews, search_logs, bahrain_approved_drugs, comparison_feedback, user_events, user_usage, admin_audit_log) + Auth. Cache strategically.
+- **Supabase** — PostgreSQL (users, comparisons, search_logs, bahrain_approved_drugs, comparison_feedback, user_events, user_usage, admin_audit_log, product_specs, product_prices, product_reviews) + Auth. Cache strategically.
 - **Upstash Redis** — Response caching (prices 24h, specs/reviews 7d)
 
 ## Important Patterns
@@ -208,7 +209,7 @@ Keys are: `bahrain`, `saudi_arabia`, `uae`, `kuwait`, `qatar`, `oman`. Note: it'
 `get_comparison_service()` returns a **new instance per call** (not a singleton). Each request gets fresh `total_cost`, `api_calls`, `_shopping_items_cache`. No manual reset needed.
 
 ### Cost budget + caching
-Target: **$0.01/comparison**. Achieved via unified search (1 Serper call shared by specs + reviews in `_fetch_product_data()`). Track with `self.total_cost` and `self._track_cost()`. `?nocache=true` bypasses Redis cache (7-day TTL for specs/reviews). Camera input passes `vision_products` directly, skipping `parse_product_query()`.
+Target: **$0.01/comparison**. Achieved via unified search (1 Serper call shared by specs + reviews in `_fetch_product_data()`). Track with `self.total_cost` and `self._track_cost()`. **Two-layer cache:** L1 Redis (specs/reviews 7d, prices 24h) → L2 DB via `product_data_service.py` (specs 30d, prices 24h, reviews 14d) → API call. `?nocache=true` bypasses both layers. Camera input passes `vision_products` directly, skipping `parse_product_query()`.
 
 ### Deterministic scoring (zero cost)
 `scoring_service.py` computes **category-specific scores** from structured data. No API calls — pure math.

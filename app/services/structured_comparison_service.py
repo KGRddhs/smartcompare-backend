@@ -945,12 +945,22 @@ class StructuredComparisonService:
         self, brand: str, name: str, variant: Optional[str], category: str,
         search_query: str, nocache: bool = False, search_results: Optional[Dict] = None, drug_context: str = ""
     ) -> Dict[str, Any]:
-        """Get specs with caching."""
+        """Get specs with caching (L1: Redis, L2: DB)."""
         cache_key = get_specs_cache_key(brand, name, variant)
         cached = get_cached(cache_key) if not nocache else None
         if cached:
             cached["_cached"] = True
             return cached
+
+        # L2: Check DB before API call
+        if not nocache:
+            from app.services.product_data_service import get_cached_specs
+            db_specs = await get_cached_specs(cache_key)
+            if db_specs:
+                set_cached(cache_key, db_specs, SPECS_CACHE_TTL)
+                db_specs["_cached"] = True
+                db_specs["_cache_source"] = "db"
+                return db_specs
 
         if search_results is None:
             search_results = await search_web(f"{search_query} specifications features")
@@ -962,6 +972,9 @@ class StructuredComparisonService:
 
         if specs and not specs.get("error"):
             set_cached(cache_key, specs, SPECS_CACHE_TTL)
+            # Save to L2 DB (fire-and-forget)
+            from app.services.product_data_service import save_specs
+            asyncio.create_task(save_specs(cache_key, brand, name, variant, category, specs))
 
         specs["_search_snippets"] = raw_snippets
         specs["_cached"] = False
@@ -980,6 +993,16 @@ class StructuredComparisonService:
         if cached:
             cached["_cached"] = True
             return cached
+
+        # L2: Check DB before tier cascade
+        if not nocache:
+            from app.services.product_data_service import get_cached_price
+            db_price = await get_cached_price(cache_key, region)
+            if db_price:
+                set_cached(cache_key, db_price, PRICE_CACHE_TTL)
+                db_price["_cached"] = True
+                db_price["_cache_source"] = "db"
+                return db_price
 
         region_info = GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])
         currency = region_info["currency"]
@@ -1026,6 +1049,7 @@ class StructuredComparisonService:
             if price and price.get("amount"):
                 price.pop("retailer_score", None)
                 set_cached(cache_key, price, PRICE_CACHE_TTL)
+                self._save_price_to_db(cache_key, brand, name, variant, region, price)
                 price["_cached"] = False
                 return price
 
@@ -1058,6 +1082,7 @@ class StructuredComparisonService:
                                         price["source_method"] = "firecrawl"
                                         price["retailer"] = official_domain
                                         set_cached(cache_key, price, PRICE_CACHE_TTL)
+                                        self._save_price_to_db(cache_key, brand, name, variant, region, price)
                                         price["_cached"] = False
                                         return price
                                 elif status in (429, 503) or status == 0:
@@ -1162,6 +1187,7 @@ class StructuredComparisonService:
                                 if price:
                                     price["source_method"] = "scrapedo_rendered"
                                     set_cached(cache_key, price, PRICE_CACHE_TTL)
+                                    self._save_price_to_db(cache_key, brand, name, variant, region, price)
                                     price["_cached"] = False
                                     return price
                             elif status in (429, 503) or status == 0:
@@ -1271,6 +1297,7 @@ class StructuredComparisonService:
             if price.get("retailer") and not price.get("url"):
                 price["url"] = build_retailer_url(price["retailer"], full_name)
             set_cached(cache_key, price, PRICE_CACHE_TTL)
+            self._save_price_to_db(cache_key, brand, name, variant, region, price)
             price["_cached"] = False
             return price
 
@@ -1291,6 +1318,7 @@ class StructuredComparisonService:
                 if price and price.get("amount"):
                     price.pop("retailer_score", None)
                     set_cached(cache_key, price, PRICE_CACHE_TTL)
+                    self._save_price_to_db(cache_key, brand, name, variant, region, price)
                     price["_cached"] = False
                     return price
 
@@ -1307,6 +1335,7 @@ class StructuredComparisonService:
             if price.get("retailer") and not price.get("url"):
                 price["url"] = build_retailer_url(price["retailer"], full_name)
             set_cached(cache_key, price, PRICE_CACHE_TTL // 2)
+            self._save_price_to_db(cache_key, brand, name, variant, region, price)
             price["_cached"] = False
             return price
 
@@ -1392,6 +1421,11 @@ class StructuredComparisonService:
     # ============================================
     # Cost tracking
     # ============================================
+
+    def _save_price_to_db(self, cache_key: str, brand: str, name: str, variant: Optional[str], region: str, price: Dict):
+        """Fire-and-forget save price to L2 DB."""
+        from app.services.product_data_service import save_price
+        asyncio.create_task(save_price(cache_key, brand, name, variant, region, price))
 
     def _track_gpt_cost(self, usage: dict):
         """Track real GPT cost from token usage."""

@@ -193,7 +193,8 @@ async def get_reviews(
     track_serper_cost_fn=None,
     track_gpt_cost_fn=None,
 ) -> Dict[str, Any]:
-    """Get reviews with caching. Uses pre-fetched search_results if provided."""
+    """Get reviews with caching (L1: Redis, L2: DB)."""
+    import asyncio
     cache_key = get_reviews_cache_key(brand, name, variant)
 
     cached = get_cached(cache_key) if not nocache else None
@@ -201,6 +202,16 @@ async def get_reviews(
         logger.info(f"Reviews cache hit: {cache_key}")
         cached["_cached"] = True
         return cached
+
+    # L2: Check DB before API call
+    if not nocache:
+        from app.services.product_data_service import get_cached_reviews
+        db_reviews = await get_cached_reviews(cache_key)
+        if db_reviews:
+            set_cached(cache_key, db_reviews, REVIEWS_CACHE_TTL)
+            db_reviews["_cached"] = True
+            db_reviews["_cache_source"] = "db"
+            return db_reviews
 
     review_terms = CATEGORY_REVIEW_TERMS.get(category, "user reviews pros cons rating")
     logger.info(f"Fetching reviews for: {brand} {name} (category: {category})")
@@ -222,6 +233,9 @@ async def get_reviews(
 
     if reviews and not reviews.get("error"):
         set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
+        # Save to L2 DB (fire-and-forget)
+        from app.services.product_data_service import save_reviews
+        asyncio.create_task(save_reviews(cache_key, brand, name, variant, reviews))
 
     reviews["_cached"] = False
     return reviews
