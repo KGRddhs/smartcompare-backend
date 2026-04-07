@@ -55,20 +55,21 @@ class TestVerdictPromptStructure:
         prompt = COMPARISON_PROMPT.lower()
         assert "who should" in prompt or "best for" in prompt or "ideal for" in prompt or "user profile" in prompt
 
-    def test_prompt_has_good_vs_bad_verdict_examples(self):
-        """Prompt must include examples of strong vs weak verdicts."""
-        has_example = "DO:" in COMPARISON_PROMPT or "GOOD:" in COMPARISON_PROMPT or "example" in COMPARISON_PROMPT.lower()
-        assert has_example, "Prompt should include verdict quality examples"
+    def test_prompt_has_specificity_requirements(self):
+        """Prompt must require specific numbers/facts in verdicts."""
+        has_specificity = "specific" in COMPARISON_PROMPT.lower() or "number" in COMPARISON_PROMPT.lower() or "fact" in COMPARISON_PROMPT.lower()
+        assert has_specificity, "Prompt should require specific/numeric evidence in verdicts"
 
 
 class TestReviewPromptCompleteness:
     """Verify the review prompt has all required JSON fields and template variables."""
 
-    def test_prompt_has_template_variables(self):
-        """Prompt must have {brand}, {name}, {variant}, {category}, {search_context}."""
+    def test_prompt_is_system_message_without_user_data(self):
+        """Prompt (system message) must NOT contain user data template variables.
+        User data is now in a separate user message (prompt injection defense)."""
         prompt = REVIEWS_EXTRACTION_PROMPT
-        for var in ["{brand}", "{name}", "{variant}", "{category}", "{search_context}"]:
-            assert var in prompt, f"Missing template variable: {var}"
+        for var in ["{brand}", "{name}", "{variant}", "{search_context}"]:
+            assert var not in prompt, f"System prompt should not contain user data variable: {var}"
 
     def test_prompt_json_has_required_fields(self):
         """Prompt JSON template must contain all expected output fields."""
@@ -96,11 +97,12 @@ class TestReviewPromptCompleteness:
 class TestVerdictPromptCompleteness:
     """Verify the verdict prompt has all required JSON fields and template variables."""
 
-    def test_prompt_has_template_variables(self):
-        """Prompt must have {product1_json}, {product2_json}, {region}, {concern}."""
+    def test_prompt_is_system_message_without_user_data(self):
+        """Prompt (system message) must NOT contain user data template variables.
+        User data is now in a separate user message (prompt injection defense)."""
         prompt = COMPARISON_PROMPT
-        for var in ["{product1_json}", "{product2_json}", "{region}", "{concern}"]:
-            assert var in prompt, f"Missing template variable: {var}"
+        for var in ["{product1_json}", "{product2_json}"]:
+            assert var not in prompt, f"System prompt should not contain user data variable: {var}"
 
     def test_prompt_json_has_required_fields(self):
         """Prompt JSON template must contain all expected output fields."""

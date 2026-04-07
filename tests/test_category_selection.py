@@ -163,26 +163,30 @@ class TestSpecPromptBuilding:
 
     def test_makeup_prompt_contains_makeup_fields(self):
         from app.services.extraction_service import _build_specs_prompt
-        prompt = _build_specs_prompt("MAC", "Ruby Woo", "", "makeup", "test context")
+        result = _build_specs_prompt("MAC", "Ruby Woo", "", "makeup", "test context")
+        prompt = result["system"] if isinstance(result, dict) else result
         assert "shade_range" in prompt
         assert "finish" in prompt
         assert "coverage" in prompt
 
     def test_skincare_prompt_contains_skincare_fields(self):
         from app.services.extraction_service import _build_specs_prompt
-        prompt = _build_specs_prompt("CeraVe", "Moisturizing Cream", "", "skincare", "test context")
+        result = _build_specs_prompt("CeraVe", "Moisturizing Cream", "", "skincare", "test context")
+        prompt = result["system"] if isinstance(result, dict) else result
         assert "skin_concern" in prompt
         assert "active_ingredient" in prompt
 
     def test_haircare_prompt_contains_haircare_fields(self):
         from app.services.extraction_service import _build_specs_prompt
-        prompt = _build_specs_prompt("Olaplex", "No. 3", "", "haircare", "test context")
+        result = _build_specs_prompt("Olaplex", "No. 3", "", "haircare", "test context")
+        prompt = result["system"] if isinstance(result, dict) else result
         assert "hair_type" in prompt
         assert "sulfate_free" in prompt
 
     def test_fragrances_prompt_contains_fragrance_fields(self):
         from app.services.extraction_service import _build_specs_prompt
-        prompt = _build_specs_prompt("Chanel", "No. 5", "", "fragrances", "test context")
+        result = _build_specs_prompt("Chanel", "No. 5", "", "fragrances", "test context")
+        prompt = result["system"] if isinstance(result, dict) else result
         assert "scent_family" in prompt
         assert "notes_top" in prompt
         assert "longevity" in prompt
@@ -190,15 +194,16 @@ class TestSpecPromptBuilding:
     def test_unknown_category_falls_back_to_other(self):
         """Unknown category should fall back to 'other' schema."""
         from app.services.extraction_service import _build_specs_prompt
-        prompt = _build_specs_prompt("Brand", "Product", "", "nonexistent", "test context")
+        result = _build_specs_prompt("Brand", "Product", "", "nonexistent", "test context")
+        prompt = result["system"] if isinstance(result, dict) else result
         assert "dimensions" in prompt
         assert "weight" in prompt
 
     def test_makeup_prompt_does_not_contain_electronics_schema_fields(self):
         """Makeup prompt JSON schema should NOT contain electronics-specific fields."""
         from app.services.extraction_service import _build_specs_prompt
-        prompt = _build_specs_prompt("MAC", "Ruby Woo", "", "makeup", "test context")
-        # Check the JSON schema section (null fields) not the example text
+        result = _build_specs_prompt("MAC", "Ruby Woo", "", "makeup", "test context")
+        prompt = result["system"] if isinstance(result, dict) else result
         assert '"processor": null' not in prompt
         assert '"ram": null' not in prompt
         assert '"rear_camera": null' not in prompt
@@ -206,17 +211,18 @@ class TestSpecPromptBuilding:
     def test_fragrances_prompt_does_not_contain_supplement_schema_fields(self):
         """Fragrances prompt schema should NOT contain supplement-specific fields."""
         from app.services.extraction_service import _build_specs_prompt
-        prompt = _build_specs_prompt("Chanel", "No. 5", "", "fragrances", "test context")
-        # Check JSON schema section — "dosage": null should not appear as a schema field
+        result = _build_specs_prompt("Chanel", "No. 5", "", "fragrances", "test context")
+        prompt = result["system"] if isinstance(result, dict) else result
         assert '"dosage": null' not in prompt
         assert '"serving_size": null' not in prompt
 
     def test_prompt_includes_brand_and_name(self):
         """Prompt should reference the product brand and name."""
         from app.services.extraction_service import _build_specs_prompt
-        prompt = _build_specs_prompt("MAC", "Ruby Woo Lipstick", "Retro Matte", "makeup", "context")
-        assert "MAC" in prompt
-        assert "Ruby Woo" in prompt
+        result = _build_specs_prompt("MAC", "Ruby Woo Lipstick", "Retro Matte", "makeup", "context")
+        prompt_text = (result["system"] + result["user"]) if isinstance(result, dict) else result
+        assert "MAC" in prompt_text
+        assert "Ruby Woo" in prompt_text
 
 
 # ============================================
