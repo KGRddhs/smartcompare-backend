@@ -85,7 +85,7 @@ npx expo-doctor                   # Full project health check
 
 ### Backend (FastAPI + Python 3.12)
 
-**Entry:** `app/main.py` — loads env vars, configures middleware stack, registers 10 routers (in `app/api/`):
+**Entry:** `app/main.py` — loads env vars, configures middleware stack, registers 11 routers (in `app/api/`):
 - `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow + SSE streaming, rate limited)
 - `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited, HEIC detection)
 - `/api/v1/url/*` — `url_routes.py` (single URL compare only, SSRF-protected, rate limited 10/min)
@@ -96,6 +96,7 @@ npx expo-doctor                   # Full project health check
 - `/api/v1/admin/*` — `admin_routes.py` → analytics endpoints + cost dashboard (X-Admin-Key auth, timing-safe `hmac.compare_digest`, rate limited 30/min)
 - `/api/v1/legal/*` — `legal_routes.py` → GET privacy policy + terms of service (no auth, reads markdown files)
 - `/api/v1/app/*` — `version_routes.py` → GET version check (min/latest/force_update from env vars, no auth)
+- `/api/v1/usage/*` — `usage_routes.py` → GET usage status (auth required). Freemium tier enforcement.
 
 **Middleware stack** (outermost → innermost): RequestID → SecurityHeaders (HSTS, CSP, X-Frame-Options) → ErrorHandler → CORS → slowapi rate limiter
 
@@ -158,6 +159,8 @@ npx expo-doctor                   # Full project health check
 - `exchange_rate_service.py` — Daily rates from frankfurter.app, Redis-cached 24h, hardcoded GCC fallbacks. `get_rate(from_currency, to_currency="BHD")`.
 - `firecrawl_service.py` / `scrapedo_service.py` — Firecrawl Smart Wait + Scrape.do JS rendering wrappers.
 - `database_service.py` — Dual Supabase client (`get_user_supabase_client(token)` for RLS, `get_admin_supabase_client()` for admin ops). Share tokens, cascade delete, history queries.
+- `usage_service.py` — Freemium tier enforcement. Free: 3 lifetime + 10/month + 3/day. Premium: 70/month + 10/day. Redis counters + Supabase persistence. `check_usage_allowed()`, `record_comparison()`, `get_usage_status()`.
+- `audit_service.py` — Fire-and-forget security event logging to `admin_audit_log` table. Events: login, lockout, usage_limit, injection_attempt.
 - Other services: `serper_service`, `feedback_service`, `drug_database_service`, `openai_service`, `sentry_service`, `analytics_service`
 
 **Security** (`app/utils/`):
@@ -187,7 +190,7 @@ npx expo-doctor                   # Full project health check
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls intelligently.
 - **Serper** — Google Search + Shopping API ($0.001/call). Don't search for what you already have.
-- **Supabase** — PostgreSQL (users, comparisons, products, prices, specs, reviews, search_logs, bahrain_approved_drugs, comparison_feedback, user_events) + Auth. Cache strategically.
+- **Supabase** — PostgreSQL (users, comparisons, products, prices, specs, reviews, search_logs, bahrain_approved_drugs, comparison_feedback, user_events, user_usage, admin_audit_log) + Auth. Cache strategically.
 - **Upstash Redis** — Response caching (prices 24h, specs/reviews 7d)
 
 ## Important Patterns
@@ -281,6 +284,12 @@ python -m pytest tests/ -v --timeout=180
 - `conftest.py` auto-loads `.env` via python-dotenv
 - ~65 test files named `test_<feature>.py`, one per service. 80%+ coverage for new features.
 - No regressions: all existing tests must pass before merging
+
+### Dependency Scanning (pre-deploy)
+```bash
+pip-audit -r requirements.txt --strict
+cd SmartCompareApp && npm audit --audit-level=high
+```
 
 ## Known Remaining Bugs (deferred)
 
