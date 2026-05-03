@@ -444,3 +444,40 @@ async def health_check() -> Dict:
         return {"status": "healthy", "connection": "ok"}
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
+
+
+# ============================================
+# Demographics + cohort match cache (migration 013)
+# ============================================
+
+
+async def save_user_demographics(user_id: str, profile: Dict) -> Dict:
+    """Persist demographics_profile JSONB on the users row.
+
+    `profile` is the full payload (raw demographics + submitted_at + cohort_match
+    snapshot). Caller is responsible for shape; we just upsert the column.
+    """
+    try:
+        admin = get_admin_supabase_client()
+        admin.table("users").update({
+            "demographics_profile": profile,
+        }).eq("id", user_id).execute()
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"[DB] save_user_demographics failed for user {user_id}: {e}")
+        return {"success": False, "error": "Failed to save demographics"}
+
+
+async def get_user_demographics(user_id: str) -> Optional[Dict]:
+    """Read demographics_profile JSONB. Returns None when absent or on error."""
+    try:
+        admin = get_admin_supabase_client()
+        response = admin.table("users").select(
+            "demographics_profile"
+        ).eq("id", user_id).single().execute()
+        if response.data:
+            return response.data.get("demographics_profile")
+        return None
+    except Exception as e:
+        logger.error(f"[DB] get_user_demographics failed for user {user_id}: {e}")
+        return None

@@ -6,7 +6,7 @@ import hashlib
 import logging
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from starlette.requests import Request
 from app.middleware.rate_limiter import limiter
 
@@ -31,6 +31,12 @@ from app.services.auth_service import (
     clear_failed_logins,
 )
 from app.services.audit_service import log_audit_event
+from app.services.cohort_service import get_cohort_service
+from app.services.database_service import (
+    save_user_demographics,
+    get_user_demographics,
+)
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +102,21 @@ class ChangePasswordRequest(BaseModel):
         return _validate_password_strength(v)
 
 
-VALID_PRIORITIES = ["price", "quality", "brand_reputation", "durability", "latest_features", "ease_of_use", "eco_friendly", "health_safety"]
+VALID_PRIORITIES = [
+    # Original 8 priority enum values (preserved for backwards compat)
+    "price", "quality", "brand_reputation", "durability", "latest_features",
+    "ease_of_use", "eco_friendly", "health_safety",
+    # Cohort-derived enum values (added Session 41 — cohort_service.seed_preferences emits these)
+    "best_price", "quality_reliability", "trusted_brand", "warranty_support",
+    "design_aesthetics", "value_for_money",
+]
 VALID_BUDGET = ["budget", "mid", "premium"]
 VALID_LIFESTYLE = ["gamer", "photographer", "fitness_enthusiast", "vegan", "sensitive_skin", "parent", "student", "professional", "outdoor_adventurer", "minimalist", "tech_enthusiast"]
-VALID_BRAND_ATTITUDE = ["brand_loyal", "function_first", "best_of_both"]
+VALID_BRAND_ATTITUDE = [
+    "brand_loyal", "function_first", "best_of_both",
+    # Cohort-derived value (Session 41)
+    "trust_known_brands",
+]
 
 
 class UserPreferencesRequest(BaseModel):
@@ -141,6 +158,19 @@ class UserPreferencesRequest(BaseModel):
 
 # Alias for backward compatibility with tests
 PreferencesRequest = UserPreferencesRequest
+
+
+class DemographicsBody(BaseModel):
+    """Request payload for PUT /demographics. All 5 fields optional.
+
+    `language` and `country` are auto-derived server-side when missing
+    (Accept-Language → language; CF-IPCountry → country).
+    """
+    age_group: Optional[str] = Field(default=None, max_length=64)
+    gender: Optional[str] = Field(default=None, max_length=64)
+    governorate: Optional[str] = Field(default=None, max_length=64)
+    language: Optional[str] = Field(default=None, max_length=64)
+    country: Optional[str] = Field(default=None, max_length=64)
 
 
 class SocialLoginRequest(BaseModel):
@@ -482,14 +512,177 @@ async def get_preferences(current_user: dict = Depends(get_current_user)):
     return {"success": True, "preferences": result, "preferences_completed": bool(result)}
 
 
+def _flip_inferred_sources(new_prefs: dict, existing: Optional[dict]) -> dict:
+    """Compute updated _sources dict: changed fields flip inferred → user_stated.
+
+    Per design 5.3 + plan A.4.3: when a user edits a previously-seeded preference,
+    the source flips so future seeding can't overwrite the user's choice.
+
+    - If no existing preferences: all populated fields → user_stated.
+    - If existing has _sources: copy then flip changed fields to user_stated.
+    - If existing has values but no _sources (legacy): treat as user_stated.
+    """
+    existing_sources = (existing or {}).get("_sources") or {}
+    fields = ("priorities", "budget", "lifestyle", "brand_attitude")
+
+    out: dict[str, Any] = {}
+    for f in fields:
+        existing_value = (existing or {}).get(f)
+        new_value = new_prefs.get(f)
+        if existing is None:
+            # Brand new prefs — all entries are user-stated by definition
+            out[f] = "user_stated"
+        elif new_value != existing_value:
+            # User changed this field — always user_stated
+            out[f] = "user_stated"
+        else:
+            # Unchanged — preserve prior source (or assume user_stated if absent)
+            out[f] = existing_sources.get(f, "user_stated")
+    # Lifestyle stays None when empty list AND was previously None (cohort-seeded)
+    if not new_prefs.get("lifestyle") and existing_sources.get("lifestyle") is None:
+        out["lifestyle"] = None
+    return out
+
+
 @router.put("/preferences")
 async def save_preferences(
     body: UserPreferencesRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Save or update user preferences. All 4 fields are mandatory."""
+    """Save or update user preferences. All 4 fields are mandatory.
+
+    Tracks `_sources` to distinguish user-stated vs cohort-inferred values:
+    edits to previously-inferred fields flip their source to user_stated so
+    future demographics-driven seeding doesn't overwrite the user's choice.
+    """
     preferences = body.model_dump()
-    result = await save_user_preferences(current_user["id"], preferences)
+    user_id = current_user["id"]
+
+    # Read existing prefs to compute source flips
+    existing_response = await get_user_preferences(user_id)
+    existing_prefs = None
+    if isinstance(existing_response, dict):
+        if existing_response.get("success"):
+            existing_prefs = existing_response.get("preferences") or None
+        elif "preferences" not in existing_response:
+            existing_prefs = existing_response  # raw dict path
+    elif existing_response is not None:
+        existing_prefs = existing_response
+
+    preferences["_sources"] = _flip_inferred_sources(preferences, existing_prefs)
+
+    result = await save_user_preferences(user_id, preferences)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to save preferences"))
     return result
+
+
+# ============================================
+# Demographics + cohort profile (migration 013)
+# ============================================
+
+
+def _derive_language(request: Request, payload_language: Optional[str]) -> str:
+    """Resolve language from explicit payload or Accept-Language header."""
+    if payload_language:
+        return payload_language
+    accept = (request.headers.get("accept-language") or "").lower()
+    if accept.startswith("ar"):
+        return "Arabic"
+    if accept.startswith("en"):
+        return "English"
+    return "Both equally"
+
+
+def _derive_country(request: Request, payload_country: Optional[str]) -> str:
+    """Resolve country from explicit payload or Cloudflare CF-IPCountry header."""
+    if payload_country:
+        return payload_country
+    cf_country = (request.headers.get("cf-ipcountry") or "").upper().strip()
+    if cf_country == "BH":
+        return "Bahrain"
+    return cf_country or "Bahrain"
+
+
+@router.put("/demographics")
+@limiter.limit("5/minute")
+async def save_demographics(
+    request: Request,
+    body: DemographicsBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """Persist demographics_profile + match cohort + seed prefs (one-shot).
+
+    Auto-detects language and country from request headers when not provided.
+    Stores the cohort_match snapshot inside demographics_profile so subsequent
+    requests can render the cohort priors block without re-matching.
+
+    If the user has no preferences (or all sources are inferred), seeds them
+    from the cohort modal. Never overwrites user_stated preferences.
+    """
+    user_id = current_user["id"]
+    payload = body.model_dump(exclude_none=False)
+    payload["language"] = _derive_language(request, payload.get("language"))
+    payload["country"] = _derive_country(request, payload.get("country"))
+
+    cohort_svc = get_cohort_service()
+    match = cohort_svc.match(payload)
+
+    profile = {
+        **payload,
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+        "cohort_match": (
+            {
+                "cohort_key": match.cohort_key,
+                "match_quality": match.match_quality,
+                "confidence": match.confidence,
+                "n": match.n,
+                "persona_label": match.persona_label,
+            }
+            if match
+            else None
+        ),
+    }
+
+    save_result = await save_user_demographics(user_id, profile)
+    if not save_result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=save_result.get("error", "Failed to save demographics"),
+        )
+
+    # Seed preferences when the user hasn't taken ownership yet
+    existing_prefs_response = await get_user_preferences(user_id)
+    existing_prefs = None
+    if isinstance(existing_prefs_response, dict):
+        if existing_prefs_response.get("success"):
+            existing_prefs = existing_prefs_response.get("preferences") or None
+        elif "preferences" not in existing_prefs_response:
+            existing_prefs = existing_prefs_response
+
+    if cohort_svc.should_seed(existing_prefs):
+        seeded = cohort_svc.seed_preferences(payload)
+        if seeded:
+            await save_user_preferences(user_id, seeded)
+
+    return {
+        "success": True,
+        "cohort_match": profile["cohort_match"],
+    }
+
+
+@router.get("/cohort-profile")
+async def get_cohort_profile(current_user: dict = Depends(get_current_user)):
+    """Return the display payload for the Profile screen 'style profile' card.
+
+    `display` is None when the user hasn't submitted demographics OR the
+    cohort match is too weak (population fallback / low confidence).
+    """
+    user_id = current_user["id"]
+    demographics = await get_user_demographics(user_id)
+    if not demographics:
+        return {"display": None}
+
+    cohort_svc = get_cohort_service()
+    display = cohort_svc.get_display_profile(demographics)
+    return {"display": display}

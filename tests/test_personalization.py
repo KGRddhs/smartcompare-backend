@@ -316,11 +316,17 @@ class TestPreferenceEndpoints:
 
     @pytest.mark.asyncio
     async def test_save_preferences_passes_user_id_and_prefs(self):
-        """PUT /preferences passes user_id and model_dump to service."""
+        """PUT /preferences passes user_id and prefs (now with _sources) to service.
+
+        Session 41 (cohort personalization): the route appends a `_sources` dict
+        marking each field as user_stated when no prior preferences exist.
+        """
         from app.api.auth_routes import save_preferences, UserPreferencesRequest
         mock_user = {"id": "user-42", "email": "test@example.com"}
-        with patch("app.api.auth_routes.save_user_preferences", new_callable=AsyncMock,
-                   return_value={"success": True}) as mock_svc:
+        with patch("app.api.auth_routes.get_user_preferences", new_callable=AsyncMock,
+                   return_value=None), patch(
+                "app.api.auth_routes.save_user_preferences", new_callable=AsyncMock,
+                return_value={"success": True}) as mock_svc:
             await save_preferences(
                 body=UserPreferencesRequest(
                     priorities=["quality"],
@@ -330,12 +336,18 @@ class TestPreferenceEndpoints:
                 ),
                 current_user=mock_user,
             )
-        mock_svc.assert_called_once_with("user-42", {
-            "priorities": ["quality"],
-            "budget": "premium",
-            "lifestyle": ["professional"],
-            "brand_attitude": "best_of_both",
-        })
+        # New prefs (no prior) → all sources are user_stated
+        mock_svc.assert_called_once()
+        args = mock_svc.await_args.args
+        assert args[0] == "user-42"
+        payload = args[1]
+        assert payload["priorities"] == ["quality"]
+        assert payload["budget"] == "premium"
+        assert payload["lifestyle"] == ["professional"]
+        assert payload["brand_attitude"] == "best_of_both"
+        assert payload["_sources"]["priorities"] == "user_stated"
+        assert payload["_sources"]["budget"] == "user_stated"
+        assert payload["_sources"]["brand_attitude"] == "user_stated"
 
     @pytest.mark.asyncio
     async def test_save_preferences_requires_auth(self):
@@ -1022,12 +1034,17 @@ class TestValidOptionConstants:
     """Test that valid option constants match the design doc."""
 
     def test_valid_priorities_has_eight_options(self):
-        """VALID_PRIORITIES should have exactly 8 options per design doc."""
+        """Original 8 priority options must still be accepted (Session 41 added 6 more
+        for cohort_service.seed_preferences emit values)."""
         from app.api.auth_routes import VALID_PRIORITIES
-        assert len(VALID_PRIORITIES) == 8
-        expected = {"price", "quality", "brand_reputation", "durability",
-                    "latest_features", "ease_of_use", "eco_friendly", "health_safety"}
-        assert set(VALID_PRIORITIES) == expected
+        original_eight = {"price", "quality", "brand_reputation", "durability",
+                          "latest_features", "ease_of_use", "eco_friendly", "health_safety"}
+        # The original 8 must still be valid (backwards compat)
+        assert original_eight.issubset(set(VALID_PRIORITIES))
+        # Cohort-derived enum values were added in Session 41
+        cohort_added = {"best_price", "quality_reliability", "trusted_brand",
+                        "warranty_support", "design_aesthetics", "value_for_money"}
+        assert cohort_added.issubset(set(VALID_PRIORITIES))
 
     def test_valid_lifestyle_has_eleven_options(self):
         """VALID_LIFESTYLE should have exactly 11 options per design doc."""
