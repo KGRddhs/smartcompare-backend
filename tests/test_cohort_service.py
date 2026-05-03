@@ -622,3 +622,104 @@ class TestCohortMatchShape:
             "persona_label",
         ):
             assert hasattr(match, attr), f"missing attribute: {attr}"
+
+
+# ============================================
+# Coverage extension: edge cases on match() + helpers
+# Drives match() coverage to 100%
+# ============================================
+
+
+class TestMatchEdgeCases:
+    def test_match_with_demographics_none(self, fake_service):
+        """match(None) → treated as empty → population fallback."""
+        match = fake_service.match(None)
+        assert match is not None
+        assert match.match_quality == "population"
+
+    def test_match_with_low_n_full_key_falls_back(self, monkeypatch, fake_service):
+        """If full cohort exists but n < 5, fall through to broader prefix."""
+        # Mutate fake to create n=4 full cohort
+        fake_service._cohorts["cohorts"]["35-44|Male|Capital|English"] = {
+            "n": 4,
+            "confidence": "low",
+            "modal": {},
+            "distribution": {},
+            "persona_label": "Test",
+            "demographics": {},
+        }
+        # No 35-44|Male|English aggregate exists → falls to gender-only Male
+        match = fake_service.match(
+            {
+                "age_group": "35-44",
+                "gender": "Male",
+                "governorate": "Capital",
+                "language": "English",
+            }
+        )
+        # Should fall through to gender-only since n<5 in exact and no other keys exist
+        assert match is not None
+        assert match.match_quality in ("broadened_age", "population")
+
+    def test_match_governorate_only_no_other_fields(self, fake_service):
+        """Only governorate present (no age/gender/language) → goes to population."""
+        match = fake_service.match({"governorate": "Northern"})
+        assert match is not None
+        assert match.match_quality == "population"
+
+    def test_match_language_only_no_other_fields(self, fake_service):
+        match = fake_service.match({"language": "Arabic"})
+        assert match is not None
+        assert match.match_quality == "population"
+
+    def test_match_only_age(self, fake_service):
+        """Only age → no fallback below age|gender → population."""
+        match = fake_service.match({"age_group": "25-34"})
+        # Note: age-only does not match the gender-only fallback level — falls to population
+        assert match is not None
+        assert match.match_quality == "population"
+
+
+class TestPreferNotToSayHandling:
+    def test_prefer_not_to_say_age_only(self, fake_service):
+        """Just age missing → other parts dominate."""
+        match = fake_service.match(
+            {
+                "age_group": "Prefer not to say",
+                "gender": "Female",
+                "governorate": "Northern",
+                "language": "Arabic",
+            }
+        )
+        # Without age, exact key would be missing — but service may broaden
+        # to gender-only (Female aggregate exists in fixtures with n=120)
+        assert match is not None
+        assert match.match_quality in (
+            "broadened_age",
+            "broadened_language",
+            "broadened_governorate",
+            "population",
+        )
+
+
+class TestGetCohortModalForKey:
+    """get_cohort_modal_for_key — used by extraction prompt builder."""
+
+    def test_returns_modal_for_known_key(self, fake_service):
+        modal = fake_service.get_cohort_modal_for_key("25-34|Female|Northern|Arabic")
+        assert modal is not None
+        assert modal.get("top_deciding_factor") == "Quality"
+
+    def test_returns_none_for_unknown_key(self, fake_service):
+        assert fake_service.get_cohort_modal_for_key("nonexistent|key") is None
+
+    def test_returns_none_for_empty_key(self, fake_service):
+        assert fake_service.get_cohort_modal_for_key("") is None
+
+    def test_returns_none_for_none_key(self, fake_service):
+        assert fake_service.get_cohort_modal_for_key(None) is None
+
+    def test_returns_modal_for_fallback_key(self, fake_service):
+        """Looking up a fallback aggregate key also works."""
+        modal = fake_service.get_cohort_modal_for_key("all")
+        assert modal is not None
