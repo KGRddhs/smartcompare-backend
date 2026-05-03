@@ -698,14 +698,24 @@ def _normalize_review_response(data: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
-def _build_preferences_prompt(user_preferences: Dict[str, Any]) -> str:
-    """Build the personalization section to append to the comparison prompt."""
+def _build_preferences_prompt(
+    user_preferences: Dict[str, Any],
+    demographics_profile: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Build the personalization section to append to the comparison prompt.
+
+    When `demographics_profile` carries a strong cohort match AND the
+    `ENABLE_COHORT_PERSONALIZATION` feature flag is on, an aggregate cohort
+    priors block (no raw individual demographics — only group statistics +
+    a thin country/language/region context line) is appended after the
+    explicit-preferences block. See design Section 4 + privacy posture 4.5.
+    """
     priorities = ", ".join(user_preferences.get("priorities", []))
     budget = user_preferences.get("budget", "mid")
     lifestyle = ", ".join(user_preferences.get("lifestyle", [])) or "none specified"
     brand_attitude = user_preferences.get("brand_attitude", "best_of_both")
 
-    return f"""
+    base = f"""
 
 ## User Preferences (personalize your verdict to this user)
 - Top priorities: {priorities}
@@ -723,6 +733,109 @@ Based on these preferences, your verdict MUST:
 7. For best_of_both users: prefer branded options when specs are similar, but recommend better-performing product even if lesser brand
 8. In best_for, if a product aligns with the user's stated priorities, note which priorities it aligns with"""
 
+    cohort_block = _build_cohort_priors_block(demographics_profile)
+    return base + cohort_block
+
+
+# ---- Cohort priors injection (B per design Section 4) -------------------
+
+# Inject only for these match qualities — population is too generic, lower
+# tiers don't carry enough signal to justify the prompt tokens (design 4.1).
+_COHORT_INJECT_QUALITIES = frozenset(
+    {"exact", "broadened_governorate", "broadened_language"}
+)
+
+
+def _build_cohort_priors_block(
+    demographics_profile: Optional[Dict[str, Any]],
+) -> str:
+    """Render the cohort priors block, or empty string when not applicable.
+
+    Privacy invariant (design 4.5): the rendered prompt MUST NOT contain raw
+    age, gender, or identity values — only the country/language/region thin
+    context line, the cohort N count, and aggregate findings.
+    """
+    if not _is_cohort_personalization_enabled():
+        return ""
+    if not demographics_profile:
+        return ""
+
+    cohort_match = demographics_profile.get("cohort_match")
+    if not cohort_match:
+        return ""
+
+    quality = cohort_match.get("match_quality")
+    if quality not in _COHORT_INJECT_QUALITIES:
+        return ""
+
+    confidence = cohort_match.get("confidence")
+    if confidence not in ("high", "medium", "low"):
+        return ""
+
+    cohort_key = cohort_match.get("cohort_key") or ""
+    if not cohort_key:
+        return ""
+
+    # Look up the modal answers via the cohort service. Don't crash if it's
+    # unavailable — just skip the block (degraded mode).
+    try:
+        from app.services.cohort_service import get_cohort_service
+
+        cohort_svc = get_cohort_service()
+        modal = cohort_svc.get_cohort_modal_for_key(cohort_key) or {}
+    except Exception:
+        return ""
+
+    if not modal:
+        return ""
+
+    n = cohort_match.get("n", 0)
+    country = demographics_profile.get("country") or "Bahrain"
+    language = demographics_profile.get("language") or "English"
+    governorate = demographics_profile.get("governorate") or ""
+
+    # Build the thin context line — only allowed identifiers per design 4.3.
+    context_parts = [f"Country={country}", f"Language={language}"]
+    if governorate and governorate not in ("Prefer not to say", ""):
+        context_parts.append(f"Region={governorate}")
+    context_line = "USER CONTEXT: " + ", ".join(context_parts)
+
+    factors = []
+    for f_key in ("top_deciding_factor", "second_deciding_factor"):
+        v = modal.get(f_key)
+        if v:
+            factors.append(v)
+    deciding = ", ".join(factors) if factors else "Quality"
+
+    spend = modal.get("spend_bracket") or "varies"
+    style = modal.get("preferred_assistance_style") or "Show 2-3 options with reasons"
+    difficulties = ", ".join(modal.get("top_difficulties", [])[:2]) or "Choosing between many similar options"
+    trust = ", ".join(modal.get("trust_sources", [])[:2]) or "in-store experience"
+
+    return f"""
+
+{context_line}
+
+# COHORT-LEVEL PRIORS (statistical pattern from {n} similar users)
+
+When tailoring this verdict, weight these signals:
+
+- DECIDING FACTORS this group prioritizes (in order): {deciding}
+- TYPICAL SPEND for their purchase context: {spend}
+  -> frame anything well below the bracket as "below their range", well above as "above range stretch"
+- PREFERRED VERDICT FORMAT: {style}
+- TOP DIFFICULTIES to proactively address: {difficulties}
+- TRUST SIGNALS that resonate: {trust}
+  -> prefer retailer attribution from these sources when available
+
+These are POPULATION STATISTICS, not facts about the individual user.
+Use them as defaults; the user's explicit preferences and behavioral history override."""
+
+
+def _is_cohort_personalization_enabled() -> bool:
+    """Read ENABLE_COHORT_PERSONALIZATION env var. Default off (Phase 1 rollout)."""
+    return os.getenv("ENABLE_COHORT_PERSONALIZATION", "false").strip().lower() == "true"
+
 
 async def generate_comparison(
     product1: Dict,
@@ -732,6 +845,7 @@ async def generate_comparison(
     user_preferences: Optional[Dict[str, Any]] = None,
     scores_summary: Optional[str] = None,
     category: str = "other",
+    demographics_profile: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Generate detailed comparison between two products."""
     try:
@@ -759,7 +873,12 @@ If this is a cross-tier comparison, frame it as "different products for differen
 """
 
         if user_preferences:
-            system_msg += _build_preferences_prompt(user_preferences)
+            system_msg += _build_preferences_prompt(
+                user_preferences, demographics_profile=demographics_profile
+            )
+        elif demographics_profile:
+            # Preferences absent but cohort priors might still apply
+            system_msg += _build_cohort_priors_block(demographics_profile)
 
         # User message: product data wrapped in tags
         user_msg = f"""<USER_INPUT>
