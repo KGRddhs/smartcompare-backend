@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radii, typography } from '../theme';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
@@ -44,10 +44,14 @@ const BRAND_OPTIONS = ['brand_loyal', 'function_first', 'best_of_both'] as const
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
+  route?: NativeStackScreenProps<RootStackParamList, 'Onboarding'>['route'];
   onComplete?: () => void;
 };
 
-export default function OnboardingScreen({ navigation, onComplete }: Props) {
+export default function OnboardingScreen({ navigation, route, onComplete }: Props) {
+  // When opened from the Profile screen's StyleProfileCard, the route carries
+  // source='styleProfile' so we surface the "These were inferred" banner.
+  const isInferredEdit = route?.params?.source === 'styleProfile';
   const { t } = useTranslation();
   const { language, switchLanguage } = useLanguage();
   const [step, setStep] = useState(0);
@@ -252,6 +256,13 @@ export default function OnboardingScreen({ navigation, onComplete }: Props) {
       <View style={styles.header}>
         <ProgressBar progress={progress} />
       </View>
+      {isInferredEdit ? (
+        <View style={styles.inferredBanner}>
+          <Text style={styles.inferredBannerText}>
+            {t('profile.styleProfile.banner')}
+          </Text>
+        </View>
+      ) : null}
       <ScrollView style={styles.content} contentContainerStyle={styles.contentInner}>
         {renderStep()}
       </ScrollView>
@@ -277,6 +288,19 @@ export default function OnboardingScreen({ navigation, onComplete }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg.primary },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.base },
+  inferredBanner: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.card,
+    backgroundColor: colors.accentLight,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  inferredBannerText: {
+    ...typography.caption,
+    color: colors.text.primary,
+  },
   content: { flex: 1 },
   contentInner: { padding: spacing.lg, paddingTop: spacing['2xl'] },
   footer: {

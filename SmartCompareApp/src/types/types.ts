@@ -351,7 +351,9 @@ export interface AuthSession {
 // Root stack with Auth, Onboarding, Main tabs, and Results modal
 export type RootStackParamList = {
   Auth: undefined;
-  Onboarding: undefined;
+  // mode='edit' opens preferences in edit mode (e.g. from Profile screen).
+  // source='styleProfile' signals an "inferred preferences" banner is appropriate.
+  Onboarding: { mode?: 'edit'; source?: 'styleProfile' } | undefined;
   Main: undefined;
   Results: { result: ComparisonResult };
   // Legacy screen names for backward compatibility with screen components

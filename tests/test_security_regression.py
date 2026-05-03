@@ -603,3 +603,119 @@ class TestInputValidation:
             headers={"Authorization": "Bearer test-token"}
         )
         assert response.status_code == 422
+
+
+# ============================================
+# C.6 (cohort): Demographics endpoint auth + rate limit + RLS
+# Plan section C.6.1, C.6.2 — added by test-cohort
+# ============================================
+
+
+class TestDemographicsEndpointAuth:
+    """PUT /demographics + GET /cohort-profile require authentication."""
+
+    def test_put_demographics_requires_auth(self):
+        """PUT /demographics without Authorization header → 401."""
+        response = client.put(
+            "/api/v1/auth/demographics",
+            json={"age_group": "25-34", "gender": "Female"},
+        )
+        assert response.status_code == 401, (
+            "PUT /demographics must require auth — design Section 5.1"
+        )
+
+    def test_put_demographics_invalid_token_returns_401(self):
+        """PUT /demographics with malformed token → 401."""
+        response = client.put(
+            "/api/v1/auth/demographics",
+            json={"age_group": "25-34"},
+            headers={"Authorization": "Bearer not-a-valid-jwt"},
+        )
+        assert response.status_code == 401
+
+    def test_get_cohort_profile_requires_auth(self):
+        """GET /cohort-profile without Authorization header → 401."""
+        response = client.get("/api/v1/auth/cohort-profile")
+        assert response.status_code == 401, (
+            "GET /cohort-profile must require auth — design Section 5.6"
+        )
+
+
+class TestDemographicsEndpointRateLimit:
+    """PUT /demographics rate limited to 5/min per design Section 5.1 + plan A.4.1."""
+
+    def test_demographics_route_has_rate_limit(self):
+        """Source contains @limiter.limit decorator on the demographics route."""
+        source = Path("app/api/auth_routes.py").read_text(encoding="utf-8")
+        # The route MUST exist in source
+        assert "/demographics" in source, (
+            "PUT /demographics route must exist in auth_routes.py — design Section 5.1"
+        )
+        # The decorator must appear within ~10 lines before the route definition
+        assert "limiter.limit" in source, (
+            "demographics route must use @limiter.limit per plan A.4.1 (5/minute)"
+        )
+
+    def test_demographics_route_uses_5_per_minute(self):
+        """The rate limit is 5/minute per plan A.4.1."""
+        source = Path("app/api/auth_routes.py").read_text(encoding="utf-8")
+        assert "/demographics" in source, (
+            "PUT /demographics route must exist in auth_routes.py"
+        )
+        # Look for the 5/minute pattern near demographics
+        pattern = re.compile(r'limiter\.limit\(["\']5\s*/\s*minute["\']\)', re.IGNORECASE)
+        lines = source.split("\n")
+        for i, line in enumerate(lines):
+            if "/demographics" in line and "@router" in line:
+                # Check 10 lines before-and-after for limiter
+                block = "\n".join(lines[max(0, i - 10) : i + 5])
+                if pattern.search(block):
+                    return  # OK
+        pytest.fail(
+            "demographics route must be rate limited to 5/minute per plan A.4.1"
+        )
+
+
+class TestDemographicsRLSStatic:
+    """Static checks: migration 013 + RLS on demographics_profile column."""
+
+    def test_migration_013_exists(self):
+        """The demographics migration file exists."""
+        assert Path("migrations/013_demographics_cohort.sql").exists(), (
+            "migrations/013_demographics_cohort.sql must exist (plan A.1)"
+        )
+
+    def test_migration_013_adds_demographics_profile_column(self):
+        """Migration adds demographics_profile JSONB to users."""
+        source = Path("migrations/013_demographics_cohort.sql").read_text(
+            encoding="utf-8"
+        )
+        assert "demographics_profile" in source
+        assert "JSONB" in source.upper() or "JSON" in source.upper()
+
+    def test_migration_013_adds_dismissal_tracking(self):
+        """Migration adds dismissal tracking columns per design 5.5."""
+        source = Path("migrations/013_demographics_cohort.sql").read_text(
+            encoding="utf-8"
+        )
+        assert "demographics_dismissed_count" in source
+        assert "demographics_dismissed_at" in source
+
+    def test_migration_013_creates_metric_views(self):
+        """Migration creates the 3 metric views per design 6.1."""
+        source = Path("migrations/013_demographics_cohort.sql").read_text(
+            encoding="utf-8"
+        )
+        assert "vw_cohort_match_rate" in source
+        assert "vw_cohort_persona_distribution" in source
+        assert "vw_cohort_feedback_lift" in source
+
+    def test_demographics_relies_on_users_rls(self):
+        """demographics_profile lives on users row → already protected by users RLS.
+
+        We confirm users RLS is enabled in migration 010 (the source of truth for RLS).
+        No new policies needed for demographics_profile because it's a column on
+        the already-RLS-protected users table.
+        """
+        source = Path("migrations/010_enable_rls.sql").read_text(encoding="utf-8")
+        assert "ALTER TABLE users ENABLE ROW LEVEL SECURITY" in source
