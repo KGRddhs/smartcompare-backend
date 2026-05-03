@@ -81,6 +81,11 @@ npx expo-doctor                   # Full project health check
 - Frontend: `npm install` in `SmartCompareApp/`
 - **Expo version alignment:** All native packages MUST match Expo SDK version. Use `npx expo install <pkg>` (not `npm install`) for native deps. JS/native version mismatch causes cryptic `NativeWorklets`/`HostFunction` crashes in Expo Go.
 
+### Migrations
+Supabase DDL migrations (`migrations/*.sql`) must be applied manually via [SQL Editor](https://supabase.com/dashboard/project/qulajmyxdbdkchvecmvc/sql/new). No psql or Management API token available locally. Before running `CREATE TABLE IF NOT EXISTS`, check existing schema — stale tables with different columns cause silent index/policy failures.
+- `011_security_completion_freemium.sql` — APPLIED. user_usage, admin_audit_log, RLS, subscription_tier column, increment_lifetime_comparisons function.
+- `012_product_data_tables.sql` — APPLIED. product_specs, product_prices, product_reviews + RLS.
+
 ## Architecture
 
 ### Backend (FastAPI + Python 3.12)
@@ -261,6 +266,7 @@ Reviews: `_clean_review_content()` strips garbage (min 8 words), fixes sentiment
 **Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO), `CORS_ORIGINS` (comma-separated allowed origins, defaults to Railway + localhost)
 **Price Scraping:** `FIRECRAWL_API_KEY` (firecrawl.dev, 500 lifetime free — deployed), `SCRAPEDO_API_TOKEN` (scrape.do, 1000/mo free — deployed, but timing out on GCC sites), `ENABLE_FIRECRAWL` (default true), `ENABLE_SCRAPEDO` (default true). Both keys live in Railway since Session 34.
 **Version Check:** `APP_MIN_VERSION`, `APP_LATEST_VERSION`, `APP_FORCE_UPDATE` (all optional, used by `/api/v1/app/version`)
+**Cohort Personalization (PENDING — Railway sub renewal needed):** `ENABLE_COHORT_PERSONALIZATION` (default `false` in code, so absence is safe). Add when Railway account is migrated. See memory `pending_railway_migration.md`.
 
 ### Serper API Credits
 ~2,500 credits (rotated Feb 28 2026). ~3-4 calls/comparison. Cached = free, only `nocache=true` burns credits. **To rotate**: new account at serper.dev (free tier 2,500), update `SERPER_API_KEY` in Railway.
