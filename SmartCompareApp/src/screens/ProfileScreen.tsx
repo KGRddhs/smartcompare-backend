@@ -35,8 +35,16 @@ import {
 } from 'lucide-react-native';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { useLanguage } from '../hooks/useLanguage';
-import { updateProfile, updateEmail, changePassword, parseApiError } from '../services/api';
+import {
+  updateProfile,
+  updateEmail,
+  changePassword,
+  parseApiError,
+  getCohortProfile,
+  CohortDisplayProfile,
+} from '../services/api';
 import { getSavedUser, logout, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
+import StyleProfileCard from '../components/StyleProfileCard';
 
 interface ProfileScreenProps {
   navigation: any;
@@ -64,8 +72,12 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
 
+  // Cohort display profile (null when confidence < medium or not yet collected)
+  const [cohortDisplay, setCohortDisplay] = useState<CohortDisplayProfile | null>(null);
+
   useEffect(() => {
     loadUser();
+    loadCohortProfile();
   }, []);
 
   const loadUser = async () => {
@@ -75,6 +87,22 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
       setDisplayName((savedUser as any).display_name || savedUser.email?.split('@')[0] || '');
       setEmail(savedUser.email || '');
     }
+  };
+
+  const loadCohortProfile = async () => {
+    try {
+      const { display } = await getCohortProfile();
+      setCohortDisplay(display);
+    } catch {
+      setCohortDisplay(null);
+    }
+  };
+
+  const handleEditStyleProfile = () => {
+    // Reuses the existing onboarding flow in edit mode. The seeded
+    // preferences come pre-filled; saving any field flips its source
+    // from "inferred" to "user_stated" via PUT /preferences (B.6).
+    navigation.navigate('Onboarding', { mode: 'edit', source: 'styleProfile' });
   };
 
   const handleUpdateName = async () => {
@@ -176,6 +204,9 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.screenTitle}>{t('profile.title')}</Text>
+
+        {/* Cohort style profile (only renders when confidence >= medium) */}
+        <StyleProfileCard display={cohortDisplay} onEditPress={handleEditStyleProfile} />
 
         {/* Account Card */}
         <View style={styles.card}>
