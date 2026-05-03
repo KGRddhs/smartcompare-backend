@@ -4,6 +4,182 @@
 
 ---
 
+# SESSION 39: Security Completion + Freemium (Agent Team)
+
+## What We Did
+- Completed remaining security hardening + freemium tier enforcement
+- 8 commits (3 new + 5 from previous session)
+
+## Commits
+| Commit | Task | Description |
+|--------|------|-------------|
+| 420646e | 1 | Migration SQL: usage tracking, audit log, RLS |
+| 03d353f | 2-3 | Prompt injection defense: system/user message separation + sanitizer |
+| 6dceeb0 | 7-8 | Freemium usage tracking service + routes |
+| c337788 | 9 | Frontend paywall wiring + USAGE_LIMIT handling |
+| d7a7dc2 | 10 | CLAUDE.md + dep scanning docs |
+| 6f7cf1e | 5 | Audit logging service + admin query endpoints |
+| 4501c82 | 6 | Brute-force lockout (5 failures → 15min lock) |
+| f3f3750 | 4 | Rate limiting on 7 endpoints + SSRF + input validation |
+
+## What Was Built
+- **Prompt injection defense** — system/user message separation in all GPT calls + input sanitizer
+- **Rate limiting** — all 7 previously unprotected endpoints now rate-limited
+- **SSRF protection** — /url/detect validates URLs against private IPs
+- **Input validation** — max_length on product names, search params, share token regex
+- **Audit logging** — fire-and-forget to admin_audit_log + admin query endpoints
+- **Brute-force lockout** — 5 failed logins → 15min Redis-based lock, fail-open
+- **Freemium tiers** — Free: 3 lifetime + 10/month + 3/day, Premium: 70/month + 10/day
+- **Frontend paywall** — usage tracking + USAGE_LIMIT → paywall screen redirect
+
+## Test Results
+- 1686 tests passed, 0 failures
+- 125 security-specific tests (regression + injection + usage + audit + rate limiting + brute force)
+- Frontend TypeScript: 0 errors
+
+## Manual Step
+- Apply `migrations/011_security_completion_freemium.sql` via Supabase SQL Editor
+
+---
+
+# SESSION 40: April 8, 2026 — L2 DB Cache for Product Data
+
+## What We Did
+- Implemented product data persistence as L2 cache between Redis and API calls
+- Created migration `012_product_data_tables.sql` (3 tables: product_specs, product_prices, product_reviews)
+- Created `app/services/product_data_service.py` with 6 functions (get/save for specs, prices, reviews)
+- Integrated L2 lookups into `structured_comparison_service.py` (_get_specs, _get_price with 6 return points) and `review_service.py`
+- Added `_save_price_to_db()` helper to avoid duplicating save calls across 6 price return paths
+- 14 new tests in `tests/test_product_data_service.py`, 1700 total pass
+- 57/57 security regression tests pass — new tables have RLS with public read/insert/update
+- Deployed commit `553b091`, migration applied via Supabase SQL Editor
+- Updated CLAUDE.md with L2 cache docs, migrations section, new tables list
+
+## Key Decisions
+- **Specs/reviews upsert, prices append** — prices keep history for future trend analysis
+- **Freshness**: specs 30d, prices 24h, reviews 14d (longer than Redis TTLs)
+- **Fire-and-forget saves** via `asyncio.create_task()` — DB write failures don't block responses
+- **`nocache=true` bypasses both layers** — Redis AND DB skipped, forces fresh API calls
+- **RLS public policies** on product data tables — reference data, not user data
+
+## Issues Encountered
+- Old tables existed with different schema (`product_id` instead of `product_key`) — `CREATE TABLE IF NOT EXISTS` silently skipped, indexes failed. Fixed with `DROP CASCADE` + recreate.
+- No psql/Management API token locally — migrations must be applied via Supabase SQL Editor
+- Python httpx DNS resolution fails on this Windows machine but curl works fine
+
+## Files Changed
+- Created: `migrations/012_product_data_tables.sql`, `app/services/product_data_service.py`, `tests/test_product_data_service.py`
+- Modified: `app/services/structured_comparison_service.py`, `app/services/review_service.py`, `CLAUDE.md`
+
+---
+
+# SESSION 36: March 28, 2026 — Qaren Frontend Redesign (Agent Team, Interrupted)
+
+## What We Did
+
+Full frontend redesign: SmartCompare → Qaren (قارن). Camera-first, bilingual (EN/AR), editorial magazine design. Used 4 Opus agent team (backend, frontend, test, qa) with `bypassPermissions`. Session interrupted by rate limits before completion.
+
+### Design Spec & Plan
+- **Design spec**: `docs/superpowers/specs/2026-03-28-qaren-frontend-redesign-design.md`
+- **Implementation plan**: `docs/superpowers/plans/2026-03-28-qaren-frontend-redesign.md` (17 tasks across 3 phases)
+- **Visual direction**: Editorial Magazine — light/minimal, emerald accent (#10B981), Inter+Cairo fonts
+- **Key decisions**: Camera-first home, 3 bottom tabs (Home/History/Profile), single-scroll results, 6-step onboarding, RTL via i18next + expo-localization
+
+### Phase 1: Foundation (Tasks 1–5) — COMPLETE ✓
+- **Task 1**: Dependencies installed (reanimated, i18n, expo-image, haptics, fonts) — `72f34a8`
+- **Task 2**: Theme system (colors, typography, spacing, shadows, Arabic line-height multiplier) — `b34c651`
+- **Task 3**: i18n setup (i18next, 164 keys EN+AR, full parity, language persistence) — `b77d582`
+- **Task 4**: Storage keys renamed `@smartcompare_*` → `@qaren_*`, OnboardingData + MainTabParamList types added — `701f501`
+- **Task 5**: RTL utils + 10 design system components (Button, Card, Chip, SkeletonLoader, ProgressBar, IconButton, ComparisonCounter, SearchOverlay, CategorySelector restyled, FeedbackCard restyled) — `b857974`
+- **Foundation tests**: 13 tests (theme tokens + i18n parity validation) — `d34cf62`
+
+### Phase 2: Screens (Tasks 6–15) — MOSTLY COMPLETE
+- **Task 6**: SplashScreen (logo animation, fade+scale, auto-dismiss 1.5s) — `5475ab9` ✓
+- **Task 7**: OnboardingScreen (6-step wizard: language, region, priorities, budget, lifestyle, brand attitude) — `59cfbb3` ✓
+- **Task 8**: Auth Screens — LoginScreen restyled (theme tokens + i18n + Button component) but **UNCOMMITTED**. RegisterScreen and ForgotPasswordScreen status unclear.
+- **Task 9**: HomeScreen (836 lines — camera-first, 3 input modes: scan/url/text, SSE streaming, comparison counter, recent searches) — `52ce895` ✓
+- **Task 10**: ResultsScreen (1245 lines — single-scroll, winner reveal with haptic, specs diff toggle, scores, feedback) — `75dbf4e` ✓
+- **Task 11**: HistoryScreen (date-grouped sections, search, delete, staggered animations) — `f8c1826` ✓
+- **Task 12**: ProfileScreen (settings, language, prefs, password change, account deletion) — `f8c1826` ✓
+- **Task 13**: PaywallScreen (bottom sheet placeholder, plan selector, no real IAP) — `f8c1826` ✓
+- **Task 14**: App.tsx Navigation Rewrite — **NOT DONE** (still uses old navigation structure, no bottom tabs)
+- **Task 15**: Integration Testing — **PARTIAL** (test stubs created for SplashScreen, OnboardingScreen, AuthScreens, HomeScreen + 5 mock files, but test bodies are scaffolds only)
+
+### Phase 3: Polish (Tasks 16–17) — NOT STARTED
+- **Task 16**: Animations & Micro-interactions — not started
+- **Task 17**: Final QA & Cleanup — not started
+
+### Not Done
+- **App.tsx navigation rewrite** (Task 14) — CRITICAL BLOCKER. New screens exist but aren't wired into navigation.
+- **Old screen deletion**: CameraScreen.tsx, AccountScreen.tsx, PreferencesScreen.tsx still exist (deprecated, functionality absorbed)
+- **app.json**: Updated (name: "Qaren", slug: "qaren", bundleId: "com.qaren.app") ✓
+
+### Uncommitted Files
+- `SmartCompareApp/src/screens/LoginScreen.tsx` — restyled with theme tokens + i18n
+- `SmartCompareApp/jest.config.js` — expanded testMatch patterns + transformIgnorePatterns + moduleNameMapper
+- `SmartCompareApp/__tests__/SplashScreen.test.tsx` — test scaffold (4 stubs)
+- `SmartCompareApp/__tests__/OnboardingScreen.test.tsx` — test scaffold (8 stubs)
+- `SmartCompareApp/__tests__/AuthScreens.test.tsx` — test scaffold (16 stubs)
+- `SmartCompareApp/__tests__/HomeScreen.test.ts` — test scaffold with mocks
+- `SmartCompareApp/__mocks__/` — 5 mock files (react-native, reanimated, lucide, i18next, async-storage)
+
+### Commits (12 total)
+```
+72f34a8 chore: install Qaren dependencies (reanimated, i18n, expo-image, haptics, fonts)
+b34c651 feat: add Qaren design system (colors, typography, spacing, fonts)
+b77d582 feat: add i18n system (i18next, EN+AR translations, RTL language hook)
+701f501 refactor: rename storage keys smartcompare->qaren, add onboarding types
+d34cf62 test: add theme and i18n foundation tests (13 tests, jest setup)
+b85a987 chore: add test deps (@types/jest, testing-library) and jest types to tsconfig
+f8c1826 feat: add HistoryScreen (date-grouped), ProfileScreen (grouped cards), PaywallScreen (bottom sheet)
+b857974 feat: add Qaren design system components (Button, Card, Chip, Skeleton, Progress, IconButton, Counter, RTL utils, comparison counter hook)
+52ce895 feat: camera-first HomeScreen with search overlay and comparison counter
+75dbf4e feat: single-scroll ResultsScreen with skeleton loading and winner reveal
+5475ab9 feat: add SplashScreen with logo animation
+59cfbb3 feat: add OnboardingScreen (6-step wizard with i18n)
+```
+
+### To Resume
+Remaining work (in priority order):
+1. **Task 14**: App.tsx navigation rewrite — bottom tabs, splash flow, onboarding gate, nested stacks
+2. **Task 8**: Commit LoginScreen, verify Register/ForgotPassword restyled
+3. **Task 15**: Flesh out test stubs with real assertions, commit test infrastructure
+4. **Old screen deletion**: Remove CameraScreen, AccountScreen, PreferencesScreen
+5. **Task 16**: Animations & micro-interactions polish
+6. **Task 17**: Final QA & cleanup
+
+---
+
+# SESSION 35: March 27, 2026 — Backend Hardening (Security + Decomposition)
+
+See Session 34 below for CLAUDE.md audit that preceded this session.
+
+Comprehensive backend hardening in 3 parallel workstreams using 4 Opus agents.
+
+### Security Hardening
+- Admin auth: timing-safe `hmac.compare_digest` for X-Admin-Key
+- SSRF protection: `url_validator.py` — resolves hostnames, blocks private/loopback/link-local IPs
+- Security headers middleware: HSTS, CSP, X-Frame-Options, X-Content-Type-Options
+- Input validation: UUID path params on history/share routes, LIKE wildcard escaping, field length caps
+- Rate limits: account deletion 1/min, resend verification 3/min
+- Swagger docs disabled in production
+
+### Monolith Decomposition (3452 → 1454 lines)
+- Extracted 5 domain modules from `structured_comparison_service.py`:
+  - `price_service.py` (932 lines) — pricing tiers, currency, scraping, iHerb, pharmacy
+  - `rating_service.py` (292 lines) — tiered extraction, Google consensus, retailer classification
+  - `review_service.py` (227 lines) — fetching, cleaning, citation replacement
+  - `fact_check_service.py` (217 lines) — citation verification, cross-validation, confidence
+  - `response_builder.py` (190 lines) — build_comparison_response() for sync + streaming
+- Concurrency fix: per-request instances via `get_comparison_service()` (not singleton)
+
+### Tests
+- 141 new tests across security, exchange rates, decomposed services
+- ~1560+ total tests passing
+- 6 commits
+
+---
+
 # SESSION 34: March 27, 2026 — CLAUDE.md Optimization (Context Quality Audit)
 
 ## What We Did

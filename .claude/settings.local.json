@@ -45,7 +45,12 @@
       "Bash(git -C \"C:\\\\Users\\\\SynAckITPC\\\\Documents\\\\AI\\\\smartcompare\" show --stat 116b92f)",
       "Bash(git -C \"C:\\\\Users\\\\SynAckITPC\\\\Documents\\\\AI\\\\smartcompare\" show 116b92f -- SmartCompareApp/app.json)",
       "Bash(git -C \"C:\\\\Users\\\\SynAckITPC\\\\Documents\\\\AI\\\\smartcompare\" show 94d121a -- tests/test_url_quality.py)",
-      "Bash(git -C \"C:\\\\Users\\\\SynAckITPC\\\\Documents\\\\AI\\\\smartcompare\" show 94d121a -- tests/test_url_extraction.py)"
+      "Bash(git -C \"C:\\\\Users\\\\SynAckITPC\\\\Documents\\\\AI\\\\smartcompare\" show 94d121a -- tests/test_url_extraction.py)",
+      "WebSearch",
+      "Bash(mv \"/c/Users/SynAckITPC/Downloads/Fillout ENG results \\(2\\).csv\" data/surveys/Fillout_ENG_results.csv)",
+      "Bash(mv \"/c/Users/SynAckITPC/Downloads/Fillout arab results \\(2\\).csv\" data/surveys/Fillout_arab_results.csv)",
+      "Bash(git check-ignore *)",
+      "Bash(npx jest *)"
     ]
   }
 }

@@ -85,6 +85,7 @@ npx expo-doctor                   # Full project health check
 Supabase DDL migrations (`migrations/*.sql`) must be applied manually via [SQL Editor](https://supabase.com/dashboard/project/qulajmyxdbdkchvecmvc/sql/new). No psql or Management API token available locally. Before running `CREATE TABLE IF NOT EXISTS`, check existing schema — stale tables with different columns cause silent index/policy failures.
 - `011_security_completion_freemium.sql` — APPLIED. user_usage, admin_audit_log, RLS, subscription_tier column, increment_lifetime_comparisons function.
 - `012_product_data_tables.sql` — APPLIED. product_specs, product_prices, product_reviews + RLS.
+- `013_demographics_cohort.sql` — PENDING manual apply. demographics_profile column on users + dismissal tracking + 3 metric views (vw_cohort_match_rate, vw_cohort_persona_distribution, vw_cohort_feedback_lift).
 
 ## Architecture
 

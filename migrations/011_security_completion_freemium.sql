@@ -50,22 +50,7 @@ CREATE INDEX idx_audit_user_time ON admin_audit_log (user_id, created_at DESC) W
 CREATE INDEX idx_audit_created ON admin_audit_log (created_at DESC);
 
 -- ============================================
--- 4. RLS ON REFERENCE TABLES
--- ============================================
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-CREATE POLICY products_select ON products FOR SELECT USING (true);
-
-ALTER TABLE prices ENABLE ROW LEVEL SECURITY;
-CREATE POLICY prices_select ON prices FOR SELECT USING (true);
-
-ALTER TABLE specs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY specs_select ON specs FOR SELECT USING (true);
-
-ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
-CREATE POLICY reviews_select ON reviews FOR SELECT USING (true);
-
--- ============================================
--- 5. LIFETIME COMPARISONS INCREMENT FUNCTION
+-- 4. LIFETIME COMPARISONS INCREMENT FUNCTION
 -- ============================================
 CREATE OR REPLACE FUNCTION increment_lifetime_comparisons(target_user_id UUID)
 RETURNS void AS $$

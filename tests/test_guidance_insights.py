@@ -165,23 +165,17 @@ class TestModelVariantPatternChained:
 
 
 class TestComparisonPromptFormatIntegrity:
-    """Verify COMPARISON_PROMPT .format() still works after adding personalized_insights."""
+    """Verify COMPARISON_PROMPT (now system message) has required fields."""
 
-    def test_format_does_not_raise(self):
+    def test_system_prompt_has_required_json_fields(self):
+        """System prompt must contain all expected output field names."""
         from app.services.extraction_service import COMPARISON_PROMPT
-        result = COMPARISON_PROMPT.format(
-            product1_json="test", product2_json="test",
-            region="bahrain", currency="BHD", concern="value"
-        )
-        assert "personalized_insights" in result
-        assert "test" in result
+        assert "personalized_insights" in COMPARISON_PROMPT
+        assert "winner_index" in COMPARISON_PROMPT
 
-    def test_format_preserves_json_braces(self):
+    def test_system_prompt_no_user_data_placeholders(self):
+        """System prompt must NOT contain user data placeholders (prompt injection defense).
+        User data is now in a separate user message."""
         from app.services.extraction_service import COMPARISON_PROMPT
-        result = COMPARISON_PROMPT.format(
-            product1_json="{}", product2_json="{}",
-            region="bahrain", currency="BHD", concern="value"
-        )
-        # After .format(), doubled braces become single braces (valid JSON structure)
-        assert '"winner_index"' in result
-        assert '"personalized_insights"' in result
+        assert "{product1_json}" not in COMPARISON_PROMPT
+        assert "{product2_json}" not in COMPARISON_PROMPT
