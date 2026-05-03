@@ -95,7 +95,7 @@ Supabase DDL migrations (`migrations/*.sql`) must be applied manually via [SQL E
 - `/api/v1/text/*` — `text_routes.py` → `structured_comparison_service.py` (primary flow + SSE streaming, rate limited)
 - `/api/v1/image/*` — `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited, HEIC detection)
 - `/api/v1/url/*` — `url_routes.py` (single URL compare only, SSRF-protected, rate limited 10/min)
-- `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social-login, **account deletion**, resend-verification). Rate limited: login 5/min, register 3/min, delete 1/min.
+- `/api/v1/auth/*` — `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social-login, **account deletion**, resend-verification, **demographics**, **cohort-profile**). Rate limited: login 5/min, register 3/min, delete 1/min, demographics 5/min.
 - `/api/v1/comparisons/*` — `history_routes.py` → comparison history (GET list, GET single, DELETE). Auth required.
 - `/api/v1/share/*` — `share_routes.py` → POST create share link (auth), GET public share (no auth, strips personalization)
 - `/api/v1/feedback`, `/api/v1/events` — `feedback_routes.py` → feedback collection + event tracking
@@ -168,6 +168,7 @@ Supabase DDL migrations (`migrations/*.sql`) must be applied manually via [SQL E
 - `usage_service.py` — Freemium tier enforcement. Free: 3 lifetime + 10/month + 3/day. Premium: 70/month + 10/day. Redis counters + Supabase persistence. `check_usage_allowed()`, `record_comparison()`, `get_usage_status()`.
 - `audit_service.py` — Fire-and-forget security event logging to `admin_audit_log` table. Events: login, lockout, usage_limit, injection_attempt.
 - `product_data_service.py` — L2 DB cache for specs (30d), prices (24h), reviews (14d). Redis miss → DB check → API call. Prices append (history), specs/reviews upsert. Fire-and-forget saves.
+- `cohort_service.py` — Survey-driven cohort matching (Session 41). Singleton loads `data/cohort_priors.json` once at startup. `match(demographics)` does hierarchical fallback (exact → broadened_governorate → broadened_language → broadened_age → population). `seed_preferences()` maps cohort modal → existing 4 preference fields with `_sources` tags. `get_display_profile()` returns Profile-card dict (None for low/population matches). Zero per-request IO. Built by `scripts/build_cohorts.py` from Fillout survey CSVs in `data/surveys/` (gitignored — only `data/cohort_priors.json` is committed).
 - Other services: `serper_service`, `feedback_service`, `drug_database_service`, `openai_service`, `sentry_service`, `analytics_service`
 
 **Security** (`app/utils/`):
@@ -244,11 +245,21 @@ Each category gets unique GPT comparison tone via `build_personality_prompt(cate
 `POST /api/v1/feedback` + `POST /api/v1/events` (batch). Both auth-optional, fire-and-forget. Tables: `comparison_feedback` + `user_events` with RLS.
 
 ### Personalization (zero extra cost)
-4 preference dimensions collected once after first login (PreferencesScreen): priorities (1-3 of 8), budget (budget/mid/premium), lifestyle (0+ of 11 tags), brand attitude. Stored as JSONB in `public.users.preferences`. `GET/PUT /api/v1/auth/preferences`.
+4 preference dimensions collected once after first login (PreferencesScreen): priorities (1-3 of 8 + 6 cohort-derived), budget (budget/mid/premium), lifestyle (0+ of 11 tags), brand attitude. Stored as JSONB in `public.users.preferences` along with `_sources` sub-object marking each field as `user_stated` or `inferred`. `GET/PUT /api/v1/auth/preferences`.
 - **Three-layer system:** Explicit preferences (±30%) → Behavioral profile (±10%, decay-weighted 30-day half-life) → Session signals (±5%) → Category defaults
 - `_build_preferences_prompt()` appends to verdict prompt — zero extra API cost
 - `behavior_service.py`: category affinity, price range, winner agreement, dimension sensitivity. Fire-and-forget profile update after each comparison.
 - `scoring_method`: "category_weighted" (anon), "personalized" (explicit prefs), "behavioral" (behavior/session active)
+- VALID_PRIORITIES extended in Session 41: original 8 + 6 cohort enums (`quality_reliability`, `best_price`, `trusted_brand`, `warranty_support`, `design_aesthetics`, `value_for_money`). VALID_BRAND_ATTITUDE adds `trust_known_brands`.
+
+### Cohort personalization (Session 41 — feature-flagged)
+Survey-driven priors from ~400 Fillout responses bootstrap personalization for new/anonymous users. **Feature flag `ENABLE_COHORT_PERSONALIZATION` defaults false** in code (per design 6.6); turn on once Phase 1 internal QA validates.
+- **PUT /api/v1/auth/demographics** (auth, 5/min) — accepts age_group/gender/governorate/language/country (all optional, "Prefer not to say" treated as missing). Auto-derives language from Accept-Language and country from CF-IPCountry. Stores `users.demographics_profile` JSONB with cached `cohort_match` snapshot. If user has no preferences (or all are inferred), seeds them from cohort modal — never overwrites `user_stated`.
+- **GET /api/v1/auth/cohort-profile** (auth) — returns Profile-screen "style profile" card data, or `{display: null}` for low/population matches.
+- **PUT /api/v1/auth/preferences** — extended to flip `_sources` to `user_stated` when user edits a previously-inferred field.
+- `_build_preferences_prompt(prefs, demographics_profile=...)` (extraction_service) appends a ~120-token cohort priors block when match_quality ∈ {exact, broadened_governorate, broadened_language} AND feature flag on. Privacy: NO raw age/gender/identity in prompt — only country/language/governorate thin context line + aggregate findings.
+- `cohort_service.match()` is in-memory only (singleton loads `data/cohort_priors.json` once at startup). Re-run `python -m scripts.build_cohorts` to regenerate.
+- Admin metrics: `GET /api/v1/admin/cohort/{metrics,feedback,retention}` + dashboard at `/admin/cohort.html` (Chart.js, X-Admin-Key auth).
 
 ### Category selection (soft validation)
 9 categories: Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances, Fashion, Other. `selected_category` is a hint — backend AI makes final decision via `PRODUCT_PARSER_PROMPT`. Mismatch → `category_switched: true` + frontend info banner. Each category has a dedicated spec schema in `CATEGORY_SPEC_SCHEMAS` (extraction_service.py). Zero extra API cost.
