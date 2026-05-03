@@ -407,4 +407,68 @@ export async function shareComparison(comparisonId: string): Promise<{ share_tok
   return response.data;
 }
 
+// --- Cohort personalization (survey-driven) ---
+
+export interface DemographicsPayload {
+  age_group?: string;
+  gender?: string;
+  governorate?: string;
+  language?: string;
+  country?: string;
+}
+
+export interface CohortMatchSummary {
+  cohort_key?: string;
+  match_quality:
+    | 'exact'
+    | 'broadened_governorate'
+    | 'broadened_language'
+    | 'broadened_age'
+    | 'population';
+  confidence: 'high' | 'medium' | 'low';
+  n: number;
+  persona_label?: string;
+}
+
+export interface CohortDisplayProfile {
+  persona_label: string;
+  n: number;
+  confidence: 'high' | 'medium' | 'low';
+  modal: {
+    top_deciding_factor?: string;
+    second_deciding_factor?: string;
+    spend_bracket?: string;
+    preferred_assistance_style?: string;
+    [key: string]: any;
+  };
+}
+
+/**
+ * Submit user demographics. Backend matches to a cohort and seeds preferences
+ * (one-shot) when the user has no user_stated preferences. See backend route
+ * PUT /api/v1/auth/demographics.
+ */
+export async function putDemographics(
+  payload: DemographicsPayload
+): Promise<{ success: boolean; cohort_match: CohortMatchSummary | null }> {
+  const response = await api.put('/api/v1/auth/demographics', payload);
+  return response.data;
+}
+
+/**
+ * Fetch the user's cohort display profile for the Profile screen card.
+ * Returns { display: null } when confidence < medium or user hasn't submitted
+ * demographics. Network errors are swallowed and return null (best-effort UI).
+ */
+export async function getCohortProfile(): Promise<{
+  display: CohortDisplayProfile | null;
+}> {
+  try {
+    const response = await api.get('/api/v1/auth/cohort-profile');
+    return { display: response.data?.display ?? null };
+  } catch {
+    return { display: null };
+  }
+}
+
 export default api;
