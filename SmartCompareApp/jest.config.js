@@ -20,6 +20,7 @@ module.exports = {
     '^lucide-react-native$': '<rootDir>/__mocks__/lucide-react-native.ts',
     '^react-i18next$': '<rootDir>/__mocks__/react-i18next.ts',
     '^@react-native-async-storage/async-storage$': '<rootDir>/__mocks__/async-storage.ts',
+    '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
 };

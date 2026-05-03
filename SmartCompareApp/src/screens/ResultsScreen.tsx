@@ -58,8 +58,22 @@ import { Card } from '../components/Card';
 import { SkeletonLoader } from '../components/SkeletonLoader';
 import { ProgressBar } from '../components/ProgressBar';
 import FeedbackCard from '../components/FeedbackCard';
-import { trackEvents, shareComparison } from '../services/api';
+import DemographicsBottomSheet from '../components/DemographicsBottomSheet';
+import {
+  trackEvents,
+  shareComparison,
+  putDemographics,
+  parseApiError,
+  DemographicsPayload,
+} from '../services/api';
 import { getUsageStatus, UsageStatus } from '../services/usageService';
+import {
+  loadDemographicsState,
+  recordDismissal,
+  recordSubmission,
+  shouldShowDemographicsPrompt,
+} from '../services/demographicsTrigger';
+import { getSavedUser } from '../services/authService';
 
 type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
@@ -73,6 +87,10 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // Winner reveal animation state
   const [winnerRevealed, setWinnerRevealed] = useState(false);
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
+
+  // Demographics prompt state
+  const [demographicsVisible, setDemographicsVisible] = useState(false);
+  const [demographicsError, setDemographicsError] = useState<string | null>(null);
 
   useEffect(() => {
     getUsageStatus().then(setUsageStatus);
@@ -168,6 +186,61 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     if (source?.url) {
       trackEvent('source_click', { source_name: source.name, url: source.url });
       Linking.openURL(source.url);
+    }
+  };
+
+  // Demographics bottom-sheet trigger after results render (2s delay).
+  // Schedule + dismissal cooldown live in services/demographicsTrigger.
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const user = await getSavedUser();
+        if (!user) return; // anonymous flows don't get the prompt
+        const state = await loadDemographicsState();
+        const shouldShow = shouldShowDemographicsPrompt({
+          ...state,
+          // currentSessionIndex is conservative — using dismissedCount + 1 means
+          // the predicate's "show on session AFTER each dismissal" rule passes.
+          currentSessionIndex: state.dismissedCount + 1,
+        });
+        if (shouldShow && !cancelled) {
+          setDemographicsVisible(true);
+        }
+      } catch {
+        // best-effort; never block the results screen on this
+      }
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  const handleDemographicsSubmit = async (payload: DemographicsPayload) => {
+    setDemographicsError(null);
+    try {
+      await putDemographics(payload);
+      await recordSubmission();
+      setDemographicsVisible(false);
+      trackEvent('demographics_submitted', {
+        all_skipped:
+          payload.age_group === 'Prefer not to say' &&
+          payload.gender === 'Prefer not to say' &&
+          payload.governorate === 'Prefer not to say',
+      });
+    } catch (err: any) {
+      const { message } = parseApiError(err);
+      setDemographicsError(message || t('demographics.error.network'));
+    }
+  };
+
+  const handleDemographicsSkip = async () => {
+    try {
+      await recordDismissal();
+    } finally {
+      setDemographicsVisible(false);
+      trackEvent('demographics_dismissed');
     }
   };
 
@@ -776,6 +849,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           </View>
         )}
       </ScrollView>
+
+      <DemographicsBottomSheet
+        visible={demographicsVisible}
+        onSubmit={handleDemographicsSubmit}
+        onSkip={handleDemographicsSkip}
+        errorMessage={demographicsError}
+      />
     </View>
   );
 }
