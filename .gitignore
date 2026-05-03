@@ -41,3 +41,7 @@ nul
 
 # Expo
 .expo/
+
+# Survey raw data (contains email/phone PII in last 2 columns)
+# Only the generated cohort_priors.json is committed
+data/surveys/*.csv
