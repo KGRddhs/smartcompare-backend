@@ -170,3 +170,170 @@ async def get_audit_log_summary(
         counts[et] = counts.get(et, 0) + 1
 
     return {"period_days": days, "event_counts": counts, "total": sum(counts.values())}
+
+
+# ============================================
+# Cohort metrics (Session 41 — survey-driven personalization)
+# ============================================
+#
+# All three endpoints read from views defined in migration 013:
+#   vw_cohort_match_rate, vw_cohort_persona_distribution, vw_cohort_feedback_lift
+#
+# Auth: existing X-Admin-Key (verify_admin_key) — same as other admin routes.
+# Rate limit: 30/minute, matching the rest of the admin surface.
+
+
+@router.get("/cohort/metrics")
+@limiter.limit("30/minute")
+async def cohort_metrics(
+    request: Request,
+    _admin=Depends(verify_admin_key),
+):
+    """Cohort match rate over time + persona distribution + edit rate.
+
+    Returns:
+      {
+        "match_rate": [{day, strong_matches, total_with_demographics, total_users}, ...],
+        "personas": [{persona, user_count}, ...],
+        "submission_rate": <float — total_with_demographics / total_users>,
+        "edit_rate": <float — fraction of seeded users who later flipped a source>,
+      }
+    """
+    client = get_admin_supabase_client()
+
+    match_rate_rows: list[dict] = []
+    try:
+        result = client.table("vw_cohort_match_rate").select("*").order("day", desc=True).limit(90).execute()
+        match_rate_rows = result.data or []
+    except Exception as e:
+        logger.warning(f"[ADMIN] vw_cohort_match_rate read failed: {e}")
+
+    personas: list[dict] = []
+    try:
+        result = client.table("vw_cohort_persona_distribution").select("*").execute()
+        personas = result.data or []
+    except Exception as e:
+        logger.warning(f"[ADMIN] vw_cohort_persona_distribution read failed: {e}")
+
+    # Submission rate = users with demographics_profile / total users (current).
+    submission_rate = 0.0
+    try:
+        if match_rate_rows:
+            with_demo = sum(int(r.get("total_with_demographics", 0) or 0) for r in match_rate_rows[:1])
+            total = sum(int(r.get("total_users", 0) or 0) for r in match_rate_rows[:1])
+            if total > 0:
+                submission_rate = round(with_demo / total, 4)
+    except Exception:
+        pass
+
+    # Edit rate = users with any _sources.<field> == "user_stated" / users with seeded prefs
+    edit_rate = 0.0
+    try:
+        result = client.table("users").select("preferences").execute()
+        rows = result.data or []
+        seeded = 0
+        edited = 0
+        for row in rows:
+            prefs = row.get("preferences") or {}
+            sources = prefs.get("_sources") if isinstance(prefs, dict) else None
+            if not sources:
+                continue
+            seeded += 1
+            if any(v == "user_stated" for v in sources.values() if v):
+                edited += 1
+        if seeded > 0:
+            edit_rate = round(edited / seeded, 4)
+    except Exception as e:
+        logger.warning(f"[ADMIN] edit_rate calc failed: {e}")
+
+    return {
+        "match_rate": match_rate_rows,
+        "personas": personas,
+        "submission_rate": submission_rate,
+        "edit_rate": edit_rate,
+    }
+
+
+@router.get("/cohort/feedback")
+@limiter.limit("30/minute")
+async def cohort_feedback(
+    request: Request,
+    _admin=Depends(verify_admin_key),
+):
+    """Verdict feedback ratings stratified by whether cohort priors were injected.
+
+    Reads vw_cohort_feedback_lift. Used to detect lift (or regression) in
+    user-rated verdict quality when cohort-level personalization is on.
+    """
+    client = get_admin_supabase_client()
+    rows: list[dict] = []
+    try:
+        result = client.table("vw_cohort_feedback_lift").select("*").execute()
+        rows = result.data or []
+    except Exception as e:
+        logger.warning(f"[ADMIN] vw_cohort_feedback_lift read failed: {e}")
+    return {"rows": rows}
+
+
+@router.get("/cohort/retention")
+@limiter.limit("30/minute")
+async def cohort_retention(
+    request: Request,
+    days: int = Query(7, ge=1, le=30, description="Return-window in days"),
+    _admin=Depends(verify_admin_key),
+):
+    """7-day return rate stratified by demographics-submission status.
+
+    Two cohorts: users who submitted demographics vs those who didn't.
+    Return rate = users who returned within the window after their first
+    comparison / total users in that cohort.
+    """
+    client = get_admin_supabase_client()
+    since = (datetime.now(timezone.utc) - timedelta(days=days * 2)).isoformat()
+
+    submitted_returned = submitted_total = 0
+    not_submitted_returned = not_submitted_total = 0
+    try:
+        users = client.table("users").select(
+            "id, demographics_profile"
+        ).gte("created_at", since).execute().data or []
+        # For each user, count distinct days they had user_events
+        for u in users:
+            uid = u.get("id")
+            has_demo = u.get("demographics_profile") is not None
+            if has_demo:
+                submitted_total += 1
+            else:
+                not_submitted_total += 1
+
+            try:
+                events = client.table("user_events").select(
+                    "created_at"
+                ).eq("user_id", uid).limit(50).execute().data or []
+                distinct_days = {(e.get("created_at") or "")[:10] for e in events}
+                if len(distinct_days) >= 2:  # ≥ 2 distinct days = returning
+                    if has_demo:
+                        submitted_returned += 1
+                    else:
+                        not_submitted_returned += 1
+            except Exception:
+                continue
+    except Exception as e:
+        logger.warning(f"[ADMIN] cohort retention read failed: {e}")
+
+    def _rate(returned: int, total: int) -> float:
+        return round(returned / total, 4) if total > 0 else 0.0
+
+    return {
+        "window_days": days,
+        "with_demographics": {
+            "total": submitted_total,
+            "returned": submitted_returned,
+            "rate": _rate(submitted_returned, submitted_total),
+        },
+        "without_demographics": {
+            "total": not_submitted_total,
+            "returned": not_submitted_returned,
+            "rate": _rate(not_submitted_returned, not_submitted_total),
+        },
+    }

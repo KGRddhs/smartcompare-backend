@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cohort Personalization — Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+          integrity="sha384-3npXeOHyZ7gmUxqYZ5Hv30bEN3wzM8ZpojXAhvGZRqzC5MTEZbcWG9kqx5vdb1Rv"
+          crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #10b981;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+    }
+    h1 { margin: 0 0 4px; font-weight: 600; font-size: 24px; }
+    .meta { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 16px 20px;
+    }
+    .card h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi { font-size: 28px; font-weight: 600; }
+    .chart-card { padding: 16px; }
+    .chart-card canvas { max-height: 280px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .err { color: #dc2626; font-size: 13px; padding: 8px 12px; background: #fef2f2; border-radius: 6px; margin-bottom: 12px; }
+    @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Cohort Personalization</h1>
+  <div class="meta" id="meta">Loading…</div>
+  <div id="err" class="err" style="display:none"></div>
+
+  <div class="grid" id="kpis"></div>
+
+  <div class="row">
+    <div class="card chart-card"><h2>Match Rate (last 90 days)</h2><canvas id="chartMatch"></canvas></div>
+    <div class="card chart-card"><h2>Persona Distribution</h2><canvas id="chartPersonas"></canvas></div>
+  </div>
+  <div class="row" style="margin-top:16px">
+    <div class="card chart-card"><h2>Verdict Feedback by Cohort Injection</h2><canvas id="chartFeedback"></canvas></div>
+    <div class="card chart-card"><h2>7-Day Return Rate</h2><canvas id="chartRetention"></canvas></div>
+  </div>
+
+  <script>
+    const BASE = "/api/v1/admin/cohort";
+
+    function getKey() {
+      let k = sessionStorage.getItem("admin_key");
+      if (!k) {
+        k = window.prompt("X-Admin-Key:");
+        if (k) sessionStorage.setItem("admin_key", k);
+      }
+      return k;
+    }
+
+    async function call(path) {
+      const key = getKey();
+      const res = await fetch(BASE + path, {
+        headers: { "X-Admin-Key": key || "" }
+      });
+      if (res.status === 403) {
+        sessionStorage.removeItem("admin_key");
+        throw new Error("Forbidden — invalid admin key. Reload to retry.");
+      }
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }
+
+    function showErr(msg) {
+      const el = document.getElementById("err");
+      el.textContent = msg;
+      el.style.display = "block";
+    }
+
+    function setMeta(text) {
+      document.getElementById("meta").textContent = text;
+    }
+
+    function kpiCard(label, value) {
+      return `<div class="card"><h2>${label}</h2><div class="kpi">${value}</div></div>`;
+    }
+
+    function renderKPIs(metrics) {
+      const root = document.getElementById("kpis");
+      const subm = (metrics.submission_rate * 100).toFixed(1) + "%";
+      const edit = (metrics.edit_rate * 100).toFixed(1) + "%";
+      const totalUsers = metrics.match_rate.length > 0 ? (metrics.match_rate[0].total_users || 0) : 0;
+      const withDemo = metrics.match_rate.length > 0 ? (metrics.match_rate[0].total_with_demographics || 0) : 0;
+      root.innerHTML = [
+        kpiCard("Submission Rate", subm),
+        kpiCard("Edit Rate", edit),
+        kpiCard("Users w/ Demographics", withDemo),
+        kpiCard("Total Users", totalUsers),
+      ].join("");
+    }
+
+    function renderMatchRate(rows) {
+      const ctx = document.getElementById("chartMatch").getContext("2d");
+      const sorted = [...rows].sort((a, b) => new Date(a.day) - new Date(b.day));
+      new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: sorted.map(r => (r.day || "").slice(0, 10)),
+          datasets: [
+            { label: "Strong matches", data: sorted.map(r => r.strong_matches || 0), borderColor: "#10b981", tension: 0.2 },
+            { label: "Total w/ demographics", data: sorted.map(r => r.total_with_demographics || 0), borderColor: "#3b82f6", tension: 0.2 },
+          ]
+        },
+        options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+      });
+    }
+
+    function renderPersonas(rows) {
+      const ctx = document.getElementById("chartPersonas").getContext("2d");
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: rows.map(r => r.persona || "(none)"),
+          datasets: [{ label: "Users", data: rows.map(r => r.user_count || 0), backgroundColor: "#10b981" }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, indexAxis: "y" }
+      });
+    }
+
+    function renderFeedback(rows) {
+      const ctx = document.getElementById("chartFeedback").getContext("2d");
+      const buckets = { injected: {}, none: {} };
+      for (const r of rows) {
+        const key = String(r.cohort_injected) === "true" ? "injected" : "none";
+        const rating = String(r.rating || "0");
+        buckets[key][rating] = (buckets[key][rating] || 0) + (r.n || 0);
+      }
+      const ratings = ["1", "2", "3", "4", "5"];
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: ratings,
+          datasets: [
+            { label: "With cohort", data: ratings.map(r => buckets.injected[r] || 0), backgroundColor: "#10b981" },
+            { label: "Without", data: ratings.map(r => buckets.none[r] || 0), backgroundColor: "#94a3b8" },
+          ]
+        },
+        options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+      });
+    }
+
+    function renderRetention(data) {
+      const ctx = document.getElementById("chartRetention").getContext("2d");
+      const w = data.with_demographics || {};
+      const wo = data.without_demographics || {};
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: ["With demographics", "Without"],
+          datasets: [
+            { label: "Return rate %", data: [(w.rate || 0) * 100, (wo.rate || 0) * 100], backgroundColor: ["#10b981", "#94a3b8"] }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + "%" } } }
+        }
+      });
+    }
+
+    async function load() {
+      try {
+        setMeta("Loading metrics…");
+        const [metrics, feedback, retention] = await Promise.all([
+          call("/metrics"),
+          call("/feedback"),
+          call("/retention"),
+        ]);
+        renderKPIs(metrics);
+        renderMatchRate(metrics.match_rate || []);
+        renderPersonas(metrics.personas || []);
+        renderFeedback(feedback.rows || []);
+        renderRetention(retention);
+        setMeta(`Last refresh: ${new Date().toLocaleString()}`);
+      } catch (e) {
+        showErr(e.message);
+        setMeta("Failed to load.");
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

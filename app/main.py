@@ -127,6 +127,14 @@ app.include_router(legal_router)   # /api/v1/legal/*
 app.include_router(version_router) # /api/v1/app/*
 app.include_router(usage_router)   # /api/v1/usage/*
 
+# Static admin assets — serves cohort dashboard at /admin/cohort.html
+# (The admin endpoints these pages call are still under /api/v1/admin/*.)
+from pathlib import Path as _Path
+from fastapi.staticfiles import StaticFiles
+_static_dir = _Path(__file__).parent / "static"
+if _static_dir.exists():
+    app.mount("/admin", StaticFiles(directory=str(_static_dir / "admin"), html=True), name="admin-static")
+
 
 @app.get("/")
 async def root():
