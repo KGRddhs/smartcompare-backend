@@ -119,21 +119,17 @@ class TestCohortStructure:
 
     def test_cohort_keys_have_no_empty_parts(self, priors):
         """Per design 2.2, the cohort_key requires all 4 fields populated.
-        Rows where users skipped a field should drop into fallback_aggregates,
-        not become a primary cohort with empty parts (e.g. '18-24|Female||English').
 
-        Marked xfail since current ETL allows empty parts; backend-cohort
-        decides whether to drop these or move them to fallback_aggregates.
+        Fixed in commit edd2f85: build_cohort_stats() now skips primary cohorts
+        with any empty key part. Rows with missing fields still contribute to
+        fallback_aggregates via the broader rollups.
         """
         empty_part_keys = [
             k for k in priors["cohorts"] if any(not p for p in k.split("|"))
         ]
-        if empty_part_keys:
-            pytest.xfail(
-                f"{len(empty_part_keys)} cohort key(s) have empty parts: "
-                f"{empty_part_keys} — design 2.2 says all 4 fields should be populated. "
-                "Backend-cohort: consider dropping these rows or moving to fallback_aggregates."
-            )
+        assert empty_part_keys == [], (
+            f"primary cohorts must have all 4 key parts populated, found: {empty_part_keys}"
+        )
 
 
 # ============================================
