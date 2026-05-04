@@ -1,19 +1,40 @@
 """Shared test configuration — loads .env before any test modules import."""
 import os
 
+import pytest
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
-
-# Disable slowapi rate limiter for unit tests that call route functions
-# directly (with MagicMock requests). Integration tests that need to verify
-# rate-limiting behaviour patch `app.middleware.rate_limiter.limiter.enabled`
-# back to True or drive routes via TestClient. Set BEFORE any test imports so
-# the Limiter constructor sees enabled=False at module-load time.
-os.environ.setdefault("RATE_LIMITER_ENABLED", "false")
 
 # Enable cohort personalization for unit tests so the extraction prompt-block
 # tests exercise the injection path. Tests that need the default-off behaviour
 # (e.g. test_default_flag_state_is_false) call `monkeypatch.delenv()` per-test.
 # Production absence of the var leaves the feature OFF (per design 6.6).
 os.environ.setdefault("ENABLE_COHORT_PERSONALIZATION", "true")
+
+
+# Disable the slowapi rate limiter ONLY for unit-test modules that call route
+# functions directly with MagicMock requests. Production rate limiting,
+# TestClient-driven security regression tests, and the dedicated rate-limit
+# tests in tests/test_security_middleware.py + tests/test_security_regression.py
+# all keep the limiter enabled.
+_RATE_LIMITER_BYPASS_TEST_FILES = (
+    "test_auth_demographics.py",
+)
+
+
+@pytest.fixture(autouse=True)
+def _scoped_rate_limiter_bypass(request):
+    """Disable slowapi limiter only for direct-call MagicMock test modules."""
+    file_name = os.path.basename(str(getattr(request.node, "fspath", "")))
+    if file_name not in _RATE_LIMITER_BYPASS_TEST_FILES:
+        yield
+        return
+    from app.middleware.rate_limiter import limiter as _limiter
+
+    prior = _limiter.enabled
+    _limiter.enabled = False
+    try:
+        yield
+    finally:
+        _limiter.enabled = prior

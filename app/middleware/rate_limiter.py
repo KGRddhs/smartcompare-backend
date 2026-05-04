@@ -27,9 +27,4 @@ limiter = Limiter(
     key_func=get_remote_address,
     storage_uri=_get_storage_uri(),
     default_limits=[DAILY_LIMIT, ANON_LIMIT],
-    # Test bypass: pytest sets RATE_LIMITER_ENABLED=false so direct route-call
-    # tests (which pass MagicMock for `request`) don't hit slowapi's
-    # `isinstance(request, Request)` check. Production absence of the env var
-    # leaves the limiter active.
-    enabled=os.getenv("RATE_LIMITER_ENABLED", "true").lower() != "false",
 )
