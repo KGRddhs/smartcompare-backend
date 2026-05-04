@@ -41,12 +41,17 @@ WHERE demographics_profile IS NOT NULL
 GROUP BY persona
 ORDER BY user_count DESC;
 
+-- vw_cohort_feedback_lift: comparison_feedback uses boolean `useful` (not `rating`).
+-- Stratifies useful% by whether cohort priors were injected on the comparison.
 CREATE OR REPLACE VIEW vw_cohort_feedback_lift AS
 SELECT
-  cf.rating,
   ce.event_data->>'cohort_injected' AS cohort_injected,
-  COUNT(*) AS n,
-  AVG(cf.rating) AS avg_rating
+  COUNT(*) AS total_feedback,
+  COUNT(*) FILTER (WHERE cf.useful = true) AS useful_count,
+  ROUND(
+    100.0 * COUNT(*) FILTER (WHERE cf.useful = true) / NULLIF(COUNT(*), 0),
+    2
+  ) AS useful_pct
 FROM comparison_feedback cf
 JOIN user_events ce ON ce.comparison_id = cf.comparison_id
-GROUP BY cf.rating, cohort_injected;
+GROUP BY cohort_injected;
