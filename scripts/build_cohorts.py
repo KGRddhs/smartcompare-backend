@@ -397,6 +397,12 @@ def build_cohort_stats(rows: list[dict]) -> dict:
 
     cohorts: dict[str, dict] = {}
     for key, group in by_key.items():
+        # Skip keys where any of the 4 parts is empty (e.g. user skipped
+        # governorate). match() can never hit these — broader fallback
+        # aggregates already cover the broadened-key path.
+        parts = key.split("|")
+        if len(parts) != 4 or any(p == "" for p in parts):
+            continue
         n = len(group)
         confidence = _confidence_for(n)
         if confidence is None:

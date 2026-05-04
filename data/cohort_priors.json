@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "built_at": "2026-05-03T19:58:24.136633+00:00",
+  "built_at": "2026-05-04T03:05:32.280274+00:00",
   "total_responses": 388,
   "cohorts": {
     "25-34|Female|Northern|Both equally": {
@@ -272,67 +272,6 @@
       "persona_label": "Quality-first buyer",
       "confidence": "high"
     },
-    "18-24|Female||English": {
-      "n": 5,
-      "demographics": {
-        "age_group": "18-24",
-        "gender": "Female",
-        "governorate": "Prefer not to say",
-        "language": "English"
-      },
-      "modal": {
-        "top_deciding_factor": "Price",
-        "second_deciding_factor": "Quality - Reliability",
-        "preferred_assistance_style": "Show me all details",
-        "spend_bracket": "25-50 BHD",
-        "trust_sources": [
-          "Social media",
-          "My past experience",
-          "Google"
-        ],
-        "top_difficulties": [
-          "Nothing made it hard",
-          "Value for money"
-        ],
-        "post_purchase_pattern": "I felt I made the right choice",
-        "what_helps_most": [
-          "Clearer information",
-          "Simpler differences between options",
-          "Fewer options to go through"
-        ],
-        "primary_categories": [
-          "Fashion or Beauty  item",
-          "Decor",
-          "Health product"
-        ],
-        "if_info_incomplete": "Look for more information"
-      },
-      "distribution": {
-        "deciding_factor": {
-          "Quality - Reliability": 0.13333333333333333,
-          "Price": 0.2,
-          "Quality - reliability": 0.13333333333333333,
-          "Recommendation from someone I trust": 0.06666666666666667,
-          "Trusted opinions": 0.13333333333333333,
-          "Design": 0.06666666666666667,
-          "Brand": 0.13333333333333333,
-          "Value for money": 0.06666666666666667,
-          "Warranty or After-sales support": 0.06666666666666667
-        },
-        "assistance_style": {
-          "Show me all details": 0.4,
-          "Show me 2 or 3 suitable options": 0.4,
-          "Show me only the main differences": 0.2
-        },
-        "spend_bracket": {
-          "25-50 BHD": 0.4,
-          "<25 BHD": 0.4,
-          "Prefer not to say": 0.2
-        }
-      },
-      "persona_label": "Price-sensitive shopper",
-      "confidence": "low"
-    },
     "18-24|Female|Capital|Both equally": {
       "n": 15,
       "demographics": {
@@ -396,66 +335,6 @@
       "persona_label": "Quality-first buyer",
       "confidence": "medium"
     },
-    "18-24|Female||Arabic": {
-      "n": 6,
-      "demographics": {
-        "age_group": "18-24",
-        "gender": "Female",
-        "governorate": "Prefer not to say",
-        "language": "Arabic"
-      },
-      "modal": {
-        "top_deciding_factor": "Price",
-        "second_deciding_factor": "Quality - Reliability",
-        "preferred_assistance_style": "Show me all details",
-        "spend_bracket": "<25 BHD",
-        "trust_sources": [
-          "Someone I know"
-        ],
-        "top_difficulties": [
-          "Price",
-          "Quality - Reliability",
-          "The differences were not clear"
-        ],
-        "post_purchase_pattern": "I felt I made the right choice",
-        "what_helps_most": [
-          "Clearer information",
-          "Better price visibility",
-          "Simpler differences between options"
-        ],
-        "primary_categories": [
-          "Fashion or Beauty item",
-          "Fragrance",
-          "Electronics"
-        ],
-        "if_info_incomplete": "Ask someone I trust"
-      },
-      "distribution": {
-        "deciding_factor": {
-          "Quality - Reliability": 0.17647058823529413,
-          "Price": 0.29411764705882354,
-          "Quality - reliability": 0.058823529411764705,
-          "Recommendation from someone I trust": 0.11764705882352941,
-          "Value for money": 0.11764705882352941,
-          "Brand": 0.058823529411764705,
-          "Quality": 0.058823529411764705,
-          "Design": 0.058823529411764705,
-          "Trusted opinions": 0.058823529411764705
-        },
-        "assistance_style": {
-          "Show me only the main differences": 0.3333333333333333,
-          "Show me all details": 0.5,
-          "Suggest one best option with a reason": 0.16666666666666666
-        },
-        "spend_bracket": {
-          "25-50 BHD": 0.16666666666666666,
-          "<25 BHD": 0.6666666666666666,
-          "100-250 BHD": 0.16666666666666666
-        }
-      },
-      "persona_label": "Budget-conscious value seeker",
-      "confidence": "low"
-    },
     "18-24|Female|Northern|English": {
       "n": 7,
       "demographics": {
@@ -515,70 +394,6 @@
         }
       },
       "persona_label": "Budget-conscious value seeker",
-      "confidence": "low"
-    },
-    "18-24|Female||Both equally": {
-      "n": 9,
-      "demographics": {
-        "age_group": "18-24",
-        "gender": "Female",
-        "governorate": "Prefer not to say",
-        "language": "Both equally"
-      },
-      "modal": {
-        "top_deciding_factor": "Quality - Reliability",
-        "second_deciding_factor": "Price",
-        "preferred_assistance_style": "Show me all details",
-        "spend_bracket": "<25 BHD",
-        "trust_sources": [
-          "Someone I know",
-          "My past experience",
-          "I did not strongly trust any source"
-        ],
-        "top_difficulties": [
-          "Quality - Reliability",
-          "I was not sure what suited me",
-          "Nothing made it hard"
-        ],
-        "post_purchase_pattern": "I felt I made the right choice",
-        "what_helps_most": [
-          "Clearer information",
-          "Better price visibility",
-          "Simpler differences between options"
-        ],
-        "primary_categories": [
-          "Fashion or Beauty item",
-          "Fashion or Beauty  item",
-          "Subscription or Service"
-        ],
-        "if_info_incomplete": "Look for more information"
-      },
-      "distribution": {
-        "deciding_factor": {
-          "Quality - Reliability": 0.2962962962962963,
-          "Quality - reliability": 0.07407407407407407,
-          "Ease of use": 0.07407407407407407,
-          "Value for money": 0.037037037037037035,
-          "Price": 0.14814814814814814,
-          "Warranty or After-sales support": 0.037037037037037035,
-          "Easy information": 0.037037037037037035,
-          "Trusted opinions": 0.1111111111111111,
-          "Quality": 0.14814814814814814,
-          "Brand": 0.037037037037037035
-        },
-        "assistance_style": {
-          "Show me only the main differences": 0.2222222222222222,
-          "Show me 2 or 3 suitable options": 0.2222222222222222,
-          "Show me all details": 0.3333333333333333,
-          "Suggest one best option with a reason": 0.2222222222222222
-        },
-        "spend_bracket": {
-          "Prefer not to say": 0.1111111111111111,
-          "<25 BHD": 0.6666666666666666,
-          "25-50 BHD": 0.2222222222222222
-        }
-      },
-      "persona_label": "Quality-first buyer",
       "confidence": "low"
     },
     "18-24|Female|Capital|Arabic": {
