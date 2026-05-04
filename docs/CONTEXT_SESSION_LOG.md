@@ -2641,6 +2641,69 @@ fe8d9c2 test: add endpoint-level HEIC rejection tests for /image/identify
 
 ---
 
+## Session 41: Survey-Driven Cohort Personalization (May 3-4, 2026 — Agent Team)
+
+### What we shipped
+Survey-driven cohort personalization (B + C from design): bootstrap personalization for new/anonymous users from 388 valid Fillout survey responses, via (B) verdict-prompt enrichment with cohort-aggregated findings and (C) one-shot preference seeding from cohort modal answers, surfaced in the Profile screen as a "Your style profile" card.
+
+### Architecture summary
+- **Build-time ETL** (`scripts/build_cohorts.py`): reads English + Arabic CSVs from `data/surveys/`, normalizes Arabic→English (~85 mappings), groups by `age|gender|governorate|language` cohort key, computes modal answers + distributions + persona labels, writes atomically to `data/cohort_priors.json` (committed artifact).
+- **Runtime cohort service** (`app/services/cohort_service.py`): singleton, in-memory; `match()` uses hierarchical fallback (exact → broadened_governorate → broadened_language → broadened_age → population); `seed_preferences()` returns prefs with `_sources: {field: "inferred"}`; `get_display_profile()` returns dict only when confidence ≥ medium; `should_seed()` decides if user should receive seeded prefs.
+- **Auth routes** (`app/api/auth_routes.py`): `PUT /api/v1/auth/demographics` (auth, 5/min, auto-detects language + country from headers), `GET /api/v1/auth/cohort-profile` (auth, returns `{display: ...|null}`), `PUT /api/v1/auth/preferences` extended to flip `_sources` from `inferred` to `user_stated` when user edits.
+- **Verdict prompt enrichment** (`app/services/extraction_service.py`): `_build_preferences_prompt()` appends ~120-token cohort priors block when `match_quality ∈ {exact, broadened_governorate, broadened_language}` AND `ENABLE_COHORT_PERSONALIZATION=true`. Privacy invariant: NO raw `age_group` or `gender` in rendered prompt — only thin context line `Country=X, Language=Y, Region=Z` plus aggregate cohort findings.
+- **Admin dashboard** (`/admin/cohort.html` + 3 metric endpoints): match-rate, persona-distribution, feedback-lift, retention KPIs. Auth via X-Admin-Key prompt.
+- **Frontend** (`SmartCompareApp/`): `DemographicsBottomSheet.tsx` (post-first-comparison, 3 fields all skippable), `StyleProfileCard.tsx` (Profile screen, hidden when confidence < medium), `demographicsTrigger.ts` (4-attempt schedule with 7-day cooldown then permanent stop), edit-banner on Onboarding when route param `source=styleProfile`, EN+AR i18n parity (33 keys per language).
+
+### Commits (29 total)
+**Pre-flight:** ecd52ad (design), c2253f4 (plan), 9453dc1 (gitignore raw CSVs), 2543eef (env var note)
+
+**Backend (Section A):**
+- A.1 migration 013 — `data/surveys/*.csv` swept into e490372 due to git contamination; migration content was correct
+- A.2 ETL: `f3e52d4` (build_cohorts.py + cohort_priors.json: 388 responses → 21 cohorts + 29 fallbacks)
+- A.3 cohort_service: bundled into `51b466c` due to git-add contamination (file content correct)
+- A.4 auth routes + `_sources` flip: bundled into `f0a52b7` (file content correct)
+- A.5 prompt block + feature flag: `8579cc0`
+- A.6 admin endpoints + dashboard: `68d1cd2`
+- A.7 docs (CLAUDE.md + MEMORY.md): `b2189e3`
+- Fix: `ae0e05d` (scoped rate-limiter bypass to `_RATE_LIMITER_BYPASS_TEST_FILES`, replacing global env disable that broke 39 security regression tests)
+
+**Frontend (Section B):** e490372 (i18n keys), 4d88a9f (api client), d5736c0 (DemographicsBottomSheet), 2366cbc (trigger logic), dd8c26f (StyleProfileCard), a0f6725 (edit banner), 51b466c (trigger edge tests + cohort_service contamination), 7300c26 (a11y), c1dcdc2 (StyleProfile edges), 66c09b0 (priorities), 335fb93 (timing edges)
+
+**Tests (Section C):** 3e17598 (red-phase ETL + cohort_service tests), bb25a7a (frontend expansion), d7c450a (i18n keys pinning), 0693ffe (97% cohort_service coverage), 4094b4a (property-based), f0a52b7 (16 snapshot scenarios)
+
+### Verification (D.1-D.6 disassembly gate)
+- `pytest -m "not (live_unit or live_db or integration)" --ignore=tests/test_rate_limiting_complete.py`: **1868 passed, 33 deselected, 1 xfailed** in 118s
+- `pytest tests/test_security_regression.py`: **67/67 PASS** (was 57 baseline + 10 new demographics-RLS additions)
+- `pytest tests/test_security_middleware.py`: **16/16 PASS**
+- `pytest --cov=app.services.cohort_service --cov=scripts.build_cohorts --cov-fail-under=80`: **93.18% total** (cohort_service 97%, build_cohorts 91%) — match() function 100%
+- `cd SmartCompareApp && npx tsc --noEmit`: **0 errors**
+- `cd SmartCompareApp && npx jest <cohort-tests>`: **106/106 PASS** across 8 frontend test files
+- Live smoke: cohort match returns "Quality-first buyer" for `25-34|Female|Northern|Arabic` (n=13); seed returns `_sources: inferred` per design 5.3; prompt contains `COHORT-LEVEL PRIORS` and `Country=Bahrain` but NOT `25-34` or `Female`; admin dashboard renders 200 OK with Chart.js
+- Cross-QA matrix: 4 approvals (backend→frontend, frontend→test, test→backend, qa→all)
+
+### Manual steps required post-merge
+1. **Apply migration 013** via Supabase SQL Editor (no psql/Management API token locally per CLAUDE.md gotcha): adds `users.demographics_profile` JSONB + dismissal tracking columns + 3 metric views (`vw_cohort_match_rate`, `vw_cohort_persona_distribution`, `vw_cohort_feedback_lift`).
+2. **Set Railway env var** `ENABLE_COHORT_PERSONALIZATION=false` (defaults false in code; explicit setting clarifies intent for Phase 1 internal QA). Currently pending Railway sub renewal per `pending_railway_migration.md`.
+3. **Phase 1 rollout** when ready: enable flag for admin accounts only; verify metrics; expand to 10% canary; full.
+
+### Gotchas surfaced (added to MEMORY.md)
+- slowapi `@limiter.limit` validates `isinstance(request, Request)`, breaking unit tests with MagicMock requests. Solved with autouse fixture scoped to `_RATE_LIMITER_BYPASS_TEST_FILES` in conftest.py — narrow opt-in per file, not global.
+- `git commit` (no `-- <paths>`) commits the entire staging index. Multiple agents staging WIP simultaneously caused 3 commits to be contaminated with other agents' files (e490372, dd8c26f, 51b466c, f0a52b7). Files on disk are correct; commit attribution is off. Going forward use `git commit -- <paths>` to scope each commit. Memory entry: `feedback_git_staging_in_team.md`.
+- ETL Arabic detection: initially flagged ALL non-ASCII as Arabic but English values from Fillout can contain NBSP (e.g. "Fashion or Beauty\u00a0 item"). Fixed to only flag Arabic block (U+0600..U+06FF).
+- VALID_PRIORITIES had to extend from 8 → 14 enum values (cohort seed emits `quality_reliability`, `best_price`, `trusted_brand`, `warranty_support`, `design_aesthetics`, `value_for_money`); same pattern for VALID_BRAND_ATTITUDE adding `trust_known_brands`. Don't break existing 8.
+- `cohort_priors.json` IS committed (build artifact); raw `data/surveys/*.csv` are gitignored (PII in email/phone columns).
+- Pre-existing hang: `tests/test_rate_limiting_complete.py::test_prices_endpoint_rate_limited` hangs in TestClient — verified on baseline 553b091 BEFORE this team's work. NOT introduced by cohort changes.
+
+### Coverage + test counts
+- 49 build_cohorts tests + 45 cohort_service tests + 19 auth_demographics tests + 20 extraction_cohort_prompt tests + 16 cohort_snapshots tests + 10 demographics-RLS regression tests = **159 new backend tests**
+- 106 frontend cohort tests across 8 test files
+- 1868 free unit tests pass (up from ~1700 pre-cohort baseline)
+
+### Disassembly gate evaluation: PASS
+All 12 D.6 criteria satisfied (see qa-cohort broadcast at gate-completion time). `git push origin main` + open PR.
+
+---
+
 **END OF KNOWLEDGE TRANSFER**
 
 *Keep this document updated as the project evolves.*
