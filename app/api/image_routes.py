@@ -19,6 +19,7 @@ from app.services.openai_service import identify_products
 from app.services.structured_comparison_service import StructuredComparisonService
 from app.api.auth_routes import get_optional_user
 from app.services.database_service import log_search, save_comparison
+from app.services.feedback_service import save_comparison_and_track_cohort
 from app.middleware.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
@@ -191,7 +192,7 @@ async def identify_and_compare(
             duration_ms=duration_ms,
         ))
         if user_id:
-            asyncio.create_task(save_comparison(
+            asyncio.create_task(save_comparison_and_track_cohort(
                 full_response=result, query=query,
                 input_type="camera", user_id=user_id,
             ))

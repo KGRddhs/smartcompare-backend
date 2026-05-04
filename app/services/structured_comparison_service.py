@@ -28,8 +28,10 @@ from app.services.extraction_service import (
     get_specs_cache_key,
     get_price_cache_key,
     get_reviews_cache_key,
+    was_cohort_block_active,
     GCC_REGIONS
 )
+from app.services.database_service import get_user_demographics
 from app.services.serper_service import search_product_prices, search_price_organic, search_web
 from app.services.cache_service import get_cached, set_cached
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
@@ -412,10 +414,14 @@ class StructuredComparisonService:
                 self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache)
             )
 
-            # Fetch behavioral profile if user is logged in
+            # Fetch behavioral profile + demographics_profile if user is logged in
             behavior_profile = None
+            demographics_profile = None
             if user_id:
-                behavior_profile = await self._fetch_behavior_profile(user_id)
+                behavior_profile, demographics_profile = await asyncio.gather(
+                    self._fetch_behavior_profile(user_id),
+                    get_user_demographics(user_id),
+                )
 
             # Step 3: Compute deterministic scores
             scoring_service = get_scoring_service()
@@ -428,12 +434,14 @@ class StructuredComparisonService:
             ]
             scores_summary = scoring_service.build_scores_summary(scoring_result, product_names)
 
-            # Step 4: Generate comparison
+            # Step 4: Generate comparison (passes demographics_profile so the cohort
+            # priors block in extraction_service can render when conditions are met).
             comparison, usage = await generate_comparison(
                 product_data[0], product_data[1], region,
                 parsed.get("comparison_type", "value") if not vision_products else "value",
                 user_preferences=user_preferences,
                 scores_summary=scores_summary, category=detected_category,
+                demographics_profile=demographics_profile,
             )
             self._track_gpt_cost(usage)
 
@@ -490,6 +498,14 @@ class StructuredComparisonService:
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
             )
+
+            # Record whether the cohort priors block was active for this verdict.
+            # Read by text_routes to write a `cohort_injected` user_events row
+            # (powers vw_cohort_feedback_lift).
+            if isinstance(result.get("metadata"), dict):
+                result["metadata"]["cohort_injected"] = was_cohort_block_active(
+                    demographics_profile
+                )
 
             # Fire-and-forget: update behavioral profile
             if user_id:
@@ -608,10 +624,14 @@ class StructuredComparisonService:
                 ]
             })
 
-            # Fetch behavioral profile
+            # Fetch behavioral profile + demographics_profile
             behavior_profile = None
+            demographics_profile = None
             if user_id:
-                behavior_profile = await self._fetch_behavior_profile(user_id)
+                behavior_profile, demographics_profile = await asyncio.gather(
+                    self._fetch_behavior_profile(user_id),
+                    get_user_demographics(user_id),
+                )
 
             # Step 3: Compute scores
             scoring_result = scoring_service.compute_scores(
@@ -635,13 +655,15 @@ class StructuredComparisonService:
                 "confidence": confidence,
             })
 
-            # Step 4: Generate verdict
+            # Step 4: Generate verdict (passes demographics_profile so the cohort
+            # priors block in extraction_service can render when conditions are met).
             yield ("status", {"message": "Generating verdict...", "progress": 80})
             comparison, usage = await generate_comparison(
                 product_data[0], product_data[1], region,
                 parsed.get("comparison_type", "value") if not vision_products else "value",
                 user_preferences=user_preferences,
                 scores_summary=scores_summary, category=detected_category,
+                demographics_profile=demographics_profile,
             )
             self._track_gpt_cost(usage)
 
@@ -713,6 +735,13 @@ class StructuredComparisonService:
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
             )
+
+            # Mark cohort_injected on the complete response so route handler can
+            # log a `cohort_injected` user_events row (powers vw_cohort_feedback_lift).
+            if isinstance(complete_response.get("metadata"), dict):
+                complete_response["metadata"]["cohort_injected"] = was_cohort_block_active(
+                    demographics_profile
+                )
 
             # Fire-and-forget: update behavioral profile
             if user_id:

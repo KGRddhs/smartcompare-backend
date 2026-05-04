@@ -4,9 +4,40 @@ Feedback Service - Save comparison feedback and track user events
 import logging
 from typing import Dict, List, Optional
 
-from app.services.database_service import get_supabase_client
+from app.services.database_service import get_supabase_client, save_comparison
 
 logger = logging.getLogger(__name__)
+
+
+async def save_comparison_and_track_cohort(
+    *,
+    full_response: Dict,
+    query: str,
+    input_type: str,
+    user_id: str,
+) -> None:
+    """Fire-and-forget: save the comparison, then log a `cohort_injected`
+    user_events row joined by comparison_id (powers vw_cohort_feedback_lift).
+
+    Sequenced (not parallel) because the event row needs the saved
+    comparison's id. Errors swallowed -- never break the user-facing flow.
+    """
+    try:
+        saved = await save_comparison(
+            full_response=full_response, query=query,
+            input_type=input_type, user_id=user_id,
+        )
+        comparison_id = (saved or {}).get("id")
+        cohort_injected = (full_response.get("metadata") or {}).get("cohort_injected", False)
+        if comparison_id:
+            await track_event(
+                user_id=user_id,
+                event_type="comparison_completed",
+                event_data={"cohort_injected": bool(cohort_injected)},
+                comparison_id=comparison_id,
+            )
+    except Exception as e:
+        logger.warning(f"save_comparison_and_track_cohort failed (silent): {e}")
 
 
 async def save_feedback(

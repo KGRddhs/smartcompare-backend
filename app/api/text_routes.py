@@ -18,6 +18,7 @@ from app.api.auth_routes import get_optional_user
 from app.api.admin_routes import verify_admin_key
 from app.services.auth_service import get_user_preferences
 from app.services.database_service import save_comparison, log_search
+from app.services.feedback_service import save_comparison_and_track_cohort
 from app.middleware.rate_limiter import limiter
 from app.services.usage_service import check_usage_allowed, record_comparison
 
@@ -140,7 +141,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         duration_ms=duration_ms,
     ))
     if user_id:
-        asyncio.create_task(save_comparison(
+        asyncio.create_task(save_comparison_and_track_cohort(
             full_response=result, query=body.query,
             input_type="text", user_id=user_id,
         ))
@@ -232,7 +233,7 @@ async def text_compare_get(
         duration_ms=duration_ms,
     ))
     if user_id:
-        asyncio.create_task(save_comparison(
+        asyncio.create_task(save_comparison_and_track_cohort(
             full_response=result, query=q,
             input_type="text", user_id=user_id,
         ))
@@ -327,7 +328,7 @@ async def text_compare_stream(
                 duration_ms=duration_ms,
             ))
             if user_id:
-                asyncio.create_task(save_comparison(
+                asyncio.create_task(save_comparison_and_track_cohort(
                     full_response=complete_response, query=q,
                     input_type="text_stream", user_id=user_id,
                 ))

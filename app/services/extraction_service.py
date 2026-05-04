@@ -837,6 +837,26 @@ def _is_cohort_personalization_enabled() -> bool:
     return os.getenv("ENABLE_COHORT_PERSONALIZATION", "false").strip().lower() == "true"
 
 
+def was_cohort_block_active(demographics_profile: Optional[Dict[str, Any]]) -> bool:
+    """Predicate mirror of `_build_cohort_priors_block` early-return logic.
+
+    Used by route handlers to record `cohort_injected` events for
+    `vw_cohort_feedback_lift` without re-running the prompt builder.
+    """
+    if not _is_cohort_personalization_enabled():
+        return False
+    if not demographics_profile:
+        return False
+    cohort_match = demographics_profile.get("cohort_match") or {}
+    if cohort_match.get("match_quality") not in _COHORT_INJECT_QUALITIES:
+        return False
+    if cohort_match.get("confidence") not in ("high", "medium", "low"):
+        return False
+    if not cohort_match.get("cohort_key"):
+        return False
+    return True
+
+
 async def generate_comparison(
     product1: Dict,
     product2: Dict,

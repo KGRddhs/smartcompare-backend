@@ -145,24 +145,40 @@
     }
 
     function renderFeedback(rows) {
+      // vw_cohort_feedback_lift returns one row per cohort_injected value
+      // ('true', 'false', or null) with: total_feedback, useful_count, useful_pct.
       const ctx = document.getElementById("chartFeedback").getContext("2d");
-      const buckets = { injected: {}, none: {} };
+      const buckets = { injected: null, none: null };
       for (const r of rows) {
         const key = String(r.cohort_injected) === "true" ? "injected" : "none";
-        const rating = String(r.rating || "0");
-        buckets[key][rating] = (buckets[key][rating] || 0) + (r.n || 0);
+        // If multiple rows fold into the same bucket (e.g. 'false' + null both
+        // count as no-cohort), aggregate by reweighted averages.
+        if (!buckets[key]) {
+          buckets[key] = { total: 0, useful: 0 };
+        }
+        buckets[key].total += Number(r.total_feedback || 0);
+        buckets[key].useful += Number(r.useful_count || 0);
       }
-      const ratings = ["1", "2", "3", "4", "5"];
+      const pct = (b) => b && b.total > 0 ? Math.round((b.useful / b.total) * 1000) / 10 : 0;
+      const injectedPct = pct(buckets.injected);
+      const nonePct = pct(buckets.none);
+      const injectedN = buckets.injected ? buckets.injected.total : 0;
+      const noneN = buckets.none ? buckets.none.total : 0;
       new Chart(ctx, {
         type: "bar",
         data: {
-          labels: ratings,
-          datasets: [
-            { label: "With cohort", data: ratings.map(r => buckets.injected[r] || 0), backgroundColor: "#10b981" },
-            { label: "Without", data: ratings.map(r => buckets.none[r] || 0), backgroundColor: "#94a3b8" },
-          ]
+          labels: [`With cohort (n=${injectedN})`, `Without (n=${noneN})`],
+          datasets: [{
+            label: "% useful",
+            data: [injectedPct, nonePct],
+            backgroundColor: ["#10b981", "#94a3b8"],
+          }]
         },
-        options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.parsed.y}% useful` } } },
+          scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => `${v}%` } } }
+        }
       });
     }
 
