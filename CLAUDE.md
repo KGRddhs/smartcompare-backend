@@ -38,6 +38,13 @@ Be intelligent about every decision:
 6. For multi-file features (3+ files, frontend+backend): use parallel agent teams (TeamCreate with 4 Opus agents: backend, frontend, test, qa)
 7. After major features: update CLAUDE.md (project context), MEMORY.md (learnings), CONTEXT_SESSION_LOG.md (what changed)
 
+## Pending Manual Setup (as of 2026-05-04)
+
+1. **Apply `migrations/013_demographics_cohort.sql`** via [Supabase SQL Editor](https://supabase.com/dashboard/project/qulajmyxdbdkchvecmvc/sql/new) — adds `users.demographics_profile` + dismissal cols + 3 metric views. Cohort feature is dormant until applied.
+2. **Migrate Railway hosting** to new account (sub trial expired 2026-05-03). Re-add ALL env vars from old project; see Environment Variables section. Old Railway URL `web-production-58776.up.railway.app` will go offline.
+3. **Add NEW env var during migration:** `ENABLE_COHORT_PERSONALIZATION=false` (defaults `false` in code; explicit set documents Phase 1 intent).
+4. **Phase 1 cohort rollout** (after 1-3 done): flip flag for admin accounts only → watch `/admin/cohort.html` metrics → 10% canary → full. See design doc Section 6.6.
+
 ## Critical: Two app/ Directories
 
 - **`app/`** (root) — The DEPLOYED backend. Railway runs `uvicorn app.main:app` from root.
