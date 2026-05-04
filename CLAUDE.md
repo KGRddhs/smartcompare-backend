@@ -40,10 +40,10 @@ Be intelligent about every decision:
 
 ## Pending Manual Setup (as of 2026-05-04)
 
-1. **Apply `migrations/013_demographics_cohort.sql`** via [Supabase SQL Editor](https://supabase.com/dashboard/project/qulajmyxdbdkchvecmvc/sql/new) — adds `users.demographics_profile` + dismissal cols + 3 metric views. Cohort feature is dormant until applied.
+1. ~~Apply migration 013~~ — **DONE 2026-05-04** (vw_cohort_feedback_lift had a column-name bug, fixed in df8bf8a then applied).
 2. **Migrate Railway hosting** to new account (sub trial expired 2026-05-03). Re-add ALL env vars from old project; see Environment Variables section. Old Railway URL `web-production-58776.up.railway.app` will go offline.
-3. **Add NEW env var during migration:** `ENABLE_COHORT_PERSONALIZATION=false` (defaults `false` in code; explicit set documents Phase 1 intent).
-4. **Phase 1 cohort rollout** (after 1-3 done): flip flag for admin accounts only → watch `/admin/cohort.html` metrics → 10% canary → full. See design doc Section 6.6.
+3. **Add NEW env var during Railway migration:** `ENABLE_COHORT_PERSONALIZATION=false` (defaults `false` in code; explicit set documents Phase 1 intent).
+4. **Phase 1 cohort rollout** (after 2-3 done): flip flag for admin accounts only → watch `/admin/cohort.html` metrics → 10% canary → full. See design doc Section 6.6.
 
 ## Critical: Two app/ Directories
 
@@ -92,7 +92,7 @@ npx expo-doctor                   # Full project health check
 Supabase DDL migrations (`migrations/*.sql`) must be applied manually via [SQL Editor](https://supabase.com/dashboard/project/qulajmyxdbdkchvecmvc/sql/new). No psql or Management API token available locally. Before running `CREATE TABLE IF NOT EXISTS`, check existing schema — stale tables with different columns cause silent index/policy failures.
 - `011_security_completion_freemium.sql` — APPLIED. user_usage, admin_audit_log, RLS, subscription_tier column, increment_lifetime_comparisons function.
 - `012_product_data_tables.sql` — APPLIED. product_specs, product_prices, product_reviews + RLS.
-- `013_demographics_cohort.sql` — PENDING manual apply. demographics_profile column on users + dismissal tracking + 3 metric views (vw_cohort_match_rate, vw_cohort_persona_distribution, vw_cohort_feedback_lift).
+- `013_demographics_cohort.sql` — APPLIED 2026-05-04. demographics_profile column on users + dismissal tracking + 3 metric views (vw_cohort_match_rate, vw_cohort_persona_distribution, vw_cohort_feedback_lift). Note: `vw_cohort_feedback_lift` uses `comparison_feedback.useful` (boolean) — the original spec assumed a non-existent `rating` column; fixed in commit df8bf8a before apply.
 
 ## Architecture
 
