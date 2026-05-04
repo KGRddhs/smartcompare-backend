@@ -44,6 +44,7 @@ Be intelligent about every decision:
 2. **Migrate Railway hosting** to new account (sub trial expired 2026-05-03). Re-add ALL env vars from old project; see Environment Variables section. Old Railway URL `web-production-58776.up.railway.app` will go offline.
 3. **Add NEW env var during Railway migration:** `ENABLE_COHORT_PERSONALIZATION=false` (defaults `false` in code; explicit set documents Phase 1 intent).
 4. **Phase 1 cohort rollout** (after 2-3 done): flip flag for admin accounts only → watch `/admin/cohort.html` metrics → 10% canary → full. See design doc Section 6.6.
+5. **Open backfill PR** (optional, do alongside 2-4): `gh pr create` not available locally — manually compare `553b091...main` via GitHub web UI for review trail of the 30+ cohort commits. Scope includes the 12c2879 fix that wires B end-to-end.
 
 ## Critical: Two app/ Directories
 
