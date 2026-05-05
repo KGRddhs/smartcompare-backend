@@ -798,31 +798,56 @@ class TestReferralMigration014Static:
 
 
 class TestReferralRouteAuthGuards:
-    """Referral routes must enforce auth/anon contracts per design 3.x."""
+    """Referral routes must enforce auth/anon contracts per design 3.x.
 
-    def test_share_endpoint_requires_auth(self):
-        """POST /api/v1/referrals/share without auth must NOT 200."""
+    With ENABLE_REFERRAL_SYSTEM=true, /share + /status must specifically
+    return 401 or 403 (auth dependency rejects anonymous). Without the flag,
+    503 fires first. Tightened from generic !=200 per qa-referral 2026-05-05
+    review now that BUG #1a (flag ordering) has shipped.
+    """
+
+    def test_share_endpoint_requires_auth(self, monkeypatch):
+        """POST /api/v1/referrals/share without auth must return 401 or 403."""
+        monkeypatch.setenv("ENABLE_REFERRAL_SYSTEM", "true")
+
         resp = client.post(
             "/api/v1/referrals/share",
             json={"comparison_id": "00000000-0000-0000-0000-000000000000", "share_target": "whatsapp"},
         )
-        # 404 (route missing — pre-deploy) is acceptable as part of TDD red phase;
-        # any 2xx is a real security regression and would fail this test once implemented.
-        assert resp.status_code != 200, (
-            "POST /referrals/share must NOT accept anonymous requests — 200 indicates auth bypass"
+        assert resp.status_code in (401, 403), (
+            f"POST /referrals/share with flag ON + no auth must return 401/403, "
+            f"got {resp.status_code}: {resp.text}"
         )
 
-    def test_status_endpoint_requires_auth(self):
+    def test_share_endpoint_returns_503_when_flag_off(self, monkeypatch):
+        """Defense in depth: when flag OFF, 503 fires BEFORE auth check."""
+        monkeypatch.delenv("ENABLE_REFERRAL_SYSTEM", raising=False)
+
+        resp = client.post(
+            "/api/v1/referrals/share",
+            json={"comparison_id": "x", "share_target": "whatsapp"},
+        )
+        assert resp.status_code == 503, (
+            f"flag-off must short-circuit at 503; got {resp.status_code}"
+        )
+
+    def test_status_endpoint_requires_auth(self, monkeypatch):
+        """GET /api/v1/referrals/status with flag ON + no auth => 401/403."""
+        monkeypatch.setenv("ENABLE_REFERRAL_SYSTEM", "true")
+
         resp = client.get("/api/v1/referrals/status")
-        assert resp.status_code != 200, (
-            "GET /referrals/status must NOT accept anonymous requests"
+        assert resp.status_code in (401, 403), (
+            f"GET /referrals/status with flag ON + no auth must return 401/403, "
+            f"got {resp.status_code}: {resp.text}"
         )
 
-    def test_invite_landing_does_NOT_require_auth(self):
+    def test_invite_landing_does_NOT_require_auth(self, monkeypatch):
         """Invitee landing must work for anon users (PDF #6 gradual commitment)."""
+        monkeypatch.setenv("ENABLE_REFERRAL_SYSTEM", "true")
+
         resp = client.get("/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa?ref=QR-DOESNT")
-        # 401/403 here would be a regression from the design — anon access is required.
-        # 404 (route missing pre-deploy or invalid token) is fine.
+        # 401/403 here would be a regression — anon access is required.
+        # 404 (invalid token) or 200 (resolved) are both fine.
         assert resp.status_code not in (401, 403), (
             f"GET /referrals/invite/{{token}} must allow anon access; got {resp.status_code}"
         )
@@ -875,28 +900,42 @@ class TestReferralPrivacyInvariants:
 
 
 class TestReferralAdminEndpointAuth:
-    """Admin referral endpoints must reject without X-Admin-Key (Session 38 pattern)."""
+    """Admin referral endpoints must reject without X-Admin-Key (Session 38 pattern).
+
+    Tightened from `!= 200` to specific error codes per qa-referral
+    2026-05-05 review:
+    - 401/403 = auth-rejected (correct)
+    - 422 = X-Admin-Key header missing/malformed (FastAPI dependency validation)
+    - 404 = endpoint not yet registered (TDD red phase, accepted)
+    - 200 = REGRESSION (auth bypass)
+    """
 
     @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
     def test_admin_referrals_metrics_requires_key(self):
-        """GET /api/v1/admin/referrals/metrics without X-Admin-Key => 422 (header required)."""
+        """GET /admin/referrals/metrics without X-Admin-Key => 401/403/422."""
         resp = client.get("/api/v1/admin/referrals/metrics")
-        # 404 if not yet registered (TDD red), 422 if registered without key, 403 if wrong key
-        # 200 would be a security regression
-        assert resp.status_code != 200, (
-            "admin referrals metrics endpoint must require X-Admin-Key"
+        assert resp.status_code in (401, 403, 404, 422), (
+            f"admin referrals metrics with no key must return 401/403/422 "
+            f"(or 404 pre-impl); got {resp.status_code}: {resp.text}"
         )
 
     @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
     def test_admin_referrals_metrics_rejects_bad_key(self):
+        """Wrong X-Admin-Key => 401/403."""
         resp = client.get("/api/v1/admin/referrals/metrics", headers={"X-Admin-Key": "wrong"})
-        # 404 acceptable pre-impl. 200 is a regression.
-        assert resp.status_code != 200, "wrong X-Admin-Key must be rejected"
+        assert resp.status_code in (401, 403, 404), (
+            f"wrong X-Admin-Key must be rejected with 401/403 "
+            f"(or 404 pre-impl); got {resp.status_code}: {resp.text}"
+        )
 
     @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
     def test_admin_costs_requires_key(self):
+        """GET /admin/costs/api without X-Admin-Key => 401/403/422."""
         resp = client.get("/api/v1/admin/costs/api")
-        assert resp.status_code != 200, "admin costs endpoint must require X-Admin-Key"
+        assert resp.status_code in (401, 403, 404, 422), (
+            f"admin costs with no key must return 401/403/422 "
+            f"(or 404 pre-impl); got {resp.status_code}: {resp.text}"
+        )
 
 
 class TestReferralQuizNoAuthAndNoPII:
