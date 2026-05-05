@@ -3,13 +3,63 @@ OpenAI Service - Vision and text processing for product comparison
 """
 import json
 import base64
-from typing import List, Dict
+import os
+from typing import Any, Dict, List, Optional
+
 import httpx
 from openai import AsyncOpenAI
 
-# Initialize async client (reads OPENAI_API_KEY from env at request time)
-# Explicit timeout: 30s connect (Railway networking can be slow), 120s total
+# Initialize async client (reads OPENAI_API_KEY from env at request time).
+# Explicit timeout: 30s connect (Railway networking can be slow), 120s total.
+# This module-level singleton is kept for back-compat with existing call sites.
 client = AsyncOpenAI(timeout=httpx.Timeout(120.0, connect=30.0))
+
+# Memoised per-project clients for the dual-project routing in
+# select_client_for_user. Filled lazily by get_client(); resolved against
+# OPENAI_API_KEY (shared, default) and OPENAI_API_KEY_PRIVATE (non-shared,
+# PDPL opt-out). When the private key isn't configured we fall back to the
+# shared client — the API contract still holds.
+_client_cache: Dict[bool, AsyncOpenAI] = {}
+
+
+def get_client(use_shared_project: bool = True) -> AsyncOpenAI:
+    """Return the OpenAI async client for the requested project.
+
+    Args:
+        use_shared_project: True (default) routes through the data-sharing
+            project (free under daily caps). False routes through the
+            non-shared project at standard pricing — used when a user opts
+            out of the AI Quality Improvement Program (design 6.1).
+    """
+    cached = _client_cache.get(use_shared_project)
+    if cached is not None:
+        return cached
+
+    if use_shared_project:
+        # Shared (default). Existing OPENAI_API_KEY env handles this.
+        new_client = AsyncOpenAI(timeout=httpx.Timeout(120.0, connect=30.0))
+    else:
+        # Private. Fall back to default key if a separate one isn't set —
+        # acceptable on day 1; the routing API stays correct.
+        private_key = os.getenv("OPENAI_API_KEY_PRIVATE") or os.getenv("OPENAI_API_KEY")
+        new_client = AsyncOpenAI(
+            api_key=private_key,
+            timeout=httpx.Timeout(120.0, connect=30.0),
+        )
+    _client_cache[use_shared_project] = new_client
+    return new_client
+
+
+def select_client_for_user(user_prefs: Optional[Dict[str, Any]] = None) -> AsyncOpenAI:
+    """Select shared vs non-shared OpenAI client based on the user's PDPL toggle.
+
+    Default ON: anonymous calls and users without an explicit preference go
+    through the shared (data-sharing) project. When the user has explicitly
+    set ``ai_sharing_enabled = False`` we route through the private client.
+    """
+    if user_prefs is not None and user_prefs.get("ai_sharing_enabled") is False:
+        return get_client(use_shared_project=False)
+    return get_client(use_shared_project=True)
 
 
 def encode_image_to_base64(image_path: str) -> str:

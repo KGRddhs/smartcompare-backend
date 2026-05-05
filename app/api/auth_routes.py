@@ -124,6 +124,9 @@ class UserPreferencesRequest(BaseModel):
     budget: str
     lifestyle: List[str] = Field(default_factory=list)
     brand_attitude: str
+    # Per-user AI Quality Improvement Program toggle (PDPL opt-out, design 6.1).
+    # None = unset = default ON (data-sharing project). False = opt out (private project).
+    ai_sharing_enabled: Optional[bool] = None
 
     @field_validator("priorities")
     @classmethod
