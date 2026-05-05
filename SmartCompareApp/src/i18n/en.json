@@ -224,5 +224,23 @@
   "profile.section.privacy": "Privacy",
   "profile.aiSharing.title": "Help improve AI quality",
   "profile.aiSharing.subtitle": "Share your queries to make Qaren smarter. We never share your name, age, or identity.",
-  "profile.aiSharing.errorSave": "Couldn't update right now. Try again?"
+  "profile.aiSharing.errorSave": "Couldn't update right now. Try again?",
+
+  "referrals.share.title": "Send a smart shortcut",
+  "referrals.share.subtitle": "What we share when you send this. We never include your budget or personal answers.",
+  "referrals.share.toggle.name": "Show my name",
+  "referrals.share.toggle.result": "Show my result",
+  "referrals.share.toggle.reasons": "Show my reasons",
+  "referrals.share.toggle.budget": "Show my budget",
+  "referrals.share.toggle.budgetLocked": "Never shared",
+  "referrals.share.privacyNote": "We never share your budget or personal answers.",
+  "referrals.share.message": "I compared {{productA}} and {{productB}}. Picked {{winner}} for my use. Try yours — your answer might differ:",
+  "referrals.share.messagePreview": "Your message",
+  "referrals.share.target.whatsapp": "WhatsApp",
+  "referrals.share.target.copy": "Copy",
+  "referrals.share.target.x": "X",
+  "referrals.share.target.telegram": "Telegram",
+  "referrals.share.target.snapchat": "Snapchat",
+  "referrals.share.error.weeklyCap": "You've used your 3 gifts this week. New invites refresh weekly.",
+  "referrals.share.error.generic": "Couldn't send right now. Try again?"
 }

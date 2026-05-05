@@ -224,5 +224,23 @@
   "profile.section.privacy": "الخصوصية",
   "profile.aiSharing.title": "ساعد في تحسين الذكاء الاصطناعي",
   "profile.aiSharing.subtitle": "شارك استفساراتك لتحسين قارن. لا نشارك اسمك أو عمرك أو هويتك.",
-  "profile.aiSharing.errorSave": "تعذر التحديث الآن. حاول مرة أخرى؟"
+  "profile.aiSharing.errorSave": "تعذر التحديث الآن. حاول مرة أخرى؟",
+
+  "referrals.share.title": "أرسل مختصر ذكي",
+  "referrals.share.subtitle": "هذا اللي نشاركه لما ترسل. ما نضمّن ميزانيتك ولا أجوبتك الشخصية أبداً.",
+  "referrals.share.toggle.name": "اعرض اسمي",
+  "referrals.share.toggle.result": "اعرض نتيجتي",
+  "referrals.share.toggle.reasons": "اعرض أسبابي",
+  "referrals.share.toggle.budget": "اعرض ميزانيتي",
+  "referrals.share.toggle.budgetLocked": "ما تنشار أبداً",
+  "referrals.share.privacyNote": "ما نشارك ميزانيتك ولا إجاباتك الشخصية أبداً.",
+  "referrals.share.message": "قارنت بين {{productA}} و{{productB}}. اخترت {{winner}} لاستخدامي. جرّب أنت — جوابك ممكن يختلف:",
+  "referrals.share.messagePreview": "رسالتك",
+  "referrals.share.target.whatsapp": "واتساب",
+  "referrals.share.target.copy": "نسخ",
+  "referrals.share.target.x": "X",
+  "referrals.share.target.telegram": "تيليجرام",
+  "referrals.share.target.snapchat": "سناب شات",
+  "referrals.share.error.weeklyCap": "استخدمت العطايا الـ3 هالأسبوع. الدعوات الجديدة تنزل أسبوعياً.",
+  "referrals.share.error.generic": "تعذر الإرسال الآن. حاول مرة أخرى؟"
 }
