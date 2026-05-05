@@ -219,5 +219,10 @@
   "profile.styleProfile.style": "Style",
   "profile.styleProfile.editButton": "Edit my preferences",
   "profile.styleProfile.banner": "These were inferred from your background. Edit to make them yours.",
-  "profile.demographicsCta": "Tell us about you"
+  "profile.demographicsCta": "Tell us about you",
+
+  "profile.section.privacy": "Privacy",
+  "profile.aiSharing.title": "Help improve AI quality",
+  "profile.aiSharing.subtitle": "Share your queries to make Qaren smarter. We never share your name, age, or identity.",
+  "profile.aiSharing.errorSave": "Couldn't update right now. Try again?"
 }

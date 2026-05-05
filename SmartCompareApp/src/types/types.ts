@@ -336,6 +336,7 @@ export interface UserPreferences {
   budget: 'budget' | 'mid' | 'premium';
   lifestyle: string[];
   brand_attitude: 'brand_loyal' | 'function_first' | 'best_of_both';
+  ai_sharing_enabled?: boolean;
 }
 
 // --- Auth types ---

@@ -32,6 +32,7 @@ import {
   Trash2,
   ChevronRight,
   Lock,
+  Shield,
 } from 'lucide-react-native';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { useLanguage } from '../hooks/useLanguage';
@@ -42,7 +43,10 @@ import {
   parseApiError,
   getCohortProfile,
   CohortDisplayProfile,
+  getPreferences,
+  savePreferences,
 } from '../services/api';
+import type { UserPreferences } from '../types';
 import { getSavedUser, logout, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import StyleProfileCard from '../components/StyleProfileCard';
 
@@ -75,10 +79,51 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   // Cohort display profile (null when confidence < medium or not yet collected)
   const [cohortDisplay, setCohortDisplay] = useState<CohortDisplayProfile | null>(null);
 
+  // Preferences (kept in state so toggling AI sharing round-trips through PUT /preferences)
+  const [preferences, setPreferences] = useState<UserPreferences | null>(null);
+  const [aiSharingSaving, setAiSharingSaving] = useState(false);
+  const [aiSharingError, setAiSharingError] = useState('');
+
   useEffect(() => {
     loadUser();
     loadCohortProfile();
+    loadPreferences();
   }, []);
+
+  const loadPreferences = async () => {
+    const p = await getPreferences();
+    setPreferences(p);
+  };
+
+  // Default ON when undefined (matches backend semantics from B1.4)
+  const aiSharingEnabled = preferences?.ai_sharing_enabled !== false;
+
+  const handleAiSharingToggle = async (value: boolean) => {
+    if (aiSharingSaving) return;
+    setAiSharingError('');
+    const previous = preferences;
+    const next: UserPreferences = {
+      priorities: previous?.priorities ?? [],
+      budget: previous?.budget ?? 'mid',
+      lifestyle: previous?.lifestyle ?? [],
+      brand_attitude: previous?.brand_attitude ?? 'best_of_both',
+      ai_sharing_enabled: value,
+    };
+    setPreferences(next);
+    setAiSharingSaving(true);
+    try {
+      const result = await savePreferences(next);
+      if (!result.success) {
+        setPreferences(previous);
+        setAiSharingError(result.error || t('profile.aiSharing.errorSave'));
+      }
+    } catch (err: any) {
+      setPreferences(previous);
+      setAiSharingError(parseApiError(err).message || t('profile.aiSharing.errorSave'));
+    } finally {
+      setAiSharingSaving(false);
+    }
+  };
 
   const loadUser = async () => {
     const savedUser = await getSavedUser();
@@ -284,6 +329,27 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           )}
         </View>
 
+        {/* Privacy Card */}
+        <Text style={styles.sectionLabel}>{t('profile.section.privacy')}</Text>
+        <View style={styles.card}>
+          <View style={styles.privacyRow}>
+            <View style={styles.privacyHeader}>
+              <Shield size={18} color={colors.text.secondary} />
+              <Text style={styles.privacyTitle}>{t('profile.aiSharing.title')}</Text>
+            </View>
+            <Switch
+              value={aiSharingEnabled}
+              onValueChange={handleAiSharingToggle}
+              disabled={aiSharingSaving || preferences === null}
+              trackColor={{ false: colors.border.medium, true: colors.accent }}
+              thumbColor={'#FFFFFF'}
+              accessibilityLabel="profile.aiSharing.title"
+            />
+          </View>
+          <Text style={styles.privacySubtitle}>{t('profile.aiSharing.subtitle')}</Text>
+          {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
+        </View>
+
         {/* Support Card */}
         <Text style={styles.sectionLabel}>{t('profile.support')}</Text>
         <View style={styles.card}>
@@ -479,6 +545,28 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.destructive,
     marginTop: spacing.xs,
+  },
+  // Privacy card
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  privacyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flexShrink: 1,
+  },
+  privacyTitle: {
+    ...typography.body,
+    color: colors.text.primary,
+    flexShrink: 1,
+  },
+  privacySubtitle: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginTop: spacing.sm,
   },
   // Rows
   row: {

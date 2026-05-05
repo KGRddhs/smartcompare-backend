@@ -219,5 +219,10 @@
   "profile.styleProfile.style": "الأسلوب",
   "profile.styleProfile.editButton": "تعديل تفضيلاتي",
   "profile.styleProfile.banner": "تم استنتاج هذه من خلفيتك. عدّلها لتجعلها لك.",
-  "profile.demographicsCta": "أخبرنا عنك"
+  "profile.demographicsCta": "أخبرنا عنك",
+
+  "profile.section.privacy": "الخصوصية",
+  "profile.aiSharing.title": "ساعد في تحسين الذكاء الاصطناعي",
+  "profile.aiSharing.subtitle": "شارك استفساراتك لتحسين قارن. لا نشارك اسمك أو عمرك أو هويتك.",
+  "profile.aiSharing.errorSave": "تعذر التحديث الآن. حاول مرة أخرى؟"
 }
