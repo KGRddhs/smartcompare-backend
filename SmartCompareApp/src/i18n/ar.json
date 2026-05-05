@@ -242,5 +242,13 @@
   "referrals.share.target.telegram": "تيليجرام",
   "referrals.share.target.snapchat": "سناب شات",
   "referrals.share.error.weeklyCap": "استخدمت العطايا الـ3 هالأسبوع. الدعوات الجديدة تنزل أسبوعياً.",
-  "referrals.share.error.generic": "تعذر الإرسال الآن. حاول مرة أخرى؟"
+  "referrals.share.error.generic": "تعذر الإرسال الآن. حاول مرة أخرى؟",
+
+  "referrals.cta.strong": "خلصت من الحيرة. تعرف أحد قاعد يحاتي على نفس الاختيار؟",
+  "referrals.cta.close": "الفرق رفيع. حسم القرار يحتاج عين ثانية.",
+  "referrals.cta.saved": "حفظت قرارك. كم واحد ثاني يستاهل نفس المختصر؟",
+  "referrals.cta.default": "خلصت من الحيرة. تعرف أحد قاعد يحاتي على نفس الاختيار؟",
+
+  "referrals.loop1.toast": "🎁 شكراً للمشاركة. مقارنتك الجاية تدخل أعمق في المراجعات.",
+  "referrals.loop1.counter": "{{used}} من {{total}} عطايا هالأسبوع"
 }

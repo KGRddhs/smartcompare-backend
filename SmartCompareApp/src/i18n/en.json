@@ -242,5 +242,13 @@
   "referrals.share.target.telegram": "Telegram",
   "referrals.share.target.snapchat": "Snapchat",
   "referrals.share.error.weeklyCap": "You've used your 3 gifts this week. New invites refresh weekly.",
-  "referrals.share.error.generic": "Couldn't send right now. Try again?"
+  "referrals.share.error.generic": "Couldn't send right now. Try again?",
+
+  "referrals.cta.strong": "Confusion sorted. Know anyone agonizing over the same call?",
+  "referrals.cta.close": "Razor-thin difference. Want a second pair of eyes?",
+  "referrals.cta.saved": "You saved your call. How many friends deserve the same shortcut?",
+  "referrals.cta.default": "Confusion sorted. Know anyone agonizing over the same call?",
+
+  "referrals.loop1.toast": "🎁 Thanks for sharing. Your next comparison goes 2× deeper on reviews.",
+  "referrals.loop1.counter": "{{used}} of {{total}} gifts this week"
 }
