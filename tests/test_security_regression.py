@@ -956,3 +956,228 @@ class TestReferralQuizNoAuthAndNoPII:
         assert resp.status_code not in (401, 403), (
             f"quiz endpoint must allow anon access; got {resp.status_code}"
         )
+
+
+# ============================================
+# Session 42: schema-vs-code drift static checks
+# ============================================
+# Two latent bugs hit smoke during Phase 7 prep, both code-vs-schema drift:
+#   Bug 1 (commit 0b01d9a / migration 017): comparisons.share_token was
+#   varchar(12) but secrets.token_urlsafe(16) returns 22-char tokens.
+#   Bug 2 (commit d9d5b03): _load_comparison SELECTed started_at +
+#   result_viewed_at, columns that never existed on comparisons.
+# These checks would have caught both at commit time. Snapshot from
+# backend-referral, extended for migrations 015/016 (push tokens, privacy).
+
+
+class TestShareTokenColumnAccommodatesGeneratedTokens:
+    """Migration 017 widened share_token from varchar(12)→TEXT.
+
+    secrets.token_urlsafe(16) generates 22 chars. Any future migration that
+    pins share_token narrower than 22 chars would re-introduce Bug 1
+    (PostgreSQL 22001 'value too long' on every share).
+    """
+
+    def test_no_migration_pins_share_token_below_22_chars(self):
+        """Sweep all migrations for share_token varchar() declarations.
+
+        Historical exception: `migrations/add_share_token.sql` (Session 24)
+        ORIGINALLY introduced the varchar(12) bug; migration 017 widens it
+        to TEXT. The legacy file is preserved as audit history and is
+        already superseded — don't re-flag. Forward-looking guard catches
+        any NEW migration that re-introduces a narrow varchar.
+        """
+        # Historical legacy file with the original bug — superseded by 017.
+        _LEGACY_HISTORICAL = {"add_share_token.sql"}
+
+        offenders = []
+        share_token_re = re.compile(
+            r"share_token\s+(?:varchar|character\s+varying)\s*\(\s*(\d+)\s*\)",
+            flags=re.IGNORECASE,
+        )
+        for sql_file in Path("migrations").glob("*.sql"):
+            if sql_file.name in _LEGACY_HISTORICAL:
+                continue
+            text = sql_file.read_text(encoding="utf-8")
+            for m in share_token_re.finditer(text):
+                width = int(m.group(1))
+                if width < 22:
+                    offenders.append(f"{sql_file.name}: varchar({width})")
+        assert not offenders, (
+            f"share_token narrower than 22 chars (token_urlsafe(16) length): {offenders}. "
+            f"Migration 017 widened to TEXT — do not regress."
+        )
+
+    def test_migration_017_widens_share_token_to_text(self):
+        m017 = Path("migrations/017_widen_share_token.sql")
+        assert m017.exists(), "migrations/017_widen_share_token.sql must exist"
+        source = m017.read_text(encoding="utf-8")
+        assert re.search(
+            r"ALTER\s+COLUMN\s+share_token\s+TYPE\s+TEXT",
+            source,
+            flags=re.IGNORECASE,
+        ), "migration 017 must ALTER COLUMN share_token TYPE TEXT"
+
+
+class TestAbuseDetectionReadsExistingColumns:
+    """_load_comparison must SELECT only columns that exist on comparisons.
+
+    Bug 2 history (commit d9d5b03): pre-fix code SELECTed started_at +
+    result_viewed_at, columns that never existed. Post-fix it pulls
+    full_response (JSONB) and computes elapsed_seconds from metadata.
+    """
+
+    # Allowlist of columns known to exist on `comparisons`. Sourced from
+    # initial schema + migrations through 017. If migrations add new
+    # columns to `comparisons`, extend this set here AND in code.
+    _COMPARISONS_COLUMNS = frozenset(
+        {
+            "id",
+            "user_id",
+            "full_response",
+            "query",
+            "input_type",
+            "product_names",
+            "created_at",
+            "share_token",
+        }
+    )
+
+    def test_load_comparison_selects_only_existing_columns(self):
+        """Static parse: _load_comparison's .select(...) string must reference
+        only columns from the allowlist."""
+        source = Path("app/services/abuse_detection_service.py").read_text(
+            encoding="utf-8"
+        )
+        m = re.search(
+            r"def\s+_load_comparison\b.*?\.select\s*\(\s*[\"']([^\"']+)[\"']",
+            source,
+            flags=re.DOTALL,
+        )
+        assert m, "could not locate _load_comparison .select(...) string"
+        cols = {c.strip() for c in m.group(1).split(",") if c.strip()}
+        unknown = cols - self._COMPARISONS_COLUMNS
+        assert not unknown, (
+            f"_load_comparison SELECTs nonexistent columns on comparisons: "
+            f"{sorted(unknown)}. Either add them to the allowlist if a "
+            f"migration created them, or fix the SELECT string."
+        )
+
+    def test_passes_real_action_gate_uses_full_response_proxy(self):
+        """Defense-in-depth: post-bug-fix d9d5b03 uses
+        full_response.metadata.elapsed_seconds, NOT raw started_at /
+        result_viewed_at columns. If anyone tries to revert by adding the
+        columns to a `.select(...)` call, this test fires.
+        """
+        source = Path("app/services/abuse_detection_service.py").read_text(
+            encoding="utf-8"
+        )
+        # The fix MUST reference elapsed_seconds (proxy from full_response)
+        assert "elapsed_seconds" in source, (
+            "abuse_detection_service must read elapsed_seconds from "
+            "full_response.metadata (post-bug-fix d9d5b03), not from "
+            "nonexistent started_at / result_viewed_at columns."
+        )
+        # The deleted columns must NOT reappear inside any `.select(...)`
+        # call. Module-level docstrings + comments referencing the bug
+        # history are fine — only executable schema reads are forbidden.
+        select_re = re.compile(
+            r"\.select\s*\(\s*[\"']([^\"']+)[\"']", flags=re.MULTILINE
+        )
+        for m in select_re.finditer(source):
+            cols = {c.strip() for c in m.group(1).split(",")}
+            forbidden = cols & {"started_at", "result_viewed_at"}
+            assert not forbidden, (
+                f"abuse_detection_service .select(...) references nonexistent "
+                f"columns: {sorted(forbidden)}. Use full_response.metadata."
+            )
+
+
+class TestPushTokensMigrationSchema:
+    """Migration 015 adds expo_push_token + notifications_enabled +
+    last_comparison_at to users. push_service + reengagement code reads
+    those columns; if the migration regresses, push delivery silently
+    no-ops."""
+
+    def test_migration_015_exists(self):
+        assert Path("migrations/015_push_tokens.sql").exists(), (
+            "migrations/015_push_tokens.sql required for push_service"
+        )
+
+    def test_migration_015_adds_expo_push_token_column(self):
+        source = Path("migrations/015_push_tokens.sql").read_text(encoding="utf-8")
+        assert re.search(
+            r"ADD\s+COLUMN(?:\s+IF\s+NOT\s+EXISTS)?\s+expo_push_token",
+            source,
+            flags=re.IGNORECASE,
+        ), "migration 015 must add expo_push_token column on users"
+
+    def test_push_service_reads_expo_push_token_column_only(self):
+        """push_service._get_user_push_token must SELECT expo_push_token only.
+
+        Generalised drift check on push_service.
+        """
+        source = Path("app/services/push_service.py").read_text(encoding="utf-8")
+        # Find the .select(...) inside _get_user_push_token
+        m = re.search(
+            r"def\s+_get_user_push_token\b.*?\.select\s*\(\s*[\"']([^\"']+)[\"']",
+            source,
+            flags=re.DOTALL,
+        )
+        assert m, "could not locate _get_user_push_token .select(...) string"
+        cols = {c.strip() for c in m.group(1).split(",") if c.strip()}
+        # Only `expo_push_token` is permitted here — anything else is drift
+        assert cols == {"expo_push_token"}, (
+            f"_get_user_push_token must SELECT only expo_push_token; "
+            f"got {sorted(cols)}"
+        )
+
+
+class TestReferralInvitesPrivacyJsonb:
+    """Migration 016 adds referral_invites.privacy as JSONB.
+
+    create_invite passes a privacy dict; resolve_invite reads it. If the
+    column type changes (e.g. someone makes it TEXT), JSONB parsing would
+    silently break invite landing.
+    """
+
+    def test_migration_016_exists(self):
+        assert Path("migrations/016_referral_invite_privacy.sql").exists()
+
+    def test_migration_016_adds_privacy_jsonb_column(self):
+        source = Path("migrations/016_referral_invite_privacy.sql").read_text(
+            encoding="utf-8"
+        )
+        # ADD COLUMN ... privacy JSONB
+        assert re.search(
+            r"ADD\s+COLUMN(?:\s+IF\s+NOT\s+EXISTS)?\s+privacy\s+JSONB",
+            source,
+            flags=re.IGNORECASE,
+        ), "migration 016 must add privacy JSONB column on referral_invites"
+
+
+class TestReferralCodeColumnExists:
+    """Migration 014 adds users.referral_code (already covered by
+    TestReferralMigration014Static above for general column presence,
+    but this guard locks the type/uniqueness explicitly to prevent
+    future schema regressions)."""
+
+    def test_migration_014_referral_code_is_text_unique(self):
+        source = Path("migrations/014_referral_system.sql").read_text(
+            encoding="utf-8"
+        )
+        # ALTER TABLE users ADD COLUMN ... referral_code TEXT UNIQUE
+        # (or with IF NOT EXISTS). Allow either ordering of TEXT and UNIQUE.
+        pattern = re.compile(
+            r"referral_code\s+TEXT(?:\s+(?:UNIQUE|NOT\s+NULL|DEFAULT\s+\S+))*",
+            flags=re.IGNORECASE,
+        )
+        assert pattern.search(source), (
+            "migration 014 must declare users.referral_code as TEXT "
+            "(may be followed by UNIQUE/NOT NULL/DEFAULT)"
+        )
+        assert "UNIQUE" in source.upper(), (
+            "users.referral_code must have UNIQUE constraint to prevent "
+            "duplicate codes (collision-retry in ensure_code_for_user "
+            "depends on this)"
+        )
