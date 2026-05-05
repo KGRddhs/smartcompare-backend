@@ -23,10 +23,18 @@ export type ShareTarget =
   | 'snapchat'
   | 'other';
 
+export interface SharePrivacy {
+  show_name: boolean;
+  show_result: boolean;
+  show_reasons: boolean;
+  // show_budget intentionally absent — backend always treats as false.
+}
+
 export interface CreateShareInput {
   comparison_id: string;
   share_target: ShareTarget;
   device_fingerprint_hash?: string;
+  privacy?: SharePrivacy;
 }
 
 export interface CreateShareResult {

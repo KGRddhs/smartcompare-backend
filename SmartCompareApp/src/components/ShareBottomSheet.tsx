@@ -133,6 +133,11 @@ export default function ShareBottomSheet({
         comparison_id: comparison.id,
         share_target: target,
         device_fingerprint_hash: deviceFingerprintHash,
+        privacy: {
+          show_name: privacy.name,
+          show_result: privacy.result,
+          show_reasons: privacy.reasons,
+        },
       });
       // Compose final outgoing message: base story + share_link
       const outgoing = `${previewMessage}\n${result.share_link}`;
