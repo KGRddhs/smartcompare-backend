@@ -867,9 +867,18 @@ async def generate_comparison(
     category: str = "other",
     demographics_profile: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Generate detailed comparison between two products."""
+    """Generate detailed comparison between two products.
+
+    Verdict generation is the single highest-impact subjective prose call,
+    so it routes through model_router with priority="high" — runs on
+    gpt-4o while we're under 80% of the daily 4o cap, falls back to
+    gpt-4o-mini once we hit the threshold (design 5.1, BX.1).
+    """
     try:
         client = get_client()
+        # Hybrid model selection — verdict gets the best-available model
+        from app.services.model_router_service import model_router
+        verdict_model = await model_router.get_model(priority="high")
 
         # Build system message with comparison instructions + personality + scoring
         from app.services.prompt_personalities import build_personality_prompt
@@ -912,15 +921,40 @@ User's region: {region}
 Primary concern: {concern}
 </USER_INPUT>"""
 
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_msg}
-            ],
-            max_tokens=1000,
-            temperature=0.2,
-        )
+        try:
+            response = await client.chat.completions.create(
+                model=verdict_model,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}
+                ],
+                max_tokens=1000,
+                temperature=0.2,
+            )
+        except Exception as primary_err:  # noqa: BLE001
+            # Hard-cap retry: 429 / cap-exceeded mid-call falls back to mini once.
+            err_msg = str(primary_err).lower()
+            if verdict_model == "gpt-4o" and ("429" in err_msg or "rate" in err_msg or "quota" in err_msg):
+                logger.warning(
+                    "[model_router] gpt-4o rate-limited mid-call; falling back to gpt-4o-mini"
+                )
+                verdict_model = "gpt-4o-mini"
+                response = await client.chat.completions.create(
+                    model=verdict_model,
+                    messages=[
+                        {"role": "system", "content": system_msg},
+                        {"role": "user", "content": user_msg}
+                    ],
+                    max_tokens=1000,
+                    temperature=0.2,
+                )
+            else:
+                raise
+
+        # Record usage (only 4o calls actually update the counter — mini is no-op).
+        usage = getattr(response, "usage", None)
+        tokens_used = getattr(usage, "total_tokens", 0) if usage else 0
+        await model_router.record_usage(verdict_model, tokens_used)
 
         result = response.choices[0].message.content.strip()
         if result.startswith("```"):
