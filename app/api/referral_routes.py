@@ -9,11 +9,18 @@ Endpoints:
 Design contract: docs/superpowers/specs/2026-05-05-smart-referral-system-design.md
 Plan tasks: B2.1, B2.2, B3.1, B3.4.
 
+Feature flag: every endpoint is gated by ``ENABLE_REFERRAL_SYSTEM``
+(env var, default OFF in code per design 9.2). When OFF, all endpoints
+respond with 503 — frontend doesn't expose UI yet either, but the gate
+prevents direct curl probing during canary. Conftest flips it ON for
+unit tests so the existing GREEN suite keeps passing.
+
 NOTE: this module deliberately does NOT use ``from __future__ import
 annotations`` — FastAPI's parameter resolver re-evaluates body model
 annotations at registration time and stringified Pydantic forward refs
 trip the resolver with ``PydanticUndefinedAnnotation`` on Python 3.12.
 """
+import os
 from typing import Any, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -31,6 +38,25 @@ from app.services.referral_service import (
     ReferralService,
     WeeklyInviteCapExceeded,
 )
+
+
+def _is_referral_enabled() -> bool:
+    """Read ENABLE_REFERRAL_SYSTEM at request time. Default OFF for safe
+    rollback — Ahmed flips this to ``true`` in Railway during canary."""
+    return os.getenv("ENABLE_REFERRAL_SYSTEM", "false").strip().lower() == "true"
+
+
+def _require_referral_enabled() -> None:
+    """Dependency that raises 503 when the feature flag is off."""
+    if not _is_referral_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "FEATURE_DISABLED",
+                "error": "Referral system is not enabled in this environment.",
+            },
+        )
+
 
 router = APIRouter(prefix="/api/v1/referrals", tags=["referrals"])
 
@@ -93,6 +119,7 @@ async def share_comparison(
     request: Request,
     body: ShareRequest,
     user: dict = Depends(get_current_user),
+    _flag: None = Depends(_require_referral_enabled),
 ):
     """Create a referral invite and grant the referrer a Deep Review credit.
 
@@ -133,6 +160,7 @@ async def share_comparison(
 async def get_referral_status(
     request: Request,
     user: dict = Depends(get_current_user),
+    _flag: None = Depends(_require_referral_enabled),
 ):
     """Return weekly + bonus + lifetime + credits state."""
     service = ReferralService(access_token=user.get("access_token"))
@@ -151,6 +179,7 @@ async def resolve_invite(
     share_token: str,
     ref: str,
     user: Optional[dict] = Depends(get_optional_user),
+    _flag: None = Depends(_require_referral_enabled),
 ):
     """Resolve an invite link to referrer + sanitized comparison.
 
@@ -178,6 +207,7 @@ async def submit_invitee_quiz(
     share_token: str,
     body: InviteeQuizRequest,
     user: Optional[dict] = Depends(get_optional_user),
+    _flag: None = Depends(_require_referral_enabled),
 ):
     """Re-score a comparison with the invitee's quiz answers.
 

@@ -11,6 +11,11 @@ load_dotenv(override=True)
 # (e.g. test_default_flag_state_is_false) call `monkeypatch.delenv()` per-test.
 # Production absence of the var leaves the feature OFF (per design 6.6).
 os.environ.setdefault("ENABLE_COHORT_PERSONALIZATION", "true")
+# Likewise enable the referral system for unit tests so the route tests
+# don't have to monkey-patch every test. test_referral_feature_flag.py
+# uses monkeypatch to verify both states. Production absence keeps the
+# feature OFF until Ahmed flips it on Railway during canary (plan Q8.3).
+os.environ.setdefault("ENABLE_REFERRAL_SYSTEM", "true")
 
 
 # Disable the slowapi rate limiter ONLY for unit-test modules that call route
