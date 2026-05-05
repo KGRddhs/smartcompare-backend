@@ -17,10 +17,12 @@ async def save_comparison_and_track_cohort(
     user_id: str,
 ) -> None:
     """Fire-and-forget: save the comparison, then log a `cohort_injected`
-    user_events row joined by comparison_id (powers vw_cohort_feedback_lift).
+    user_events row joined by comparison_id (powers vw_cohort_feedback_lift),
+    then attempt the referral Loop 2 trigger if the user has an unredeemed
+    invite.
 
-    Sequenced (not parallel) because the event row needs the saved
-    comparison's id. Errors swallowed -- never break the user-facing flow.
+    Sequenced (not parallel) because event + Loop 2 both need the saved
+    comparison's id. Errors swallowed — never break the user-facing flow.
     """
     try:
         saved = await save_comparison(
@@ -36,6 +38,18 @@ async def save_comparison_and_track_cohort(
                 event_data={"cohort_injected": bool(cohort_injected)},
                 comparison_id=comparison_id,
             )
+            # Referral Loop 2 — only fires when the user has an unredeemed
+            # invite AND this is their first comparison AND abuse checks pass.
+            # Self-contained no-op for organic users (most calls).
+            try:
+                from app.services.referral_service import ReferralService
+
+                await ReferralService().try_trigger_loop2(
+                    invitee_user_id=user_id,
+                    comparison_id=comparison_id,
+                )
+            except Exception as loop2_exc:  # noqa: BLE001
+                logger.warning(f"Loop 2 trigger failed (silent): {loop2_exc}")
     except Exception as e:
         logger.warning(f"save_comparison_and_track_cohort failed (silent): {e}")
 

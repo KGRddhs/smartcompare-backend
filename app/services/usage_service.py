@@ -1,6 +1,11 @@
-"""Freemium usage tracking and tier enforcement."""
+"""Freemium usage tracking and tier enforcement.
+
+Monthly cap = base tier limit + ``users.referral_bonus_comparisons_this_month``.
+Lazy reset of the bonus happens inside ``_get_user_tier_info`` whenever
+``referral_bonus_reset_at`` falls in the past — no cron job required.
+"""
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.services.cache_service import redis_client
@@ -44,16 +49,68 @@ def _get_redis_count(key: str) -> int:
 
 
 async def _get_user_tier_info(user_id: str) -> dict:
-    """Get user's subscription tier and lifetime usage from DB."""
+    """Get user's subscription tier, lifetime usage, and referral bonus state.
+
+    Performs lazy reset of ``referral_bonus_comparisons_this_month`` when
+    ``referral_bonus_reset_at`` is in the past — no cron needed.
+    """
     try:
         client = get_admin_supabase_client()
         result = client.table("users").select(
-            "subscription_tier, lifetime_comparisons_used"
+            "subscription_tier, lifetime_comparisons_used, "
+            "referral_bonus_comparisons_this_month, referral_bonus_reset_at"
         ).eq("id", user_id).single().execute()
-        return result.data or {"subscription_tier": "free", "lifetime_comparisons_used": 0}
+        data = result.data or {}
+        # Lazy referral bonus reset
+        return _maybe_reset_referral_bonus(client, user_id, data)
     except Exception as e:
         logger.error(f"Failed to get user tier info: {e}")
-        return {"subscription_tier": "free", "lifetime_comparisons_used": 0}
+        return {
+            "subscription_tier": "free",
+            "lifetime_comparisons_used": 0,
+            "referral_bonus_comparisons_this_month": 0,
+        }
+
+
+def _maybe_reset_referral_bonus(client, user_id: str, data: dict) -> dict:
+    """If ``referral_bonus_reset_at < now()``, reset counter to 0 and roll
+    ``reset_at`` forward by ~1 month. Returns the (possibly-mutated) dict.
+
+    No-op when the user's row predates migration 014 (fields missing) — we
+    just supply zero defaults so downstream cap math works."""
+    reset_at = data.get("referral_bonus_reset_at")
+    if not reset_at:
+        data.setdefault("referral_bonus_comparisons_this_month", 0)
+        return data
+
+    try:
+        reset_dt = datetime.fromisoformat(reset_at.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        data.setdefault("referral_bonus_comparisons_this_month", 0)
+        return data
+
+    now = datetime.now(timezone.utc)
+    if reset_dt > now:
+        data.setdefault("referral_bonus_comparisons_this_month", 0)
+        return data
+
+    # Past reset_at — zero the bonus and roll forward 30 days. The next
+    # scheduled reset uses the same 30d cadence as the column default.
+    new_reset_at = (now + timedelta(days=30)).isoformat()
+    try:
+        client.table("users").update(
+            {
+                "referral_bonus_comparisons_this_month": 0,
+                "referral_bonus_reset_at": new_reset_at,
+            }
+        ).eq("id", user_id).execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[usage] referral bonus reset failed for %s: %s", user_id, exc
+        )
+    data["referral_bonus_comparisons_this_month"] = 0
+    data["referral_bonus_reset_at"] = new_reset_at
+    return data
 
 
 async def check_usage_allowed(user_id: str, access_token: str) -> dict:
@@ -70,7 +127,9 @@ async def check_usage_allowed(user_id: str, access_token: str) -> dict:
     user_info = await _get_user_tier_info(user_id)
     tier = user_info.get("subscription_tier", "free")
     lifetime_used = user_info.get("lifetime_comparisons_used", 0)
+    bonus = user_info.get("referral_bonus_comparisons_this_month") or 0
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+    monthly_cap = limits["monthly"] + bonus
 
     # Lifetime free comparisons (free tier only) — no cap check needed
     if tier == "free" and lifetime_used < limits["lifetime_free"]:
@@ -80,7 +139,7 @@ async def check_usage_allowed(user_id: str, access_token: str) -> dict:
             "tier": tier,
             "remaining": {
                 "daily": limits["daily"],
-                "monthly": limits["monthly"],
+                "monthly": monthly_cap,
                 "lifetime_free": limits["lifetime_free"] - lifetime_used,
             },
         }
@@ -95,11 +154,11 @@ async def check_usage_allowed(user_id: str, access_token: str) -> dict:
             "allowed": False,
             "reason": "daily_limit",
             "tier": tier,
-            "remaining": {"daily": 0, "monthly": max(0, limits["monthly"] - monthly_used), "lifetime_free": 0},
+            "remaining": {"daily": 0, "monthly": max(0, monthly_cap - monthly_used), "lifetime_free": 0},
         }
 
-    # Check monthly limit
-    if monthly_used >= limits["monthly"]:
+    # Check monthly limit (base + bonus)
+    if monthly_used >= monthly_cap:
         return {
             "allowed": False,
             "reason": "monthly_limit",
@@ -113,7 +172,7 @@ async def check_usage_allowed(user_id: str, access_token: str) -> dict:
         "tier": tier,
         "remaining": {
             "daily": limits["daily"] - daily_used,
-            "monthly": limits["monthly"] - monthly_used,
+            "monthly": monthly_cap - monthly_used,
             "lifetime_free": 0,
         },
     }
@@ -147,11 +206,17 @@ async def record_comparison(user_id: str, access_token: str) -> None:
 
 
 async def get_usage_status(user_id: str, access_token: str) -> dict:
-    """Get current usage counts and limits for display."""
+    """Get current usage counts and limits for display.
+
+    Reports the EFFECTIVE monthly cap (base + referral bonus) so the
+    frontend's "X / Y" display accurately reflects bonus capacity.
+    """
     user_info = await _get_user_tier_info(user_id)
     tier = user_info.get("subscription_tier", "free")
     lifetime_used = user_info.get("lifetime_comparisons_used", 0)
+    bonus = user_info.get("referral_bonus_comparisons_this_month") or 0
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+    monthly_cap = limits["monthly"] + bonus
 
     daily_used = _get_redis_count(_daily_key(user_id))
     monthly_used = _get_redis_count(_monthly_key(user_id))
@@ -165,11 +230,13 @@ async def get_usage_status(user_id: str, access_token: str) -> dict:
         },
         "limits": {
             "daily": limits["daily"],
-            "monthly": limits["monthly"],
+            "monthly": monthly_cap,
+            "monthly_base": limits["monthly"],
+            "monthly_bonus": bonus,
             "lifetime_free": limits["lifetime_free"],
         },
         "remaining": {
             "daily": max(0, limits["daily"] - daily_used),
-            "monthly": max(0, limits["monthly"] - monthly_used),
+            "monthly": max(0, monthly_cap - monthly_used),
         },
     }
