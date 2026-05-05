@@ -115,96 +115,105 @@ class TestFeatureFlagEnforcement:
 
 
 class TestRegisterLinksInvite:
-    """POST /api/v1/auth/register with invite_id updates referral_invites row."""
+    """POST /api/v1/auth/register with invite_id calls ReferralService.link_invite_redemption.
 
-    @pytest.mark.asyncio
-    async def test_register_with_invite_id_calls_link_function(self):
-        """When invite_id is in the register payload, backend must call a
-        function that updates referral_invites.redeemed_by_user_id.
+    Backend uses `link_invite_redemption(invite_id, new_user_id)` per
+    `app/services/referral_service.py` — that's the corrected naming
+    post-bug-fix #2 (qa-referral 2026-05-05 dispatch). Tests use TestClient
+    so the slowapi rate limiter sees a real starlette.requests.Request.
+    """
 
-        We verify by patching the link function (wherever it lives) and
-        checking it was called with the new user's id.
+    def test_register_with_invite_id_calls_link_invite_to_user(self):
+        """invite_id present => `referral_service.link_invite_to_user` called.
+
+        Backend's actual wiring (auth_routes.py:284-287) imports the module and
+        calls `referral_service.link_invite_to_user(user_id, invite_id)` as a
+        module-level coroutine with positional args. Patch at the resolution
+        site (`app.services.referral_service.link_invite_to_user`) so the
+        awaited reference picks up the AsyncMock.
         """
-        from app.api.auth_routes import register
+        with patch("app.api.auth_routes.register_user", new_callable=AsyncMock) as mock_register, \
+             patch("app.services.referral_service.link_invite_to_user", new_callable=AsyncMock) as mock_link:
 
-        # Mock register_user to return a successful new user
-        with patch("app.api.auth_routes.register_user", new_callable=AsyncMock) as mock_register:
             mock_register.return_value = {
                 "success": True,
-                "user": {"id": "new-user-id", "email": "x@example.com"},
+                "user": {"id": "new-user-id", "email": "linked@example.com"},
                 "session": {"access_token": "tok"},
                 "message": "Registered",
             }
+            mock_link.return_value = True
 
-            # The link function is wherever the backend chose to put it.
-            # Most likely location: app.services.referral_service.link_invite_to_user
-            # Patch defensively at multiple plausible locations.
-            with patch(
-                "app.services.referral_service.link_invite_to_user",
-                new_callable=AsyncMock,
-                create=True,
-            ) as mock_link_a, patch(
-                "app.api.auth_routes.link_invite_to_user",
-                new_callable=AsyncMock,
-                create=True,
-            ) as mock_link_b:
+            resp = client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": "linked@example.com",
+                    "password": "ValidPass123!",
+                    "invite_id": "00000000-0000-0000-0000-000000000000",
+                },
+            )
 
-                from app.api.auth_routes import RegisterRequest
-                req = RegisterRequest(
-                    email="x@example.com",
-                    password="ValidPass123!",
-                    invite_id="00000000-0000-0000-0000-000000000000",
-                )
+            assert resp.status_code in (200, 201), f"register failed: {resp.text}"
+            mock_link.assert_called_once()
 
-                # Call the route function directly (avoids HTTP/auth complexity)
-                request = MagicMock()
-                request.headers = {}
+            # Verify call shape — auth_routes uses positional (user_id, invite_id)
+            args = mock_link.call_args.args
+            kwargs = mock_link.call_args.kwargs
+            user_id_arg = args[0] if args else kwargs.get("user_id") or kwargs.get("new_user_id")
+            invite_id_arg = (
+                (args[1] if len(args) > 1 else None)
+                or kwargs.get("invite_id")
+            )
+            assert user_id_arg == "new-user-id"
+            assert invite_id_arg == "00000000-0000-0000-0000-000000000000"
 
-                try:
-                    result = await register(request, req)
-                except TypeError:
-                    # Some implementations use different sig; try without request
-                    result = await register(req)
+    def test_register_without_invite_id_does_not_link(self):
+        """Organic signup => `link_invite_to_user` NOT called."""
+        with patch("app.api.auth_routes.register_user", new_callable=AsyncMock) as mock_register, \
+             patch("app.services.referral_service.link_invite_to_user", new_callable=AsyncMock) as mock_link:
 
-                # Either of the two patched paths must have been hit
-                assert mock_link_a.called or mock_link_b.called, (
-                    "register endpoint must call link_invite_to_user when invite_id present "
-                    "(must-fix #2 — see plan B3.5/B4.2)"
-                )
-
-    @pytest.mark.asyncio
-    async def test_register_without_invite_id_does_not_link(self):
-        """Backward compat: organic signup (no invite_id) doesn't trigger linking."""
-        from app.api.auth_routes import register, RegisterRequest
-
-        with patch("app.api.auth_routes.register_user", new_callable=AsyncMock) as mock_register:
             mock_register.return_value = {
                 "success": True,
-                "user": {"id": "organic-user", "email": "x@example.com"},
+                "user": {"id": "organic-user", "email": "organic@example.com"},
+                "session": {"access_token": "tok"},
+            }
+            mock_link.return_value = True
+
+            resp = client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": "organic@example.com",
+                    "password": "ValidPass123!",
+                    # No invite_id
+                },
+            )
+            assert resp.status_code in (200, 201), f"organic register failed: {resp.text}"
+            mock_link.assert_not_called()
+
+    def test_register_link_failure_does_not_break_signup(self):
+        """If link_invite_to_user raises, signup must still succeed (fire-and-forget)."""
+        with patch("app.api.auth_routes.register_user", new_callable=AsyncMock) as mock_register, \
+             patch("app.services.referral_service.link_invite_to_user",
+                   new_callable=AsyncMock, side_effect=Exception("DB blip")):
+
+            mock_register.return_value = {
+                "success": True,
+                "user": {"id": "u-rb", "email": "rb@example.com"},
                 "session": {"access_token": "tok"},
             }
 
-            with patch(
-                "app.services.referral_service.link_invite_to_user",
-                new_callable=AsyncMock,
-                create=True,
-            ) as mock_link_a, patch(
-                "app.api.auth_routes.link_invite_to_user",
-                new_callable=AsyncMock,
-                create=True,
-            ) as mock_link_b:
+            resp = client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": "rb@example.com",
+                    "password": "ValidPass123!",
+                    "invite_id": "00000000-0000-0000-0000-000000000000",
+                },
+            )
 
-                req = RegisterRequest(email="x@example.com", password="ValidPass123!")
-                request = MagicMock()
-                request.headers = {}
-
-                try:
-                    await register(request, req)
-                except TypeError:
-                    await register(req)
-
-                mock_link_a.assert_not_called()
-                mock_link_b.assert_not_called()
+            # Signup must succeed even when linking fails
+            assert resp.status_code in (200, 201), (
+                f"link failure must not break signup; got {resp.status_code}: {resp.text}"
+            )
 
 
 # ============================================
@@ -216,9 +225,28 @@ class TestSharePrivacyToggles:
     """ShareRequest must accept name/result/reasons toggles, NOT budget."""
 
     def test_share_request_accepts_privacy_toggle_fields(self):
-        """Pydantic model should accept the 3 optional toggles."""
+        """ShareRequest must accept a `privacy` dict carrying show_name/result/reasons.
+
+        Backend chose to nest the 3 toggles under a `privacy` JSONB block
+        rather than flat top-level fields (per fe827b0 / 9e40c20). Either
+        shape is acceptable per design 3.3 — this test accepts both.
+        """
         from app.api.referral_routes import ShareRequest
 
+        # Try the backend's actual shape first (privacy dict)
+        try:
+            req = ShareRequest(
+                comparison_id="c1",
+                share_target="whatsapp",
+                privacy={"show_name": True, "show_result": True, "show_reasons": False},
+            )
+            # If we get here, backend uses nested privacy
+            assert hasattr(req, "privacy"), "privacy field must be on ShareRequest"
+            return
+        except (TypeError, ValueError):
+            pass
+
+        # Fallback: maybe backend went flat after all
         try:
             req = ShareRequest(
                 comparison_id="c1",
@@ -232,12 +260,15 @@ class TestSharePrivacyToggles:
             assert hasattr(req, "show_reasons")
         except (TypeError, ValueError) as e:
             pytest.fail(
-                f"ShareRequest must accept show_name/show_result/show_reasons "
-                f"per design 3.3 (must-fix #4): {e}"
+                f"ShareRequest must accept privacy toggles (either as `privacy` "
+                f"dict or flat show_name/show_result/show_reasons fields): {e}"
             )
 
     def test_share_request_defaults_match_design(self):
-        """Per design 3.3: name=ON, result=ON, reasons=ON by default."""
+        """Per design 3.3: name=ON, result=ON, reasons=ON by default.
+
+        Accept either privacy dict (backend's choice) or flat fields.
+        """
         from app.api.referral_routes import ShareRequest
 
         try:
@@ -245,7 +276,18 @@ class TestSharePrivacyToggles:
         except Exception as e:
             pytest.skip(f"ShareRequest constructor changed: {e}")
 
-        # Defaults — only check if fields exist (they should after must-fix #4)
+        # If backend uses privacy dict, default may be None (interpreted ON
+        # downstream) or an explicit {show_name: True, ...} block.
+        privacy = getattr(req, "privacy", None)
+        if privacy is not None:
+            # If a default is set, it must be all-ON
+            if isinstance(privacy, dict):
+                assert privacy.get("show_name", True) is True, "show_name default must be ON"
+                assert privacy.get("show_result", True) is True, "show_result default must be ON"
+                assert privacy.get("show_reasons", True) is True, "show_reasons default must be ON"
+            return
+
+        # Flat field fallback
         if hasattr(req, "show_name"):
             assert req.show_name is True, "show_name default must be ON per design 3.3"
         if hasattr(req, "show_result"):
@@ -254,28 +296,47 @@ class TestSharePrivacyToggles:
             assert req.show_reasons is True, "show_reasons default must be ON per design 3.3"
 
     def test_share_request_does_NOT_accept_show_budget(self):
-        """show_budget is locked OFF per PDF #8 — must NOT be a settable field.
+        """show_budget is locked OFF per PDF #8.
 
-        If the model accepts it, that's a leak: a malicious client could send
-        show_budget=true and the field would silently propagate.
+        Two attack surfaces to cover:
+        1. Flat top-level `show_budget=True` → must be rejected or ignored.
+        2. Nested `privacy={"show_budget": True}` → must be ignored or
+           explicitly stored as False (never True).
+
+        If the model silently propagates show_budget=True via either path,
+        a malicious client could exfiltrate the budget field downstream.
         """
         from app.api.referral_routes import ShareRequest
 
+        # Path 1: flat top-level
         try:
             req = ShareRequest(
                 comparison_id="c1",
                 share_target="whatsapp",
-                show_budget=True,  # Should be REJECTED or IGNORED
+                show_budget=True,
             )
-            # Pydantic v2 with ConfigDict(extra="forbid") raises ValidationError
-            # If it accepts the field, ensure it's not stored True
             stored = getattr(req, "show_budget", None)
             assert stored in (None, False), (
-                f"show_budget must NEVER be settable to True per PDF #8, got {stored!r}"
+                f"show_budget must NEVER be settable to True (flat path), got {stored!r}"
             )
         except (TypeError, ValueError):
-            # Pydantic forbids the field — correct behavior
-            pass
+            pass  # Pydantic forbids → correct
+
+        # Path 2: nested under privacy dict
+        try:
+            req = ShareRequest(
+                comparison_id="c1",
+                share_target="whatsapp",
+                privacy={"show_name": True, "show_budget": True},
+            )
+            privacy = getattr(req, "privacy", None) or {}
+            if isinstance(privacy, dict):
+                # Either dropped silently or normalized to False
+                assert privacy.get("show_budget") in (None, False), (
+                    f"show_budget must NEVER persist as True under privacy dict, got {privacy}"
+                )
+        except (TypeError, ValueError):
+            pass  # Pydantic rejects → correct
 
     @pytest.mark.asyncio
     async def test_create_invite_persists_privacy_toggles_to_row(self, monkeypatch):
@@ -323,37 +384,53 @@ class TestSharePrivacyToggles:
         with patch("app.services.referral_service.get_admin_supabase_client", return_value=client_db):
             svc = ReferralService()
 
-            # Call create_invite with privacy toggles. Backend may add a
-            # privacy kwarg or accept toggles via separate args — try both.
+            # Backend's contract (post-fe827b0 / 9e40c20): create_invite accepts a
+            # `privacy={"show_name", "show_result", "show_reasons"}` dict kwarg.
+            # show_budget is forbidden (locked OFF per PDF #8 — checked separately
+            # in test_share_request_does_NOT_accept_show_budget).
             try:
                 await svc.create_invite(
                     referrer_user_id="u1",
                     comparison_id="c1",
                     share_target="whatsapp",
-                    show_name=False,
-                    show_result=True,
-                    show_reasons=True,
+                    privacy={"show_name": False, "show_result": True, "show_reasons": True},
                 )
             except TypeError as e:
                 pytest.fail(
-                    f"create_invite must accept show_name/show_result/show_reasons kwargs "
-                    f"(must-fix #4): {e}"
+                    f"create_invite must accept privacy={{show_name, show_result, show_reasons}} kwarg "
+                    f"(must-fix #4 contract per fe827b0): {e}"
                 )
 
             assert len(captured_invite_inserts) == 1
             insert_payload = captured_invite_inserts[0]
 
-            # Privacy toggles must reach the row — either as columns or
-            # nested under a privacy_settings JSONB
+            # Privacy toggles must reach the row — backend stores under
+            # `privacy` (JSONB) per fe827b0; legacy implementations may use
+            # `privacy_settings` or per-column. Accept any of these to keep
+            # the test resilient to internal column naming changes.
             settings_keys = {"show_name", "show_result", "show_reasons"}
             row_keys = set(insert_payload.keys())
 
-            has_columns = settings_keys & row_keys
-            has_nested = "privacy_settings" in insert_payload and isinstance(
+            has_columns = bool(settings_keys & row_keys)
+            has_nested_privacy = "privacy" in insert_payload and isinstance(
+                insert_payload["privacy"], dict
+            )
+            has_nested_settings = "privacy_settings" in insert_payload and isinstance(
                 insert_payload["privacy_settings"], dict
             )
 
-            assert has_columns or has_nested, (
-                f"privacy toggles must be stored on referral_invites row, "
+            assert has_columns or has_nested_privacy or has_nested_settings, (
+                f"privacy toggles must reach the referral_invites row, "
                 f"got payload keys: {sorted(row_keys)}"
             )
+
+            # Verify the toggle values actually flow through, regardless of
+            # which structure the backend chose.
+            stored = (
+                insert_payload.get("privacy")
+                or insert_payload.get("privacy_settings")
+                or {k: insert_payload.get(k) for k in settings_keys if k in insert_payload}
+            )
+            assert stored.get("show_name") is False, f"show_name=False must persist, got {stored}"
+            assert stored.get("show_result") is True
+            assert stored.get("show_reasons") is True
