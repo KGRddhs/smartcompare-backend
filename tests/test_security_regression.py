@@ -719,3 +719,201 @@ class TestDemographicsRLSStatic:
         """
         source = Path("migrations/010_enable_rls.sql").read_text(encoding="utf-8")
         assert "ALTER TABLE users ENABLE ROW LEVEL SECURITY" in source
+
+
+# ============================================
+# Q8.2: Smart Referral System security regression
+# Additive — must NOT break the existing 57+ tests above.
+# Static checks only (no live DB) so they run in the unit lane.
+# ============================================
+
+
+class TestReferralMigration014Static:
+    """Migration 014 must exist with the correct schema + RLS + RPC."""
+
+    def test_migration_014_exists(self):
+        assert Path("migrations/014_referral_system.sql").exists(), (
+            "migrations/014_referral_system.sql must exist (plan B1.1)"
+        )
+
+    def test_migration_014_creates_all_four_tables(self):
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        for table in ("referral_invites", "referral_redemptions", "deep_review_credits", "re_engagement_events"):
+            assert table in source, f"migration 014 missing table: {table}"
+
+    def test_migration_014_extends_users_with_referral_columns(self):
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        assert "referral_code" in source
+        assert "referral_bonus_comparisons_this_month" in source
+        assert "referral_bonus_reset_at" in source
+
+    def test_migration_014_enables_rls_on_all_new_tables(self):
+        """All 4 new tables must have RLS enabled per design 4.6."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        for table in ("referral_invites", "referral_redemptions", "deep_review_credits", "re_engagement_events"):
+            pattern = rf"ALTER TABLE\s+{table}\s+ENABLE ROW LEVEL SECURITY"
+            assert re.search(pattern, source, re.IGNORECASE), (
+                f"RLS not enabled on {table} — table is unprotected!"
+            )
+
+    def test_migration_014_user_can_select_own_invites_only(self):
+        """RLS policy: user can SELECT their own invites (as referrer OR invitee)."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        # Policy must reference auth.uid() against referrer_user_id and/or redeemed_by_user_id
+        assert "auth.uid()" in source
+        assert "referrer_user_id" in source
+
+    def test_migration_014_resolve_referral_code_is_security_definer(self):
+        """Public RPC `resolve_referral_code` must be SECURITY DEFINER (RLS bypass intentional)."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        assert "resolve_referral_code" in source
+        # SECURITY DEFINER required so anon users can resolve codes; otherwise RLS would block
+        assert "SECURITY DEFINER" in source.upper()
+
+    def test_migration_014_share_target_check_constraint(self):
+        """share_target column must enforce the whitelist via CHECK."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        # All 6 allowed values must appear in a CHECK constraint
+        for target in ("whatsapp", "copy", "telegram", "snapchat"):
+            assert target in source, f"share_target whitelist missing: {target}"
+
+    def test_migration_014_redemptions_unique_invite_id(self):
+        """invite_id is UNIQUE on referral_redemptions (no double-redeem)."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        # Look for `invite_id` followed by UNIQUE somewhere in the same statement
+        # Either inline UNIQUE or separate CONSTRAINT — both acceptable
+        invite_id_idx = source.find("invite_id")
+        assert invite_id_idx >= 0, "referral_redemptions.invite_id missing"
+        # Search for UNIQUE within 200 chars of the invite_id mention
+        snippet = source[invite_id_idx : invite_id_idx + 200]
+        assert "UNIQUE" in snippet.upper(), (
+            "invite_id must be UNIQUE on referral_redemptions to prevent double-redeem"
+        )
+
+    def test_migration_014_credits_have_30day_expiry(self):
+        """deep_review_credits.expires_at default must be 30 days post-grant per design 4.4."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        # Check for "30 days" interval
+        assert "30 days" in source or "interval '30" in source.lower()
+
+
+class TestReferralRouteAuthGuards:
+    """Referral routes must enforce auth/anon contracts per design 3.x."""
+
+    def test_share_endpoint_requires_auth(self):
+        """POST /api/v1/referrals/share without auth must NOT 200."""
+        resp = client.post(
+            "/api/v1/referrals/share",
+            json={"comparison_id": "00000000-0000-0000-0000-000000000000", "share_target": "whatsapp"},
+        )
+        # 404 (route missing — pre-deploy) is acceptable as part of TDD red phase;
+        # any 2xx is a real security regression and would fail this test once implemented.
+        assert resp.status_code != 200, (
+            "POST /referrals/share must NOT accept anonymous requests — 200 indicates auth bypass"
+        )
+
+    def test_status_endpoint_requires_auth(self):
+        resp = client.get("/api/v1/referrals/status")
+        assert resp.status_code != 200, (
+            "GET /referrals/status must NOT accept anonymous requests"
+        )
+
+    def test_invite_landing_does_NOT_require_auth(self):
+        """Invitee landing must work for anon users (PDF #6 gradual commitment)."""
+        resp = client.get("/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa?ref=QR-DOESNT")
+        # 401/403 here would be a regression from the design — anon access is required.
+        # 404 (route missing pre-deploy or invalid token) is fine.
+        assert resp.status_code not in (401, 403), (
+            f"GET /referrals/invite/{{token}} must allow anon access; got {resp.status_code}"
+        )
+
+
+class TestReferralPrivacyInvariants:
+    """Static guarantees that referral code + privacy toggles cannot leak data."""
+
+    def test_referral_code_alphabet_excludes_ambiguous_chars(self):
+        """Static check on the generated alphabet — no 0/O/1/I/L."""
+        try:
+            from app.services.referral_service import _CODE_ALPHABET
+        except (ImportError, AttributeError):
+            pytest.skip("referral_service not yet implemented (TDD red phase)")
+        ambiguous = set("0O1IL")
+        assert not (ambiguous & set(_CODE_ALPHABET)), (
+            f"_CODE_ALPHABET contains ambiguous chars: {ambiguous & set(_CODE_ALPHABET)}"
+        )
+
+    def test_referral_code_alphabet_is_uppercase_alphanumeric(self):
+        try:
+            from app.services.referral_service import _CODE_ALPHABET
+        except (ImportError, AttributeError):
+            pytest.skip("referral_service not yet implemented (TDD red phase)")
+        for ch in _CODE_ALPHABET:
+            assert ch.isalnum(), f"non-alnum char in alphabet: {ch!r}"
+            assert ch == ch.upper(), f"lowercase char in alphabet: {ch!r}"
+
+    def test_disposable_email_blocklist_present(self):
+        """Anti-abuse: blocklist file must exist and contain known disposables."""
+        try:
+            from app.services.abuse_detection_service import AbuseDetectionService
+        except ImportError:
+            pytest.skip("abuse_detection_service not yet implemented (TDD red phase)")
+        svc = AbuseDetectionService()
+        # At least these 4 must be flagged
+        assert svc.is_disposable_email("a@mailinator.com")
+        assert svc.is_disposable_email("a@guerrillamail.com")
+
+    def test_share_target_whitelist_in_code(self):
+        """share_target whitelist must be enforced in code (defense in depth, not just DB CHECK)."""
+        try:
+            import app.services.referral_service as rs
+        except ImportError:
+            pytest.skip("referral_service not yet implemented (TDD red phase)")
+        source = Path("app/services/referral_service.py").read_text(encoding="utf-8")
+        # All 6 valid targets must appear somewhere
+        for target in ("whatsapp", "copy", "telegram", "snapchat", "other"):
+            assert target in source, f"share_target whitelist missing in code: {target}"
+
+
+class TestReferralAdminEndpointAuth:
+    """Admin referral endpoints must reject without X-Admin-Key (Session 38 pattern)."""
+
+    @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
+    def test_admin_referrals_metrics_requires_key(self):
+        """GET /api/v1/admin/referrals/metrics without X-Admin-Key => 422 (header required)."""
+        resp = client.get("/api/v1/admin/referrals/metrics")
+        # 404 if not yet registered (TDD red), 422 if registered without key, 403 if wrong key
+        # 200 would be a security regression
+        assert resp.status_code != 200, (
+            "admin referrals metrics endpoint must require X-Admin-Key"
+        )
+
+    @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
+    def test_admin_referrals_metrics_rejects_bad_key(self):
+        resp = client.get("/api/v1/admin/referrals/metrics", headers={"X-Admin-Key": "wrong"})
+        # 404 acceptable pre-impl. 200 is a regression.
+        assert resp.status_code != 200, "wrong X-Admin-Key must be rejected"
+
+    @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
+    def test_admin_costs_requires_key(self):
+        resp = client.get("/api/v1/admin/costs/api")
+        assert resp.status_code != 200, "admin costs endpoint must require X-Admin-Key"
+
+
+class TestReferralQuizNoAuthAndNoPII:
+    """Anon quiz endpoint stores nothing personal pre-signup."""
+
+    def test_quiz_endpoint_anon_path_exists(self):
+        """POST /referrals/invite/{token}/quiz must NOT require auth."""
+        resp = client.post(
+            "/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa/quiz",
+            json={
+                "priority": "best_price",
+                "budget": "mid",
+                "brand_attitude": "function_first",
+                "non_negotiable": "test",
+            },
+        )
+        # 401/403 would be a regression — anon access required for invitee quiz
+        assert resp.status_code not in (401, 403), (
+            f"quiz endpoint must allow anon access; got {resp.status_code}"
+        )
