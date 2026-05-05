@@ -82,7 +82,7 @@ npx expo-doctor                   # Full project health check
 - **Expo version alignment:** All native packages MUST match Expo SDK version. Use `npx expo install <pkg>` (not `npm install`) for native deps. JS/native version mismatch causes cryptic `NativeWorklets`/`HostFunction` crashes in Expo Go.
 
 ### Migrations
-Supabase DDL migrations (`migrations/*.sql`) must be applied manually via [SQL Editor](https://supabase.com/dashboard/project/qulajmyxdbdkchvecmvc/sql/new). No psql or Management API token available locally. Before running `CREATE TABLE IF NOT EXISTS`, check existing schema — stale tables with different columns cause silent index/policy failures.
+Supabase DDL migrations (`migrations/*.sql`): preferred path is **Supabase MCP** (`mcp__plugin_supabase_supabase__apply_migration`) — tracks migration history table. Fallback: [SQL Editor](https://supabase.com/dashboard/project/qulajmyxdbdkchvecmvc/sql/new). **Gotcha:** SQL Editor wraps multi-statement scripts in one transaction, so a failing view rolls back the ALTER TABLE that ran before it — **always verify schema after apply** (`information_schema.columns`). Before running `CREATE TABLE IF NOT EXISTS`, check existing schema — stale tables with different columns cause silent index/policy failures.
 - `011_security_completion_freemium.sql` — APPLIED. user_usage, admin_audit_log, RLS, subscription_tier column, increment_lifetime_comparisons function.
 - `012_product_data_tables.sql` — APPLIED. product_specs, product_prices, product_reviews + RLS.
 - `013_demographics_cohort.sql` — APPLIED 2026-05-05 via Supabase MCP `apply_migration`. Adds `demographics_profile` JSONB on users + dismissal tracking + 3 metric views (vw_cohort_match_rate, vw_cohort_persona_distribution, vw_cohort_feedback_lift). The 2026-05-04 SQL Editor attempt rolled back due to a view-bug transaction (column-name fix in df8bf8a); re-applied successfully via MCP.
@@ -236,6 +236,8 @@ Each category gets unique GPT comparison tone via `build_personality_prompt(cate
 **Token security:** Tokens stored in `expo-secure-store` (Keychain/Keystore), NOT AsyncStorage. Token revocation on logout via Redis blacklist (`revoked:{sha256(token)}`, 1hr TTL). `verify_token()` checks blacklist before Supabase validation.
 **Certificate pinning:** `certificatePinning.ts` pins Let's Encrypt E8+E5 intermediate SPKI hashes. Requires EAS dev build (no-op in Expo Go). See `docs/SECURITY_HARDENING_CONTEXT.md` for SPKI hashes and rotation process.
 **Other:** Account deletion cascades atomically (App Store requirement, rate limited 1/min). Password: 10+ chars, 1 upper, 1 lower, 1 digit. Email change requires current password. Admin endpoints rate limited 30/min. History routes use `hmac.compare_digest` + merged 404/403. Swagger docs disabled in prod. SQL LIKE wildcards escaped. Sentry `before_send` scrubs JWT/API keys from events. CORS origins configurable via `CORS_ORIGINS` env var.
+**CSP scoping** (`app/middleware/security.py`): strict `default-src 'none'` for all paths EXCEPT `/admin/*` static dashboards, which get relaxed CSP (`'unsafe-inline'` + `cdn.jsdelivr.net`) so inline scripts/styles + Chart.js CDN work. Admin pages sit behind `X-Admin-Key`, so the relaxation is internal-only.
+**Login response shape:** `POST /api/v1/auth/login` returns `{success, user, session, message, error}`. The access token is at `session.access_token` (not top-level).
 **Regression tests:** `tests/test_security_regression.py` (57 tests) — guards against removing protections. Do NOT delete or skip these tests.
 
 ### SSE streaming
@@ -260,6 +262,7 @@ Survey-driven priors from ~400 Fillout responses bootstrap personalization for n
 - `_build_preferences_prompt(prefs, demographics_profile=...)` (extraction_service) appends a ~120-token cohort priors block when match_quality ∈ {exact, broadened_governorate, broadened_language} AND feature flag on. Privacy: NO raw age/gender/identity in prompt — only country/language/governorate thin context line + aggregate findings.
 - `cohort_service.match()` is in-memory only (singleton loads `data/cohort_priors.json` once at startup). Re-run `python -m scripts.build_cohorts` to regenerate.
 - Admin metrics: `GET /api/v1/admin/cohort/{metrics,feedback,retention}` + dashboard at `/admin/cohort.html` (Chart.js, X-Admin-Key auth).
+- **Cohort match is exact-case** — `_key_part()` doesn't normalize. Valid values must match `cohort_priors.json` keys: `age_group: "25-34"`, `gender: "Male"`/`"Female"`, `governorate: "Capital"/"Muharraq"/"Northern"/"Southern"`, `language: "English"/"Arabic"/"Both equally"`, `country: "Bahrain"`. The Pydantic `DemographicsBody` accepts any string but doesn't validate values.
 
 ### Category selection (soft validation)
 9 categories: Electronics, Grocery, Supplements, Makeup, Skincare, Haircare, Fragrances, Fashion, Other. `selected_category` is a hint — backend AI makes final decision via `PRODUCT_PARSER_PROMPT`. Mismatch → `category_switched: true` + frontend info banner. Each category has a dedicated spec schema in `CATEGORY_SPEC_SCHEMAS` (extraction_service.py). Zero extra API cost.
