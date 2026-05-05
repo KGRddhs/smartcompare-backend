@@ -1,0 +1,248 @@
+"""Referral system service.
+
+Owns the referral lifecycle: code provisioning, share/invite creation,
+weekly cap enforcement, Loop 1 (Deep Review credit) trigger, and
+status reporting. Loop 2 trigger lives in B4.2 (post-comparison hook).
+
+Design: docs/superpowers/specs/2026-05-05-smart-referral-system-design.md
+Plan tasks: B1.2, B2.1, B2.2.
+"""
+from __future__ import annotations
+
+import secrets
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
+from urllib.parse import quote
+
+from app.services.database_service import (
+    get_admin_supabase_client,
+    get_user_supabase_client,
+)
+
+# 32-char alphabet, ambiguous chars (0/O/1/I/L) excluded — design Section 4.1.
+_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+_VALID_SHARE_TARGETS = {"whatsapp", "copy", "x", "telegram", "snapchat", "other"}
+
+_WEEKLY_INVITE_CAP = 3
+
+# Default app base URL for invitee landing links. Override at deploy via env.
+# Kept as module attribute so tests/runtime can monkeypatch if needed.
+APP_BASE_URL = "https://qaren.app"
+
+
+class WeeklyInviteCapExceeded(Exception):
+    """Raised when a user attempts a 4th invite within 7 days."""
+
+
+def generate_referral_code() -> str:
+    """Generate an 8-char referral code: ``QR-XXXXXX`` from unambiguous alphabet."""
+    body = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(6))
+    return f"QR-{body}"
+
+
+class ReferralService:
+    """Encapsulates referral DB operations.
+
+    Use ``access_token`` for user-scoped RLS calls (e.g. status reads).
+    Admin client is used for cross-user/system operations (cap counts that
+    must see all referrer rows, invite inserts, credit grants).
+    """
+
+    def __init__(self, access_token: Optional[str] = None):
+        if access_token:
+            self.user_client = get_user_supabase_client(access_token)
+        else:
+            self.user_client = None
+        # Admin client is the workhorse for writes; tests patch this factory.
+        self.client = get_admin_supabase_client()
+
+    # ---------- code provisioning ----------
+
+    async def ensure_code_for_user(self, user_id: str) -> str:
+        """Idempotently assign a referral code to a user.
+
+        Returns the existing code if set; otherwise generates one and writes it
+        with up to 5 retries on unique-violation collisions.
+        """
+        existing = (
+            self.client.table("users")
+            .select("referral_code")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        current = (existing.data or {}).get("referral_code") if existing.data else None
+        if current:
+            return current
+
+        for _ in range(5):
+            code = generate_referral_code()
+            try:
+                self.client.table("users").update(
+                    {"referral_code": code}
+                ).eq("id", user_id).execute()
+                return code
+            except Exception as exc:  # noqa: BLE001 — Supabase wraps unique-violation as PostgrestAPIError
+                if "duplicate key" not in str(exc).lower() and "unique" not in str(exc).lower():
+                    raise
+        raise RuntimeError("Failed to mint a unique referral code after 5 attempts")
+
+    # ---------- invite creation ----------
+
+    async def create_invite(
+        self,
+        referrer_user_id: str,
+        comparison_id: str,
+        share_target: str,
+        device_fingerprint_hash: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Create an invite row and grant a Loop 1 Deep Review credit.
+
+        Order matters:
+          1. Weekly cap check (rejects 4th invite within 7d).
+          2. share_target validation (matches DB CHECK constraint).
+          3. ensure referrer has a code.
+          4. verify the comparison belongs to the referrer.
+          5. insert referral_invites row.
+          6. grant deep_review_credits row (Loop 1).
+          7. build share link.
+        """
+        # 1. Weekly cap (compute dynamically per design Section 4.2)
+        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        recent = (
+            self.client.table("referral_invites")
+            .select("id", count="exact")
+            .eq("referrer_user_id", referrer_user_id)
+            .gte("created_at", seven_days_ago)
+            .execute()
+        )
+        if (recent.count or 0) >= _WEEKLY_INVITE_CAP:
+            raise WeeklyInviteCapExceeded()
+
+        # 2. share_target validation (defence-in-depth before DB CHECK)
+        if share_target not in _VALID_SHARE_TARGETS:
+            raise ValueError(
+                f"share_target {share_target!r} not in allowed set {sorted(_VALID_SHARE_TARGETS)}"
+            )
+
+        # 3. Ensure referrer has a code
+        code = await self.ensure_code_for_user(referrer_user_id)
+
+        # 4. Verify ownership of comparison + grab share_token
+        comp = (
+            self.client.table("comparisons")
+            .select("id, user_id, share_token")
+            .eq("id", comparison_id)
+            .single()
+            .execute()
+        )
+        comp_data = comp.data
+        if not comp_data or comp_data.get("user_id") != referrer_user_id:
+            raise ValueError("Comparison not owned by user")
+        share_token = comp_data.get("share_token")
+
+        # 5. Insert invite
+        invite = (
+            self.client.table("referral_invites")
+            .insert(
+                {
+                    "referrer_user_id": referrer_user_id,
+                    "comparison_id": comparison_id,
+                    "share_target": share_target,
+                    "device_fingerprint_hash": device_fingerprint_hash,
+                }
+            )
+            .execute()
+        )
+        invite_id = invite.data[0]["id"] if invite.data else None
+
+        # 6. Loop 1 — grant Deep Review credit (fire-and-forget conceptually,
+        #    but we await for test determinism; failure is non-fatal in production
+        #    because credit grant is idempotent on next share).
+        self.client.table("deep_review_credits").insert(
+            {
+                "user_id": referrer_user_id,
+                "source": "share_loop1",
+            }
+        ).execute()
+
+        # 7. Build share link.
+        # quote() on share_token in case it ever contains url-unsafe chars; ref code is alnum.
+        share_link = f"{APP_BASE_URL}/c/{quote(share_token or '', safe='')}?ref={code}"
+
+        used = (recent.count or 0) + 1
+        return {
+            "invite_id": invite_id,
+            "referrer_user_id": referrer_user_id,
+            "share_link": share_link,
+            "share_token": share_token,
+            "referral_code": code,
+            "weekly_invites_used": used,
+            "weekly_invites_remaining": max(_WEEKLY_INVITE_CAP - used, 0),
+        }
+
+    # ---------- status ----------
+
+    async def get_status(self, user_id: str) -> dict[str, Any]:
+        """Return weekly + bonus + lifetime + code state.
+
+        Lazy-creates a referral code if the user doesn't have one yet.
+        """
+        # 1. Weekly invites used
+        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        weekly = (
+            self.client.table("referral_invites")
+            .select("id", count="exact")
+            .eq("referrer_user_id", user_id)
+            .gte("created_at", seven_days_ago)
+            .execute()
+        )
+        weekly_used = weekly.count or 0
+
+        # 2. User row — code + bonus comparisons
+        user_row = (
+            self.client.table("users")
+            .select("referral_code, referral_bonus_comparisons_this_month")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        user_data = user_row.data or {}
+        code = user_data.get("referral_code")
+        if not code:
+            code = generate_referral_code()
+            self.client.table("users").update({"referral_code": code}).eq(
+                "id", user_id
+            ).execute()
+        monthly_bonus = user_data.get("referral_bonus_comparisons_this_month") or 0
+
+        # 3. Available Deep Review credits (non-consumed AND non-expired)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        credits_q = (
+            self.client.table("deep_review_credits")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .is_("consumed_at", "null")
+            .gt("expires_at", now_iso)
+            .execute()
+        )
+        credits_available = credits_q.count or 0
+
+        # 4. Lifetime redemptions where this user is referrer
+        lifetime_q = (
+            self.client.table("referral_redemptions")
+            .select("id", count="exact")
+            .eq("referrer_user_id", user_id)
+            .execute()
+        )
+        lifetime = lifetime_q.count or 0
+
+        return {
+            "referral_code": code,
+            "weekly_invites_used": weekly_used,
+            "weekly_invites_remaining": max(_WEEKLY_INVITE_CAP - weekly_used, 0),
+            "monthly_bonus_comparisons": monthly_bonus,
+            "deep_review_credits_available": credits_available,
+            "total_lifetime_redemptions": lifetime,
+        }
