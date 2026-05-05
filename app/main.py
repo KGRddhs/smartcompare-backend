@@ -131,9 +131,20 @@ app.include_router(usage_router)   # /api/v1/usage/*
 # (The admin endpoints these pages call are still under /api/v1/admin/*.)
 from pathlib import Path as _Path
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 _static_dir = _Path(__file__).parent / "static"
 if _static_dir.exists():
     app.mount("/admin", StaticFiles(directory=str(_static_dir / "admin"), html=True), name="admin-static")
+
+_favicon_path = _static_dir / "favicon.png"
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    if _favicon_path.exists():
+        return FileResponse(str(_favicon_path), media_type="image/png")
+    from fastapi import Response
+    return Response(status_code=204)
 
 
 @app.get("/")
