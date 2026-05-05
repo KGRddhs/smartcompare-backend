@@ -83,10 +83,21 @@ VALID_QUIZ_BRAND_ATTITUDE = {
 
 class ShareRequest(BaseModel):
     """Per design 3.3 + must-fix #4: privacy toggles are FLAT fields on the
-    request, not nested. show_budget is locked OFF (PDF #8) — extra='forbid'
-    rejects the field outright if a malicious client tries to send it."""
+    request. The optional ``privacy`` dict is accepted as a back-compat
+    convenience for frontend builds that haven't migrated to flat yet —
+    its keys merge into the flat fields (flat values still win when both
+    are supplied). show_budget is locked OFF (PDF #8).
 
-    model_config = {"extra": "forbid"}
+    ``extra='ignore'`` (per qa-referral refinement): silently drop unknown
+    fields so a malicious client can't propagate ``show_budget=True`` AND
+    keep the API forward-compatible if frontend sends extra debugging
+    fields. ``extra='forbid'`` would 422 on any future field we haven't
+    shipped yet — worse failure mode. The PDF #8 trust invariant holds
+    either way: ``show_budget`` never reaches model attributes / DB /
+    invitee view.
+    """
+
+    model_config = {"extra": "ignore"}
 
     comparison_id: str = Field(..., min_length=1, max_length=128)
     share_target: ShareTarget
@@ -94,6 +105,22 @@ class ShareRequest(BaseModel):
     show_name: bool = True
     show_result: bool = True
     show_reasons: bool = True
+    # Back-compat: accept nested ``privacy={...}`` from older frontend
+    # builds. Merged into the flat fields in the route handler; never
+    # persisted directly. The validator below strips ``show_budget`` and
+    # any other unknown keys from the nested dict so the trust invariant
+    # (PDF #8) holds even when malicious clients use the back-compat path.
+    privacy: Optional[dict] = None
+
+    @field_validator("privacy")
+    @classmethod
+    def _strip_legacy_privacy_keys(cls, v: Optional[dict]) -> Optional[dict]:
+        if not v:
+            return v
+        # Whitelist — only these 3 keys flow through. show_budget never
+        # makes it past this validator regardless of value.
+        allowed = {"show_name", "show_result", "show_reasons"}
+        return {k: bool(val) for k, val in v.items() if k in allowed}
 
 
 class InviteeQuizRequest(BaseModel):
@@ -144,15 +171,28 @@ async def share_comparison(
     weekly_invites_remaining, ...}`` per design Section 3.4.
     """
     service = ReferralService(access_token=user.get("access_token"))
+    # Back-compat: if the legacy nested ``privacy`` block is present and
+    # supplies a key, only use it when the FLAT field equals its default.
+    # This preserves the must-fix #4 contract that flat values win.
+    merged_show_name = body.show_name
+    merged_show_result = body.show_result
+    merged_show_reasons = body.show_reasons
+    if body.privacy:
+        if "show_name" in body.privacy and body.show_name is True:
+            merged_show_name = bool(body.privacy["show_name"])
+        if "show_result" in body.privacy and body.show_result is True:
+            merged_show_result = bool(body.privacy["show_result"])
+        if "show_reasons" in body.privacy and body.show_reasons is True:
+            merged_show_reasons = bool(body.privacy["show_reasons"])
     try:
         result = await service.create_invite(
             referrer_user_id=user["id"],
             comparison_id=body.comparison_id,
             share_target=body.share_target,
             device_fingerprint_hash=body.device_fingerprint_hash,
-            show_name=body.show_name,
-            show_result=body.show_result,
-            show_reasons=body.show_reasons,
+            show_name=merged_show_name,
+            show_result=merged_show_result,
+            show_reasons=merged_show_reasons,
         )
     except WeeklyInviteCapExceeded:
         raise HTTPException(

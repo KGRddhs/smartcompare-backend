@@ -54,17 +54,27 @@ class TestShareRequestPrivacyShape:
         assert req.show_result is False
         assert req.show_reasons is False
 
-    def test_show_budget_field_rejected(self):
-        """show_budget is locked off per design 3.3 + PDF #8 — extra='forbid'
-        on ShareRequest rejects malicious clients trying to send it."""
+    def test_show_budget_field_silently_dropped(self):
+        """show_budget is locked off per design 3.3 + PDF #8.
+
+        Per qa-referral refinement: ShareRequest uses ``extra='ignore'``
+        (not 'forbid'), so a malicious client sending ``show_budget=True``
+        doesn't get 422 — the field is silently dropped. The trust
+        invariant is preserved: show_budget never reaches model attributes
+        / DB / invitee view.
+        """
         from app.api.referral_routes import ShareRequest
 
-        with pytest.raises(Exception):  # ValidationError or ValueError
-            ShareRequest(
-                comparison_id="cmp-1",
-                share_target="whatsapp",
-                show_budget=True,
-            )
+        req = ShareRequest(
+            comparison_id="cmp-1",
+            share_target="whatsapp",
+            show_budget=True,
+        )
+        assert getattr(req, "show_budget", None) in (None, False)
+        # model_dump must not leak the rejected field — downstream
+        # persistence uses model_dump and we must not leak budget into
+        # referral_invites.privacy.
+        assert "show_budget" not in req.model_dump()
 
 
 # ============================================
