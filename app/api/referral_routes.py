@@ -58,7 +58,16 @@ def _require_referral_enabled() -> None:
         )
 
 
-router = APIRouter(prefix="/api/v1/referrals", tags=["referrals"])
+# Router-level dependency. Putting the gate here (rather than per-endpoint)
+# means the flag check runs BEFORE auth AND BEFORE body validation —
+# matches the test contract that flag-OFF + invalid body still 503s. Per
+# qa-referral BUG #1a: a per-endpoint Depends listed after `get_current_user`
+# would let auth fail first and return 401, masking the disabled feature.
+router = APIRouter(
+    prefix="/api/v1/referrals",
+    tags=["referrals"],
+    dependencies=[Depends(_require_referral_enabled)],
+)
 
 ShareTarget = Literal["whatsapp", "copy", "x", "telegram", "snapchat", "other"]
 
@@ -72,22 +81,19 @@ VALID_QUIZ_BRAND_ATTITUDE = {
 } | set(VALID_BRAND_ATTITUDE)
 
 
-class SharePrivacy(BaseModel):
-    """Per-share privacy toggles surfaced in the ShareBottomSheet UI
-    (design 3.3). show_budget is intentionally absent — always false."""
-
-    model_config = {"extra": "ignore"}  # silently drop unknown fields like show_budget
-
-    show_name: bool = True
-    show_result: bool = True
-    show_reasons: bool = True
-
-
 class ShareRequest(BaseModel):
+    """Per design 3.3 + must-fix #4: privacy toggles are FLAT fields on the
+    request, not nested. show_budget is locked OFF (PDF #8) — extra='forbid'
+    rejects the field outright if a malicious client tries to send it."""
+
+    model_config = {"extra": "forbid"}
+
     comparison_id: str = Field(..., min_length=1, max_length=128)
     share_target: ShareTarget
     device_fingerprint_hash: Optional[str] = Field(default=None, max_length=128)
-    privacy: Optional[SharePrivacy] = None
+    show_name: bool = True
+    show_result: bool = True
+    show_reasons: bool = True
 
 
 class InviteeQuizRequest(BaseModel):
@@ -131,7 +137,6 @@ async def share_comparison(
     request: Request,
     body: ShareRequest,
     user: dict = Depends(get_current_user),
-    _flag: None = Depends(_require_referral_enabled),
 ):
     """Create a referral invite and grant the referrer a Deep Review credit.
 
@@ -139,14 +144,15 @@ async def share_comparison(
     weekly_invites_remaining, ...}`` per design Section 3.4.
     """
     service = ReferralService(access_token=user.get("access_token"))
-    privacy_dict = body.privacy.model_dump() if body.privacy else None
     try:
         result = await service.create_invite(
             referrer_user_id=user["id"],
             comparison_id=body.comparison_id,
             share_target=body.share_target,
             device_fingerprint_hash=body.device_fingerprint_hash,
-            privacy=privacy_dict,
+            show_name=body.show_name,
+            show_result=body.show_result,
+            show_reasons=body.show_reasons,
         )
     except WeeklyInviteCapExceeded:
         raise HTTPException(
@@ -174,7 +180,6 @@ async def share_comparison(
 async def get_referral_status(
     request: Request,
     user: dict = Depends(get_current_user),
-    _flag: None = Depends(_require_referral_enabled),
 ):
     """Return weekly + bonus + lifetime + credits state."""
     service = ReferralService(access_token=user.get("access_token"))
@@ -193,7 +198,6 @@ async def resolve_invite(
     share_token: str,
     ref: str,
     user: Optional[dict] = Depends(get_optional_user),
-    _flag: None = Depends(_require_referral_enabled),
 ):
     """Resolve an invite link to referrer + sanitized comparison.
 
@@ -221,7 +225,6 @@ async def submit_invitee_quiz(
     share_token: str,
     body: InviteeQuizRequest,
     user: Optional[dict] = Depends(get_optional_user),
-    _flag: None = Depends(_require_referral_enabled),
 ):
     """Re-score a comparison with the invitee's quiz answers.
 

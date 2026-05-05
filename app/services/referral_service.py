@@ -40,6 +40,16 @@ class WeeklyInviteCapExceeded(Exception):
     """Raised when a user attempts a 4th invite within 7 days."""
 
 
+async def link_invite_to_user(user_id: str, invite_id: str) -> bool:
+    """Module-level alias for ``ReferralService.link_invite_to_user``.
+
+    Used by ``app/api/auth_routes.py::register`` so test-referral can patch
+    a single attribute (``app.services.referral_service.link_invite_to_user``)
+    rather than mocking through the class.
+    """
+    return await ReferralService().link_invite_to_user(user_id, invite_id)
+
+
 # Top-level keys we strip from a comparison before showing it to an invitee.
 # Privacy invariant from design 3.3 — invitee must never see referrer's
 # preferences or budget. Behavior_profile is internal scoring state.
@@ -165,8 +175,20 @@ class ReferralService:
         share_target: str,
         device_fingerprint_hash: Optional[str] = None,
         privacy: Optional[dict[str, Any]] = None,
+        show_name: Optional[bool] = None,
+        show_result: Optional[bool] = None,
+        show_reasons: Optional[bool] = None,
     ) -> dict[str, Any]:
         """Create an invite row and grant a Loop 1 Deep Review credit.
+
+        Privacy can be passed two ways:
+          - flat: ``show_name=`` / ``show_result=`` / ``show_reasons=`` (preferred,
+            matches the new flat ShareRequest model after must-fix #4).
+          - dict: ``privacy={"show_name": True, ...}`` (legacy, accepted for
+            backwards compat with earlier callers).
+        When neither is supplied, the DB column default ``{all-true}`` kicks in.
+        ``show_budget`` is always OFF — design 3.3 + PDF #8 — and the field is
+        rejected at the Pydantic layer (extra='forbid' on ShareRequest).
 
         Order matters:
           1. Weekly cap check (rejects 4th invite within 7d).
@@ -177,6 +199,17 @@ class ReferralService:
           6. grant deep_review_credits row (Loop 1).
           7. build share link.
         """
+        # Reconcile flat kwargs with the legacy dict form. Flat values take
+        # precedence when both are provided.
+        if show_name is not None or show_result is not None or show_reasons is not None:
+            merged_privacy: dict[str, Any] = dict(privacy or {})
+            if show_name is not None:
+                merged_privacy["show_name"] = bool(show_name)
+            if show_result is not None:
+                merged_privacy["show_result"] = bool(show_result)
+            if show_reasons is not None:
+                merged_privacy["show_reasons"] = bool(show_reasons)
+            privacy = merged_privacy
         # 1. Weekly cap (compute dynamically per design Section 4.2)
         seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         recent = (
@@ -448,19 +481,33 @@ class ReferralService:
     # ---------- invite linking on signup (B3.5) ----------
 
     async def link_invite_redemption(
-        self, invite_id: str, new_user_id: str
+        self, *, invite_id: str, new_user_id: str
+    ) -> bool:
+        """Back-compat alias for :meth:`link_invite_to_user`.
+
+        Older test-referral coverage tests call this name with kwargs
+        ``(invite_id=, new_user_id=)``. The canonical contract (per
+        qa-referral must-fix #2) is :meth:`link_invite_to_user` with
+        positional ``(user_id, invite_id)`` — kept the alias to avoid
+        breaking existing tests while honouring the new contract.
+        """
+        return await self.link_invite_to_user(new_user_id, invite_id)
+
+    async def link_invite_to_user(
+        self, user_id: str, invite_id: str
     ) -> bool:
         """Link a freshly-registered user to a pending invite.
 
-        Sets ``referral_invites.redeemed_by_user_id = new_user_id`` for the
+        Sets ``referral_invites.redeemed_by_user_id = user_id`` for the
         provided invite, but ONLY if the row is unredeemed. Idempotent —
         re-calling for an already-redeemed invite is a no-op.
 
+        Param order matches plan B3.5 Step 3: user first, invite second.
         Returns True on success, False on missing/already-redeemed/error.
         Loop 2 itself fires later from ``try_trigger_loop2`` when the
         invitee runs their first comparison.
         """
-        if not invite_id or not new_user_id:
+        if not invite_id or not user_id:
             return False
         try:
             existing = (
@@ -475,13 +522,13 @@ class ReferralService:
                 return False
 
             self.client.table("referral_invites").update(
-                {"redeemed_by_user_id": new_user_id}
+                {"redeemed_by_user_id": user_id}
             ).eq("id", invite_id).execute()
             return True
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "[referral] link_invite_redemption(%s, %s) failed: %s",
-                invite_id, new_user_id, exc,
+                "[referral] link_invite_to_user(%s, %s) failed: %s",
+                user_id, invite_id, exc,
             )
             return False
 

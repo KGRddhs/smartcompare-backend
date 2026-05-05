@@ -272,19 +272,22 @@ async def register(request: Request, body: RegisterRequest):
             detail=result.get("error", "Registration failed")
         )
 
-    # B3.5 — link invite to the new user (fire-and-forget, never blocks signup)
+    # B3.5 — link invite to the new user (fire-and-forget, never blocks signup).
+    # We resolve the function via app.services.referral_service so test-referral
+    # can patch either `app.services.referral_service.link_invite_to_user` OR
+    # `app.api.auth_routes.link_invite_to_user`. Module-attribute access (rather
+    # than a top-of-file `from ... import`) makes the first patch path work.
     if body.invite_id:
         new_user_id = (result.get("user") or {}).get("id")
         if new_user_id:
             try:
-                from app.services.referral_service import ReferralService
-                await ReferralService().link_invite_redemption(
-                    invite_id=body.invite_id,
-                    new_user_id=new_user_id,
+                from app.services import referral_service
+                await referral_service.link_invite_to_user(
+                    new_user_id, body.invite_id,
                 )
             except Exception as exc:  # noqa: BLE001
                 # Linker failure must not break signup — Loop 2 just won't fire.
-                logger.warning(f"link_invite_redemption failed (silent): {exc}")
+                logger.warning(f"link_invite_to_user failed (silent): {exc}")
 
     return result
 

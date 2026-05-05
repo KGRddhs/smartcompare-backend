@@ -12,8 +12,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
-class TestLinkInviteRedemption:
-    """ReferralService.link_invite_redemption — pure unit tests."""
+class TestLinkInviteToUser:
+    """ReferralService.link_invite_to_user(user_id, invite_id) — pure unit tests.
+
+    Param order matches plan B3.5 Step 3: user first, invite second.
+    """
 
     @pytest.mark.asyncio
     async def test_links_unredeemed_invite_to_new_user(self):
@@ -30,7 +33,7 @@ class TestLinkInviteRedemption:
 
         with patch("app.services.referral_service.get_admin_supabase_client", return_value=client):
             svc = ReferralService()
-            ok = await svc.link_invite_redemption("i-1", "user-99")
+            ok = await svc.link_invite_to_user("user-99", "i-1")
 
         assert ok is True
         # Update was called with redeemed_by_user_id
@@ -48,7 +51,7 @@ class TestLinkInviteRedemption:
 
         with patch("app.services.referral_service.get_admin_supabase_client", return_value=client):
             svc = ReferralService()
-            ok = await svc.link_invite_redemption("i-1", "user-99")
+            ok = await svc.link_invite_to_user("user-99", "i-1")
 
         assert ok is False
         client.table.return_value.update.assert_not_called()
@@ -68,7 +71,7 @@ class TestLinkInviteRedemption:
 
         with patch("app.services.referral_service.get_admin_supabase_client", return_value=client):
             svc = ReferralService()
-            ok = await svc.link_invite_redemption("i-1", "user-99")
+            ok = await svc.link_invite_to_user("user-99", "i-1")
 
         assert ok is False
         client.table.return_value.update.assert_not_called()
@@ -84,7 +87,7 @@ class TestLinkInviteRedemption:
 
         with patch("app.services.referral_service.get_admin_supabase_client", return_value=client):
             svc = ReferralService()
-            ok = await svc.link_invite_redemption("i-missing", "user-99")
+            ok = await svc.link_invite_to_user("user-99", "i-missing")
 
         assert ok is False
 
@@ -94,9 +97,9 @@ class TestLinkInviteRedemption:
 
         with patch("app.services.referral_service.get_admin_supabase_client", return_value=MagicMock()):
             svc = ReferralService()
-            assert await svc.link_invite_redemption("", "user-99") is False
-            assert await svc.link_invite_redemption("invite-1", "") is False
-            assert await svc.link_invite_redemption("", "") is False
+            assert await svc.link_invite_to_user("user-99", "") is False
+            assert await svc.link_invite_to_user("", "invite-1") is False
+            assert await svc.link_invite_to_user("", "") is False
 
     @pytest.mark.asyncio
     async def test_db_error_returns_false_no_raise(self):
@@ -110,7 +113,7 @@ class TestLinkInviteRedemption:
 
         with patch("app.services.referral_service.get_admin_supabase_client", return_value=client):
             svc = ReferralService()
-            ok = await svc.link_invite_redemption("i-1", "user-99")
+            ok = await svc.link_invite_to_user("user-99", "i-1")
 
         assert ok is False
 

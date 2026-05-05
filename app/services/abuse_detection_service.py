@@ -177,17 +177,22 @@ class AbuseDetectionService:
             return None
 
     @staticmethod
-    def _duration_seconds(start: str, end: str) -> Optional[float]:
+    def _duration_seconds(start: Optional[str], end: Optional[str]) -> Optional[float]:
         """Parse two ISO-8601 timestamps and return ``end - start`` in seconds.
 
-        Returns None if either is unparseable. Trailing ``Z`` is normalised to
-        ``+00:00`` so ``datetime.fromisoformat`` accepts it on Python 3.10+.
+        Returns None on None / empty / unparseable inputs (defense-in-depth
+        — ``passes_real_action_gate`` already None-checks upstream, but the
+        parser must be safe for direct callers per qa-referral review).
+        Trailing ``Z`` is normalised to ``+00:00`` so
+        ``datetime.fromisoformat`` accepts it on Python 3.10+.
         """
+        if not start or not end:
+            return None
         try:
             s = datetime.fromisoformat(start.replace("Z", "+00:00"))
             e = datetime.fromisoformat(end.replace("Z", "+00:00"))
             return (e - s).total_seconds()
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
             return None
 
     # ---------- evaluate_invite — orchestrator ----------

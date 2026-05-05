@@ -29,6 +29,7 @@ STATUS_CODE_MAP = {
     422: "VALIDATION_ERROR",
     429: "RATE_LIMITED",
     500: "SERVER_ERROR",
+    503: "FEATURE_DISABLED",
 }
 
 
@@ -52,11 +53,33 @@ def _build_error_response(status_code: int, message: str, request_id: str) -> JS
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    """Handle FastAPI HTTPException with unified format."""
-    return _build_error_response(
+    """Handle FastAPI HTTPException with unified format.
+
+    When ``exc.detail`` is a dict carrying ``code`` and/or ``error`` keys
+    (the structured-detail pattern used by referral routes for 429/400/503),
+    those keys are unwrapped to top-level so the unified error envelope
+    surfaces e.g. ``code: "FEATURE_DISABLED"`` instead of stringifying
+    the dict into the ``error`` field.
+    """
+    detail = exc.detail
+    code = STATUS_CODE_MAP.get(exc.status_code, "SERVER_ERROR")
+    if isinstance(detail, dict):
+        message = str(detail.get("error") or detail.get("message") or detail)
+        # Caller-supplied code wins over the status-map default — lets routes
+        # signal e.g. WEEKLY_INVITE_CAP without polluting the global map.
+        if isinstance(detail.get("code"), str):
+            code = detail["code"]
+    else:
+        message = str(detail)
+
+    return JSONResponse(
         status_code=exc.status_code,
-        message=str(exc.detail),
-        request_id=_get_request_id(request),
+        content={
+            "success": False,
+            "error": message,
+            "code": code,
+            "request_id": _get_request_id(request),
+        },
     )
 
 

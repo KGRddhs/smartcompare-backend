@@ -30,48 +30,41 @@ client = TestClient(app)
 
 
 class TestShareRequestPrivacyShape:
-    def test_privacy_block_optional(self):
+    """Per must-fix #4: privacy is FLAT on ShareRequest, not nested."""
+
+    def test_default_all_toggles_are_true(self):
+        from app.api.referral_routes import ShareRequest
+
+        req = ShareRequest(comparison_id="cmp-1", share_target="whatsapp")
+        assert req.show_name is True
+        assert req.show_result is True
+        assert req.show_reasons is True
+
+    def test_each_toggle_can_be_disabled(self):
         from app.api.referral_routes import ShareRequest
 
         req = ShareRequest(
             comparison_id="cmp-1",
             share_target="whatsapp",
+            show_name=False,
+            show_result=False,
+            show_reasons=False,
         )
-        # Default = all True
-        assert req.privacy is None or (
-            req.privacy.show_name is True
-            and req.privacy.show_result is True
-            and req.privacy.show_reasons is True
-        )
+        assert req.show_name is False
+        assert req.show_result is False
+        assert req.show_reasons is False
 
-    def test_privacy_block_can_disable_each_toggle(self):
-        from app.api.referral_routes import ShareRequest, SharePrivacy
+    def test_show_budget_field_rejected(self):
+        """show_budget is locked off per design 3.3 + PDF #8 — extra='forbid'
+        on ShareRequest rejects malicious clients trying to send it."""
+        from app.api.referral_routes import ShareRequest
 
-        req = ShareRequest(
-            comparison_id="cmp-1",
-            share_target="whatsapp",
-            privacy=SharePrivacy(show_name=False, show_result=False, show_reasons=False),
-        )
-        assert req.privacy.show_name is False
-        assert req.privacy.show_result is False
-        assert req.privacy.show_reasons is False
-
-    def test_privacy_does_not_accept_show_budget_field(self):
-        """show_budget is locked off per design 3.3 — model must not accept it."""
-        from app.api.referral_routes import SharePrivacy
-
-        # Pydantic v2: extra="forbid" rejects unknown fields. Either explicit
-        # forbid or silent drop is acceptable — what matters is show_budget
-        # cannot influence the invitee view.
-        try:
-            sp = SharePrivacy(show_name=True, show_result=True, show_reasons=True, show_budget=True)
-            # If accepted, the field should be silently dropped (not exposed)
-            assert not hasattr(sp, "show_budget") or sp.show_budget is False, (
-                "show_budget must be locked off"
+        with pytest.raises(Exception):  # ValidationError or ValueError
+            ShareRequest(
+                comparison_id="cmp-1",
+                share_target="whatsapp",
+                show_budget=True,
             )
-        except Exception:
-            # Pydantic rejected unknown field — that's also fine
-            pass
 
 
 # ============================================
@@ -283,20 +276,16 @@ class TestCreateInvitePersistsPrivacy:
                     json={
                         "comparison_id": "00000000-0000-0000-0000-000000000000",
                         "share_target": "whatsapp",
-                        "privacy": {
-                            "show_name": False,
-                            "show_result": True,
-                            "show_reasons": False,
-                        },
+                        "show_name": False,
+                        "show_result": True,
+                        "show_reasons": False,
                     },
                     headers={"Authorization": "Bearer tok"},
                 )
                 assert resp.status_code == 201, resp.text
-                # Service must receive the privacy dict
-                privacy_arg = captured.get("privacy")
-                assert privacy_arg is not None
-                assert privacy_arg.get("show_name") is False
-                assert privacy_arg.get("show_result") is True
-                assert privacy_arg.get("show_reasons") is False
+                # Service must receive the 3 flat kwargs after must-fix #4
+                assert captured.get("show_name") is False
+                assert captured.get("show_result") is True
+                assert captured.get("show_reasons") is False
         finally:
             app.dependency_overrides.clear()
