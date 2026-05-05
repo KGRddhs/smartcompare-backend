@@ -48,16 +48,36 @@ class ReengagementService:
         """Decide which (if any) push to send to ``user`` today.
 
         Returns the PushPayload chosen by the highest-priority detector,
-        or None when the 7-day cap is hit or no detector fires.
+        or None when:
+        - the 7-day per-user cap is hit, OR
+        - the user's master ``notifications_enabled`` toggle is OFF, OR
+        - all 3 sub-toggles (notification_types) are OFF, OR
+        - no detector fires.
+
+        The master toggle is also enforced upstream by the cron's
+        eligibility query — checking it here is defense-in-depth so a
+        direct call to ``evaluate`` (e.g. from tests or future
+        integrations) honours the user's preference.
         """
+        prefs = (user.get("preferences") or {})
+        # Missing key = treated as ON (default ON per design 9.2).
+        if prefs.get("notifications_enabled") is False:
+            return None
+
         if await self._recent_push(user):
             return None
 
-        for detector in (
-            self._check_decision_insight,
-            self._check_cohort_curiosity,
-            self._check_decision_retrospective,
-        ):
+        # Per-type sub-toggles. Missing key = ON. Missing parent dict = all ON.
+        types = prefs.get("notification_types") or {}
+        gated_detectors = []
+        if types.get("decision_insight", True):
+            gated_detectors.append(self._check_decision_insight)
+        if types.get("cohort_curiosity", True):
+            gated_detectors.append(self._check_cohort_curiosity)
+        if types.get("decision_retrospective", True):
+            gated_detectors.append(self._check_decision_retrospective)
+
+        for detector in gated_detectors:
             payload = await detector(user)
             if payload:
                 return payload
