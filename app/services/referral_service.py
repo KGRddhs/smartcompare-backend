@@ -396,6 +396,46 @@ class ReferralService:
             "total_lifetime_redemptions": lifetime,
         }
 
+    # ---------- invite linking on signup (B3.5) ----------
+
+    async def link_invite_redemption(
+        self, invite_id: str, new_user_id: str
+    ) -> bool:
+        """Link a freshly-registered user to a pending invite.
+
+        Sets ``referral_invites.redeemed_by_user_id = new_user_id`` for the
+        provided invite, but ONLY if the row is unredeemed. Idempotent —
+        re-calling for an already-redeemed invite is a no-op.
+
+        Returns True on success, False on missing/already-redeemed/error.
+        Loop 2 itself fires later from ``try_trigger_loop2`` when the
+        invitee runs their first comparison.
+        """
+        if not invite_id or not new_user_id:
+            return False
+        try:
+            existing = (
+                self.client.table("referral_invites")
+                .select("id, redeemed_by_user_id, redeemed_at")
+                .eq("id", invite_id)
+                .single()
+                .execute()
+            )
+            row = existing.data
+            if not row or row.get("redeemed_at") or row.get("redeemed_by_user_id"):
+                return False
+
+            self.client.table("referral_invites").update(
+                {"redeemed_by_user_id": new_user_id}
+            ).eq("id", invite_id).execute()
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[referral] link_invite_redemption(%s, %s) failed: %s",
+                invite_id, new_user_id, exc,
+            )
+            return False
+
     # ---------- Loop 2 trigger (B4.2) ----------
 
     async def try_trigger_loop2(

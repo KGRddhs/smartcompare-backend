@@ -63,6 +63,10 @@ def _validate_password_strength(password: str) -> str:
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=10)
+    # Optional referral invite UUID — set when the user signed up via an
+    # invite link's quiz flow (design 3.7, plan B3.5). Backend links the
+    # referral_invites row so Loop 2 fires on the user's first comparison.
+    invite_id: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("password")
     @classmethod
@@ -256,15 +260,32 @@ async def register(request: Request, body: RegisterRequest):
 
     - Email must be valid
     - Password must be at least 10 characters with uppercase, lowercase, and number
+    - Optional invite_id links the user to a pending referral invite (B3.5).
+      Loop 2 itself fires later when the invitee runs their first comparison
+      (handled by save_comparison_and_track_cohort).
     """
     result = await register_user(body.email, body.password)
-    
+
     if not result["success"]:
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Registration failed")
         )
-    
+
+    # B3.5 — link invite to the new user (fire-and-forget, never blocks signup)
+    if body.invite_id:
+        new_user_id = (result.get("user") or {}).get("id")
+        if new_user_id:
+            try:
+                from app.services.referral_service import ReferralService
+                await ReferralService().link_invite_redemption(
+                    invite_id=body.invite_id,
+                    new_user_id=new_user_id,
+                )
+            except Exception as exc:  # noqa: BLE001
+                # Linker failure must not break signup — Loop 2 just won't fire.
+                logger.warning(f"link_invite_redemption failed (silent): {exc}")
+
     return result
 
 
