@@ -343,7 +343,7 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
               disabled={aiSharingSaving || preferences === null}
               trackColor={{ false: colors.border.medium, true: colors.accent }}
               thumbColor={'#FFFFFF'}
-              accessibilityLabel="profile.aiSharing.title"
+              accessibilityLabel={t('profile.aiSharing.title')}
             />
           </View>
           <Text style={styles.privacySubtitle}>{t('profile.aiSharing.subtitle')}</Text>
