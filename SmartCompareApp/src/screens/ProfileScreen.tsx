@@ -49,6 +49,7 @@ import {
 import type { UserPreferences } from '../types';
 import { getSavedUser, logout, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import StyleProfileCard from '../components/StyleProfileCard';
+import ReferralStatusCard from '../components/ReferralStatusCard';
 
 interface ProfileScreenProps {
   navigation: any;
@@ -252,6 +253,9 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
 
         {/* Cohort style profile (only renders when confidence >= medium) */}
         <StyleProfileCard display={cohortDisplay} onEditPress={handleEditStyleProfile} />
+
+        {/* Referral status card (F4.5) — silently hides when feature flag is off, anon, or network down */}
+        <ReferralStatusCard />
 
         {/* Account Card */}
         <View style={styles.card}>

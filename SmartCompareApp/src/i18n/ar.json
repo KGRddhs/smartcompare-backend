@@ -290,5 +290,19 @@
   "referrals.quiz.signupTitle": "هذي نتيجتك أنت",
   "referrals.quiz.signupBody": "احفظها وخذ مقارنة Deep Review مجانية لأنك دخلت من دعوة.",
   "referrals.quiz.signupCta": "احفظها — سجّل مجاناً",
-  "referrals.quiz.skipSignup": "بعدين"
+  "referrals.quiz.skipSignup": "بعدين",
+
+  "referrals.status.title": "عطاياك هالأسبوع",
+  "referrals.status.subtitle": "شارك قارن مع أصحابك. كل دعوة ناجحة تضيف مقارنات لحدك الشهري.",
+  "referrals.status.copy": "نسخ",
+  "referrals.status.copied": "تم النسخ",
+  "referrals.status.copyCode": "انسخ كود الإحالة",
+  "referrals.status.weeklyUsed": "{{used}}/{{total}}",
+  "referrals.status.weeklyLabel": "عطايا هالأسبوع",
+  "referrals.status.bonusValue": "+{{count}}",
+  "referrals.status.bonusLabel": "إضافي هالشهر",
+  "referrals.status.lifetimeValue": "{{count}}",
+  "referrals.status.lifetimeLabel": "أصحاب ساعدتهم",
+  "referrals.status.creditsAvailable": "{{count}} مقارنة Deep Review متوفرة",
+  "referrals.status.loading": "جاري تحميل حالة الإحالة"
 }
