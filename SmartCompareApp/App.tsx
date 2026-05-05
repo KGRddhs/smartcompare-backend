@@ -28,6 +28,8 @@ import HomeScreen from './src/screens/HomeScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
+import InviteeQuizScreen from './src/screens/InviteeQuizScreen';
 
 // Types
 import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/types';
@@ -172,14 +174,34 @@ export default function App() {
     return <SplashScreen onFinish={handleSplashFinish} />;
   }
 
+  // Deep-link config — qaren.app/c/{token}?ref={code} resolves to
+  // ReferralLanding pre-auth (gradual commitment per design 3.5/3.6).
+  const linking = {
+    prefixes: ['qaren://', 'https://qaren.app'],
+    config: {
+      screens: {
+        ReferralLanding: 'c/:share_token',
+        InviteeQuiz: 'q/:share_token',
+      },
+    },
+  };
+
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       <StatusBar style="auto" />
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
-          <Stack.Screen name="Auth">
-            {(props) => <AuthNavigator {...props} onLoginSuccess={handleLoginSuccess} />}
-          </Stack.Screen>
+          <>
+            <Stack.Screen name="Auth">
+              {(props) => <AuthNavigator {...props} onLoginSuccess={handleLoginSuccess} />}
+            </Stack.Screen>
+            {/* Referral landing is reachable PRE-auth (no signup gate per design 3.5). */}
+            <Stack.Screen
+              name="ReferralLanding"
+              component={ReferralLandingScreen}
+            />
+            <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
+          </>
         ) : needsPreferences ? (
           <Stack.Screen name="Onboarding">
             {(props) => (
@@ -196,6 +218,12 @@ export default function App() {
               component={ResultsScreen}
               options={{ presentation: 'modal' }}
             />
+            {/* Authed users tapping a referral link still get the landing page. */}
+            <Stack.Screen
+              name="ReferralLanding"
+              component={ReferralLandingScreen}
+            />
+            <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
           </>
         )}
       </Stack.Navigator>

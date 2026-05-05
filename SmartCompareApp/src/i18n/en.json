@@ -250,5 +250,20 @@
   "referrals.cta.default": "Confusion sorted. Know anyone agonizing over the same call?",
 
   "referrals.loop1.toast": "🎁 Thanks for sharing. Your next comparison goes 2× deeper on reviews.",
-  "referrals.loop1.counter": "{{used}} of {{total}} gifts this week"
+  "referrals.loop1.counter": "{{used}} of {{total}} gifts this week",
+
+  "referrals.landing.loading": "Opening invite",
+  "referrals.landing.titleWithWinner": "{{referrer}} was torn between {{productA}} and {{productB}} — picked {{winner}}.",
+  "referrals.landing.titleNoWinner": "{{referrer}} compared {{productA}} and {{productB}}.",
+  "referrals.landing.subtitle": "Their answer doesn't have to be yours. Answer 4 questions, get yours.",
+  "referrals.landing.previewLabel": "What they compared",
+  "referrals.landing.winnerBadge": "Their pick",
+  "referrals.landing.startCta": "Start my comparison",
+  "referrals.landing.privacyNote": "No signup needed yet — answer the 4 questions first.",
+  "referrals.landing.notFound": "This invite link expired or doesn't exist anymore.",
+  "referrals.landing.unavailable": "Invites aren't available right now. Try Qaren on your own?",
+  "referrals.landing.network": "Couldn't reach Qaren. Check your connection and try again.",
+  "referrals.landing.openQaren": "Open Qaren",
+
+  "referrals.quiz.placeholder": "The 4-question quiz lands in the next update."
 }

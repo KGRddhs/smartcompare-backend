@@ -250,5 +250,20 @@
   "referrals.cta.default": "خلصت من الحيرة. تعرف أحد قاعد يحاتي على نفس الاختيار؟",
 
   "referrals.loop1.toast": "🎁 شكراً للمشاركة. مقارنتك الجاية تدخل أعمق في المراجعات.",
-  "referrals.loop1.counter": "{{used}} من {{total}} عطايا هالأسبوع"
+  "referrals.loop1.counter": "{{used}} من {{total}} عطايا هالأسبوع",
+
+  "referrals.landing.loading": "جاري فتح الدعوة",
+  "referrals.landing.titleWithWinner": "{{referrer}} كان محتار بين {{productA}} و{{productB}} — قرر {{winner}}.",
+  "referrals.landing.titleNoWinner": "{{referrer}} قارن بين {{productA}} و{{productB}}.",
+  "referrals.landing.subtitle": "قراره لك ما يلزم يكون لك. جاوب 4 أسئلة، خذ توصيتك.",
+  "referrals.landing.previewLabel": "ايش قارنوا",
+  "referrals.landing.winnerBadge": "اختيارهم",
+  "referrals.landing.startCta": "ابدأ مقارنتي",
+  "referrals.landing.privacyNote": "ما تحتاج تسجيل بعد — جاوب الـ4 أسئلة الأول.",
+  "referrals.landing.notFound": "رابط الدعوة منتهي أو ما يشتغل.",
+  "referrals.landing.unavailable": "الدعوات مو متوفرة حالياً. جرّب قارن من نفسك؟",
+  "referrals.landing.network": "تعذر الاتصال بقارن. افحص الإنترنت وحاول مرة ثانية.",
+  "referrals.landing.openQaren": "افتح قارن",
+
+  "referrals.quiz.placeholder": "اختبار الـ4 أسئلة بيوصل بالتحديث الجاي."
 }
