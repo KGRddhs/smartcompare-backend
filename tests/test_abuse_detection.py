@@ -382,24 +382,20 @@ class TestDurationSeconds:
         assert AbuseDetectionService._duration_seconds("garbage", "still-garbage") is None
         assert AbuseDetectionService._duration_seconds("2026-05-05T10:00:00Z", "garbage") is None
 
-    def test_none_inputs_should_return_none_or_raise_predictably(self):
-        """BUG (flagged to backend 2026-05-05): _duration_seconds raises
-        AttributeError on None input because it calls .replace("Z", ...) without
-        a None guard. The except clause only catches (ValueError, TypeError) —
-        AttributeError leaks. This test documents the current behavior so it
-        won't silently change without notice. The caller (passes_real_action_gate
-        line 151) has its own None-guard, so this is theoretical for now, but
-        backend should add `if not start or not end: return None` to be safe.
+    def test_none_inputs_return_none(self):
+        """None / empty inputs must return None (no exception leak).
+
+        Backend fixed this 2026-05-05 by adding an early `if not start or not
+        end: return None` guard plus widening the except clause to include
+        AttributeError. Test now asserts the fixed contract strictly.
         """
         from app.services.abuse_detection_service import AbuseDetectionService
 
-        # Current behavior: raises AttributeError. Once fixed, this should return None.
-        try:
-            result = AbuseDetectionService._duration_seconds(None, "2026-05-05T10:00:00Z")
-            assert result is None
-        except AttributeError:
-            # Documented current behavior — flag to backend for fix
-            pass
+        assert AbuseDetectionService._duration_seconds(None, "2026-05-05T10:00:00Z") is None
+        assert AbuseDetectionService._duration_seconds("2026-05-05T10:00:00Z", None) is None
+        assert AbuseDetectionService._duration_seconds(None, None) is None
+        assert AbuseDetectionService._duration_seconds("", "2026-05-05T10:00:00Z") is None
+        assert AbuseDetectionService._duration_seconds("2026-05-05T10:00:00Z", "") is None
 
 
 class TestRealActionGateMissingTimestamps:
