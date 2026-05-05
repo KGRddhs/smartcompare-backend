@@ -38,14 +38,6 @@ Be intelligent about every decision:
 6. For multi-file features (3+ files, frontend+backend): use parallel agent teams (TeamCreate with 4 Opus agents: backend, frontend, test, qa)
 7. After major features: update CLAUDE.md (project context), MEMORY.md (learnings), CONTEXT_SESSION_LOG.md (what changed)
 
-## Pending Manual Setup (as of 2026-05-04)
-
-1. ~~Apply migration 013~~ — **DONE 2026-05-04** (vw_cohort_feedback_lift had a column-name bug, fixed in df8bf8a then applied).
-2. **Migrate Railway hosting** to new account (sub trial expired 2026-05-03). Re-add ALL env vars from old project; see Environment Variables section. Old Railway URL `web-production-58776.up.railway.app` will go offline.
-3. **Add NEW env var during Railway migration:** `ENABLE_COHORT_PERSONALIZATION=false` (defaults `false` in code; explicit set documents Phase 1 intent).
-4. **Phase 1 cohort rollout** (after 2-3 done): flip flag for admin accounts only → watch `/admin/cohort.html` metrics → 10% canary → full. See design doc Section 6.6.
-5. **Open backfill PR** (optional, do alongside 2-4): `gh pr create` not available locally — manually compare `553b091...main` via GitHub web UI for review trail of the 30+ cohort commits. Scope includes the 12c2879 fix that wires B end-to-end.
-
 ## Critical: Two app/ Directories
 
 - **`app/`** (root) — The DEPLOYED backend. Railway runs `uvicorn app.main:app` from root.
@@ -93,7 +85,7 @@ npx expo-doctor                   # Full project health check
 Supabase DDL migrations (`migrations/*.sql`) must be applied manually via [SQL Editor](https://supabase.com/dashboard/project/qulajmyxdbdkchvecmvc/sql/new). No psql or Management API token available locally. Before running `CREATE TABLE IF NOT EXISTS`, check existing schema — stale tables with different columns cause silent index/policy failures.
 - `011_security_completion_freemium.sql` — APPLIED. user_usage, admin_audit_log, RLS, subscription_tier column, increment_lifetime_comparisons function.
 - `012_product_data_tables.sql` — APPLIED. product_specs, product_prices, product_reviews + RLS.
-- `013_demographics_cohort.sql` — APPLIED 2026-05-04. demographics_profile column on users + dismissal tracking + 3 metric views (vw_cohort_match_rate, vw_cohort_persona_distribution, vw_cohort_feedback_lift). Note: `vw_cohort_feedback_lift` uses `comparison_feedback.useful` (boolean) — the original spec assumed a non-existent `rating` column; fixed in commit df8bf8a before apply.
+- `013_demographics_cohort.sql` — APPLIED 2026-05-05 via Supabase MCP `apply_migration`. Adds `demographics_profile` JSONB on users + dismissal tracking + 3 metric views (vw_cohort_match_rate, vw_cohort_persona_distribution, vw_cohort_feedback_lift). The 2026-05-04 SQL Editor attempt rolled back due to a view-bug transaction (column-name fix in df8bf8a); re-applied successfully via MCP.
 
 ## Architecture
 
@@ -260,8 +252,8 @@ Each category gets unique GPT comparison tone via `build_personality_prompt(cate
 - `scoring_method`: "category_weighted" (anon), "personalized" (explicit prefs), "behavioral" (behavior/session active)
 - VALID_PRIORITIES extended in Session 41: original 8 + 6 cohort enums (`quality_reliability`, `best_price`, `trusted_brand`, `warranty_support`, `design_aesthetics`, `value_for_money`). VALID_BRAND_ATTITUDE adds `trust_known_brands`.
 
-### Cohort personalization (Session 41 — feature-flagged)
-Survey-driven priors from ~400 Fillout responses bootstrap personalization for new/anonymous users. **Feature flag `ENABLE_COHORT_PERSONALIZATION` defaults false** in code (per design 6.6); turn on once Phase 1 internal QA validates.
+### Cohort personalization (Session 41 — Phase 1 LIVE 2026-05-05)
+Survey-driven priors from ~400 Fillout responses bootstrap personalization for new/anonymous users. Feature flag `ENABLE_COHORT_PERSONALIZATION` is **ON in production as of 2026-05-05** (smoke-test verified end-to-end: PUT /demographics → cohort match `broadened_governorate` → comparison response shows `cohort_injected: true`). Code default remains `false` for safety. Flag is global — there's no per-user gating yet (see playbook for canary path if needed).
 - **PUT /api/v1/auth/demographics** (auth, 5/min) — accepts age_group/gender/governorate/language/country (all optional, "Prefer not to say" treated as missing). Auto-derives language from Accept-Language and country from CF-IPCountry. Stores `users.demographics_profile` JSONB with cached `cohort_match` snapshot. If user has no preferences (or all are inferred), seeds them from cohort modal — never overwrites `user_stated`.
 - **GET /api/v1/auth/cohort-profile** (auth) — returns Profile-screen "style profile" card data, or `{display: null}` for low/population matches.
 - **PUT /api/v1/auth/preferences** — extended to flip `_sources` to `user_stated` when user edits a previously-inferred field.
@@ -286,7 +278,7 @@ Reviews: `_clean_review_content()` strips garbage (min 8 words), fixes sentiment
 **Optional:** `SENTRY_DSN` (enables error tracking), `LOG_LEVEL` (default: INFO), `CORS_ORIGINS` (comma-separated allowed origins, defaults to Railway + localhost)
 **Price Scraping:** `FIRECRAWL_API_KEY` (firecrawl.dev, 500 lifetime free — deployed), `SCRAPEDO_API_TOKEN` (scrape.do, 1000/mo free — deployed, but timing out on GCC sites), `ENABLE_FIRECRAWL` (default true), `ENABLE_SCRAPEDO` (default true). Both keys live in Railway since Session 34.
 **Version Check:** `APP_MIN_VERSION`, `APP_LATEST_VERSION`, `APP_FORCE_UPDATE` (all optional, used by `/api/v1/app/version`)
-**Cohort Personalization (PENDING — Railway sub renewal needed):** `ENABLE_COHORT_PERSONALIZATION` (default `false` in code, so absence is safe). Add when Railway account is migrated. See memory `pending_railway_migration.md`.
+**Cohort Personalization:** `ENABLE_COHORT_PERSONALIZATION=true` in Railway (Phase 1 live since 2026-05-05). Code default is `false`, so absence is safe.
 
 ### Serper API Credits
 ~2,500 credits (rotated Feb 28 2026). ~3-4 calls/comparison. Cached = free, only `nocache=true` burns credits. **To rotate**: new account at serper.dev (free tier 2,500), update `SERPER_API_KEY` in Railway.
