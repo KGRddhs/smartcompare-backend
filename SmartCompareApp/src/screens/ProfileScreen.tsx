@@ -84,6 +84,8 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
   const [aiSharingSaving, setAiSharingSaving] = useState(false);
   const [aiSharingError, setAiSharingError] = useState('');
+  const [notifsSaving, setNotifsSaving] = useState(false);
+  const [notifsError, setNotifsError] = useState('');
 
   useEffect(() => {
     loadUser();
@@ -99,17 +101,28 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   // Default ON when undefined (matches backend semantics from B1.4)
   const aiSharingEnabled = preferences?.ai_sharing_enabled !== false;
 
-  const handleAiSharingToggle = async (value: boolean) => {
-    if (aiSharingSaving) return;
-    setAiSharingError('');
+  // Build a complete UserPreferences shape from current state + an override.
+  // PUT /preferences requires the 4 onboarding fields, so we backfill defaults
+  // when the user hasn't completed onboarding yet.
+  const buildNextPrefs = (override: Partial<UserPreferences>): UserPreferences => {
     const previous = preferences;
-    const next: UserPreferences = {
+    return {
       priorities: previous?.priorities ?? [],
       budget: previous?.budget ?? 'mid',
       lifestyle: previous?.lifestyle ?? [],
       brand_attitude: previous?.brand_attitude ?? 'best_of_both',
-      ai_sharing_enabled: value,
+      ai_sharing_enabled: previous?.ai_sharing_enabled,
+      notifications_enabled: previous?.notifications_enabled,
+      notification_types: previous?.notification_types,
+      ...override,
     };
+  };
+
+  const handleAiSharingToggle = async (value: boolean) => {
+    if (aiSharingSaving) return;
+    setAiSharingError('');
+    const previous = preferences;
+    const next = buildNextPrefs({ ai_sharing_enabled: value });
     setPreferences(next);
     setAiSharingSaving(true);
     try {
@@ -125,6 +138,47 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
       setAiSharingSaving(false);
     }
   };
+
+  // F5.4 — re-engagement notifications. `override` is one of:
+  //   { notifications_enabled: bool } (master)
+  //   { notification_types: { decision_insight?: bool, ... } } (sub-toggle)
+  const handleNotificationsToggle = async (override: Partial<UserPreferences>) => {
+    if (notifsSaving) return;
+    setNotifsError('');
+    const previous = preferences;
+    // For sub-toggle changes, merge into the existing notification_types
+    // rather than replacing — single-key override should preserve siblings.
+    const merged: Partial<UserPreferences> = override.notification_types
+      ? {
+          notification_types: {
+            ...(previous?.notification_types ?? {}),
+            ...override.notification_types,
+          },
+        }
+      : override;
+    const next = buildNextPrefs(merged);
+    setPreferences(next);
+    setNotifsSaving(true);
+    try {
+      const result = await savePreferences(next);
+      if (!result.success) {
+        setPreferences(previous);
+        setNotifsError(result.error || t('profile.notifs.errorSave'));
+      }
+    } catch (err: any) {
+      setPreferences(previous);
+      setNotifsError(parseApiError(err).message || t('profile.notifs.errorSave'));
+    } finally {
+      setNotifsSaving(false);
+    }
+  };
+
+  // Default ON when undefined for all 4 toggles (matches backend semantics).
+  const notificationsEnabled = preferences?.notifications_enabled !== false;
+  const notifTypes = preferences?.notification_types ?? {};
+  const insightEnabled = notifTypes.decision_insight !== false;
+  const cohortEnabled = notifTypes.cohort_curiosity !== false;
+  const retroEnabled = notifTypes.decision_retrospective !== false;
 
   const loadUser = async () => {
     const savedUser = await getSavedUser();
@@ -354,6 +408,73 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
         </View>
 
+        {/* F5.4 — Notifications Card: master + 3 sub-toggles for re-engagement pushes */}
+        <Text style={styles.sectionLabel}>{t('profile.notifications')}</Text>
+        <View style={styles.card}>
+          <View style={styles.privacyRow}>
+            <View style={styles.privacyHeader}>
+              <Bell size={18} color={colors.text.secondary} />
+              <Text style={styles.privacyTitle}>{t('profile.notifs.master.title')}</Text>
+            </View>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={(v) => handleNotificationsToggle({ notifications_enabled: v })}
+              disabled={notifsSaving || preferences === null}
+              trackColor={{ false: colors.border.medium, true: colors.accent }}
+              thumbColor={'#FFFFFF'}
+              accessibilityLabel={t('profile.notifs.master.title')}
+            />
+          </View>
+          <Text style={styles.privacySubtitle}>{t('profile.notifs.master.subtitle')}</Text>
+
+          {/* Sub-toggles — only visible + interactive when master ON */}
+          {notificationsEnabled ? (
+            <View style={styles.subToggles}>
+              <View style={styles.subToggleRow}>
+                <Text style={styles.subToggleLabel}>{t('profile.notifs.insight')}</Text>
+                <Switch
+                  value={insightEnabled}
+                  onValueChange={(v) =>
+                    handleNotificationsToggle({ notification_types: { decision_insight: v } })
+                  }
+                  disabled={notifsSaving}
+                  trackColor={{ false: colors.border.medium, true: colors.accent }}
+                  thumbColor={'#FFFFFF'}
+                  accessibilityLabel={t('profile.notifs.insight')}
+                />
+              </View>
+              <View style={styles.subToggleRow}>
+                <Text style={styles.subToggleLabel}>{t('profile.notifs.cohort')}</Text>
+                <Switch
+                  value={cohortEnabled}
+                  onValueChange={(v) =>
+                    handleNotificationsToggle({ notification_types: { cohort_curiosity: v } })
+                  }
+                  disabled={notifsSaving}
+                  trackColor={{ false: colors.border.medium, true: colors.accent }}
+                  thumbColor={'#FFFFFF'}
+                  accessibilityLabel={t('profile.notifs.cohort')}
+                />
+              </View>
+              <View style={styles.subToggleRow}>
+                <Text style={styles.subToggleLabel}>{t('profile.notifs.retrospective')}</Text>
+                <Switch
+                  value={retroEnabled}
+                  onValueChange={(v) =>
+                    handleNotificationsToggle({ notification_types: { decision_retrospective: v } })
+                  }
+                  disabled={notifsSaving}
+                  trackColor={{ false: colors.border.medium, true: colors.accent }}
+                  thumbColor={'#FFFFFF'}
+                  accessibilityLabel={t('profile.notifs.retrospective')}
+                />
+              </View>
+            </View>
+          ) : null}
+
+          {notifsError ? <Text style={styles.errorText}>{notifsError}</Text> : null}
+        </View>
+
         {/* Support Card */}
         <Text style={styles.sectionLabel}>{t('profile.support')}</Text>
         <View style={styles.card}>
@@ -571,6 +692,25 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.text.secondary,
     marginTop: spacing.sm,
+  },
+  // F5.4 — sub-toggles for Notifications card (decision_insight / cohort_curiosity / decision_retrospective)
+  subToggles: {
+    marginTop: spacing.base,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border.light,
+    gap: spacing.xs,
+  },
+  subToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+  },
+  subToggleLabel: {
+    ...typography.caption,
+    color: colors.text.primary,
+    flexShrink: 1,
   },
   // Rows
   row: {

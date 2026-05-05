@@ -36,6 +36,7 @@ import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/
 
 // Auth
 import { verifyAuth, initializeAuth, clearSession, configureGoogleSignIn, type User } from './src/services/authService';
+import { tryRegisterPushToken } from './src/services/pushTokenService';
 
 // Configure Google Sign-In at module level
 configureGoogleSignIn();
@@ -132,6 +133,10 @@ export default function App() {
           setUser(authUser);
           setIsAuthenticated(true);
           setNeedsPreferences(!authUser.preferences_completed);
+          // F5.4 — fire-and-forget push token registration on every authed
+          // launch. Idempotent server-side; silently no-ops on missing
+          // module or permission denial.
+          tryRegisterPushToken().catch(() => { /* never blocks app boot */ });
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -152,6 +157,9 @@ export default function App() {
         setUser(authUser);
         setNeedsPreferences(!authUser.preferences_completed);
         setIsAuthenticated(true);
+        // F5.4 — register push token immediately after first signup/login
+        // so Loop 2 push lands on the right device for THIS session.
+        tryRegisterPushToken().catch(() => { /* swallow */ });
       }
     } catch (error) {
       console.error('Login verification error:', error);

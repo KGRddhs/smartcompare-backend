@@ -304,5 +304,12 @@
   "referrals.status.lifetimeValue": "{{count}}",
   "referrals.status.lifetimeLabel": "Friends helped",
   "referrals.status.creditsAvailable": "{{count}} Deep Review credit(s) available",
-  "referrals.status.loading": "Loading referral status"
+  "referrals.status.loading": "Loading referral status",
+
+  "profile.notifs.master.title": "Smart Decision Notifications",
+  "profile.notifs.master.subtitle": "We send up to 1 helpful notification per week — no price-drop spam.",
+  "profile.notifs.insight": "Decision Insights",
+  "profile.notifs.cohort": "Peer Decision Updates",
+  "profile.notifs.retrospective": "Decision Retrospectives",
+  "profile.notifs.errorSave": "Couldn't update right now. Try again?"
 }

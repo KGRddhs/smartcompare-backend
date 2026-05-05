@@ -304,5 +304,12 @@
   "referrals.status.lifetimeValue": "{{count}}",
   "referrals.status.lifetimeLabel": "أصحاب ساعدتهم",
   "referrals.status.creditsAvailable": "{{count}} مقارنة Deep Review متوفرة",
-  "referrals.status.loading": "جاري تحميل حالة الإحالة"
+  "referrals.status.loading": "جاري تحميل حالة الإحالة",
+
+  "profile.notifs.master.title": "إشعارات القرارات الذكية",
+  "profile.notifs.master.subtitle": "نرسل لك إشعار واحد مفيد بالأسبوع كحد أقصى — بدون إزعاج عروض.",
+  "profile.notifs.insight": "تحديثات على قراراتك",
+  "profile.notifs.cohort": "قرارات الناس قريبين منك",
+  "profile.notifs.retrospective": "متابعة بعد القرار",
+  "profile.notifs.errorSave": "تعذر التحديث الآن. حاول مرة أخرى؟"
 }

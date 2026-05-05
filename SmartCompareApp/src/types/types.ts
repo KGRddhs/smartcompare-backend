@@ -331,12 +331,23 @@ export type ImageIdentifyResult =
 
 // --- Preferences ---
 
+export interface NotificationTypes {
+  decision_insight?: boolean;
+  cohort_curiosity?: boolean;
+  decision_retrospective?: boolean;
+}
+
 export interface UserPreferences {
   priorities: string[];
   budget: 'budget' | 'mid' | 'premium';
   lifestyle: string[];
   brand_attitude: 'brand_loyal' | 'function_first' | 'best_of_both';
   ai_sharing_enabled?: boolean;
+  // F5.4 — re-engagement notification preferences. Master + 3 sub-toggles.
+  // Missing keys default to ON server-side (matches re-engagement-cron
+  // eligibility filter from design 9.2).
+  notifications_enabled?: boolean;
+  notification_types?: NotificationTypes;
 }
 
 // --- Auth types ---
