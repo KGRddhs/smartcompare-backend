@@ -5,8 +5,21 @@ Three lightweight controls (design Section 7):
    ``device_fingerprint_hash`` the referrer used at share time.
 2. Disposable email blocklist — invitee's email domain is on the public
    throwaway list.
-3. Real-action gate — invitee's first comparison must take >30s
-   (start to result-view) AND have a non-spam query.
+3. Real-action gate — invitee's first comparison must show signs of
+   real engagement (non-spam query AND server-side compute time
+   exceeding the configured threshold).
+
+**Design Section 7 originally specified ``result_viewed_at - started_at
+> 30s``, but those columns were never created in the comparisons table
+schema (caught by Session 42 pre-canary smoke chain). Approximation
+fix:** the gate now reads ``full_response.metadata.elapsed_seconds``
+(server compute time, already populated) as a proxy. Real comparisons
+take ≥5s server-side; cache hits return in 1-2s; bot/spam queries are
+sub-1s. Threshold is tunable via ``REAL_ACTION_MIN_SECONDS`` env var
+(default ``5``). Loop 2 false-negative rate for legitimate cache-hit
+invitees is acceptable for v1 — see CLAUDE.md anti-abuse caveat.
+v1.1+ may add ``started_at``/``result_viewed_at`` columns + frontend
+reporting if abuse data shows the proxy is too lax/strict.
 
 The service does NOT raise exceptions on Redis/DB unavailability —
 ``evaluate_invite`` returns ``{passed, flagged_reason}`` and callers
@@ -15,6 +28,7 @@ audit-log + skip the reward without halting the comparison. Plan B4.1.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -66,7 +80,21 @@ _SPAM_QUERIES: frozenset[str] = frozenset(
     }
 )
 
-_REAL_ACTION_MIN_SECONDS = 30
+def _real_action_min_seconds() -> float:
+    """Read the real-action minimum threshold (seconds) at call time.
+
+    Default ``5`` (cache hits ~1-2s; real comparisons ≥5s server-side;
+    bots sub-1s). Env-tunable so we can tighten/loosen post-canary
+    without a deploy. Negative or unparseable values fall back to 5.
+    """
+    raw = os.getenv("REAL_ACTION_MIN_SECONDS")
+    if raw is None:
+        return 5.0
+    try:
+        v = float(raw)
+        return v if v > 0 else 5.0
+    except (TypeError, ValueError):
+        return 5.0
 
 
 # Reason codes returned by evaluate_invite — also used by audit log entries.
@@ -133,10 +161,16 @@ class AbuseDetectionService:
     # ---------- Control 3 — real-action gate ----------
 
     def passes_real_action_gate(self, comparison_id: str) -> bool:
-        """True iff the comparison ran for >30s and the query is non-spam.
+        """True iff the invitee's first comparison shows real engagement.
 
-        Fails closed when the comparison can't be loaded or timestamps are
-        missing — we'd rather skip a marginal reward than reward a fake.
+        Two checks (per Session 42 elapsed_seconds-proxy fix):
+        1. Query non-empty and not in the spam list.
+        2. ``full_response.metadata.elapsed_seconds`` exceeds
+           ``REAL_ACTION_MIN_SECONDS`` (default 5s, env-tunable).
+
+        Fails closed when the comparison can't be loaded, metadata is
+        missing, or elapsed_seconds is unparseable — better to skip a
+        marginal reward than reward a fake.
         """
         comp = self._load_comparison(comparison_id)
         if not comp:
@@ -146,27 +180,32 @@ class AbuseDetectionService:
         if not query or query in _SPAM_QUERIES:
             return False
 
-        started_at = comp.get("started_at")
-        viewed_at = comp.get("result_viewed_at")
-        if not started_at or not viewed_at:
+        full_response = comp.get("full_response") or {}
+        metadata = full_response.get("metadata") or {}
+        elapsed = metadata.get("elapsed_seconds")
+        if elapsed is None:
+            # Pre-Session-42 comparisons may lack elapsed_seconds. Fail closed.
             return False
-
-        duration = self._duration_seconds(started_at, viewed_at)
-        if duration is None:
+        try:
+            duration = float(elapsed)
+        except (TypeError, ValueError):
             return False
-        return duration > _REAL_ACTION_MIN_SECONDS
+        return duration > _real_action_min_seconds()
 
     def _load_comparison(self, comparison_id: str) -> Optional[dict[str, Any]]:
         """Fetch the comparison row used by the real-action gate.
 
-        Tests patch this method directly so the implementation can evolve
-        (e.g. switch to a Redis snapshot of timing data) without changing
-        the contract.
+        Selects the actual columns that exist on ``comparisons``:
+        ``id``, ``query``, ``full_response`` (JSONB containing
+        ``metadata.elapsed_seconds``), and ``created_at`` for future
+        wall-clock checks. Tests patch this method directly so the
+        implementation can evolve (e.g. switch to a Redis snapshot)
+        without changing the contract.
         """
         try:
             resp = (
                 self.client.table("comparisons")
-                .select("id, query, started_at, result_viewed_at")
+                .select("id, query, full_response, created_at")
                 .eq("id", comparison_id)
                 .single()
                 .execute()

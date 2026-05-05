@@ -53,8 +53,13 @@ class TestDurationSecondsParser:
         assert AbuseDetectionService._duration_seconds("", "") is None
 
 
-class TestRealActionGateMissingTimestamps:
-    """Cover the early-return branches in passes_real_action_gate."""
+class TestRealActionGateMissingMetadata:
+    """Cover the early-return branches in passes_real_action_gate.
+
+    Updated Session 42 — gate now uses
+    ``full_response.metadata.elapsed_seconds`` instead of the never-
+    existed ``started_at`` / ``result_viewed_at`` columns.
+    """
 
     def test_no_query_fails(self):
         svc = AbuseDetectionService()
@@ -64,13 +69,21 @@ class TestRealActionGateMissingTimestamps:
             return_value={
                 "id": "c1",
                 "query": "",
-                "started_at": "2026-05-05T10:00:00Z",
-                "result_viewed_at": "2026-05-05T10:01:00Z",
+                "full_response": {"metadata": {"elapsed_seconds": 60.0}},
             },
         ):
             assert svc.passes_real_action_gate("c1") is False
 
-    def test_no_started_at_fails(self):
+    def test_no_full_response_fails(self):
+        svc = AbuseDetectionService()
+        with patch.object(
+            svc,
+            "_load_comparison",
+            return_value={"id": "c1", "query": "iPhone vs Galaxy"},
+        ):
+            assert svc.passes_real_action_gate("c1") is False
+
+    def test_no_metadata_fails(self):
         svc = AbuseDetectionService()
         with patch.object(
             svc,
@@ -78,13 +91,12 @@ class TestRealActionGateMissingTimestamps:
             return_value={
                 "id": "c1",
                 "query": "iPhone vs Galaxy",
-                "started_at": None,
-                "result_viewed_at": "2026-05-05T10:01:00Z",
+                "full_response": {},
             },
         ):
             assert svc.passes_real_action_gate("c1") is False
 
-    def test_no_viewed_at_fails(self):
+    def test_unparseable_elapsed_fails(self):
         svc = AbuseDetectionService()
         with patch.object(
             svc,
@@ -92,22 +104,7 @@ class TestRealActionGateMissingTimestamps:
             return_value={
                 "id": "c1",
                 "query": "iPhone vs Galaxy",
-                "started_at": "2026-05-05T10:00:00Z",
-                "result_viewed_at": None,
-            },
-        ):
-            assert svc.passes_real_action_gate("c1") is False
-
-    def test_unparseable_timestamps_fail(self):
-        svc = AbuseDetectionService()
-        with patch.object(
-            svc,
-            "_load_comparison",
-            return_value={
-                "id": "c1",
-                "query": "iPhone vs Galaxy",
-                "started_at": "garbage-date",
-                "result_viewed_at": "2026-05-05T10:01:00Z",
+                "full_response": {"metadata": {"elapsed_seconds": "not-a-number"}},
             },
         ):
             assert svc.passes_real_action_gate("c1") is False

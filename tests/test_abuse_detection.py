@@ -8,9 +8,15 @@ Three controls:
    referrer => SAME_DEVICE
 2. Disposable email blocklist — domain matches public list (e.g. mailinator.com)
    => DISPOSABLE_EMAIL
-3. Real-action gate — invitee's first comparison must have
-   (result_viewed_at - started_at) > 30s and a non-spam query =>
-   BELOW_REAL_ACTION_THRESHOLD if it doesn't
+3. Real-action gate — invitee's first comparison must have a non-spam
+   query AND ``full_response.metadata.elapsed_seconds`` > the env-tunable
+   threshold (default 5s, ``REAL_ACTION_MIN_SECONDS`` env var). Fails
+   with BELOW_REAL_ACTION_THRESHOLD otherwise.
+
+   Note (Session 42): originally specified as
+   ``result_viewed_at - started_at > 30s``, but those columns were never
+   added to the comparisons schema. Approximation fix uses
+   ``elapsed_seconds`` (server compute time) as a proxy for engagement.
 
 Written FIRST (red phase). Backend implements
 app/services/abuse_detection_service.py to make these green.
@@ -145,32 +151,36 @@ class TestDisposableEmailDetection:
 
 
 class TestRealActionGate:
-    """Comparison duration < 30s OR spam query => fails gate."""
+    """Comparison `elapsed_seconds` ≤ threshold OR spam query => fails gate.
 
-    def test_below_30s_fails(self):
+    Updated Session 42: uses ``full_response.metadata.elapsed_seconds``
+    (server compute time, default threshold 5s) instead of the originally
+    spec'd ``result_viewed_at - started_at`` because those columns were
+    never created in the schema.
+    """
+
+    def _comp(self, query: str = "iPhone 15 vs Galaxy S24", elapsed: float = 30.0) -> dict:
+        """Helper: build a comparison row with the elapsed_seconds proxy."""
+        return {
+            "id": "c1",
+            "query": query,
+            "full_response": {"metadata": {"elapsed_seconds": elapsed}},
+            "created_at": "2026-05-05T10:00:00Z",
+        }
+
+    def test_below_threshold_fails(self):
+        """elapsed_seconds at or below threshold (default 5s) fails the gate."""
         from app.services.abuse_detection_service import AbuseDetectionService
 
         svc = AbuseDetectionService()
-        comparison = {
-            "id": "c1",
-            "query": "iPhone 15 vs Galaxy S24",
-            "started_at": "2026-05-05T10:00:00Z",
-            "result_viewed_at": "2026-05-05T10:00:15Z",  # 15 seconds
-        }
-        with patch.object(svc, "_load_comparison", return_value=comparison):
+        with patch.object(svc, "_load_comparison", return_value=self._comp(elapsed=2.5)):
             assert svc.passes_real_action_gate("c1") is False
 
-    def test_above_30s_passes(self):
+    def test_above_threshold_passes(self):
         from app.services.abuse_detection_service import AbuseDetectionService
 
         svc = AbuseDetectionService()
-        comparison = {
-            "id": "c1",
-            "query": "iPhone 15 vs Galaxy S24",
-            "started_at": "2026-05-05T10:00:00Z",
-            "result_viewed_at": "2026-05-05T10:01:00Z",  # 60 seconds
-        }
-        with patch.object(svc, "_load_comparison", return_value=comparison):
+        with patch.object(svc, "_load_comparison", return_value=self._comp(elapsed=30.0)):
             assert svc.passes_real_action_gate("c1") is True
 
     @pytest.mark.parametrize("spam_query", ["test", "asdf", "asdfg", "1234", "qwerty"])
@@ -178,13 +188,8 @@ class TestRealActionGate:
         from app.services.abuse_detection_service import AbuseDetectionService
 
         svc = AbuseDetectionService()
-        comparison = {
-            "id": "c1",
-            "query": spam_query,
-            "started_at": "2026-05-05T10:00:00Z",
-            "result_viewed_at": "2026-05-05T10:01:00Z",  # 60s, but spam query
-        }
-        with patch.object(svc, "_load_comparison", return_value=comparison):
+        # Even with elapsed_seconds well above threshold, spam query fails.
+        with patch.object(svc, "_load_comparison", return_value=self._comp(query=spam_query, elapsed=60.0)):
             assert svc.passes_real_action_gate("c1") is False
 
     def test_missing_comparison_fails(self):
@@ -194,6 +199,16 @@ class TestRealActionGate:
         svc = AbuseDetectionService()
         with patch.object(svc, "_load_comparison", return_value=None):
             assert svc.passes_real_action_gate("c-missing") is False
+
+    def test_threshold_env_var_lowers_bar(self, monkeypatch):
+        """REAL_ACTION_MIN_SECONDS env tunes the threshold."""
+        from app.services.abuse_detection_service import AbuseDetectionService
+
+        monkeypatch.setenv("REAL_ACTION_MIN_SECONDS", "2")
+        svc = AbuseDetectionService()
+        # 2.5s would fail the default-5s gate but pass at threshold=2
+        with patch.object(svc, "_load_comparison", return_value=self._comp(elapsed=2.5)):
+            assert svc.passes_real_action_gate("c1") is True
 
 
 # ============================================
@@ -337,7 +352,12 @@ class TestLoadComparisonRealPath:
 
         client = MagicMock()
         client.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
-            data={"id": "c1", "query": "iphone vs galaxy", "started_at": "2026-05-05T10:00:00Z", "result_viewed_at": "2026-05-05T10:01:00Z"}
+            data={
+                "id": "c1",
+                "query": "iphone vs galaxy",
+                "full_response": {"metadata": {"elapsed_seconds": 30.0}},
+                "created_at": "2026-05-05T10:00:00Z",
+            }
         )
 
         svc = AbuseDetectionService()
@@ -345,6 +365,7 @@ class TestLoadComparisonRealPath:
             comp = svc._load_comparison("c1")
 
         assert comp["query"] == "iphone vs galaxy"
+        assert comp["full_response"]["metadata"]["elapsed_seconds"] == 30.0
 
     def test_load_comparison_returns_none_on_error(self):
         from app.services.abuse_detection_service import AbuseDetectionService
@@ -398,30 +419,46 @@ class TestDurationSeconds:
         assert AbuseDetectionService._duration_seconds("2026-05-05T10:00:00Z", "") is None
 
 
-class TestRealActionGateMissingTimestamps:
-    """Cover lines 152, 156 — missing timestamp paths."""
+class TestRealActionGateMissingMetadata:
+    """Cover the elapsed_seconds-proxy fail-closed paths (Session 42)."""
 
-    def test_missing_started_at_fails(self):
+    def test_missing_full_response_fails(self):
         from app.services.abuse_detection_service import AbuseDetectionService
 
         svc = AbuseDetectionService()
-        comp = {"id": "c", "query": "real query", "started_at": None, "result_viewed_at": "2026-05-05T10:00:00Z"}
+        comp = {"id": "c", "query": "real query"}  # no full_response
         with patch.object(svc, "_load_comparison", return_value=comp):
             assert svc.passes_real_action_gate("c") is False
 
-    def test_missing_result_viewed_at_fails(self):
+    def test_missing_metadata_fails(self):
         from app.services.abuse_detection_service import AbuseDetectionService
 
         svc = AbuseDetectionService()
-        comp = {"id": "c", "query": "real query", "started_at": "2026-05-05T10:00:00Z", "result_viewed_at": None}
+        comp = {"id": "c", "query": "real query", "full_response": {}}
         with patch.object(svc, "_load_comparison", return_value=comp):
             assert svc.passes_real_action_gate("c") is False
 
-    def test_unparseable_timestamps_fail_closed(self):
+    def test_missing_elapsed_seconds_fails(self):
         from app.services.abuse_detection_service import AbuseDetectionService
 
         svc = AbuseDetectionService()
-        comp = {"id": "c", "query": "real query", "started_at": "garbage", "result_viewed_at": "also-garbage"}
+        comp = {
+            "id": "c",
+            "query": "real query",
+            "full_response": {"metadata": {"timestamp": "2026-05-05T10:00:00Z"}},
+        }
+        with patch.object(svc, "_load_comparison", return_value=comp):
+            assert svc.passes_real_action_gate("c") is False
+
+    def test_unparseable_elapsed_seconds_fails_closed(self):
+        from app.services.abuse_detection_service import AbuseDetectionService
+
+        svc = AbuseDetectionService()
+        comp = {
+            "id": "c",
+            "query": "real query",
+            "full_response": {"metadata": {"elapsed_seconds": "not-a-number"}},
+        }
         with patch.object(svc, "_load_comparison", return_value=comp):
             assert svc.passes_real_action_gate("c") is False
 
@@ -429,6 +466,10 @@ class TestRealActionGateMissingTimestamps:
         from app.services.abuse_detection_service import AbuseDetectionService
 
         svc = AbuseDetectionService()
-        comp = {"id": "c", "query": "", "started_at": "2026-05-05T10:00:00Z", "result_viewed_at": "2026-05-05T10:01:00Z"}
+        comp = {
+            "id": "c",
+            "query": "",
+            "full_response": {"metadata": {"elapsed_seconds": 30.0}},
+        }
         with patch.object(svc, "_load_comparison", return_value=comp):
             assert svc.passes_real_action_gate("c") is False
