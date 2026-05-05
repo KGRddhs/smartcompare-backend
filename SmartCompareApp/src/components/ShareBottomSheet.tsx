@@ -26,7 +26,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
-import { MessageCircle, Copy as CopyIcon, Send, Twitter, Camera } from 'lucide-react-native';
+import { MessageCircle, Copy as CopyIcon, Send, AtSign, Camera } from 'lucide-react-native';
 import { colors, spacing, radii, typography } from '../theme';
 import { createShare, ReferralError, ShareTarget, CreateShareResult } from '../services/referralService';
 
@@ -91,7 +91,7 @@ function TargetIcon({ iconKey }: { iconKey: string }) {
     case 'copy':
       return <CopyIcon size={size} color={color} />;
     case 'x':
-      return <Twitter size={size} color={color} />;
+      return <AtSign size={size} color={color} />;
     case 'telegram':
       return <Send size={size} color={color} />;
     case 'snapchat':
