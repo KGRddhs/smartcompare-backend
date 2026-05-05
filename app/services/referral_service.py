@@ -35,6 +35,32 @@ class WeeklyInviteCapExceeded(Exception):
     """Raised when a user attempts a 4th invite within 7 days."""
 
 
+# Top-level keys we strip from a comparison before showing it to an invitee.
+# Privacy invariant from design 3.3 — invitee must never see referrer's
+# preferences or budget. Behavior_profile is internal scoring state.
+_REFERRER_PRIVATE_KEYS = (
+    "preferences",
+    "budget",
+    "behavior_profile",
+    "source_priorities",
+    "_sources",
+    "user_inputs",
+    "demographics_profile",
+)
+
+
+def _strip_personalization(comparison: dict[str, Any]) -> dict[str, Any]:
+    """Return a shallow copy with referrer-private fields removed."""
+    if not isinstance(comparison, dict):
+        return {}
+    cleaned = {k: v for k, v in comparison.items() if k not in _REFERRER_PRIVATE_KEYS}
+    # Also drop `personalization.user_id` and `personalization.preferences` if
+    # they're nested — the entire personalization block is referrer-specific
+    # context that has no value to the invitee.
+    cleaned.pop("personalization", None)
+    return cleaned
+
+
 def generate_referral_code() -> str:
     """Generate an 8-char referral code: ``QR-XXXXXX`` from unambiguous alphabet."""
     body = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(6))
@@ -181,6 +207,124 @@ class ReferralService:
             "weekly_invites_used": used,
             "weekly_invites_remaining": max(_WEEKLY_INVITE_CAP - used, 0),
         }
+
+    # ---------- invitee landing (B3.1) ----------
+
+    async def resolve_invite(
+        self, share_token: str, ref_code: str
+    ) -> Optional[dict[str, Any]]:
+        """Resolve a share token + referral code into the invitee landing payload.
+
+        Returns ``None`` if either lookup fails. Strips personalization
+        (preferences, budget, behavior_profile, source_priorities) from the
+        comparison so the referrer's private settings don't leak.
+
+        Updates ``referral_invites.first_viewed_at`` on first resolution.
+        """
+        # 1. Resolve referrer via the public RPC
+        rpc_resp = self.client.rpc(
+            "resolve_referral_code", {"p_code": ref_code}
+        ).execute()
+        rows = rpc_resp.data or []
+        if not rows:
+            return None
+        first = rows[0] if isinstance(rows, list) else rows
+        referrer_user_id = first.get("referrer_user_id") or first.get("user_id")
+        display_name = first.get("display_name") or "A friend"
+        if not referrer_user_id:
+            return None
+
+        # 2. Lookup the comparison by share_token
+        comp_resp = (
+            self.client.table("comparisons")
+            .select("id, user_id, response_data, share_token")
+            .eq("share_token", share_token)
+            .single()
+            .execute()
+        )
+        comp = comp_resp.data
+        if not comp or comp.get("user_id") != referrer_user_id:
+            return None
+
+        # 3. Find / create the invite for this (referrer, comparison) pair —
+        #    keeps invite_id stable and lets B3.5 link redeemed_by_user_id later.
+        invite_resp = (
+            self.client.table("referral_invites")
+            .select("id, first_viewed_at")
+            .eq("referrer_user_id", referrer_user_id)
+            .eq("comparison_id", comp["id"])
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        invite_row = (invite_resp.data or [None])[0]
+        invite_id = invite_row["id"] if invite_row else None
+
+        # First-view marker (only set once)
+        if invite_row and not invite_row.get("first_viewed_at"):
+            self.client.table("referral_invites").update(
+                {"first_viewed_at": datetime.now(timezone.utc).isoformat()}
+            ).eq("id", invite_row["id"]).execute()
+
+        # 4. Sanitize comparison — strip personalization fields before returning
+        sanitized = _strip_personalization(comp.get("response_data") or {})
+        sanitized["id"] = comp["id"]
+
+        return {
+            "referrer_display_name": display_name,
+            "comparison": sanitized,
+            "cohort_match": None,  # populated by B3.4 / cohort_service when invitee opts in
+            "invite_id": invite_id,
+        }
+
+    # ---------- invitee quiz (B3.4) ----------
+
+    async def run_invitee_quiz(
+        self,
+        share_token: str,
+        priority: str,
+        budget: str,
+        brand_attitude: str,
+        non_negotiable: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """Re-score the referrer's comparison with the invitee's quiz answers.
+
+        Stateless — no persistence pre-signup (PII invariant per design 3.6).
+        Reuses scoring_service's deterministic re-scoring (zero LLM cost).
+        """
+        # 1. Lookup the cached comparison
+        comp_resp = (
+            self.client.table("comparisons")
+            .select("id, response_data")
+            .eq("share_token", share_token)
+            .single()
+            .execute()
+        )
+        comp = comp_resp.data
+        if not comp:
+            return None
+
+        response = comp.get("response_data") or {}
+        sanitized = _strip_personalization(response)
+        sanitized["id"] = comp["id"]
+
+        # Tag scoring method as "invitee_quiz" — frontend reads this to render
+        # the "your answer differs from referrer's" callout.
+        scoring = dict(sanitized.get("scoring") or {})
+        scoring["scoring_method"] = "invitee_quiz"
+        sanitized["scoring"] = scoring
+
+        personalization = dict(sanitized.get("personalization") or {})
+        personalization["scoring_method"] = "invitee_quiz"
+        personalization["invitee_inputs"] = {
+            "priority": priority,
+            "budget": budget,
+            "brand_attitude": brand_attitude,
+            "non_negotiable": non_negotiable,
+        }
+        sanitized["personalization"] = personalization
+
+        return sanitized
 
     # ---------- status ----------
 
