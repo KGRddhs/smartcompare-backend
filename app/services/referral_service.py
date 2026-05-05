@@ -66,6 +66,43 @@ def _strip_personalization(comparison: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+# Keys that fall out of the invitee view when the referrer toggles
+# ``show_result=False`` or ``show_reasons=False`` in the share sheet.
+_RESULT_KEYS = ("winner", "winner_index", "recommendation")
+_REASONS_KEYS = ("verdict", "key_differences", "tradeoffs", "comparison")
+
+
+def _normalize_privacy(privacy: dict[str, Any]) -> dict[str, Any]:
+    """Coerce a privacy dict to the canonical 3-key shape.
+
+    show_budget is dropped silently — it's locked OFF per design 3.3 and
+    must never reach the DB / invitee view, even if a malformed client
+    request includes it.
+    """
+    return {
+        "show_name": bool(privacy.get("show_name", True)),
+        "show_result": bool(privacy.get("show_result", True)),
+        "show_reasons": bool(privacy.get("show_reasons", True)),
+    }
+
+
+def _apply_privacy(
+    comparison: dict[str, Any], privacy: Optional[dict[str, Any]]
+) -> dict[str, Any]:
+    """Strip fields the referrer chose not to share. show_budget is always
+    enforced upstream by ``_strip_personalization`` (drops budget keys
+    regardless of what the referrer toggled)."""
+    if not privacy:
+        return comparison
+    if privacy.get("show_result") is False:
+        for key in _RESULT_KEYS:
+            comparison.pop(key, None)
+    if privacy.get("show_reasons") is False:
+        for key in _REASONS_KEYS:
+            comparison.pop(key, None)
+    return comparison
+
+
 def generate_referral_code() -> str:
     """Generate an 8-char referral code: ``QR-XXXXXX`` from unambiguous alphabet."""
     body = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(6))
@@ -127,6 +164,7 @@ class ReferralService:
         comparison_id: str,
         share_target: str,
         device_fingerprint_hash: Optional[str] = None,
+        privacy: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Create an invite row and grant a Loop 1 Deep Review credit.
 
@@ -173,17 +211,20 @@ class ReferralService:
             raise ValueError("Comparison not owned by user")
         share_token = comp_data.get("share_token")
 
-        # 5. Insert invite
+        # 5. Insert invite (privacy defaults to all-True at the DB level
+        #    via the column default, so we only set it when the caller
+        #    actually passes a non-default block).
+        invite_payload: dict[str, Any] = {
+            "referrer_user_id": referrer_user_id,
+            "comparison_id": comparison_id,
+            "share_target": share_target,
+            "device_fingerprint_hash": device_fingerprint_hash,
+        }
+        if privacy is not None:
+            invite_payload["privacy"] = _normalize_privacy(privacy)
         invite = (
             self.client.table("referral_invites")
-            .insert(
-                {
-                    "referrer_user_id": referrer_user_id,
-                    "comparison_id": comparison_id,
-                    "share_target": share_target,
-                    "device_fingerprint_hash": device_fingerprint_hash,
-                }
-            )
+            .insert(invite_payload)
             .execute()
         )
         invite_id = invite.data[0]["id"] if invite.data else None
@@ -255,7 +296,7 @@ class ReferralService:
         #    keeps invite_id stable and lets B3.5 link redeemed_by_user_id later.
         invite_resp = (
             self.client.table("referral_invites")
-            .select("id, first_viewed_at")
+            .select("id, first_viewed_at, privacy")
             .eq("referrer_user_id", referrer_user_id)
             .eq("comparison_id", comp["id"])
             .order("created_at", desc=True)
@@ -264,6 +305,7 @@ class ReferralService:
         )
         invite_row = (invite_resp.data or [None])[0]
         invite_id = invite_row["id"] if invite_row else None
+        privacy = (invite_row or {}).get("privacy") if invite_row else None
 
         # First-view marker (only set once)
         if invite_row and not invite_row.get("first_viewed_at"):
@@ -271,12 +313,19 @@ class ReferralService:
                 {"first_viewed_at": datetime.now(timezone.utc).isoformat()}
             ).eq("id", invite_row["id"]).execute()
 
-        # 4. Sanitize comparison — strip personalization fields before returning
+        # 4. Sanitize comparison — strip personalization first, then apply
+        #    the referrer's privacy choices on top.
         sanitized = _strip_personalization(comp.get("response_data") or {})
+        sanitized = _apply_privacy(sanitized, privacy)
         sanitized["id"] = comp["id"]
 
+        # 5. Honour the show_name toggle on the display name
+        effective_name = display_name
+        if privacy and privacy.get("show_name") is False:
+            effective_name = "A friend"
+
         return {
-            "referrer_display_name": display_name,
+            "referrer_display_name": effective_name,
             "comparison": sanitized,
             "cohort_match": None,  # populated by B3.4 / cohort_service when invitee opts in
             "invite_id": invite_id,

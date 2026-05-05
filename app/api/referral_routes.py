@@ -72,10 +72,22 @@ VALID_QUIZ_BRAND_ATTITUDE = {
 } | set(VALID_BRAND_ATTITUDE)
 
 
+class SharePrivacy(BaseModel):
+    """Per-share privacy toggles surfaced in the ShareBottomSheet UI
+    (design 3.3). show_budget is intentionally absent — always false."""
+
+    model_config = {"extra": "ignore"}  # silently drop unknown fields like show_budget
+
+    show_name: bool = True
+    show_result: bool = True
+    show_reasons: bool = True
+
+
 class ShareRequest(BaseModel):
     comparison_id: str = Field(..., min_length=1, max_length=128)
     share_target: ShareTarget
     device_fingerprint_hash: Optional[str] = Field(default=None, max_length=128)
+    privacy: Optional[SharePrivacy] = None
 
 
 class InviteeQuizRequest(BaseModel):
@@ -127,12 +139,14 @@ async def share_comparison(
     weekly_invites_remaining, ...}`` per design Section 3.4.
     """
     service = ReferralService(access_token=user.get("access_token"))
+    privacy_dict = body.privacy.model_dump() if body.privacy else None
     try:
         result = await service.create_invite(
             referrer_user_id=user["id"],
             comparison_id=body.comparison_id,
             share_target=body.share_target,
             device_fingerprint_hash=body.device_fingerprint_hash,
+            privacy=privacy_dict,
         )
     except WeeklyInviteCapExceeded:
         raise HTTPException(
