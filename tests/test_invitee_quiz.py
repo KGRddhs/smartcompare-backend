@@ -118,9 +118,14 @@ class TestQuizNoPIIPreSignup:
                 "scoring": {"scoring_method": "invitee_quiz"},
             })
 
-            # Patch any DB write helpers commonly used
-            with patch("app.services.auth_service.save_user_preferences", new_callable=AsyncMock) as mock_save_prefs, \
-                 patch("app.services.database_service.save_user_demographics", new_callable=AsyncMock) as mock_save_demo:
+            # Patch where the symbol is USED (auth_routes.py imports both bare),
+            # not where they're defined. Per qa-referral 2026-05-05 review:
+            # patching `app.services.auth_service.save_user_preferences` is vacuous
+            # because auth_routes.py:26 does `from app.services.auth_service import
+            # save_user_preferences` and calls it as a bare name — Python looks up
+            # the symbol in auth_routes' namespace, not auth_service's.
+            with patch("app.api.auth_routes.save_user_preferences", new_callable=AsyncMock) as mock_save_prefs, \
+                 patch("app.api.auth_routes.save_user_demographics", new_callable=AsyncMock) as mock_save_demo:
 
                 resp = client.post(
                     "/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa/quiz",
