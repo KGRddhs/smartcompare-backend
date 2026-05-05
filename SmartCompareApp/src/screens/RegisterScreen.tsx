@@ -17,7 +17,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { usePreventScreenCapture } from 'expo-screen-capture';
 import { register, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import { parseApiError } from '../services/api';
@@ -25,14 +25,17 @@ import { AuthStackParamList } from '../types';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { Button } from '../components/Button';
 
-type RegisterScreenProps = {
-  navigation: NativeStackNavigationProp<AuthStackParamList, 'Register'>;
+type RegisterScreenProps = NativeStackScreenProps<AuthStackParamList, 'Register'> & {
   onRegisterSuccess: () => void;
 };
 
-export default function RegisterScreen({ navigation, onRegisterSuccess }: RegisterScreenProps) {
+export default function RegisterScreen({ navigation, route, onRegisterSuccess }: RegisterScreenProps) {
   const { t } = useTranslation();
   usePreventScreenCapture();
+  // F3.5 — invite_id is forwarded from the InviteeQuiz soft-signup CTA so
+  // the backend links the new user to the pending referral invite. When
+  // the user reaches Register from the auth tab directly, this is undefined.
+  const inviteId = route?.params?.invite_id;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -129,7 +132,7 @@ export default function RegisterScreen({ navigation, onRegisterSuccess }: Regist
     setError('');
 
     try {
-      const result = await register(email.trim().toLowerCase(), password);
+      const result = await register(email.trim().toLowerCase(), password, inviteId);
 
       if (result.success) {
         onRegisterSuccess();

@@ -370,7 +370,10 @@ export type RootStackParamList = {
 // Auth stack for login flow
 export type AuthStackParamList = {
   Login: undefined;
-  Register: undefined;
+  // invite_id is set when the user lands on Register from the invitee
+  // quiz soft-signup CTA (F3.5) — forwarded to /auth/register so the
+  // backend links redeemed_by_user_id on the pending referral invite.
+  Register: { invite_id?: string } | undefined;
   ForgotPassword: undefined;
 };
 

@@ -66,13 +66,23 @@ const TOKEN_STORAGE_KEY = '@qaren_token';
 const REFRESH_TOKEN_KEY = '@qaren_refresh_token';
 
 /**
- * Register a new user
+ * Register a new user.
+ *
+ * @param inviteId Optional referral invite UUID. When set, backend (B3.5)
+ *   links the new user to the pending invite via redeemed_by_user_id so
+ *   Loop 2 can fire after their first real comparison. Forwarded as
+ *   `invite_id` per RegisterRequest in app/api/auth_routes.py.
  */
-export async function register(email: string, password: string): Promise<AuthResponse> {
+export async function register(
+  email: string,
+  password: string,
+  inviteId?: string
+): Promise<AuthResponse> {
   try {
     const response = await api.post('/api/v1/auth/register', {
       email,
       password,
+      ...(inviteId ? { invite_id: inviteId } : {}),
     });
 
     if (response.data.user) {
