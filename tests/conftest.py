@@ -25,6 +25,7 @@ os.environ.setdefault("ENABLE_REFERRAL_SYSTEM", "true")
 # all keep the limiter enabled.
 _RATE_LIMITER_BYPASS_TEST_FILES = (
     "test_auth_demographics.py",
+    "test_attribution_endpoint.py",
 )
 
 

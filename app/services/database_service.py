@@ -528,3 +528,26 @@ async def get_user_demographics(user_id: str) -> Optional[Dict]:
     except Exception as e:
         logger.error(f"[DB] get_user_demographics failed for user {user_id}: {e}")
         return None
+
+
+# ============================================
+# Attribution source (migration 019)
+# ============================================
+
+
+async def save_user_attribution(user_id: str, source: str) -> Dict:
+    """Persist attribution_source on the users row.
+
+    Caller (POST /api/v1/auth/attribution) is responsible for enum validation
+    via Pydantic. The DB CHECK constraint from migration 019 mirrors the
+    enum as defense-in-depth.
+    """
+    try:
+        admin = get_admin_supabase_client()
+        admin.table("users").update({
+            "attribution_source": source,
+        }).eq("id", user_id).execute()
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"[DB] save_user_attribution failed for user {user_id}: {e}")
+        return {"success": False, "error": "Failed to save attribution"}

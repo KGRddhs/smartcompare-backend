@@ -35,6 +35,7 @@ from app.services.cohort_service import get_cohort_service
 from app.services.database_service import (
     save_user_demographics,
     get_user_demographics,
+    save_user_attribution,
     get_user_supabase_client,
     get_admin_supabase_client,
 )
@@ -204,6 +205,17 @@ class DemographicsBody(BaseModel):
     governorate: Optional[str] = Field(default=None, max_length=64)
     language: Optional[str] = Field(default=None, max_length=64)
     country: Optional[str] = Field(default=None, max_length=64)
+
+
+class AttributionBody(BaseModel):
+    """Request payload for POST /attribution. Onboarding step 11
+    ("Where did you hear about us?") — single source enum.
+
+    Pydantic Literal rejects unknown values with HTTP 422. The DB CHECK
+    constraint from migration 019 mirrors this enum as defense-in-depth.
+    """
+    model_config = {"extra": "ignore"}
+    source: Literal["friend", "instagram", "tiktok", "app_store", "google", "other"]
 
 
 class SocialLoginRequest(BaseModel):
@@ -784,3 +796,31 @@ async def get_cohort_profile(current_user: dict = Depends(get_current_user)):
     cohort_svc = get_cohort_service()
     display = cohort_svc.get_display_profile(demographics)
     return {"display": display}
+
+
+# ============================================
+# Attribution (migration 019, plan task 8)
+# ============================================
+
+
+@router.post("/attribution")
+@limiter.limit("30/minute")
+async def save_attribution(
+    request: Request,
+    body: AttributionBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """Persist the user's answer to onboarding step 11 (attribution source).
+
+    Resubmits overwrite — last write wins. Pydantic Literal validates the
+    enum at request time; the DB CHECK constraint from migration 019
+    enforces the same set as defense-in-depth.
+    """
+    user_id = current_user["id"]
+    result = await save_user_attribution(user_id, body.source)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=result.get("error", "Failed to save attribution"),
+        )
+    return {"success": True}
