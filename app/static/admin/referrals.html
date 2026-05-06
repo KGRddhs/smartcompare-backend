@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Referrals — Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+          integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4"
+          crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #10b981;
+      --warn: #f59e0b;
+      --danger: #dc2626;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+    }
+    h1 { margin: 0 0 4px; font-weight: 600; font-size: 24px; }
+    h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+    .meta { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 16px 20px;
+    }
+    .kpi { font-size: 28px; font-weight: 600; }
+    .kpi-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .chart-card { padding: 16px; }
+    .chart-card canvas { max-height: 280px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .err { color: var(--danger); font-size: 13px; padding: 8px 12px; background: #fef2f2; border-radius: 6px; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: start; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); text-transform: uppercase; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+    .pill-warn { background: #fef3c7; color: #92400e; }
+    .pill-danger { background: #fee2e2; color: var(--danger); }
+    .empty { color: var(--muted); padding: 16px; text-align: center; font-size: 13px; }
+    @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Referrals</h1>
+  <div class="meta" id="meta">Loading…</div>
+  <div id="err" class="err" style="display:none"></div>
+
+  <h2>Funnel & Conversion</h2>
+  <div class="grid" id="kpis"></div>
+
+  <div class="row">
+    <div class="card chart-card"><h2>Viral Coefficient (12-week trend)</h2><canvas id="chartViral"></canvas></div>
+    <div class="card chart-card"><h2>Cohort Uplift (Referred vs Organic)</h2><canvas id="chartUplift"></canvas></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Abuse Log</h2>
+    <div id="abuseSummary" class="kpi-sub" style="margin-bottom:8px"></div>
+    <div id="abuseTable"></div>
+  </div>
+
+  <script>
+    const BASE = "/api/v1/admin/referrals";
+
+    function getKey() {
+      let k = sessionStorage.getItem("admin_key");
+      if (!k) {
+        k = window.prompt("X-Admin-Key:");
+        if (k) sessionStorage.setItem("admin_key", k);
+      }
+      return k;
+    }
+
+    async function call(path) {
+      const key = getKey();
+      const res = await fetch(BASE + path, {
+        headers: { "X-Admin-Key": key || "" }
+      });
+      if (res.status === 403) {
+        sessionStorage.removeItem("admin_key");
+        throw new Error("Forbidden — invalid admin key. Reload to retry.");
+      }
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }
+
+    function showErr(msg) {
+      const el = document.getElementById("err");
+      el.textContent = msg;
+      el.style.display = "block";
+    }
+
+    function setMeta(text) {
+      document.getElementById("meta").textContent = text;
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;").replaceAll("'", "&#39;");
+    }
+
+    function kpiCard(label, value, sub) {
+      const subHtml = sub ? `<div class="kpi-sub">${escapeHtml(sub)}</div>` : "";
+      return `<div class="card"><h2>${escapeHtml(label)}</h2><div class="kpi">${escapeHtml(value)}</div>${subHtml}</div>`;
+    }
+
+    function pct(rate) {
+      return ((rate || 0) * 100).toFixed(1) + "%";
+    }
+
+    function renderKPIs(metrics) {
+      const root = document.getElementById("kpis");
+      const inv = metrics.invites || {};
+      const red = metrics.redemptions || {};
+      const cr = metrics.conversion_rate || {};
+      root.innerHTML = [
+        kpiCard("Invites — Week", inv.week ?? 0, `${inv.month ?? 0} / month • ${inv.lifetime ?? 0} lifetime`),
+        kpiCard("Redemptions — Week", red.week ?? 0, `${red.month ?? 0} / month • ${red.lifetime ?? 0} lifetime`),
+        kpiCard("Conversion — Lifetime", pct(cr.lifetime), `Week: ${pct(cr.week)} • Month: ${pct(cr.month)}`),
+        kpiCard("Active Referrers (30d)", metrics.active_referrers_month ?? 0),
+      ].join("");
+    }
+
+    function renderViral(viral) {
+      const ctx = document.getElementById("chartViral").getContext("2d");
+      const series = viral.series || [];
+      const targetLow = (viral.target_band || [0.4, 0.7])[0];
+      const targetHigh = (viral.target_band || [0.4, 0.7])[1];
+      new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: series.map(r => r.week_start),
+          datasets: [
+            { label: "K coefficient", data: series.map(r => r.k), borderColor: "#10b981", tension: 0.2 },
+            { label: "Target floor", data: series.map(() => targetLow), borderColor: "#f59e0b", borderDash: [4, 4], pointRadius: 0 },
+            { label: "Target ceiling", data: series.map(() => targetHigh), borderColor: "#f59e0b", borderDash: [4, 4], pointRadius: 0 },
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: "bottom" } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    function renderUplift(uplift) {
+      const ctx = document.getElementById("chartUplift").getContext("2d");
+      const ref = uplift.referred || {};
+      const org = uplift.organic || {};
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: [
+            `Retention % (${uplift.window_days}d)`,
+            "Avg comparisons / user"
+          ],
+          datasets: [
+            { label: `Referred (n=${ref.total ?? 0})`, data: [(ref.retention_rate ?? 0) * 100, ref.avg_comparisons ?? 0], backgroundColor: "#10b981" },
+            { label: `Organic (n=${org.total ?? 0})`, data: [(org.retention_rate ?? 0) * 100, org.avg_comparisons ?? 0], backgroundColor: "#94a3b8" },
+          ]
+        },
+        options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+      });
+    }
+
+    function renderAbuse(abuse) {
+      const summary = document.getElementById("abuseSummary");
+      const counts = abuse.counts_by_reason || {};
+      const total = Object.values(counts).reduce((s, n) => s + n, 0);
+      summary.textContent = total === 0
+        ? "No flagged invites yet."
+        : `${total} flagged invites total. ${Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join(" • ")}`;
+
+      const flagged = abuse.flagged_invites || [];
+      const wrap = document.getElementById("abuseTable");
+      if (flagged.length === 0) {
+        wrap.innerHTML = '<div class="empty">No abuse-flagged invites in the last query window.</div>';
+        return;
+      }
+      const rows = flagged.map(f => {
+        const reason = (f.flagged_reason || "UNKNOWN");
+        const pillClass = reason === "SAME_DEVICE" ? "pill-danger" : "pill-warn";
+        return `<tr>
+          <td>${escapeHtml((f.created_at || "").slice(0, 19).replace("T", " "))}</td>
+          <td><span class="pill ${pillClass}">${escapeHtml(reason)}</span></td>
+          <td>${escapeHtml((f.referrer_user_id || "").slice(0, 8))}…</td>
+          <td>${f.redeemed_by_user_id ? escapeHtml(f.redeemed_by_user_id.slice(0, 8) + "…") : "—"}</td>
+        </tr>`;
+      }).join("");
+      wrap.innerHTML = `
+        <table>
+          <thead><tr><th>When</th><th>Reason</th><th>Referrer</th><th>Invitee</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    async function load() {
+      try {
+        setMeta("Loading metrics…");
+        const [metrics, viral, uplift, abuse] = await Promise.all([
+          call("/metrics"),
+          call("/viral?weeks=12"),
+          call("/cohort_uplift?days=30"),
+          call("/abuse?limit=50"),
+        ]);
+        renderKPIs(metrics);
+        renderViral(viral);
+        renderUplift(uplift);
+        renderAbuse(abuse);
+        setMeta(`Last refresh: ${new Date().toLocaleString()}`);
+      } catch (e) {
+        showErr(e.message);
+        setMeta("Failed to load.");
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

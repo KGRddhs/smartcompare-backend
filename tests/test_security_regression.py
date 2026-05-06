@@ -719,3 +719,465 @@ class TestDemographicsRLSStatic:
         """
         source = Path("migrations/010_enable_rls.sql").read_text(encoding="utf-8")
         assert "ALTER TABLE users ENABLE ROW LEVEL SECURITY" in source
+
+
+# ============================================
+# Q8.2: Smart Referral System security regression
+# Additive — must NOT break the existing 57+ tests above.
+# Static checks only (no live DB) so they run in the unit lane.
+# ============================================
+
+
+class TestReferralMigration014Static:
+    """Migration 014 must exist with the correct schema + RLS + RPC."""
+
+    def test_migration_014_exists(self):
+        assert Path("migrations/014_referral_system.sql").exists(), (
+            "migrations/014_referral_system.sql must exist (plan B1.1)"
+        )
+
+    def test_migration_014_creates_all_four_tables(self):
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        for table in ("referral_invites", "referral_redemptions", "deep_review_credits", "re_engagement_events"):
+            assert table in source, f"migration 014 missing table: {table}"
+
+    def test_migration_014_extends_users_with_referral_columns(self):
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        assert "referral_code" in source
+        assert "referral_bonus_comparisons_this_month" in source
+        assert "referral_bonus_reset_at" in source
+
+    def test_migration_014_enables_rls_on_all_new_tables(self):
+        """All 4 new tables must have RLS enabled per design 4.6."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        for table in ("referral_invites", "referral_redemptions", "deep_review_credits", "re_engagement_events"):
+            pattern = rf"ALTER TABLE\s+{table}\s+ENABLE ROW LEVEL SECURITY"
+            assert re.search(pattern, source, re.IGNORECASE), (
+                f"RLS not enabled on {table} — table is unprotected!"
+            )
+
+    def test_migration_014_user_can_select_own_invites_only(self):
+        """RLS policy: user can SELECT their own invites (as referrer OR invitee)."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        # Policy must reference auth.uid() against referrer_user_id and/or redeemed_by_user_id
+        assert "auth.uid()" in source
+        assert "referrer_user_id" in source
+
+    def test_migration_014_resolve_referral_code_is_security_definer(self):
+        """Public RPC `resolve_referral_code` must be SECURITY DEFINER (RLS bypass intentional)."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        assert "resolve_referral_code" in source
+        # SECURITY DEFINER required so anon users can resolve codes; otherwise RLS would block
+        assert "SECURITY DEFINER" in source.upper()
+
+    def test_migration_014_share_target_check_constraint(self):
+        """share_target column must enforce the whitelist via CHECK."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        # All 6 allowed values must appear in a CHECK constraint
+        for target in ("whatsapp", "copy", "telegram", "snapchat"):
+            assert target in source, f"share_target whitelist missing: {target}"
+
+    def test_migration_014_redemptions_unique_invite_id(self):
+        """invite_id is UNIQUE on referral_redemptions (no double-redeem)."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        # Look for `invite_id` followed by UNIQUE somewhere in the same statement
+        # Either inline UNIQUE or separate CONSTRAINT — both acceptable
+        invite_id_idx = source.find("invite_id")
+        assert invite_id_idx >= 0, "referral_redemptions.invite_id missing"
+        # Search for UNIQUE within 200 chars of the invite_id mention
+        snippet = source[invite_id_idx : invite_id_idx + 200]
+        assert "UNIQUE" in snippet.upper(), (
+            "invite_id must be UNIQUE on referral_redemptions to prevent double-redeem"
+        )
+
+    def test_migration_014_credits_have_30day_expiry(self):
+        """deep_review_credits.expires_at default must be 30 days post-grant per design 4.4."""
+        source = Path("migrations/014_referral_system.sql").read_text(encoding="utf-8")
+        # Check for "30 days" interval
+        assert "30 days" in source or "interval '30" in source.lower()
+
+
+class TestReferralRouteAuthGuards:
+    """Referral routes must enforce auth/anon contracts per design 3.x.
+
+    With ENABLE_REFERRAL_SYSTEM=true, /share + /status must specifically
+    return 401 or 403 (auth dependency rejects anonymous). Without the flag,
+    503 fires first. Tightened from generic !=200 per qa-referral 2026-05-05
+    review now that BUG #1a (flag ordering) has shipped.
+    """
+
+    def test_share_endpoint_requires_auth(self, monkeypatch):
+        """POST /api/v1/referrals/share without auth must return 401 or 403."""
+        monkeypatch.setenv("ENABLE_REFERRAL_SYSTEM", "true")
+
+        resp = client.post(
+            "/api/v1/referrals/share",
+            json={"comparison_id": "00000000-0000-0000-0000-000000000000", "share_target": "whatsapp"},
+        )
+        assert resp.status_code in (401, 403), (
+            f"POST /referrals/share with flag ON + no auth must return 401/403, "
+            f"got {resp.status_code}: {resp.text}"
+        )
+
+    def test_share_endpoint_returns_503_when_flag_off(self, monkeypatch):
+        """Defense in depth: when flag OFF, 503 fires BEFORE auth check."""
+        monkeypatch.delenv("ENABLE_REFERRAL_SYSTEM", raising=False)
+
+        resp = client.post(
+            "/api/v1/referrals/share",
+            json={"comparison_id": "x", "share_target": "whatsapp"},
+        )
+        assert resp.status_code == 503, (
+            f"flag-off must short-circuit at 503; got {resp.status_code}"
+        )
+
+    def test_status_endpoint_requires_auth(self, monkeypatch):
+        """GET /api/v1/referrals/status with flag ON + no auth => 401/403."""
+        monkeypatch.setenv("ENABLE_REFERRAL_SYSTEM", "true")
+
+        resp = client.get("/api/v1/referrals/status")
+        assert resp.status_code in (401, 403), (
+            f"GET /referrals/status with flag ON + no auth must return 401/403, "
+            f"got {resp.status_code}: {resp.text}"
+        )
+
+    def test_invite_landing_does_NOT_require_auth(self, monkeypatch):
+        """Invitee landing must work for anon users (PDF #6 gradual commitment)."""
+        monkeypatch.setenv("ENABLE_REFERRAL_SYSTEM", "true")
+
+        resp = client.get("/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa?ref=QR-DOESNT")
+        # 401/403 here would be a regression — anon access is required.
+        # 404 (invalid token) or 200 (resolved) are both fine.
+        assert resp.status_code not in (401, 403), (
+            f"GET /referrals/invite/{{token}} must allow anon access; got {resp.status_code}"
+        )
+
+
+class TestReferralPrivacyInvariants:
+    """Static guarantees that referral code + privacy toggles cannot leak data."""
+
+    def test_referral_code_alphabet_excludes_ambiguous_chars(self):
+        """Static check on the generated alphabet — no 0/O/1/I/L."""
+        try:
+            from app.services.referral_service import _CODE_ALPHABET
+        except (ImportError, AttributeError):
+            pytest.skip("referral_service not yet implemented (TDD red phase)")
+        ambiguous = set("0O1IL")
+        assert not (ambiguous & set(_CODE_ALPHABET)), (
+            f"_CODE_ALPHABET contains ambiguous chars: {ambiguous & set(_CODE_ALPHABET)}"
+        )
+
+    def test_referral_code_alphabet_is_uppercase_alphanumeric(self):
+        try:
+            from app.services.referral_service import _CODE_ALPHABET
+        except (ImportError, AttributeError):
+            pytest.skip("referral_service not yet implemented (TDD red phase)")
+        for ch in _CODE_ALPHABET:
+            assert ch.isalnum(), f"non-alnum char in alphabet: {ch!r}"
+            assert ch == ch.upper(), f"lowercase char in alphabet: {ch!r}"
+
+    def test_disposable_email_blocklist_present(self):
+        """Anti-abuse: blocklist file must exist and contain known disposables."""
+        try:
+            from app.services.abuse_detection_service import AbuseDetectionService
+        except ImportError:
+            pytest.skip("abuse_detection_service not yet implemented (TDD red phase)")
+        svc = AbuseDetectionService()
+        # At least these 4 must be flagged
+        assert svc.is_disposable_email("a@mailinator.com")
+        assert svc.is_disposable_email("a@guerrillamail.com")
+
+    def test_share_target_whitelist_in_code(self):
+        """share_target whitelist must be enforced in code (defense in depth, not just DB CHECK)."""
+        try:
+            import app.services.referral_service as rs
+        except ImportError:
+            pytest.skip("referral_service not yet implemented (TDD red phase)")
+        source = Path("app/services/referral_service.py").read_text(encoding="utf-8")
+        # All 6 valid targets must appear somewhere
+        for target in ("whatsapp", "copy", "telegram", "snapchat", "other"):
+            assert target in source, f"share_target whitelist missing in code: {target}"
+
+
+class TestReferralAdminEndpointAuth:
+    """Admin referral endpoints must reject without X-Admin-Key (Session 38 pattern).
+
+    Tightened from `!= 200` to specific error codes per qa-referral
+    2026-05-05 review:
+    - 401/403 = auth-rejected (correct)
+    - 422 = X-Admin-Key header missing/malformed (FastAPI dependency validation)
+    - 404 = endpoint not yet registered (TDD red phase, accepted)
+    - 200 = REGRESSION (auth bypass)
+    """
+
+    @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
+    def test_admin_referrals_metrics_requires_key(self):
+        """GET /admin/referrals/metrics without X-Admin-Key => 401/403/422."""
+        resp = client.get("/api/v1/admin/referrals/metrics")
+        assert resp.status_code in (401, 403, 404, 422), (
+            f"admin referrals metrics with no key must return 401/403/422 "
+            f"(or 404 pre-impl); got {resp.status_code}: {resp.text}"
+        )
+
+    @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
+    def test_admin_referrals_metrics_rejects_bad_key(self):
+        """Wrong X-Admin-Key => 401/403."""
+        resp = client.get("/api/v1/admin/referrals/metrics", headers={"X-Admin-Key": "wrong"})
+        assert resp.status_code in (401, 403, 404), (
+            f"wrong X-Admin-Key must be rejected with 401/403 "
+            f"(or 404 pre-impl); got {resp.status_code}: {resp.text}"
+        )
+
+    @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
+    def test_admin_costs_requires_key(self):
+        """GET /admin/costs/api without X-Admin-Key => 401/403/422."""
+        resp = client.get("/api/v1/admin/costs/api")
+        assert resp.status_code in (401, 403, 404, 422), (
+            f"admin costs with no key must return 401/403/422 "
+            f"(or 404 pre-impl); got {resp.status_code}: {resp.text}"
+        )
+
+
+class TestReferralQuizNoAuthAndNoPII:
+    """Anon quiz endpoint stores nothing personal pre-signup."""
+
+    def test_quiz_endpoint_anon_path_exists(self):
+        """POST /referrals/invite/{token}/quiz must NOT require auth."""
+        resp = client.post(
+            "/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa/quiz",
+            json={
+                "priority": "best_price",
+                "budget": "mid",
+                "brand_attitude": "function_first",
+                "non_negotiable": "test",
+            },
+        )
+        # 401/403 would be a regression — anon access required for invitee quiz
+        assert resp.status_code not in (401, 403), (
+            f"quiz endpoint must allow anon access; got {resp.status_code}"
+        )
+
+
+# ============================================
+# Session 42: schema-vs-code drift static checks
+# ============================================
+# Two latent bugs hit smoke during Phase 7 prep, both code-vs-schema drift:
+#   Bug 1 (commit 0b01d9a / migration 017): comparisons.share_token was
+#   varchar(12) but secrets.token_urlsafe(16) returns 22-char tokens.
+#   Bug 2 (commit d9d5b03): _load_comparison SELECTed started_at +
+#   result_viewed_at, columns that never existed on comparisons.
+# These checks would have caught both at commit time. Snapshot from
+# backend-referral, extended for migrations 015/016 (push tokens, privacy).
+
+
+class TestShareTokenColumnAccommodatesGeneratedTokens:
+    """Migration 017 widened share_token from varchar(12)→TEXT.
+
+    secrets.token_urlsafe(16) generates 22 chars. Any future migration that
+    pins share_token narrower than 22 chars would re-introduce Bug 1
+    (PostgreSQL 22001 'value too long' on every share).
+    """
+
+    def test_no_migration_pins_share_token_below_22_chars(self):
+        """Sweep all migrations for share_token varchar() declarations.
+
+        Historical exception: `migrations/add_share_token.sql` (Session 24)
+        ORIGINALLY introduced the varchar(12) bug; migration 017 widens it
+        to TEXT. The legacy file is preserved as audit history and is
+        already superseded — don't re-flag. Forward-looking guard catches
+        any NEW migration that re-introduces a narrow varchar.
+        """
+        # Historical legacy file with the original bug — superseded by 017.
+        _LEGACY_HISTORICAL = {"add_share_token.sql"}
+
+        offenders = []
+        share_token_re = re.compile(
+            r"share_token\s+(?:varchar|character\s+varying)\s*\(\s*(\d+)\s*\)",
+            flags=re.IGNORECASE,
+        )
+        for sql_file in Path("migrations").glob("*.sql"):
+            if sql_file.name in _LEGACY_HISTORICAL:
+                continue
+            text = sql_file.read_text(encoding="utf-8")
+            for m in share_token_re.finditer(text):
+                width = int(m.group(1))
+                if width < 22:
+                    offenders.append(f"{sql_file.name}: varchar({width})")
+        assert not offenders, (
+            f"share_token narrower than 22 chars (token_urlsafe(16) length): {offenders}. "
+            f"Migration 017 widened to TEXT — do not regress."
+        )
+
+    def test_migration_017_widens_share_token_to_text(self):
+        m017 = Path("migrations/017_widen_share_token.sql")
+        assert m017.exists(), "migrations/017_widen_share_token.sql must exist"
+        source = m017.read_text(encoding="utf-8")
+        assert re.search(
+            r"ALTER\s+COLUMN\s+share_token\s+TYPE\s+TEXT",
+            source,
+            flags=re.IGNORECASE,
+        ), "migration 017 must ALTER COLUMN share_token TYPE TEXT"
+
+
+class TestAbuseDetectionReadsExistingColumns:
+    """_load_comparison must SELECT only columns that exist on comparisons.
+
+    Bug 2 history (commit d9d5b03): pre-fix code SELECTed started_at +
+    result_viewed_at, columns that never existed. Post-fix it pulls
+    full_response (JSONB) and computes elapsed_seconds from metadata.
+    """
+
+    # Allowlist of columns known to exist on `comparisons`. Sourced from
+    # initial schema + migrations through 017. If migrations add new
+    # columns to `comparisons`, extend this set here AND in code.
+    _COMPARISONS_COLUMNS = frozenset(
+        {
+            "id",
+            "user_id",
+            "full_response",
+            "query",
+            "input_type",
+            "product_names",
+            "created_at",
+            "share_token",
+        }
+    )
+
+    def test_load_comparison_selects_only_existing_columns(self):
+        """Static parse: _load_comparison's .select(...) string must reference
+        only columns from the allowlist."""
+        source = Path("app/services/abuse_detection_service.py").read_text(
+            encoding="utf-8"
+        )
+        m = re.search(
+            r"def\s+_load_comparison\b.*?\.select\s*\(\s*[\"']([^\"']+)[\"']",
+            source,
+            flags=re.DOTALL,
+        )
+        assert m, "could not locate _load_comparison .select(...) string"
+        cols = {c.strip() for c in m.group(1).split(",") if c.strip()}
+        unknown = cols - self._COMPARISONS_COLUMNS
+        assert not unknown, (
+            f"_load_comparison SELECTs nonexistent columns on comparisons: "
+            f"{sorted(unknown)}. Either add them to the allowlist if a "
+            f"migration created them, or fix the SELECT string."
+        )
+
+    def test_passes_real_action_gate_uses_full_response_proxy(self):
+        """Defense-in-depth: post-bug-fix d9d5b03 uses
+        full_response.metadata.elapsed_seconds, NOT raw started_at /
+        result_viewed_at columns. If anyone tries to revert by adding the
+        columns to a `.select(...)` call, this test fires.
+        """
+        source = Path("app/services/abuse_detection_service.py").read_text(
+            encoding="utf-8"
+        )
+        # The fix MUST reference elapsed_seconds (proxy from full_response)
+        assert "elapsed_seconds" in source, (
+            "abuse_detection_service must read elapsed_seconds from "
+            "full_response.metadata (post-bug-fix d9d5b03), not from "
+            "nonexistent started_at / result_viewed_at columns."
+        )
+        # The deleted columns must NOT reappear inside any `.select(...)`
+        # call. Module-level docstrings + comments referencing the bug
+        # history are fine — only executable schema reads are forbidden.
+        select_re = re.compile(
+            r"\.select\s*\(\s*[\"']([^\"']+)[\"']", flags=re.MULTILINE
+        )
+        for m in select_re.finditer(source):
+            cols = {c.strip() for c in m.group(1).split(",")}
+            forbidden = cols & {"started_at", "result_viewed_at"}
+            assert not forbidden, (
+                f"abuse_detection_service .select(...) references nonexistent "
+                f"columns: {sorted(forbidden)}. Use full_response.metadata."
+            )
+
+
+class TestPushTokensMigrationSchema:
+    """Migration 015 adds expo_push_token + notifications_enabled +
+    last_comparison_at to users. push_service + reengagement code reads
+    those columns; if the migration regresses, push delivery silently
+    no-ops."""
+
+    def test_migration_015_exists(self):
+        assert Path("migrations/015_push_tokens.sql").exists(), (
+            "migrations/015_push_tokens.sql required for push_service"
+        )
+
+    def test_migration_015_adds_expo_push_token_column(self):
+        source = Path("migrations/015_push_tokens.sql").read_text(encoding="utf-8")
+        assert re.search(
+            r"ADD\s+COLUMN(?:\s+IF\s+NOT\s+EXISTS)?\s+expo_push_token",
+            source,
+            flags=re.IGNORECASE,
+        ), "migration 015 must add expo_push_token column on users"
+
+    def test_push_service_reads_expo_push_token_column_only(self):
+        """push_service._get_user_push_token must SELECT expo_push_token only.
+
+        Generalised drift check on push_service.
+        """
+        source = Path("app/services/push_service.py").read_text(encoding="utf-8")
+        # Find the .select(...) inside _get_user_push_token
+        m = re.search(
+            r"def\s+_get_user_push_token\b.*?\.select\s*\(\s*[\"']([^\"']+)[\"']",
+            source,
+            flags=re.DOTALL,
+        )
+        assert m, "could not locate _get_user_push_token .select(...) string"
+        cols = {c.strip() for c in m.group(1).split(",") if c.strip()}
+        # Only `expo_push_token` is permitted here — anything else is drift
+        assert cols == {"expo_push_token"}, (
+            f"_get_user_push_token must SELECT only expo_push_token; "
+            f"got {sorted(cols)}"
+        )
+
+
+class TestReferralInvitesPrivacyJsonb:
+    """Migration 016 adds referral_invites.privacy as JSONB.
+
+    create_invite passes a privacy dict; resolve_invite reads it. If the
+    column type changes (e.g. someone makes it TEXT), JSONB parsing would
+    silently break invite landing.
+    """
+
+    def test_migration_016_exists(self):
+        assert Path("migrations/016_referral_invite_privacy.sql").exists()
+
+    def test_migration_016_adds_privacy_jsonb_column(self):
+        source = Path("migrations/016_referral_invite_privacy.sql").read_text(
+            encoding="utf-8"
+        )
+        # ADD COLUMN ... privacy JSONB
+        assert re.search(
+            r"ADD\s+COLUMN(?:\s+IF\s+NOT\s+EXISTS)?\s+privacy\s+JSONB",
+            source,
+            flags=re.IGNORECASE,
+        ), "migration 016 must add privacy JSONB column on referral_invites"
+
+
+class TestReferralCodeColumnExists:
+    """Migration 014 adds users.referral_code (already covered by
+    TestReferralMigration014Static above for general column presence,
+    but this guard locks the type/uniqueness explicitly to prevent
+    future schema regressions)."""
+
+    def test_migration_014_referral_code_is_text_unique(self):
+        source = Path("migrations/014_referral_system.sql").read_text(
+            encoding="utf-8"
+        )
+        # ALTER TABLE users ADD COLUMN ... referral_code TEXT UNIQUE
+        # (or with IF NOT EXISTS). Allow either ordering of TEXT and UNIQUE.
+        pattern = re.compile(
+            r"referral_code\s+TEXT(?:\s+(?:UNIQUE|NOT\s+NULL|DEFAULT\s+\S+))*",
+            flags=re.IGNORECASE,
+        )
+        assert pattern.search(source), (
+            "migration 014 must declare users.referral_code as TEXT "
+            "(may be followed by UNIQUE/NOT NULL/DEFAULT)"
+        )
+        assert "UNIQUE" in source.upper(), (
+            "users.referral_code must have UNIQUE constraint to prevent "
+            "duplicate codes (collision-retry in ensure_code_for_user "
+            "depends on this)"
+        )

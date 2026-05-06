@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Path
 from starlette.requests import Request
 
 from app.api.auth_routes import get_current_user
-from app.services.database_service import create_share_token, get_shared_comparison
+from app.services.database_service import create_share_token, get_shared_comparison, ShareTokenError
 from app.middleware.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,15 @@ async def share_comparison(
         token = await create_share_token(str(comparison_id), current_user["id"])
     except PermissionError:
         raise HTTPException(status_code=403, detail="Not authorized to share this comparison")
+    except ShareTokenError as exc:
+        # Persistence failure (schema drift, RLS, transient DB outage).
+        # 500 with cause beats a misleading 404 — the underlying issue is
+        # already logged at ERROR by the service layer.
+        logger.error(f"Share token creation failed: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "SHARE_TOKEN_FAILED", "error": "Failed to create share link"},
+        )
 
     if not token:
         raise HTTPException(status_code=404, detail="Comparison not found")

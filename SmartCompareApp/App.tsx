@@ -28,12 +28,15 @@ import HomeScreen from './src/screens/HomeScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
+import InviteeQuizScreen from './src/screens/InviteeQuizScreen';
 
 // Types
 import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/types';
 
 // Auth
 import { verifyAuth, initializeAuth, clearSession, configureGoogleSignIn, type User } from './src/services/authService';
+import { tryRegisterPushToken } from './src/services/pushTokenService';
 
 // Configure Google Sign-In at module level
 configureGoogleSignIn();
@@ -130,6 +133,10 @@ export default function App() {
           setUser(authUser);
           setIsAuthenticated(true);
           setNeedsPreferences(!authUser.preferences_completed);
+          // F5.4 — fire-and-forget push token registration on every authed
+          // launch. Idempotent server-side; silently no-ops on missing
+          // module or permission denial.
+          tryRegisterPushToken().catch(() => { /* never blocks app boot */ });
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -150,6 +157,9 @@ export default function App() {
         setUser(authUser);
         setNeedsPreferences(!authUser.preferences_completed);
         setIsAuthenticated(true);
+        // F5.4 — register push token immediately after first signup/login
+        // so Loop 2 push lands on the right device for THIS session.
+        tryRegisterPushToken().catch(() => { /* swallow */ });
       }
     } catch (error) {
       console.error('Login verification error:', error);
@@ -172,14 +182,34 @@ export default function App() {
     return <SplashScreen onFinish={handleSplashFinish} />;
   }
 
+  // Deep-link config — qaren.app/c/{token}?ref={code} resolves to
+  // ReferralLanding pre-auth (gradual commitment per design 3.5/3.6).
+  const linking = {
+    prefixes: ['qaren://', 'https://qaren.app'],
+    config: {
+      screens: {
+        ReferralLanding: 'c/:share_token',
+        InviteeQuiz: 'q/:share_token',
+      },
+    },
+  };
+
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       <StatusBar style="auto" />
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
-          <Stack.Screen name="Auth">
-            {(props) => <AuthNavigator {...props} onLoginSuccess={handleLoginSuccess} />}
-          </Stack.Screen>
+          <>
+            <Stack.Screen name="Auth">
+              {(props) => <AuthNavigator {...props} onLoginSuccess={handleLoginSuccess} />}
+            </Stack.Screen>
+            {/* Referral landing is reachable PRE-auth (no signup gate per design 3.5). */}
+            <Stack.Screen
+              name="ReferralLanding"
+              component={ReferralLandingScreen}
+            />
+            <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
+          </>
         ) : needsPreferences ? (
           <Stack.Screen name="Onboarding">
             {(props) => (
@@ -196,6 +226,12 @@ export default function App() {
               component={ResultsScreen}
               options={{ presentation: 'modal' }}
             />
+            {/* Authed users tapping a referral link still get the landing page. */}
+            <Stack.Screen
+              name="ReferralLanding"
+              component={ReferralLandingScreen}
+            />
+            <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
           </>
         )}
       </Stack.Navigator>

@@ -77,7 +77,17 @@ SmartCompare operates primarily in the GCC region (Bahrain, Saudi Arabia, UAE, K
 
 We may update this Privacy Policy from time to time. We will notify you of material changes through the App or via email.
 
-## 11. Contact Us
+## 11. AI Quality Improvement Program
+
+To make Qaren's comparisons sharper over time, we participate in OpenAI's Data Sharing Program.
+
+**What we share:** your search queries; your country, language, and governorate; your stated preferences (budget tier, priorities, brand attitude, lifestyle tags); aggregate findings from users similar to you; AI-generated comparison responses.
+
+**What we never share:** your name, email, phone, payment info, account ID, your specific age or gender, your individual comparison history or behavior data, or anything that ties data back to your personal identity.
+
+**Your right to opt out:** Under Bahrain's PDPL, Saudi Arabia's PDPL, and similar GCC regulations, you can disable AI sharing in *Settings → Privacy → "Help improve AI quality."* When off, your queries are processed without contributing to AI evaluation. Comparisons still work — they just don't help train the system.
+
+## 12. Contact Us
 
 For privacy-related inquiries, please contact us at:
 - Email: privacy@smartcompare.app

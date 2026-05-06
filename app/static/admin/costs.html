@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Costs — Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+          integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4"
+          crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #10b981;
+      --warn: #f59e0b;
+      --danger: #dc2626;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+    }
+    h1 { margin: 0 0 4px; font-weight: 600; font-size: 24px; }
+    h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+    .meta { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 16px 20px;
+    }
+    .kpi { font-size: 22px; font-weight: 600; }
+    .kpi-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .chart-card { padding: 16px; }
+    .chart-card canvas { max-height: 280px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .err { color: var(--danger); font-size: 13px; padding: 8px 12px; background: #fef2f2; border-radius: 6px; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: start; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); text-transform: uppercase; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; }
+    .gauge { margin: 8px 0; }
+    .gauge-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+    .gauge-track { background: var(--border); height: 8px; border-radius: 4px; overflow: hidden; }
+    .gauge-fill { height: 100%; background: var(--accent); transition: width .3s; }
+    .gauge-fill-warn { background: var(--warn); }
+    .gauge-fill-danger { background: var(--danger); }
+    @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Costs</h1>
+  <div class="meta" id="meta">Loading…</div>
+  <div id="err" class="err" style="display:none"></div>
+
+  <h2>Cap Utilisation</h2>
+  <div class="grid" id="gauges"></div>
+
+  <div class="row">
+    <div class="card chart-card"><h2>Daily API Burn (last 30 days)</h2><canvas id="chartBurn"></canvas></div>
+    <div class="card">
+      <h2>Subscriptions (Monthly)</h2>
+      <div id="subsTable"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Service Function Map</h2>
+    <div id="functionMap"></div>
+  </div>
+
+  <script>
+    const BASE = "/api/v1/admin/costs";
+
+    function getKey() {
+      let k = sessionStorage.getItem("admin_key");
+      if (!k) {
+        k = window.prompt("X-Admin-Key:");
+        if (k) sessionStorage.setItem("admin_key", k);
+      }
+      return k;
+    }
+
+    async function call(path) {
+      const key = getKey();
+      const res = await fetch(BASE + path, {
+        headers: { "X-Admin-Key": key || "" }
+      });
+      if (res.status === 403) {
+        sessionStorage.removeItem("admin_key");
+        throw new Error("Forbidden — invalid admin key. Reload to retry.");
+      }
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }
+
+    function showErr(msg) {
+      const el = document.getElementById("err");
+      el.textContent = msg;
+      el.style.display = "block";
+    }
+
+    function setMeta(text) {
+      document.getElementById("meta").textContent = text;
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;").replaceAll("'", "&#39;");
+    }
+
+    function gaugeFillClass(pct) {
+      if (pct >= 90) return "gauge-fill-danger";
+      if (pct >= 70) return "gauge-fill-warn";
+      return "";
+    }
+
+    function gaugeCard(label, gauge, fmtUsed) {
+      if (!gauge) return "";
+      const pct = gauge.pct ?? 0;
+      const used = fmtUsed ? fmtUsed(gauge.used) : (gauge.used ?? 0);
+      const cap = fmtUsed ? fmtUsed(gauge.cap) : (gauge.cap ?? 0);
+      return `<div class="card">
+        <h2>${escapeHtml(label)}</h2>
+        <div class="kpi">${pct.toFixed(1)}%</div>
+        <div class="gauge">
+          <div class="gauge-label"><span>${escapeHtml(used)} used</span><span>${escapeHtml(cap)} cap</span></div>
+          <div class="gauge-track"><div class="gauge-fill ${gaugeFillClass(pct)}" style="width: ${Math.min(pct, 100)}%"></div></div>
+        </div>
+      </div>`;
+    }
+
+    function renderGauges(g) {
+      const root = document.getElementById("gauges");
+      const tokenFmt = n => (n ?? 0).toLocaleString() + " tok";
+      const intFmt = n => (n ?? 0).toLocaleString();
+      root.innerHTML = [
+        gaugeCard("OpenAI 4o — Today", g.openai_4o_today, tokenFmt),
+        gaugeCard("Firecrawl — Lifetime", g.firecrawl_lifetime, intFmt),
+        gaugeCard("Scrape.do — This Month", g.scrapedo_month, intFmt),
+        gaugeCard("Serper — Lifetime", g.serper_lifetime, intFmt),
+      ].filter(Boolean).join("");
+    }
+
+    function renderBurn(api) {
+      const ctx = document.getElementById("chartBurn").getContext("2d");
+      const burn = api.daily_burn || [];
+      new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: burn.map(b => b.day),
+          datasets: [{
+            label: "USD",
+            data: burn.map(b => b.usd),
+            borderColor: "#10b981",
+            backgroundColor: "rgba(16, 185, 129, 0.08)",
+            fill: true,
+            tension: 0.2,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `$${c.parsed.y.toFixed(4)}` } } },
+          scales: { y: { beginAtZero: true, ticks: { callback: v => "$" + v.toFixed(2) } } }
+        }
+      });
+    }
+
+    function renderSubs(subs) {
+      const items = subs.items || [];
+      const total = subs.total_monthly_usd || 0;
+      const rows = items.map(s => `<tr>
+        <td>${escapeHtml(s.line)}</td>
+        <td>$${(s.monthly_usd || 0).toFixed(2)}</td>
+        <td style="color:var(--muted)">${escapeHtml(s.notes || "")}</td>
+      </tr>`).join("");
+      document.getElementById("subsTable").innerHTML = `
+        <table>
+          <thead><tr><th>Line</th><th>USD/mo</th><th>Notes</th></tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr><td><strong>Total</strong></td><td><strong>$${total.toFixed(2)}</strong></td><td></td></tr>
+          </tfoot>
+        </table>`;
+    }
+
+    function renderFunctionMap(fm) {
+      const items = fm.items || [];
+      const rows = items.map(s => `<tr>
+        <td><strong>${escapeHtml(s.service)}</strong></td>
+        <td>${escapeHtml(s.purpose)}</td>
+        <td style="color:var(--muted)">${escapeHtml(s.fires_when)}</td>
+      </tr>`).join("");
+      document.getElementById("functionMap").innerHTML = `
+        <table>
+          <thead><tr><th>Service</th><th>Purpose</th><th>Fires when</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    async function load() {
+      try {
+        setMeta("Loading costs…");
+        const [gauges, api, subs, fm] = await Promise.all([
+          call("/gauges"),
+          call("/api?days=30"),
+          call("/subscriptions"),
+          call("/function_map"),
+        ]);
+        renderGauges(gauges);
+        renderBurn(api);
+        renderSubs(subs);
+        renderFunctionMap(fm);
+        setMeta(`Last refresh: ${new Date().toLocaleString()} • OpenAI paid (30d): $${(api.openai_paid_usd || 0).toFixed(4)}`);
+      } catch (e) {
+        showErr(e.message);
+        setMeta("Failed to load.");
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

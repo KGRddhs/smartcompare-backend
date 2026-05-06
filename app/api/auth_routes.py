@@ -35,6 +35,8 @@ from app.services.cohort_service import get_cohort_service
 from app.services.database_service import (
     save_user_demographics,
     get_user_demographics,
+    get_user_supabase_client,
+    get_admin_supabase_client,
 )
 from datetime import datetime, timezone
 
@@ -63,6 +65,10 @@ def _validate_password_strength(password: str) -> str:
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=10)
+    # Optional referral invite UUID — set when the user signed up via an
+    # invite link's quiz flow (design 3.7, plan B3.5). Backend links the
+    # referral_invites row so Loop 2 fires on the user's first comparison.
+    invite_id: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("password")
     @classmethod
@@ -119,11 +125,28 @@ VALID_BRAND_ATTITUDE = [
 ]
 
 
+_VALID_NOTIFICATION_TYPES = {
+    "decision_insight",
+    "cohort_curiosity",
+    "decision_retrospective",
+}
+
+
 class UserPreferencesRequest(BaseModel):
     priorities: List[str] = Field(..., min_length=1, max_length=3)
     budget: str
     lifestyle: List[str] = Field(default_factory=list)
     brand_attitude: str
+    # Per-user AI Quality Improvement Program toggle (PDPL opt-out, design 6.1).
+    # None = unset = default ON (data-sharing project). False = opt out (private project).
+    ai_sharing_enabled: Optional[bool] = None
+    # F5.4 — re-engagement notifications master toggle. None = unset = default ON
+    # (matches re-engagement-cron eligibility filter; pattern from design 9.2).
+    notifications_enabled: Optional[bool] = None
+    # F5.4 — per-type sub-toggles for the 3 re-engagement detectors. The
+    # field_validator below whitelists the 3 known keys + coerces values to
+    # bool; missing key is treated as ON downstream by reengagement_service.
+    notification_types: Optional[dict] = None
 
     @field_validator("priorities")
     @classmethod
@@ -154,6 +177,16 @@ class UserPreferencesRequest(BaseModel):
         if v not in VALID_BRAND_ATTITUDE:
             raise ValueError(f"Invalid brand_attitude: {v}. Must be one of {VALID_BRAND_ATTITUDE}")
         return v
+
+    @field_validator("notification_types")
+    @classmethod
+    def _whitelist_notification_types(cls, v: Optional[dict]) -> Optional[dict]:
+        """Whitelist the 3 known re-engagement event types and coerce values
+        to bool. Unknown keys are silently dropped — defense in depth, same
+        pattern as ShareRequest.privacy in referral_routes."""
+        if not v:
+            return v
+        return {k: bool(val) for k, val in v.items() if k in _VALID_NOTIFICATION_TYPES}
 
 
 # Alias for backward compatibility with tests
@@ -253,15 +286,35 @@ async def register(request: Request, body: RegisterRequest):
 
     - Email must be valid
     - Password must be at least 10 characters with uppercase, lowercase, and number
+    - Optional invite_id links the user to a pending referral invite (B3.5).
+      Loop 2 itself fires later when the invitee runs their first comparison
+      (handled by save_comparison_and_track_cohort).
     """
     result = await register_user(body.email, body.password)
-    
+
     if not result["success"]:
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Registration failed")
         )
-    
+
+    # B3.5 — link invite to the new user (fire-and-forget, never blocks signup).
+    # We resolve the function via app.services.referral_service so test-referral
+    # can patch either `app.services.referral_service.link_invite_to_user` OR
+    # `app.api.auth_routes.link_invite_to_user`. Module-attribute access (rather
+    # than a top-of-file `from ... import`) makes the first patch path work.
+    if body.invite_id:
+        new_user_id = (result.get("user") or {}).get("id")
+        if new_user_id:
+            try:
+                from app.services import referral_service
+                await referral_service.link_invite_to_user(
+                    new_user_id, body.invite_id,
+                )
+            except Exception as exc:  # noqa: BLE001
+                # Linker failure must not break signup — Loop 2 just won't fire.
+                logger.warning(f"link_invite_to_user failed (silent): {exc}")
+
     return result
 
 
@@ -575,6 +628,51 @@ async def save_preferences(
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to save preferences"))
     return result
+
+
+# ============================================
+# F5.4 — Expo Push token registration
+# ============================================
+
+
+class PushTokenBody(BaseModel):
+    """Body for PUT /api/v1/auth/push-token. The Expo token format is
+    ``ExponentPushToken[XXXXX...]`` — about 40 chars typical, capped at
+    256 to leave headroom for future Expo token formats."""
+
+    expo_push_token: str = Field(..., min_length=1, max_length=256)
+
+
+@router.put("/push-token")
+@limiter.limit("10/minute")
+async def update_push_token(
+    request: Request,
+    body: PushTokenBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """Register or update the user's Expo push token (idempotent).
+
+    Writes to ``users.expo_push_token`` (column from migration 015).
+    Uses the user-scoped Supabase client so RLS policies enforce that
+    users can only update their own row. Loop 2 + re-engagement pushes
+    pick up the new token via ``push_service._get_user_push_token``.
+    """
+    access_token = current_user.get("access_token")
+    client = (
+        get_user_supabase_client(access_token) if access_token
+        else get_admin_supabase_client()
+    )
+    try:
+        client.table("users").update(
+            {"expo_push_token": body.expo_push_token}
+        ).eq("id", current_user["id"]).execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"push token update failed for {current_user['id']}: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "INTERNAL_ERROR", "error": "Failed to register push token"},
+        )
+    return {"success": True}
 
 
 # ============================================

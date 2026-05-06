@@ -331,11 +331,23 @@ export type ImageIdentifyResult =
 
 // --- Preferences ---
 
+export interface NotificationTypes {
+  decision_insight?: boolean;
+  cohort_curiosity?: boolean;
+  decision_retrospective?: boolean;
+}
+
 export interface UserPreferences {
   priorities: string[];
   budget: 'budget' | 'mid' | 'premium';
   lifestyle: string[];
   brand_attitude: 'brand_loyal' | 'function_first' | 'best_of_both';
+  ai_sharing_enabled?: boolean;
+  // F5.4 — re-engagement notification preferences. Master + 3 sub-toggles.
+  // Missing keys default to ON server-side (matches re-engagement-cron
+  // eligibility filter from design 9.2).
+  notifications_enabled?: boolean;
+  notification_types?: NotificationTypes;
 }
 
 // --- Auth types ---
@@ -348,7 +360,8 @@ export interface AuthSession {
 
 // --- Navigation types ---
 
-// Root stack with Auth, Onboarding, Main tabs, and Results modal
+// Root stack with Auth, Onboarding, Main tabs, Results modal, and Referral
+// landing flow (auth-OPTIONAL, reachable from deep links pre-auth).
 export type RootStackParamList = {
   Auth: undefined;
   // mode='edit' opens preferences in edit mode (e.g. from Profile screen).
@@ -356,6 +369,9 @@ export type RootStackParamList = {
   Onboarding: { mode?: 'edit'; source?: 'styleProfile' } | undefined;
   Main: undefined;
   Results: { result: ComparisonResult };
+  // F3.2/F3.3 — invitee landing flow (gradual commitment, no signup gate).
+  ReferralLanding: { share_token: string; ref: string };
+  InviteeQuiz: { share_token: string; invite_id: string; ref: string };
   // Legacy screen names for backward compatibility with screen components
   Home: undefined;
   History: undefined;
@@ -365,7 +381,10 @@ export type RootStackParamList = {
 // Auth stack for login flow
 export type AuthStackParamList = {
   Login: undefined;
-  Register: undefined;
+  // invite_id is set when the user lands on Register from the invitee
+  // quiz soft-signup CTA (F3.5) — forwarded to /auth/register so the
+  // backend links redeemed_by_user_id on the pending referral invite.
+  Register: { invite_id?: string } | undefined;
   ForgotPassword: undefined;
 };
 

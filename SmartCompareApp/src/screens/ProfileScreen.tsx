@@ -32,6 +32,7 @@ import {
   Trash2,
   ChevronRight,
   Lock,
+  Shield,
 } from 'lucide-react-native';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { useLanguage } from '../hooks/useLanguage';
@@ -42,9 +43,13 @@ import {
   parseApiError,
   getCohortProfile,
   CohortDisplayProfile,
+  getPreferences,
+  savePreferences,
 } from '../services/api';
+import type { UserPreferences } from '../types';
 import { getSavedUser, logout, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import StyleProfileCard from '../components/StyleProfileCard';
+import ReferralStatusCard from '../components/ReferralStatusCard';
 
 interface ProfileScreenProps {
   navigation: any;
@@ -75,10 +80,105 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   // Cohort display profile (null when confidence < medium or not yet collected)
   const [cohortDisplay, setCohortDisplay] = useState<CohortDisplayProfile | null>(null);
 
+  // Preferences (kept in state so toggling AI sharing round-trips through PUT /preferences)
+  const [preferences, setPreferences] = useState<UserPreferences | null>(null);
+  const [aiSharingSaving, setAiSharingSaving] = useState(false);
+  const [aiSharingError, setAiSharingError] = useState('');
+  const [notifsSaving, setNotifsSaving] = useState(false);
+  const [notifsError, setNotifsError] = useState('');
+
   useEffect(() => {
     loadUser();
     loadCohortProfile();
+    loadPreferences();
   }, []);
+
+  const loadPreferences = async () => {
+    const p = await getPreferences();
+    setPreferences(p);
+  };
+
+  // Default ON when undefined (matches backend semantics from B1.4)
+  const aiSharingEnabled = preferences?.ai_sharing_enabled !== false;
+
+  // Build a complete UserPreferences shape from current state + an override.
+  // PUT /preferences requires the 4 onboarding fields, so we backfill defaults
+  // when the user hasn't completed onboarding yet.
+  const buildNextPrefs = (override: Partial<UserPreferences>): UserPreferences => {
+    const previous = preferences;
+    return {
+      priorities: previous?.priorities ?? [],
+      budget: previous?.budget ?? 'mid',
+      lifestyle: previous?.lifestyle ?? [],
+      brand_attitude: previous?.brand_attitude ?? 'best_of_both',
+      ai_sharing_enabled: previous?.ai_sharing_enabled,
+      notifications_enabled: previous?.notifications_enabled,
+      notification_types: previous?.notification_types,
+      ...override,
+    };
+  };
+
+  const handleAiSharingToggle = async (value: boolean) => {
+    if (aiSharingSaving) return;
+    setAiSharingError('');
+    const previous = preferences;
+    const next = buildNextPrefs({ ai_sharing_enabled: value });
+    setPreferences(next);
+    setAiSharingSaving(true);
+    try {
+      const result = await savePreferences(next);
+      if (!result.success) {
+        setPreferences(previous);
+        setAiSharingError(result.error || t('profile.aiSharing.errorSave'));
+      }
+    } catch (err: any) {
+      setPreferences(previous);
+      setAiSharingError(parseApiError(err).message || t('profile.aiSharing.errorSave'));
+    } finally {
+      setAiSharingSaving(false);
+    }
+  };
+
+  // F5.4 — re-engagement notifications. `override` is one of:
+  //   { notifications_enabled: bool } (master)
+  //   { notification_types: { decision_insight?: bool, ... } } (sub-toggle)
+  const handleNotificationsToggle = async (override: Partial<UserPreferences>) => {
+    if (notifsSaving) return;
+    setNotifsError('');
+    const previous = preferences;
+    // For sub-toggle changes, merge into the existing notification_types
+    // rather than replacing — single-key override should preserve siblings.
+    const merged: Partial<UserPreferences> = override.notification_types
+      ? {
+          notification_types: {
+            ...(previous?.notification_types ?? {}),
+            ...override.notification_types,
+          },
+        }
+      : override;
+    const next = buildNextPrefs(merged);
+    setPreferences(next);
+    setNotifsSaving(true);
+    try {
+      const result = await savePreferences(next);
+      if (!result.success) {
+        setPreferences(previous);
+        setNotifsError(result.error || t('profile.notifs.errorSave'));
+      }
+    } catch (err: any) {
+      setPreferences(previous);
+      setNotifsError(parseApiError(err).message || t('profile.notifs.errorSave'));
+    } finally {
+      setNotifsSaving(false);
+    }
+  };
+
+  // Default ON when undefined for all 4 toggles (matches backend semantics).
+  const notificationsEnabled = preferences?.notifications_enabled !== false;
+  const notifTypes = preferences?.notification_types ?? {};
+  const insightEnabled = notifTypes.decision_insight !== false;
+  const cohortEnabled = notifTypes.cohort_curiosity !== false;
+  const retroEnabled = notifTypes.decision_retrospective !== false;
 
   const loadUser = async () => {
     const savedUser = await getSavedUser();
@@ -208,6 +308,9 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
         {/* Cohort style profile (only renders when confidence >= medium) */}
         <StyleProfileCard display={cohortDisplay} onEditPress={handleEditStyleProfile} />
 
+        {/* Referral status card (F4.5) — silently hides when feature flag is off, anon, or network down */}
+        <ReferralStatusCard />
+
         {/* Account Card */}
         <View style={styles.card}>
           <View style={styles.profileRow}>
@@ -282,6 +385,94 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
             () => setPasswordModalVisible(true),
             true
           )}
+        </View>
+
+        {/* Privacy Card */}
+        <Text style={styles.sectionLabel}>{t('profile.section.privacy')}</Text>
+        <View style={styles.card}>
+          <View style={styles.privacyRow}>
+            <View style={styles.privacyHeader}>
+              <Shield size={18} color={colors.text.secondary} />
+              <Text style={styles.privacyTitle}>{t('profile.aiSharing.title')}</Text>
+            </View>
+            <Switch
+              value={aiSharingEnabled}
+              onValueChange={handleAiSharingToggle}
+              disabled={aiSharingSaving || preferences === null}
+              trackColor={{ false: colors.border.medium, true: colors.accent }}
+              thumbColor={'#FFFFFF'}
+              accessibilityLabel={t('profile.aiSharing.title')}
+            />
+          </View>
+          <Text style={styles.privacySubtitle}>{t('profile.aiSharing.subtitle')}</Text>
+          {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
+        </View>
+
+        {/* F5.4 — Notifications Card: master + 3 sub-toggles for re-engagement pushes */}
+        <Text style={styles.sectionLabel}>{t('profile.notifications')}</Text>
+        <View style={styles.card}>
+          <View style={styles.privacyRow}>
+            <View style={styles.privacyHeader}>
+              <Bell size={18} color={colors.text.secondary} />
+              <Text style={styles.privacyTitle}>{t('profile.notifs.master.title')}</Text>
+            </View>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={(v) => handleNotificationsToggle({ notifications_enabled: v })}
+              disabled={notifsSaving || preferences === null}
+              trackColor={{ false: colors.border.medium, true: colors.accent }}
+              thumbColor={'#FFFFFF'}
+              accessibilityLabel={t('profile.notifs.master.title')}
+            />
+          </View>
+          <Text style={styles.privacySubtitle}>{t('profile.notifs.master.subtitle')}</Text>
+
+          {/* Sub-toggles — only visible + interactive when master ON */}
+          {notificationsEnabled ? (
+            <View style={styles.subToggles}>
+              <View style={styles.subToggleRow}>
+                <Text style={styles.subToggleLabel}>{t('profile.notifs.insight')}</Text>
+                <Switch
+                  value={insightEnabled}
+                  onValueChange={(v) =>
+                    handleNotificationsToggle({ notification_types: { decision_insight: v } })
+                  }
+                  disabled={notifsSaving}
+                  trackColor={{ false: colors.border.medium, true: colors.accent }}
+                  thumbColor={'#FFFFFF'}
+                  accessibilityLabel={t('profile.notifs.insight')}
+                />
+              </View>
+              <View style={styles.subToggleRow}>
+                <Text style={styles.subToggleLabel}>{t('profile.notifs.cohort')}</Text>
+                <Switch
+                  value={cohortEnabled}
+                  onValueChange={(v) =>
+                    handleNotificationsToggle({ notification_types: { cohort_curiosity: v } })
+                  }
+                  disabled={notifsSaving}
+                  trackColor={{ false: colors.border.medium, true: colors.accent }}
+                  thumbColor={'#FFFFFF'}
+                  accessibilityLabel={t('profile.notifs.cohort')}
+                />
+              </View>
+              <View style={styles.subToggleRow}>
+                <Text style={styles.subToggleLabel}>{t('profile.notifs.retrospective')}</Text>
+                <Switch
+                  value={retroEnabled}
+                  onValueChange={(v) =>
+                    handleNotificationsToggle({ notification_types: { decision_retrospective: v } })
+                  }
+                  disabled={notifsSaving}
+                  trackColor={{ false: colors.border.medium, true: colors.accent }}
+                  thumbColor={'#FFFFFF'}
+                  accessibilityLabel={t('profile.notifs.retrospective')}
+                />
+              </View>
+            </View>
+          ) : null}
+
+          {notifsError ? <Text style={styles.errorText}>{notifsError}</Text> : null}
         </View>
 
         {/* Support Card */}
@@ -479,6 +670,47 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.destructive,
     marginTop: spacing.xs,
+  },
+  // Privacy card
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  privacyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flexShrink: 1,
+  },
+  privacyTitle: {
+    ...typography.body,
+    color: colors.text.primary,
+    flexShrink: 1,
+  },
+  privacySubtitle: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginTop: spacing.sm,
+  },
+  // F5.4 — sub-toggles for Notifications card (decision_insight / cohort_curiosity / decision_retrospective)
+  subToggles: {
+    marginTop: spacing.base,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border.light,
+    gap: spacing.xs,
+  },
+  subToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+  },
+  subToggleLabel: {
+    ...typography.caption,
+    color: colors.text.primary,
+    flexShrink: 1,
   },
   // Rows
   row: {

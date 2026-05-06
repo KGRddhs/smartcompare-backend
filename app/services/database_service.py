@@ -238,53 +238,100 @@ async def delete_comparison(comparison_id: str, user_id: str, access_token: Opti
         return False
 
 
+class ShareTokenError(Exception):
+    """Raised when share-token persistence fails for a non-recoverable reason
+    (schema drift, RLS denial, transient DB outage). The route layer can
+    distinguish this from "comparison not found" (None return) and surface a
+    500 with a meaningful error code instead of a misleading 404.
+
+    Per Session 42 post-mortem on the share_token varchar(12) drift: the
+    silent-failure pattern (broad try/except returning None) hid a real bug
+    for ~6 sessions. Future schema-vs-code drift should fail LOUD: log at
+    ERROR with the underlying cause, then propagate as ShareTokenError so
+    callers can decide whether to 500 or degrade gracefully.
+    """
+
+
 async def create_share_token(comparison_id: str, user_id: str, access_token: Optional[str] = None) -> Optional[str]:
     """
     Generate a share token for a comparison.
     Verifies ownership. Returns existing token if already shared.
     Retries on collision (max 3 attempts).
+
+    Returns None ONLY when the comparison does not exist (legitimate 404
+    case). Raises ``PermissionError`` when the caller doesn't own the
+    comparison (mapped to 403 by the route layer). Raises
+    ``ShareTokenError`` on any persistence failure — schema drift, RLS
+    denial, transient DB outage, etc. — so the route layer can return a
+    proper 500 with cause information instead of a misleading 404.
     """
     import secrets
 
+    client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
+
+    # Fetch comparison and verify ownership. Lookup failures here mean
+    # the row genuinely doesn't exist (or RLS hides it) — return None so
+    # the route maps to 404. Don't swallow other exceptions.
     try:
-        client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
-
-        # Fetch comparison and verify ownership
-        comparison = await get_comparison_by_id(comparison_id)
-        if not comparison:
-            return None
-        if comparison.get("user_id") != user_id:
-            raise PermissionError("Not authorized to share this comparison")
-
-        # Return existing token if already shared
-        existing_token = comparison.get("share_token")
-        if existing_token:
-            return existing_token
-
-        # Generate and store token (retry on collision)
-        for attempt in range(3):
-            token = secrets.token_urlsafe(16)  # ~22 chars, 128-bit entropy
-            try:
-                response = (
-                    client.table("comparisons")
-                    .update({"share_token": token})
-                    .eq("id", comparison_id)
-                    .eq("user_id", user_id)
-                    .execute()
-                )
-                if response.data:
-                    return token
-            except Exception as e:
-                if "unique" in str(e).lower() and attempt < 2:
-                    continue  # Retry with new token
-                raise
-
+        comparison = await get_comparison_by_id(comparison_id, access_token=access_token)
+    except Exception as exc:
+        logger.error(
+            "Share-token lookup failed for comparison=%s: %s",
+            comparison_id, exc, exc_info=True,
+        )
+        raise ShareTokenError(f"Comparison lookup failed: {exc}") from exc
+    if not comparison:
         return None
-    except PermissionError:
-        raise
-    except Exception as e:
-        logger.warning(f"Error creating share token: {e}", exc_info=True)
-        return None
+    if comparison.get("user_id") != user_id:
+        raise PermissionError("Not authorized to share this comparison")
+
+    # Return existing token if already shared (idempotent).
+    existing_token = comparison.get("share_token")
+    if existing_token:
+        return existing_token
+
+    # Generate and store token (retry on collision).
+    last_exc: Optional[Exception] = None
+    for attempt in range(3):
+        token = secrets.token_urlsafe(16)  # ~22 chars, 128-bit entropy
+        try:
+            response = (
+                client.table("comparisons")
+                .update({"share_token": token})
+                .eq("id", comparison_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if response.data:
+                return token
+            # No-rows-updated despite a successful execute() means an RLS
+            # filter ate the update silently. Surface that as an error
+            # rather than retrying or returning None.
+            last_exc = ShareTokenError(
+                f"Share-token update affected 0 rows (RLS or stale ownership) "
+                f"for comparison={comparison_id}, attempt={attempt+1}"
+            )
+            break
+        except Exception as exc:
+            err_str = str(exc).lower()
+            if "unique" in err_str and attempt < 2:
+                continue  # Retry with a new token
+            # Anything else (schema drift, network, RLS) is non-recoverable.
+            logger.error(
+                "Share-token write failed for comparison=%s (attempt %d/3): %s",
+                comparison_id, attempt + 1, exc, exc_info=True,
+            )
+            last_exc = exc
+            break
+
+    if last_exc is not None:
+        if isinstance(last_exc, ShareTokenError):
+            raise last_exc
+        raise ShareTokenError(f"Share-token write failed: {last_exc}") from last_exc
+    # All 3 attempts collided on unique violation.
+    raise ShareTokenError(
+        f"Failed to mint a unique share token after 3 collisions for comparison={comparison_id}"
+    )
 
 
 async def get_shared_comparison(share_token: str) -> Optional[Dict]:

@@ -29,6 +29,7 @@ STATUS_CODE_MAP = {
     422: "VALIDATION_ERROR",
     429: "RATE_LIMITED",
     500: "SERVER_ERROR",
+    503: "FEATURE_DISABLED",
 }
 
 
@@ -51,12 +52,51 @@ def _build_error_response(status_code: int, message: str, request_id: str) -> JS
     )
 
 
+def _is_structured_detail(detail: object) -> bool:
+    """Recognise the project's structured-detail pattern.
+
+    Routes raise ``HTTPException(status, detail={"code": "X", "error": "msg"})``
+    so the unified envelope surfaces ``code`` + ``error`` cleanly. We only
+    unwrap when BOTH keys are present (or at minimum one of ``error`` /
+    ``message``) so other dict-shaped details (e.g. Pydantic-style
+    ``{"loc": [...], "msg": "..."}``) still serialize via the legacy
+    ``str(detail)`` path. Per qa-referral: don't regress 422 validation
+    error shape.
+    """
+    if not isinstance(detail, dict):
+        return False
+    has_message_key = (
+        isinstance(detail.get("error"), str) or isinstance(detail.get("message"), str)
+    )
+    has_code_key = isinstance(detail.get("code"), str)
+    return has_message_key or has_code_key
+
+
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    """Handle FastAPI HTTPException with unified format."""
-    return _build_error_response(
+    """Handle FastAPI HTTPException with unified format.
+
+    Structured details (``{"code": "X", "error": "msg"}``) raised by referral
+    routes for 429/400/503/404 are unwrapped to top-level. Plain string
+    details and Pydantic-shaped dicts fall through to ``str(detail)``.
+    """
+    detail = exc.detail
+    code = STATUS_CODE_MAP.get(exc.status_code, "SERVER_ERROR")
+    if _is_structured_detail(detail):
+        # detail is a dict; mypy/runtime safe access
+        message = str(detail.get("error") or detail.get("message") or detail)
+        if isinstance(detail.get("code"), str):
+            code = detail["code"]
+    else:
+        message = str(detail)
+
+    return JSONResponse(
         status_code=exc.status_code,
-        message=str(exc.detail),
-        request_id=_get_request_id(request),
+        content={
+            "success": False,
+            "error": message,
+            "code": code,
+            "request_id": _get_request_id(request),
+        },
     )
 
 

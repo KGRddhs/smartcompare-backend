@@ -78,7 +78,19 @@ These Terms shall be governed by and construed in accordance with the laws of th
 
 Any disputes arising from these Terms or your use of the App shall first be attempted to be resolved through informal negotiation. If unresolved, disputes shall be submitted to the competent courts in the Kingdom of Bahrain.
 
-## 12. Contact
+## 12. Smart Decision Referrals
+
+When you share a Qaren comparison with a friend, you may earn rewards.
+
+**How rewards work:** sharing earns a Deep Review credit (limit 3 shares per week). When a friend you invited completes their first real comparison while signed in, you earn 5 additional comparisons added to that month's limit. Maximum 15 referral comparisons per month. Premium subscribers earn 10 per conversion instead of 5.
+
+**Fair use:** rewards may be withheld for self-referral, automated signups, fake accounts, or coordinated rings. We use device fingerprints, email validation, and behavior signals to detect abuse. Rewards are not transferable, have no cash value, and expire 30 days after grant.
+
+## 13. Smart Decision Notifications
+
+Qaren may send up to 1 re-engagement notification per week to help you make better purchase decisions: review insights on saved products, peer-decision updates, or 14-day decision retrospectives. We never send price-drop spam, advertising, or promotional content. Disable any type in *Settings → Notifications.*
+
+## 14. Contact
 
 For questions about these Terms, please contact us at:
 - Email: legal@smartcompare.app

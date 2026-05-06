@@ -15,7 +15,7 @@ export const API_BASE_URL = 'https://web-production-58776.up.railway.app';
 // Initialize certificate pinning (no-op in Expo Go, active in dev/prod builds)
 setupCertificatePinning();
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 120000, // 2 minutes for image processing
 });

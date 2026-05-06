@@ -35,6 +35,7 @@ import {
   DollarSign,
   Info,
   Award,
+  Gift,
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -59,6 +60,8 @@ import { SkeletonLoader } from '../components/SkeletonLoader';
 import { ProgressBar } from '../components/ProgressBar';
 import FeedbackCard from '../components/FeedbackCard';
 import DemographicsBottomSheet from '../components/DemographicsBottomSheet';
+import ShareBottomSheet from '../components/ShareBottomSheet';
+import type { CreateShareResult } from '../services/referralService';
 import {
   trackEvents,
   shareComparison,
@@ -91,6 +94,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // Demographics prompt state
   const [demographicsVisible, setDemographicsVisible] = useState(false);
   const [demographicsError, setDemographicsError] = useState<string | null>(null);
+
+  // Referral share sheet state (F2.3 + F2.4)
+  const [shareSheetVisible, setShareSheetVisible] = useState(false);
+  const [loop1ToastVisible, setLoop1ToastVisible] = useState(false);
+  const [weeklyRemaining, setWeeklyRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     getUsageStatus().then(setUsageStatus);
@@ -160,26 +168,47 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     return colors.destructive;
   };
 
-  const handleShare = async () => {
-    try {
-      const winnerName = isNewFormat
-        ? result.overview!.winner.name
-        : products[winner_index]?.name;
-      let shareMessage = `Comparing ${products[0]?.name} vs ${products[1]?.name}\n\nWinner: ${winnerName}\n\n${recommendation}`;
+  // F2.4: Result-aware CTA variant. Strong/close mapping per design 3.1.
+  // 'saved' variant deferred until ResultsScreen Save tap actually persists state.
+  const ctaVariant: 'strong' | 'close' | 'default' = (() => {
+    const margin = scoring?.win_margin;
+    if (typeof margin !== 'number') return 'default';
+    if (margin >= 15) return 'strong';
+    if (margin < 8) return 'close';
+    return 'default';
+  })();
 
-      const compId = (result as any).comparison_id || (metadata as any)?.comparison_id;
-      if (compId) {
-        try {
-          const { share_url } = await shareComparison(compId);
-          shareMessage += `\n\nView full comparison: ${share_url}`;
-        } catch {}
-      }
+  const sharableComparisonId =
+    (result as any).comparison_id || (metadata as any)?.comparison_id;
 
-      await Share.share({ message: shareMessage });
-      trackEvent('share', { method: compId ? 'link' : 'text_only' });
-    } catch (error) {
-      console.error('Share error:', error);
+  const winnerName = isNewFormat
+    ? result.overview!.winner.name
+    : products[winner_index]?.name;
+
+  const handleShare = () => {
+    if (!sharableComparisonId) {
+      // Fall back to legacy Share.share when there's no persisted comparison
+      // to invite from (e.g. anonymous flows that didn't save).
+      Share.share({
+        message: `Comparing ${products[0]?.name} vs ${products[1]?.name}\n\nWinner: ${winnerName}\n\n${recommendation}`,
+      }).catch(() => { /* swallow */ });
+      trackEvent('share', { method: 'text_only', cta_variant: ctaVariant });
+      return;
     }
+    trackEvent('share_sheet_opened', { cta_variant: ctaVariant });
+    setShareSheetVisible(true);
+  };
+
+  const handleShareCompleted = (response: CreateShareResult) => {
+    setShareSheetVisible(false);
+    setWeeklyRemaining(response.weekly_invites_remaining);
+    setLoop1ToastVisible(true);
+    trackEvent('share_completed', {
+      cta_variant: ctaVariant,
+      weekly_invites_remaining: response.weekly_invites_remaining,
+    });
+    // Auto-dismiss the Loop 1 toast after 4s
+    setTimeout(() => setLoop1ToastVisible(false), 4000);
   };
 
   const openRatingSource = (source: RatingSource | null | undefined) => {
@@ -482,6 +511,24 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             <Text style={styles.tradeoffNote}>{result.overview!.winner.key_tradeoff}</Text>
           ) : null}
         </Animated.View>
+
+        {/* F2.4: Result-aware share CTA — strong/close/default per design 3.1 */}
+        {sharableComparisonId ? (
+          <Animated.View entering={FadeInDown.delay(250).duration(400)} style={styles.section}>
+            <TouchableOpacity
+              style={styles.referralCta}
+              onPress={handleShare}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={t(`referrals.cta.${ctaVariant}`)}
+            >
+              <Share2 size={18} color={colors.bg.primary} />
+              <Text style={styles.referralCtaText}>
+                {t(`referrals.cta.${ctaVariant}`)}
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+        ) : null}
 
         {/* 3. Price comparison */}
         <Animated.View entering={FadeInDown.delay(300).duration(400)} style={styles.section}>
@@ -856,6 +903,38 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         onSkip={handleDemographicsSkip}
         errorMessage={demographicsError}
       />
+
+      {/* F2.4 + F2.5: ShareBottomSheet + Loop 1 reward toast */}
+      {sharableComparisonId ? (
+        <ShareBottomSheet
+          visible={shareSheetVisible}
+          comparison={{
+            id: sharableComparisonId,
+            productA: products[0]?.name ?? '',
+            productB: products[1]?.name ?? '',
+            winnerName: winnerName ?? products[0]?.name ?? '',
+          }}
+          onClose={() => setShareSheetVisible(false)}
+          onShared={handleShareCompleted}
+        />
+      ) : null}
+
+      {loop1ToastVisible ? (
+        <View style={styles.loop1Toast} accessibilityLiveRegion="polite">
+          <Gift size={18} color={colors.bg.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.loop1ToastTitle}>{t('referrals.loop1.toast')}</Text>
+            {weeklyRemaining !== null ? (
+              <Text style={styles.loop1ToastSubtitle}>
+                {t('referrals.loop1.counter', {
+                  used: 3 - weeklyRemaining,
+                  total: 3,
+                })}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1331,5 +1410,49 @@ const styles = StyleSheet.create({
   metadataText: {
     ...typography.small,
     color: colors.text.secondary,
+  },
+  // F2.4: Result-aware share CTA below verdict
+  referralCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.button,
+    minHeight: 48,
+  },
+  referralCtaText: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.bg.primary,
+    flexShrink: 1,
+  },
+  // F2.5: Loop 1 toast — "your next comparison goes 2x deeper"
+  loop1Toast: {
+    position: 'absolute',
+    bottom: spacing['2xl'],
+    start: spacing.lg,
+    end: spacing.lg,
+    backgroundColor: colors.text.primary,
+    borderRadius: radii.card,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    ...shadows.card,
+  },
+  loop1ToastTitle: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.bg.primary,
+  },
+  loop1ToastSubtitle: {
+    ...typography.small,
+    color: colors.bg.primary,
+    opacity: 0.8,
+    marginTop: 2,
   },
 });
