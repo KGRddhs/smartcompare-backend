@@ -40,6 +40,7 @@ export const Easing = {
   out: (_easing: any) => (_t: number) => _t,
   ease: (_t: number) => _t,
   cubic: (_t: number) => _t,
+  bezier: (_x1: number, _y1: number, _x2: number, _y2: number) => (_t: number) => _t,
 };
 
 export default Animated;
