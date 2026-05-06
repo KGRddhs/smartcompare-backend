@@ -23,6 +23,7 @@ module.exports = {
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
     '^expo-font$': '<rootDir>/__mocks__/expo-font.ts',
     '^@expo-google-fonts/cairo$': '<rootDir>/__mocks__/expo-google-fonts-cairo.ts',
+    '^react-native-svg$': '<rootDir>/__mocks__/react-native-svg.ts',
     '\\.(ttf|otf|woff2?|png|jpg)$': '<rootDir>/__mocks__/fileStub.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
