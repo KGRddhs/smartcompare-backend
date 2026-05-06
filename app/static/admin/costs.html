@@ -67,6 +67,8 @@
   <h2>Cap Utilisation</h2>
   <div class="grid" id="gauges"></div>
 
+  <div class="grid" id="apiKpis"></div>
+
   <div class="row">
     <div class="card chart-card"><h2>Daily API Burn (last 30 days)</h2><canvas id="chartBurn"></canvas></div>
     <div class="card">
@@ -154,6 +156,29 @@
       ].filter(Boolean).join("");
     }
 
+    function renderApiKpis(api) {
+      const avg = Number(api.avg_cost_per_request_usd || 0);
+      const total = Number(api.openai_paid_usd || 0);
+      const count = Number(api.comparisons_with_cost || 0);
+      const days = Number(api.window_days || 30);
+      document.getElementById("apiKpis").innerHTML = `
+        <div class="card">
+          <div class="kpi-sub">AVG API COST / REQUEST (${days}D)</div>
+          <div class="kpi">$${avg.toFixed(6)}</div>
+          <div class="kpi-sub">across ${count.toLocaleString()} billed comparisons</div>
+        </div>
+        <div class="card">
+          <div class="kpi-sub">TOTAL API SPEND (${days}D)</div>
+          <div class="kpi">$${total.toFixed(4)}</div>
+          <div class="kpi-sub">OpenAI paid-tier spillover (free-tier reqs are $0)</div>
+        </div>
+        <div class="card">
+          <div class="kpi-sub">BILLED COMPARISONS (${days}D)</div>
+          <div class="kpi">${count.toLocaleString()}</div>
+          <div class="kpi-sub">comparisons where total_cost > $0 (i.e. paid-tier path)</div>
+        </div>`;
+    }
+
     function renderBurn(api) {
       const ctx = document.getElementById("chartBurn").getContext("2d");
       const burn = api.daily_burn || [];
@@ -220,6 +245,7 @@
           call("/function_map"),
         ]);
         renderGauges(gauges);
+        renderApiKpis(api);
         renderBurn(api);
         renderSubs(subs);
         renderFunctionMap(fm);

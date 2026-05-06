@@ -661,6 +661,7 @@ async def costs_api(
 
     openai_total = 0.0
     daily_burn: dict[str, float] = {}
+    cost_sample_count = 0
     try:
         rows = (
             client.table("comparisons")
@@ -680,6 +681,8 @@ async def costs_api(
             day = (row.get("created_at") or "")[:10]
             daily_burn[day] = daily_burn.get(day, 0.0) + cost_f
             openai_total += cost_f
+            if cost_f > 0:
+                cost_sample_count += 1
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[ADMIN] OpenAI cost read failed: {exc}")
 
@@ -694,9 +697,15 @@ async def costs_api(
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[ADMIN] scraper budget read failed: {exc}")
 
+    avg_cost_per_request_usd = (
+        round(openai_total / cost_sample_count, 6) if cost_sample_count > 0 else 0.0
+    )
+
     return {
         "window_days": days,
         "openai_paid_usd": round(openai_total, 4),
+        "comparisons_with_cost": cost_sample_count,
+        "avg_cost_per_request_usd": avg_cost_per_request_usd,
         "daily_burn": [
             {"day": day, "usd": round(usd, 4)}
             for day, usd in sorted(daily_burn.items())
