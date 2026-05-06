@@ -9,7 +9,18 @@ import {
 } from 'react-native';
 import { colors, spacing, radii, typography } from '../theme';
 
-type ButtonVariant = 'primary' | 'secondary' | 'destructive';
+/**
+ * Button variants.
+ *
+ * - primary    — black bg + white text. The default CTA across the app.
+ * - signature  — emerald bg + white text. Reserved for the ONE-TIME
+ *                "Reveal my verdict" invitee CTA per design Section 4e.
+ *                Do not reuse for generic CTAs; the emerald loses meaning.
+ * - secondary  — white bg + black border + black text. Used for
+ *                "Already have an account?" / "Skip" / similar.
+ * - destructive — destructive border. Kept for delete-confirmation flows.
+ */
+type ButtonVariant = 'primary' | 'signature' | 'secondary' | 'destructive';
 
 interface ButtonProps {
   title: string;
@@ -18,6 +29,8 @@ interface ButtonProps {
   disabled?: boolean;
   loading?: boolean;
   style?: ViewStyle;
+  testID?: string;
+  accessibilityLabel?: string;
 }
 
 export function Button({
@@ -27,6 +40,8 @@ export function Button({
   disabled = false,
   loading = false,
   style,
+  testID,
+  accessibilityLabel,
 }: ButtonProps) {
   const buttonStyle = [
     styles.base,
@@ -47,11 +62,14 @@ export function Button({
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.7}
+      testID={testID}
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityRole="button"
     >
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={variant === 'primary' ? '#FFFFFF' : colors.accent}
+          color={variant === 'secondary' ? colors.text.primary : '#FFFFFF'}
         />
       ) : (
         <Text style={textStyle}>{title}</Text>
@@ -70,12 +88,15 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   primary: {
+    backgroundColor: colors.cta.primary,
+  },
+  signature: {
     backgroundColor: colors.accent,
   },
   secondary: {
-    backgroundColor: 'transparent',
+    backgroundColor: colors.bg.primary,
     borderWidth: 1,
-    borderColor: colors.border.medium,
+    borderColor: colors.text.primary,
   },
   destructive: {
     backgroundColor: 'transparent',
@@ -88,7 +109,7 @@ const styles = StyleSheet.create({
   text: {
     ...typography.body,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: colors.cta.onPrimary,
   },
   textSecondary: {
     color: colors.text.primary,
