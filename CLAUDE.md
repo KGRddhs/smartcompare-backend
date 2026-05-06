@@ -37,6 +37,7 @@ Be intelligent about every decision:
 5. Plan → Approve → Implement → Test
 6. For multi-file features (3+ files, frontend+backend): use parallel agent teams (TeamCreate with 4 Opus agents: backend, frontend, test, qa)
 7. After major features: update CLAUDE.md (project context), MEMORY.md (learnings), CONTEXT_SESSION_LOG.md (what changed)
+8. **Path-restricted commits:** `git commit -m "msg" -- <paths>` (NOT `git commit -- <paths> -m "msg"` — the `--` is a path separator, anything after it is treated as a path and `-m` errors). Use in team/multi-agent sessions to avoid sweeping teammates' staged work.
 
 ## Critical: Two app/ Directories
 
@@ -72,6 +73,7 @@ curl -s "https://web-production-58776.up.railway.app/api/v1/text/compare?q=iPhon
 cd SmartCompareApp
 npx expo start                    # Dev server (use --clear after dep changes)
 npx tsc --noEmit                  # TypeScript check (0 errors as of Mar 8 2026)
+# IDE/LSP TS diagnostics on Windows are unreliable (typescript-lsp plugin bug, MEMORY.md). Trust ONLY `npx tsc --noEmit` exit code as ground truth — ignore stale "Cannot find module" / "JSX flag not set" errors from system-reminders unless tsc actually fails.
 npx expo install --check          # Verify deps match SDK version
 npx expo-doctor                   # Full project health check
 ```
