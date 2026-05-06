@@ -4,6 +4,106 @@
 
 ---
 
+# SESSION 42: Smart Decision Referral System (4-Opus Team)
+
+## What We Did
+Built virality-optimized referral system with dual-loop rewards (Loop 1 immediate Deep Review credit on share; Loop 2 deferred +5/+10 on invitee conversion), hybrid OpenAI model routing, re-engagement push system, admin dashboards. 4 new migrations applied via Supabase MCP. Feature-flag gated. End-to-end Loop 2 fired in production smoke chain on 2026-05-05 with all side effects verified.
+
+**Spec:** `docs/superpowers/specs/2026-05-05-smart-referral-system-design.md`
+**Plan:** `docs/plans/2026-05-05-smart-referral-system.md`
+**Worktree:** `.claude/worktrees/referral-system-v1`
+
+## Phases shipped (P1-P6)
+- **P1 Foundation** — Migration 014 + referral code generation + T&C/Privacy markdown + AI sharing toggle
+- **P2 Referrer Flow** — POST /share + GET /status + ShareBottomSheet + result-aware CTA + Loop 1 toast
+- **P3 Invitee Flow** — GET /invite/{token} + POST /quiz + ReferralLandingScreen + InviteeQuizScreen + invite_id capture on Register
+- **P4 Loop 2 + Anti-Abuse** — Loop 2 trigger + AbuseDetectionService (3 controls, 100% cov) + bonus capacity + Expo Push
+- **P5 Re-Engagement** — Daily cron + 3 detectors (insight/cohort/retrospective) + selector priority + push dispatcher + 4-toggle UI
+- **P6 Admin Dashboards** — 8 admin endpoints (X-Admin-Key, 30/min) + 2 HTML pages mirroring Session 41 cohort dashboard
+
+## Cross-cutting (P-cross)
+- **Hybrid model routing (BX.1+BX.2)** — `model_router_service` with atomic Redis INCRBY; verdict on gpt-4o below 80% daily cap, mini above; 429 retry-once with audit log; fail-open on Redis unavailable
+
+## Migrations
+| # | File | What |
+|---|---|---|
+| 014 | `014_referral_system.sql` | 4 tables (referral_invites, referral_redemptions, deep_review_credits, re_engagement_events) + RLS + resolve_referral_code RPC + users column extension |
+| 015 | `015_push_tokens.sql` | users.expo_push_token + notifications_enabled + last_comparison_at + 2 partial indexes |
+| 016 | `016_referral_invite_privacy.sql` | referral_invites.privacy JSONB |
+| 017 | `017_widen_share_token.sql` | comparisons.share_token VARCHAR(12) → TEXT (fixes Session-22-era latent bug) + RLS policy round-trip |
+
+## Key commits
+| Commit | What |
+|--------|------|
+| 5833650 | feat(referral): migration 014 schema |
+| bb9e7e6 | feat(referral): code generation + invite/status service (B1.2/B2.1/B2.2) |
+| e624fe2 | feat(privacy): per-user AI sharing toggle (B1.4) |
+| 93ce64d | docs(legal): T&C + Privacy Policy updates |
+| b022551 | feat(referral): P2 + P3 routes + service extensions |
+| 84ef802 | feat(privacy): F1.5 AI sharing toggle UI |
+| 8c0fa5f | fix(profile): translate accessibilityLabel for AI sharing Switch |
+| 6f1972d | feat(referral): F2.3 ShareBottomSheet + referralService |
+| d215f81 | feat(model_router): hybrid per-call OpenAI routing (BX.1+BX.2) |
+| dfe0b34 | feat(referral): AbuseDetectionService (B4.1) |
+| f438a52 | feat(referral): Loop 2 trigger + Expo push + bonus capacity (B4.2/B4.3/B4.4) |
+| 06355ce | feat(referral): F2.4+F2.5 result-aware CTA + Loop 1 toast |
+| 9e40c20 | feat(referral): F2.3-followup wire privacy toggles to share endpoint |
+| 1f4d202 | feat(reengagement): selector + 3 detectors + daily cron (B5.1+B5.2+B5.3) |
+| 7ccb4a3 | feat(referral): F3.2 ReferralLandingScreen + deep-link plumbing |
+| 1145b12 | feat(referral): F3.3 InviteeQuizScreen 4-step wizard + tests |
+| d8d5f95 | feat(referral): F3.5 invite_id capture on Register |
+| 39d7114 | feat(referral): ENABLE_REFERRAL_SYSTEM feature flag |
+| ca57896 | feat(referral): B3.5 link invite redemption on signup |
+| 6596745 | feat(referral): migration 015 push tokens + notifications opt-out |
+| fe827b0 | feat(referral): F2.3-followup share privacy block honoured end-to-end |
+| 4963272 | fix(referral): close 4 must-fix bugs + None-guard |
+| 6caf96a | fix(referral): conditional unwrap + dual-shape Pydantic compat refinements |
+| 586ebc3 | feat(admin): referral metrics + cost dashboard endpoints (B6.1+B6.2) |
+| b22f553 | feat(admin): F6.3+F6.4 referrals + costs HTML dashboards |
+| 800bd0a | feat(notifications): F5.4 backend push token PUT + sub-toggles |
+| c1ebd4d | feat(referral): F4.5 ReferralStatusCard in Profile + tests |
+| d8d22b2 | feat(referral): F5.4 Notifications UI + expo-notifications token reg |
+| 0b01d9a | fix(share): migration 017 + loud-failure for share-token persistence |
+| d9d5b03 | fix(abuse): real-action gate uses elapsed_seconds proxy (Option A) |
+| 7695e00 | test(security): static schema-drift check (Session 42 lesson) |
+| eb5c855 | test(referral): Q8.1 E2E bodies filled from smoke fixtures (9 PASS / 1 skip) |
+
+## Test totals
+- Backend referral suite: 307+ tests across 19 files
+- Security regression: 98 (was 67, +21 referral cases + 10 schema-drift)
+- Frontend Jest: 30 new tests across 6 new test files (ReferralLanding 7, InviteeQuiz 7, RegisterScreen.inviteId 2, ReferralStatusCard 7, pushToken 6, plus 1 lucide mock infra fix)
+- Cumulative coverage 93% across 8 referral-owned backend files
+
+## Bugs caught + fixed mid-session
+- 5 must-fix bugs caught by test-referral's red test batch (4f7fb23): feature flag ordering, error middleware 503, function name mismatch, ShareRequest privacy fields, vacuous PII patch
+- 2 latent prod bugs caught by backend's live smoke: share_token VARCHAR(12) (Session 22 era), `_load_comparison` SELECTing nonexistent started_at/result_viewed_at
+- 1 defense-in-depth nit: AbuseDetectionService._duration_seconds None-guard
+
+## Acceptance criteria (Design Section 14)
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Migration 014 applied + verified | ✅ + migrations 015/016/017 |
+| 2 | All 7 phases shipped + flag-gated | ✅ |
+| 3 | Coverage ≥80% + 75+ regression | ✅ 93% combined + 98 regression |
+| 4 | E2E in production canary | 🟢 structurally green; tests/test_referral_e2e.py 9 PASS / 1 conscious skip; HANDOFF: Ahmed flips flags + smokes |
+| 5 | Admin dashboards render real data | 🟢 structurally green; HANDOFF: Ahmed smokes /admin/referrals.html + /admin/costs.html with X-Admin-Key |
+| 6 | T&C + Privacy Policy 3 sections EN+AR | ✅ (commit 93ce64d) |
+| 7 | CLAUDE.md + MEMORY.md + this log updated | ✅ this commit |
+| 8 | Mutual QA across all 4 agents | ✅ — qa-referral cross-reviewed every non-trivial commit; backend's smoke caught 2 of qa's missed issues; test-referral caught 4 must-fix bugs qa initially false-cleared |
+| 9 | Hybrid model routing operational | ✅ (commit d215f81) |
+| 10 | Anti-abuse synthetic tests pass | ✅ (60 tests in test_abuse_detection.py + _internals.py, 100% cov) |
+
+8/10 fully GREEN code-side. #4 + #5 Ahmed-side handoff items per Operational Rollout in CLAUDE.md.
+
+## Operational rollout handoff (to Ahmed)
+1. Flip `ENABLE_HYBRID_MODEL_ROUTING=true` in Railway, monitor 24h
+2. Flip `ENABLE_REFERRAL_SYSTEM=true` (all-at-once recommended); rollback if error rate >1% / P95 >2s / abuse-flag rate >5/hr
+3. Smoke /admin/referrals.html + /admin/costs.html with real X-Admin-Key
+4. After 1 week stable: flip `ENABLE_REENGAGEMENT_PUSHES=true`
+5. Cleanup smoke test data via Supabase MCP after 24h evidence window
+
+---
+
 # SESSION 39: Security Completion + Freemium (Agent Team)
 
 ## What We Did
