@@ -6,6 +6,14 @@
  * CohortIcons, RewardIcons (28 total custom icons per design Section 5a).
  */
 export { QaranIcon } from './QaranIcon';
+export {
+  BackIcon,
+  CloseIcon,
+  SearchIcon,
+  BellIcon,
+  SettingsIcon,
+  PlusIcon,
+} from './UtilityIcons';
 
 /**
  * Mirror direction-bearing icons (arrows, share, chevrons) under RTL.
