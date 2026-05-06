@@ -21,6 +21,9 @@ module.exports = {
     '^react-i18next$': '<rootDir>/__mocks__/react-i18next.ts',
     '^@react-native-async-storage/async-storage$': '<rootDir>/__mocks__/async-storage.ts',
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
+    '^expo-font$': '<rootDir>/__mocks__/expo-font.ts',
+    '^@expo-google-fonts/cairo$': '<rootDir>/__mocks__/expo-google-fonts-cairo.ts',
+    '\\.(ttf|otf|woff2?|png|jpg)$': '<rootDir>/__mocks__/fileStub.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
 };
