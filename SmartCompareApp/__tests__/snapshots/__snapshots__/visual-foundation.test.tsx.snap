@@ -1,0 +1,484 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Button variants snapshot disabled primary variant 1`] = `
+<View
+  accessibilityLabel="Submit"
+  accessibilityRole="button"
+  accessible={true}
+  activeOpacity={0.7}
+  disabled={true}
+  onPress={[Function]}
+  style={
+    [
+      {
+        "alignItems": "center",
+        "borderRadius": 12,
+        "justifyContent": "center",
+        "minHeight": 48,
+        "paddingHorizontal": 24,
+        "paddingVertical": 12,
+      },
+      {
+        "backgroundColor": "#0A0A0B",
+      },
+      {
+        "opacity": 0.5,
+      },
+      undefined,
+    ]
+  }
+>
+  <Text
+    style={
+      [
+        {
+          "color": "#FFFFFF",
+          "fontSize": 16,
+          "fontWeight": "600",
+          "lineHeight": 24,
+        },
+        false,
+        false,
+      ]
+    }
+  >
+    Submit
+  </Text>
+</View>
+`;
+
+exports[`Button variants snapshot primary variant 1`] = `
+<View
+  accessibilityLabel="Continue"
+  accessibilityRole="button"
+  accessible={true}
+  activeOpacity={0.7}
+  disabled={false}
+  onPress={[Function]}
+  style={
+    [
+      {
+        "alignItems": "center",
+        "borderRadius": 12,
+        "justifyContent": "center",
+        "minHeight": 48,
+        "paddingHorizontal": 24,
+        "paddingVertical": 12,
+      },
+      {
+        "backgroundColor": "#0A0A0B",
+      },
+      false,
+      undefined,
+    ]
+  }
+>
+  <Text
+    style={
+      [
+        {
+          "color": "#FFFFFF",
+          "fontSize": 16,
+          "fontWeight": "600",
+          "lineHeight": 24,
+        },
+        false,
+        false,
+      ]
+    }
+  >
+    Continue
+  </Text>
+</View>
+`;
+
+exports[`Button variants snapshot secondary variant 1`] = `
+<View
+  accessibilityLabel="Skip"
+  accessibilityRole="button"
+  accessible={true}
+  activeOpacity={0.7}
+  disabled={false}
+  onPress={[Function]}
+  style={
+    [
+      {
+        "alignItems": "center",
+        "borderRadius": 12,
+        "justifyContent": "center",
+        "minHeight": 48,
+        "paddingHorizontal": 24,
+        "paddingVertical": 12,
+      },
+      {
+        "backgroundColor": "#FFFFFF",
+        "borderColor": "#0A0A0B",
+        "borderWidth": 1,
+      },
+      false,
+      undefined,
+    ]
+  }
+>
+  <Text
+    style={
+      [
+        {
+          "color": "#FFFFFF",
+          "fontSize": 16,
+          "fontWeight": "600",
+          "lineHeight": 24,
+        },
+        {
+          "color": "#0A0A0B",
+        },
+        false,
+      ]
+    }
+  >
+    Skip
+  </Text>
+</View>
+`;
+
+exports[`Button variants snapshot signature variant 1`] = `
+<View
+  accessibilityLabel="Reveal"
+  accessibilityRole="button"
+  accessible={true}
+  activeOpacity={0.7}
+  disabled={false}
+  onPress={[Function]}
+  style={
+    [
+      {
+        "alignItems": "center",
+        "borderRadius": 12,
+        "justifyContent": "center",
+        "minHeight": 48,
+        "paddingHorizontal": 24,
+        "paddingVertical": 12,
+      },
+      {
+        "backgroundColor": "#10B981",
+      },
+      false,
+      undefined,
+    ]
+  }
+>
+  <Text
+    style={
+      [
+        {
+          "color": "#FFFFFF",
+          "fontSize": 16,
+          "fontWeight": "600",
+          "lineHeight": 24,
+        },
+        false,
+        false,
+      ]
+    }
+  >
+    Reveal
+  </Text>
+</View>
+`;
+
+exports[`Icon snapshots — default 24px black BackIcon default 1`] = `
+<Svg
+  fill="none"
+  height={24}
+  viewBox="0 0 24 24"
+  width={24}
+>
+  <Path
+    d="M14.7 4.3a1.5 1.5 0 0 1 0 2.1L9.6 12l5.1 5.6a1.5 1.5 0 1 1-2.2 2.1l-6-6.6a1.5 1.5 0 0 1 0-2.1l6-6.6a1.5 1.5 0 0 1 2.2 0z"
+    fill="#0A0A0B"
+    stroke="none"
+  />
+</Svg>
+`;
+
+exports[`Icon snapshots — default 24px black BellIcon default 1`] = `
+<Svg
+  fill="none"
+  height={24}
+  viewBox="0 0 24 24"
+  width={24}
+>
+  <Path
+    d="M12 2.5c-.83 0-1.5.67-1.5 1.5v.6A6.5 6.5 0 0 0 5.5 11v3.4l-1.4 1.6a1.4 1.4 0 0 0 1 2.4h13.8a1.4 1.4 0 0 0 1-2.4l-1.4-1.6V11a6.5 6.5 0 0 0-5-6.4V4c0-.83-.67-1.5-1.5-1.5zM10 20.5a2 2 0 0 0 4 0h-4z"
+    fill="#0A0A0B"
+    stroke="none"
+  />
+</Svg>
+`;
+
+exports[`Icon snapshots — default 24px black CloseIcon default 1`] = `
+<Svg
+  fill="none"
+  height={24}
+  viewBox="0 0 24 24"
+  width={24}
+>
+  <Path
+    d="M19.3 5.8a1.5 1.5 0 0 0-2.1-2.1L12 9 6.8 3.7a1.5 1.5 0 1 0-2.1 2.1L9.9 11 4.7 16.2a1.5 1.5 0 1 0 2.1 2.1L12 13l5.2 5.3a1.5 1.5 0 1 0 2.1-2.1L14.1 11l5.2-5.2z"
+    fill="#0A0A0B"
+    stroke="none"
+  />
+</Svg>
+`;
+
+exports[`Icon snapshots — default 24px black PlusIcon default 1`] = `
+<Svg
+  fill="none"
+  height={24}
+  viewBox="0 0 24 24"
+  width={24}
+>
+  <Path
+    d="M13.5 4.5a1.5 1.5 0 0 0-3 0v6h-6a1.5 1.5 0 0 0 0 3h6v6a1.5 1.5 0 0 0 3 0v-6h6a1.5 1.5 0 0 0 0-3h-6v-6z"
+    fill="#0A0A0B"
+    stroke="none"
+  />
+</Svg>
+`;
+
+exports[`Icon snapshots — default 24px black QaranIcon default 1`] = `
+<Svg
+  fill="none"
+  height={24}
+  viewBox="0 0 24 24"
+  width={24}
+>
+  <Circle
+    cx="10"
+    cy="10"
+    fill="none"
+    r="6"
+    stroke="#0A0A0B"
+    strokeWidth={2.5}
+  />
+  <Line
+    stroke="#0A0A0B"
+    strokeLinecap="round"
+    strokeWidth={2.5}
+    x1="14.2"
+    x2="20"
+    y1="14.2"
+    y2="20"
+  />
+  <Circle
+    cx="20"
+    cy="20"
+    fill="#0A0A0B"
+    r={1.5}
+  />
+</Svg>
+`;
+
+exports[`Icon snapshots — default 24px black SearchIcon default 1`] = `
+<Svg
+  fill="none"
+  height={24}
+  viewBox="0 0 24 24"
+  width={24}
+>
+  <Path
+    d="M10 3.5a6.5 6.5 0 1 0 4.05 11.6l4.42 4.42a1.5 1.5 0 1 0 2.13-2.12l-4.43-4.43A6.5 6.5 0 0 0 10 3.5zm0 3a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7z"
+    fill="#0A0A0B"
+    stroke="none"
+  />
+</Svg>
+`;
+
+exports[`Icon snapshots — default 24px black SettingsIcon default 1`] = `
+<Svg
+  fill="none"
+  height={24}
+  viewBox="0 0 24 24"
+  width={24}
+>
+  <Path
+    d="M19.4 13.0a1 1 0 0 0 .2-1.0v-.0c0-.34-.04-.66-.1-1l1.74-1.36a.5.5 0 0 0 .12-.62l-1.65-2.86a.5.5 0 0 0-.6-.22l-2.05.82c-.5-.4-1.06-.74-1.66-.98l-.32-2.18A.5.5 0 0 0 14.6 3h-3.3a.5.5 0 0 0-.5.42L10.5 5.6c-.6.24-1.16.58-1.66.98L6.8 5.76a.5.5 0 0 0-.6.22L4.55 8.84a.5.5 0 0 0 .12.62L6.4 10.82c-.06.34-.1.66-.1 1l.0.0c0 .34.04.66.1 1L4.67 14.18a.5.5 0 0 0-.12.62l1.65 2.86a.5.5 0 0 0 .6.22l2.05-.82c.5.4 1.06.74 1.66.98l.32 2.18a.5.5 0 0 0 .5.42h3.3a.5.5 0 0 0 .5-.42l.32-2.18c.6-.24 1.16-.58 1.66-.98l2.05.82a.5.5 0 0 0 .6-.22l1.65-2.86a.5.5 0 0 0-.12-.62L19.4 13.0zM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8z"
+    fill="#0A0A0B"
+    stroke="none"
+  />
+</Svg>
+`;
+
+exports[`Icon snapshots — emerald accent at 32px PlusIcon emerald 32 1`] = `
+<Svg
+  fill="none"
+  height={32}
+  viewBox="0 0 24 24"
+  width={32}
+>
+  <Path
+    d="M13.5 4.5a1.5 1.5 0 0 0-3 0v6h-6a1.5 1.5 0 0 0 0 3h6v6a1.5 1.5 0 0 0 3 0v-6h6a1.5 1.5 0 0 0 0-3h-6v-6z"
+    fill="#10B981"
+    stroke="none"
+  />
+</Svg>
+`;
+
+exports[`Icon snapshots — emerald accent at 32px QaranIcon emerald 32 1`] = `
+<Svg
+  fill="none"
+  height={32}
+  viewBox="0 0 24 24"
+  width={32}
+>
+  <Circle
+    cx="10"
+    cy="10"
+    fill="none"
+    r="6"
+    stroke="#10B981"
+    strokeWidth={3.3333333333333335}
+  />
+  <Line
+    stroke="#10B981"
+    strokeLinecap="round"
+    strokeWidth={3.3333333333333335}
+    x1="14.2"
+    x2="20"
+    y1="14.2"
+    y2="20"
+  />
+  <Circle
+    cx="20"
+    cy="20"
+    fill="#10B981"
+    r={2}
+  />
+</Svg>
+`;
+
+exports[`Motion tokens snapshot springConfig + haptic stable (function-typed easings serialise as undefined which is fine) 1`] = `
+{
+  "haptic": {
+    "chip": "light",
+    "stage": "light",
+    "winner": "medium",
+  },
+  "screenTransitionDuration": 320,
+  "springConfig": {
+    "chip": {
+      "damping": 14,
+      "stiffness": 200,
+    },
+    "progress": {
+      "damping": 18,
+      "stiffness": 120,
+    },
+    "tab": {
+      "damping": 12,
+      "stiffness": 180,
+    },
+  },
+}
+`;
+
+exports[`Theme tokens snapshot colors structure stable 1`] = `
+{
+  "accent": "#10B981",
+  "accentDark": "#059669",
+  "accentGlow": "rgba(16,185,129,0.20)",
+  "accentLight": "#ECFDF5",
+  "bg": {
+    "inverse": "#0A0A0B",
+    "primary": "#FFFFFF",
+    "secondary": "#F8F8FA",
+  },
+  "border": {
+    "light": "#E5E7EB",
+    "medium": "#D1D5DB",
+  },
+  "cta": {
+    "onPrimary": "#FFFFFF",
+    "primary": "#0A0A0B",
+  },
+  "destructive": "#EF4444",
+  "text": {
+    "onInverse": "#FFFFFF",
+    "placeholder": "#9CA3AF",
+    "primary": "#0A0A0B",
+    "secondary": "#6B7280",
+  },
+  "warning": "#F59E0B",
+}
+`;
+
+exports[`Theme tokens snapshot radii + spacing stable 1`] = `
+{
+  "radii": {
+    "button": 12,
+    "card": 16,
+    "chip": 999,
+    "hero": 24,
+    "input": 12,
+  },
+  "spacing": {
+    "2xl": 32,
+    "3xl": 48,
+    "base": 16,
+    "lg": 20,
+    "md": 12,
+    "sm": 8,
+    "xl": 24,
+    "xs": 4,
+  },
+}
+`;
+
+exports[`Theme tokens snapshot typography presets stable 1`] = `
+{
+  "body": {
+    "fontSize": 16,
+    "fontWeight": "400",
+    "lineHeight": 24,
+  },
+  "bodyEmphasis": {
+    "fontSize": 16,
+    "fontWeight": "600",
+    "lineHeight": 24,
+  },
+  "caption": {
+    "fontSize": 13,
+    "fontWeight": "400",
+    "lineHeight": 19.5,
+  },
+  "display": {
+    "fontSize": 28,
+    "fontWeight": "700",
+    "letterSpacing": -0.28,
+    "lineHeight": 36.4,
+  },
+  "eyebrow": {
+    "fontSize": 11,
+    "fontWeight": "600",
+    "letterSpacing": 1.1,
+    "lineHeight": 15.399999999999999,
+    "textTransform": "uppercase",
+  },
+  "hero": {
+    "fontSize": 36,
+    "fontWeight": "700",
+    "letterSpacing": -0.72,
+    "lineHeight": 43.199999999999996,
+  },
+  "small": {
+    "fontSize": 11,
+    "fontWeight": "400",
+    "lineHeight": 16.5,
+  },
+  "title": {
+    "fontSize": 20,
+    "fontWeight": "600",
+    "lineHeight": 30,
+  },
+}
+`;
