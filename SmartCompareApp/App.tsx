@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { I18nManager } from 'react-native';
+import { I18nManager, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -25,6 +25,9 @@ import OnboardingScreen from './src/screens/OnboardingScreen';
 // Default OFF; legacy 6-step flow remains the runtime path until canary.
 import { NewOnboardingHost } from './src/screens/onboarding/NewOnboardingHost';
 import { features } from './src/config/features';
+// Phase 3 Task 32 — bottom-nav icon wrapper with active-state polish
+// (emerald + dot + scale bounce per design § 4c).
+import { TabBarIcon } from './src/components/TabBarIcon';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
@@ -74,6 +77,8 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.text.placeholder,
         tabBarStyle: {
+          // Phase 3 § 4c — white bg + 1px top border, RTL auto-mirrors.
+          borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: colors.border.light,
           backgroundColor: colors.bg.primary,
         },
@@ -85,14 +90,18 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
         component={HomeScreen}
         options={{
           tabBarLabel: t('app.name'),
-          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
+          tabBarIcon: ({ size, focused }) => (
+            <TabBarIcon focused={focused} size={size} Icon={Home} testID="tab-home" />
+          ),
         }}
       />
       <Tab.Screen
         name="HistoryTab"
         options={{
           tabBarLabel: t('history.title'),
-          tabBarIcon: ({ color, size }) => <Clock size={size} color={color} />,
+          tabBarIcon: ({ size, focused }) => (
+            <TabBarIcon focused={focused} size={size} Icon={Clock} testID="tab-history" />
+          ),
         }}
       >
         {(props) => <HistoryScreen {...props} onLogout={onLogout} />}
@@ -101,7 +110,9 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
         name="ProfileTab"
         options={{
           tabBarLabel: t('profile.title'),
-          tabBarIcon: ({ color, size }) => <UserIcon size={size} color={color} />,
+          tabBarIcon: ({ size, focused }) => (
+            <TabBarIcon focused={focused} size={size} Icon={UserIcon} testID="tab-profile" />
+          ),
         }}
       >
         {(props) => <ProfileScreen {...props} onLogout={onLogout} />}
