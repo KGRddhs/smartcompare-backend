@@ -451,5 +451,11 @@
   "results.tips.cohort_match": "47 cohort peers in {{governorate}} helped train this match.",
   "results.tips.save_offline": "Save any comparison to revisit later — even offline.",
 
-  "results.cohort_badge": "Like {{count}} shoppers in {{governorate}}"
+  "results.cohort_badge": "Like {{count}} shoppers in {{governorate}}",
+
+  "results.stage.init": "Understanding your query",
+  "results.stage.specs": "Reading specs",
+  "results.stage.prices": "Cross-checking retailers",
+  "results.stage.reviews": "Analyzing reviews",
+  "results.stage.verdict": "Locking in your winner"
 }
