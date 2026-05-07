@@ -411,5 +411,18 @@
   "onboarding.s15.top_priority": "Top priority",
   "onboarding.s15.budget_tier": "Budget tier",
   "onboarding.s15.peer_count": "Peers in your region",
-  "onboarding.s15.cta": "Compare your first product"
+  "onboarding.s15.cta": "Compare your first product",
+
+  "onboarding.s16.title": "Save your advisor",
+  "onboarding.s16.subtitle": "Sign in so your peer match and credits travel with you.",
+  "onboarding.s16.apple": "Continue with Apple",
+  "onboarding.s16.google": "Continue with Google",
+  "onboarding.s16.email": "Continue with email",
+
+  "onboarding.s17.title": "Be the first to know when prices drop",
+  "onboarding.s17.subtitle": "Quiet by design — at most one helpful nudge per week.",
+  "onboarding.s17.preview_body": "Galaxy S24 just dropped to 219 BHD at Amazon — your saved compare.",
+  "onboarding.s17.preview_meta": "now",
+  "onboarding.s17.allow": "Allow notifications",
+  "onboarding.s17.not_now": "Not now"
 }

@@ -411,5 +411,18 @@
   "onboarding.s15.top_priority": "أولويتك الأولى",
   "onboarding.s15.budget_tier": "فئة الميزانية",
   "onboarding.s15.peer_count": "أمثالك في منطقتك",
-  "onboarding.s15.cta": "قارن أول منتج لك"
+  "onboarding.s15.cta": "قارن أول منتج لك",
+
+  "onboarding.s16.title": "احفظ مستشارك",
+  "onboarding.s16.subtitle": "سجّل دخولك حتى ينتقل تطابقك ورصيدك معك.",
+  "onboarding.s16.apple": "متابعة عبر آبل",
+  "onboarding.s16.google": "متابعة عبر جوجل",
+  "onboarding.s16.email": "متابعة بالبريد",
+
+  "onboarding.s17.title": "كن أول من يعلم بانخفاض الأسعار",
+  "onboarding.s17.subtitle": "هادئ بطبعه — تذكير واحد مفيد كل أسبوع كحد أقصى.",
+  "onboarding.s17.preview_body": "غالاكسي إس٢٤ نزل لـ ٢١٩ دينار عند أمازون — مقارنتك المحفوظة.",
+  "onboarding.s17.preview_meta": "الآن",
+  "onboarding.s17.allow": "السماح بالإشعارات",
+  "onboarding.s17.not_now": "ليس الآن"
 }
