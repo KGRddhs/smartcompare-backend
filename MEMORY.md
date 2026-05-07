@@ -40,6 +40,16 @@
 
 12. **Defense-in-depth on enum data.** Task 8 backend Pydantic Literal + DB CHECK constraint mirror = even if a future code path bypasses the route validator, the DB rejects malformed writes. Pattern reusable for any new enum column.
 
+13. **Skill-list system-reminders can break agent multi-turn context.** During this session, harness-injected system-reminders (the ~50-entry skill list) between agent turns occasionally displaced freshness of recent verbal commitments — e.g. "ship 5 polish items this turn" → by next response opportunity, agent treated conversation as if those commitments hadn't been made. Team-lead had to re-prompt twice on Phase 5 polish before agent caught up. Practical rules to prevent this in future Opus team runs:
+
+    a. **TaskUpdate before any context pause.** Even mid-multi-step work, write current state into the TaskUpdate description before any potential context loss. Task descriptions survive between agent turns; in-line conversation state can be displaced by harness-injected reminders.
+
+    b. **SendMessage explicit reply rather than silent idle.** If waiting on something, an explicit "blocked on X / standing by for Y" SendMessage costs nothing and preserves the threaded conversation. Silent idle + system-reminder injection looks identical to the orchestrator and breaks the trust loop.
+
+    c. **Check git log for "what did I just commit?"** at each response turn before assuming idle state. The reflog is durable truth; conversation memory may be stale.
+
+    d. **Multi-step task commitments should land as TaskCreate'd subtasks**, not verbal commitments in a SendMessage reply. "Ship 5 polish items" → 5 TaskCreate calls with claim/in_progress/completed lifecycle. Resumption from any context loss is then just `TaskList` + claim next pending.
+
 ---
 
 ## Session 42: Smart Decision Referral System (4-Opus team) — COMPLETE 2026-05-05
