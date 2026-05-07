@@ -292,7 +292,13 @@
   "referrals.quiz.signupTitle": "هذي نتيجتك أنت",
   "referrals.quiz.signupBody": "احفظها وخذ مقارنة Deep Review مجانية لأنك دخلت من دعوة.",
   "referrals.quiz.signupCta": "احفظها — سجّل مجاناً",
+  "referrals.quiz.signupCtaSoft": "جرّب قارن مجاناً — ٥ مقارنات",
   "referrals.quiz.skipSignup": "بعدين",
+  "referrals.quiz.matchScoreLabel": "تطابق لك",
+  "referrals.quiz.shapedByTitle": "كيف شكّلت إجاباتك هذا",
+  "referrals.quiz.shapedByPriority": "قلت إن {{priority}} الأهم بالنسبة لك.",
+  "referrals.quiz.shapedByBudget": "تتسوّق في فئة {{budget}}.",
+  "referrals.quiz.shapedByBrand": "موقفك من الماركات: {{brand}}.",
 
   "referrals.status.title": "عطاياك هالأسبوع",
   "referrals.status.subtitle": "شارك قارن مع أصحابك. كل دعوة ناجحة تضيف مقارنات لحدك الشهري.",

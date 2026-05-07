@@ -292,7 +292,13 @@
   "referrals.quiz.signupTitle": "This is your result",
   "referrals.quiz.signupBody": "Save it and get a free Deep Review credit since you came from a friend.",
   "referrals.quiz.signupCta": "Save it — sign up free",
+  "referrals.quiz.signupCtaSoft": "Try Qaren free — 5 comparisons",
   "referrals.quiz.skipSignup": "Maybe later",
+  "referrals.quiz.matchScoreLabel": "match for you",
+  "referrals.quiz.shapedByTitle": "How your answers shaped this",
+  "referrals.quiz.shapedByPriority": "You said {{priority}} matters most.",
+  "referrals.quiz.shapedByBudget": "You shop in the {{budget}} range.",
+  "referrals.quiz.shapedByBrand": "Your brand stance: {{brand}}.",
 
   "referrals.status.title": "Your gifts this week",
   "referrals.status.subtitle": "Share Qaren with friends. Each successful invite adds comparisons to your monthly limit.",

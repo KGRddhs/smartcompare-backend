@@ -177,7 +177,7 @@ describe('InviteeQuizScreen', () => {
 
   it('renders the personalized result view + signup CTA after submission', async () => {
     mockSubmitInviteeQuiz.mockResolvedValueOnce(RESULT_PAYLOAD);
-    const { getByText, findByText } = render(
+    const { getByText, findByText, findByTestId } = render(
       <InviteeQuizScreen navigation={mockNavigation} route={baseRoute} />
     );
     // Walk through quickly
@@ -191,12 +191,16 @@ describe('InviteeQuizScreen', () => {
 
     expect(await findByText('referrals.quiz.resultTitle')).toBeTruthy();
     expect(await findByText('Galaxy S24')).toBeTruthy();
-    expect(await findByText('referrals.quiz.signupCta')).toBeTruthy();
+    // Soft signup CTA — Phase 4 Task 39 swapped this to a testID-tagged
+    // Button. The Button's title text is interpolated through t() with a
+    // defaultValue, so the rendered string is "key|defaultValue" under
+    // this suite's t-mock. Match by testID for stability.
+    expect(await findByTestId('quiz-signup-cta')).toBeTruthy();
   });
 
   it('signup CTA navigates to Auth stack with invite_id', async () => {
     mockSubmitInviteeQuiz.mockResolvedValueOnce(RESULT_PAYLOAD);
-    const { getByText, findByText } = render(
+    const { getByText, findByTestId } = render(
       <InviteeQuizScreen navigation={mockNavigation} route={baseRoute} />
     );
     fireEvent.press(getByText('onboarding.priorities.price'));
@@ -207,7 +211,7 @@ describe('InviteeQuizScreen', () => {
     fireEvent.press(getByText('referrals.quiz.next'));
     fireEvent.press(getByText('referrals.quiz.submit'));
 
-    const cta = await findByText('referrals.quiz.signupCta');
+    const cta = await findByTestId('quiz-signup-cta');
     fireEvent.press(cta);
     await waitFor(() => expect(mockNavigation.navigate).toHaveBeenCalled());
     expect(mockNavigation.navigate).toHaveBeenCalledWith(
