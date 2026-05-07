@@ -88,7 +88,11 @@ function glyphStyle(status: StageStatus) {
   if (status === 'pending') {
     return { color: colors.text.placeholder };
   }
-  return { color: colors.accent };
+  // Phase 5 a11y — accent (#10B981) on accentLight (#ECFDF5) is 2.85:1
+  // (borderline non-text contrast); accentDark (#059669) on the same
+  // bg is 4.41:1 = WCAG AA Normal pass. The icon-bg stays accentLight
+  // (the glow), only the glyph stroke deepens.
+  return { color: colors.accentDark };
 }
 
 function labelStyle(status: StageStatus) {

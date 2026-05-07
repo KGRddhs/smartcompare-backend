@@ -33,6 +33,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg.secondary,
     borderWidth: 1,
     borderColor: colors.border.light,
+    // Phase 5 a11y (WCAG 2.5.5 Target Size). Caption font 13pt + 8pt
+    // vertical padding yields ~29pt visual height; minHeight 44 +
+    // centered alignment guarantees the touch target hits the floor
+    // without changing the chip's visual proportions much (extra
+    // height shows as light surrounding bg — chips already pad).
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   chipSelected: {
     backgroundColor: colors.accent,
