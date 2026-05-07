@@ -1227,15 +1227,20 @@ Expected: zero matches in user-facing copy. (Internal log strings OK.)
 
 ### Task 47: Canary rollout — `ENABLE_NEW_ONBOARDING` 10%
 
-**Owner:** backend (set flag) + test-qa (monitor)
+**Owner:** backend (helper) + test-qa (wire + monitor)
 
-**Step 1: Set feature flag to 10% in Railway env** (or remote config — whichever your runtime uses).
+**REVISION (Task 47 implementation, commit 5685272):** the ramp knob is NOT a Railway env var. `ENABLE_NEW_ONBOARDING` is a frontend build-time getter that evaluates `hashBucket(stableId, CANARY_NEW_ONBOARDING_PERCENT)` per call. The actual rollout mechanic:
 
-**Step 2: Monitor for 48h:**
-- Crash reports (should be near-zero)
+**Step 1: Set `CANARY_NEW_ONBOARDING_PERCENT = 10`** in `SmartCompareApp/src/config/features.ts`. Push via `eas update --branch production` — JS/TS-only change, no app-store re-release.
+
+The bucketing primitive (`SmartCompareApp/src/config/featureBucket.ts`) uses djb2 hash on a stable id (device-id pre-signup via expo-secure-store, user.id post-signup). Same `(id, percent)` → same boolean every call, every device. App.tsx wires `getStableId() + setFlagStableId()` in `init()` BEFORE any state setter that gates onboarding render — no flicker.
+
+**Step 2: Monitor for 48h** via the analytics events shipped in Task #53 (`onboarding_started`, `onboarding_step_completed`, `onboarding_completed`) plus the `flow_variant` field added in commit c83acf0:
+- Crash reports (should be near-zero on new flow vs legacy baseline)
 - Onboarding completion rate per step (target: ≥75% complete all 17)
 - First-comparison conversion (signup → compare, target: ≥85%)
 - Drop-off heatmap (any single step >40% drop-off needs investigation)
+- Loop 2 trigger rate ≥35% (referral mechanic)
 
 **Step 3: If metrics OK → 50%. If not → revert + fix root cause + retry.**
 
@@ -1243,10 +1248,12 @@ Expected: zero matches in user-facing copy. (Internal log strings OK.)
 
 ### Task 48: Canary rollout — 50% → 100%
 
-**Step 1: 50% for 72h.**
-**Step 2: Check metrics again.**
-**Step 3: 100% if all green.**
-**Step 4: After 7 days at 100%, remove old onboarding code path.**
+Same mechanic as Task 47: bump `CANARY_NEW_ONBOARDING_PERCENT` in `features.ts`, EAS Update.
+
+**Step 1:** `CANARY_NEW_ONBOARDING_PERCENT = 50` for 72h.
+**Step 2:** Check metrics (same criteria as Task 47).
+**Step 3:** `CANARY_NEW_ONBOARDING_PERCENT = 100` if all green.
+**Step 4:** After 7 days at 100%, remove the legacy `OnboardingScreen` import + conditional from App.tsx.
 
 ---
 
