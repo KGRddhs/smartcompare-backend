@@ -17,14 +17,17 @@ import { hashBucket } from './featureBucket';
 
 /**
  * Canary ramp constant. Change via EAS Update during rollout:
- *   - 0 → flag OFF for everyone (default)
- *   - 10 → 10% canary (Task 47)
+ *   - 0 → flag OFF for everyone
+ *   - 10 → 10% canary (target for App Store soft launch)
  *   - 50 → 50% (Task 48 step 1)
- *   - 100 → everyone (Task 48 step 2; hold 7 days then remove legacy path)
+ *   - 100 → everyone (build/test mode + post-launch full rollout)
  *
- * CURRENT: 10 (Task 47 — first canary cohort).
+ * CURRENT: 100 — pre-App Store build mode. Two human testers; bucketing
+ * at <100% would statistically hide the new flow from them. MUST drop
+ * back to 10 immediately before App Store soft-launch submission.
+ * See runbook: docs/runbooks/qaren-canary-onboarding.md.
  */
-export const CANARY_NEW_ONBOARDING_PERCENT = 10;
+export const CANARY_NEW_ONBOARDING_PERCENT = 100;
 
 /**
  * Stable id resolved at app startup (App.tsx calls getStableId() once
