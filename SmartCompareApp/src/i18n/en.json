@@ -254,7 +254,9 @@
 
   "referrals.landing.loading": "Opening invite",
   "referrals.landing.titleWithWinner": "{{referrer}} was torn between {{productA}} and {{productB}} — picked {{winner}}.",
-  "referrals.landing.titleNoWinner": "{{referrer}} compared {{productA}} and {{productB}}.",
+  "referrals.landing.titleNoWinner": "{{referrer}} thought you'd like this",
+  "referrals.landing.quizCta": "See how it scores for YOU",
+  "referrals.landing.skipCta": "Just give me the app",
   "referrals.landing.subtitle": "Their answer doesn't have to be yours. Answer 4 questions, get yours.",
   "referrals.landing.previewLabel": "What they compared",
   "referrals.landing.winnerBadge": "Their pick",

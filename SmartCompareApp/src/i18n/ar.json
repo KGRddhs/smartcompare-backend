@@ -254,7 +254,9 @@
 
   "referrals.landing.loading": "جاري فتح الدعوة",
   "referrals.landing.titleWithWinner": "{{referrer}} كان محتار بين {{productA}} و{{productB}} — قرر {{winner}}.",
-  "referrals.landing.titleNoWinner": "{{referrer}} قارن بين {{productA}} و{{productB}}.",
+  "referrals.landing.titleNoWinner": "{{referrer}} يعتقد أن هذا سيعجبك",
+  "referrals.landing.quizCta": "شوف نتيجته إلك",
+  "referrals.landing.skipCta": "أعطني التطبيق فقط",
   "referrals.landing.subtitle": "قراره لك ما يلزم يكون لك. جاوب 4 أسئلة، خذ توصيتك.",
   "referrals.landing.previewLabel": "ايش قارنوا",
   "referrals.landing.winnerBadge": "اختيارهم",
