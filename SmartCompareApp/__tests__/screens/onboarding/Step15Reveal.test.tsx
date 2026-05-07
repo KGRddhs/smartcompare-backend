@@ -64,4 +64,30 @@ describe('Step15Reveal', () => {
     fireEvent.press(getByText('onboarding.s15.cta'));
     expect(onNext).toHaveBeenCalledTimes(1);
   });
+
+  // Phase 5 polish — design § 1 "Card slide-in: Stagger 80ms, slide 24px
+  // from below + fade". Each of the 4 stat cards is wrapped in an
+  // animated host (testID stat-card-wrap-{0..3}) with opacity + transform
+  // driven by useAnimatedStyle. We assert the animation surface contract,
+  // not specific timing values.
+  it('wraps each of the 4 stat cards in a staggered animation host', () => {
+    const { getByTestId } = render(
+      <Step15Reveal onNext={jest.fn()} profile={baseProfile} />
+    );
+    [0, 1, 2, 3].forEach((i) => {
+      const wrap = getByTestId(`stat-card-wrap-${i}`);
+      const styleArr = Array.isArray(wrap.props.style)
+        ? wrap.props.style
+        : [wrap.props.style];
+      const flat: Record<string, unknown> = styleArr
+        .filter(Boolean)
+        .reduce(
+          (acc: Record<string, unknown>, s: Record<string, unknown>) =>
+            Object.assign(acc, s),
+          {} as Record<string, unknown>,
+        );
+      expect(flat.opacity).toBeDefined();
+      expect(flat.transform).toBeDefined();
+    });
+  });
 });
