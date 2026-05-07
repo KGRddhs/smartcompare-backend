@@ -42,7 +42,9 @@ import { isUsageLimitError, getUsageLimitDetail } from '../services/usageService
 import CategorySelector from '../components/CategorySelector';
 import { SearchOverlay } from '../components/SearchOverlay';
 import { ComparisonCounter } from '../components/ComparisonCounter';
+import { BonusCountdownCard } from '../components/BonusCountdownCard';
 import { useComparisonCounter } from '../hooks/useComparisonCounter';
+import { getReferralStatus } from '../services/referralService';
 
 const RECENT_SEARCHES_KEY = '@qaren_recent_searches';
 const MAX_RECENT = 5;
@@ -88,6 +90,50 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
 
   // Comparison counter
   const { used, total, canCompare, shouldShowPaywall, increment } = useComparisonCounter();
+
+  /**
+   * Phase 4 § 4e — invitee bonus countdown surface. Polls
+   * /api/v1/referrals/status once on focus; the BonusCountdownCard
+   * renders nothing when no active bonus, so this is safe to mount
+   * unconditionally. Backend's /referrals/status response shape
+   * exposes monthly_bonus_comparisons; per-bonus referrer_name +
+   * expires_at metadata may not yet be on the response, so we read
+   * them defensively (any-shape) and the card guards on missing
+   * data.
+   */
+  const [bonusInfo, setBonusInfo] = useState<{
+    bonusRemaining: number;
+    referrerName?: string;
+    expiresAt?: Date;
+  }>({ bonusRemaining: 0 });
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const status: any = await getReferralStatus();
+          if (cancelled) return;
+          const bonusRemaining: number = Number(status?.monthly_bonus_comparisons ?? 0);
+          const referrerName: string | undefined =
+            typeof status?.bonus_referrer_name === 'string'
+              ? status.bonus_referrer_name
+              : undefined;
+          const rawExpiry =
+            status?.bonus_expires_at ?? status?.next_bonus_expires_at ?? null;
+          const expiresAt: Date | undefined =
+            rawExpiry ? new Date(rawExpiry) : undefined;
+          setBonusInfo({ bonusRemaining, referrerName, expiresAt });
+        } catch {
+          // Fire-and-forget — referral system may be disabled (503) or
+          // anonymous user. Either way we just don't show the card.
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   /**
    * Min-display floor (1.2s) for the Home→Results transition per design
@@ -599,6 +645,19 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
       </View>
 
       <View style={styles.bottomBar}>
+        {/* Phase 4 § 4e — bonus countdown surface. Mounts above the
+            comparison counter when a referral bonus is active; renders
+            nothing otherwise (the card guards on bonusRemaining +
+            expiresAt internally). Backend exposes per-bonus referrer
+            name + expires_at on the /referrals/status response when
+            available; falls back to "a friend" + no countdown until
+            then. */}
+        <BonusCountdownCard
+          baseFreeRemaining={Math.max(0, total - used)}
+          bonusRemaining={bonusInfo.bonusRemaining}
+          referrerName={bonusInfo.referrerName}
+          expiresAt={bonusInfo.expiresAt}
+        />
         <View testID="home-counter-slot">
           <ComparisonCounter used={used} total={total} />
         </View>

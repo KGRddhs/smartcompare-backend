@@ -456,6 +456,11 @@
   "home.url.placeholder1": "First product link (Amazon, Noon, etc.)",
   "home.url.placeholder2": "Second product link",
   "home.url.cta": "Compare links",
+  "home.bonus.headline": "{{count}} free comparisons available",
+  "home.bonus.fromReferrer": "• {{count}} from {{referrer}}",
+  "home.bonus.aFriend": "a friend",
+  "home.bonus.expiresIn": "(expires {{time}})",
+  "home.bonus.anytime": "• {{count}} anytime",
 
   "results.tips.cohort_priority": "73% of {{country}} shoppers your age prioritize {{priority}}.",
   "results.tips.retailers": "Qaren cross-checks 25+ retailers — never just one.",

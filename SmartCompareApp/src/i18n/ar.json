@@ -456,6 +456,11 @@
   "home.url.placeholder1": "رابط المنتج الأول (أمازون، نون، إلخ.)",
   "home.url.placeholder2": "رابط المنتج الثاني",
   "home.url.cta": "قارن الروابط",
+  "home.bonus.headline": "{{count}} مقارنة مجانية متاحة",
+  "home.bonus.fromReferrer": "• {{count}} من {{referrer}}",
+  "home.bonus.aFriend": "صديق",
+  "home.bonus.expiresIn": "(تنتهي {{time}})",
+  "home.bonus.anytime": "• {{count}} في أي وقت",
 
   "results.tips.cohort_priority": "٧٣٪ من المتسوقين في {{country}} في عمرك يعطون الأولوية لـ {{priority}}.",
   "results.tips.retailers": "قارن يقارن أكثر من ٢٥ متجراً — وليس متجراً واحداً.",
