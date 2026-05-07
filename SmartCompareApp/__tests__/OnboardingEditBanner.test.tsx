@@ -34,6 +34,9 @@ jest.mock('../src/hooks/useLanguage', () => ({
 
 jest.mock('../src/services/api', () => ({
   savePreferences: jest.fn().mockResolvedValue({}),
+  // Task #60 — OnboardingScreen now fires analytics on mount + step
+  // advance + complete. Stub trackEvents so the calls don't error.
+  trackEvents: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mockNavigation = {

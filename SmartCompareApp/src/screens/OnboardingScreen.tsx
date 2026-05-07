@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,25 @@ import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { ProgressBar } from '../components/ProgressBar';
 import { useLanguage } from '../hooks/useLanguage';
-import { savePreferences } from '../services/api';
+import { savePreferences, trackEvents } from '../services/api';
 import { RootStackParamList, OnboardingData } from '../types';
 
 const TOTAL_STEPS = 6;
+
+/**
+ * Stable English step slugs for analytics — Task #60. Mirrors the
+ * new-flow STEP_NAMES pattern from OnboardingFlow.tsx so canary
+ * dashboards (Tasks 47-48) can join new-vs-legacy events on a single
+ * (event_type, step_name) tuple. step_number is 1-based to match.
+ */
+const LEGACY_STEP_SLUGS = [
+  'language',    // step 0
+  'region',      // step 1
+  'priorities',  // step 2
+  'budget',      // step 3
+  'lifestyle',   // step 4
+  'brand',       // step 5
+] as const;
 
 const REGIONS = [
   { value: 'bahrain', flag: '🇧🇭' },
@@ -92,7 +107,61 @@ export default function OnboardingScreen({ navigation, route, onComplete }: Prop
     }
   };
 
+  /**
+   * Canary-monitoring analytics — Task #60. Mirrors the new-flow contract
+   * from OnboardingFlow.tsx so dashboards can join new-vs-legacy events
+   * on a single (event_type, step_name) tuple. Locked at "legacy" via
+   * a ref at first observation per the Task #58 lock-at-mount pattern.
+   * trackEvents is fire-and-forget — never block the user.
+   */
+  const flowVariantRef = useRef<'legacy'>('legacy');
+
+  const fireAnalytics = useCallback(
+    (event_type: string, currentStep: number) => {
+      void trackEvents([
+        {
+          event_type,
+          event_data: {
+            step_number: currentStep + 1, // 1-based to align with new-flow
+            step_name: LEGACY_STEP_SLUGS[currentStep],
+            locale: language,
+            flow_variant: flowVariantRef.current,
+          },
+        },
+      ]);
+    },
+    [language]
+  );
+
+  // Fire `onboarding_started` once on initial mount.
+  useEffect(() => {
+    void trackEvents([
+      {
+        event_type: 'onboarding_started',
+        event_data: {
+          step_number: 1,
+          step_name: LEGACY_STEP_SLUGS[0],
+          locale: language,
+          flow_variant: flowVariantRef.current,
+        },
+      },
+    ]);
+    // Intentional: fire-once on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleNext = async () => {
+    // Belt-and-suspenders for accessibility tools that bypass `disabled`:
+    // mirror the disabled-button gate at the handler level. Without this,
+    // a screen reader could trigger handleNext on an invalid step and
+    // emit a phantom step_completed event.
+    if (!isStepValid()) return;
+
+    // Fire step_completed BEFORE the language reload / step advance so the
+    // payload's step_number reflects the step the user just finished, not
+    // the next step. Mirrors Task #58 pattern.
+    fireAnalytics('onboarding_step_completed', step);
+
     if (step === 0 && selectedLanguage !== language) {
       // Language changed — this will restart the app
       await switchLanguage(selectedLanguage);
@@ -101,7 +170,10 @@ export default function OnboardingScreen({ navigation, route, onComplete }: Prop
     if (step < TOTAL_STEPS - 1) {
       setStep(step + 1);
     } else {
-      // Complete onboarding
+      // Complete onboarding — fire onboarding_completed BEFORE the
+      // savePreferences network call so canary dashboards see the
+      // completion event even if persistence later fails.
+      fireAnalytics('onboarding_completed', step);
       setSaving(true);
       try {
         await savePreferences({
