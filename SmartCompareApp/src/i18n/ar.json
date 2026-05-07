@@ -326,5 +326,32 @@
 
   "onboarding.s3.title": "كفاية تخمين. ابدأ تعرف.",
   "onboarding.s3.subtitle": "مقارنات جنباً إلى جنب من أكثر من ٢٥ متجراً — مختارة لك.",
-  "onboarding.s3.continue": "متابعة"
+  "onboarding.s3.continue": "متابعة",
+
+  "onboarding.s4.title": "من أين تتسوق؟",
+  "onboarding.s4.bahrain": "البحرين",
+  "onboarding.s4.saudi_arabia": "السعودية",
+  "onboarding.s4.uae": "الإمارات",
+  "onboarding.s4.kuwait": "الكويت",
+  "onboarding.s4.qatar": "قطر",
+  "onboarding.s4.oman": "عُمان",
+  "onboarding.s4.gov_title": "أي محافظة؟",
+  "onboarding.s4.gov_capital": "العاصمة",
+  "onboarding.s4.gov_muharraq": "المحرّق",
+  "onboarding.s4.gov_northern": "الشمالية",
+  "onboarding.s4.gov_southern": "الجنوبية",
+
+  "onboarding.s5.title": "بياناتك تبقى لك. نحن فقط نقارن.",
+  "onboarding.s5.bullet_1": "بياناتك تعيش على جهازك",
+  "onboarding.s5.bullet_2": "نطابقك بدون اسم — مجهول الهوية",
+  "onboarding.s5.bullet_3": "تخطّى أي شيء — وعدّل لاحقاً",
+  "onboarding.s5.continue": "متابعة",
+
+  "onboarding.s6.title": "كم عمرك؟",
+  "onboarding.s6.prefer_not_to_say": "أفضّل عدم الإجابة",
+
+  "onboarding.s7.title": "كيف تعرّف نفسك؟",
+  "onboarding.s7.male": "ذكر",
+  "onboarding.s7.female": "أنثى",
+  "onboarding.s7.prefer_not_to_say": "أفضّل عدم الإجابة"
 }

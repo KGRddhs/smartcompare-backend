@@ -326,5 +326,32 @@
 
   "onboarding.s3.title": "Stop guessing. Start knowing.",
   "onboarding.s3.subtitle": "Side-by-side comparisons across 25+ retailers — picked for you.",
-  "onboarding.s3.continue": "Continue"
+  "onboarding.s3.continue": "Continue",
+
+  "onboarding.s4.title": "Where are you shopping from?",
+  "onboarding.s4.bahrain": "Bahrain",
+  "onboarding.s4.saudi_arabia": "Saudi Arabia",
+  "onboarding.s4.uae": "United Arab Emirates",
+  "onboarding.s4.kuwait": "Kuwait",
+  "onboarding.s4.qatar": "Qatar",
+  "onboarding.s4.oman": "Oman",
+  "onboarding.s4.gov_title": "Which area?",
+  "onboarding.s4.gov_capital": "Capital",
+  "onboarding.s4.gov_muharraq": "Muharraq",
+  "onboarding.s4.gov_northern": "Northern",
+  "onboarding.s4.gov_southern": "Southern",
+
+  "onboarding.s5.title": "Your data stays yours. We just compare.",
+  "onboarding.s5.bullet_1": "Your data lives on your device",
+  "onboarding.s5.bullet_2": "We match anonymously — no name attached",
+  "onboarding.s5.bullet_3": "Skip anything — and edit later",
+  "onboarding.s5.continue": "Continue",
+
+  "onboarding.s6.title": "How old are you?",
+  "onboarding.s6.prefer_not_to_say": "Prefer not to say",
+
+  "onboarding.s7.title": "How do you identify?",
+  "onboarding.s7.male": "Male",
+  "onboarding.s7.female": "Female",
+  "onboarding.s7.prefer_not_to_say": "Prefer not to say"
 }
