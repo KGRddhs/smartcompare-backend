@@ -1,10 +1,16 @@
 import React from 'react';
+import { View as RNView, Text as RNText, Image as RNImage } from 'react-native';
 
+// Forward Animated.* to React Native's host components so that
+// @testing-library/react-native helpers (getByText, getByRole) treat
+// them as first-class hosts. A custom mock-prefixed element type makes
+// getByText fail because it traverses Text-typed nodes only.
 const Animated = {
-  View: ({ children, style, ...props }: any) =>
-    React.createElement('mock-Animated-View', { ...props, style }, children),
-  Text: ({ children, style, ...props }: any) =>
-    React.createElement('mock-Animated-Text', { ...props, style }, children),
+  View: RNView,
+  Text: RNText,
+  Image: RNImage,
+  ScrollView: RNView,
+  createAnimatedComponent: <P,>(Component: React.ComponentType<P>) => Component,
 };
 
 export function useSharedValue(init: number) {

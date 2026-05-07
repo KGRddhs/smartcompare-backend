@@ -8,8 +8,10 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import OnboardingScreen from '../src/screens/OnboardingScreen';
 import { savePreferences } from '../src/services/api';
 
-// Use our local mock instead of package mock
-jest.mock('react-native-reanimated');
+// react-native-reanimated is mapped to __mocks__/react-native-reanimated.ts via
+// jest.config.js moduleNameMapper. A bare `jest.mock('react-native-reanimated')`
+// (no factory) auto-mocks and stubs useSharedValue → undefined, crashing any
+// component that does `animatedWidth.value = ...`. Rely on the mapper.
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({

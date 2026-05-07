@@ -10,13 +10,21 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import InviteeQuizScreen from '../src/screens/InviteeQuizScreen';
 
+// Reanimated mock for this screen specifically. Extends the central mock
+// shape (kept in sync with __mocks__/react-native-reanimated.ts) with the
+// FadeIn / FadeInDown layout-animation presets the screen uses + Easing
+// variants ProgressBar.tsx now requires (Task 12 added Easing.bezier).
 jest.mock('react-native-reanimated', () => {
-  const RealReact = require('react');
-  const passthrough = ({ children, ...props }: any) =>
-    RealReact.createElement('mock-Animated-View', props, children);
+  const RealRN = require('react-native');
   return {
     __esModule: true,
-    default: { View: passthrough, Text: passthrough },
+    default: {
+      View: RealRN.View,
+      Text: RealRN.Text,
+      Image: RealRN.Image,
+      ScrollView: RealRN.View,
+      createAnimatedComponent: <P,>(C: any) => C,
+    },
     FadeIn: { duration: () => ({ delay: () => ({}) }), delay: () => ({}) },
     FadeInDown: {
       duration: () => ({ delay: () => ({}) }),
@@ -24,7 +32,11 @@ jest.mock('react-native-reanimated', () => {
     },
     useSharedValue: (init: any) => ({ value: init }),
     useAnimatedStyle: (fn: any) => fn(),
+    useAnimatedReaction: (_p: any, _r: any) => undefined,
+    useDerivedValue: (fn: any) => ({ value: fn() }),
+    interpolate: (_v: number, _i: number[], o: number[]) => o[0],
     withTiming: (v: any) => v,
+    withSpring: (v: any) => v,
     withRepeat: (a: any) => a,
     withDelay: (_: any, a: any) => a,
     withSequence: (...a: any[]) => a[a.length - 1],
@@ -34,6 +46,7 @@ jest.mock('react-native-reanimated', () => {
       out: () => (t: number) => t,
       ease: (t: number) => t,
       cubic: (t: number) => t,
+      bezier: () => (t: number) => t,
     },
   };
 });
