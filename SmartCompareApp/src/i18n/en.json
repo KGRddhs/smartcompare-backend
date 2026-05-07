@@ -457,5 +457,10 @@
   "results.stage.specs": "Reading specs",
   "results.stage.prices": "Cross-checking retailers",
   "results.stage.reviews": "Analyzing reviews",
-  "results.stage.verdict": "Locking in your winner"
+  "results.stage.verdict": "Locking in your winner",
+
+  "results.whyWePicked": "Why we picked this",
+  "results.runnerUpWins": "Where the runner-up wins",
+  "results.whatsNext": "What's next?",
+  "results.bestForYou": "Best for you"
 }

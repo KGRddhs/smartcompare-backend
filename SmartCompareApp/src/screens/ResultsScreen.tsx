@@ -58,6 +58,8 @@ import {
 import { Card } from '../components/Card';
 import { SkeletonLoader } from '../components/SkeletonLoader';
 import { ProgressBar } from '../components/ProgressBar';
+import { CohortBadge } from '../components/CohortBadge';
+import { useLanguage } from '../hooks/useLanguage';
 import FeedbackCard from '../components/FeedbackCard';
 import DemographicsBottomSheet from '../components/DemographicsBottomSheet';
 import ShareBottomSheet from '../components/ShareBottomSheet';
@@ -84,7 +86,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const { t } = useTranslation();
   const { result } = route.params;
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
-  const [specsExpanded, setSpecsExpanded] = useState(true);
+  // Phase 3 § 4b — specs collapsed by default. The post-reveal moment
+  // should feel like an answer, not a data dump; the user expands when
+  // they want detail.
+  const [specsExpanded, setSpecsExpanded] = useState(false);
+  const { isRTL } = useLanguage();
   const [showDiffsOnly, setShowDiffsOnly] = useState(false);
 
   // Winner reveal animation state
@@ -503,14 +509,26 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           </View>
         )}
 
-        {/* 2. Verdict */}
+        {/* 2. Why we picked this — was "Verdict". Per design § 4g audit. */}
         <Animated.View entering={FadeInDown.delay(200).duration(400)} style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('results.verdict')}</Text>
+          <Text style={styles.sectionTitle}>{t('results.whyWePicked')}</Text>
           <Text style={styles.verdictText}>{recommendation}</Text>
           {isNewFormat && result.overview!.winner.key_tradeoff ? (
             <Text style={styles.tradeoffNote}>{result.overview!.winner.key_tradeoff}</Text>
           ) : null}
         </Animated.View>
+
+        {/* 2.5 Cohort badge — surfaces the cohort moat inline per § 4b /
+            build principle 6. CohortBadge guards on peerCount<=0 +
+            missing governorate so anonymous / low-confidence matches
+            render nothing and the slot stays invisible. */}
+        <View testID="results-cohort-badge-slot" style={styles.cohortBadgeSlot}>
+          <CohortBadge
+            peerCount={resolveCohortPeerCount(result)}
+            governorate={resolveCohortGovernorate(result)}
+            isRTL={isRTL}
+          />
+        </View>
 
         {/* F2.4: Result-aware share CTA — strong/close/default per design 3.1 */}
         {sharableComparisonId ? (
@@ -556,7 +574,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         {/* 4. Key Differences */}
         {isNewFormat && result.overview!.tradeoffs?.length > 0 ? (
           <Animated.View entering={FadeInDown.delay(400).duration(400)} style={styles.section}>
-            <Text style={styles.sectionTitle}>{t('results.keyDifferences')}</Text>
+            <Text style={styles.sectionTitle}>{t('results.runnerUpWins')}</Text>
             {result.overview!.tradeoffs.map((tradeoff, i) => (
               <View key={i} style={styles.tradeoffRow}>
                 <View style={styles.tradeoffItem}>
@@ -579,7 +597,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           </Animated.View>
         ) : !isNewFormat && key_differences?.length > 0 ? (
           <Animated.View entering={FadeInDown.delay(400).duration(400)} style={styles.section}>
-            <Text style={styles.sectionTitle}>{t('results.keyDifferences')}</Text>
+            <Text style={styles.sectionTitle}>{t('results.runnerUpWins')}</Text>
             {key_differences.map((diff, index) => (
               <Text key={index} style={styles.differenceItem}>
                 {diff}
@@ -602,9 +620,12 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           </Animated.View>
         )}
 
-        {/* 6. Specs accordion */}
+        {/* 6. Specs accordion (collapsed by default per § 4b). */}
         <Animated.View entering={FadeInDown.delay(600).duration(400)} style={styles.section}>
           <TouchableOpacity
+            testID="results-specs-toggle"
+            accessibilityRole="button"
+            accessibilityState={{ expanded: specsExpanded }}
             style={styles.sectionHeader}
             onPress={() => setSpecsExpanded(!specsExpanded)}
           >
@@ -869,8 +890,19 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           onSubmitted={() => setFeedbackSubmitted(true)}
         />
 
-        {/* 10. Action buttons */}
+        {/* 10. Action buttons — "What's next?" replaces the old "Compare
+            another" affordance per § 4g audit; tapping returns to Home so
+            the user can start a new compare with the camera/link/type
+            chip rail (Task 26). Save + Share retained. */}
         <View style={styles.actionsRow}>
+          <TouchableOpacity
+            testID="results-whats-next"
+            accessibilityRole="button"
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('Home' as never)}
+          >
+            <Text style={styles.actionButtonText}>{t('results.whatsNext')}</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
             <Share2 size={18} color={colors.accent} />
             <Text style={styles.actionButtonText}>{t('results.share')}</Text>
@@ -937,6 +969,33 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       ) : null}
     </View>
   );
+}
+
+/**
+ * Phase 3 § 4b helpers — surface cohort match details inline on Results.
+ * Backend already includes a `cohort_summary` block on the comparison
+ * result when match quality is exact / broadened-governorate / broadened-
+ * language (per CLAUDE.md cohort personalization invariant). When absent
+ * or low-confidence, the helpers return values that make CohortBadge
+ * render nothing (peerCount=0 OR governorate='').
+ */
+function resolveCohortPeerCount(result: ComparisonResult): number {
+  const summary: any =
+    (result as any).cohort_summary ??
+    (result as any).personalization?.cohort ??
+    null;
+  if (!summary) return 0;
+  const n = summary.peer_count ?? summary.peers_count ?? summary.peers ?? 0;
+  return typeof n === 'number' ? Math.max(0, Math.floor(n)) : 0;
+}
+
+function resolveCohortGovernorate(result: ComparisonResult): string {
+  const summary: any =
+    (result as any).cohort_summary ??
+    (result as any).personalization?.cohort ??
+    null;
+  if (!summary) return '';
+  return typeof summary.governorate === 'string' ? summary.governorate : '';
 }
 
 const styles = StyleSheet.create({
@@ -1147,6 +1206,16 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontStyle: 'italic',
     marginTop: spacing.sm,
+  },
+  /**
+   * Cohort badge slot — sits between the "Why we picked this" verdict
+   * block and the price section per design § 4b. CohortBadge guards
+   * on missing data; when there's no cohort match the slot renders an
+   * empty View, leaving the layout intact.
+   */
+  cohortBadgeSlot: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
   },
 
   // Price comparison

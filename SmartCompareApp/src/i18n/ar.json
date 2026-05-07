@@ -457,5 +457,10 @@
   "results.stage.specs": "نقرأ المواصفات",
   "results.stage.prices": "نتحقق من المتاجر",
   "results.stage.reviews": "نحلّل المراجعات",
-  "results.stage.verdict": "نختار الأفضل لك"
+  "results.stage.verdict": "نختار الأفضل لك",
+
+  "results.whyWePicked": "لماذا اخترنا هذا",
+  "results.runnerUpWins": "أين يتفوق الوصيف",
+  "results.whatsNext": "ما التالي؟",
+  "results.bestForYou": "الأفضل لك"
 }
