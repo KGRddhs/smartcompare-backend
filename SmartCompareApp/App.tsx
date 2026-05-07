@@ -21,6 +21,10 @@ import './src/i18n'; // Initialize i18next
 // Screens
 import SplashScreen from './src/screens/SplashScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
+// Phase 2 redesign — gated by features.ENABLE_NEW_ONBOARDING (Task 24).
+// Default OFF; legacy 6-step flow remains the runtime path until canary.
+import { NewOnboardingHost } from './src/screens/onboarding/NewOnboardingHost';
+import { features } from './src/config/features';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
@@ -212,9 +216,16 @@ export default function App() {
           </>
         ) : needsPreferences ? (
           <Stack.Screen name="Onboarding">
-            {(props) => (
-              <OnboardingScreen {...props} onComplete={handlePreferencesComplete} />
-            )}
+            {(props) =>
+              features.ENABLE_NEW_ONBOARDING ? (
+                // Phase 2 17-step flow. Same onComplete contract so this is
+                // a drop-in replacement; the Phase 5 canary plan flips the
+                // flag in stages 10% → 50% → 100%.
+                <NewOnboardingHost onComplete={() => handlePreferencesComplete()} />
+              ) : (
+                <OnboardingScreen {...props} onComplete={handlePreferencesComplete} />
+              )
+            }
           </Stack.Screen>
         ) : (
           <>
