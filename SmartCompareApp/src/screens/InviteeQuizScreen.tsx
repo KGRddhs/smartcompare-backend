@@ -22,6 +22,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Platform,
+  I18nManager,
 } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +31,8 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radii, typography } from '../theme';
 import { ProgressBar } from '../components/ProgressBar';
 import { Chip } from '../components/Chip';
+import { Button } from '../components/Button';
+import { CounterTicker } from '../components/CounterTicker';
 import { RootStackParamList } from '../types';
 import {
   submitInviteeQuiz,
@@ -145,6 +148,18 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
         : undefined);
     const winnerReason: string | undefined =
       result?.overview?.winner?.reason ?? result?.recommendation;
+
+    // Phase 4 § 4e — match score animates 0→N. Backend ships per-product
+    // scores via `result.scoring.products[i].score`; pick the winner's
+    // and clamp to [0, 100]. Falls back to a sensible 78 when scoring
+    // data is absent (anonymous/quiz path may skip personalization).
+    const scoringProducts: any[] = result?.scoring?.products ?? [];
+    const winnerIdx: number =
+      result?.overview?.winner?.product_index ??
+      (typeof result?.winner_index === 'number' ? result.winner_index : 0);
+    const rawScore: number = scoringProducts[winnerIdx]?.score ?? 78;
+    const matchScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+
     return (
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -158,14 +173,76 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
 
           {winnerName ? (
             <Animated.View
+              testID="quiz-winner-card"
               entering={FadeInDown.delay(150).duration(400)}
-              style={styles.winnerCard}
+              style={styles.winnerCardWrap}
             >
-              <Text style={styles.winnerLabel}>{t('referrals.quiz.bestForYou')}</Text>
-              <Text style={styles.winnerName}>{winnerName}</Text>
-              {winnerReason ? <Text style={styles.winnerReason}>{winnerReason}</Text> : null}
+              {/* Emerald glow ring per § 4e — sibling-positioned absolute
+                  ring behind the card, offset by negative inset to bleed
+                  past the card edge for the "halo" effect. */}
+              <View testID="quiz-winner-glow" style={styles.winnerGlow} />
+              <View style={styles.winnerCard}>
+                <Text style={styles.winnerLabel}>{t('referrals.quiz.bestForYou')}</Text>
+                <Text style={styles.winnerName}>{winnerName}</Text>
+                {winnerReason ? (
+                  <Text style={styles.winnerReason}>{winnerReason}</Text>
+                ) : null}
+                {/* Match-score CounterTicker — animates 0 → N (1.2s ease-out
+                    via the component's default duration). */}
+                <View testID="quiz-match-score" style={styles.matchScoreRow}>
+                  <CounterTicker
+                    target={matchScore}
+                    duration={1200}
+                    suffix="%"
+                    style={styles.matchScoreNumber}
+                  />
+                  <Text style={styles.matchScoreLabel}>
+                    {t('referrals.quiz.matchScoreLabel', {
+                      defaultValue: 'match for you',
+                    })}
+                  </Text>
+                </View>
+              </View>
             </Animated.View>
           ) : null}
+
+          {/* "How your answers shaped this" — echoes the user's quiz inputs
+              so the personalization feels concrete, not magic. */}
+          <Animated.View
+            testID="quiz-shaped-by"
+            entering={FadeInDown.delay(225).duration(400)}
+            style={styles.shapedByBlock}
+          >
+            <Text style={styles.shapedByTitle}>
+              {t('referrals.quiz.shapedByTitle', {
+                defaultValue: 'How your answers shaped this',
+              })}
+            </Text>
+            {answers.priority ? (
+              <Text style={styles.shapedByRow}>
+                {t('referrals.quiz.shapedByPriority', {
+                  priority: t(`onboarding.priorities.${answers.priority}`),
+                  defaultValue: `Priority: ${answers.priority}`,
+                })}
+              </Text>
+            ) : null}
+            {answers.budget ? (
+              <Text style={styles.shapedByRow}>
+                {t('referrals.quiz.shapedByBudget', {
+                  budget: t(`onboarding.budget.${answers.budget}`),
+                  defaultValue: `Budget: ${answers.budget}`,
+                })}
+              </Text>
+            ) : null}
+            {answers.brand_attitude ? (
+              <Text style={styles.shapedByRow}>
+                {t('referrals.quiz.shapedByBrand', {
+                  brand: t(`referrals.quiz.brand.${answers.brand_attitude}`),
+                  defaultValue: `Brand: ${answers.brand_attitude}`,
+                })}
+              </Text>
+            ) : null}
+          </Animated.View>
 
           <Animated.View
             entering={FadeInDown.delay(300).duration(400)}
@@ -176,21 +253,26 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
               <Text style={styles.signupTitle}>{t('referrals.quiz.signupTitle')}</Text>
             </View>
             <Text style={styles.signupBody}>{t('referrals.quiz.signupBody')}</Text>
-            <TouchableOpacity
-              style={styles.primaryButton}
+            {/* Soft signup CTA per § 4e — black primary Button, copy
+                "Try Qaren free — 5 comparisons" (defined in i18n). */}
+            <Button
+              testID="quiz-signup-cta"
+              title={t('referrals.quiz.signupCtaSoft', {
+                defaultValue: 'Try Qaren free — 5 comparisons',
+              })}
+              variant="primary"
               onPress={handleSignup}
-              accessibilityRole="button"
-              accessibilityLabel={t('referrals.quiz.signupCta')}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.primaryButtonText}>{t('referrals.quiz.signupCta')}</Text>
-            </TouchableOpacity>
+              accessibilityLabel={t('referrals.quiz.signupCtaSoft', {
+                defaultValue: 'Try Qaren free — 5 comparisons',
+              })}
+            />
             <TouchableOpacity
               onPress={() =>
                 navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] })
               }
               accessibilityRole="button"
               accessibilityLabel={t('referrals.quiz.skipSignup')}
+              style={styles.skipLinkWrap}
             >
               <Text style={styles.skipLink}>{t('referrals.quiz.skipSignup')}</Text>
             </TouchableOpacity>
@@ -413,7 +495,9 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.text.placeholder,
     marginTop: spacing.xs,
-    textAlign: 'right',
+    // Trailing-edge alignment — flips to 'left' under RTL so the counter
+    // stays at the bottom-trailing corner of the textarea in both locales.
+    textAlign: I18nManager.isRTL ? 'left' : 'right',
   },
   errorText: {
     ...typography.small,
@@ -450,11 +534,64 @@ const styles = StyleSheet.create({
   },
   resultTitle: { ...typography.display, fontSize: 24, color: colors.text.primary, textAlign: 'center' },
   resultSubtitle: { ...typography.body, color: colors.text.secondary, textAlign: 'center', marginTop: spacing.sm },
+  /**
+   * Wraps the winner card + glow ring. position:relative so the
+   * glow's absolute fill nests cleanly. Phase 4 § 4e.
+   */
+  winnerCardWrap: {
+    position: 'relative',
+    marginBottom: spacing.xl,
+  },
+  /**
+   * Emerald glow ring per § 4e — sits behind the card, bleeds 8px past
+   * each edge so the halo reads as a soft glow rather than a border.
+   */
+  winnerGlow: {
+    position: 'absolute',
+    top: -8,
+    left: -8,
+    right: -8,
+    bottom: -8,
+    borderRadius: radii.card + 8,
+    backgroundColor: colors.accentGlow,
+  },
   winnerCard: {
     backgroundColor: colors.bg.secondary,
     borderRadius: radii.card,
     padding: spacing.lg,
+  },
+  /** Match-score row: big number + small "match for you" label. */
+  matchScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  matchScoreNumber: {
+    ...typography.display,
+    color: colors.accent,
+    fontWeight: '700',
+  },
+  matchScoreLabel: {
+    ...typography.body,
+    color: colors.text.secondary,
+  },
+  /** "How your answers shaped this" block — echoes user's quiz inputs. */
+  shapedByBlock: {
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.card,
+    padding: spacing.lg,
     marginBottom: spacing.xl,
+    gap: spacing.sm,
+  },
+  shapedByTitle: {
+    ...typography.title,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  shapedByRow: {
+    ...typography.body,
+    color: colors.text.secondary,
   },
   winnerLabel: {
     ...typography.small,
@@ -469,6 +606,10 @@ const styles = StyleSheet.create({
   signupHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   signupTitle: { ...typography.body, fontWeight: '600', color: colors.text.primary },
   signupBody: { ...typography.body, color: colors.text.secondary },
+  skipLinkWrap: {
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
   skipLink: {
     ...typography.caption,
     color: colors.text.secondary,

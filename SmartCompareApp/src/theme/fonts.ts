@@ -1,9 +1,14 @@
-import {
-  useFonts as useInterFonts,
-  Inter_400Regular,
-  Inter_600SemiBold,
-  Inter_700Bold,
-} from '@expo-google-fonts/inter';
+/**
+ * Qaren typography fonts.
+ *
+ * EN voice: Geist (local TTF, SIL OFL v1.1, ~125KB per weight)
+ * AR voice: Cairo (Google Fonts via @expo-google-fonts/cairo)
+ *
+ * Phase 1 visual swap — Inter retired in favor of Geist for EN voice.
+ * See docs/plans/2026-05-06-qaren-ux-redesign-design.md Section 1
+ * "Typography — Geist (EN) + Cairo (AR)".
+ */
+import { useFonts as useExpoFonts } from 'expo-font';
 import {
   useFonts as useCairoFonts,
   Cairo_400Regular,
@@ -13,9 +18,9 @@ import {
 
 export const fontFamily = {
   en: {
-    regular: 'Inter_400Regular',
-    semiBold: 'Inter_600SemiBold',
-    bold: 'Inter_700Bold',
+    regular: 'Geist-Regular',
+    semiBold: 'Geist-SemiBold',
+    bold: 'Geist-Bold',
   },
   ar: {
     regular: 'Cairo_400Regular',
@@ -24,16 +29,18 @@ export const fontFamily = {
   },
 } as const;
 
+const geistFontMap = {
+  'Geist-Regular': require('../../assets/fonts/Geist-Regular.ttf'),
+  'Geist-SemiBold': require('../../assets/fonts/Geist-SemiBold.ttf'),
+  'Geist-Bold': require('../../assets/fonts/Geist-Bold.ttf'),
+};
+
 export function useAppFonts(): boolean {
-  const [interLoaded] = useInterFonts({
-    Inter_400Regular,
-    Inter_600SemiBold,
-    Inter_700Bold,
-  });
+  const [geistLoaded] = useExpoFonts(geistFontMap);
   const [cairoLoaded] = useCairoFonts({
     Cairo_400Regular,
     Cairo_600SemiBold,
     Cairo_700Bold,
   });
-  return interLoaded && cairoLoaded;
+  return geistLoaded && cairoLoaded;
 }

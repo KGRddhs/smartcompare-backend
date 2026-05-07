@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { I18nManager } from 'react-native';
+import { I18nManager, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -21,6 +21,16 @@ import './src/i18n'; // Initialize i18next
 // Screens
 import SplashScreen from './src/screens/SplashScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
+// Phase 2 redesign — gated by features.ENABLE_NEW_ONBOARDING (Task 24).
+// Default OFF; legacy 6-step flow remains the runtime path until canary.
+import { NewOnboardingHost } from './src/screens/onboarding/NewOnboardingHost';
+import { features, setFlagStableId } from './src/config/features';
+// Phase 5 Task 47 — canary bucketing primitive (deterministic per-user
+// stable id; powers the ENABLE_NEW_ONBOARDING getter at 10% rollout).
+import { getStableId, setStableUserId } from './src/config/featureBucket';
+// Phase 3 Task 32 — bottom-nav icon wrapper with active-state polish
+// (emerald + dot + scale bounce per design § 4c).
+import { TabBarIcon } from './src/components/TabBarIcon';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
@@ -70,6 +80,8 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.text.placeholder,
         tabBarStyle: {
+          // Phase 3 § 4c — white bg + 1px top border, RTL auto-mirrors.
+          borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: colors.border.light,
           backgroundColor: colors.bg.primary,
         },
@@ -81,14 +93,18 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
         component={HomeScreen}
         options={{
           tabBarLabel: t('app.name'),
-          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
+          tabBarIcon: ({ size, focused }) => (
+            <TabBarIcon focused={focused} size={size} Icon={Home} testID="tab-home" />
+          ),
         }}
       />
       <Tab.Screen
         name="HistoryTab"
         options={{
           tabBarLabel: t('history.title'),
-          tabBarIcon: ({ color, size }) => <Clock size={size} color={color} />,
+          tabBarIcon: ({ size, focused }) => (
+            <TabBarIcon focused={focused} size={size} Icon={Clock} testID="tab-history" />
+          ),
         }}
       >
         {(props) => <HistoryScreen {...props} onLogout={onLogout} />}
@@ -97,7 +113,9 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
         name="ProfileTab"
         options={{
           tabBarLabel: t('profile.title'),
-          tabBarIcon: ({ color, size }) => <UserIcon size={size} color={color} />,
+          tabBarIcon: ({ size, focused }) => (
+            <TabBarIcon focused={focused} size={size} Icon={UserIcon} testID="tab-profile" />
+          ),
         }}
       >
         {(props) => <ProfileScreen {...props} onLogout={onLogout} />}
@@ -126,10 +144,23 @@ export default function App() {
         I18nManager.forceRTL(shouldBeRTL);
       }
 
+      // Phase 5 Task 47 — resolve stable id for the canary bucket BEFORE
+      // any code reads features.ENABLE_NEW_ONBOARDING. Uses persistent
+      // device-id pre-signup; switches to user.id below once auth lands.
+      // Doing this before setNeedsPreferences keeps the onboarding-gating
+      // render in step with the bucket's final value (no flicker).
+      const initialId = await getStableId();
+      setFlagStableId(initialId);
+
       // Auth check
       try {
         const authUser = await initializeAuth();
         if (authUser) {
+          // Re-bucket on the user.id post-login so the canary follows
+          // the user across devices (same user.id → same bucket).
+          setStableUserId(authUser.id);
+          setFlagStableId(authUser.id);
+
           setUser(authUser);
           setIsAuthenticated(true);
           setNeedsPreferences(!authUser.preferences_completed);
@@ -154,6 +185,11 @@ export default function App() {
     try {
       const authUser = await verifyAuth();
       if (authUser) {
+        // Phase 5 Task 47 — re-bucket on user.id at fresh login so the
+        // canary follows the user across devices.
+        setStableUserId(authUser.id);
+        setFlagStableId(authUser.id);
+
         setUser(authUser);
         setNeedsPreferences(!authUser.preferences_completed);
         setIsAuthenticated(true);
@@ -212,9 +248,16 @@ export default function App() {
           </>
         ) : needsPreferences ? (
           <Stack.Screen name="Onboarding">
-            {(props) => (
-              <OnboardingScreen {...props} onComplete={handlePreferencesComplete} />
-            )}
+            {(props) =>
+              features.ENABLE_NEW_ONBOARDING ? (
+                // Phase 2 17-step flow. Same onComplete contract so this is
+                // a drop-in replacement; the Phase 5 canary plan flips the
+                // flag in stages 10% → 50% → 100%.
+                <NewOnboardingHost onComplete={() => handlePreferencesComplete()} />
+              ) : (
+                <OnboardingScreen {...props} onComplete={handlePreferencesComplete} />
+              )
+            }
           </Stack.Screen>
         ) : (
           <>

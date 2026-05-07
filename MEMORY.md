@@ -4,6 +4,54 @@
 
 ---
 
+## Session 43: Qaren UX Redesign (4-Opus team) — COMPLETE 2026-05-07
+
+**Spec:** `docs/plans/2026-05-06-qaren-ux-redesign-design.md`
+**Plan:** `docs/plans/2026-05-06-qaren-ux-redesign.md`
+**Worktree:** `.worktrees/qaren-ux-redesign` on branch `feature/qaren-ux-redesign`
+
+**Built:** Cal-AI-Lite 17-step onboarding + black/emerald hybrid identity (emerald = signal color, NOT primary CTA) + cohort-led referral with 3-day bonus expiry + deterministic 10% canary rollout. 5 phases across 49 plan tasks + 11 in-flight follow-ups. Frontend test count: 188/201 (pre-redesign baseline) → 588/588 (post). Zero scary copy in user-facing i18n. 14 EN + 14 AR baseline keys eliminated and replaced with confident-verb vocabulary ("Hold on — Tap to retry" / "Reconnecting…" / "Sharper match coming up").
+
+**Migrations:** 018 (referral expiry: expires_at + expiry_reminder_sent_at + deep_review_expires_at + partial-WHERE index, applied via Supabase MCP, verified live), 019 (users.attribution_source TEXT NULLABLE with CHECK enum mirror).
+
+### Critical lessons (Session 43)
+
+1. **`git stash --include-untracked` is a footgun in multi-agent worktrees.** Captures other agents' tracked-modified work (Task 26 in-flight files) under the cover of "isolating my own changes". Recovery via `git checkout stash@{0} -- <paths>` works but burns time + spooks the affected agent (frontend-flow saw their work "vanish" and panic-recreated). Hard rule: **NO `git stash` in any form for multi-agent sessions**. Use `git show <sha>:<path>` for SHA-isolated reads. `git stash --keep-index` is also a footgun (silently captures tracked-modified files). Update team-brief boilerplate to forbid both.
+
+2. **Bare `jest.mock(name)` overrides moduleNameMapper.** Caused 13 pre-existing test failures on main: `jest.mock('react-native-reanimated')` with NO factory triggers Jest auto-mock → undefined-returning stubs → `useSharedValue()` returns undefined → `animatedWidth.value = ...` crashes. Fix: REMOVE the bare mock, rely on jest.config.js `moduleNameMapper`. Fixed in commit f8bdb43; comment blocks left in test files explaining why future authors should not re-add the bare mock.
+
+3. **RNTL `getByText` only traverses Text-typed hosts.** The Reanimated test mock rendered `Animated.View` / `Animated.Text` as custom `mock-Animated-View` / `mock-Animated-Text` host elements — RNTL's text query couldn't find content inside them, hence "Unable to find element with text: قارن" on SplashScreen. Fix: forward `Animated.View/Text/Image` to React Native's real hosts in the mock. Caught a bug-class that would have eaten weeks of false negatives.
+
+4. **Plan revision when implementation diverges.** Plan task 47 step 1 said "Set feature flag to 10% in Railway env" — STALE. ENABLE_NEW_ONBOARDING is a frontend build-time const, not a Railway env var. Actual mechanic: `CANARY_NEW_ONBOARDING_PERCENT = 10` in features.ts via EAS Update. Updated the plan in Task #49 docs sweep. Pattern: when implementation diverges from plan, update the plan in the same closing commit so future readers don't chase stale instructions.
+
+5. **flow_variant analytics asymmetry.** New flow emits 3 events with `flow_variant: "new"`; legacy flow emits ZERO. Task #47 monitoring works one-armed; Task #48 ramp decision needs both arms. Caught at Phase 5 review by frontend-flow. Tracked as Task #60 (legacy mirror) before #48 fires.
+
+6. **NOT all "scary copy" replacements are equally easy.** First-pass rewrites used "Try Again" — itself in the forbidden words list. Lesson: **build the full vocabulary table BEFORE editing**, don't reactive-rewrite. The final vocabulary that sticks: "Hold on — X. Tap to retry." / "Reconnecting…" / "Sharper match coming up — try with brand or model." / "expired or moved" / "are paused right now" / "is on the way".
+
+7. **Deterministic canary bucketing pattern (reusable for future canaries):** `djb2(stableId) % 100 < CANARY_PERCENT`. Same `(id, percent)` → same boolean every call, every device. Stable id = expo-secure-store device-id pre-signup, user.id post-signup. Monotonic ramp invariant: a user "in" at 10% MUST also be in at 50% and 100%. Distribution test: 1000 random ids at percent=50 → 450..550 trues (verified ±5%). Pattern lives at `SmartCompareApp/src/config/featureBucket.ts`; adopt for future canaries by adding flag + percent pair.
+
+8. **expo-* ESM modules need test mocks under ts-jest on Windows.** Pattern documented across 4 stubs added in this session: `__mocks__/expo-screen-capture.ts`, `__mocks__/expo-font.ts`, `__mocks__/expo-google-fonts-cairo.ts`, `__mocks__/expo-crypto.ts`. Each maps via `jest.config.js#moduleNameMapper`. Real packages are ESM; ts-jest preset doesn't transform them on Windows (works on Linux CI but not local dev). Add a stub file + mapping for any new Expo SDK module touched in tests.
+
+9. **a11y on legacy components consumed by redesign IS in scope.** Phase 5 a11y audit boundary check: Chip + IconButton are legacy components but consumed by Step08 priorities + HomeScreen category chips (redesign-touched). Adding `accessibilityRole/Label/State` to them is in-scope. Pre-redesign-only legacy screens (Login/Register/Forgot/Paywall/HistoryScreen) stay out of Phase 5 audit per plan "redesigned screens" wording.
+
+10. **arabicLineHeightMultiplier was dead-export drift.** Exported from `src/theme/index.ts:98` but never consumed in any component. AR text rendered with same compressed line-heights as EN, missing design § 1 spec'd 1.7x readability. Caught in Task #45 RTL audit. Fix landed via frontend-flow's Task #56 — audit dead-export drift periodically.
+
+11. **Cohort exact-case rule reinforced.** Type contract in `OnboardingFlow/types.ts` uses 'Capital' / '25-34' / 'Male' / 'Female' EXACT strings to match `cohort_priors.json` keys. CLAUDE.md "cohort match is exact-case" rule must be honored at type level (not just runtime) — TypeScript literal types prevent accidental lowercasing.
+
+12. **Defense-in-depth on enum data.** Task 8 backend Pydantic Literal + DB CHECK constraint mirror = even if a future code path bypasses the route validator, the DB rejects malformed writes. Pattern reusable for any new enum column.
+
+13. **Skill-list system-reminders can break agent multi-turn context.** During this session, harness-injected system-reminders (the ~50-entry skill list) between agent turns occasionally displaced freshness of recent verbal commitments — e.g. "ship 5 polish items this turn" → by next response opportunity, agent treated conversation as if those commitments hadn't been made. Team-lead had to re-prompt twice on Phase 5 polish before agent caught up. Practical rules to prevent this in future Opus team runs:
+
+    a. **TaskUpdate before any context pause.** Even mid-multi-step work, write current state into the TaskUpdate description before any potential context loss. Task descriptions survive between agent turns; in-line conversation state can be displaced by harness-injected reminders.
+
+    b. **SendMessage explicit reply rather than silent idle.** If waiting on something, an explicit "blocked on X / standing by for Y" SendMessage costs nothing and preserves the threaded conversation. Silent idle + system-reminder injection looks identical to the orchestrator and breaks the trust loop.
+
+    c. **Check git log for "what did I just commit?"** at each response turn before assuming idle state. The reflog is durable truth; conversation memory may be stale.
+
+    d. **Multi-step task commitments should land as TaskCreate'd subtasks**, not verbal commitments in a SendMessage reply. "Ship 5 polish items" → 5 TaskCreate calls with claim/in_progress/completed lifecycle. Resumption from any context loss is then just `TaskList` + claim next pending.
+
+---
+
 ## Session 42: Smart Decision Referral System (4-Opus team) — COMPLETE 2026-05-05
 
 **Spec:** `docs/superpowers/specs/2026-05-05-smart-referral-system-design.md`

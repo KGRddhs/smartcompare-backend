@@ -471,4 +471,19 @@ export async function getCohortProfile(): Promise<{
   }
 }
 
+/**
+ * Submit acquisition attribution. Backend stores `users.attribution_source`
+ * via POST /api/v1/auth/attribution (Task 8). Caller treats this as
+ * fire-and-forget — onboarding never fails on this call.
+ */
+export type AttributionSource =
+  | 'friend' | 'instagram' | 'tiktok' | 'app_store' | 'google' | 'other';
+
+export async function saveAttribution(
+  source: AttributionSource
+): Promise<{ success: boolean }> {
+  const response = await api.post('/api/v1/auth/attribution', { source });
+  return response.data;
+}
+
 export default api;

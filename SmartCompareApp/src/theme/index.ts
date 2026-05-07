@@ -4,14 +4,22 @@ export const colors = {
   bg: {
     primary: '#FFFFFF',
     secondary: '#F8F8FA',
+    inverse: '#0A0A0B',
   },
   text: {
-    primary: '#1A1A1E',
+    primary: '#0A0A0B',
     secondary: '#6B7280',
     placeholder: '#9CA3AF',
+    onInverse: '#FFFFFF',
+  },
+  cta: {
+    primary: '#0A0A0B',
+    onPrimary: '#FFFFFF',
   },
   accent: '#10B981',
+  accentDark: '#059669',
   accentLight: '#ECFDF5',
+  accentGlow: 'rgba(16,185,129,0.20)',
   destructive: '#EF4444',
   warning: '#F59E0B',
   border: {
@@ -36,13 +44,21 @@ export const radii = {
   button: 12,
   chip: 999,
   input: 12,
+  hero: 24,
 } as const;
 
 export const typography = {
+  hero: {
+    fontSize: 36,
+    fontWeight: '700' as const,
+    lineHeight: 36 * 1.2,
+    letterSpacing: 36 * -0.02,
+  },
   display: {
     fontSize: 28,
     fontWeight: '700' as const,
-    lineHeight: 28 * 1.5,
+    lineHeight: 28 * 1.3,
+    letterSpacing: 28 * -0.01,
   },
   title: {
     fontSize: 20,
@@ -54,10 +70,22 @@ export const typography = {
     fontWeight: '400' as const,
     lineHeight: 16 * 1.5,
   },
+  bodyEmphasis: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    lineHeight: 16 * 1.5,
+  },
   caption: {
     fontSize: 13,
     fontWeight: '400' as const,
     lineHeight: 13 * 1.5,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    lineHeight: 11 * 1.4,
+    letterSpacing: 11 * 0.10,
+    textTransform: 'uppercase' as const,
   },
   small: {
     fontSize: 11,

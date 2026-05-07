@@ -43,6 +43,17 @@ jest.mock('react-native-reanimated', () => {
   };
 });
 
+// Phase 4 Task 38 — ReferralLandingScreen now reads useLanguage().isRTL
+// to drive the inline CohortBadge slide direction. Stub it here so the
+// existing 4-state suite doesn't pull in expo-localization (i18n/index.ts).
+jest.mock('../src/hooks/useLanguage', () => ({
+  useLanguage: () => ({
+    language: 'en',
+    isRTL: false,
+    switchLanguage: jest.fn(),
+  }),
+}));
+
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, any>) => {
@@ -166,25 +177,26 @@ describe('ReferralLandingScreen', () => {
     expect(await findByText('referrals.landing.network')).toBeTruthy();
   });
 
-  it('renders titleWithWinner interpolated with referrer + products + winner on happy path', async () => {
+  it('renders the gated titleNoWinner copy even when backend returned a winner', async () => {
+    // Phase 4 § 4e — partial-blur landing always uses the no-winner
+    // title; the verdict is gated behind the quiz/signup CTAs even
+    // when the backend resolved a winner_index.
     mockResolveInvite.mockResolvedValueOnce(HAPPY_RESOLUTION);
     const utils = render(
       <ReferralLandingScreen navigation={mockNavigation} route={baseRoute} />
     );
-    // Allow the resolveInvite promise to resolve and setState to commit.
     await waitFor(() => {
       expect(mockResolveInvite).toHaveBeenCalled();
     });
-    // Then poll for the rendered hero text.
     let heroText: any;
     await waitFor(() => {
       heroText = utils.getByText(/Ahmed/);
     });
     const flat = heroText.props.children as string;
     expect(flat).toContain('Ahmed');
-    expect(flat).toContain('iPhone 15');
-    expect(flat).toContain('Galaxy S24');
-    expect(flat).toContain('referrals.landing.titleWithWinner');
+    expect(flat).toContain('referrals.landing.titleNoWinner');
+    // Pre-redesign asserted titleWithWinner — that variant is gone.
+    expect(flat).not.toContain('referrals.landing.titleWithWinner');
   });
 
   it('renders titleNoWinner (no winner badge) when referrer privacy hid the result', async () => {
@@ -200,12 +212,15 @@ describe('ReferralLandingScreen', () => {
     expect(queryByText('referrals.landing.winnerBadge')).toBeNull();
   });
 
-  it('Start CTA navigates to InviteeQuiz with invite_id + share_token + ref', async () => {
+  it('quiz CTA navigates to InviteeQuiz with invite_id + share_token + ref', async () => {
+    // Phase 4 § 4e — the hot-path emerald CTA is now `quizCta`, not
+    // `startCta`. Cool path is the small text-link `skipCta` which
+    // does navigation.reset to drop the user into the main flow.
     mockResolveInvite.mockResolvedValueOnce(HAPPY_RESOLUTION);
-    const { findByText } = render(
+    const { findByTestId } = render(
       <ReferralLandingScreen navigation={mockNavigation} route={baseRoute} />
     );
-    const cta = await findByText('referrals.landing.startCta');
+    const cta = await findByTestId('referral-cta-quiz');
     fireEvent.press(cta);
     await waitFor(() => expect(mockNavigation.navigate).toHaveBeenCalled());
     expect(mockNavigation.navigate).toHaveBeenCalledWith(

@@ -4,7 +4,9 @@ describe('Theme tokens', () => {
   it('has all required color groups', () => {
     expect(colors.bg.primary).toBe('#FFFFFF');
     expect(colors.bg.secondary).toBe('#F8F8FA');
-    expect(colors.text.primary).toBe('#1A1A1E');
+    // text.primary deepened to #0A0A0B in Phase 1 to match the logo black —
+    // see docs/plans/2026-05-06-qaren-ux-redesign-design.md Section 1.
+    expect(colors.text.primary).toBe('#0A0A0B');
     expect(colors.text.secondary).toBe('#6B7280');
     expect(colors.text.placeholder).toBe('#9CA3AF');
     expect(colors.accent).toBe('#10B981');
@@ -34,12 +36,17 @@ describe('Theme tokens', () => {
   });
 
   it('has all typography presets with fontSize, fontWeight, lineHeight', () => {
-    for (const key of ['display', 'title', 'body', 'caption', 'small'] as const) {
+    // Phase 1: hero/display tokens use compressed line-heights (1.2x / 1.3x)
+    // per Cal-AI compaction in the redesign spec; remaining presets stay
+    // on the legacy 1.5x multiplier.
+    const standardLineHeight = ['title', 'body', 'caption', 'small'] as const;
+    for (const key of standardLineHeight) {
       const preset = typography[key];
       expect(preset.fontSize).toBeGreaterThan(0);
       expect(preset.fontWeight).toBeDefined();
       expect(preset.lineHeight).toBe(preset.fontSize * 1.5);
     }
+    expect(typography.display.lineHeight).toBe(28 * 1.3);
   });
 
   it('has correct Arabic line-height multiplier', () => {

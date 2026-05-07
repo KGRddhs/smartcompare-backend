@@ -8,8 +8,10 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import OnboardingScreen from '../src/screens/OnboardingScreen';
 import { savePreferences } from '../src/services/api';
 
-// Use our local mock instead of package mock
-jest.mock('react-native-reanimated');
+// react-native-reanimated is mapped to __mocks__/react-native-reanimated.ts via
+// jest.config.js moduleNameMapper. A bare `jest.mock('react-native-reanimated')`
+// (no factory) auto-mocks and stubs useSharedValue → undefined, crashing any
+// component that does `animatedWidth.value = ...`. Rely on the mapper.
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -26,6 +28,10 @@ jest.mock('../src/hooks/useLanguage', () => ({
 
 jest.mock('../src/services/api', () => ({
   savePreferences: jest.fn().mockResolvedValue({}),
+  // Task #60 — OnboardingScreen now fires analytics events on mount +
+  // step advance + complete. The existing nav test suite doesn't care
+  // about analytics; stub so trackEvents calls don't error.
+  trackEvents: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mockNavigation = {

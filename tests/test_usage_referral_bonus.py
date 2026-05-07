@@ -28,6 +28,38 @@ def _fake_user_table(data: dict) -> MagicMock:
     return client
 
 
+def _fake_user_and_redemptions_table(
+    user_data: dict, *, active_bonus_sum: int = 0
+) -> MagicMock:
+    """Per-table dispatcher mock for the path-(a) world.
+
+    `users.single().execute()` returns user_data; `referral_redemptions`
+    chained query returns rows summing to active_bonus_sum.
+    """
+    client = MagicMock()
+
+    def factory(name):
+        t = MagicMock()
+        for m in ("select", "eq", "gt", "gte", "lt", "lte",
+                  "is_", "single", "update", "limit", "order"):
+            getattr(t, m).return_value = t
+        if name == "users":
+            t.execute.return_value = MagicMock(data=user_data)
+        elif name == "referral_redemptions":
+            rows = (
+                [{"loop2_comparisons_granted": active_bonus_sum}]
+                if active_bonus_sum > 0
+                else []
+            )
+            t.execute.return_value = MagicMock(data=rows)
+        else:
+            t.execute.return_value = MagicMock(data=[])
+        return t
+
+    client.table.side_effect = factory
+    return client
+
+
 class TestReferralBonusExtendsMonthlyCap:
     @pytest.mark.asyncio
     async def test_free_with_zero_bonus_keeps_base_cap(self):
@@ -54,16 +86,18 @@ class TestReferralBonusExtendsMonthlyCap:
 
     @pytest.mark.asyncio
     async def test_free_with_15_bonus_extends_cap(self):
+        """Path-(a): bonus comes from active referral_redemptions rows,
+        not the INT counter. 15 active bonus + base 10 = cap 25."""
         mock_redis = MagicMock()
-        # 12 used (over base 10 cap)
         mock_redis.get.side_effect = lambda key: "12" if "monthly" in key else None
-        client = _fake_user_table(
+        client = _fake_user_and_redemptions_table(
             {
                 "subscription_tier": "free",
                 "lifetime_comparisons_used": 5,
-                "referral_bonus_comparisons_this_month": 15,
+                "referral_bonus_comparisons_this_month": 15,  # display only
                 "referral_bonus_reset_at": (datetime.now(timezone.utc) + timedelta(days=20)).isoformat(),
-            }
+            },
+            active_bonus_sum=15,
         )
 
         with patch("app.services.usage_service.redis_client", mock_redis), patch(
@@ -78,15 +112,17 @@ class TestReferralBonusExtendsMonthlyCap:
 
     @pytest.mark.asyncio
     async def test_premium_with_30_bonus_extends_cap(self):
+        """Path-(a): premium tier base 70 + 30 active bonus = cap 100."""
         mock_redis = MagicMock()
         mock_redis.get.side_effect = lambda key: "70" if "monthly" in key else None
-        client = _fake_user_table(
+        client = _fake_user_and_redemptions_table(
             {
                 "subscription_tier": "premium",
                 "lifetime_comparisons_used": 100,
-                "referral_bonus_comparisons_this_month": 30,
+                "referral_bonus_comparisons_this_month": 30,  # display only
                 "referral_bonus_reset_at": (datetime.now(timezone.utc) + timedelta(days=15)).isoformat(),
-            }
+            },
+            active_bonus_sum=30,
         )
 
         with patch("app.services.usage_service.redis_client", mock_redis), patch(
@@ -101,16 +137,17 @@ class TestReferralBonusExtendsMonthlyCap:
 
     @pytest.mark.asyncio
     async def test_blocks_when_used_exceeds_extended_cap(self):
+        """Path-(a): 25 used, base 10 + 15 active bonus = cap 25, blocked."""
         mock_redis = MagicMock()
-        # 25 used, cap = 10 + 15 = 25, so blocked
         mock_redis.get.side_effect = lambda key: "25" if "monthly" in key else None
-        client = _fake_user_table(
+        client = _fake_user_and_redemptions_table(
             {
                 "subscription_tier": "free",
                 "lifetime_comparisons_used": 5,
-                "referral_bonus_comparisons_this_month": 15,
+                "referral_bonus_comparisons_this_month": 15,  # display only
                 "referral_bonus_reset_at": (datetime.now(timezone.utc) + timedelta(days=20)).isoformat(),
-            }
+            },
+            active_bonus_sum=15,
         )
 
         with patch("app.services.usage_service.redis_client", mock_redis), patch(

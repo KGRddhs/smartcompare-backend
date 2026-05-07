@@ -38,11 +38,15 @@ import {
   ReferralError,
   InviteResolution,
 } from '../services/referralService';
+import { CohortBadge } from '../components/CohortBadge';
+import { Button } from '../components/Button';
+import { useLanguage } from '../hooks/useLanguage';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReferralLanding'>;
 
 export default function ReferralLandingScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
+  const { isRTL } = useLanguage();
   const { share_token, ref } = route.params;
   const [resolution, setResolution] = useState<InviteResolution | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,8 +108,9 @@ export default function ReferralLandingScreen({ navigation, route }: Props) {
       <SafeAreaView style={styles.container}>
         <View style={styles.center}>
           <Text style={styles.fallbackTitle}>{t(messageKey)}</Text>
-          <TouchableOpacity
-            style={styles.primaryButton}
+          <Button
+            title={t('referrals.landing.openQaren')}
+            variant="primary"
             onPress={() => {
               // "Open Qaren" — drop the user into the main app flow. If they're
               // unauth they'll hit Auth; if they're authed they'll see Home.
@@ -114,11 +119,8 @@ export default function ReferralLandingScreen({ navigation, route }: Props) {
                 routes: [{ name: 'Main' as never }],
               });
             }}
-            accessibilityRole="button"
             accessibilityLabel={t('referrals.landing.openQaren')}
-          >
-            <Text style={styles.primaryButtonText}>{t('referrals.landing.openQaren')}</Text>
-          </TouchableOpacity>
+          />
         </View>
       </SafeAreaView>
     );
@@ -129,15 +131,34 @@ export default function ReferralLandingScreen({ navigation, route }: Props) {
   const products = resolution.comparison?.products ?? [];
   const productA = products[0]?.name ?? '';
   const productB = products[1]?.name ?? '';
-  const winnerIndex: number | undefined = resolution.comparison?.winner_index;
-  const winnerName =
-    typeof winnerIndex === 'number' ? products[winnerIndex]?.name : undefined;
 
-  const handleStart = () => {
+  // Phase 4 § 4e — partial-blur invitee landing. We DO NOT surface the
+  // winner ✓ here even when the backend returns winner_index. The
+  // emotion (verdict + score) is gated behind the quiz/signup CTAs;
+  // the information (products + cohort) is fully visible. winner_index
+  // is intentionally unused on this screen.
+  const cohort: any = (resolution as any).cohort_match ?? null;
+  const cohortPeerCount: number =
+    cohort?.peers_count ?? cohort?.peer_count ?? 0;
+  const cohortGovernorate: string =
+    typeof cohort?.governorate === 'string' ? cohort.governorate : '';
+
+  const handleQuizPath = () => {
     navigation.navigate('InviteeQuiz', {
       share_token,
       invite_id: resolution.invite_id,
       ref,
+    });
+  };
+
+  const handleSkipPath = () => {
+    // Cool path: drop the invitee into the main app flow. They'll hit
+    // Auth (unauth) or Main (authed); the invitee credit is applied
+    // server-side at signup time so they can revisit the comparison
+    // from History after registering.
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main' as never }],
     });
   };
 
@@ -160,71 +181,89 @@ export default function ReferralLandingScreen({ navigation, route }: Props) {
           <View style={styles.iconBubble}>
             <Sparkles size={28} color={colors.accent} />
           </View>
+          {/* Phase 4 § 4e — single sender-opener title; winner stays gated. */}
           <Text style={styles.heroTitle}>
-            {/* Whether the winner name is known dictates which copy variant we show. */}
-            {winnerName
-              ? t('referrals.landing.titleWithWinner', {
-                  referrer: referrerName,
-                  productA,
-                  productB,
-                  winner: winnerName,
-                })
-              : t('referrals.landing.titleNoWinner', {
-                  referrer: referrerName,
-                  productA,
-                  productB,
-                })}
+            {t('referrals.landing.titleNoWinner', {
+              referrer: referrerName,
+              productA,
+              productB,
+              defaultValue: `${referrerName} thought you'd like this`,
+            })}
           </Text>
           <Text style={styles.heroSubtitle}>{t('referrals.landing.subtitle')}</Text>
         </Animated.View>
 
-        {/* Comparison preview — products only, no preferences/budget */}
+        {/* Comparison preview — names only. NO winner styling, NO badge.
+            The verdict is gated behind the quiz/signup CTAs below. */}
         <Animated.View
           entering={FadeInDown.delay(150).duration(400)}
           style={styles.previewCard}
         >
-          <Text style={styles.previewLabel}>{t('referrals.landing.previewLabel')}</Text>
+          <Text style={styles.previewLabel}>
+            {t('referrals.landing.previewLabel')}
+          </Text>
           <View style={styles.productRow}>
             {products.map((product: any, index: number) => (
               <View
                 key={`${product.name}-${index}`}
-                style={[
-                  styles.productPill,
-                  winnerIndex === index && styles.productPillWinner,
-                ]}
+                testID={`referral-product-pill-${index}`}
+                style={styles.productPill}
               >
-                <Text
-                  style={[
-                    styles.productName,
-                    winnerIndex === index && styles.productNameWinner,
-                  ]}
-                  numberOfLines={2}
-                >
+                <Text style={styles.productName} numberOfLines={2}>
                   {product.name}
                 </Text>
-                {winnerIndex === index ? (
-                  <Text style={styles.winnerBadge}>{t('referrals.landing.winnerBadge')}</Text>
-                ) : null}
               </View>
             ))}
           </View>
         </Animated.View>
 
-        {/* CTA */}
+        {/* Cohort badge — surfaces inline social proof per build
+            principle 6. CohortBadge guards on missing data so the slot
+            stays present (testID-only) when there's no match. */}
+        <View testID="referral-cohort-badge-slot" style={styles.cohortSlot}>
+          <CohortBadge
+            peerCount={cohortPeerCount}
+            governorate={cohortGovernorate}
+            isRTL={isRTL}
+          />
+        </View>
+
+        {/* Two CTAs per § 4e — emerald hot-path + small text-link cool-path. */}
         <Animated.View
           entering={FadeInDown.delay(300).duration(400)}
           style={styles.ctaContainer}
         >
+          <Button
+            testID="referral-cta-quiz"
+            title={t('referrals.landing.quizCta', {
+              defaultValue: 'See how it scores for YOU',
+            })}
+            variant="signature"
+            onPress={handleQuizPath}
+            accessibilityLabel={t('referrals.landing.quizCta', {
+              defaultValue: 'See how it scores for YOU',
+            })}
+          />
+
           <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handleStart}
-            accessibilityRole="button"
-            accessibilityLabel={t('referrals.landing.startCta')}
-            activeOpacity={0.85}
+            testID="referral-cta-skip"
+            onPress={handleSkipPath}
+            accessibilityRole="link"
+            accessibilityLabel={t('referrals.landing.skipCta', {
+              defaultValue: 'Just give me the app',
+            })}
+            style={styles.skipLink}
           >
-            <Text style={styles.primaryButtonText}>{t('referrals.landing.startCta')}</Text>
+            <Text style={styles.skipLinkText}>
+              {t('referrals.landing.skipCta', {
+                defaultValue: 'Just give me the app',
+              })}
+            </Text>
           </TouchableOpacity>
-          <Text style={styles.privacyNote}>{t('referrals.landing.privacyNote')}</Text>
+
+          <Text style={styles.privacyNote}>
+            {t('referrals.landing.privacyNote')}
+          </Text>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
@@ -321,49 +360,40 @@ const styles = StyleSheet.create({
     minHeight: 72,
     justifyContent: 'center',
   },
-  productPillWinner: {
-    backgroundColor: colors.accentLight,
-    borderColor: colors.accent,
-  },
   productName: {
     ...typography.body,
     color: colors.text.primary,
     textAlign: 'center',
     fontWeight: '500',
   },
-  productNameWinner: {
-    color: colors.accent,
-    fontWeight: '600',
-  },
-  winnerBadge: {
-    ...typography.small,
-    color: colors.accent,
-    fontWeight: '600',
-    marginTop: spacing.xs,
-    textTransform: 'uppercase',
+  /** Slot for inline cohort social proof — sits between preview + CTAs. */
+  cohortSlot: {
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.lg,
+    alignItems: 'flex-start',
   },
   ctaContainer: {
+    gap: spacing.md,
+    alignItems: 'stretch',
+  },
+  /**
+   * Cool-path link — small, secondary; the emerald hot-path CTA above
+   * carries the visual weight per design § 4e ("Just give me the app"
+   * is the skim-readers fallback).
+   */
+  skipLink: {
+    paddingVertical: spacing.sm,
     alignItems: 'center',
   },
-  primaryButton: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing['2xl'],
-    borderRadius: radii.button,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-    width: '100%',
-  },
-  primaryButtonText: {
+  skipLinkText: {
     ...typography.body,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    color: colors.text.secondary,
+    textDecorationLine: 'underline',
   },
   privacyNote: {
     ...typography.small,
     color: colors.text.secondary,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     textAlign: 'center',
   },
   fallbackTitle: {
