@@ -353,5 +353,40 @@
   "onboarding.s7.title": "كيف تعرّف نفسك؟",
   "onboarding.s7.male": "ذكر",
   "onboarding.s7.female": "أنثى",
-  "onboarding.s7.prefer_not_to_say": "أفضّل عدم الإجابة"
+  "onboarding.s7.prefer_not_to_say": "أفضّل عدم الإجابة",
+
+  "onboarding.s8.title": "إيش الأهم لما تشتري؟",
+  "onboarding.s8.subtitle": "اختر حتى ٣",
+  "onboarding.s8.priority_price": "أفضل سعر",
+  "onboarding.s8.priority_quality": "الجودة",
+  "onboarding.s8.priority_brand_reputation": "ماركة موثوقة",
+  "onboarding.s8.priority_durability": "متين على المدى الطويل",
+  "onboarding.s8.priority_latest_features": "أحدث الميزات",
+  "onboarding.s8.priority_ease_of_use": "سهل الاستخدام",
+  "onboarding.s8.priority_eco_friendly": "صديق للبيئة",
+  "onboarding.s8.priority_health_safety": "الصحة والسلامة",
+
+  "onboarding.s9.title": "وين عادةً تتسوق؟",
+  "onboarding.s9.budget": "اقتصادي",
+  "onboarding.s9.budget_range": "أقل من ١١ دينار",
+  "onboarding.s9.mid": "متوسط",
+  "onboarding.s9.mid_range": "١١–٥٧ دينار",
+  "onboarding.s9.premium": "فاخر",
+  "onboarding.s9.premium_range": "٥٧–١٨٩ دينار",
+
+  "onboarding.s10.title": "كيف تختار بين الماركات؟",
+  "onboarding.s10.brand_loyal": "أحب ماركاتي",
+  "onboarding.s10.brand_loyal_sub": "أبقى مع الأسماء الموثوقة.",
+  "onboarding.s10.function_first": "الوظيفة أولاً",
+  "onboarding.s10.function_first_sub": "المواصفات قبل الأسماء.",
+  "onboarding.s10.best_of_both": "الأفضل من الاثنين",
+  "onboarding.s10.best_of_both_sub": "حسب نوع الشراء.",
+
+  "onboarding.s11.title": "من وين سمعت عنا؟",
+  "onboarding.s11.friend": "من صديق",
+  "onboarding.s11.instagram": "إنستغرام",
+  "onboarding.s11.tiktok": "تيك توك",
+  "onboarding.s11.app_store": "بحث في آب ستور",
+  "onboarding.s11.google": "بحث جوجل",
+  "onboarding.s11.other": "مكان آخر"
 }

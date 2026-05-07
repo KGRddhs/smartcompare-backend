@@ -353,5 +353,40 @@
   "onboarding.s7.title": "How do you identify?",
   "onboarding.s7.male": "Male",
   "onboarding.s7.female": "Female",
-  "onboarding.s7.prefer_not_to_say": "Prefer not to say"
+  "onboarding.s7.prefer_not_to_say": "Prefer not to say",
+
+  "onboarding.s8.title": "What matters most when you buy?",
+  "onboarding.s8.subtitle": "Pick up to 3",
+  "onboarding.s8.priority_price": "Best price",
+  "onboarding.s8.priority_quality": "Quality",
+  "onboarding.s8.priority_brand_reputation": "Trusted brand",
+  "onboarding.s8.priority_durability": "Built to last",
+  "onboarding.s8.priority_latest_features": "Latest features",
+  "onboarding.s8.priority_ease_of_use": "Easy to use",
+  "onboarding.s8.priority_eco_friendly": "Eco-friendly",
+  "onboarding.s8.priority_health_safety": "Health & safety",
+
+  "onboarding.s9.title": "Where do you usually shop?",
+  "onboarding.s9.budget": "Budget-savvy",
+  "onboarding.s9.budget_range": "Under 11 BHD",
+  "onboarding.s9.mid": "Mid-range",
+  "onboarding.s9.mid_range": "11–57 BHD",
+  "onboarding.s9.premium": "Premium",
+  "onboarding.s9.premium_range": "57–189 BHD",
+
+  "onboarding.s10.title": "How do you choose between brands?",
+  "onboarding.s10.brand_loyal": "Brand-loyal",
+  "onboarding.s10.brand_loyal_sub": "I stick with names I trust.",
+  "onboarding.s10.function_first": "Function-first",
+  "onboarding.s10.function_first_sub": "Specs over labels.",
+  "onboarding.s10.best_of_both": "Best of both",
+  "onboarding.s10.best_of_both_sub": "Mix it up — depends on the buy.",
+
+  "onboarding.s11.title": "Where did you hear about us?",
+  "onboarding.s11.friend": "From a friend",
+  "onboarding.s11.instagram": "Instagram",
+  "onboarding.s11.tiktok": "TikTok",
+  "onboarding.s11.app_store": "App Store search",
+  "onboarding.s11.google": "Google search",
+  "onboarding.s11.other": "Somewhere else"
 }
