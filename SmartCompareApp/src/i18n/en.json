@@ -404,5 +404,12 @@
   "onboarding.s14.stage_2": "Calibrating to your region",
   "onboarding.s14.stage_3": "Tuning to your priorities",
   "onboarding.s14.stage_4": "Crafting your shopping advisor",
-  "onboarding.s14.peer_label": "cohort peers"
+  "onboarding.s14.peer_label": "cohort peers",
+
+  "onboarding.s15.title": "Your shopping advisor is ready",
+  "onboarding.s15.match_quality": "Match",
+  "onboarding.s15.top_priority": "Top priority",
+  "onboarding.s15.budget_tier": "Budget tier",
+  "onboarding.s15.peer_count": "Peers in your region",
+  "onboarding.s15.cta": "Compare your first product"
 }

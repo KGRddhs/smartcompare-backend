@@ -404,5 +404,12 @@
   "onboarding.s14.stage_2": "نُعاير حسب منطقتك",
   "onboarding.s14.stage_3": "نضبط حسب أولوياتك",
   "onboarding.s14.stage_4": "نصنع مستشار التسوّق الخاص بك",
-  "onboarding.s14.peer_label": "من أمثالك"
+  "onboarding.s14.peer_label": "من أمثالك",
+
+  "onboarding.s15.title": "مستشار التسوّق جاهز",
+  "onboarding.s15.match_quality": "التطابق",
+  "onboarding.s15.top_priority": "أولويتك الأولى",
+  "onboarding.s15.budget_tier": "فئة الميزانية",
+  "onboarding.s15.peer_count": "أمثالك في منطقتك",
+  "onboarding.s15.cta": "قارن أول منتج لك"
 }
