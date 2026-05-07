@@ -26,7 +26,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
-import { MessageCircle, Copy as CopyIcon, Send, AtSign, Camera } from 'lucide-react-native';
+import { MessageCircle, Copy as CopyIcon, Send, AtSign, Camera, Sparkles, Gift } from 'lucide-react-native';
 import { colors, spacing, radii, typography } from '../theme';
 import { createShare, ReferralError, ShareTarget, CreateShareResult } from '../services/referralService';
 
@@ -190,6 +190,37 @@ export default function ShareBottomSheet({
           <Text style={styles.title}>{t('referrals.share.title')}</Text>
           <Text style={styles.subtitle}>{t('referrals.share.subtitle')}</Text>
 
+          {/* Phase 4 § 4e — gamified reward block. Surfaces what the
+              sender unlocks ("+1 Deep Review credit now, +5 if they
+              sign up"). Sits above the privacy toggles so it carries
+              the lift before the user thinks about what to share. */}
+          <View testID="share-reward-block" style={styles.rewardBlock}>
+            <View style={styles.rewardHeader}>
+              <Sparkles size={16} color={colors.accent} />
+              <Text style={styles.rewardTitle}>
+                {t('referrals.share.reward.title', {
+                  defaultValue: "You'll unlock",
+                })}
+              </Text>
+            </View>
+            <View style={styles.rewardRow}>
+              <Gift size={14} color={colors.accent} />
+              <Text style={styles.rewardLine}>
+                {t('referrals.share.reward.now', {
+                  defaultValue: '+1 Deep Review credit now',
+                })}
+              </Text>
+            </View>
+            <View style={styles.rewardRow}>
+              <Sparkles size={14} color={colors.accent} />
+              <Text style={styles.rewardLine}>
+                {t('referrals.share.reward.later', {
+                  defaultValue: "+5 comparisons if they sign up",
+                })}
+              </Text>
+            </View>
+          </View>
+
           {/* Privacy toggles (3 togglable + 1 locked OFF) */}
           <View style={styles.section}>
             <View style={styles.toggleRow}>
@@ -327,6 +358,41 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: spacing.base,
+  },
+  /**
+   * Phase 4 § 4e — gamified reward block. Sits between the subtitle
+   * and the privacy toggles. accentLight surface so it reads as a
+   * "rewards card" without competing with the emerald CTAs below.
+   */
+  rewardBlock: {
+    backgroundColor: colors.accentLight,
+    borderRadius: radii.card,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    gap: spacing.xs,
+  },
+  rewardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  rewardTitle: {
+    ...typography.caption,
+    color: colors.text.primary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  rewardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  rewardLine: {
+    ...typography.body,
+    color: colors.text.primary,
+    flex: 1,
   },
   toggleRow: {
     flexDirection: 'row',

@@ -228,6 +228,10 @@
 
   "referrals.share.title": "أرسل مختصر ذكي",
   "referrals.share.subtitle": "هذا اللي نشاركه لما ترسل. ما نضمّن ميزانيتك ولا أجوبتك الشخصية أبداً.",
+  "referrals.share.reward.title": "ستحصل على",
+  "referrals.share.reward.now": "‎+١ رصيد Deep Review الآن",
+  "referrals.share.reward.later": "‎+٥ مقارنات إذا سجّلوا",
+  "referrals.share.toast.confirm": "✦ أرسلت لـ {{name}}. سنضيف ٥ أخرى إذا سجّلوا.",
   "referrals.share.toggle.name": "اعرض اسمي",
   "referrals.share.toggle.result": "اعرض نتيجتي",
   "referrals.share.toggle.reasons": "اعرض أسبابي",

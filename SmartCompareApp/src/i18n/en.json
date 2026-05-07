@@ -228,6 +228,10 @@
 
   "referrals.share.title": "Send a smart shortcut",
   "referrals.share.subtitle": "What we share when you send this. We never include your budget or personal answers.",
+  "referrals.share.reward.title": "You'll unlock",
+  "referrals.share.reward.now": "+1 Deep Review credit now",
+  "referrals.share.reward.later": "+5 comparisons if they sign up",
+  "referrals.share.toast.confirm": "✦ Sent to {{name}}. We'll add 5 more if they sign up.",
   "referrals.share.toggle.name": "Show my name",
   "referrals.share.toggle.result": "Show my result",
   "referrals.share.toggle.reasons": "Show my reasons",
