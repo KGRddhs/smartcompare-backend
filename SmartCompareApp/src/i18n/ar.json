@@ -449,5 +449,7 @@
   "results.tips.retailers": "قارن يقارن أكثر من ٢٥ متجراً — وليس متجراً واحداً.",
   "results.tips.work_for_you": "نعمل لصالحك — البائعون لا يدفعون لنا.",
   "results.tips.cohort_match": "ساعد ٤٧ شخصاً مثلك في {{governorate}} على تدريب هذه المقارنة.",
-  "results.tips.save_offline": "احفظ أي مقارنة لمراجعتها لاحقاً — حتى دون إنترنت."
+  "results.tips.save_offline": "احفظ أي مقارنة لمراجعتها لاحقاً — حتى دون إنترنت.",
+
+  "results.cohort_badge": "مثل {{count}} متسوقين في {{governorate}}"
 }

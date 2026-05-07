@@ -449,5 +449,7 @@
   "results.tips.retailers": "Qaren cross-checks 25+ retailers — never just one.",
   "results.tips.work_for_you": "We work for you — never paid by sellers.",
   "results.tips.cohort_match": "47 cohort peers in {{governorate}} helped train this match.",
-  "results.tips.save_offline": "Save any comparison to revisit later — even offline."
+  "results.tips.save_offline": "Save any comparison to revisit later — even offline.",
+
+  "results.cohort_badge": "Like {{count}} shoppers in {{governorate}}"
 }
