@@ -247,11 +247,16 @@ class ReferralService:
         # 5. Insert invite (privacy defaults to all-True at the DB level
         #    via the column default, so we only set it when the caller
         #    actually passes a non-default block).
+        # deep_review_expires_at = now + 3 days — Loop 1 invite-level
+        # expiry tracker (plan task 35; migration 018 column).
         invite_payload: dict[str, Any] = {
             "referrer_user_id": referrer_user_id,
             "comparison_id": comparison_id,
             "share_target": share_target,
             "device_fingerprint_hash": device_fingerprint_hash,
+            "deep_review_expires_at": (
+                datetime.now(timezone.utc) + timedelta(days=3)
+            ).isoformat(),
         }
         if privacy is not None:
             invite_payload["privacy"] = _normalize_privacy(privacy)
@@ -686,12 +691,18 @@ class ReferralService:
             return
 
         # 1. referral_redemptions row
+        # expires_at = now + 3 days. Source of truth for entitlement
+        # (path-(a) decision per plan task 35); usage_service sums
+        # active rows where expires_at > now() AND consumed_at IS NULL.
         self.client.table("referral_redemptions").insert(
             {
                 "invite_id": invite["id"],
                 "referrer_user_id": referrer_id,
                 "invitee_user_id": invitee_id,
                 "loop2_comparisons_granted": grant_amount,
+                "expires_at": (
+                    datetime.now(timezone.utc) + timedelta(days=3)
+                ).isoformat(),
             }
         ).execute()
 

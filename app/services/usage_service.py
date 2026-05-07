@@ -113,6 +113,36 @@ def _maybe_reset_referral_bonus(client, user_id: str, data: dict) -> dict:
     return data
 
 
+async def _get_active_referral_bonus(user_id: str) -> int:
+    """Sum the user's non-expired, non-consumed referral_redemptions grants.
+
+    Path-(a) entitlement source per plan task 35: this is the AUTHORITATIVE
+    bonus capacity — the INT counter `users.referral_bonus_comparisons_this_month`
+    stays for analytics/display only and MUST NOT drive entitlement.
+    Filters: expires_at > now() AND consumed_at IS NULL.
+    Fail-open returning 0 — a transient DB error must NOT silently inflate
+    the user's cap.
+    """
+    try:
+        client = get_admin_supabase_client()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        resp = (
+            client.table("referral_redemptions")
+            .select("loop2_comparisons_granted")
+            .eq("referrer_user_id", user_id)
+            .gt("expires_at", now_iso)
+            .is_("consumed_at", "null")
+            .execute()
+        )
+        rows = resp.data or []
+        return sum(int(r.get("loop2_comparisons_granted") or 0) for r in rows)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[usage] active referral bonus lookup failed for %s: %s", user_id, exc
+        )
+        return 0
+
+
 async def check_usage_allowed(user_id: str, access_token: str) -> dict:
     """Check if user can make a comparison.
 
@@ -127,7 +157,9 @@ async def check_usage_allowed(user_id: str, access_token: str) -> dict:
     user_info = await _get_user_tier_info(user_id)
     tier = user_info.get("subscription_tier", "free")
     lifetime_used = user_info.get("lifetime_comparisons_used", 0)
-    bonus = user_info.get("referral_bonus_comparisons_this_month") or 0
+    # Path-(a): entitlement bonus = sum of active referral_redemptions rows
+    # (not the INT counter, which stays for analytics only).
+    bonus = await _get_active_referral_bonus(user_id)
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
     monthly_cap = limits["monthly"] + bonus
 
@@ -208,13 +240,14 @@ async def record_comparison(user_id: str, access_token: str) -> None:
 async def get_usage_status(user_id: str, access_token: str) -> dict:
     """Get current usage counts and limits for display.
 
-    Reports the EFFECTIVE monthly cap (base + referral bonus) so the
-    frontend's "X / Y" display accurately reflects bonus capacity.
+    Reports the EFFECTIVE monthly cap (base + active referral bonus) so the
+    frontend's "X / Y" display accurately reflects entitlement.
+    Path-(a): bonus is summed from active redemptions, not the INT counter.
     """
     user_info = await _get_user_tier_info(user_id)
     tier = user_info.get("subscription_tier", "free")
     lifetime_used = user_info.get("lifetime_comparisons_used", 0)
-    bonus = user_info.get("referral_bonus_comparisons_this_month") or 0
+    bonus = await _get_active_referral_bonus(user_id)
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
     monthly_cap = limits["monthly"] + bonus
 
