@@ -24,7 +24,10 @@ import OnboardingScreen from './src/screens/OnboardingScreen';
 // Phase 2 redesign — gated by features.ENABLE_NEW_ONBOARDING (Task 24).
 // Default OFF; legacy 6-step flow remains the runtime path until canary.
 import { NewOnboardingHost } from './src/screens/onboarding/NewOnboardingHost';
-import { features } from './src/config/features';
+import { features, setFlagStableId } from './src/config/features';
+// Phase 5 Task 47 — canary bucketing primitive (deterministic per-user
+// stable id; powers the ENABLE_NEW_ONBOARDING getter at 10% rollout).
+import { getStableId, setStableUserId } from './src/config/featureBucket';
 // Phase 3 Task 32 — bottom-nav icon wrapper with active-state polish
 // (emerald + dot + scale bounce per design § 4c).
 import { TabBarIcon } from './src/components/TabBarIcon';
@@ -141,10 +144,23 @@ export default function App() {
         I18nManager.forceRTL(shouldBeRTL);
       }
 
+      // Phase 5 Task 47 — resolve stable id for the canary bucket BEFORE
+      // any code reads features.ENABLE_NEW_ONBOARDING. Uses persistent
+      // device-id pre-signup; switches to user.id below once auth lands.
+      // Doing this before setNeedsPreferences keeps the onboarding-gating
+      // render in step with the bucket's final value (no flicker).
+      const initialId = await getStableId();
+      setFlagStableId(initialId);
+
       // Auth check
       try {
         const authUser = await initializeAuth();
         if (authUser) {
+          // Re-bucket on the user.id post-login so the canary follows
+          // the user across devices (same user.id → same bucket).
+          setStableUserId(authUser.id);
+          setFlagStableId(authUser.id);
+
           setUser(authUser);
           setIsAuthenticated(true);
           setNeedsPreferences(!authUser.preferences_completed);
@@ -169,6 +185,11 @@ export default function App() {
     try {
       const authUser = await verifyAuth();
       if (authUser) {
+        // Phase 5 Task 47 — re-bucket on user.id at fresh login so the
+        // canary follows the user across devices.
+        setStableUserId(authUser.id);
+        setFlagStableId(authUser.id);
+
         setUser(authUser);
         setNeedsPreferences(!authUser.preferences_completed);
         setIsAuthenticated(true);
