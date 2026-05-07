@@ -171,12 +171,24 @@ async def _send_to_expo(payload: dict[str, Any]) -> None:
 
 
 def _loop2_copy(language: str, invitee_display_name: str, bonus: int) -> tuple[str, str]:
-    """Return (title, body) for the Loop 2 push in the user's language."""
+    """Return (title, body) for the Loop 2 push in the user's language.
+
+    Gift-framing copy per plan task 37 + design 4f: title celebrates the
+    invitee's action; body names the referrer, attributes the gift, and
+    surfaces the 3-day expiry deadline so the bonus has urgency without
+    alarm.
+    """
     name = invitee_display_name or "Your friend"
     if language == "Arabic":
-        title = f"{name} قررت بفضلك"
-        body = f"+{bonus} مقارنات إضافية هذا الشهر."
+        title = "صديقك قارن منتجاً للتو"
+        body = (
+            f"{name}، صديقك استخدم قارن للتو. "
+            f"حصلت على {bonus} مقارنات إضافية. تنتهي خلال 3 أيام."
+        )
     else:
-        title = f"{name} decided thanks to you."
-        body = f"+{bonus} comparisons added this month."
+        title = "Your friend just compared something"
+        body = (
+            f"{name}, your friend just used Qaren. "
+            f"You got {bonus} bonus comparisons. Expires in 3 days."
+        )
     return title, body
