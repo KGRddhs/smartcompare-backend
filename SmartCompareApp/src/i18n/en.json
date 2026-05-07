@@ -388,5 +388,11 @@
   "onboarding.s11.tiktok": "TikTok",
   "onboarding.s11.app_store": "App Store search",
   "onboarding.s11.google": "Google search",
-  "onboarding.s11.other": "Somewhere else"
+  "onboarding.s11.other": "Somewhere else",
+
+  "onboarding.s12.title": "388 GCC shoppers helped train this.",
+  "onboarding.s12.bullet_1": "Real people. Real buys. Real picks.",
+  "onboarding.s12.bullet_2": "Calibrated for the GCC — not the global average.",
+  "onboarding.s12.bullet_3": "Your peers refine it every time you compare.",
+  "onboarding.s12.continue": "Continue"
 }
