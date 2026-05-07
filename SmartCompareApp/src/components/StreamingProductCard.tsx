@@ -20,7 +20,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, I18nManager } from 'react-native';
 import { CounterTicker } from './CounterTicker';
 import { colors, spacing, typography, radii } from '../theme';
 
@@ -174,7 +174,9 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     fontWeight: '600',
     flexShrink: 1,
-    textAlign: 'right',
+    // Trailing-edge alignment in spec rows — flips to 'left' under RTL so
+    // the value stays opposite the spec label in both locales.
+    textAlign: I18nManager.isRTL ? 'left' : 'right',
   },
   priceRow: {
     flexDirection: 'row',

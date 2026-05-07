@@ -112,7 +112,9 @@ const styles = StyleSheet.create({
     borderRadius: ICON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    // marginEnd auto-flips with writing direction so the gap stays
+    // between the icon and its label under both LTR and RTL.
+    marginEnd: spacing.md,
   },
   glyph: {
     ...typography.caption,

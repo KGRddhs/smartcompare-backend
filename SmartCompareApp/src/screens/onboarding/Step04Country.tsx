@@ -138,7 +138,9 @@ const styles = StyleSheet.create({
   },
   flag: {
     fontSize: 28,
-    marginRight: spacing.md,
+    // marginEnd auto-flips with writing direction so the gap stays
+    // between the flag and its country label under both LTR and RTL.
+    marginEnd: spacing.md,
   },
   cardLabel: {
     ...typography.title,

@@ -22,6 +22,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Platform,
+  I18nManager,
 } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
@@ -494,7 +495,9 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.text.placeholder,
     marginTop: spacing.xs,
-    textAlign: 'right',
+    // Trailing-edge alignment — flips to 'left' under RTL so the counter
+    // stays at the bottom-trailing corner of the textarea in both locales.
+    textAlign: I18nManager.isRTL ? 'left' : 'right',
   },
   errorText: {
     ...typography.small,
