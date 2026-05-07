@@ -23,8 +23,24 @@ export function withTiming(toValue: number, _config?: any) {
   return toValue;
 }
 
+export function withSpring(toValue: number, _config?: any) {
+  return toValue;
+}
+
 export function withDelay(_delay: number, animation: any) {
   return animation;
+}
+
+export function useAnimatedReaction(_prepare: any, _react: any, _deps?: any) {
+  return undefined;
+}
+
+export function useDerivedValue(updater: () => any) {
+  return { value: updater() };
+}
+
+export function interpolate(value: number, _input: number[], output: number[]) {
+  return output[0] ?? value;
 }
 
 export function withSequence(...animations: any[]) {
