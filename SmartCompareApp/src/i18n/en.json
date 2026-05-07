@@ -424,5 +424,24 @@
   "onboarding.s17.preview_body": "Galaxy S24 just dropped to 219 BHD at Amazon — your saved compare.",
   "onboarding.s17.preview_meta": "now",
   "onboarding.s17.allow": "Allow notifications",
-  "onboarding.s17.not_now": "Not now"
+  "onboarding.s17.not_now": "Not now",
+
+  "home.hero": "Compare anything.",
+  "home.mode.scan": "Scan",
+  "home.mode.link": "Link",
+  "home.mode.type": "Type",
+  "home.permission.title": "Snap to compare",
+  "home.permission.body": "Qaren needs camera access so you can shoot products and compare them side-by-side.",
+  "home.permission.cta": "Turn on camera",
+  "home.permission.gallery_link": "Or pick from gallery",
+  "home.processing": "Pulling in product details",
+  "home.capture.more_title": "One more shot",
+  "home.capture.more_body": "Snap {{n}} products to compare them side-by-side.",
+  "home.capture.sharper_title": "Sharper match coming up",
+  "home.capture.sharper_body": "Try a clearer angle — sharper match every time.",
+  "home.detected.add_another": "Add a second product to compare them side-by-side.",
+  "home.detected.cta": "Snap another",
+  "home.url.placeholder1": "First product link (Amazon, Noon, etc.)",
+  "home.url.placeholder2": "Second product link",
+  "home.url.cta": "Compare links"
 }

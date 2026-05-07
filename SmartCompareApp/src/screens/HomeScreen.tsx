@@ -21,7 +21,7 @@ import {
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import { Camera, Search, Link2, RotateCcw, ImageIcon, X } from 'lucide-react-native';
+import { Camera, Search, Link2, RotateCcw, ImageIcon, X, Edit3 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
@@ -48,7 +48,13 @@ type HomeScreenProps = {
   onLogout?: () => void;
 };
 
-type InputMode = 'scan' | 'url';
+/**
+ * Phase 3 redesign — 3 equal-weight input modes per design § 4a.
+ * - 'scan' renders the live camera card
+ * - 'link' renders inline URL inputs in the same card real-estate
+ * - 'type' opens the SearchOverlay modal (text search)
+ */
+type InputMode = 'scan' | 'url' | 'type';
 
 export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
   const { t } = useTranslation();
@@ -173,7 +179,13 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
 
   const handleIdentifyAndCompare = async () => {
     if (capturedImages.length < MIN_IMAGES) {
-      Alert.alert('Need More Products', `Please capture at least ${MIN_IMAGES} products to compare.`);
+      Alert.alert(
+        t('home.capture.more_title', { defaultValue: 'One more shot' }),
+        t('home.capture.more_body', {
+          defaultValue: `Snap ${MIN_IMAGES} products to compare them side-by-side.`,
+          n: MIN_IMAGES,
+        })
+      );
       return;
     }
     if (!canCompare) {
@@ -195,10 +207,15 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
       } else if (result.action === 'need_second_product' && result.success) {
         setDetectedProduct(result.products[0]);
       } else {
-        const errorMsg =
-          ('error' in result && result.error) ||
-          'Could not identify products. Try clearer photos.';
-        Alert.alert('Identification Failed', errorMsg);
+        // Per § 4g — confident, never scary. Reframe as "sharper match" not "failed".
+        const fallback = t('home.capture.sharper_body', {
+          defaultValue: 'Try a clearer angle — sharper match every time.',
+        });
+        const detail = ('error' in result && result.error) ? result.error : fallback;
+        Alert.alert(
+          t('home.capture.sharper_title', { defaultValue: 'Sharper match coming up' }),
+          detail
+        );
       }
     } catch (error: any) {
       if (isUsageLimitError(error)) {
@@ -320,38 +337,43 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
 
   const cameraPermissionGranted = permission?.granted;
 
+  // Phase 3 redesign — § 4a. The mode chip rail also handles the 'type'
+  // mode by opening the existing SearchOverlay; the chip stays sticky-active
+  // while the overlay is up so the visual feedback is consistent.
+  const handleModeChange = (mode: InputMode) => {
+    setInputMode(mode);
+    if (mode === 'type') setSearchOverlayVisible(true);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header: logo + search bar */}
+      {/* Compressed brand header + hero per § 4a. */}
       <View style={styles.header}>
         <Text style={styles.logo}>{t('app.name')}</Text>
-        <TouchableOpacity
-          style={styles.searchBar}
-          onPress={() => setSearchOverlayVisible(true)}
-          activeOpacity={0.7}
-        >
-          <Search size={18} color={colors.text.placeholder} />
-          <Text style={styles.searchPlaceholder}>{t('home.search.placeholder')}</Text>
-        </TouchableOpacity>
       </View>
+
+      <Text style={styles.hero}>{t('home.hero')}</Text>
 
       {/* Category chips */}
       <CategorySelector value={selectedCategory} onChange={setSelectedCategory} />
 
-      {/* Camera viewfinder or permission request */}
-      <View style={styles.cameraArea}>
+      {/* Camera viewfinder or permission request — capped at ~40% screen height
+          per design § 4a. */}
+      <View style={styles.cameraArea} testID="home-camera-card">
         {!cameraPermissionGranted ? (
           <View style={styles.permissionCard}>
             <Camera size={48} color={colors.text.secondary} />
-            <Text style={styles.permissionTitle}>Camera Permission Needed</Text>
-            <Text style={styles.permissionText}>
-              Qaren needs camera access to photograph products for comparison.
-            </Text>
+            <Text style={styles.permissionTitle}>{t('home.permission.title')}</Text>
+            <Text style={styles.permissionText}>{t('home.permission.body')}</Text>
             <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-              <Text style={styles.permissionButtonText}>Grant Permission</Text>
+              <Text style={styles.permissionButtonText}>
+                {t('home.permission.cta')}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.galleryFallback} onPress={pickFromGallery}>
-              <Text style={styles.galleryFallbackText}>Or pick from gallery</Text>
+              <Text style={styles.galleryFallbackText}>
+                {t('home.permission.gallery_link')}
+              </Text>
             </TouchableOpacity>
           </View>
         ) : inputMode === 'scan' ? (
@@ -371,16 +393,24 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
             {detectedProduct && (
               <View style={styles.detectedBanner}>
                 <Text style={styles.detectedTitle}>
-                  Found: {detectedProduct.brand} {detectedProduct.name}
+                  {t('home.detected.found', {
+                    brand: detectedProduct.brand,
+                    name: detectedProduct.name,
+                    defaultValue: `Got ${detectedProduct.brand} ${detectedProduct.name}`,
+                  })}
                 </Text>
                 <Text style={styles.detectedSubtitle}>
-                  Only 1 product identified. Take another photo of a different product.
+                  {t('home.detected.add_another', {
+                    defaultValue: 'Add a second product to compare them side-by-side.',
+                  })}
                 </Text>
                 <TouchableOpacity
                   style={styles.retakeButton}
                   onPress={() => setDetectedProduct(null)}
                 >
-                  <Text style={styles.retakeButtonText}>Take Another Photo</Text>
+                  <Text style={styles.retakeButtonText}>
+                    {t('home.detected.cta', { defaultValue: 'Snap another' })}
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -413,7 +443,9 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
                 {isProcessing ? (
                   <View style={styles.processingContainer}>
                     <ActivityIndicator size="large" color={colors.accent} />
-                    <Text style={styles.processingText}>Identifying products...</Text>
+                    <Text style={styles.processingText}>
+                      {t('home.processing', { defaultValue: 'Pulling in product details' })}
+                    </Text>
                   </View>
                 ) : (
                   <>
@@ -462,7 +494,9 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
           <View style={styles.urlContainer}>
             <TextInput
               style={styles.urlInput}
-              placeholder="Product 1 URL (Amazon, Noon, etc.)"
+              placeholder={t('home.url.placeholder1', {
+                defaultValue: 'First product link (Amazon, Noon, etc.)',
+              })}
               placeholderTextColor={colors.text.placeholder}
               value={urlInput}
               onChangeText={setUrlInput}
@@ -472,7 +506,9 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
             />
             <TextInput
               style={styles.urlInput}
-              placeholder="Product 2 URL"
+              placeholder={t('home.url.placeholder2', {
+                defaultValue: 'Second product link',
+              })}
               placeholderTextColor={colors.text.placeholder}
               value={url2Input}
               onChangeText={setUrl2Input}
@@ -488,37 +524,46 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
               {loading ? (
                 <ActivityIndicator color="#FFF" size="small" />
               ) : (
-                <Text style={styles.urlCompareButtonText}>Compare URLs</Text>
+                <Text style={styles.urlCompareButtonText}>
+                  {t('home.url.cta', { defaultValue: 'Compare links' })}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
         )}
       </View>
 
-      {/* Mode chips + counter */}
-      <View style={styles.bottomBar}>
-        <View style={styles.modeChips}>
-          <TouchableOpacity
-            style={[styles.modeChip, inputMode === 'scan' && styles.modeChipActive]}
-            onPress={() => setInputMode('scan')}
-          >
-            <Camera size={14} color={inputMode === 'scan' ? '#FFF' : colors.text.secondary} />
-            <Text style={[styles.modeChipText, inputMode === 'scan' && styles.modeChipTextActive]}>
-              {t('home.scan')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modeChip, inputMode === 'url' && styles.modeChipActive]}
-            onPress={() => setInputMode('url')}
-          >
-            <Link2 size={14} color={inputMode === 'url' ? '#FFF' : colors.text.secondary} />
-            <Text style={[styles.modeChipText, inputMode === 'url' && styles.modeChipTextActive]}>
-              {t('home.url')}
-            </Text>
-          </TouchableOpacity>
-        </View>
+      {/* 3-mode equal chip rail per design § 4a — Scan / Link / Type.
+          Active state via accessibilityState.selected; on-device polish
+          adds the small emerald dot under the active chip in Phase 5. */}
+      <View style={styles.modeChipRail}>
+        <ModeChip
+          testID="home-mode-scan"
+          label={t('home.mode.scan', { defaultValue: 'Scan' })}
+          icon={<Camera size={14} color={inputMode === 'scan' ? colors.cta.onPrimary : colors.text.secondary} />}
+          active={inputMode === 'scan'}
+          onPress={() => handleModeChange('scan')}
+        />
+        <ModeChip
+          testID="home-mode-link"
+          label={t('home.mode.link', { defaultValue: 'Link' })}
+          icon={<Link2 size={14} color={inputMode === 'url' ? colors.cta.onPrimary : colors.text.secondary} />}
+          active={inputMode === 'url'}
+          onPress={() => handleModeChange('url')}
+        />
+        <ModeChip
+          testID="home-mode-type"
+          label={t('home.mode.type', { defaultValue: 'Type' })}
+          icon={<Edit3 size={14} color={inputMode === 'type' ? colors.cta.onPrimary : colors.text.secondary} />}
+          active={inputMode === 'type'}
+          onPress={() => handleModeChange('type')}
+        />
+      </View>
 
-        <ComparisonCounter used={used} total={total} />
+      <View style={styles.bottomBar}>
+        <View testID="home-counter-slot">
+          <ComparisonCounter used={used} total={total} />
+        </View>
       </View>
 
       {/* Loading status overlay */}
@@ -533,12 +578,47 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
       <Modal visible={searchOverlayVisible} animationType="slide" statusBarTranslucent>
         <SearchOverlay
           visible={searchOverlayVisible}
-          onClose={() => setSearchOverlayVisible(false)}
+          onClose={() => {
+            setSearchOverlayVisible(false);
+            // If user closed the overlay without searching, fall back to scan
+            // so the camera card surface stays useful.
+            if (inputMode === 'type') setInputMode('scan');
+          }}
           onSubmit={handleTextCompare}
           recentSearches={recentSearches}
         />
       </Modal>
     </SafeAreaView>
+  );
+}
+
+/**
+ * Equal-weight mode chip per design § 4a. Active state surfaced via
+ * accessibilityState.selected (testable) and visual fill (emerald). The
+ * small active-state dot below the chip lands in Phase 5 polish.
+ */
+interface ModeChipProps {
+  testID: string;
+  label: string;
+  icon: React.ReactNode;
+  active: boolean;
+  onPress: () => void;
+}
+
+function ModeChip({ testID, label, icon, active, onPress }: ModeChipProps) {
+  return (
+    <TouchableOpacity
+      testID={testID}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={[styles.modeChip, active && styles.modeChipActive]}
+    >
+      {icon}
+      <Text style={[styles.modeChipText, active && styles.modeChipTextActive]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
@@ -552,29 +632,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.md,
+    paddingBottom: spacing.xs,
   },
   logo: {
     ...typography.title,
     fontWeight: '700',
     color: colors.text.primary,
   },
-  searchBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bg.secondary,
-    borderRadius: radii.input,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-  },
-  searchPlaceholder: {
+  /** Compressed hero per design § 4a — "Compare anything." 16pt body weight. */
+  hero: {
     ...typography.body,
-    color: colors.text.placeholder,
+    fontWeight: '600',
+    color: colors.text.primary,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  /** 3-mode chip rail — equal weight, sits below the camera card. */
+  modeChipRail: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
 
   // Camera area
@@ -799,32 +877,32 @@ const styles = StyleSheet.create({
     ...typography.caption,
   },
 
-  // Bottom bar
+  // Bottom bar — now just hosts the freemium counter; mode chips moved
+  // above the camera card per § 4a redesign.
   bottomBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-  },
-  modeChips: {
-    flexDirection: 'row',
-    gap: spacing.sm,
+    alignItems: 'center',
   },
   modeChip: {
+    /* Equal-weight chips per § 4a — flex:1 so all three sit on a single
+       line and split the available width evenly. */
+    flex: 1,
     flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
+    paddingVertical: spacing.sm,
     borderRadius: radii.chip,
     borderWidth: 1,
     borderColor: colors.border.light,
     backgroundColor: colors.bg.secondary,
+    minHeight: 44,
   },
   modeChipActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: colors.cta.primary,
+    borderColor: colors.cta.primary,
   },
   modeChipText: {
     ...typography.caption,
@@ -832,7 +910,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   modeChipTextActive: {
-    color: '#FFF',
+    color: colors.cta.onPrimary,
     fontWeight: '600',
   },
 

@@ -424,5 +424,24 @@
   "onboarding.s17.preview_body": "غالاكسي إس٢٤ نزل لـ ٢١٩ دينار عند أمازون — مقارنتك المحفوظة.",
   "onboarding.s17.preview_meta": "الآن",
   "onboarding.s17.allow": "السماح بالإشعارات",
-  "onboarding.s17.not_now": "ليس الآن"
+  "onboarding.s17.not_now": "ليس الآن",
+
+  "home.hero": "قارن أي شيء.",
+  "home.mode.scan": "مسح",
+  "home.mode.link": "رابط",
+  "home.mode.type": "كتابة",
+  "home.permission.title": "صوّر لتقارن",
+  "home.permission.body": "قارن يحتاج الكاميرا لتصوير المنتجات ومقارنتها جنباً إلى جنب.",
+  "home.permission.cta": "شغّل الكاميرا",
+  "home.permission.gallery_link": "أو اختر من المعرض",
+  "home.processing": "نجلب تفاصيل المنتج",
+  "home.capture.more_title": "صورة واحدة بعد",
+  "home.capture.more_body": "صوّر {{n}} منتجات لمقارنتها جنباً إلى جنب.",
+  "home.capture.sharper_title": "مطابقة أدق قادمة",
+  "home.capture.sharper_body": "جرّب زاوية أوضح — مطابقة أدق في كل مرة.",
+  "home.detected.add_another": "أضف منتجاً ثانياً لمقارنتهما جنباً إلى جنب.",
+  "home.detected.cta": "صوّر آخر",
+  "home.url.placeholder1": "رابط المنتج الأول (أمازون، نون، إلخ.)",
+  "home.url.placeholder2": "رابط المنتج الثاني",
+  "home.url.cta": "قارن الروابط"
 }
