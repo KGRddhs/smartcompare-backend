@@ -443,5 +443,11 @@
   "home.detected.cta": "صوّر آخر",
   "home.url.placeholder1": "رابط المنتج الأول (أمازون، نون، إلخ.)",
   "home.url.placeholder2": "رابط المنتج الثاني",
-  "home.url.cta": "قارن الروابط"
+  "home.url.cta": "قارن الروابط",
+
+  "results.tips.cohort_priority": "٧٣٪ من المتسوقين في {{country}} في عمرك يعطون الأولوية لـ {{priority}}.",
+  "results.tips.retailers": "قارن يقارن أكثر من ٢٥ متجراً — وليس متجراً واحداً.",
+  "results.tips.work_for_you": "نعمل لصالحك — البائعون لا يدفعون لنا.",
+  "results.tips.cohort_match": "ساعد ٤٧ شخصاً مثلك في {{governorate}} على تدريب هذه المقارنة.",
+  "results.tips.save_offline": "احفظ أي مقارنة لمراجعتها لاحقاً — حتى دون إنترنت."
 }

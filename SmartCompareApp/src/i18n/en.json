@@ -443,5 +443,11 @@
   "home.detected.cta": "Snap another",
   "home.url.placeholder1": "First product link (Amazon, Noon, etc.)",
   "home.url.placeholder2": "Second product link",
-  "home.url.cta": "Compare links"
+  "home.url.cta": "Compare links",
+
+  "results.tips.cohort_priority": "73% of {{country}} shoppers your age prioritize {{priority}}.",
+  "results.tips.retailers": "Qaren cross-checks 25+ retailers — never just one.",
+  "results.tips.work_for_you": "We work for you — never paid by sellers.",
+  "results.tips.cohort_match": "47 cohort peers in {{governorate}} helped train this match.",
+  "results.tips.save_offline": "Save any comparison to revisit later — even offline."
 }
