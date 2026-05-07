@@ -14,6 +14,7 @@ export {
   SettingsIcon,
   PlusIcon,
 } from './UtilityIcons';
+export { ScanIcon, LinkIcon, TypeIcon } from './ModeIcons';
 
 /**
  * Mirror direction-bearing icons (arrows, share, chevrons) under RTL.
