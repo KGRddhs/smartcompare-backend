@@ -398,5 +398,11 @@
 
   "onboarding.s13.title": "Time to build your shopping advisor",
   "onboarding.s13.subtitle": "Tuned to your priorities. Trained by your peers.",
-  "onboarding.s13.cta": "Build my advisor"
+  "onboarding.s13.cta": "Build my advisor",
+
+  "onboarding.s14.stage_1": "388 GCC shoppers helped train this",
+  "onboarding.s14.stage_2": "Calibrating to your region",
+  "onboarding.s14.stage_3": "Tuning to your priorities",
+  "onboarding.s14.stage_4": "Crafting your shopping advisor",
+  "onboarding.s14.peer_label": "cohort peers"
 }

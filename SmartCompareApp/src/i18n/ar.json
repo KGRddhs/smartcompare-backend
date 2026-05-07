@@ -398,5 +398,11 @@
 
   "onboarding.s13.title": "حان وقت بناء مستشار التسوّق",
   "onboarding.s13.subtitle": "مُعاير لأولوياتك. مُدرَّب بأمثالك.",
-  "onboarding.s13.cta": "ابنِ مستشاري"
+  "onboarding.s13.cta": "ابنِ مستشاري",
+
+  "onboarding.s14.stage_1": "٣٨٨ متسوّق خليجي ساعدوا في تدريب هذا",
+  "onboarding.s14.stage_2": "نُعاير حسب منطقتك",
+  "onboarding.s14.stage_3": "نضبط حسب أولوياتك",
+  "onboarding.s14.stage_4": "نصنع مستشار التسوّق الخاص بك",
+  "onboarding.s14.peer_label": "من أمثالك"
 }
