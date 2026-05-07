@@ -21,7 +21,13 @@ import {
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import { Camera, Search, Link2, RotateCcw, ImageIcon, X, Edit3 } from 'lucide-react-native';
+import { Camera, RotateCcw, ImageIcon, X } from 'lucide-react-native';
+// Custom mode icons (frontend-visual Task #51) — drop-in replacements for
+// Lucide Camera/Link2/Edit3 inside the 3-mode chip rail per design § 5a
+// "Mode | 3 | Scan, Link, Type". Lucide imports above stay for the
+// camera card body (capture row, gallery, flip-camera) per § 5a's
+// "~15 Lucide icons retained (utility)" provision.
+import { ScanIcon, LinkIcon, TypeIcon } from '../icons';
 import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
@@ -540,21 +546,21 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         <ModeChip
           testID="home-mode-scan"
           label={t('home.mode.scan', { defaultValue: 'Scan' })}
-          icon={<Camera size={14} color={inputMode === 'scan' ? colors.cta.onPrimary : colors.text.secondary} />}
+          icon={<ScanIcon size={14} color={inputMode === 'scan' ? colors.cta.onPrimary : colors.text.secondary} />}
           active={inputMode === 'scan'}
           onPress={() => handleModeChange('scan')}
         />
         <ModeChip
           testID="home-mode-link"
           label={t('home.mode.link', { defaultValue: 'Link' })}
-          icon={<Link2 size={14} color={inputMode === 'url' ? colors.cta.onPrimary : colors.text.secondary} />}
+          icon={<LinkIcon size={14} color={inputMode === 'url' ? colors.cta.onPrimary : colors.text.secondary} />}
           active={inputMode === 'url'}
           onPress={() => handleModeChange('url')}
         />
         <ModeChip
           testID="home-mode-type"
           label={t('home.mode.type', { defaultValue: 'Type' })}
-          icon={<Edit3 size={14} color={inputMode === 'type' ? colors.cta.onPrimary : colors.text.secondary} />}
+          icon={<TypeIcon size={14} color={inputMode === 'type' ? colors.cta.onPrimary : colors.text.secondary} />}
           active={inputMode === 'type'}
           onPress={() => handleModeChange('type')}
         />

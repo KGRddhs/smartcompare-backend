@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../hooks/useLanguage';
 import { Button } from '../../components/Button';
 import { ProgressBar } from '../../components/ProgressBar';
+import { BackIcon, flipForRTL } from '../../icons';
 import { trackEvents } from '../../services/api';
 import { colors, spacing, typography } from '../../theme';
 import {
@@ -216,10 +217,15 @@ export function OnboardingFlow({
           testID="onboarding-back"
           onPress={handleBack}
           accessibilityRole="button"
-          accessibilityLabel="back"
+          accessibilityLabel={t('common.back', { defaultValue: 'Back' })}
           style={styles.backBtn}
         >
-          <Text style={styles.backText}>{t('common.back', { defaultValue: 'Back' })}</Text>
+          {/* Custom back chevron (Task 5) — flipped under RTL via the
+              direction-bearing helper. The icon-only target is wide
+              enough to keep ≥44pt touch surface (backBtn padding). */}
+          <View style={flipForRTL(isRTL)}>
+            <BackIcon size={24} color={colors.text.secondary} />
+          </View>
         </TouchableOpacity>
 
         <Button
@@ -376,11 +382,12 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   backBtn: {
+    // Padding gives the icon-only target ≥44pt touch surface.
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-  },
-  backText: {
-    ...typography.body,
-    color: colors.text.secondary,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
