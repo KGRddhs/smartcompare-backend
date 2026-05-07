@@ -89,6 +89,35 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
   // Comparison counter
   const { used, total, canCompare, shouldShowPaywall, increment } = useComparisonCounter();
 
+  /**
+   * Min-display floor (1.2s) for the Home→Results transition per design
+   * § 3 ("Even cached responses (~200ms) show loading for 1.2s minimum
+   * so the brand moment lands"). Each compare-handler stamps this ref
+   * at the start of work; `navigateToResultsWithFloor` uses the elapsed
+   * delta to delay navigation if we got back a cached response too fast.
+   * For real (non-cache) responses, the floor is already exceeded, so
+   * navigation is effectively immediate.
+   */
+  const loadingStartedAtRef = useRef<number | null>(null);
+  const MIN_LOADING_MS = 1200;
+  const navigateToResultsWithFloor = useCallback(
+    (result: any) => {
+      const startedAt = loadingStartedAtRef.current ?? Date.now();
+      const elapsed = Date.now() - startedAt;
+      const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
+      const advance = () => {
+        loadingStartedAtRef.current = null;
+        navigation.navigate('Results' as any, { result });
+      };
+      if (remaining === 0) {
+        advance();
+      } else {
+        setTimeout(advance, remaining);
+      }
+    },
+    [navigation]
+  );
+
   useFocusEffect(
     useCallback(() => {
       checkServer();
@@ -201,6 +230,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
 
     setIsProcessing(true);
     setDetectedProduct(null);
+    loadingStartedAtRef.current = Date.now();
 
     try {
       const imageUris = capturedImages.map((img) => img.uri);
@@ -209,7 +239,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
       if (result.action === 'comparison' && result.success) {
         await increment();
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        navigation.navigate('Results', { result });
+        navigateToResultsWithFloor(result);
       } else if (result.action === 'need_second_product' && result.success) {
         setDetectedProduct(result.products[0]);
       } else {
@@ -252,6 +282,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
     saveRecentSearch(query);
     setLoading(true);
     setStatusMessage(t('results.loading.finding'));
+    loadingStartedAtRef.current = Date.now();
     let navigated = false;
 
     const { subscribe, abort } = streamComparison(query.trim(), {
@@ -270,7 +301,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         if (!navigated && data.success) {
           navigated = true;
           await increment();
-          navigation.navigate('Results', { result: data });
+          navigateToResultsWithFloor(data);
         } else if (!data.success) {
           Alert.alert(t('common.error'), data.error || t('home.errors.comparison'));
         }
@@ -314,6 +345,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
     }
 
     setLoading(true);
+    loadingStartedAtRef.current = Date.now();
     try {
       const response = await api.post('/api/v1/url/compare', {
         url1: urlInput.trim(),
@@ -323,7 +355,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
       });
       if (response.data.success) {
         await increment();
-        navigation.navigate('Results', { result: response.data });
+        navigateToResultsWithFloor(response.data);
       } else {
         Alert.alert(t('common.error'), response.data.error || t('home.errors.comparison'));
       }
