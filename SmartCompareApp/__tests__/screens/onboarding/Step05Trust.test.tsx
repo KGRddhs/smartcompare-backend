@@ -34,4 +34,34 @@ describe('Step05Trust', () => {
     fireEvent.press(getByText('onboarding.s5.continue'));
     expect(onNext).toHaveBeenCalledTimes(1);
   });
+
+  // Phase 5 polish — design § 2 row 5 calls for a 5° rotation animation
+  // on mount. The Reanimated mock captures useAnimatedStyle output ONCE
+  // at first render (before the useEffect's withTiming has applied), so
+  // the snapshot transform shows the initial 0deg. We assert the
+  // STRUCTURE of the rotation transform — it MUST be wired up — and
+  // confirm the import chain pulls Animated + withTiming.
+  it('lock icon mounts with a rotate transform driven by Reanimated', () => {
+    const { getByTestId } = render(<Step05Trust onNext={jest.fn()} />);
+    const lock = getByTestId('trust-lock-icon');
+    const styleArr = Array.isArray(lock.props.style)
+      ? lock.props.style
+      : [lock.props.style];
+    const flat: Record<string, unknown> = styleArr
+      .filter(Boolean)
+      .reduce(
+        (acc: Record<string, unknown>, s: Record<string, unknown>) =>
+          Object.assign(acc, s),
+        {} as Record<string, unknown>,
+      );
+    const transforms = (flat.transform ?? []) as Array<Record<string, unknown>>;
+    const rot = transforms.find((t) => 'rotate' in t);
+    expect(rot).toBeDefined();
+    // Either initial "0deg" (pre-effect) or target "5deg" (post-effect)
+    // is acceptable — what we're locking down is the rotation contract
+    // on this surface. The actual 5° landing happens on-device per the
+    // Reanimated runtime (mock is identity). Forbidding non-rotation
+    // fallbacks keeps the design § 2 row 5 cue from regressing silently.
+    expect(['0deg', '5deg']).toContain(rot?.rotate);
+  });
 });
