@@ -311,5 +311,20 @@
   "profile.notifs.insight": "Decision Insights",
   "profile.notifs.cohort": "Peer Decision Updates",
   "profile.notifs.retrospective": "Decision Retrospectives",
-  "profile.notifs.errorSave": "Couldn't update right now. Try again?"
+  "profile.notifs.errorSave": "Couldn't update right now. Try again?",
+
+  "common.back": "Back",
+  "onboarding.finish": "Finish",
+  "onboarding.step_label": "Step {{current}} of {{total}}",
+
+  "onboarding.s1.title": "Look closer. Decide smarter.",
+  "onboarding.s1.subtitle": "Built for the GCC. By people like you.",
+  "onboarding.s1.continue": "Continue",
+  "onboarding.s1.sign_in_link": "Already have an account? Sign in",
+
+  "onboarding.s2.title": "Choose your language",
+
+  "onboarding.s3.title": "Stop guessing. Start knowing.",
+  "onboarding.s3.subtitle": "Side-by-side comparisons across 25+ retailers — picked for you.",
+  "onboarding.s3.continue": "Continue"
 }

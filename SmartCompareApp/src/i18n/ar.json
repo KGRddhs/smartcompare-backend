@@ -311,5 +311,20 @@
   "profile.notifs.insight": "تحديثات على قراراتك",
   "profile.notifs.cohort": "قرارات الناس قريبين منك",
   "profile.notifs.retrospective": "متابعة بعد القرار",
-  "profile.notifs.errorSave": "تعذر التحديث الآن. حاول مرة أخرى؟"
+  "profile.notifs.errorSave": "تعذر التحديث الآن. حاول مرة أخرى؟",
+
+  "common.back": "رجوع",
+  "onboarding.finish": "إنهاء",
+  "onboarding.step_label": "خطوة {{current}} من {{total}}",
+
+  "onboarding.s1.title": "انظر بدقة. قارن بذكاء.",
+  "onboarding.s1.subtitle": "صُمم لأهل الخليج. بأيدي ناس مثلك.",
+  "onboarding.s1.continue": "متابعة",
+  "onboarding.s1.sign_in_link": "لديك حساب بالفعل؟ تسجيل الدخول",
+
+  "onboarding.s2.title": "اختر لغتك",
+
+  "onboarding.s3.title": "كفاية تخمين. ابدأ تعرف.",
+  "onboarding.s3.subtitle": "مقارنات جنباً إلى جنب من أكثر من ٢٥ متجراً — مختارة لك.",
+  "onboarding.s3.continue": "متابعة"
 }
