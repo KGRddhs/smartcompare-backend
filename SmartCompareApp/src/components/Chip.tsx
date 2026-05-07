@@ -16,6 +16,9 @@ export function Chip({ label, selected = false, onPress, disabled = false }: Chi
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected, disabled }}
     >
       <Text style={[styles.text, selected && styles.textSelected]}>{label}</Text>
     </TouchableOpacity>
