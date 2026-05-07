@@ -85,6 +85,19 @@ describe('OnboardingFlow analytics — Task #53', () => {
     }
   });
 
+  it('stamps flow_variant="new" on every event for canary cohort segmentation', () => {
+    // Per test-qa Task #47 follow-up — every event from this flow is the
+    // "new" canary variant. Locked at first observation, never flips
+    // mid-session even if features.ENABLE_NEW_ONBOARDING somehow toggles.
+    const { getByTestId } = render(<OnboardingFlow onComplete={jest.fn()} />);
+    fireEvent.press(getByTestId('onboarding-next'));
+    const events = trackEventsMock.mock.calls.flatMap((c) => c[0] ?? []);
+    expect(events.length).toBeGreaterThan(0);
+    for (const e of events) {
+      expect(e.event_data?.flow_variant).toBe('new');
+    }
+  });
+
   it('fires onboarding_completed when Step 17 finishes', () => {
     const { getByTestId } = render(
       <OnboardingFlow onComplete={jest.fn()} initialStep={17} />

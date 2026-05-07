@@ -12,7 +12,7 @@
  * own animations.
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -114,11 +114,22 @@ export function OnboardingFlow({
   const [data, setData] = useState<OnboardingFlowData>({ ...(initialData ?? {}) });
 
   /**
-   * Canary-monitoring analytics (Task #53). Every payload carries
-   * `step_number`, `step_name`, and `locale` so the dashboards can
-   * compute per-step drop-off heatmaps + EN/AR cohort segments.
+   * Canary-monitoring analytics (Task #53 + #58 follow-up).
+   *
+   * Every payload carries:
+   * - `step_number`, `step_name` — for per-step drop-off heatmaps
+   * - `locale` — for EN/AR cohort segments
+   * - `flow_variant` — locked at "new" for cohort segmentation against
+   *   the legacy 6-step flow during canary (Tasks 47-48). Captured
+   *   ONCE at first observation and held in a ref — never flips
+   *   mid-session even if features.ENABLE_NEW_ONBOARDING somehow
+   *   toggles, so dashboards can join cleanly without joining on
+   *   bucket assignment.
+   *
    * `trackEvents` is fire-and-forget — never block the user.
    */
+  const flowVariantRef = useRef<'new'>('new');
+
   const fireEvent = useCallback(
     (event_type: string, extra?: Record<string, unknown>) => {
       void trackEvents([
@@ -128,6 +139,7 @@ export function OnboardingFlow({
             step_number: step,
             step_name: STEP_NAMES[step],
             locale: language,
+            flow_variant: flowVariantRef.current,
             ...(extra ?? {}),
           },
         },
@@ -147,6 +159,7 @@ export function OnboardingFlow({
           step_number: initialStep,
           step_name: STEP_NAMES[initialStep],
           locale: language,
+          flow_variant: flowVariantRef.current,
         },
       },
     ]);
