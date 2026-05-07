@@ -14,6 +14,14 @@ import { OnboardingFlow } from '../../../src/screens/onboarding/OnboardingFlow';
 
 // react-native-reanimated is mock-mapped via jest.config.js moduleNameMapper.
 
+// Stub `../../../src/services/api` so this navigation-focused suite doesn't
+// drag in expo-image-manipulator (whose ESM source isn't transformed by
+// ts-jest). Analytics-event behavior is verified in
+// OnboardingFlow.analytics.test.tsx with its own trackEvents mock.
+jest.mock('../../../src/services/api', () => ({
+  trackEvents: jest.fn().mockResolvedValue(undefined),
+}));
+
 let mockLanguage: 'en' | 'ar' = 'en';
 let mockIsRTL = false;
 jest.mock('../../../src/hooks/useLanguage', () => ({

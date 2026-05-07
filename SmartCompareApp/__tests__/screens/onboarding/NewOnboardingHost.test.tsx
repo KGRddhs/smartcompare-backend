@@ -35,6 +35,11 @@ jest.mock('../../../src/services/api', () => ({
   putDemographics: (...args: unknown[]) => putDemographicsMock(...args),
   savePreferences: (...args: unknown[]) => savePreferencesMock(...args),
   saveAttribution: (...args: unknown[]) => saveAttributionMock(...args),
+  // Task #53 — OnboardingFlow now fires analytics on mount + step
+  // completion. Stub here so the orchestrator's trackEvents call
+  // doesn't pull in the real api.ts (which transitively imports
+  // expo-image-manipulator and trips the ts-jest ESM transform).
+  trackEvents: jest.fn().mockResolvedValue(undefined),
 }));
 
 beforeEach(() => {

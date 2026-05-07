@@ -12,7 +12,7 @@
  * own animations.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,12 +25,38 @@ import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../hooks/useLanguage';
 import { Button } from '../../components/Button';
 import { ProgressBar } from '../../components/ProgressBar';
+import { trackEvents } from '../../services/api';
 import { colors, spacing, typography } from '../../theme';
 import {
   OnboardingFlowData,
   OnboardingStep,
   ONBOARDING_TOTAL_STEPS,
 } from './types';
+
+/**
+ * Stable English step names for analytics. The locale-resolved label
+ * lives in i18n; these stay fixed so canary dashboards can group
+ * events cleanly across EN/AR. Mirrors design § 2 screen names.
+ */
+const STEP_NAMES: Record<OnboardingStep, string> = {
+  1: 'welcome',
+  2: 'language',
+  3: 'value_prop',
+  4: 'country',
+  5: 'trust_bridge',
+  6: 'age_group',
+  7: 'gender',
+  8: 'priorities',
+  9: 'budget',
+  10: 'brand_attitude',
+  11: 'attribution',
+  12: 'cohort_proof',
+  13: 'anticipation',
+  14: 'theatrical_loading',
+  15: 'reveal',
+  16: 'account',
+  17: 'notifications',
+};
 
 interface OnboardingFlowProps {
   /** Fired once step 17 completes. Receives the full accumulated data. */
@@ -82,9 +108,50 @@ export function OnboardingFlow({
   initialData,
 }: OnboardingFlowProps) {
   const { t } = useTranslation();
-  const { isRTL } = useLanguage();
+  const { isRTL, language } = useLanguage();
   const [step, setStep] = useState<OnboardingStep>(initialStep);
   const [data, setData] = useState<OnboardingFlowData>({ ...(initialData ?? {}) });
+
+  /**
+   * Canary-monitoring analytics (Task #53). Every payload carries
+   * `step_number`, `step_name`, and `locale` so the dashboards can
+   * compute per-step drop-off heatmaps + EN/AR cohort segments.
+   * `trackEvents` is fire-and-forget — never block the user.
+   */
+  const fireEvent = useCallback(
+    (event_type: string, extra?: Record<string, unknown>) => {
+      void trackEvents([
+        {
+          event_type,
+          event_data: {
+            step_number: step,
+            step_name: STEP_NAMES[step],
+            locale: language,
+            ...(extra ?? {}),
+          },
+        },
+      ]);
+    },
+    [step, language]
+  );
+
+  // Fire `onboarding_started` once on initial mount. We stamp it with
+  // the entry step (initialStep, usually 1) so resumed-mid-flow sessions
+  // are distinguishable from fresh starts.
+  useEffect(() => {
+    void trackEvents([
+      {
+        event_type: 'onboarding_started',
+        event_data: {
+          step_number: initialStep,
+          step_name: STEP_NAMES[initialStep],
+          locale: language,
+        },
+      },
+    ]);
+    // Intentional: fire-once on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const valid = useMemo(() => isStepValid(step, data), [step, data]);
 
@@ -97,12 +164,17 @@ export function OnboardingFlow({
 
   const handleNext = useCallback(() => {
     if (!valid) return;
+    // Fire step_completed BEFORE advancing so the event payload's
+    // step_number reflects the step the user just finished. fireEvent
+    // closes over the current step value via the useCallback dep.
+    fireEvent('onboarding_step_completed');
     if (step >= ONBOARDING_TOTAL_STEPS) {
+      fireEvent('onboarding_completed');
       onComplete(data);
       return;
     }
     setStep((prev: OnboardingStep) => (prev + 1) as OnboardingStep);
-  }, [valid, step, data, onComplete]);
+  }, [valid, step, data, onComplete, fireEvent]);
 
   const handleBack = useCallback(() => {
     setStep((prev: OnboardingStep) => (prev > 1 ? ((prev - 1) as OnboardingStep) : prev));
