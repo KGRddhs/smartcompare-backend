@@ -394,5 +394,9 @@
   "onboarding.s12.bullet_1": "Real people. Real buys. Real picks.",
   "onboarding.s12.bullet_2": "Calibrated for the GCC — not the global average.",
   "onboarding.s12.bullet_3": "Your peers refine it every time you compare.",
-  "onboarding.s12.continue": "Continue"
+  "onboarding.s12.continue": "Continue",
+
+  "onboarding.s13.title": "Time to build your shopping advisor",
+  "onboarding.s13.subtitle": "Tuned to your priorities. Trained by your peers.",
+  "onboarding.s13.cta": "Build my advisor"
 }
