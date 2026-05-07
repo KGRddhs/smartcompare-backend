@@ -214,6 +214,12 @@
 
   "profile.styleProfile.title": "Your style profile",
   "profile.styleProfile.basedOn": "Based on {{count}} similar Qaren users",
+  "profile.styleProfile.matchStrength": "Match strength",
+  "profile.styleProfile.strengthHeadline": "✦ {{strength}}",
+  "profile.styleProfile.strength.strong": "Strong match",
+  "profile.styleProfile.strength.building": "Building match",
+  "profile.styleProfile.strength.forming": "Forming match",
+  "profile.styleProfile.peersInGovernorate": "{{count}} peers in {{governorate}}",
   "profile.styleProfile.priorities": "Top priorities",
   "profile.styleProfile.budget": "Typical budget",
   "profile.styleProfile.style": "Style",

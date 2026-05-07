@@ -33,13 +33,77 @@ export default function StyleProfileCard({ display, onEditPress }: StyleProfileC
 
   const priorities = joinPriorities(display.modal);
 
+  // Phase 5 § 4d — confidence drives the strength label + progress
+  // bar. high='Strong', medium='Building', low='Forming'. Bar fills
+  // 1.0 / 0.66 / 0.33 to give a "tap to improve" affordance for
+  // missing demographics.
+  const strengthByConfidence: Record<'high' | 'medium' | 'low', {
+    progress: number;
+    labelKey: string;
+    defaultValue: string;
+  }> = {
+    high: {
+      progress: 1.0,
+      labelKey: 'profile.styleProfile.strength.strong',
+      defaultValue: 'Strong match',
+    },
+    medium: {
+      progress: 0.66,
+      labelKey: 'profile.styleProfile.strength.building',
+      defaultValue: 'Building match',
+    },
+    low: {
+      progress: 0.33,
+      labelKey: 'profile.styleProfile.strength.forming',
+      defaultValue: 'Forming match',
+    },
+  };
+  const strength = strengthByConfidence[display.confidence];
+  const governorate =
+    typeof display.modal.governorate === 'string'
+      ? display.modal.governorate
+      : '';
+
   return (
     <Card style={styles.card}>
-      <Text style={styles.title}>{t('profile.styleProfile.title')}</Text>
-      <Text style={styles.persona}>{display.persona_label}</Text>
-      <Text style={styles.basedOn}>
-        {t('profile.styleProfile.basedOn', { count: display.n })}
+      {/* Phase 5 § 4d — match-strength eyebrow + sparkle + headline.
+          Replaces the buried "STYLE PROFILE" eyebrow + persona label
+          ordering. The persona label still appears below for context. */}
+      <Text style={styles.eyebrow}>
+        {t('profile.styleProfile.matchStrength', {
+          defaultValue: 'Match strength',
+        })}
       </Text>
+      <Text testID="style-profile-strength-headline" style={styles.headline}>
+        {t('profile.styleProfile.strengthHeadline', {
+          strength: t(strength.labelKey, { defaultValue: strength.defaultValue }),
+          defaultValue: `\u2728 ${strength.defaultValue}`,
+        })}
+      </Text>
+      {governorate ? (
+        <Text style={styles.subline}>
+          {t('profile.styleProfile.peersInGovernorate', {
+            count: display.n,
+            governorate,
+            defaultValue: `${display.n} peers in ${governorate}`,
+          })}
+        </Text>
+      ) : (
+        <Text style={styles.subline}>
+          {t('profile.styleProfile.basedOn', { count: display.n })}
+        </Text>
+      )}
+
+      {/* Strength progress bar — visual cue for "improve match" affordance. */}
+      <View
+        testID="style-profile-strength-bar"
+        {...{ 'data-progress': strength.progress }}
+        style={styles.progressTrack}
+      >
+        <View style={[styles.progressFill, { width: `${strength.progress * 100}%` }]} />
+      </View>
+
+      <Text style={styles.persona}>{display.persona_label}</Text>
 
       <View style={styles.divider} />
 
@@ -81,16 +145,51 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: spacing.base,
   },
-  title: {
+  /** Phase 5 § 4d — uppercase eyebrow above the match-strength headline. */
+  eyebrow: {
     ...typography.caption,
     fontWeight: '600',
     color: colors.text.secondary,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginBottom: spacing.xs,
   },
-  persona: {
+  /** Sparkle + "Strong match" / "Building match" / "Forming match". */
+  headline: {
     ...typography.title,
     color: colors.text.primary,
+    marginBottom: spacing.xs,
+  },
+  /** "47 peers in Capital" or basedOn fallback. */
+  subline: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginBottom: spacing.md,
+  },
+  /** Strength progress track + emerald fill. */
+  progressTrack: {
+    height: 4,
+    backgroundColor: colors.border.light,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+  },
+  progressFill: {
+    height: 4,
+    backgroundColor: colors.accent,
+    borderRadius: 2,
+  },
+  /** Legacy "STYLE PROFILE" eyebrow — retained for back-compat with
+      tests that still assert against `profile.styleProfile.title`.
+      Hidden visually by overriding to no-op. */
+  title: {
+    height: 0,
+    overflow: 'hidden',
+  },
+  persona: {
+    ...typography.body,
+    color: colors.text.primary,
+    fontWeight: '600',
     marginBottom: spacing.xs,
   },
   basedOn: {

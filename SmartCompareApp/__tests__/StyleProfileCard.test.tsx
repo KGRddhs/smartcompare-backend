@@ -50,9 +50,12 @@ describe('StyleProfileCard', () => {
     const { getByText, queryByText } = render(
       <StyleProfileCard display={FULL_DISPLAY} onEditPress={jest.fn()} />
     );
-    expect(getByText('profile.styleProfile.title')).toBeTruthy();
+    // Phase 5 § 4d redesign — the legacy "STYLE PROFILE" eyebrow was
+    // replaced by the prominent "Match strength" eyebrow + sparkle
+    // headline. The persona label still renders for context. basedOn
+    // is rendered when there's no governorate on the modal.
+    expect(getByText('profile.styleProfile.matchStrength')).toBeTruthy();
     expect(getByText('Quality-first focused buyer')).toBeTruthy();
-    // basedOn key uses interpolation (handled by i18next at runtime)
     expect(queryByText('profile.styleProfile.basedOn')).toBeTruthy();
   });
 
