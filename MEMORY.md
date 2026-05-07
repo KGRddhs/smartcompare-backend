@@ -50,6 +50,8 @@
 
     d. **Multi-step task commitments should land as TaskCreate'd subtasks**, not verbal commitments in a SendMessage reply. "Ship 5 polish items" → 5 TaskCreate calls with claim/in_progress/completed lifecycle. Resumption from any context loss is then just `TaskList` + claim next pending.
 
+14. **Build-mode canaries should default to 100, not 10. <100 hash-buckets test users out of the feature being tested. The 10/50/100 ramp is for App Store soft launch only.** PR #2 merged on `main` as `ee91a87`; canary bumped 10 → 100 in `462b399` for build/test mode. Pre-App-Store the operator resets the const to 10 (documented in `features.ts` + canary runbook).
+
 ---
 
 ## Session 42: Smart Decision Referral System (4-Opus team) — COMPLETE 2026-05-05

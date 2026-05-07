@@ -92,6 +92,12 @@ Major UX redesign across the Qaren mobile app: Cal-AI-Lite 17-step onboarding, b
 - `MEMORY.md` Session 43 entry (cohort exact-case rule reinforcement, jest mock anti-patterns, stash footgun, plan-revision pattern)
 - `CONTEXT_SESSION_LOG.md` Session 43 entry (this section)
 
+## Post-merge updates (2026-05-07)
+
+- **PR #2 merged on `main` as `ee91a87`** — full Qaren UX redesign landed.
+- **Canary bumped 10 → 100 (commit `462b399`)** for build/test mode. Rationale: <100 hash-buckets test users out of the feature being tested; build/test builds need everyone in the new flow. The 10/50/100 ramp is for App Store soft launch only.
+- **Pre-App-Store reset** to `CANARY_NEW_ONBOARDING_PERCENT = 10` will be documented in `features.ts` comment + canary runbook (`docs/CANARY_RUNBOOK.md`) so the soft-launch operator doesn't ship 100 to production by accident.
+
 ## Pending follow-ups
 - Task #48 (50→100% ramp) — operationally gated on 48h live metrics from Task #47 launch. NOT in-session work.
 - Task #57, #58/60 — Phase 5 polish (symmetric analytics, physical-device verifications). Frontend-flow owner; non-blocking.
