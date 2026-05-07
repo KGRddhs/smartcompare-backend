@@ -45,4 +45,27 @@ describe('Step12CohortProof', () => {
     );
     expect(getByTestId('s12-bar-chart')).toBeTruthy();
   });
+
+  // Phase 5 polish — design § 1 "Card slide-in: Stagger 80ms, slide 24px
+  // from below + fade". Each bullet has its own testID + animated style
+  // so we can confirm the stagger contract is wired (each bullet has a
+  // transform + opacity from the Reanimated useAnimatedStyle output).
+  it('renders 3 staggered bullet hosts with animation surfaces', () => {
+    const { getByTestId } = render(<Step12CohortProof onNext={jest.fn()} />);
+    [0, 1, 2].forEach((i) => {
+      const bullet = getByTestId(`s12-bullet-${i}`);
+      const styleArr = Array.isArray(bullet.props.style)
+        ? bullet.props.style
+        : [bullet.props.style];
+      const flat: Record<string, unknown> = styleArr
+        .filter(Boolean)
+        .reduce(
+          (acc: Record<string, unknown>, s: Record<string, unknown>) =>
+            Object.assign(acc, s),
+          {} as Record<string, unknown>,
+        );
+      expect(flat.opacity).toBeDefined();
+      expect(flat.transform).toBeDefined();
+    });
+  });
 });
