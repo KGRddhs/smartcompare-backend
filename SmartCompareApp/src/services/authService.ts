@@ -61,9 +61,9 @@ export interface AuthResponse {
   error?: string;
 }
 
-const USER_STORAGE_KEY = '@qaren_user';
-const TOKEN_STORAGE_KEY = '@qaren_token';
-const REFRESH_TOKEN_KEY = '@qaren_refresh_token';
+const USER_STORAGE_KEY = '@qaren_user'; // AsyncStorage — '@' prefix valid
+const TOKEN_STORAGE_KEY = 'qaren_token'; // SecureStore — '@' prefix INVALID, would error
+const REFRESH_TOKEN_KEY = 'qaren_refresh_token'; // SecureStore — '@' prefix INVALID
 
 /**
  * Register a new user.
