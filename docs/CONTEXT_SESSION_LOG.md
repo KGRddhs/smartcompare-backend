@@ -98,6 +98,10 @@ Major UX redesign across the Qaren mobile app: Cal-AI-Lite 17-step onboarding, b
 - **Canary bumped 10 → 100 (commit `462b399`)** for build/test mode. Rationale: <100 hash-buckets test users out of the feature being tested; build/test builds need everyone in the new flow. The 10/50/100 ramp is for App Store soft launch only.
 - **Pre-App-Store reset** to `CANARY_NEW_ONBOARDING_PERCENT = 10` will be documented in `features.ts` comment + canary runbook (`docs/CANARY_RUNBOOK.md`) so the soft-launch operator doesn't ship 100 to production by accident.
 
+## Post-merge hotfix (2026-05-07)
+
+- **`23fd819 fix(auth): drop '@' prefix from SecureStore token keys (was blocking login)`** — surfaced on first Expo Go launch from `main`. `TOKEN_STORAGE_KEY = '@qaren_token'` (and refresh sibling) used AsyncStorage-era `@` prefix; SecureStore rejects keys outside `[A-Za-z0-9._-]`, so every login threw `"Invalid key provided to SecureStore."` Pre-existing bug exposed by team's smoke test, NOT introduced by the redesign. Fix: drop `@` on both SecureStore keys; keep it on `USER_STORAGE_KEY` (still AsyncStorage). 596/596 tests still green. See MEMORY.md Session 43 lesson #15.
+
 ## Pending follow-ups
 - Task #48 (50→100% ramp) — operationally gated on 48h live metrics from Task #47 launch. NOT in-session work.
 - Task #57, #58/60 — Phase 5 polish (symmetric analytics, physical-device verifications). Frontend-flow owner; non-blocking.

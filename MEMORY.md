@@ -52,6 +52,8 @@
 
 14. **Build-mode canaries should default to 100, not 10. <100 hash-buckets test users out of the feature being tested. The 10/50/100 ramp is for App Store soft launch only.** PR #2 merged on `main` as `ee91a87`; canary bumped 10 → 100 in `462b399` for build/test mode. Pre-App-Store the operator resets the const to 10 (documented in `features.ts` + canary runbook).
 
+15. **SecureStore vs AsyncStorage allowed-character mismatch.** `expo-secure-store` keys must match `[A-Za-z0-9._-]` only. AsyncStorage tolerates `@` prefix as a community convention. When migrating storage backend (AsyncStorage → SecureStore), keep the key character set in mind: pre-redesign code had `TOKEN_STORAGE_KEY = '@qaren_token'` left over from an AsyncStorage-era convention; once the storage call became `SecureStore.setItemAsync`, every login threw `"Invalid key provided to SecureStore. Keys must not be empty and contain only alphanumeric characters, '.', '-', and '_'."` Surfaced post-merge during first Expo Go launch. Hotfix: drop the `@` (commit `23fd819`). USER_STORAGE_KEY (`@qaren_user`) stays — it's still on AsyncStorage where `@` is valid. Lint-rule worth adding: any string passed to `SecureStore.{get,set,delete}ItemAsync` should match the allowed regex.
+
 ---
 
 ## Session 42: Smart Decision Referral System (4-Opus team) — COMPLETE 2026-05-05
