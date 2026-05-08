@@ -14,6 +14,7 @@ SmartCompare (app brand: **Qaren / قارن**) — Intelligent product compariso
 4. **Multi-file features (3+ files, FE+BE):** use parallel agent teams (TeamCreate with 4 Opus agents: backend, frontend, test, qa).
 5. **After major features:** update CLAUDE.md, MEMORY.md, `docs/CONTEXT_SESSION_LOG.md`.
 6. **Path-restricted commits in team sessions:** `git commit -m "msg" -- <paths>` — NOT `git commit -- <paths> -m "msg"` (the `--` is a path separator; anything after it is treated as a path and `-m` errors).
+7. **Push before deleting branches.** `git push` before `git branch -d`. Local-only commits become orphaned (recoverable via `git cherry-pick <hash>` from reflog within ~30 days, but invisible to teammates and at risk of garbage collection).
 
 ## Critical: Two app/ Directories
 
