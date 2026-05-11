@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { I18nManager, StyleSheet } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, getStateFromPath, type LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Home, Clock, User as UserIcon } from 'lucide-react-native';
@@ -220,13 +220,37 @@ export default function App() {
 
   // Deep-link config — qaren.app/c/{token}?ref={code} resolves to
   // ReferralLanding pre-auth (gradual commitment per design 3.5/3.6).
-  const linking = {
+  // qaren.app/r/{code} + qaren://r/{code} resolve to Register with the
+  // code pre-filled (Bundle A §1.2). qaren://redeem?code={code} is also
+  // supported via the getStateFromPath rewrite below.
+  const linking: LinkingOptions<RootStackParamList> = {
     prefixes: ['qaren://', 'https://qaren.app'],
     config: {
       screens: {
         ReferralLanding: 'c/:share_token',
         InviteeQuiz: 'q/:share_token',
+        Auth: {
+          screens: {
+            Register: {
+              path: 'r/:code',
+              parse: { code: (c: string) => c.toUpperCase() },
+            },
+          },
+        },
       },
+    },
+    getStateFromPath: (path: string, options: any) => {
+      // Rewrite `redeem?code=QR-XXXXXX` → `r/QR-XXXXXX` so the existing
+      // pattern handles both URL shapes from social-share copy.
+      const redeemMatch = path.match(/^\/?redeem\??(.*)$/);
+      if (redeemMatch) {
+        const params = new URLSearchParams(redeemMatch[1]);
+        const code = params.get('code');
+        if (code) {
+          return getStateFromPath(`r/${code.toUpperCase()}`, options);
+        }
+      }
+      return getStateFromPath(path, options);
     },
   };
 

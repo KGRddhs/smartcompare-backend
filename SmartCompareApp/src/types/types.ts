@@ -3,6 +3,8 @@
  * Matches backend API response schema (verified Feb 14, 2026)
  */
 
+import type { NavigatorScreenParams } from '@react-navigation/native';
+
 // --- Product & Review types ---
 
 export interface RatingSource {
@@ -363,7 +365,7 @@ export interface AuthSession {
 // Root stack with Auth, Onboarding, Main tabs, Results modal, and Referral
 // landing flow (auth-OPTIONAL, reachable from deep links pre-auth).
 export type RootStackParamList = {
-  Auth: undefined;
+  Auth: NavigatorScreenParams<AuthStackParamList> | undefined;
   // mode='edit' opens preferences in edit mode (e.g. from Profile screen).
   // source='styleProfile' signals an "inferred preferences" banner is appropriate.
   Onboarding: { mode?: 'edit'; source?: 'styleProfile' } | undefined;
