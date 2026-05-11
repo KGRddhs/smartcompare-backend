@@ -222,13 +222,19 @@ async def get_user_comparisons(
     search: Optional[str] = None,
     access_token: Optional[str] = None,
 ) -> List[Dict]:
-    """Get user's comparison history, optionally filtered by product name search."""
+    """Get user's comparison history, optionally filtered by product name search.
+
+    Only schema_version=2 rows are returned. Legacy v1 rows are hidden from
+    the history list because they cannot be safely rendered by ResultsScreen.
+    See Bundle A design §5.2.
+    """
     try:
         client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
         query = (
             client.table("comparisons")
             .select("*")
             .eq("user_id", user_id)
+            .eq("schema_version", 2)
             .order("created_at", desc=True)
         )
 
@@ -243,8 +249,18 @@ async def get_user_comparisons(
         return []
 
 
-async def get_comparison_by_id(comparison_id: str, access_token: Optional[str] = None) -> Optional[Dict]:
-    """Get a specific comparison by ID"""
+async def get_comparison_by_id(
+    comparison_id: str,
+    access_token: Optional[str] = None,
+    include_legacy: bool = False,
+) -> Optional[Dict]:
+    """Get a specific comparison by ID.
+
+    By default v1 rows are hidden (return None) — they cannot be rendered by
+    ResultsScreen. Pass include_legacy=True when the caller needs to operate
+    on v1 rows regardless (e.g. the DELETE handler which lets users clean up
+    stale history). See Bundle A design §5.2.
+    """
     try:
         client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
         response = (
@@ -254,7 +270,10 @@ async def get_comparison_by_id(comparison_id: str, access_token: Optional[str] =
             .single()
             .execute()
         )
-        return response.data
+        row = response.data
+        if row and not include_legacy and row.get("schema_version", 1) < 2:
+            return None
+        return row
     except Exception as e:
         logger.error(f"Error getting comparison: {e}")
         return None
@@ -406,13 +425,17 @@ async def get_shared_comparison(share_token: str) -> Optional[Dict]:
 
 
 async def get_user_comparison_count(user_id: str, access_token: Optional[str] = None) -> int:
-    """Get total number of comparisons for a user"""
+    """Get total number of renderable (schema_version=2) comparisons for a user.
+
+    Excludes legacy v1 rows for parity with get_user_comparisons.
+    """
     try:
         client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
         response = (
             client.table("comparisons")
             .select("id", count="exact")
             .eq("user_id", user_id)
+            .eq("schema_version", 2)
             .execute()
         )
         return response.count or 0

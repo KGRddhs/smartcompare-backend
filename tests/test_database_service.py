@@ -1,9 +1,15 @@
-"""Tests for app/services/database_service.py — Bundle A §1.3 / §1.4."""
+"""Tests for app/services/database_service.py — Bundle A §1.3 / §1.4 / §1.5."""
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.database_service import _validate_renderable, save_comparison
+from app.services.database_service import (
+    _validate_renderable,
+    get_comparison_by_id,
+    get_user_comparison_count,
+    get_user_comparisons,
+    save_comparison,
+)
 
 
 class TestValidateRenderable:
@@ -126,3 +132,121 @@ async def test_save_comparison_legacy_alias_products_also_writes_v2():
     insert_arg = mock_table.insert.call_args[0][0]
     assert insert_arg["schema_version"] == 2
     assert insert_arg["product_names"] == ["X", "Y"]
+
+
+# ---------- Task 1.5: history list filters schema_version=2 ----------
+
+
+def _build_chain_mock(final_data):
+    """Build a fluent Supabase query chain that returns `final_data` on execute()."""
+    chain = MagicMock()
+    chain.select.return_value = chain
+    chain.eq.return_value = chain
+    chain.order.return_value = chain
+    chain.ilike.return_value = chain
+    chain.range.return_value = chain
+    chain.single.return_value = chain
+    execute_result = MagicMock()
+    execute_result.data = final_data
+    execute_result.count = (
+        len(final_data) if isinstance(final_data, list) else 1
+    )
+    chain.execute.return_value = execute_result
+    return chain
+
+
+@pytest.mark.asyncio
+async def test_get_user_comparisons_filters_schema_version_2():
+    """get_user_comparisons should call .eq('schema_version', 2)."""
+    chain = _build_chain_mock(final_data=[])
+    mock_client = MagicMock()
+    mock_client.table.return_value = chain
+    with patch(
+        "app.services.database_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        await get_user_comparisons(user_id="u1")
+
+    eq_calls = [c.args for c in chain.eq.call_args_list]
+    assert ("user_id", "u1") in eq_calls
+    assert ("schema_version", 2) in eq_calls
+
+
+@pytest.mark.asyncio
+async def test_get_user_comparison_count_filters_schema_version_2():
+    """get_user_comparison_count should call .eq('schema_version', 2)."""
+    chain = _build_chain_mock(final_data=[])
+    mock_client = MagicMock()
+    mock_client.table.return_value = chain
+    with patch(
+        "app.services.database_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        await get_user_comparison_count(user_id="u1")
+
+    eq_calls = [c.args for c in chain.eq.call_args_list]
+    assert ("user_id", "u1") in eq_calls
+    assert ("schema_version", 2) in eq_calls
+
+
+@pytest.mark.asyncio
+async def test_get_comparison_by_id_returns_none_for_v1_row():
+    """get_comparison_by_id returns None when row.schema_version < 2."""
+    row = {
+        "id": "c1",
+        "user_id": "u1",
+        "schema_version": 1,
+        "full_response": {"products": []},
+    }
+    chain = _build_chain_mock(final_data=row)
+    mock_client = MagicMock()
+    mock_client.table.return_value = chain
+    with patch(
+        "app.services.database_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        result = await get_comparison_by_id("c1")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_comparison_by_id_returns_v2_row():
+    """get_comparison_by_id returns the row when schema_version=2."""
+    row = {
+        "id": "c2",
+        "user_id": "u1",
+        "schema_version": 2,
+        "full_response": {
+            "overview": {"products": [{"name": "A"}, {"name": "B"}]},
+            "metadata": {"query": "A vs B"},
+        },
+    }
+    chain = _build_chain_mock(final_data=row)
+    mock_client = MagicMock()
+    mock_client.table.return_value = chain
+    with patch(
+        "app.services.database_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        result = await get_comparison_by_id("c2")
+    assert result == row
+
+
+@pytest.mark.asyncio
+async def test_get_comparison_by_id_include_legacy_returns_v1_row():
+    """When include_legacy=True the v1-filter is bypassed (used by DELETE flow)."""
+    row = {
+        "id": "c1",
+        "user_id": "u1",
+        "schema_version": 1,
+        "full_response": {"products": []},
+    }
+    chain = _build_chain_mock(final_data=row)
+    mock_client = MagicMock()
+    mock_client.table.return_value = chain
+    with patch(
+        "app.services.database_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        result = await get_comparison_by_id("c1", include_legacy=True)
+    assert result == row
