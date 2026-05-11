@@ -485,5 +485,64 @@
   "results.whyWePicked": "لماذا اخترنا هذا",
   "results.runnerUpWins": "أين يتفوق الوصيف",
   "results.whatsNext": "ما التالي؟",
-  "results.bestForYou": "الأفضل لك"
+  "results.bestForYou": "الأفضل لك",
+
+  "register.inviteCode.placeholder": "عندك رمز دعوة؟ (اختياري)",
+  "register.inviteCode.accessibility": "رمز الدعوة",
+  "register.inviteCode.invalid": "صيغة الرمز QR- متبوع بـ 6 خانات",
+
+  "referrals.share.messageWithLink": "أفكّر زيادة قبل أي شراء. قارن يحسم الجدال في 30 ثانية. جرّبه: {{link}} (أو استخدم رمز {{code}} داخل التطبيق)",
+
+  "profile.changePassword": "تغيير كلمة المرور",
+
+  "history.row.untitled": "مقارنة بدون عنوان",
+
+  "legal.loading": "جارٍ التحميل…",
+  "legal.error.title": "لحظة — الصفحة تأخذ وقتاً.",
+  "legal.error.retry": "اضغط لإعادة المحاولة",
+  "legal.offline.banner": "العرض من النسخة المحفوظة",
+
+  "contact.title": "اتصل بنا",
+  "contact.category.label": "الفئة",
+  "contact.category.bug": "خلل",
+  "contact.category.suggestion": "اقتراح",
+  "contact.category.business": "استفسار تجاري",
+  "contact.category.other": "أخرى",
+  "contact.subject.placeholder": "الموضوع (اختياري)",
+  "contact.message.placeholder": "اكتب لنا اللي ببالك…",
+  "contact.submit": "إرسال",
+  "contact.submit.again": "إرسال رسالة أخرى",
+  "contact.success.title": "شكراً — نقرأ كل رسالة.",
+  "contact.success.body": "نرد خلال يومَي عمل لو الرسالة تحتاج رد.",
+  "contact.error.generic": "لحظة — الإرسال ما تم. اضغط لإعادة المحاولة.",
+  "contact.error.rateLimit": "خذ لحظة قبل إرسال رسالة جديدة.",
+  "contact.email.fallback": "أو راسلنا بالإيميل →",
+
+  "preferences.priorities.title": "وش أهم شي بالنسبة لك؟",
+  "preferences.budget.title": "وش ميزانيتك عادة؟",
+  "preferences.lifestyle.title": "وش يوصفك؟",
+  "preferences.brand.title": "وش رأيك في العلامات التجارية؟",
+  "preferences.flow.continue": "متابعة",
+  "preferences.flow.save": "حفظ",
+  "preferences.error.saveFailed": "لحظة — الحفظ ما تم. اضغط لإعادة المحاولة.",
+  "preferences.lifestyle.fitness": "مهتم باللياقة",
+  "preferences.lifestyle.budget_conscious": "حريص على الميزانية",
+  "preferences.lifestyle.tech_enthusiast": "محب للتقنية",
+  "preferences.lifestyle.eco_conscious": "صديق للبيئة",
+  "preferences.lifestyle.luxury_lover": "محب للفخامة",
+  "preferences.lifestyle.minimalist": "بساطة",
+  "preferences.lifestyle.family_focused": "حياة عائلية",
+  "preferences.lifestyle.frequent_traveler": "كثير السفر",
+  "preferences.lifestyle.home_cook": "أطبخ في البيت",
+  "preferences.lifestyle.outdoors": "محب للطلعات",
+  "preferences.lifestyle.creative": "صاحب هواية",
+
+  "editProfile.title": "تعديل الملف",
+  "editProfile.avatar.placeholder": "إضافة الصورة قريباً",
+  "editProfile.section.account": "الحساب",
+  "editProfile.editStyleProfile": "تعديل ملف التفضيلات",
+  "editProfile.dangerZone": "إجراءات الحساب",
+  "editProfile.deleteAccount": "حذف الحساب",
+
+  "common.error.generic": "لحظة — في شي ما تم."
 }
