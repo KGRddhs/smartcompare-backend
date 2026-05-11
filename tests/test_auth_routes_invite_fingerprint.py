@@ -329,3 +329,72 @@ async def test_resolve_code_to_invite_id_creates_invite_row():
     assert insert_captured["redeemed_by_user_id"] == "invitee-uuid"
     assert insert_captured["source"] == "code_redeem"
     assert insert_captured.get("share_target") in ("other", None) or "share_target" in insert_captured
+
+
+# ---------- Task 1.8: audit log emitted on code redemption ----------
+
+
+def test_register_invite_code_emits_audit_event(fresh_register_success):
+    """Successful invite_code redemption fires log_audit_event('invite_code_redeemed', ...)."""
+    client = TestClient(app)
+    captured_events = []
+
+    async def _fake_audit(event_type, **kwargs):
+        captured_events.append({"event_type": event_type, **kwargs})
+
+    with patch.object(
+        referral_service_module,
+        "resolve_code_to_invite_id",
+        new=AsyncMock(return_value="resolved-invite-uuid"),
+    ), patch.object(
+        referral_service_module,
+        "link_invite_to_user",
+        new=AsyncMock(return_value=True),
+    ), patch(
+        "app.api.auth_routes.log_audit_event", side_effect=_fake_audit,
+    ):
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "u@example.com",
+                "password": "ValidP@ss123",
+                "invite_code": "QR-ABCDEF",
+            },
+        )
+
+    assert resp.status_code == 200
+    types = [e["event_type"] for e in captured_events]
+    assert "invite_code_redeemed" in types
+    redeem_event = next(e for e in captured_events if e["event_type"] == "invite_code_redeemed")
+    details = redeem_event.get("details") or {}
+    # Don't log the new user's identifying fields — just the code + invite id.
+    assert details.get("invite_code") == "QR-ABCDEF"
+    assert details.get("invite_id") == "resolved-invite-uuid"
+
+
+def test_register_invite_code_unknown_does_not_emit_redemption_audit(fresh_register_success):
+    """A 404 (unknown code) should NOT emit invite_code_redeemed."""
+    client = TestClient(app)
+    captured_events = []
+
+    async def _fake_audit(event_type, **kwargs):
+        captured_events.append({"event_type": event_type, **kwargs})
+
+    with patch.object(
+        referral_service_module,
+        "resolve_code_to_invite_id",
+        new=AsyncMock(return_value=None),
+    ), patch(
+        "app.api.auth_routes.log_audit_event", side_effect=_fake_audit,
+    ):
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "u@example.com",
+                "password": "ValidP@ss123",
+                "invite_code": "QR-ZZZZZZ",
+            },
+        )
+    assert resp.status_code == 404
+    types = [e["event_type"] for e in captured_events]
+    assert "invite_code_redeemed" not in types

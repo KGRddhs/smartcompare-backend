@@ -390,6 +390,23 @@ async def register(request: Request, body: RegisterRequest):
             # Linker failure must not break signup — Loop 2 just won't fire.
             logger.warning(f"link_invite_to_user failed (silent): {exc}")
 
+    # Bundle A §1.8 — audit-log code redemptions for abuse forensics.
+    # Only when the user typed a code (not invite_id deep-link); the invite
+    # row already encodes the deep-link path. Details deliberately omit PII —
+    # the user_id field handles identity, code + invite_id are sufficient
+    # for forensic correlation.
+    if body.invite_code and resolved_invite_id and new_user_id:
+        asyncio.create_task(log_audit_event(
+            event_type="invite_code_redeemed",
+            user_id=new_user_id,
+            ip_address=request.client.host if request.client else None,
+            endpoint="/api/v1/auth/register",
+            details={
+                "invite_code": body.invite_code,
+                "invite_id": resolved_invite_id,
+            },
+        ))
+
     return result
 
 
