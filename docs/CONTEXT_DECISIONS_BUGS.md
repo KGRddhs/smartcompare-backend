@@ -2,6 +2,29 @@
 
 # 8. ALL DECISIONS MADE
 
+## Session 43 (2026-05-06) — Pre-launch ToS Fact Base
+
+| Decision | Reasoning |
+|----------|-----------|
+| Minimum age 13+ general audience (teens + adults) | Cofounder direction. Natural use case is teen-researches / parent-buys via external retailer link. No in-app purchase, no ads, no tracking — keeps 13+ positioning low-risk. |
+| Apple Age Rating 12+ / Google Play Teen | Supplements/health-product info triggers "Medical/Treatment Information" or "Infrequent/Mild Drug References" but no other mature categories apply. Do NOT enroll in Apple Kids / Google Designed for Families (those are for under-12 apps with stricter SDK + parental-consent rules). |
+| ToS facts produced by code-anchored AI fact base, not lawyer | Cofounder direction (no lawyer engaged). Drafter AI receives `qaren_ai_tos_answers_english.md` (1716 lines, file:line evidence for every claim, pre-filled Apple/Google forms, PDPL article-level factual hooks). Output: ToS + Privacy Policy fit for App Store / Google Play submission. Lawyer review optional but recommended pre-publish. |
+| Strict "Undecided" markers, no fabricated legal identifiers | Risk of placeholder tags slipping into published legal text — especially if the doc is forwarded to a drafter AI by a non-author. Pre-flight check in fact base preamble forces drafter AI to ask for missing decisions before producing draft. |
+
+## Pre-launch known issues surfaced Session 43
+
+Discovered during 4-agent forensic analysis (backend Opus + frontend/db/legal Sonnet); reports saved at `docs/plans/2026-05-06-tos-evidence/`.
+
+- **`delete_user_cascade` cascade-completeness gap**: function explicitly DELETEs from 4 tables (user_events, comparison_feedback, comparisons, search_logs) and UPDATEs (does NOT delete) the `users` row. `admin_audit_log` rows referencing `user_id` are RETAINED. Cascade to `user_usage` / referral tables / `expo_push_token` depends on `public.users.id` FK CASCADE to `auth.users.id` — not visible in migrations 001-017 (public.users pre-existed). VERIFY in Supabase Studio → Database → Tables → users → Foreign Keys; OR extend `delete_user_cascade` with explicit deletes.
+- **Sentry URL query-string passthrough**: `_before_send` scrubs JWT/keys/Bearer/40+hex/wholesale `Authorization`/`X-Admin-Key`/`Cookie` headers, but does NOT scrub request URL query strings. `/api/v1/text/compare?q=USER_QUERY` reaches Sentry verbatim. Fix: extend `_before_send` to redact query strings.
+- **`expo-notifications` missing from app.json plugins**: SDK is in `package.json` but no plugin entry in `app.json`. EAS build may not auto-inject iOS `NSUserNotificationUsageDescription` / Android `POST_NOTIFICATIONS`. Verify on EAS build before App Store / Play submission.
+- **No clickwrap ToS consent at registration**: existing ToS Section 1 says "by using the app you agree" (browsewrap). Apple Guideline 5.1.1(v) / 1.3 / 5.1.4 expect clickwrap. Build a registration screen with 3 required checkboxes (13+ self-attestation, ToS+Privacy agreement, cross-border transfer acknowledgement); add `users.consent_*` columns.
+- **`ai_sharing_enabled` defaults to ON when undefined**: `ProfileScreen.tsx:102`. For PDPL Art. 4 / GDPR-equivalent rigor, opt-IN (default OFF) is safer; or build a prominent first-launch disclosure for opt-out.
+- **Existing privacy policy promises export feature that doesn't exist**: `app/legal/privacy_policy.md` Section 6 says users can "Request a copy of your data by contacting us" — no `GET /api/v1/auth/export` endpoint exists. Either build the export feature OR restate the right as a documented manual process via support email.
+- **ToS claims "max 15 referral comparisons per month" not enforced**: `app/services/referral_service.py:707-709` adds bonuses cumulatively without a 15-cap. Code path produces up to 60/month free or 120/month premium. Either enforce the cap or change the ToS language.
+- **Stale legal-doc brand mismatch**: `app/legal/{privacy_policy,terms_of_service}.md` say "SmartCompare" throughout, contact emails are `@smartcompare.app`. Both marked `*DRAFT*` but served live via `legal_routes`. Treat as throwaway templates; produce fresh docs from the fact base.
+- **Hosting regions unverified in repo**: Supabase project / Railway service / Upstash Redis / Sentry project regions are NOT recorded in code. Verify in each provider's dashboard before publishing the privacy policy's cross-border transfer section.
+
 ## Architecture Decisions
 
 | Decision | Reasoning |
