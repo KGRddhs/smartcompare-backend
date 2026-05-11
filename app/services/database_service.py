@@ -48,6 +48,27 @@ def get_supabase_client() -> Client:
     return get_admin_supabase_client()
 
 
+def _validate_renderable(payload: dict) -> bool:
+    """Return True iff payload has the minimum keys ResultsScreen needs.
+
+    Used by save_comparison() to gate which rows reach the history table —
+    only renderable rows are persisted. See Bundle A design §5.2.
+    """
+    if not isinstance(payload, dict):
+        return False
+    products = (
+        payload.get("overview", {}).get("products")
+        or payload.get("products")
+        or []
+    )
+    if len(products) < 2:
+        return False
+    if not all(isinstance(p, dict) and p.get("name") for p in products[:2]):
+        return False
+    query = payload.get("metadata", {}).get("query")
+    return bool(query)
+
+
 # ============================================
 # User Functions
 # ============================================
