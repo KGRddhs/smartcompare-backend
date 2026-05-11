@@ -113,14 +113,20 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // Detect new structured format vs old flat format
   const isNewFormat = !!result?.overview?.winner;
 
-  // Extract data
-  const products = result.products;
-  const comparison = result.comparison;
-  const winner_index = isNewFormat ? result.overview!.winner.product_index : result.winner_index;
-  const recommendation = isNewFormat ? result.overview!.winner.reason : result.recommendation;
-  const key_differences = result.key_differences;
-  const metadata = result.metadata;
-  const scoring = result.scoring;
+  // Bundle A §5.3 — defensive products access. v1 (legacy) rows used
+  // `result.products`; v2 (structured) rows use `result.overview.products`.
+  // History list filter now hides v1, but old client caches and SSE stragglers
+  // can still hit this with neither shape — render the empty state instead of
+  // crashing on `result.products[i].name`.
+  const products = ((result as any)?.overview?.products
+    ?? (result as any)?.products
+    ?? []) as Product[];
+  const comparison = result?.comparison;
+  const winner_index = isNewFormat ? result.overview!.winner.product_index : result?.winner_index;
+  const recommendation = isNewFormat ? result.overview!.winner.reason : result?.recommendation;
+  const key_differences = result?.key_differences;
+  const metadata = result?.metadata;
+  const scoring = result?.scoring;
 
   // Event tracking
   const mountTimeRef = useRef(Date.now());
@@ -322,7 +328,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // Get all spec keys across both products for diff comparison
   const getAllSpecKeys = (): string[] => {
     const keys = new Set<string>();
-    const specsProducts = isNewFormat ? result.specs?.products : products;
+    const specsProducts = isNewFormat ? result?.specs?.products : products;
     specsProducts?.forEach((p: any) => {
       if (p.specs) {
         filterSpecs(p.specs).forEach(([k]) => keys.add(k));
@@ -332,12 +338,47 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   };
 
   const isSpecDifferent = (key: string): boolean => {
-    const specsProducts = isNewFormat ? result.specs?.products : products;
+    const specsProducts = isNewFormat ? result?.specs?.products : products;
     if (!specsProducts || specsProducts.length < 2) return true;
     const v0 = specsProducts[0]?.specs?.[key];
     const v1 = specsProducts[1]?.specs?.[key];
     return String(v0) !== String(v1);
   };
+
+  // Bundle A §5.3 — render the empty state instead of crashing on
+  // `products[0].name` when the comparison payload is missing both shapes.
+  // This is belt-and-braces against the v1 history filter; v2 rows are
+  // gated at save time by _validate_renderable.
+  if (products.length < 2) {
+    return (
+      <View style={styles.container} testID="results-empty-state">
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+            <ArrowLeft size={24} color={colors.text.primary} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <View style={styles.headerButton} />
+        </View>
+        <View style={styles.emptyStateContainer}>
+          <Text style={styles.emptyStateTitle}>
+            {t('results.empty.title', { defaultValue: "This one's not loading." })}
+          </Text>
+          <Text style={styles.emptyStateBody}>
+            {t('results.empty.body', { defaultValue: 'Run a fresh comparison from Home.' })}
+          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.emptyStateCta}
+            accessibilityRole="button"
+          >
+            <Text style={styles.emptyStateCtaText}>
+              {t('results.empty.cta', { defaultValue: 'Go home' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -1002,6 +1043,34 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg.primary,
+  },
+  emptyStateContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  emptyStateTitle: {
+    ...typography.title,
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  emptyStateBody: {
+    ...typography.body,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  emptyStateCta: {
+    backgroundColor: colors.cta.primary,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radii.button,
+  },
+  emptyStateCtaText: {
+    color: colors.cta.onPrimary,
+    ...typography.bodyEmphasis,
   },
   header: {
     flexDirection: 'row',
