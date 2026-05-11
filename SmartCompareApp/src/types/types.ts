@@ -384,7 +384,9 @@ export type AuthStackParamList = {
   // invite_id is set when the user lands on Register from the invitee
   // quiz soft-signup CTA (F3.5) — forwarded to /auth/register so the
   // backend links redeemed_by_user_id on the pending referral invite.
-  Register: { invite_id?: string } | undefined;
+  // `code` arrives via deep link (qaren://redeem?code=QR-XXXXXX or
+  // qaren.app/r/QR-XXXXXX) and pre-fills the invite-code field on Register.
+  Register: { invite_id?: string; code?: string } | undefined;
   ForgotPassword: undefined;
 };
 
