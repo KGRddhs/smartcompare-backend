@@ -398,3 +398,133 @@ def test_register_invite_code_unknown_does_not_emit_redemption_audit(fresh_regis
     assert resp.status_code == 404
     types = [e["event_type"] for e in captured_events]
     assert "invite_code_redeemed" not in types
+
+
+# ---------- Task 1.9 idle-work: resolve_code edge cases ----------
+
+
+def test_register_invite_code_case_sensitive_lookup_returns_format_error(
+    fresh_register_success,
+):
+    """qr-abcdef (lowercase) is NOT 'QR-ABCDEF' — fails format validation pre-lookup."""
+    client = TestClient(app)
+    resp = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "u@example.com",
+            "password": "ValidP@ss123",
+            "invite_code": "qr-abcdef",
+        },
+    )
+    assert resp.status_code in (400, 422)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "QR-ABCDE",      # 5 chars
+        "QR-ABCDEFG",    # 7 chars
+        "QR-ABC0EF",     # 0 is excluded from alphabet
+        "QR-ABC1EF",     # 1 is excluded
+        "QR-ABCIEF",     # I is excluded
+        "QR-ABCOEF",     # O is excluded
+        "QRABCDEF",      # missing dash
+        "PR-ABCDEF",     # wrong prefix
+        " QR-ABCDEF",    # leading whitespace
+        "QR-ABCDEF ",    # trailing whitespace
+    ],
+)
+def test_register_invite_code_format_rejects_bad_inputs(bad, fresh_register_success):
+    """Comprehensive negative cases against the QR-XXXXXX regex."""
+    client = TestClient(app)
+    resp = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "u@example.com",
+            "password": "ValidP@ss123",
+            "invite_code": bad,
+        },
+    )
+    assert resp.status_code in (400, 422), f"unexpected accept for {bad!r}"
+
+
+@pytest.mark.asyncio
+async def test_resolve_code_to_invite_id_insert_returns_no_data_yields_none():
+    """If the insert succeeds but returns no data (RLS / driver edge), result is None."""
+    mock_client = MagicMock()
+
+    def table_side_effect(name):
+        chain = MagicMock()
+        if name == "users":
+            chain.select.return_value = chain
+            chain.eq.return_value = chain
+            chain.maybe_single.return_value = chain
+            chain.execute.return_value = MagicMock(
+                data={"id": "referrer-uuid", "referral_code": "QR-ABCDEF"}
+            )
+        else:
+            chain.insert.return_value = chain
+            chain.execute.return_value = MagicMock(data=[])  # empty
+        return chain
+
+    mock_client.table.side_effect = table_side_effect
+
+    with patch(
+        "app.services.referral_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        from app.services.referral_service import resolve_code_to_invite_id
+
+        result = await resolve_code_to_invite_id("QR-ABCDEF", "invitee-uuid")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_code_to_invite_id_lookup_exception_returns_none():
+    """If user-lookup raises, resolver must swallow and return None — never 500."""
+    mock_client = MagicMock()
+    chain = MagicMock()
+    chain.select.return_value = chain
+    chain.eq.return_value = chain
+    chain.maybe_single.return_value = chain
+    chain.execute.side_effect = RuntimeError("DB hiccup")
+    mock_client.table.return_value = chain
+    with patch(
+        "app.services.referral_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        from app.services.referral_service import resolve_code_to_invite_id
+
+        result = await resolve_code_to_invite_id("QR-ABCDEF", "invitee-uuid")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_code_to_invite_id_insert_exception_returns_none():
+    """If the insert path raises, resolver returns None (caller maps to 404)."""
+    mock_client = MagicMock()
+
+    def table_side_effect(name):
+        chain = MagicMock()
+        if name == "users":
+            chain.select.return_value = chain
+            chain.eq.return_value = chain
+            chain.maybe_single.return_value = chain
+            chain.execute.return_value = MagicMock(
+                data={"id": "referrer-uuid", "referral_code": "QR-ABCDEF"}
+            )
+        else:
+            chain.insert.return_value = chain
+            chain.execute.side_effect = RuntimeError("constraint blip")
+        return chain
+
+    mock_client.table.side_effect = table_side_effect
+
+    with patch(
+        "app.services.referral_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        from app.services.referral_service import resolve_code_to_invite_id
+
+        result = await resolve_code_to_invite_id("QR-ABCDEF", "invitee-uuid")
+    assert result is None
