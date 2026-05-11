@@ -4,11 +4,16 @@ Auth Routes - Authentication endpoints
 import asyncio
 import hashlib
 import logging
+import re
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Any, List, Literal, Optional
 from starlette.requests import Request
 from app.middleware.rate_limiter import limiter
+
+# Bundle A §1.1 — invite-code format. QR-XXXXXX with unambiguous alphabet
+# matching app/services/referral_service.py::_CODE_ALPHABET (no 0/1/I/L/O).
+_INVITE_CODE_RE = re.compile(r"^QR-[A-HJ-NP-Z2-9]{6}$")
 
 from app.services.auth_service import (
     register_user,
@@ -70,11 +75,22 @@ class RegisterRequest(BaseModel):
     # invite link's quiz flow (design 3.7, plan B3.5). Backend links the
     # referral_invites row so Loop 2 fires on the user's first comparison.
     invite_id: Optional[str] = Field(default=None, max_length=64)
+    # Bundle A §1.1 — typed-at-Register referral code (vs. deep-link invite_id).
+    invite_code: Optional[str] = Field(default=None, max_length=16)
 
     @field_validator("password")
     @classmethod
     def validate_password_strength(cls, v):
         return _validate_password_strength(v)
+
+    @field_validator("invite_code")
+    @classmethod
+    def validate_invite_code_format(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if not _INVITE_CODE_RE.match(v):
+            raise ValueError("INVITE_CODE_INVALID")
+        return v
 
 
 class LoginRequest(BaseModel):
@@ -301,6 +317,12 @@ async def register(request: Request, body: RegisterRequest):
     - Optional invite_id links the user to a pending referral invite (B3.5).
       Loop 2 itself fires later when the invitee runs their first comparison
       (handled by save_comparison_and_track_cohort).
+    - Bundle A §1.1: optional invite_code (typed at Register) is resolved
+      server-side into a referral_invites row before link_invite_to_user.
+    - Bundle A §1.5: X-Device-Fingerprint header locks the new user's
+      lifetime_comparisons_used counter to the highest value seen on this
+      device. Re-signups on the same device inherit prior usage so the
+      free tier can't be reset by deleting the account.
     """
     result = await register_user(body.email, body.password)
 
@@ -310,22 +332,63 @@ async def register(request: Request, body: RegisterRequest):
             detail=result.get("error", "Registration failed")
         )
 
+    new_user_id = (result.get("user") or {}).get("id")
+
+    # §1.5 — device fingerprint inheritance (best-effort, never blocks signup)
+    fp = request.headers.get("X-Device-Fingerprint")
+    if fp and new_user_id:
+        try:
+            admin_client = get_admin_supabase_client()
+            prior = (
+                admin_client.table("users")
+                .select("lifetime_comparisons_used")
+                .eq("device_fingerprint_hash", fp)
+                .order("lifetime_comparisons_used", desc=True)
+                .limit(1)
+                .execute()
+            )
+            inherited = 0
+            if prior.data:
+                inherited = prior.data[0].get("lifetime_comparisons_used", 0) or 0
+            admin_client.table("users").update(
+                {
+                    "device_fingerprint_hash": fp,
+                    "lifetime_comparisons_used": inherited,
+                }
+            ).eq("id", new_user_id).execute()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"device-fp inheritance failed (silent): {exc}")
+
+    # §1.1 — resolve typed invite_code → invite_id if invite_id not supplied
+    resolved_invite_id = body.invite_id
+    if body.invite_code and not resolved_invite_id and new_user_id:
+        from app.services import referral_service
+        resolved_invite_id = await referral_service.resolve_code_to_invite_id(
+            body.invite_code, new_user_id,
+        )
+        if resolved_invite_id is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "Invite code not found",
+                    "code": "INVITE_CODE_NOT_FOUND",
+                },
+            )
+
     # B3.5 — link invite to the new user (fire-and-forget, never blocks signup).
     # We resolve the function via app.services.referral_service so test-referral
     # can patch either `app.services.referral_service.link_invite_to_user` OR
     # `app.api.auth_routes.link_invite_to_user`. Module-attribute access (rather
     # than a top-of-file `from ... import`) makes the first patch path work.
-    if body.invite_id:
-        new_user_id = (result.get("user") or {}).get("id")
-        if new_user_id:
-            try:
-                from app.services import referral_service
-                await referral_service.link_invite_to_user(
-                    new_user_id, body.invite_id,
-                )
-            except Exception as exc:  # noqa: BLE001
-                # Linker failure must not break signup — Loop 2 just won't fire.
-                logger.warning(f"link_invite_to_user failed (silent): {exc}")
+    if resolved_invite_id and new_user_id:
+        try:
+            from app.services import referral_service
+            await referral_service.link_invite_to_user(
+                new_user_id, resolved_invite_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Linker failure must not break signup — Loop 2 just won't fire.
+            logger.warning(f"link_invite_to_user failed (silent): {exc}")
 
     return result
 
