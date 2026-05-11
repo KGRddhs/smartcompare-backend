@@ -250,3 +250,73 @@ async def test_get_comparison_by_id_include_legacy_returns_v1_row():
     ):
         result = await get_comparison_by_id("c1", include_legacy=True)
     assert result == row
+
+
+# ---------- Task 1.9: idle-work coverage on edge cases ----------
+
+
+@pytest.mark.asyncio
+async def test_get_comparison_by_id_missing_schema_version_treated_as_v1():
+    """A row without schema_version (legacy DB state) must be hidden by default."""
+    row = {"id": "c1", "user_id": "u1", "full_response": {"products": []}}
+    chain = _build_chain_mock(final_data=row)
+    mock_client = MagicMock()
+    mock_client.table.return_value = chain
+    with patch(
+        "app.services.database_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        result = await get_comparison_by_id("c1")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_comparison_by_id_handles_supabase_exception_returns_none():
+    """Any exception from the supabase call collapses to None (caller maps to 404)."""
+    chain = MagicMock()
+    chain.select.return_value = chain
+    chain.eq.return_value = chain
+    chain.single.return_value = chain
+    chain.execute.side_effect = RuntimeError("transient blip")
+    mock_client = MagicMock()
+    mock_client.table.return_value = chain
+    with patch(
+        "app.services.database_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        result = await get_comparison_by_id("c1")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_user_comparisons_search_param_preserves_v2_filter():
+    """When search is supplied, the schema_version=2 filter MUST still be applied."""
+    chain = _build_chain_mock(final_data=[])
+    mock_client = MagicMock()
+    mock_client.table.return_value = chain
+    with patch(
+        "app.services.database_service.get_admin_supabase_client",
+        return_value=mock_client,
+    ):
+        await get_user_comparisons(user_id="u1", search="iphone")
+    eq_calls = [c.args for c in chain.eq.call_args_list]
+    assert ("schema_version", 2) in eq_calls
+    chain.ilike.assert_called()
+    ilike_args = chain.ilike.call_args.args
+    assert ilike_args[0] == "query"
+    assert "iphone" in ilike_args[1]
+
+
+@pytest.mark.asyncio
+async def test_save_comparison_skips_payload_with_blank_query():
+    """A payload with two products but no metadata.query must be rejected."""
+    payload = {
+        "overview": {"products": [{"name": "A"}, {"name": "B"}]},
+        "metadata": {"query": ""},  # blank
+    }
+    with patch("app.services.database_service.get_supabase_client") as m:
+        result = await save_comparison(
+            full_response=payload, query="A vs B", user_id="u1"
+        )
+        m.assert_not_called()
+    assert result is None
