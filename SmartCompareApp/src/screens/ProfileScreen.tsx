@@ -16,20 +16,16 @@ import {
   Modal,
   SafeAreaView,
   Platform,
-  Switch,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
-  User,
   Globe,
-  MapPin,
   Sliders,
   Bell,
   FileText,
   ScrollText,
   MessageCircle,
   LogOut,
-  Trash2,
   ChevronRight,
   Lock,
   Shield,
@@ -37,8 +33,6 @@ import {
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { useLanguage } from '../hooks/useLanguage';
 import {
-  updateProfile,
-  updateEmail,
   changePassword,
   parseApiError,
   getCohortProfile,
@@ -47,7 +41,7 @@ import {
   savePreferences,
 } from '../services/api';
 import type { UserPreferences } from '../types';
-import { getSavedUser, logout, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
+import { getSavedUser, logout } from '../services/authService';
 import StyleProfileCard from '../components/StyleProfileCard';
 import ReferralStatusCard from '../components/ReferralStatusCard';
 import ToggleRow from '../components/ToggleRow';
@@ -64,11 +58,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   const [user, setUser] = useState<any>(null);
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
-
-  // Edit states
-  const [editingName, setEditingName] = useState(false);
-  const [nameLoading, setNameLoading] = useState(false);
-  const [nameError, setNameError] = useState('');
 
   // Password modal
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
@@ -206,28 +195,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     navigation.navigate('Onboarding', { mode: 'edit', source: 'styleProfile' });
   };
 
-  const handleUpdateName = async () => {
-    const trimmed = displayName.trim();
-    if (trimmed.length < 2) {
-      setNameError('Name must be at least 2 characters');
-      return;
-    }
-    setNameError('');
-    setNameLoading(true);
-    try {
-      const result = await updateProfile(trimmed);
-      if (result.success) {
-        setEditingName(false);
-      } else {
-        setNameError(result.error || 'Update failed');
-      }
-    } catch (err: any) {
-      setNameError(parseApiError(err).message);
-    } finally {
-      setNameLoading(false);
-    }
-  };
-
   const handleChangePassword = async () => {
     if (!currentPassword) { setPasswordError('Current password is required'); return; }
     if (newPassword.length < 6) { setPasswordError('Password must be at least 6 characters'); return; }
@@ -261,20 +228,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
         onPress: async () => {
           await logout();
           onLogout();
-        },
-      },
-    ]);
-  };
-
-  const handleDeleteAccount = () => {
-    Alert.alert(t('profile.deleteAccount'), t('profile.deleteConfirm'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('profile.deleteAccount'),
-        style: 'destructive',
-        onPress: async () => {
-          // TODO: call delete account API when available
-          Alert.alert('Not available', 'Account deletion coming soon.');
         },
       },
     ]);
