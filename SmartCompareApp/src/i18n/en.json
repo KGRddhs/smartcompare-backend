@@ -547,5 +547,24 @@
   "editProfile.dangerZone": "Account actions",
   "editProfile.deleteAccount": "Delete account",
 
-  "common.error.generic": "Hold on — something didn't go through."
+  "common.error.generic": "Hold on — something didn't go through.",
+
+  "home.capture.compareCta": "Compare {{count}} Products",
+
+  "auth.resetMessage": "If an account exists for {{email}}, you'll receive a reset link shortly.",
+
+  "register.benefits.title": "Free account includes",
+  "register.benefits.daily": "✓ 5 comparisons per day",
+  "register.benefits.ai": "✓ AI-powered product identification",
+  "register.benefits.price": "✓ Live price comparison",
+  "register.benefits.history": "✓ Comparison history",
+
+  "results.categorySwitched": "Category adjusted to {{category}}",
+  "results.bestForLabel": "Best for: {{useCase}}",
+  "results.metadata.elapsed": "Comparison took {{seconds}}s",
+  "results.metadata.cached": " | {{count}} cached",
+  "results.metadata.fresh": " | Fresh data",
+  "results.metadata.remainingDaily": "{{count}} comparisons remaining today",
+
+  "cohort.trainedBy": "{{count}} GCC shoppers helped train this"
 }

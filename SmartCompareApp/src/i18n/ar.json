@@ -547,5 +547,24 @@
   "editProfile.dangerZone": "إجراءات الحساب",
   "editProfile.deleteAccount": "حذف الحساب",
 
-  "common.error.generic": "لحظة — في شي ما تم."
+  "common.error.generic": "لحظة — في شي ما تم.",
+
+  "home.capture.compareCta": "قارن {{count}} منتجات",
+
+  "auth.resetMessage": "إذا كان عندك حساب بهالبريد {{email}}، بيوصلك رابط إعادة التعيين قريباً.",
+
+  "register.benefits.title": "الحساب المجاني يشمل",
+  "register.benefits.daily": "✓ ٥ مقارنات يومياً",
+  "register.benefits.ai": "✓ تعرّف ذكي على المنتجات",
+  "register.benefits.price": "✓ مقارنة أسعار مباشرة",
+  "register.benefits.history": "✓ سجل المقارنات",
+
+  "results.categorySwitched": "الفئة عُدّلت إلى {{category}}",
+  "results.bestForLabel": "الأنسب لـ: {{useCase}}",
+  "results.metadata.elapsed": "استغرقت المقارنة {{seconds}} ث",
+  "results.metadata.cached": " | {{count}} من الذاكرة",
+  "results.metadata.fresh": " | بيانات حيّة",
+  "results.metadata.remainingDaily": "بقي لك {{count}} مقارنات اليوم",
+
+  "cohort.trainedBy": "{{count}} متسوّق خليجي ساعدوا في تدريب هذا"
 }
