@@ -39,6 +39,7 @@ import ResultsScreen from './src/screens/ResultsScreen';
 // Bundle A — support / preferences / edit-profile screens routed from Profile.
 import LegalScreen from './src/screens/LegalScreen';
 import ContactUsScreen from './src/screens/ContactUsScreen';
+import EditProfileScreen from './src/screens/EditProfileScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
@@ -307,6 +308,14 @@ export default function App() {
               component={ContactUsScreen}
               options={{ presentation: 'modal' }}
             />
+            <Stack.Screen
+              name="EditProfile"
+              options={{ presentation: 'modal' }}
+            >
+              {(props) => (
+                <EditProfileScreen {...props} onAccountDeleted={handleLogout} />
+              )}
+            </Stack.Screen>
             {/* Authed users tapping a referral link still get the landing page. */}
             <Stack.Screen
               name="ReferralLanding"
