@@ -29,7 +29,14 @@ MOCK_FULL_RESPONSE = {
 
 
 def test_save_comparison_extracts_product_names():
-    """save_comparison extracts product_names from full_response."""
+    """save_comparison extracts product_names (name-only, first 2) from full_response.
+
+    Bundle A §5.2 contract change: product_names is now `[p["name"] for p in
+    products[:2]]` — name-only, capped at 2. The brand prefix was dropped
+    because (a) brand is already in full_response.products[i].brand for any
+    UI that needs it, and (b) the new History card design renders brand and
+    name separately rather than as a single concatenated label.
+    """
     mock_response = MagicMock()
     mock_response.data = [{"id": "abc-123"}]
 
@@ -50,11 +57,13 @@ def test_save_comparison_extracts_product_names():
 
     assert result == {"id": "abc-123"}
     insert_arg = mock_table.insert.call_args[0][0]
-    assert insert_arg["product_names"] == ["Apple iPhone 15", "Samsung Galaxy S24"]
+    assert insert_arg["product_names"] == ["iPhone 15", "Galaxy S24"]
     assert insert_arg["query"] == "iphone 15 vs galaxy s24"
     assert insert_arg["input_type"] == "text"
     assert insert_arg["user_id"] == "user-123"
     assert insert_arg["full_response"] == MOCK_FULL_RESPONSE
+    # Bundle A §5.2: persisted rows are always schema_version=2.
+    assert insert_arg["schema_version"] == 2
 
 
 def test_save_comparison_no_user_id():
@@ -95,23 +104,27 @@ def test_save_comparison_returns_none_on_error():
     assert result is None
 
 
-def test_save_comparison_handles_empty_products():
-    """save_comparison handles response with no products gracefully."""
-    mock_response = MagicMock()
-    mock_response.data = [{"id": "abc-789"}]
+def test_save_comparison_rejects_payload_with_no_products():
+    """save_comparison rejects (does NOT persist) payloads that fail _validate_renderable.
 
-    mock_table = MagicMock()
-    mock_table.insert.return_value.execute.return_value = mock_response
-
+    Bundle A §5.2: rows that ResultsScreen can't render must never reach the
+    history table — they were the root cause of the History "Cannot read
+    property 'products' of undefined" crash. A payload like {"success": True}
+    has no products array and no metadata.query, so the validator rejects it
+    and save_comparison returns None without touching the DB.
+    """
     mock_client = MagicMock()
+    mock_table = MagicMock()
     mock_client.table.return_value = mock_table
 
     with patch("app.services.database_service.get_supabase_client", return_value=mock_client):
         from app.services.database_service import save_comparison
         result = run_async(save_comparison(full_response={"success": True}, query="test"))
 
-    insert_arg = mock_table.insert.call_args[0][0]
-    assert insert_arg["product_names"] == []
+    assert result is None
+    # The DB layer must not have been engaged at all.
+    mock_client.table.assert_not_called()
+    mock_table.insert.assert_not_called()
 
 
 def test_save_comparison_camera_input_type():
