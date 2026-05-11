@@ -423,30 +423,30 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Change Password</Text>
+            <Text style={styles.modalTitle}>{t('profile.changePassword')}</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Current password"
+              placeholder={t('profile.password.current')}
               placeholderTextColor={colors.text.placeholder}
               secureTextEntry
               value={currentPassword}
-              onChangeText={(t) => { setCurrentPassword(t); setPasswordError(''); }}
+              onChangeText={(v) => { setCurrentPassword(v); setPasswordError(''); }}
             />
             <TextInput
               style={styles.modalInput}
-              placeholder="New password (min 6 chars)"
+              placeholder={t('profile.password.new')}
               placeholderTextColor={colors.text.placeholder}
               secureTextEntry
               value={newPassword}
-              onChangeText={(t) => { setNewPassword(t); setPasswordError(''); }}
+              onChangeText={(v) => { setNewPassword(v); setPasswordError(''); }}
             />
             <TextInput
               style={styles.modalInput}
-              placeholder="Confirm new password"
+              placeholder={t('profile.password.confirm')}
               placeholderTextColor={colors.text.placeholder}
               secureTextEntry
               value={confirmPassword}
-              onChangeText={(t) => { setConfirmPassword(t); setPasswordError(''); }}
+              onChangeText={(v) => { setConfirmPassword(v); setPasswordError(''); }}
             />
             {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
             <View style={styles.modalButtons}>
@@ -470,7 +470,7 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
                 {passwordLoading ? (
                   <ActivityIndicator size="small" color={colors.bg.primary} />
                 ) : (
-                  <Text style={styles.modalSaveText}>Change Password</Text>
+                  <Text style={styles.modalSaveText}>{t('profile.changePassword')}</Text>
                 )}
               </TouchableOpacity>
             </View>
