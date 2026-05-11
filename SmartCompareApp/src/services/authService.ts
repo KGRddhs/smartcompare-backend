@@ -44,6 +44,7 @@ function getCrypto() {
   return Crypto;
 }
 import api, { API_BASE_URL } from './api';
+import { getDeviceFingerprint } from './deviceFingerprint';
 
 export interface User {
   id: string;
@@ -65,25 +66,49 @@ const USER_STORAGE_KEY = '@qaren_user'; // AsyncStorage — '@' prefix valid
 const TOKEN_STORAGE_KEY = 'qaren_token'; // SecureStore — '@' prefix INVALID, would error
 const REFRESH_TOKEN_KEY = 'qaren_refresh_token'; // SecureStore — '@' prefix INVALID
 
+export interface RegisterOptions {
+  name?: string;
+  inviteId?: string;
+  inviteCode?: string;
+}
+
 /**
  * Register a new user.
  *
- * @param inviteId Optional referral invite UUID. When set, backend (B3.5)
- *   links the new user to the pending invite via redeemed_by_user_id so
- *   Loop 2 can fire after their first real comparison. Forwarded as
- *   `invite_id` per RegisterRequest in app/api/auth_routes.py.
+ * Accepts EITHER a string `inviteId` (legacy positional) OR a
+ * `RegisterOptions` object. Always sends X-Device-Fingerprint header so
+ * the backend can lock free-tier counters to the physical device across
+ * re-signups. See Bundle A design §1.5 + §1.1.
  */
 export async function register(
   email: string,
   password: string,
-  inviteId?: string
+  inviteOrOptions?: string | RegisterOptions
 ): Promise<AuthResponse> {
+  const options: RegisterOptions =
+    typeof inviteOrOptions === 'string'
+      ? { inviteId: inviteOrOptions }
+      : inviteOrOptions ?? {};
+
+  let fingerprint: string | null = null;
   try {
-    const response = await api.post('/api/v1/auth/register', {
-      email,
-      password,
-      ...(inviteId ? { invite_id: inviteId } : {}),
-    });
+    fingerprint = await getDeviceFingerprint();
+  } catch (e) {
+    if (__DEV__) console.warn('[AUTH] device fingerprint unavailable:', e);
+  }
+
+  try {
+    const response = await api.post(
+      '/api/v1/auth/register',
+      {
+        email,
+        password,
+        ...(options.name ? { name: options.name } : {}),
+        ...(options.inviteId ? { invite_id: options.inviteId } : {}),
+        ...(options.inviteCode ? { invite_code: options.inviteCode } : {}),
+      },
+      fingerprint ? { headers: { 'X-Device-Fingerprint': fingerprint } } : undefined,
+    );
 
     if (response.data.user) {
       await saveUser(response.data.user);
