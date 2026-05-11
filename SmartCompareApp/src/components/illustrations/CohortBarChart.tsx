@@ -21,6 +21,7 @@
  */
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import Svg, { Rect, Circle, G } from 'react-native-svg';
 import {
   useSharedValue,
@@ -85,6 +86,7 @@ export function CohortBarChart({
   height = VIEWBOX_H,
   testID,
 }: Props) {
+  const { t } = useTranslation();
   // Always render exactly 4 bars: clamp to first 4, pad with zero-value
   // placeholders if fewer.
   const bars = normalizeBars(rawBars ?? DEFAULT_BARS);
@@ -168,7 +170,7 @@ export function CohortBarChart({
       </Svg>
 
       <Text style={styles.caption} accessibilityRole="text">
-        {total} GCC shoppers helped train this
+        {t('cohort.trainedBy', { count: total })}
       </Text>
     </View>
   );

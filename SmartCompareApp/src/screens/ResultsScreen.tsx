@@ -400,7 +400,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         <View style={styles.categorySwitchedBanner}>
           <Info size={14} color={colors.accent} />
           <Text style={styles.categorySwitchedText}>
-            Category adjusted to {(result as any).category_used}
+            {t('results.categorySwitched', { category: (result as any).category_used })}
           </Text>
         </View>
       )}
@@ -517,7 +517,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
                 {/* Best for */}
                 {overviewProduct?.best_for ? (
-                  <Text style={styles.bestForText}>Best for: {overviewProduct.best_for}</Text>
+                  <Text style={styles.bestForText}>{t('results.bestForLabel', { useCase: overviewProduct.best_for })}</Text>
                 ) : null}
               </Card>
             );
@@ -958,12 +958,14 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         {metadata && (
           <View style={styles.metadataSection}>
             <Text style={styles.metadataText}>
-              Comparison took {metadata.elapsed_seconds?.toFixed(1)}s
-              {(metadata.cache_hits ?? 0) > 0 ? ` | ${metadata.cache_hits} cached` : ' | Fresh data'}
+              {t('results.metadata.elapsed', { seconds: metadata.elapsed_seconds?.toFixed(1) ?? '0' })}
+              {(metadata.cache_hits ?? 0) > 0
+                ? t('results.metadata.cached', { count: metadata.cache_hits })
+                : t('results.metadata.fresh')}
             </Text>
             {usageStatus && (
               <Text style={styles.metadataText}>
-                {usageStatus.remaining.daily} comparisons remaining today
+                {t('results.metadata.remainingDaily', { count: usageStatus.remaining.daily })}
               </Text>
             )}
           </View>

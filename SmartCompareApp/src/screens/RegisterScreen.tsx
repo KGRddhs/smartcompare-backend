@@ -314,11 +314,11 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
 
               {/* Benefits */}
               <View style={styles.benefits}>
-                <Text style={styles.benefitsTitle}>Free Account Includes:</Text>
-                <Text style={styles.benefitItem}>✓ 5 comparisons per day</Text>
-                <Text style={styles.benefitItem}>✓ AI-powered product identification</Text>
-                <Text style={styles.benefitItem}>✓ Live price comparison</Text>
-                <Text style={styles.benefitItem}>✓ Comparison history</Text>
+                <Text style={styles.benefitsTitle}>{t('register.benefits.title')}</Text>
+                <Text style={styles.benefitItem}>{t('register.benefits.daily')}</Text>
+                <Text style={styles.benefitItem}>{t('register.benefits.ai')}</Text>
+                <Text style={styles.benefitItem}>{t('register.benefits.price')}</Text>
+                <Text style={styles.benefitItem}>{t('register.benefits.history')}</Text>
               </View>
             </View>
 

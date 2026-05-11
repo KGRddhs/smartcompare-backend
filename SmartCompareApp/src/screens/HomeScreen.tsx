@@ -564,7 +564,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
                         onPress={handleIdentifyAndCompare}
                       >
                         <Text style={styles.compareButtonText}>
-                          Compare {capturedImages.length} Products
+                          {t('home.capture.compareCta', { count: capturedImages.length })}
                         </Text>
                       </TouchableOpacity>
                     )}
