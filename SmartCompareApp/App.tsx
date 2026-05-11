@@ -36,6 +36,8 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
+// Bundle A — support / preferences / edit-profile screens routed from Profile.
+import LegalScreen from './src/screens/LegalScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
@@ -291,6 +293,12 @@ export default function App() {
             <Stack.Screen
               name="Results"
               component={ResultsScreen}
+              options={{ presentation: 'modal' }}
+            />
+            {/* Bundle A — Privacy + Terms (shared screen, switched by route param). */}
+            <Stack.Screen
+              name="Legal"
+              component={LegalScreen}
               options={{ presentation: 'modal' }}
             />
             {/* Authed users tapping a referral link still get the landing page. */}

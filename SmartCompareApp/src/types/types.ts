@@ -374,6 +374,11 @@ export type RootStackParamList = {
   // F3.2/F3.3 — invitee landing flow (gradual commitment, no signup gate).
   ReferralLanding: { share_token: string; ref: string };
   InviteeQuiz: { share_token: string; invite_id: string; ref: string };
+  // Bundle A — support screens routed from Profile.
+  Legal: { doc: 'privacy' | 'terms' };
+  ContactUs: undefined;
+  EditProfile: undefined;
+  EditPreferences: undefined;
   // Legacy screen names for backward compatibility with screen components
   Home: undefined;
   History: undefined;
