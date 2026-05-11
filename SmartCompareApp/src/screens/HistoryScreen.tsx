@@ -169,11 +169,22 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     );
   };
 
-  const renderItem = ({ item, index }: { item: HistoryItem; index: number }) => {
-    const products = item.full_response?.products || [];
-    const winnerIndex = item.full_response?.comparison?.winner_index ?? item.full_response?.winner_index ?? 0;
-    const winner = products[winnerIndex];
+  const formatTitle = (item: HistoryItem): string => {
+    // Bundle A §5.3 — list endpoint returns `product_names` (summary fields
+    // only; full_response is not in the list payload). The legacy
+    // `item.full_response?.products` lookup never worked because the list
+    // route doesn't hydrate full_response.
+    const names = (item.product_names ?? []).filter(Boolean);
+    if (names.length >= 2) {
+      const combined = `${names[0]} vs ${names[1]}`;
+      return combined.length > 40 ? combined.slice(0, 39) + '…' : combined;
+    }
+    const q = item.query?.trim();
+    if (q) return q;
+    return t('history.row.untitled');
+  };
 
+  const renderItem = ({ item, index }: { item: HistoryItem; index: number }) => {
     return (
       <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
         <TouchableOpacity
@@ -184,16 +195,10 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
           <View style={styles.cardContent}>
             <View style={styles.cardTop}>
               <Text style={styles.cardQuery} numberOfLines={1}>
-                {products[0]?.brand} {products[0]?.name} vs {products[1]?.brand} {products[1]?.name}
+                {formatTitle(item)}
               </Text>
               <Text style={styles.cardTime}>{formatTimeAgo(item.created_at)}</Text>
             </View>
-
-            {winner && (
-              <Text style={styles.cardWinner} numberOfLines={1}>
-                {t('history.winner', { name: `${winner.brand} ${winner.name}` })} · {formatPrice(winner)}
-              </Text>
-            )}
           </View>
 
           <View style={styles.cardActions}>
