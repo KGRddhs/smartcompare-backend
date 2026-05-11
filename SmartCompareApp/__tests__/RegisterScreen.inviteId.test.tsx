@@ -98,14 +98,17 @@ describe('RegisterScreen — invite_id forwarding (F3.5)', () => {
     // Button title — RNTL's fireEvent.press walks up to the TouchableOpacity ancestor.
     fireEvent.press(getByText('auth.register'));
     await waitFor(() => expect(mockRegister).toHaveBeenCalled());
+    // Bundle A §1.5 — register() takes a RegisterOptions object so the new
+    // inviteCode + (future) name fields can travel alongside inviteId. The
+    // F3.5 contract (deep-link → invite_id forwarded) is preserved.
     expect(mockRegister).toHaveBeenCalledWith(
       'invitee@example.com',
       'StrongPass1!',
-      'invite-uuid-1'
+      expect.objectContaining({ inviteId: 'invite-uuid-1' }),
     );
   });
 
-  it('omits invite_id (passes undefined) when route.params is empty', async () => {
+  it('omits invite_id (passes undefined inside options) when route.params is empty', async () => {
     const { getByPlaceholderText, getByText } = renderScreen(undefined);
     fireEvent.changeText(getByPlaceholderText('auth.email'), 'fresh@example.com');
     fireEvent.changeText(getByPlaceholderText('auth.password'), 'StrongPass1!');
@@ -115,7 +118,7 @@ describe('RegisterScreen — invite_id forwarding (F3.5)', () => {
     expect(mockRegister).toHaveBeenCalledWith(
       'fresh@example.com',
       'StrongPass1!',
-      undefined
+      expect.objectContaining({ inviteId: undefined }),
     );
   });
 });
