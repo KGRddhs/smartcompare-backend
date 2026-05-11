@@ -50,6 +50,7 @@ import type { UserPreferences } from '../types';
 import { getSavedUser, logout, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import StyleProfileCard from '../components/StyleProfileCard';
 import ReferralStatusCard from '../components/ReferralStatusCard';
+import ToggleRow from '../components/ToggleRow';
 
 interface ProfileScreenProps {
   navigation: any;
@@ -311,7 +312,8 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
         {/* Referral status card (F4.5) — silently hides when feature flag is off, anon, or network down */}
         <ReferralStatusCard />
 
-        {/* Account Card */}
+        {/* Account Card — Bundle A §3.2 relocates inline rename + delete to
+            the dedicated EditProfile screen. The display here is read-only. */}
         <View style={styles.card}>
           <View style={styles.profileRow}>
             <View style={styles.avatar}>
@@ -320,34 +322,12 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
               </Text>
             </View>
             <View style={styles.profileInfo}>
-              {editingName ? (
-                <View style={styles.editNameRow}>
-                  <TextInput
-                    style={styles.nameInput}
-                    value={displayName}
-                    onChangeText={(text) => { setDisplayName(text); setNameError(''); }}
-                    autoFocus
-                    maxLength={100}
-                  />
-                  <TouchableOpacity onPress={handleUpdateName} disabled={nameLoading}>
-                    {nameLoading ? (
-                      <ActivityIndicator size="small" color={colors.accent} />
-                    ) : (
-                      <Text style={styles.saveName}>{t('common.save')}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <Text style={styles.profileName}>{displayName}</Text>
-              )}
+              <Text style={styles.profileName}>{displayName}</Text>
               <Text style={styles.profileEmail}>{email}</Text>
-              {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
             </View>
           </View>
-          <TouchableOpacity onPress={() => setEditingName(!editingName)}>
-            <Text style={styles.editLink}>
-              {editingName ? t('common.cancel') : t('profile.editProfile')}
-            </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
+            <Text style={styles.editLink}>{t('profile.editProfile')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -376,11 +356,11 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
             <Sliders size={18} color={colors.text.secondary} />,
             t('profile.preferences'),
             <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => navigation.navigate('Onboarding', { mode: 'edit' })
+            () => navigation.navigate('EditPreferences')
           )}
           {renderRow(
             <Lock size={18} color={colors.text.secondary} />,
-            'Change Password',
+            t('profile.changePassword'),
             <ChevronRight size={16} color={colors.text.placeholder} />,
             () => setPasswordModalVisible(true),
             true
@@ -390,85 +370,56 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
         {/* Privacy Card */}
         <Text style={styles.sectionLabel}>{t('profile.section.privacy')}</Text>
         <View style={styles.card}>
-          <View style={styles.privacyRow}>
-            <View style={styles.privacyHeader}>
-              <Shield size={18} color={colors.text.secondary} />
-              <Text style={styles.privacyTitle}>{t('profile.aiSharing.title')}</Text>
-            </View>
-            <Switch
-              value={aiSharingEnabled}
-              onValueChange={handleAiSharingToggle}
-              disabled={aiSharingSaving || preferences === null}
-              trackColor={{ false: colors.border.medium, true: colors.accent }}
-              thumbColor={'#FFFFFF'}
-              accessibilityLabel={t('profile.aiSharing.title')}
-            />
-          </View>
-          <Text style={styles.privacySubtitle}>{t('profile.aiSharing.subtitle')}</Text>
+          <ToggleRow
+            icon={<Shield size={18} color={colors.text.secondary} />}
+            label={t('profile.aiSharing.title')}
+            subtitle={t('profile.aiSharing.subtitle')}
+            value={aiSharingEnabled}
+            onValueChange={handleAiSharingToggle}
+            disabled={aiSharingSaving || preferences === null}
+          />
           {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
         </View>
 
         {/* F5.4 — Notifications Card: master + 3 sub-toggles for re-engagement pushes */}
         <Text style={styles.sectionLabel}>{t('profile.notifications')}</Text>
         <View style={styles.card}>
-          <View style={styles.privacyRow}>
-            <View style={styles.privacyHeader}>
-              <Bell size={18} color={colors.text.secondary} />
-              <Text style={styles.privacyTitle}>{t('profile.notifs.master.title')}</Text>
-            </View>
-            <Switch
-              value={notificationsEnabled}
-              onValueChange={(v) => handleNotificationsToggle({ notifications_enabled: v })}
-              disabled={notifsSaving || preferences === null}
-              trackColor={{ false: colors.border.medium, true: colors.accent }}
-              thumbColor={'#FFFFFF'}
-              accessibilityLabel={t('profile.notifs.master.title')}
-            />
-          </View>
-          <Text style={styles.privacySubtitle}>{t('profile.notifs.master.subtitle')}</Text>
+          <ToggleRow
+            icon={<Bell size={18} color={colors.text.secondary} />}
+            label={t('profile.notifs.master.title')}
+            subtitle={t('profile.notifs.master.subtitle')}
+            value={notificationsEnabled}
+            onValueChange={(v) => handleNotificationsToggle({ notifications_enabled: v })}
+            disabled={notifsSaving || preferences === null}
+          />
 
           {/* Sub-toggles — only visible + interactive when master ON */}
           {notificationsEnabled ? (
             <View style={styles.subToggles}>
-              <View style={styles.subToggleRow}>
-                <Text style={styles.subToggleLabel}>{t('profile.notifs.insight')}</Text>
-                <Switch
-                  value={insightEnabled}
-                  onValueChange={(v) =>
-                    handleNotificationsToggle({ notification_types: { decision_insight: v } })
-                  }
-                  disabled={notifsSaving}
-                  trackColor={{ false: colors.border.medium, true: colors.accent }}
-                  thumbColor={'#FFFFFF'}
-                  accessibilityLabel={t('profile.notifs.insight')}
-                />
-              </View>
-              <View style={styles.subToggleRow}>
-                <Text style={styles.subToggleLabel}>{t('profile.notifs.cohort')}</Text>
-                <Switch
-                  value={cohortEnabled}
-                  onValueChange={(v) =>
-                    handleNotificationsToggle({ notification_types: { cohort_curiosity: v } })
-                  }
-                  disabled={notifsSaving}
-                  trackColor={{ false: colors.border.medium, true: colors.accent }}
-                  thumbColor={'#FFFFFF'}
-                  accessibilityLabel={t('profile.notifs.cohort')}
-                />
-              </View>
-              <View style={styles.subToggleRow}>
-                <Text style={styles.subToggleLabel}>{t('profile.notifs.retrospective')}</Text>
-                <Switch
-                  value={retroEnabled}
-                  onValueChange={(v) =>
-                    handleNotificationsToggle({ notification_types: { decision_retrospective: v } })
-                  }
-                  disabled={notifsSaving}
-                  trackColor={{ false: colors.border.medium, true: colors.accent }}
-                  thumbColor={'#FFFFFF'}
-                  accessibilityLabel={t('profile.notifs.retrospective')}
-                />
-              </View>
+              <ToggleRow
+                label={t('profile.notifs.insight')}
+                value={insightEnabled}
+                onValueChange={(v) =>
+                  handleNotificationsToggle({ notification_types: { decision_insight: v } })
+                }
+                disabled={notifsSaving}
+              />
+              <ToggleRow
+                label={t('profile.notifs.cohort')}
+                value={cohortEnabled}
+                onValueChange={(v) =>
+                  handleNotificationsToggle({ notification_types: { cohort_curiosity: v } })
+                }
+                disabled={notifsSaving}
+              />
+              <ToggleRow
+                label={t('profile.notifs.retrospective')}
+                value={retroEnabled}
+                onValueChange={(v) =>
+                  handleNotificationsToggle({ notification_types: { decision_retrospective: v } })
+                }
+                disabled={notifsSaving}
+              />
             </View>
           ) : null}
 
@@ -482,36 +433,31 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
             <FileText size={18} color={colors.text.secondary} />,
             t('profile.privacy'),
             <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => {}
+            () => navigation.navigate('Legal', { doc: 'privacy' })
           )}
           {renderRow(
             <ScrollText size={18} color={colors.text.secondary} />,
             t('profile.terms'),
             <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => {}
+            () => navigation.navigate('Legal', { doc: 'terms' })
           )}
           {renderRow(
             <MessageCircle size={18} color={colors.text.secondary} />,
             t('profile.contact'),
             <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => {},
+            () => navigation.navigate('ContactUs'),
             true
           )}
         </View>
 
-        {/* Danger Card */}
+        {/* Danger Card — Bundle A §3 relocates Delete account to EditProfile.
+            Only Logout remains here. */}
         <View style={[styles.card, { marginTop: spacing.xl }]}>
           {renderRow(
             <LogOut size={18} color={colors.text.secondary} />,
             t('profile.logout'),
             null,
-            handleLogout
-          )}
-          {renderRow(
-            <Trash2 size={18} color={colors.destructive} />,
-            t('profile.deleteAccount'),
-            null,
-            handleDeleteAccount,
+            handleLogout,
             true
           )}
         </View>
