@@ -40,6 +40,7 @@ import ResultsScreen from './src/screens/ResultsScreen';
 import LegalScreen from './src/screens/LegalScreen';
 import ContactUsScreen from './src/screens/ContactUsScreen';
 import EditProfileScreen from './src/screens/EditProfileScreen';
+import EditPreferencesFlow from './src/screens/EditPreferencesFlow';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
@@ -316,6 +317,11 @@ export default function App() {
                 <EditProfileScreen {...props} onAccountDeleted={handleLogout} />
               )}
             </Stack.Screen>
+            <Stack.Screen
+              name="EditPreferences"
+              component={EditPreferencesFlow}
+              options={{ presentation: 'modal' }}
+            />
             {/* Authed users tapping a referral link still get the landing page. */}
             <Stack.Screen
               name="ReferralLanding"
