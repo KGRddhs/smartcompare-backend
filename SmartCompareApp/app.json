@@ -43,6 +43,10 @@
           "data": [{ "scheme": "qaren" }],
           "category": ["BROWSABLE", "DEFAULT"]
         }
+      ],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -88,6 +92,18 @@
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "387a4fcb-76f6-4857-a2fb-39482ca4bd40"
+      }
+    },
+    "owner": "kersher2",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/387a4fcb-76f6-4857-a2fb-39482ca4bd40"
+    }
   }
 }
