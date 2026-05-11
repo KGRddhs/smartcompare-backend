@@ -494,6 +494,9 @@
   "referrals.share.messageWithLink": "I overthink every purchase. Qaren ends the debate in 30 seconds. Try it: {{link}} (or use code {{code}} in the app)",
 
   "profile.changePassword": "Change Password",
+  "profile.password.current": "Current password",
+  "profile.password.new": "New password (min 6 chars)",
+  "profile.password.confirm": "Confirm new password",
 
   "history.row.untitled": "Untitled comparison",
 
