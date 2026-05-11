@@ -16,20 +16,16 @@ import {
   Modal,
   SafeAreaView,
   Platform,
-  Switch,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
-  User,
   Globe,
-  MapPin,
   Sliders,
   Bell,
   FileText,
   ScrollText,
   MessageCircle,
   LogOut,
-  Trash2,
   ChevronRight,
   Lock,
   Shield,
@@ -37,8 +33,6 @@ import {
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { useLanguage } from '../hooks/useLanguage';
 import {
-  updateProfile,
-  updateEmail,
   changePassword,
   parseApiError,
   getCohortProfile,
@@ -47,9 +41,10 @@ import {
   savePreferences,
 } from '../services/api';
 import type { UserPreferences } from '../types';
-import { getSavedUser, logout, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
+import { getSavedUser, logout } from '../services/authService';
 import StyleProfileCard from '../components/StyleProfileCard';
 import ReferralStatusCard from '../components/ReferralStatusCard';
+import ToggleRow from '../components/ToggleRow';
 
 interface ProfileScreenProps {
   navigation: any;
@@ -63,11 +58,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   const [user, setUser] = useState<any>(null);
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
-
-  // Edit states
-  const [editingName, setEditingName] = useState(false);
-  const [nameLoading, setNameLoading] = useState(false);
-  const [nameError, setNameError] = useState('');
 
   // Password modal
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
@@ -205,28 +195,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     navigation.navigate('Onboarding', { mode: 'edit', source: 'styleProfile' });
   };
 
-  const handleUpdateName = async () => {
-    const trimmed = displayName.trim();
-    if (trimmed.length < 2) {
-      setNameError('Name must be at least 2 characters');
-      return;
-    }
-    setNameError('');
-    setNameLoading(true);
-    try {
-      const result = await updateProfile(trimmed);
-      if (result.success) {
-        setEditingName(false);
-      } else {
-        setNameError(result.error || 'Update failed');
-      }
-    } catch (err: any) {
-      setNameError(parseApiError(err).message);
-    } finally {
-      setNameLoading(false);
-    }
-  };
-
   const handleChangePassword = async () => {
     if (!currentPassword) { setPasswordError('Current password is required'); return; }
     if (newPassword.length < 6) { setPasswordError('Password must be at least 6 characters'); return; }
@@ -265,20 +233,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     ]);
   };
 
-  const handleDeleteAccount = () => {
-    Alert.alert(t('profile.deleteAccount'), t('profile.deleteConfirm'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('profile.deleteAccount'),
-        style: 'destructive',
-        onPress: async () => {
-          // TODO: call delete account API when available
-          Alert.alert('Not available', 'Account deletion coming soon.');
-        },
-      },
-    ]);
-  };
-
   const renderRow = (
     icon: React.ReactNode,
     label: string,
@@ -311,7 +265,8 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
         {/* Referral status card (F4.5) — silently hides when feature flag is off, anon, or network down */}
         <ReferralStatusCard />
 
-        {/* Account Card */}
+        {/* Account Card — Bundle A §3.2 relocates inline rename + delete to
+            the dedicated EditProfile screen. The display here is read-only. */}
         <View style={styles.card}>
           <View style={styles.profileRow}>
             <View style={styles.avatar}>
@@ -320,34 +275,12 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
               </Text>
             </View>
             <View style={styles.profileInfo}>
-              {editingName ? (
-                <View style={styles.editNameRow}>
-                  <TextInput
-                    style={styles.nameInput}
-                    value={displayName}
-                    onChangeText={(text) => { setDisplayName(text); setNameError(''); }}
-                    autoFocus
-                    maxLength={100}
-                  />
-                  <TouchableOpacity onPress={handleUpdateName} disabled={nameLoading}>
-                    {nameLoading ? (
-                      <ActivityIndicator size="small" color={colors.accent} />
-                    ) : (
-                      <Text style={styles.saveName}>{t('common.save')}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <Text style={styles.profileName}>{displayName}</Text>
-              )}
+              <Text style={styles.profileName}>{displayName}</Text>
               <Text style={styles.profileEmail}>{email}</Text>
-              {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
             </View>
           </View>
-          <TouchableOpacity onPress={() => setEditingName(!editingName)}>
-            <Text style={styles.editLink}>
-              {editingName ? t('common.cancel') : t('profile.editProfile')}
-            </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
+            <Text style={styles.editLink}>{t('profile.editProfile')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -376,11 +309,11 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
             <Sliders size={18} color={colors.text.secondary} />,
             t('profile.preferences'),
             <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => navigation.navigate('Onboarding', { mode: 'edit' })
+            () => navigation.navigate('EditPreferences')
           )}
           {renderRow(
             <Lock size={18} color={colors.text.secondary} />,
-            'Change Password',
+            t('profile.changePassword'),
             <ChevronRight size={16} color={colors.text.placeholder} />,
             () => setPasswordModalVisible(true),
             true
@@ -390,85 +323,56 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
         {/* Privacy Card */}
         <Text style={styles.sectionLabel}>{t('profile.section.privacy')}</Text>
         <View style={styles.card}>
-          <View style={styles.privacyRow}>
-            <View style={styles.privacyHeader}>
-              <Shield size={18} color={colors.text.secondary} />
-              <Text style={styles.privacyTitle}>{t('profile.aiSharing.title')}</Text>
-            </View>
-            <Switch
-              value={aiSharingEnabled}
-              onValueChange={handleAiSharingToggle}
-              disabled={aiSharingSaving || preferences === null}
-              trackColor={{ false: colors.border.medium, true: colors.accent }}
-              thumbColor={'#FFFFFF'}
-              accessibilityLabel={t('profile.aiSharing.title')}
-            />
-          </View>
-          <Text style={styles.privacySubtitle}>{t('profile.aiSharing.subtitle')}</Text>
+          <ToggleRow
+            icon={<Shield size={18} color={colors.text.secondary} />}
+            label={t('profile.aiSharing.title')}
+            subtitle={t('profile.aiSharing.subtitle')}
+            value={aiSharingEnabled}
+            onValueChange={handleAiSharingToggle}
+            disabled={aiSharingSaving || preferences === null}
+          />
           {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
         </View>
 
         {/* F5.4 — Notifications Card: master + 3 sub-toggles for re-engagement pushes */}
         <Text style={styles.sectionLabel}>{t('profile.notifications')}</Text>
         <View style={styles.card}>
-          <View style={styles.privacyRow}>
-            <View style={styles.privacyHeader}>
-              <Bell size={18} color={colors.text.secondary} />
-              <Text style={styles.privacyTitle}>{t('profile.notifs.master.title')}</Text>
-            </View>
-            <Switch
-              value={notificationsEnabled}
-              onValueChange={(v) => handleNotificationsToggle({ notifications_enabled: v })}
-              disabled={notifsSaving || preferences === null}
-              trackColor={{ false: colors.border.medium, true: colors.accent }}
-              thumbColor={'#FFFFFF'}
-              accessibilityLabel={t('profile.notifs.master.title')}
-            />
-          </View>
-          <Text style={styles.privacySubtitle}>{t('profile.notifs.master.subtitle')}</Text>
+          <ToggleRow
+            icon={<Bell size={18} color={colors.text.secondary} />}
+            label={t('profile.notifs.master.title')}
+            subtitle={t('profile.notifs.master.subtitle')}
+            value={notificationsEnabled}
+            onValueChange={(v) => handleNotificationsToggle({ notifications_enabled: v })}
+            disabled={notifsSaving || preferences === null}
+          />
 
           {/* Sub-toggles — only visible + interactive when master ON */}
           {notificationsEnabled ? (
             <View style={styles.subToggles}>
-              <View style={styles.subToggleRow}>
-                <Text style={styles.subToggleLabel}>{t('profile.notifs.insight')}</Text>
-                <Switch
-                  value={insightEnabled}
-                  onValueChange={(v) =>
-                    handleNotificationsToggle({ notification_types: { decision_insight: v } })
-                  }
-                  disabled={notifsSaving}
-                  trackColor={{ false: colors.border.medium, true: colors.accent }}
-                  thumbColor={'#FFFFFF'}
-                  accessibilityLabel={t('profile.notifs.insight')}
-                />
-              </View>
-              <View style={styles.subToggleRow}>
-                <Text style={styles.subToggleLabel}>{t('profile.notifs.cohort')}</Text>
-                <Switch
-                  value={cohortEnabled}
-                  onValueChange={(v) =>
-                    handleNotificationsToggle({ notification_types: { cohort_curiosity: v } })
-                  }
-                  disabled={notifsSaving}
-                  trackColor={{ false: colors.border.medium, true: colors.accent }}
-                  thumbColor={'#FFFFFF'}
-                  accessibilityLabel={t('profile.notifs.cohort')}
-                />
-              </View>
-              <View style={styles.subToggleRow}>
-                <Text style={styles.subToggleLabel}>{t('profile.notifs.retrospective')}</Text>
-                <Switch
-                  value={retroEnabled}
-                  onValueChange={(v) =>
-                    handleNotificationsToggle({ notification_types: { decision_retrospective: v } })
-                  }
-                  disabled={notifsSaving}
-                  trackColor={{ false: colors.border.medium, true: colors.accent }}
-                  thumbColor={'#FFFFFF'}
-                  accessibilityLabel={t('profile.notifs.retrospective')}
-                />
-              </View>
+              <ToggleRow
+                label={t('profile.notifs.insight')}
+                value={insightEnabled}
+                onValueChange={(v) =>
+                  handleNotificationsToggle({ notification_types: { decision_insight: v } })
+                }
+                disabled={notifsSaving}
+              />
+              <ToggleRow
+                label={t('profile.notifs.cohort')}
+                value={cohortEnabled}
+                onValueChange={(v) =>
+                  handleNotificationsToggle({ notification_types: { cohort_curiosity: v } })
+                }
+                disabled={notifsSaving}
+              />
+              <ToggleRow
+                label={t('profile.notifs.retrospective')}
+                value={retroEnabled}
+                onValueChange={(v) =>
+                  handleNotificationsToggle({ notification_types: { decision_retrospective: v } })
+                }
+                disabled={notifsSaving}
+              />
             </View>
           ) : null}
 
@@ -482,36 +386,31 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
             <FileText size={18} color={colors.text.secondary} />,
             t('profile.privacy'),
             <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => {}
+            () => navigation.navigate('Legal', { doc: 'privacy' })
           )}
           {renderRow(
             <ScrollText size={18} color={colors.text.secondary} />,
             t('profile.terms'),
             <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => {}
+            () => navigation.navigate('Legal', { doc: 'terms' })
           )}
           {renderRow(
             <MessageCircle size={18} color={colors.text.secondary} />,
             t('profile.contact'),
             <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => {},
+            () => navigation.navigate('ContactUs'),
             true
           )}
         </View>
 
-        {/* Danger Card */}
+        {/* Danger Card — Bundle A §3 relocates Delete account to EditProfile.
+            Only Logout remains here. */}
         <View style={[styles.card, { marginTop: spacing.xl }]}>
           {renderRow(
             <LogOut size={18} color={colors.text.secondary} />,
             t('profile.logout'),
             null,
-            handleLogout
-          )}
-          {renderRow(
-            <Trash2 size={18} color={colors.destructive} />,
-            t('profile.deleteAccount'),
-            null,
-            handleDeleteAccount,
+            handleLogout,
             true
           )}
         </View>
@@ -524,30 +423,30 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Change Password</Text>
+            <Text style={styles.modalTitle}>{t('profile.changePassword')}</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Current password"
+              placeholder={t('profile.password.current')}
               placeholderTextColor={colors.text.placeholder}
               secureTextEntry
               value={currentPassword}
-              onChangeText={(t) => { setCurrentPassword(t); setPasswordError(''); }}
+              onChangeText={(v) => { setCurrentPassword(v); setPasswordError(''); }}
             />
             <TextInput
               style={styles.modalInput}
-              placeholder="New password (min 6 chars)"
+              placeholder={t('profile.password.new')}
               placeholderTextColor={colors.text.placeholder}
               secureTextEntry
               value={newPassword}
-              onChangeText={(t) => { setNewPassword(t); setPasswordError(''); }}
+              onChangeText={(v) => { setNewPassword(v); setPasswordError(''); }}
             />
             <TextInput
               style={styles.modalInput}
-              placeholder="Confirm new password"
+              placeholder={t('profile.password.confirm')}
               placeholderTextColor={colors.text.placeholder}
               secureTextEntry
               value={confirmPassword}
-              onChangeText={(t) => { setConfirmPassword(t); setPasswordError(''); }}
+              onChangeText={(v) => { setConfirmPassword(v); setPasswordError(''); }}
             />
             {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
             <View style={styles.modalButtons}>
@@ -571,7 +470,7 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
                 {passwordLoading ? (
                   <ActivityIndicator size="small" color={colors.bg.primary} />
                 ) : (
-                  <Text style={styles.modalSaveText}>Change Password</Text>
+                  <Text style={styles.modalSaveText}>{t('profile.changePassword')}</Text>
                 )}
               </TouchableOpacity>
             </View>

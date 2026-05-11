@@ -108,8 +108,15 @@ async def remove_comparison(
     current_user: dict = Depends(get_current_user),
     token: Optional[str] = Depends(_extract_token),
 ):
-    """Delete a comparison from history (ownership check)."""
-    comparison = await get_comparison_by_id(str(comparison_id), access_token=token)
+    """Delete a comparison from history (ownership check).
+
+    Legacy v1 rows are visible to this endpoint (`include_legacy=True`) so
+    that users can clean up stale, unrenderable history. The GET endpoint
+    still hides v1 rows. See Bundle A design §5.2.
+    """
+    comparison = await get_comparison_by_id(
+        str(comparison_id), access_token=token, include_legacy=True
+    )
 
     # Merge 404/403 -- single 404 (M1, L2)
     if not comparison or not hmac.compare_digest(

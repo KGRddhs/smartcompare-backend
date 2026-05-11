@@ -50,6 +50,63 @@ async def link_invite_to_user(user_id: str, invite_id: str) -> bool:
     return await ReferralService().link_invite_to_user(user_id, invite_id)
 
 
+async def resolve_code_to_invite_id(
+    invite_code: str, invitee_id: str
+) -> Optional[str]:
+    """Resolve a QR-XXXXXX code to a fresh referral_invites.id.
+
+    Bundle A §1.1. Creates a ``source='code_redeem'`` invite row pointing
+    from the referrer (owner of ``referral_code == invite_code``) to the
+    new ``invitee_id``. ``comparison_id`` is NULL because there is no
+    source comparison for the code-typed path.
+
+    Returns ``None`` when:
+      - no user owns that code (404 cause)
+      - referrer would be self (self-referral block)
+      - insert returns no row
+
+    Caller is responsible for abuse / Loop 2 logic — this only links the
+    invite. Loop 2 still fires later from ``try_trigger_loop2`` when the
+    invitee runs their first comparison.
+    """
+    client = get_admin_supabase_client()
+    try:
+        referrer = (
+            client.table("users")
+            .select("id, referral_code")
+            .eq("referral_code", invite_code)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[referral] resolve_code lookup failed: %s", exc)
+        return None
+    if not referrer or not referrer.data:
+        return None
+    if referrer.data.get("id") == invitee_id:
+        return None  # self-referral block
+
+    try:
+        invite = (
+            client.table("referral_invites")
+            .insert(
+                {
+                    "referrer_user_id": referrer.data["id"],
+                    "redeemed_by_user_id": invitee_id,
+                    "source": "code_redeem",
+                    # share_target is NOT NULL on the existing table; reuse
+                    # 'other' for code-typed flow (no real share channel).
+                    "share_target": "other",
+                }
+            )
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[referral] resolve_code insert failed: %s", exc)
+        return None
+    return invite.data[0]["id"] if invite.data else None
+
+
 # Top-level keys we strip from a comparison before showing it to an invitee.
 # Privacy invariant from design 3.3 — invitee must never see referrer's
 # preferences or budget. Behavior_profile is internal scoring state.

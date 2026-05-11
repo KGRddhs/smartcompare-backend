@@ -70,10 +70,16 @@ export default function ReferralStatusCard({ refreshKey }: ReferralStatusCardPro
     if (!status?.referral_code) return;
     try { Haptics.selectionAsync(); } catch {}
     try {
-      // Use Share.share — system sheet has Copy as a target on both platforms,
-      // and we don't depend on expo-clipboard which isn't installed yet.
-      await Share.share({ message: status.referral_code });
+      // Bundle A §1.3: share the full debate-ending message with code + link
+      // (not the bare 9-char code) so the recipient can tap straight through.
+      const link = `https://qaren.app/r/${status.referral_code}`;
+      const fullMessage = t('referrals.share.messageWithLink', {
+        link,
+        code: status.referral_code,
+      });
+      await Share.share({ message: fullMessage });
       setCopied(true);
+      try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
       setTimeout(() => setCopied(false), 2500);
     } catch {
       // ignore — user dismissed the share sheet

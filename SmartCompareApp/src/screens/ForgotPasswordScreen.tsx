@@ -63,7 +63,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
             <Text style={styles.successEmoji}>📧</Text>
             <Text style={styles.successTitle}>{t('auth.resetSent')}</Text>
             <Text style={styles.successText}>
-              If an account exists for {email}, you will receive a password reset link shortly.
+              {t('auth.resetMessage', { email })}
             </Text>
             <Button
               title={t('auth.signIn')}

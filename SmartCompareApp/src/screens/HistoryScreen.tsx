@@ -24,6 +24,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { getComparisonHistory, deleteComparison, parseApiError } from '../services/api';
 import { clearSession } from '../services/authService';
+import { formatTimeAgo } from '../utils/formatDate';
 
 interface HistoryItem {
   id: string;
@@ -45,7 +46,7 @@ interface HistoryScreenProps {
 }
 
 export default function HistoryScreen({ navigation, onLogout }: HistoryScreenProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,25 +99,11 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     return t('history.older');
   };
 
-  const formatTimeAgo = (dateString: string): string => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return t('history.ago', { time: '<1m' });
-    if (diffMins < 60) return t('history.ago', { time: `${diffMins}m` });
-    if (diffHours < 24) return t('history.ago', { time: `${diffHours}h` });
-    if (diffDays < 7) return t('history.ago', { time: `${diffDays}d` });
-
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-    });
-  };
+  // Locale-aware relative time via i18n-opus' shared util (Bundle A §6.2).
+  // Replaces the inline hardcoded 'en-US' formatter so Arabic users get
+  // "منذ 2 يوم" / "الآن" instead of "2d ago" / "<1m ago".
+  const formatTimeAgoLocalized = (dateString: string): string =>
+    formatTimeAgo(dateString, (i18n.language as 'en' | 'ar') ?? 'en');
 
   const formatPrice = (product: any): string => {
     if (!product || product.price === null || product.price === undefined) return 'N/A';
@@ -169,11 +156,22 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     );
   };
 
-  const renderItem = ({ item, index }: { item: HistoryItem; index: number }) => {
-    const products = item.full_response?.products || [];
-    const winnerIndex = item.full_response?.comparison?.winner_index ?? item.full_response?.winner_index ?? 0;
-    const winner = products[winnerIndex];
+  const formatTitle = (item: HistoryItem): string => {
+    // Bundle A §5.3 — list endpoint returns `product_names` (summary fields
+    // only; full_response is not in the list payload). The legacy
+    // `item.full_response?.products` lookup never worked because the list
+    // route doesn't hydrate full_response.
+    const names = (item.product_names ?? []).filter(Boolean);
+    if (names.length >= 2) {
+      const combined = `${names[0]} vs ${names[1]}`;
+      return combined.length > 40 ? combined.slice(0, 39) + '…' : combined;
+    }
+    const q = item.query?.trim();
+    if (q) return q;
+    return t('history.row.untitled');
+  };
 
+  const renderItem = ({ item, index }: { item: HistoryItem; index: number }) => {
     return (
       <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
         <TouchableOpacity
@@ -184,16 +182,10 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
           <View style={styles.cardContent}>
             <View style={styles.cardTop}>
               <Text style={styles.cardQuery} numberOfLines={1}>
-                {products[0]?.brand} {products[0]?.name} vs {products[1]?.brand} {products[1]?.name}
+                {formatTitle(item)}
               </Text>
-              <Text style={styles.cardTime}>{formatTimeAgo(item.created_at)}</Text>
+              <Text style={styles.cardTime}>{formatTimeAgoLocalized(item.created_at)}</Text>
             </View>
-
-            {winner && (
-              <Text style={styles.cardWinner} numberOfLines={1}>
-                {t('history.winner', { name: `${winner.brand} ${winner.name}` })} · {formatPrice(winner)}
-              </Text>
-            )}
           </View>
 
           <View style={styles.cardActions}>

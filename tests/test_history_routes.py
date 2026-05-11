@@ -268,3 +268,44 @@ def test_delete_comparison_db_failure(mock_get, mock_del):
         assert resp.status_code == 500
     finally:
         _cleanup_overrides()
+
+
+# ---------- Bundle A §5.2 — DELETE must reach v1 rows (Task 1.9) ----------
+
+
+MOCK_V1_COMPARISON = {
+    **MOCK_COMPARISON,
+    "schema_version": 1,
+}
+
+
+@patch("app.api.history_routes.delete_comparison", new_callable=AsyncMock, return_value=True)
+@patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=MOCK_V1_COMPARISON)
+def test_delete_comparison_works_for_v1_rows(mock_get, mock_del):
+    """DELETE on a v1 row must succeed — users still need to clean up stale history."""
+    client = _get_client_with_user()
+    try:
+        resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+        # The route should request the row WITH include_legacy=True.
+        called_kwargs = mock_get.call_args.kwargs
+        assert called_kwargs.get("include_legacy") is True
+    finally:
+        _cleanup_overrides()
+
+
+@patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=None)
+def test_get_comparison_returns_404_for_v1_row(mock_get):
+    """GET on a v1 row returns 404 (database layer hides it; route sees None)."""
+    client = _get_client_with_user()
+    try:
+        resp = client.get(
+            "/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        )
+        assert resp.status_code == 404
+        # GET should NOT use include_legacy (or pass False)
+        called_kwargs = mock_get.call_args.kwargs
+        assert called_kwargs.get("include_legacy", False) is False
+    finally:
+        _cleanup_overrides()

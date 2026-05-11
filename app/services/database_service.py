@@ -48,6 +48,27 @@ def get_supabase_client() -> Client:
     return get_admin_supabase_client()
 
 
+def _validate_renderable(payload: dict) -> bool:
+    """Return True iff payload has the minimum keys ResultsScreen needs.
+
+    Used by save_comparison() to gate which rows reach the history table —
+    only renderable rows are persisted. See Bundle A design §5.2.
+    """
+    if not isinstance(payload, dict):
+        return False
+    products = (
+        payload.get("overview", {}).get("products")
+        or payload.get("products")
+        or []
+    )
+    if len(products) < 2:
+        return False
+    if not all(isinstance(p, dict) and p.get("name") for p in products[:2]):
+        return False
+    query = payload.get("metadata", {}).get("query")
+    return bool(query)
+
+
 # ============================================
 # User Functions
 # ============================================
@@ -147,22 +168,40 @@ async def save_comparison(
     Returns:
         Saved comparison record or None on failure
     """
+    if not _validate_renderable(full_response):
+        logger.warning(
+            "save_comparison: skipping unrenderable payload "
+            f"(user_id={user_id}, comparison_renderable=false)"
+        )
+        # Sentry breadcrumb tag (no-op if Sentry not configured)
+        try:
+            import sentry_sdk
+            sentry_sdk.set_tag("comparison_renderable", "false")
+            sentry_sdk.add_breadcrumb(
+                category="comparison.save",
+                message="skipped unrenderable payload",
+                level="warning",
+            )
+        except Exception:
+            pass
+        return None
+
     try:
         client = get_supabase_client()
 
-        # Extract product names for indexing
-        products = full_response.get("products", [])
-        product_names = []
-        for p in products:
-            name = f"{p.get('brand', '')} {p.get('name', '')}".strip()
-            if name:
-                product_names.append(name)
+        products = (
+            full_response.get("overview", {}).get("products")
+            or full_response.get("products")
+            or []
+        )
+        product_names = [p["name"] for p in products[:2]]
 
         record = {
             "full_response": full_response,
             "query": query,
             "input_type": input_type,
             "product_names": product_names,
+            "schema_version": 2,
         }
 
         if user_id:
@@ -183,13 +222,19 @@ async def get_user_comparisons(
     search: Optional[str] = None,
     access_token: Optional[str] = None,
 ) -> List[Dict]:
-    """Get user's comparison history, optionally filtered by product name search."""
+    """Get user's comparison history, optionally filtered by product name search.
+
+    Only schema_version=2 rows are returned. Legacy v1 rows are hidden from
+    the history list because they cannot be safely rendered by ResultsScreen.
+    See Bundle A design §5.2.
+    """
     try:
         client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
         query = (
             client.table("comparisons")
             .select("*")
             .eq("user_id", user_id)
+            .eq("schema_version", 2)
             .order("created_at", desc=True)
         )
 
@@ -204,8 +249,18 @@ async def get_user_comparisons(
         return []
 
 
-async def get_comparison_by_id(comparison_id: str, access_token: Optional[str] = None) -> Optional[Dict]:
-    """Get a specific comparison by ID"""
+async def get_comparison_by_id(
+    comparison_id: str,
+    access_token: Optional[str] = None,
+    include_legacy: bool = False,
+) -> Optional[Dict]:
+    """Get a specific comparison by ID.
+
+    By default v1 rows are hidden (return None) — they cannot be rendered by
+    ResultsScreen. Pass include_legacy=True when the caller needs to operate
+    on v1 rows regardless (e.g. the DELETE handler which lets users clean up
+    stale history). See Bundle A design §5.2.
+    """
     try:
         client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
         response = (
@@ -215,7 +270,10 @@ async def get_comparison_by_id(comparison_id: str, access_token: Optional[str] =
             .single()
             .execute()
         )
-        return response.data
+        row = response.data
+        if row and not include_legacy and row.get("schema_version", 1) < 2:
+            return None
+        return row
     except Exception as e:
         logger.error(f"Error getting comparison: {e}")
         return None
@@ -367,13 +425,17 @@ async def get_shared_comparison(share_token: str) -> Optional[Dict]:
 
 
 async def get_user_comparison_count(user_id: str, access_token: Optional[str] = None) -> int:
-    """Get total number of comparisons for a user"""
+    """Get total number of renderable (schema_version=2) comparisons for a user.
+
+    Excludes legacy v1 rows for parity with get_user_comparisons.
+    """
     try:
         client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
         response = (
             client.table("comparisons")
             .select("id", count="exact")
             .eq("user_id", user_id)
+            .eq("schema_version", 2)
             .execute()
         )
         return response.count or 0

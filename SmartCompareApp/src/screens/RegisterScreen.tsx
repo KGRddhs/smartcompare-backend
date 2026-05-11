@@ -36,9 +36,13 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
   // the backend links the new user to the pending referral invite. When
   // the user reaches Register from the auth tab directly, this is undefined.
   const inviteId = route?.params?.invite_id;
+  const inviteCodeFromDeepLink = route?.params?.code;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState<string>(inviteCodeFromDeepLink ?? '');
+  const [inviteCodeLocked, setInviteCodeLocked] = useState<boolean>(!!inviteCodeFromDeepLink);
+  const [inviteCodeError, setInviteCodeError] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -46,6 +50,10 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
   const [confirmError, setConfirmError] = useState('');
   const [socialLoading, setSocialLoading] = useState('');
   const [showApple, setShowApple] = useState(false);
+
+  // Format: QR- followed by 6 chars from an unambiguous alphabet (no I/O/1/0).
+  // Server is authoritative on validity; client just guards the obvious shape.
+  const inviteCodeRegex = /^QR-[A-HJ-NP-Z2-9]{6}$/;
 
   useEffect(() => {
     if (Platform.OS === 'ios') {
@@ -126,13 +134,23 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       setConfirmError('');
     }
 
+    if (inviteCode && !inviteCodeRegex.test(inviteCode)) {
+      setInviteCodeError(t('register.inviteCode.invalid'));
+      hasError = true;
+    } else {
+      setInviteCodeError('');
+    }
+
     if (hasError) return;
 
     setLoading(true);
     setError('');
 
     try {
-      const result = await register(email.trim().toLowerCase(), password, inviteId);
+      const result = await register(email.trim().toLowerCase(), password, {
+        inviteId,
+        inviteCode: inviteCode || undefined,
+      });
 
       if (result.success) {
         onRegisterSuccess();
@@ -217,6 +235,45 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
                 {confirmError ? <Text style={styles.fieldError}>{confirmError}</Text> : null}
               </View>
 
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>{t('register.inviteCode.label')}</Text>
+                <View style={styles.inviteCodeRow}>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      styles.inviteCodeInput,
+                      inviteCodeError ? styles.inputError : null,
+                    ]}
+                    placeholder={t('register.inviteCode.placeholder')}
+                    placeholderTextColor={colors.text.placeholder}
+                    value={inviteCode}
+                    onChangeText={(v) => {
+                      setInviteCode(v.toUpperCase().replace(/[^A-Z0-9-]/g, ''));
+                      setInviteCodeError('');
+                    }}
+                    editable={!loading && !inviteCodeLocked}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    maxLength={9}
+                    accessibilityLabel={t('register.inviteCode.accessibility')}
+                  />
+                  {inviteCodeLocked ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setInviteCode('');
+                        setInviteCodeLocked(false);
+                        setInviteCodeError('');
+                      }}
+                      style={styles.inviteCodeClear}
+                      accessibilityLabel={t('register.inviteCode.clear')}
+                    >
+                      <Text style={styles.inviteCodeClearText}>×</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                {inviteCodeError ? <Text style={styles.fieldError}>{inviteCodeError}</Text> : null}
+              </View>
+
               <Button
                 title={t('auth.register')}
                 onPress={handleRegister}
@@ -257,11 +314,11 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
 
               {/* Benefits */}
               <View style={styles.benefits}>
-                <Text style={styles.benefitsTitle}>Free Account Includes:</Text>
-                <Text style={styles.benefitItem}>✓ 5 comparisons per day</Text>
-                <Text style={styles.benefitItem}>✓ AI-powered product identification</Text>
-                <Text style={styles.benefitItem}>✓ Live price comparison</Text>
-                <Text style={styles.benefitItem}>✓ Comparison history</Text>
+                <Text style={styles.benefitsTitle}>{t('register.benefits.title')}</Text>
+                <Text style={styles.benefitItem}>{t('register.benefits.daily')}</Text>
+                <Text style={styles.benefitItem}>{t('register.benefits.ai')}</Text>
+                <Text style={styles.benefitItem}>{t('register.benefits.price')}</Text>
+                <Text style={styles.benefitItem}>{t('register.benefits.history')}</Text>
               </View>
             </View>
 
@@ -353,6 +410,28 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: colors.destructive,
+  },
+  inviteCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inviteCodeInput: {
+    flex: 1,
+    letterSpacing: 1,
+  },
+  inviteCodeClear: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginStart: spacing.sm,
+    backgroundColor: colors.bg.secondary,
+  },
+  inviteCodeClearText: {
+    fontSize: 18,
+    color: colors.text.secondary,
+    lineHeight: 20,
   },
   fieldError: {
     ...typography.small,

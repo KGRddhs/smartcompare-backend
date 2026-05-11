@@ -3,6 +3,8 @@
  * Matches backend API response schema (verified Feb 14, 2026)
  */
 
+import type { NavigatorScreenParams } from '@react-navigation/native';
+
 // --- Product & Review types ---
 
 export interface RatingSource {
@@ -363,7 +365,7 @@ export interface AuthSession {
 // Root stack with Auth, Onboarding, Main tabs, Results modal, and Referral
 // landing flow (auth-OPTIONAL, reachable from deep links pre-auth).
 export type RootStackParamList = {
-  Auth: undefined;
+  Auth: NavigatorScreenParams<AuthStackParamList> | undefined;
   // mode='edit' opens preferences in edit mode (e.g. from Profile screen).
   // source='styleProfile' signals an "inferred preferences" banner is appropriate.
   Onboarding: { mode?: 'edit'; source?: 'styleProfile' } | undefined;
@@ -372,6 +374,11 @@ export type RootStackParamList = {
   // F3.2/F3.3 — invitee landing flow (gradual commitment, no signup gate).
   ReferralLanding: { share_token: string; ref: string };
   InviteeQuiz: { share_token: string; invite_id: string; ref: string };
+  // Bundle A — support screens routed from Profile.
+  Legal: { doc: 'privacy' | 'terms' };
+  ContactUs: undefined;
+  EditProfile: undefined;
+  EditPreferences: undefined;
   // Legacy screen names for backward compatibility with screen components
   Home: undefined;
   History: undefined;
@@ -384,7 +391,9 @@ export type AuthStackParamList = {
   // invite_id is set when the user lands on Register from the invitee
   // quiz soft-signup CTA (F3.5) — forwarded to /auth/register so the
   // backend links redeemed_by_user_id on the pending referral invite.
-  Register: { invite_id?: string } | undefined;
+  // `code` arrives via deep link (qaren://redeem?code=QR-XXXXXX or
+  // qaren.app/r/QR-XXXXXX) and pre-fills the invite-code field on Register.
+  Register: { invite_id?: string; code?: string } | undefined;
   ForgotPassword: undefined;
 };
 

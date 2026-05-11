@@ -5,6 +5,23 @@
  */
 import React from 'react';
 import { render } from '@testing-library/react-native';
+
+// Local i18n mock so the caption assertion sees the resolved EN string
+// (the global __mocks__/react-i18next.ts returns the bare key on miss).
+// This mirrors the production EN copy for `cohort.trainedBy`.
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, params?: Record<string, any>) => {
+      if (key === 'cohort.trainedBy') {
+        return `${params?.count ?? ''} GCC shoppers helped train this`;
+      }
+      return key;
+    },
+    i18n: { language: 'en', changeLanguage: jest.fn() },
+  }),
+  initReactI18next: { type: '3rdParty', init: jest.fn() },
+}));
+
 import { CohortBarChart } from '../../../src/components/illustrations/CohortBarChart';
 
 describe('CohortBarChart', () => {
