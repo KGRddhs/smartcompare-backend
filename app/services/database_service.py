@@ -168,22 +168,40 @@ async def save_comparison(
     Returns:
         Saved comparison record or None on failure
     """
+    if not _validate_renderable(full_response):
+        logger.warning(
+            "save_comparison: skipping unrenderable payload "
+            f"(user_id={user_id}, comparison_renderable=false)"
+        )
+        # Sentry breadcrumb tag (no-op if Sentry not configured)
+        try:
+            import sentry_sdk
+            sentry_sdk.set_tag("comparison_renderable", "false")
+            sentry_sdk.add_breadcrumb(
+                category="comparison.save",
+                message="skipped unrenderable payload",
+                level="warning",
+            )
+        except Exception:
+            pass
+        return None
+
     try:
         client = get_supabase_client()
 
-        # Extract product names for indexing
-        products = full_response.get("products", [])
-        product_names = []
-        for p in products:
-            name = f"{p.get('brand', '')} {p.get('name', '')}".strip()
-            if name:
-                product_names.append(name)
+        products = (
+            full_response.get("overview", {}).get("products")
+            or full_response.get("products")
+            or []
+        )
+        product_names = [p["name"] for p in products[:2]]
 
         record = {
             "full_response": full_response,
             "query": query,
             "input_type": input_type,
             "product_names": product_names,
+            "schema_version": 2,
         }
 
         if user_id:
