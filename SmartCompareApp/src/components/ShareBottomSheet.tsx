@@ -113,11 +113,19 @@ export default function ShareBottomSheet({
   const [submitting, setSubmitting] = useState<ShareTarget | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const previewMessage = t('referrals.share.message', {
-    productA: comparison.productA,
-    productB: comparison.productB,
-    winner: comparison.winnerName ?? comparison.productB,
-  });
+  // Bundle A §1.3 — message is generic ("ends the debate in 30 seconds")
+  // and product-agnostic. The share_link returned by createShare already
+  // encodes the comparison context server-side. We swap to the comparison-
+  // specific preview only when no link is available yet (initial render).
+  const buildOutgoing = (link: string, code: string) =>
+    t('referrals.share.messageWithLink', { link, code });
+
+  // Code is the `?ref=QR-XXXXXX` query on the share_link; surface it for the
+  // preview before the user taps a target (we don't have the link yet).
+  const previewMessage = buildOutgoing(
+    'https://qaren.app/r/QR-XXXXXX',
+    'QR-XXXXXX',
+  );
 
   const togglePrivacy = (key: keyof PrivacyToggles) => {
     try { Haptics.selectionAsync(); } catch {}
@@ -139,8 +147,12 @@ export default function ShareBottomSheet({
           show_reasons: privacy.reasons,
         },
       });
-      // Compose final outgoing message: base story + share_link
-      const outgoing = `${previewMessage}\n${result.share_link}`;
+      // Extract the referral code from `?ref=QR-XXXXXX` on share_link so the
+      // outgoing message can offer both link AND code (manual fallback when
+      // the link doesn't open the app — see Bundle A §1.3).
+      const codeMatch = result.share_link.match(/[?&]ref=([A-Z0-9-]+)/i);
+      const code = codeMatch ? codeMatch[1].toUpperCase() : '';
+      const outgoing = buildOutgoing(result.share_link, code);
       try {
         if (target === 'copy' || target === 'snapchat') {
           // System share sheet — gives user Copy/Snap targets reliably without
