@@ -4,6 +4,33 @@
 
 ---
 
+## Session 46: Bundle B/C/D Consolidated (4-Opus team) — COMPLETE 2026-05-12
+
+**Spec:** `docs/plans/2026-05-12-bundle-bcd-consolidated-design.md`
+**Plan:** `docs/plans/2026-05-12-bundle-bcd-consolidated.md`
+**QA report:** `docs/plans/2026-05-12-bundle-bcd-qa-report.md`
+**Worktree:** `../smartcompare-bundle-bcd` on branch `feature/bundle-bcd`
+
+**Built:** Cal-AI fullscreen camera redesign + Arabic deep clean + hybrid DIY install-survival (Android PIR + iOS clipboard + Cloudflare Worker) + lifetime device referral cap + 7-day bonus expiry + QarenLogo SVG + lucide category glyphs + animation polish + perf audit runbook. 28+ commits across 8 design items. Frontend: 588 → **792 tests** (+204), 95.12% statements / 97.33% lines on new files. Backend: 144/144 GREEN, 88% attribution_service / 86% referral_service. **23/23 mutants killed** in manual mutation testing (no `mutmut`/`stryker` — 2 MB dev-dep budget).
+
+### Critical lessons (Session 46)
+
+1. **Cloudflare wrangler `custom_domain = true` rejects wildcards/paths.** Initial Worker deploy errored: `custom_domain routes cannot have wildcards or paths`. The route binding `[[routes]] custom_domain = true; pattern = "qaren.app/r/*"` is invalid — `custom_domain` is for bare apex/subdomain only. Wildcards + paths require `zone_name = "qaren.app"` (Workers Routes, not Custom Domains). Fixed in `584fc1a`. Pattern saved to per-project memory dir as `cloudflare_workers_routes.md`. Worth a callout because the wrangler error message names the binding but doesn't tell you which binding to use instead.
+
+2. **Worker-only domains need a DNS placeholder.** `qaren.app` is served exclusively by Workers — no origin server. Cloudflare's edge won't receive traffic for the host unless at least one proxied DNS record exists. Standard: `AAAA <host> 100::` (IPv6 discard prefix per RFC 6666), proxied. Real traffic never hits it — the Worker intercepts at the edge — but the DNS hop is what tells Cloudflare's edge "this host is on the platform". Without it, `qaren.app/r/QR-XXXXXX` 404s at the network layer before reaching the Worker.
+
+3. **Agents cannot run `wrangler login`.** Browser OAuth required, no device-code flow. For agent-driven deploys: scoped `CLOUDFLARE_API_TOKEN` (permissions: Workers Scripts Edit, DNS Read, Workers Routes Edit), export before `wrangler deploy`. For Ahmed's interactive deploys, plain `wrangler login` works. Documented in `.env.example` patterns — token name, never token value.
+
+4. **ESLint `i18next/no-literal-string` in `jsx-text-only` mode misses function-call args.** Caught 5 hardcoded English `Alert.alert(...)` strings in HomeScreen + ProfileScreen during Phase 3 sweep. Origin: pre-Bundle-B/C/D commit `52ce8957` (2026-03-28). The rule's `jsx-text-only` mode is the right default for noise control, but `Alert.alert`/`Toast.show`/`console.error` arguments slip through. **Decision:** filed as deferred follow-up rather than retrofit in this bundle — would require either rule-mode change (expand to argument inspection, with allowlist tuning) or hand-grep for the patterns. Worth surfacing because this is the pattern that eats imperative-string i18n debt across the codebase.
+
+5. **Manual mutation testing as a stand-in for mutmut/stryker.** Neither tool installed (would exceed 2 MB dev-dep budget per team-lead). test-bcd's approach: identify the 4 highest-impact files, apply representative single-line mutations to each (loosen regex alphabet, off-by-one cap math, drop null-coalesce, etc.), re-run the suite, mutation is "KILLED" if any test fails. 23 applied, 23 killed. **One initial survivor** — dropping `?? ''` in clipboard service — was caught by adding a `String.prototype.trim` spy assertion to distinguish coerce-path from catch-path. Pattern is documented in `docs/runbooks/bundle-bcd-coverage.md` § 4 and reusable for any future bundle that wants mutation discipline without the tool overhead.
+
+6. **QA report skeleton lives from Phase 1, fills rolling.** Saves a half-day at PR time vs writing from scratch at the end. Same pattern as Bundle A. Lock testIDs + i18n key list in the design doc up front so QA + test-bcd can pre-seed REDs before implementation lands.
+
+7. **The hybrid DIY install-survival pattern is now Bundle-B/C/D-proven.** Branch.io's free tier was paywalled to $199/mo mid-design; we replaced their SDK with three independently-reusable primitives: Play Install Referrer (Android, ~100% reliable on Play installs), clipboard with explicit consent banner (iOS, ~70% reliable, Apple-review-safe), and Cloudflare Worker UA-router at `qaren.app/r/{code}` (free tier 100k req/day, smoke-tested live). Captured in per-project memory as `hybrid_install_survival_pattern.md`. Reuse for any future deep-link survival need (promo codes, partner attribution). **The canonical regex** `^QR-[A-HJ-NP-Z2-9]{6}$` (unambiguous alphabet, no I/L/O/0/1) is now enforced at four layers: Cloudflare Worker (edge 404 on bad), `playInstallReferrerService.ts`, `clipboardFallbackService.ts`, `attribution_service.parse_install_referrer`, plus `auth_routes._INVITE_CODE_RE`. Defense-in-depth — a drift caught at Phase 1 (REWORK #9) would have silently lost attributions.
+
+---
+
 ## Session 43: Qaren UX Redesign (4-Opus team) — COMPLETE 2026-05-07
 
 **Spec:** `docs/plans/2026-05-06-qaren-ux-redesign-design.md`
