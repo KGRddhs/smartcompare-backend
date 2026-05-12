@@ -579,5 +579,13 @@
   "home.camera.compareCta": "Compare",
   "home.camera.shutter": "Take photo",
   "home.camera.gallery": "Pick from gallery",
-  "home.camera.flash": "Toggle flash"
+  "home.camera.flash": "Toggle flash",
+
+  "referrals.bonus.expiringSoon": "Expiring soon",
+  "referrals.bonus.expiresInDays_one": "Expires in {{count}} day",
+  "referrals.bonus.expiresInDays_other": "Expires in {{count}} days",
+  "referrals.bonus.expiresInHours_one": "Expires in {{count}} hour",
+  "referrals.bonus.expiresInHours_other": "Expires in {{count}} hours",
+  "referrals.bonus.expiresInMinutes_one": "Expires in {{count}} minute",
+  "referrals.bonus.expiresInMinutes_other": "Expires in {{count}} minutes"
 }

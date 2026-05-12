@@ -579,5 +579,13 @@
   "home.camera.compareCta": "قارن",
   "home.camera.shutter": "التقاط صورة",
   "home.camera.gallery": "اختر من المعرض",
-  "home.camera.flash": "تبديل الفلاش"
+  "home.camera.flash": "تبديل الفلاش",
+
+  "referrals.bonus.expiringSoon": "تنتهي قريباً",
+  "referrals.bonus.expiresInDays_one": "تنتهي خلال {{count}} يوم",
+  "referrals.bonus.expiresInDays_other": "تنتهي خلال {{count}} أيام",
+  "referrals.bonus.expiresInHours_one": "تنتهي خلال {{count}} ساعة",
+  "referrals.bonus.expiresInHours_other": "تنتهي خلال {{count}} ساعات",
+  "referrals.bonus.expiresInMinutes_one": "تنتهي خلال {{count}} دقيقة",
+  "referrals.bonus.expiresInMinutes_other": "تنتهي خلال {{count}} دقائق"
 }
