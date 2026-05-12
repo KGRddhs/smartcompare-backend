@@ -2,11 +2,12 @@ name = "qaren-redirect"
 main = "src/index.ts"
 compatibility_date = "2026-05-12"
 
-# qaren.app/r/{code} → Worker. The custom-domain binding requires that
-# `qaren.app` is on Cloudflare DNS (Ahmed already wired this). Run
-# `wrangler login` then `wrangler deploy` to publish.
+# qaren.app/r/{code} → Worker. Path-based wildcard requires Workers
+# Routes (zone_name), NOT Custom Domains (which forbid wildcards/paths).
+# `qaren.app` must be on Cloudflare DNS (already wired).
+# Run `wrangler login` then `wrangler deploy` to publish.
 routes = [
-  { pattern = "qaren.app/r/*", custom_domain = true },
+  { pattern = "qaren.app/r/*", zone_name = "qaren.app" },
 ]
 
 # Logging is fine on the free plan; keep observability cheap.
