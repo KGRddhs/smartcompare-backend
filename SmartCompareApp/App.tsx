@@ -45,6 +45,7 @@ import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
 import InviteeQuizScreen from './src/screens/InviteeQuizScreen';
+import ScanCameraScreen from './src/screens/ScanCameraScreen';
 
 // Types
 import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/types';
@@ -321,6 +322,12 @@ export default function App() {
               name="EditPreferences"
               component={EditPreferencesFlow}
               options={{ presentation: 'modal' }}
+            />
+            {/* Bundle B/C/D — Cal-AI-style fullscreen camera. See plan § Task 1.8. */}
+            <Stack.Screen
+              name="ScanCamera"
+              component={ScanCameraScreen}
+              options={{ presentation: 'modal', headerShown: false }}
             />
             {/* Authed users tapping a referral link still get the landing page. */}
             <Stack.Screen

@@ -379,6 +379,9 @@ export type RootStackParamList = {
   ContactUs: undefined;
   EditProfile: undefined;
   EditPreferences: undefined;
+  // Bundle B/C/D — Cal-AI-style fullscreen camera modal launched from
+  // HomeScreen's "Scan" mode chip. See plan § Task 1.8.
+  ScanCamera: undefined;
   // Legacy screen names for backward compatibility with screen components
   Home: undefined;
   History: undefined;
