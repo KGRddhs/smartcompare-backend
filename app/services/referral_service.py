@@ -31,6 +31,13 @@ _VALID_SHARE_TARGETS = {"whatsapp", "copy", "x", "telegram", "snapchat", "other"
 
 _WEEKLY_INVITE_CAP = 3
 
+# Bundle B/C/D § 4.2: lifetime device-bound invite cap.
+# Aggregated across all users sharing a device fingerprint — a bad actor
+# logging out and creating account #2 on the same phone still hits this 3 cap.
+# Migration 023 added users.lifetime_invites_consumed; Bundle A's Migration 021
+# already provides users.device_fingerprint_hash.
+LIFETIME_CAP = 3
+
 # Default app base URL for invitee landing links. Override at deploy via env.
 # Kept as module attribute so tests/runtime can monkeypatch if needed.
 APP_BASE_URL = "https://qaren.app"
@@ -647,6 +654,26 @@ class ReferralService:
                 )
                 return
 
+            # Bundle B/C/D § 4.2: lifetime device cap. Aggregate SUM across
+            # all users sharing the referrer's device_fingerprint_hash. Reject
+            # before granting so a logged-out-then-re-signup loop cannot farm.
+            device_lifetime = await self._referrer_device_lifetime_count(
+                invite.get("referrer_user_id")
+            )
+            if device_lifetime >= LIFETIME_CAP:
+                await self._flag_invite(invite["id"], "DEVICE_LIFETIME_CAP_REACHED")
+                await log_audit_event(
+                    event_type="referral_device_lifetime_cap_reached",
+                    user_id=invitee_user_id,
+                    details={
+                        "invite_id": invite["id"],
+                        "referrer_user_id": invite.get("referrer_user_id"),
+                        "comparison_id": comparison_id,
+                        "device_lifetime_count": device_lifetime,
+                    },
+                )
+                return
+
             tier = await self._get_referrer_subscription_tier(invite.get("referrer_user_id"))
             grant_amount = 10 if tier == "premium" else 5
 
@@ -714,6 +741,48 @@ class ReferralService:
         except Exception as exc:  # noqa: BLE001
             logger.warning("[referral] invitee lookup failed: %s", exc)
             return None
+
+    async def _referrer_device_lifetime_count(
+        self, referrer_user_id: Optional[str]
+    ) -> int:
+        """Sum of ``lifetime_invites_consumed`` across all users sharing the
+        referrer's ``device_fingerprint_hash``.
+
+        Returns 0 when:
+          - ``referrer_user_id`` is None or missing
+          - the referrer has no ``device_fingerprint_hash`` (pre-Bundle A
+            grandfathered users — they fail OPEN since we can't device-bind
+            their cap)
+          - any DB error (fail-open — referral plumbing must never block the
+            comparison response per ``try_trigger_loop2`` non-fatality)
+        """
+        if not referrer_user_id:
+            return 0
+        try:
+            referrer = (
+                self.client.table("users")
+                .select("device_fingerprint_hash")
+                .eq("id", referrer_user_id)
+                .single()
+                .execute()
+            )
+            fp = (referrer.data or {}).get("device_fingerprint_hash")
+            if not fp:
+                return 0
+            agg = (
+                self.client.table("users")
+                .select("lifetime_invites_consumed")
+                .eq("device_fingerprint_hash", fp)
+                .execute()
+            )
+            rows = agg.data or []
+            return sum(int(r.get("lifetime_invites_consumed") or 0) for r in rows)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[referral] device lifetime count lookup failed for %s: %s",
+                referrer_user_id, exc,
+            )
+            return 0
 
     async def _get_referrer_subscription_tier(
         self, referrer_user_id: Optional[str]
