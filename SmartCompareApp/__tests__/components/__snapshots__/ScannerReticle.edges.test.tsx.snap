@@ -2,6 +2,8 @@
 
 exports[`ScannerReticle — edges matches snapshot for default size 1`] = `
 <View
+  accessibilityElementsHidden={true}
+  importantForAccessibility="no-hide-descendants"
   pointerEvents="none"
   style={
     {
