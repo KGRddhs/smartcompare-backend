@@ -1,11 +1,13 @@
 /**
  * ReferralStatusCard
  *
- * Profile-screen card showing the user's referral state per design 4.5:
+ * Profile-screen card showing the user's referral state per design 4.5
+ * (post-Bundle-B/C/D shape — § 4.2 lifetime cap replaces weekly):
  *   - Referral code (tap to copy)
- *   - Weekly gifts used / 3
+ *   - Lifetime gifts used / 3 (was: weekly gifts — Bundle B/C/D Task 2.13)
+ *   - Gift-thanks copy when the user has hit 3 lifetime
  *   - Monthly bonus comparisons earned
- *   - Lifetime invites that converted (Loop 2 fired)
+ *   - Total lifetime Loop 2 conversions ("Friends signed up")
  *   - Available Deep Review credits
  *
  * Renders nothing when:
