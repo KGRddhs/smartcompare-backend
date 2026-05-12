@@ -339,7 +339,15 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
                     placeholderTextColor={colors.text.placeholder}
                     value={inviteCode}
                     onChangeText={(v) => {
-                      setInviteCode(v.toUpperCase().replace(/[^A-Z0-9-]/g, ''));
+                      // Bundle B/C/D Task #36 — strip everything outside the
+                      // canonical unambiguous alphabet `[A-HJ-NP-Z2-9]`
+                      // (matches backend referral_service._CODE_ALPHABET)
+                      // plus the literal dash. Catches I/L/O/0/1 typos at
+                      // the input layer instead of bouncing through the
+                      // validation banner.
+                      setInviteCode(
+                        v.toUpperCase().replace(/[^A-HJ-NP-Z2-9-]/g, '')
+                      );
                       setInviteCodeError('');
                     }}
                     editable={!loading && !inviteCodeLocked}

@@ -26,7 +26,19 @@ export default function QarenLogo({
   color = colors.text.primary,
 }: Props) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+    // qa-bcd a11y review (Task #35) — the glyph always sits beside the
+    // visible wordmark <Text>{t('app.name')}</Text>. Hide it from
+    // VoiceOver/TalkBack so the wordmark speaks for the pair and the
+    // user doesn't hear "image" twice. Matches the decorative-overlay
+    // pattern used in ScannerReticle.
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      fill="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
       <G>
         {/* Q-ring */}
         <Circle
