@@ -5,6 +5,7 @@
 import React from 'react';
 import { View, Image, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { X } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
 import { colors, spacing, radii } from '../theme';
 
 export type Slot = { uri: string } | null;
@@ -16,6 +17,7 @@ type Props = {
 };
 
 export default function ImageSlotRow({ slots, onChange }: Props) {
+  const { t } = useTranslation();
   const remove = (idx: 0 | 1) => {
     const next: Slots = [slots[0], slots[1]];
     next[idx] = null;
@@ -26,8 +28,15 @@ export default function ImageSlotRow({ slots, onChange }: Props) {
     <View style={styles.row}>
       {([0, 1] as const).map((idx) => {
         const slot = slots[idx];
+        const slotNumber = idx + 1;
         return (
-          <View key={idx} testID={`image-slot-${idx}`} style={styles.slot}>
+          <View
+            key={idx}
+            testID={`image-slot-${idx}`}
+            style={styles.slot}
+            accessibilityLabel={t('home.camera.a11y.slot', { count: slotNumber })}
+            accessible
+          >
             {slot ? (
               <>
                 <Image
@@ -40,13 +49,19 @@ export default function ImageSlotRow({ slots, onChange }: Props) {
                   style={styles.remove}
                   onPress={() => remove(idx)}
                   accessibilityRole="button"
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel={t('home.camera.a11y.slotRemove', {
+                    count: slotNumber,
+                  })}
+                  // qa-bcd a11y review — the visible × is 24×24; hitSlop=12
+                  // brings the effective tap target to 48×48 so we clear the
+                  // 44pt minimum on both iOS and Android.
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
                   <X size={14} color={colors.text.onInverse} />
                 </TouchableOpacity>
               </>
             ) : (
-              <Text style={styles.placeholder}>{idx + 1}</Text>
+              <Text style={styles.placeholder}>{slotNumber}</Text>
             )}
           </View>
         );

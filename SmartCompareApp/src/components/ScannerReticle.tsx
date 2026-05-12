@@ -30,7 +30,15 @@ export default function ScannerReticle() {
   }));
 
   return (
-    <View style={styles.overlay} pointerEvents="none">
+    <View
+      style={styles.overlay}
+      pointerEvents="none"
+      // qa-bcd a11y review — the reticle is purely decorative. Hide it
+      // from VoiceOver/TalkBack so the user doesn't hear an unhelpful
+      // "scanner brackets" announcement on every focus.
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
       <Animated.View style={animStyle}>
         <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
           <Path

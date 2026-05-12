@@ -586,6 +586,13 @@
   "home.camera.shutter": "التقاط صورة",
   "home.camera.gallery": "اختر من المعرض",
   "home.camera.flash": "تبديل الفلاش",
+  "home.camera.a11y.close": "إغلاق الكاميرا",
+  "home.camera.a11y.help": "مساعدة الكاميرا",
+  "home.camera.a11y.shutter": "التقاط صورة",
+  "home.camera.a11y.gallery": "اختر من المعرض",
+  "home.camera.a11y.flash": "تبديل الفلاش",
+  "home.camera.a11y.slot": "خانة الصورة {{count}} من 2",
+  "home.camera.a11y.slotRemove": "إزالة الصورة من الخانة {{count}}",
 
   "referrals.bonus.expiringSoon": "تنتهي قريباً",
   "referrals.bonus.expiresInDays_one": "تنتهي خلال {{count}} يوم",

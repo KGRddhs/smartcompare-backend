@@ -132,7 +132,7 @@ export default function ScanCameraScreen({ navigation }: Props) {
             testID="scan-camera-close"
             onPress={() => navigation.goBack()}
             accessibilityRole="button"
-            accessibilityLabel={t('camera.close')}
+            accessibilityLabel={t('home.camera.a11y.close')}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <X color={colors.text.onInverse} size={28} />
@@ -160,7 +160,7 @@ export default function ScanCameraScreen({ navigation }: Props) {
           testID="scan-camera-close"
           onPress={() => navigation.goBack()}
           accessibilityRole="button"
-          accessibilityLabel={t('camera.close')}
+          accessibilityLabel={t('home.camera.a11y.close')}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <X color={colors.text.onInverse} size={28} />
@@ -168,7 +168,7 @@ export default function ScanCameraScreen({ navigation }: Props) {
         <TouchableOpacity
           testID="scan-camera-help"
           accessibilityRole="button"
-          accessibilityLabel={t('camera.help')}
+          accessibilityLabel={t('home.camera.a11y.help')}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <HelpCircle color={colors.text.onInverse} size={28} />
@@ -194,7 +194,7 @@ export default function ScanCameraScreen({ navigation }: Props) {
             testID="flash-button"
             onPress={onFlashCycle}
             accessibilityRole="button"
-            accessibilityLabel={t('home.camera.flash')}
+            accessibilityLabel={t('home.camera.a11y.flash')}
             accessibilityState={{ checked: flash !== 'off' }}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.sideButton}
@@ -208,7 +208,7 @@ export default function ScanCameraScreen({ navigation }: Props) {
             testID="shutter-button"
             onPress={onCapture}
             accessibilityRole="button"
-            accessibilityLabel={t('home.camera.shutter')}
+            accessibilityLabel={t('home.camera.a11y.shutter')}
             style={styles.shutter}
             disabled={nextEmptyIndex(slots) === null}
           >
@@ -218,7 +218,7 @@ export default function ScanCameraScreen({ navigation }: Props) {
             testID="gallery-button"
             onPress={onGalleryPick}
             accessibilityRole="button"
-            accessibilityLabel={t('home.camera.gallery')}
+            accessibilityLabel={t('home.camera.a11y.gallery')}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.sideButton}
           >

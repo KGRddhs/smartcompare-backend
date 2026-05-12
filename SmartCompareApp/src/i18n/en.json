@@ -586,6 +586,13 @@
   "home.camera.shutter": "Take photo",
   "home.camera.gallery": "Pick from gallery",
   "home.camera.flash": "Toggle flash",
+  "home.camera.a11y.close": "Close camera",
+  "home.camera.a11y.help": "Camera help",
+  "home.camera.a11y.shutter": "Capture photo",
+  "home.camera.a11y.gallery": "Choose from gallery",
+  "home.camera.a11y.flash": "Toggle flash",
+  "home.camera.a11y.slot": "Image slot {{count}} of 2",
+  "home.camera.a11y.slotRemove": "Remove image from slot {{count}}",
 
   "referrals.bonus.expiringSoon": "Expiring soon",
   "referrals.bonus.expiresInDays_one": "Expires in {{count}} day",
