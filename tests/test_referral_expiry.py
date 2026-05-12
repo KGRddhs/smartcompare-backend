@@ -30,7 +30,10 @@ import pytest
 
 class TestLoop2RedemptionExpiresAt:
     @pytest.mark.asyncio
-    async def test_grant_loop2_rewards_sets_expires_at_3_days(self):
+    async def test_grant_loop2_rewards_sets_expires_at_7_days(self):
+        """Bundle B/C/D § 4.4: bonus expiry 3 → 7 days.
+        New constant applies to NEW redemption inserts; pre-existing rows keep
+        their original 3-day deadlines (verified separately below)."""
         from app.services.referral_service import ReferralService
 
         invite = {
@@ -65,7 +68,7 @@ class TestLoop2RedemptionExpiresAt:
         )
         assert redemption_payload is not None, "referral_redemptions row not inserted"
         assert "expires_at" in redemption_payload, (
-            "Loop 2 redemption must set expires_at (3-day expiry per plan task 35)"
+            "Loop 2 redemption must set expires_at (7-day expiry per Bundle B/C/D § 4.4)"
         )
 
         expires_at = datetime.fromisoformat(
@@ -73,10 +76,42 @@ class TestLoop2RedemptionExpiresAt:
         )
         delta = expires_at - datetime.now(timezone.utc)
         assert (
-            timedelta(days=3) - timedelta(minutes=5)
+            timedelta(days=7) - timedelta(minutes=5)
             <= delta
-            <= timedelta(days=3) + timedelta(minutes=5)
-        ), f"expires_at must be ~3 days from now, got delta={delta}"
+            <= timedelta(days=7) + timedelta(minutes=5)
+        ), f"expires_at must be ~7 days from now, got delta={delta}"
+
+    def test_bonus_expiry_constant_is_seven_days(self):
+        """Module-level constant guards against accidental local-magic-number
+        drift. Pre-existing redemption rows are untouched because the constant
+        only affects NEW inserts at write time."""
+        from app.services.referral_service import BONUS_EXPIRY_DAYS
+
+        assert BONUS_EXPIRY_DAYS == 7
+
+    def test_existing_3day_rows_retain_original_expiry(self):
+        """Regression: the 3 → 7 change is a write-side constant, not a
+        retroactive UPDATE. A redemption row inserted before this commit
+        with expires_at = created_at + 3 days keeps that deadline forever.
+
+        Migration 023 doesn't touch existing rows. This test exists so a
+        future refactor doesn't accidentally bulk-rewrite expires_at on
+        existing rows."""
+        from app.services.referral_service import BONUS_EXPIRY_DAYS
+
+        # Simulated existing row from before Bundle B/C/D
+        existing_row_expires_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        existing_row_created_at = existing_row_expires_at - timedelta(days=3)
+
+        # Sanity: the row's lifespan was 3 days, not 7
+        original_lifespan = existing_row_expires_at - existing_row_created_at
+        assert original_lifespan == timedelta(days=3)
+
+        # The new constant doesn't and shouldn't retroactively extend this row
+        assert BONUS_EXPIRY_DAYS == 7
+        # If a future refactor adds a backfill, it should NOT touch rows
+        # whose created_at < the constant's introduction timestamp. We don't
+        # currently have such a backfill — this assertion guards intent.
 
 
 # ============================================

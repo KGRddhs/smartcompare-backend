@@ -96,9 +96,13 @@ describe('BonusCountdownCard — Phase 4 Task 41', () => {
     expect(queryByTestId('bonus-countdown-card')).toBeNull();
   });
 
-  it('updates the countdown per minute (re-renders when time advances)', () => {
-    // 1h 5m to expiry → label "1h 5m"; +60s elapsed → "1h 4m"
-    const expiresAt = new Date('2026-05-07T13:05:00Z');
+  it('updates the countdown when crossing a minute boundary inside the minutes label', () => {
+    // Bundle B/C/D Task 2.15 — verbose plural copy quantizes at the
+    // largest meaningful unit (days / hours / minutes). To assert the
+    // per-minute interval still re-renders we need to start in the
+    // minutes range and cross a minute boundary that changes count.
+    // 2m 30s remaining → "Expires in 2 minutes"; +60s → "1 minute".
+    const expiresAt = new Date('2026-05-07T12:02:30Z');
     const { getByTestId } = render(
       <BonusCountdownCard
         baseFreeRemaining={3}
@@ -113,6 +117,78 @@ describe('BonusCountdownCard — Phase 4 Task 41', () => {
     });
     const later = getByTestId('bonus-countdown-time').props.children;
     expect(later).not.toBe(initial);
+  });
+
+  // Bundle B/C/D Task 2.15 — verbose plural-aware day/hour/minute copy.
+  it('renders "Expires in 7 days" at day-7 issue (verbose plural)', () => {
+    const expiresAt = new Date('2026-05-14T12:00:00Z'); // exactly 7 days later
+    const { getByTestId } = render(
+      <BonusCountdownCard
+        baseFreeRemaining={3}
+        bonusRemaining={2}
+        referrerName="Ahmed"
+        expiresAt={expiresAt}
+      />
+    );
+    expect(getByTestId('bonus-countdown-time').props.children).toBe(
+      'Expires in 7 days'
+    );
+  });
+
+  it('renders "Expires in 1 day" at day-6 (24h-before push-reminder window)', () => {
+    const expiresAt = new Date('2026-05-08T12:00:00Z'); // 24h after now
+    const { getByTestId } = render(
+      <BonusCountdownCard
+        baseFreeRemaining={3}
+        bonusRemaining={2}
+        referrerName="Ahmed"
+        expiresAt={expiresAt}
+      />
+    );
+    expect(getByTestId('bonus-countdown-time').props.children).toBe(
+      'Expires in 1 day'
+    );
+  });
+
+  it('renders "Expires in N hours" when < 24h remains', () => {
+    const expiresAt = new Date('2026-05-07T15:00:00Z'); // 3h after now
+    const { getByTestId } = render(
+      <BonusCountdownCard
+        baseFreeRemaining={3}
+        bonusRemaining={2}
+        referrerName="Ahmed"
+        expiresAt={expiresAt}
+      />
+    );
+    expect(getByTestId('bonus-countdown-time').props.children).toBe(
+      'Expires in 3 hours'
+    );
+  });
+
+  it('renders "Expires in 1 hour" when 1h remains (singular)', () => {
+    const expiresAt = new Date('2026-05-07T13:00:00Z'); // 1h after now
+    const { getByTestId } = render(
+      <BonusCountdownCard
+        baseFreeRemaining={3}
+        bonusRemaining={2}
+        referrerName="Ahmed"
+        expiresAt={expiresAt}
+      />
+    );
+    expect(getByTestId('bonus-countdown-time').props.children).toBe(
+      'Expires in 1 hour'
+    );
+  });
+
+  it('source uses no hardcoded "3 days" or "7 days" string (all via interpolation)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../../src/components/BonusCountdownCard.tsx'),
+      'utf8'
+    );
+    expect(src).not.toMatch(/['"]3 days['"]/);
+    expect(src).not.toMatch(/['"]7 days['"]/);
   });
 
   it('cleans up its interval on unmount (no throws)', () => {

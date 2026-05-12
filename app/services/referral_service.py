@@ -31,6 +31,19 @@ _VALID_SHARE_TARGETS = {"whatsapp", "copy", "x", "telegram", "snapchat", "other"
 
 _WEEKLY_INVITE_CAP = 3
 
+# Bundle B/C/D § 4.2: lifetime device-bound invite cap.
+# Aggregated across all users sharing a device fingerprint — a bad actor
+# logging out and creating account #2 on the same phone still hits this 3 cap.
+# Migration 023 added users.lifetime_invites_consumed; Bundle A's Migration 021
+# already provides users.device_fingerprint_hash.
+LIFETIME_CAP = 3
+
+# Bundle B/C/D § 4.4: bonus expiry 3 → 7 days. Constant applies only to NEW
+# referral_redemptions inserts; pre-existing rows keep their original deadlines.
+# Push reminder still fires 24h before expiry (now day 6 instead of day 2).
+# Loop 1's deep_review_expires_at in create_invite stays at 3 days per design.
+BONUS_EXPIRY_DAYS = 7
+
 # Default app base URL for invitee landing links. Override at deploy via env.
 # Kept as module attribute so tests/runtime can monkeypatch if needed.
 APP_BASE_URL = "https://qaren.app"
@@ -267,17 +280,12 @@ class ReferralService:
             if show_reasons is not None:
                 merged_privacy["show_reasons"] = bool(show_reasons)
             privacy = merged_privacy
-        # 1. Weekly cap (compute dynamically per design Section 4.2)
-        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        recent = (
-            self.client.table("referral_invites")
-            .select("id", count="exact")
-            .eq("referrer_user_id", referrer_user_id)
-            .gte("created_at", seven_days_ago)
-            .execute()
-        )
-        if (recent.count or 0) >= _WEEKLY_INVITE_CAP:
-            raise WeeklyInviteCapExceeded()
+        # Bundle B/C/D § 4.7: /share no longer enforces a per-share cap.
+        # The only cap is the lifetime device cap at try_trigger_loop2
+        # (rejected AFTER receiver signup, not before sender shares).
+        # The legacy weekly cap query + WeeklyInviteCapExceeded raise are
+        # removed. We still surface an informational `lifetime_invites_remaining`
+        # in the response so the FE can disable the share CTA at 3 lifetime.
 
         # 2. share_target validation (defence-in-depth before DB CHECK)
         if share_target not in _VALID_SHARE_TARGETS:
@@ -338,16 +346,39 @@ class ReferralService:
         # quote() on share_token in case it ever contains url-unsafe chars; ref code is alnum.
         share_link = f"{APP_BASE_URL}/c/{quote(share_token or '', safe='')}?ref={code}"
 
-        used = (recent.count or 0) + 1
+        # Bundle B/C/D § 4.7: informational lifetime counter — does NOT block
+        # the share, but lets the FE disable the share CTA at 3 lifetime
+        # successful referrals + show "gifted to 3 friends" microcopy.
+        lifetime_used = await self._lifetime_invites_used(referrer_user_id)
         return {
             "invite_id": invite_id,
             "referrer_user_id": referrer_user_id,
             "share_link": share_link,
             "share_token": share_token,
             "referral_code": code,
-            "weekly_invites_used": used,
-            "weekly_invites_remaining": max(_WEEKLY_INVITE_CAP - used, 0),
+            "lifetime_invites_used": lifetime_used,
+            "lifetime_invites_remaining": max(LIFETIME_CAP - lifetime_used, 0),
         }
+
+    async def _lifetime_invites_used(self, user_id: str) -> int:
+        """Read ``users.lifetime_invites_consumed`` for this user (this is the
+        per-user view; the cap query in try_trigger_loop2 aggregates across
+        device-mates). Returns 0 on missing user or DB error."""
+        try:
+            row = (
+                self.client.table("users")
+                .select("lifetime_invites_consumed")
+                .eq("id", user_id)
+                .single()
+                .execute()
+            )
+            return int((row.data or {}).get("lifetime_invites_consumed") or 0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[referral] lifetime_invites_used lookup failed for %s: %s",
+                user_id, exc,
+            )
+            return 0
 
     # ---------- invitee landing (B3.1) ----------
 
@@ -478,30 +509,27 @@ class ReferralService:
     # ---------- status ----------
 
     async def get_status(self, user_id: str) -> dict[str, Any]:
-        """Return weekly + bonus + lifetime + code state.
+        """Return lifetime + bonus + redemptions + code state.
 
         Lazy-creates a referral code if the user doesn't have one yet.
-        """
-        # 1. Weekly invites used
-        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        weekly = (
-            self.client.table("referral_invites")
-            .select("id", count="exact")
-            .eq("referrer_user_id", user_id)
-            .gte("created_at", seven_days_ago)
-            .execute()
-        )
-        weekly_used = weekly.count or 0
 
-        # 2. User row — code + bonus comparisons
+        Bundle B/C/D § 4.7: replaces ``weekly_invites_used/remaining`` with
+        ``lifetime_invites_used/remaining`` (sourced from
+        ``users.lifetime_invites_consumed`` per Migration 023).
+        """
+        # 1. User row — code + bonus comparisons + lifetime counter
         user_row = (
             self.client.table("users")
-            .select("referral_code, referral_bonus_comparisons_this_month")
+            .select(
+                "referral_code, referral_bonus_comparisons_this_month, "
+                "lifetime_invites_consumed"
+            )
             .eq("id", user_id)
             .single()
             .execute()
         )
         user_data = user_row.data or {}
+        lifetime_used = int(user_data.get("lifetime_invites_consumed") or 0)
         code = user_data.get("referral_code")
         if not code:
             code = generate_referral_code()
@@ -533,8 +561,8 @@ class ReferralService:
 
         return {
             "referral_code": code,
-            "weekly_invites_used": weekly_used,
-            "weekly_invites_remaining": max(_WEEKLY_INVITE_CAP - weekly_used, 0),
+            "lifetime_invites_used": lifetime_used,
+            "lifetime_invites_remaining": max(LIFETIME_CAP - lifetime_used, 0),
             "monthly_bonus_comparisons": monthly_bonus,
             "deep_review_credits_available": credits_available,
             "total_lifetime_redemptions": lifetime,
@@ -647,6 +675,26 @@ class ReferralService:
                 )
                 return
 
+            # Bundle B/C/D § 4.2: lifetime device cap. Aggregate SUM across
+            # all users sharing the referrer's device_fingerprint_hash. Reject
+            # before granting so a logged-out-then-re-signup loop cannot farm.
+            device_lifetime = await self._referrer_device_lifetime_count(
+                invite.get("referrer_user_id")
+            )
+            if device_lifetime >= LIFETIME_CAP:
+                await self._flag_invite(invite["id"], "DEVICE_LIFETIME_CAP_REACHED")
+                await log_audit_event(
+                    event_type="referral_device_lifetime_cap_reached",
+                    user_id=invitee_user_id,
+                    details={
+                        "invite_id": invite["id"],
+                        "referrer_user_id": invite.get("referrer_user_id"),
+                        "comparison_id": comparison_id,
+                        "device_lifetime_count": device_lifetime,
+                    },
+                )
+                return
+
             tier = await self._get_referrer_subscription_tier(invite.get("referrer_user_id"))
             grant_amount = 10 if tier == "premium" else 5
 
@@ -715,6 +763,48 @@ class ReferralService:
             logger.warning("[referral] invitee lookup failed: %s", exc)
             return None
 
+    async def _referrer_device_lifetime_count(
+        self, referrer_user_id: Optional[str]
+    ) -> int:
+        """Sum of ``lifetime_invites_consumed`` across all users sharing the
+        referrer's ``device_fingerprint_hash``.
+
+        Returns 0 when:
+          - ``referrer_user_id`` is None or missing
+          - the referrer has no ``device_fingerprint_hash`` (pre-Bundle A
+            grandfathered users — they fail OPEN since we can't device-bind
+            their cap)
+          - any DB error (fail-open — referral plumbing must never block the
+            comparison response per ``try_trigger_loop2`` non-fatality)
+        """
+        if not referrer_user_id:
+            return 0
+        try:
+            referrer = (
+                self.client.table("users")
+                .select("device_fingerprint_hash")
+                .eq("id", referrer_user_id)
+                .single()
+                .execute()
+            )
+            fp = (referrer.data or {}).get("device_fingerprint_hash")
+            if not fp:
+                return 0
+            agg = (
+                self.client.table("users")
+                .select("lifetime_invites_consumed")
+                .eq("device_fingerprint_hash", fp)
+                .execute()
+            )
+            rows = agg.data or []
+            return sum(int(r.get("lifetime_invites_consumed") or 0) for r in rows)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[referral] device lifetime count lookup failed for %s: %s",
+                referrer_user_id, exc,
+            )
+            return 0
+
     async def _get_referrer_subscription_tier(
         self, referrer_user_id: Optional[str]
     ) -> str:
@@ -748,9 +838,10 @@ class ReferralService:
             return
 
         # 1. referral_redemptions row
-        # expires_at = now + 3 days. Source of truth for entitlement
+        # expires_at = now + BONUS_EXPIRY_DAYS. Source of truth for entitlement
         # (path-(a) decision per plan task 35); usage_service sums
         # active rows where expires_at > now() AND consumed_at IS NULL.
+        # Bundle B/C/D § 4.4: bumped 3 → 7 days; existing rows untouched.
         self.client.table("referral_redemptions").insert(
             {
                 "invite_id": invite["id"],
@@ -758,7 +849,7 @@ class ReferralService:
                 "invitee_user_id": invitee_id,
                 "loop2_comparisons_granted": grant_amount,
                 "expires_at": (
-                    datetime.now(timezone.utc) + timedelta(days=3)
+                    datetime.now(timezone.utc) + timedelta(days=BONUS_EXPIRY_DAYS)
                 ).isoformat(),
             }
         ).execute()
@@ -780,6 +871,24 @@ class ReferralService:
         self.client.table("deep_review_credits").insert(
             {"user_id": invitee_id, "source": "invitee_signup"}
         ).execute()
+
+        # 4. Bundle B/C/D § 4.2: increment inviter's lifetime_invites_consumed.
+        # Read-modify-write rather than UPDATE...SET col = col + 1 because the
+        # Supabase Python client doesn't expose raw SQL on the user-client and
+        # this matches the pattern used for referral_bonus_comparisons_this_month
+        # above. Race window is acceptable — Loop 2 trigger is already gated by
+        # an unredeemed-invite check + first-comparison count.
+        current_lifetime = (
+            self.client.table("users")
+            .select("lifetime_invites_consumed")
+            .eq("id", referrer_id)
+            .single()
+            .execute()
+        )
+        current_count = (current_lifetime.data or {}).get("lifetime_invites_consumed") or 0
+        self.client.table("users").update(
+            {"lifetime_invites_consumed": current_count + 1}
+        ).eq("id", referrer_id).execute()
 
     async def _update_invite_as_redeemed(
         self, invite_id: str, comparison_id: str

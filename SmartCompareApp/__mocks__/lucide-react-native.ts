@@ -56,3 +56,14 @@ export const Info = createIcon('Info');
 export const AlertCircle = createIcon('AlertCircle');
 export const ExternalLink = createIcon('ExternalLink');
 export const Trophy = createIcon('Trophy');
+export const HelpCircle = createIcon('HelpCircle');
+export const Image = createIcon('Image');
+// Bundle B/C/D Task 2.9 — CategorySelector lucide swap (per-icon imports).
+export const Smartphone = createIcon('Smartphone');
+export const ShoppingCart = createIcon('ShoppingCart');
+export const Pill = createIcon('Pill');
+export const Brush = createIcon('Brush');
+export const Scissors = createIcon('Scissors');
+export const Flower = createIcon('Flower');
+export const ShoppingBag = createIcon('ShoppingBag');
+export const Package = createIcon('Package');

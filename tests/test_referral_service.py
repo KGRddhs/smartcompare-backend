@@ -214,28 +214,51 @@ class TestCreateInvite:
         assert payload["source"] == "share_loop1"
 
     @pytest.mark.asyncio
-    async def test_create_invite_rejects_4th_within_seven_days(self):
-        from app.services.referral_service import ReferralService, WeeklyInviteCapExceeded
+    async def test_create_invite_no_longer_enforces_weekly_cap(self):
+        """Bundle B/C/D § 4.7: the per-share weekly cap is removed. The only
+        cap is the lifetime device cap at try_trigger_loop2 (post-signup).
+        Even a user with 100 prior invites this week can still call /share."""
+        from app.services.referral_service import ReferralService
 
         client = MagicMock()
-        weekly_count = MagicMock(count=3)  # already at cap
+        existing_user = MagicMock(data={
+            "referral_code": "QR-EXIST1",
+            "lifetime_invites_consumed": 1,
+        })
+        owned_comp = MagicMock(data={
+            "id": "c1", "user_id": "u1", "share_token": "tok1",
+        })
+        invite_insert = MagicMock(data=[{"id": "inv-new"}])
 
         def table_side_effect(name):
             t = MagicMock()
-            if name == "referral_invites":
-                t.select.return_value.eq.return_value.gte.return_value.execute.return_value = weekly_count
+            if name == "users":
+                t.select.return_value.eq.return_value.single.return_value.execute.return_value = existing_user
+            elif name == "comparisons":
+                t.select.return_value.eq.return_value.single.return_value.execute.return_value = owned_comp
+            elif name == "referral_invites":
+                t.insert.return_value.execute.return_value = invite_insert
+            elif name == "deep_review_credits":
+                t.insert.return_value.execute.return_value = MagicMock(data=[])
             return t
 
         client.table.side_effect = table_side_effect
 
         with patch("app.services.referral_service.get_admin_supabase_client", return_value=client):
             svc = ReferralService()
-            with pytest.raises(WeeklyInviteCapExceeded):
-                await svc.create_invite(
-                    referrer_user_id="u1",
-                    comparison_id="c1",
-                    share_target="whatsapp",
-                )
+            # Must NOT raise — weekly cap is gone.
+            result = await svc.create_invite(
+                referrer_user_id="u1",
+                comparison_id="c1",
+                share_target="whatsapp",
+            )
+        assert result["invite_id"] == "inv-new"
+        # New shape: lifetime counters in response
+        assert result["lifetime_invites_used"] == 1
+        assert result["lifetime_invites_remaining"] == 2
+        # Old shape gone
+        assert "weekly_invites_used" not in result
+        assert "weekly_invites_remaining" not in result
 
     @pytest.mark.asyncio
     async def test_create_invite_rejects_unowned_comparison(self):
@@ -319,6 +342,7 @@ class TestGetReferralStatus:
         existing_user = MagicMock(data={
             "referral_code": "QR-STATU1",
             "referral_bonus_comparisons_this_month": 5,
+            "lifetime_invites_consumed": 2,
         })
         # 3 valid (non-expired, non-consumed) credits
         credits = MagicMock(count=3)
@@ -345,12 +369,15 @@ class TestGetReferralStatus:
             svc = ReferralService()
             status = await svc.get_status("u1")
 
-        assert status["weekly_invites_used"] == 2
-        assert status["weekly_invites_remaining"] == 1  # 3 cap - 2 used
+        # Bundle B/C/D § 4.7: lifetime shape replaces weekly
+        assert status["lifetime_invites_used"] == 2
+        assert status["lifetime_invites_remaining"] == 1  # 3 cap - 2 used
         assert status["monthly_bonus_comparisons"] == 5
         assert status["deep_review_credits_available"] == 3
         assert status["total_lifetime_redemptions"] == 1
         assert status["referral_code"] == "QR-STATU1"
+        assert "weekly_invites_used" not in status
+        assert "weekly_invites_remaining" not in status
 
     @pytest.mark.asyncio
     async def test_status_lazy_creates_code_when_missing(self):
@@ -873,8 +900,15 @@ class TestLoop2HelperCoverage:
         assert redemption_inserts[0]["referrer_user_id"] == "ref"
         assert redemption_inserts[0]["invitee_user_id"] == "inv-user"
 
-        assert len(bonus_updates) == 1
-        assert bonus_updates[0]["referral_bonus_comparisons_this_month"] == 2 + 5
+        # Bundle B/C/D § 4.2: now 2 updates fire on users — bonus capacity
+        # bump + lifetime_invites_consumed increment (signup decrement).
+        bonus_only = [u for u in bonus_updates if "referral_bonus_comparisons_this_month" in u]
+        lifetime_only = [u for u in bonus_updates if "lifetime_invites_consumed" in u]
+        assert len(bonus_only) == 1
+        assert bonus_only[0]["referral_bonus_comparisons_this_month"] == 2 + 5
+        assert len(lifetime_only) == 1, (
+            "Bundle B/C/D § 4.2 missing: must increment lifetime_invites_consumed"
+        )
 
         assert len(credit_inserts) == 1
         assert credit_inserts[0]["user_id"] == "inv-user"

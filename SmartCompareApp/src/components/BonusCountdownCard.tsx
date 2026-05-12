@@ -79,10 +79,7 @@ export function BonusCountdownCard({
           </Text>
           <Text>{' '}</Text>
           <Text testID="bonus-countdown-time" style={styles.timeLine}>
-            {t('home.bonus.expiresIn', {
-              time: formatRemaining(remainingMs),
-              defaultValue: `(expires ${formatRemaining(remainingMs)})`,
-            })}
+            {formatExpiresInLabel(remainingMs, t)}
           </Text>
         </Text>
       ) : (
@@ -98,18 +95,48 @@ export function BonusCountdownCard({
 }
 
 /**
- * Format remaining ms as "Xd Yh" / "Xh Ym" / "<1m". Avoids jittery
- * second-precision so the per-minute interval stays sufficient.
+ * Bundle B/C/D Task 2.15 — verbose plural-aware label for the bonus
+ * countdown. Picks the largest meaningful unit (day / hour / minute)
+ * so the copy reads naturally ("Expires in 7 days" / "Expires in
+ * 3 hours") instead of the old compact "2d 14h" notation.
+ *
+ * Plural selection uses i18next's `count` mechanism: keys ending in
+ * `_one` and `_other` are picked automatically based on the count's
+ * CLDR plural category. Arabic plural categories are handled by
+ * i18next-icu if the JSON entry exists; the fallback `_other` covers
+ * the rest.
  */
-function formatRemaining(ms: number): string {
+type TFn = (key: string, opts?: Record<string, unknown>) => string;
+
+export function formatExpiresInLabel(ms: number, t: TFn): string {
   const totalMinutes = Math.max(0, Math.floor(ms / 60000));
-  if (totalMinutes <= 0) return '<1m';
+  if (totalMinutes <= 0) {
+    return t('referrals.bonus.expiringSoon', {
+      defaultValue: 'Expiring soon',
+    });
+  }
   const days = Math.floor(totalMinutes / (24 * 60));
-  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
-  const minutes = totalMinutes % 60;
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  if (days > 0) {
+    return t('referrals.bonus.expiresInDays', {
+      count: days,
+      defaultValue: days === 1 ? 'Expires in 1 day' : `Expires in ${days} days`,
+    });
+  }
+  const hours = Math.floor(totalMinutes / 60);
+  if (hours > 0) {
+    return t('referrals.bonus.expiresInHours', {
+      count: hours,
+      defaultValue:
+        hours === 1 ? 'Expires in 1 hour' : `Expires in ${hours} hours`,
+    });
+  }
+  return t('referrals.bonus.expiresInMinutes', {
+    count: totalMinutes,
+    defaultValue:
+      totalMinutes === 1
+        ? 'Expires in 1 minute'
+        : `Expires in ${totalMinutes} minutes`,
+  });
 }
 
 const styles = StyleSheet.create({

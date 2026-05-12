@@ -1,0 +1,63 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ScannerReticle — edges matches snapshot for default size 1`] = `
+<View
+  accessibilityElementsHidden={true}
+  importantForAccessibility="no-hide-descendants"
+  pointerEvents="none"
+  style={
+    {
+      "alignItems": "center",
+      "bottom": 0,
+      "justifyContent": "center",
+      "left": 0,
+      "position": "absolute",
+      "right": 0,
+      "top": 0,
+    }
+  }
+>
+  <View
+    style={
+      {
+        "transform": [
+          {
+            "scale": 1,
+          },
+        ],
+      }
+    }
+  >
+    <Svg
+      height={273}
+      viewBox="0 0 273 273"
+      width={273}
+    >
+      <Path
+        d="M 0 30 L 0 0 L 30 0"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth={3}
+      />
+      <Path
+        d="M 243 0 L 273 0 L 273 30"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth={3}
+      />
+      <Path
+        d="M 273 243 L 273 273 L 243 273"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth={3}
+      />
+      <Path
+        d="M 30 273 L 0 273 L 0 243"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth={3}
+      />
+    </Svg>
+  </View>
+</View>
+`;

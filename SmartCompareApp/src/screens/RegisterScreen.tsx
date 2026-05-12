@@ -21,6 +21,9 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { usePreventScreenCapture } from 'expo-screen-capture';
 import { register, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import { parseApiError } from '../services/api';
+// Bundle B/C/D Task 2.12 — deferred PIR code + iOS clipboard fallback.
+import { consumeDeferredInviteCode } from '../services/deferredInviteCode';
+import { tryReadClipboardForInviteCode } from '../services/clipboardFallbackService';
 import { AuthStackParamList } from '../types';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { Button } from '../components/Button';
@@ -43,6 +46,10 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
   const [inviteCode, setInviteCode] = useState<string>(inviteCodeFromDeepLink ?? '');
   const [inviteCodeLocked, setInviteCodeLocked] = useState<boolean>(!!inviteCodeFromDeepLink);
   const [inviteCodeError, setInviteCodeError] = useState('');
+  // Bundle B/C/D Task 2.12 — pending consent prompt for an iOS clipboard
+  // QR code. NEVER auto-fill from clipboard (Apple-review requirement);
+  // the user must tap Accept on the consent banner first.
+  const [clipboardCandidate, setClipboardCandidate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -60,6 +67,52 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       isAppleSignInAvailable().then(setShowApple);
     }
   }, []);
+
+  // Bundle B/C/D Task 2.12 — invite-code resolution priority on mount:
+  //   1. route.params.code (deep-link redeem flow) — already wired above.
+  //   2. consumeDeferredInviteCode() (Android Play Install Referrer).
+  //   3. tryReadClipboardForInviteCode() (iOS) — never auto-fills; shows
+  //      explicit consent banner instead.
+  // Runs once, only when the field is empty (deep-link wins).
+  useEffect(() => {
+    if (inviteCode) return; // (1) deep link already provided one
+
+    // (2) Android PIR hand-off, sync.
+    const deferred = consumeDeferredInviteCode();
+    if (deferred) {
+      setInviteCode(deferred);
+      setInviteCodeLocked(true);
+      return;
+    }
+
+    // (3) iOS clipboard fallback, async; never blocks render.
+    let cancelled = false;
+    tryReadClipboardForInviteCode()
+      .then((code) => {
+        if (cancelled) return;
+        if (code) setClipboardCandidate(code);
+      })
+      .catch(() => { /* slot stays empty */ });
+
+    return () => {
+      cancelled = true;
+    };
+    // Empty deps: mount-only; we don't want this re-running on inviteCode
+    // changes once the user is typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleClipboardConsentAccept = () => {
+    if (clipboardCandidate) {
+      setInviteCode(clipboardCandidate);
+      setInviteCodeLocked(true);
+    }
+    setClipboardCandidate(null);
+  };
+
+  const handleClipboardConsentReject = () => {
+    setClipboardCandidate(null);
+  };
 
   const handleGoogleSignIn = async () => {
     setSocialLoading('google');
@@ -235,6 +288,44 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
                 {confirmError ? <Text style={styles.fieldError}>{confirmError}</Text> : null}
               </View>
 
+              {clipboardCandidate ? (
+                <View
+                  testID="clipboard-consent-banner"
+                  style={styles.consentBanner}
+                >
+                  <Text style={styles.consentTitle}>
+                    {t('register.clipboardConsent.title')}
+                  </Text>
+                  <Text style={styles.consentMessage}>
+                    {t('register.clipboardConsent.message', {
+                      code: clipboardCandidate,
+                    })}
+                  </Text>
+                  <View style={styles.consentRow}>
+                    <TouchableOpacity
+                      testID="clipboard-consent-reject"
+                      onPress={handleClipboardConsentReject}
+                      style={[styles.consentButton, styles.consentReject]}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.consentRejectText}>
+                        {t('register.clipboardConsent.reject')}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      testID="clipboard-consent-accept"
+                      onPress={handleClipboardConsentAccept}
+                      style={[styles.consentButton, styles.consentAccept]}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.consentAcceptText}>
+                        {t('register.clipboardConsent.accept')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>{t('register.inviteCode.label')}</Text>
                 <View style={styles.inviteCodeRow}>
@@ -248,7 +339,15 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
                     placeholderTextColor={colors.text.placeholder}
                     value={inviteCode}
                     onChangeText={(v) => {
-                      setInviteCode(v.toUpperCase().replace(/[^A-Z0-9-]/g, ''));
+                      // Bundle B/C/D Task #36 — strip everything outside the
+                      // canonical unambiguous alphabet `[A-HJ-NP-Z2-9]`
+                      // (matches backend referral_service._CODE_ALPHABET)
+                      // plus the literal dash. Catches I/L/O/0/1 typos at
+                      // the input layer instead of bouncing through the
+                      // validation banner.
+                      setInviteCode(
+                        v.toUpperCase().replace(/[^A-HJ-NP-Z2-9-]/g, '')
+                      );
                       setInviteCodeError('');
                     }}
                     editable={!loading && !inviteCodeLocked}
@@ -437,6 +536,55 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.destructive,
     marginTop: spacing.xs,
+  },
+  // Bundle B/C/D Task 2.12 — clipboard-fallback consent banner.
+  consentBanner: {
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.card,
+    padding: spacing.base,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  consentTitle: {
+    ...typography.body,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+  },
+  consentMessage: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginBottom: spacing.md,
+    lineHeight: 18,
+  },
+  consentRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  consentButton: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.base,
+    borderRadius: radii.button,
+  },
+  consentAccept: {
+    backgroundColor: colors.cta.primary,
+  },
+  consentReject: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border.medium,
+  },
+  consentAcceptText: {
+    ...typography.caption,
+    color: colors.cta.onPrimary,
+    fontWeight: '600',
+  },
+  consentRejectText: {
+    ...typography.caption,
+    color: colors.text.primary,
+    fontWeight: '500',
   },
   benefits: {
     marginTop: spacing.lg,

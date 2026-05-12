@@ -14,7 +14,16 @@ import {
   Linking,
   Switch,
 } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
+// Bundle B/C/D Task 3.3 — winner-card reveal spring uses the shared
+// progress config so the settle feels consistent with onboarding bars.
+import { motion } from '../theme/motion';
 import * as Haptics from 'expo-haptics';
 import {
   ArrowLeft,
@@ -95,6 +104,12 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   // Winner reveal animation state
   const [winnerRevealed, setWinnerRevealed] = useState(false);
+  // Bundle B/C/D Task 3.3 — winner card scales 0.96 → 1.0 on reveal.
+  // Worklet-native via Reanimated; settles in ~300ms via progress spring.
+  const winnerScale = useSharedValue(0.96);
+  const winnerAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: winnerScale.value }],
+  }));
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
 
   // Demographics prompt state
@@ -104,7 +119,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // Referral share sheet state (F2.3 + F2.4)
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [loop1ToastVisible, setLoop1ToastVisible] = useState(false);
-  const [weeklyRemaining, setWeeklyRemaining] = useState<number | null>(null);
+  const [lifetimeRemaining, setLifetimeRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     getUsageStatus().then(setUsageStatus);
@@ -144,9 +159,10 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   };
 
   useEffect(() => {
-    // Winner reveal with haptic feedback
+    // Winner reveal with haptic feedback + Bundle B/C/D Task 3.3 spring.
     const timer = setTimeout(async () => {
       setWinnerRevealed(true);
+      winnerScale.value = withSpring(1, motion.springConfig.progress);
       try {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       } catch {}
@@ -213,11 +229,14 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   const handleShareCompleted = (response: CreateShareResult) => {
     setShareSheetVisible(false);
-    setWeeklyRemaining(response.weekly_invites_remaining);
+    // Bundle B/C/D § 4.2 — backend now returns lifetime_invites_remaining
+    // (3 lifetime per device). Defensive `?? null` for older share-endpoint
+    // responses during the rollout window.
+    setLifetimeRemaining(response.lifetime_invites_remaining ?? null);
     setLoop1ToastVisible(true);
     trackEvent('share_completed', {
       cta_variant: ctaVariant,
-      weekly_invites_remaining: response.weekly_invites_remaining,
+      lifetime_invites_remaining: response.lifetime_invites_remaining,
     });
     // Auto-dismiss the Loop 1 toast after 4s
     setTimeout(() => setLoop1ToastVisible(false), 4000);
@@ -412,10 +431,19 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             const isWinner = index === winner_index;
             const scores = getProductScores(index);
             const overviewProduct = isNewFormat ? result.overview!.products[index] : null;
+            // Bundle B/C/D Task 3.3 — only the winner card scales; the
+            // runner-up stays still so the visual emphasis lands.
+            const cardWrapperStyle = isWinner
+              ? [styles.productCardWrapper, winnerAnimStyle]
+              : styles.productCardWrapper;
 
             return (
-              <Card
+              <Animated.View
                 key={index}
+                testID={isWinner ? 'winner-card-anim' : undefined}
+                style={cardWrapperStyle}
+              >
+              <Card
                 variant={isWinner && winnerRevealed ? 'winner' : 'default'}
                 style={styles.productCard}
               >
@@ -520,6 +548,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                   <Text style={styles.bestForText}>{t('results.bestForLabel', { useCase: overviewProduct.best_for })}</Text>
                 ) : null}
               </Card>
+              </Animated.View>
             );
           })}
         </Animated.View>
@@ -991,6 +1020,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           }}
           onClose={() => setShareSheetVisible(false)}
           onShared={handleShareCompleted}
+          lifetimeRemaining={lifetimeRemaining ?? undefined}
         />
       ) : null}
 
@@ -999,10 +1029,10 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <Gift size={18} color={colors.bg.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.loop1ToastTitle}>{t('referrals.loop1.toast')}</Text>
-            {weeklyRemaining !== null ? (
+            {lifetimeRemaining !== null ? (
               <Text style={styles.loop1ToastSubtitle}>
                 {t('referrals.loop1.counter', {
-                  used: 3 - weeklyRemaining,
+                  used: 3 - lifetimeRemaining,
                   total: 3,
                 })}
               </Text>
@@ -1122,6 +1152,12 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   productCard: {
+    flex: 1,
+  },
+  // Bundle B/C/D Task 3.3 — wrapper exists only to anchor the
+  // Reanimated transform; the actual card border/shadow stays on
+  // .productCard so the visual style is unchanged at rest.
+  productCardWrapper: {
     flex: 1,
   },
   bestPickBadge: {

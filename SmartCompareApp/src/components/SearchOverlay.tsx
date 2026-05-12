@@ -21,6 +21,14 @@ interface SearchOverlayProps {
   recentSearches: string[];
 }
 
+// Bundle B/C/D Task 2.8 — comparison-shape detector. Plain "iPhone 15"
+// shows the hint; "iPhone 15 vs Galaxy S24" or "X and Y" or "X, Y"
+// hides it because the query is already comparison-shaped.
+const COMPARISON_PATTERN = /\s(vs|&|and|or|أو|مقابل)\s|,/i;
+export function looksLikeTwoProducts(raw: string): boolean {
+  return COMPARISON_PATTERN.test(raw);
+}
+
 export function SearchOverlay({ visible, onClose, onSubmit, recentSearches }: SearchOverlayProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
@@ -41,6 +49,8 @@ export function SearchOverlay({ visible, onClose, onSubmit, recentSearches }: Se
     if (trimmed) onSubmit(trimmed);
   };
 
+  const showNeedTwoHint = !looksLikeTwoProducts(query);
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -54,6 +64,7 @@ export function SearchOverlay({ visible, onClose, onSubmit, recentSearches }: Se
           <View style={styles.inputWrapper}>
             <Search size={18} color={colors.text.placeholder} />
             <TextInput
+              testID="search-overlay-input"
               ref={inputRef}
               style={styles.input}
               placeholder={t('home.search.placeholder')}
@@ -66,6 +77,16 @@ export function SearchOverlay({ visible, onClose, onSubmit, recentSearches }: Se
             />
           </View>
         </View>
+
+        {/* Bundle B/C/D Task 2.8 — gentle guidance until the query reads
+            like a comparison ("X vs Y", "X, Y", "X and Y"). */}
+        {showNeedTwoHint && (
+          <View testID="search-need-two-hint" style={styles.hintBanner}>
+            <Text style={styles.hintText}>
+              {t('home.search.needTwoHint')}
+            </Text>
+          </View>
+        )}
 
         {recentSearches.length > 0 && (
           <View style={styles.section}>
@@ -118,6 +139,19 @@ const styles = StyleSheet.create({
   sectionTitle: { ...typography.caption, color: colors.text.secondary, fontWeight: '600', marginBottom: spacing.sm },
   searchItem: { paddingVertical: spacing.md },
   searchItemText: { ...typography.body, color: colors.text.primary },
+  // Bundle B/C/D Task 2.8 — guidance banner.
+  hintBanner: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.button,
+  },
+  hintText: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    textAlign: 'center',
+  },
 });
 
 export default SearchOverlay;

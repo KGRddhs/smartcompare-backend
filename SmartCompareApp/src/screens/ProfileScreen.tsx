@@ -44,6 +44,7 @@ import type { UserPreferences } from '../types';
 import { getSavedUser, logout } from '../services/authService';
 import StyleProfileCard from '../components/StyleProfileCard';
 import ReferralStatusCard from '../components/ReferralStatusCard';
+import QarenLogo from '../components/QarenLogo';
 import ToggleRow from '../components/ToggleRow';
 
 interface ProfileScreenProps {
@@ -257,7 +258,11 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.screenTitle}>{t('profile.title')}</Text>
+        {/* Bundle B/C/D Task 2.10 — brand glyph leading the screen title. */}
+        <View style={styles.brandTitleRow}>
+          <QarenLogo size={24} />
+          <Text style={styles.screenTitle}>{t('profile.title')}</Text>
+        </View>
 
         {/* Cohort style profile (only renders when confidence >= medium) */}
         <StyleProfileCard display={cohortDisplay} onEditPress={handleEditStyleProfile} />
@@ -490,10 +495,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.base,
   },
+  // Bundle B/C/D Task 2.10 — brand glyph leading the screen title.
+  brandTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
+  },
   screenTitle: {
     ...typography.display,
     color: colors.text.primary,
-    marginBottom: spacing.xl,
   },
   card: {
     backgroundColor: colors.bg.secondary,

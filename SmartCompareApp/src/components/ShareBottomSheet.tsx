@@ -43,6 +43,17 @@ export interface ShareBottomSheetProps {
   deviceFingerprintHash?: string;
   onClose: () => void;
   onShared: (result: CreateShareResult) => void;
+  /**
+   * Bundle B/C/D § 4.3 — lifetime-cap gating. Parent reads
+   * `lifetime_invites_remaining` from /referrals/status and passes it
+   * in. When 0:
+   *   - Share targets (WhatsApp, X, Telegram, Snapchat) disable.
+   *   - The Copy target stays active because re-sharing an existing
+   *     link with a new recipient is still useful (no NEW bonus fires
+   *     — Path D in design § 4.9 — but the receiver can still install).
+   * Undefined or > 0 → no gating.
+   */
+  lifetimeRemaining?: number;
 }
 
 interface PrivacyToggles {
@@ -107,11 +118,16 @@ export default function ShareBottomSheet({
   deviceFingerprintHash,
   onClose,
   onShared,
+  lifetimeRemaining,
 }: ShareBottomSheetProps) {
   const { t } = useTranslation();
   const [privacy, setPrivacy] = useState<PrivacyToggles>({ name: true, result: true, reasons: true });
   const [submitting, setSubmitting] = useState<ShareTarget | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Bundle B/C/D § 4.3 — share-quota gating. Copy stays active even at
+  // the cap (Path D in design § 4.9); other targets disable.
+  const atLifetimeLimit = lifetimeRemaining === 0;
+  const LIFETIME_CAP = 3;
 
   // Bundle A §1.3 — message is generic ("ends the debate in 30 seconds")
   // and product-agnostic. The share_link returned by createShare already
@@ -291,19 +307,45 @@ export default function ShareBottomSheet({
             </Text>
           </View>
 
+          {/* Bundle B/C/D § 4.3 — gift-thanks banner once the user has
+              gifted Qaren to the lifetime cap. Gift framing, not punitive. */}
+          {atLifetimeLimit ? (
+            <View
+              testID="share-max-reached-banner"
+              style={styles.maxReachedBanner}
+            >
+              <Text style={styles.maxReachedText}>
+                {t('referrals.share.maxReached', { count: LIFETIME_CAP })}
+              </Text>
+            </View>
+          ) : null}
+
           {/* 5 share targets */}
           <View style={styles.targets}>
             {TARGETS.map((target) => {
               const isThisLoading = submitting === target.key;
               const anyLoading = submitting !== null;
+              // § 4.9 Path D — Copy stays active even at the lifetime
+              // limit so the user can re-share an existing link with a
+              // new recipient. All other targets disable.
+              const blockedByLimit =
+                atLifetimeLimit && target.key !== 'copy';
+              const isDisabled = anyLoading || blockedByLimit;
               return (
                 <TouchableOpacity
                   key={target.key}
+                  testID={`share-target-${target.key}`}
                   accessibilityRole="button"
                   accessibilityLabel={t(target.labelKey)}
-                  style={[styles.targetButton, anyLoading && !isThisLoading && styles.disabled]}
+                  accessibilityState={{ disabled: isDisabled }}
+                  style={[
+                    styles.targetButton,
+                    (anyLoading && !isThisLoading) || blockedByLimit
+                      ? styles.disabled
+                      : null,
+                  ]}
                   onPress={() => handleTargetPress(target.key)}
-                  disabled={anyLoading}
+                  disabled={isDisabled}
                   activeOpacity={0.7}
                 >
                   {isThisLoading ? (
@@ -472,6 +514,22 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.5,
+  },
+  // Bundle B/C/D § 4.3 — gift-thanks banner shown when the user hits
+  // the lifetime cap. Visual tone is celebratory (accentLight bg) not
+  // alarming (no destructive red).
+  maxReachedBanner: {
+    backgroundColor: colors.accentLight,
+    borderRadius: radii.button,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.base,
+  },
+  maxReachedText: {
+    ...typography.caption,
+    color: colors.accentDark,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   errorText: {
     ...typography.small,

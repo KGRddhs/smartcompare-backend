@@ -1,11 +1,13 @@
 /**
  * ReferralStatusCard
  *
- * Profile-screen card showing the user's referral state per design 4.5:
+ * Profile-screen card showing the user's referral state per design 4.5
+ * (post-Bundle-B/C/D shape — § 4.2 lifetime cap replaces weekly):
  *   - Referral code (tap to copy)
- *   - Weekly gifts used / 3
+ *   - Lifetime gifts used / 3 (was: weekly gifts — Bundle B/C/D Task 2.13)
+ *   - Gift-thanks copy when the user has hit 3 lifetime
  *   - Monthly bonus comparisons earned
- *   - Lifetime invites that converted (Loop 2 fired)
+ *   - Total lifetime Loop 2 conversions ("Friends signed up")
  *   - Available Deep Review credits
  *
  * Renders nothing when:
@@ -31,7 +33,8 @@ import { Gift, Copy as CopyIcon, Sparkles } from 'lucide-react-native';
 import { colors, spacing, radii, typography } from '../theme';
 import { getReferralStatus, ReferralStatus } from '../services/referralService';
 
-const WEEKLY_CAP = 3;
+// Bundle B/C/D § 4.2 — 3 LIFETIME invites per device (was 3 per week).
+const LIFETIME_CAP = 3;
 
 export interface ReferralStatusCardProps {
   /** Re-fetch when this prop changes (e.g. after a successful share). */
@@ -125,16 +128,30 @@ export default function ReferralStatusCard({ refreshKey }: ReferralStatusCardPro
         </View>
       </TouchableOpacity>
 
-      {/* Stats grid */}
+      {/* Bundle B/C/D § 4.2 — lifetime gift-tracker replaces the weekly counter.
+          When the user hits 3 lifetime, switch to gift-thanks copy so the
+          empty state reads as celebration not punishment. */}
+      {status.lifetime_invites_remaining === 0 ? (
+        <View testID="referral-status-gifted" style={styles.giftedRow}>
+          <Text style={styles.giftedText}>
+            {t('referrals.status.gifted', { count: LIFETIME_CAP })}
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.statsGrid}>
         <View style={styles.stat}>
-          <Text style={styles.statValue}>
-            {t('referrals.status.weeklyUsed', {
-              used: status.weekly_invites_used,
-              total: WEEKLY_CAP,
+          <Text
+            testID="referral-status-lifetime"
+            style={styles.statValue}
+          >
+            {t('referrals.status.lifetime', {
+              used: status.lifetime_invites_used,
+              total: LIFETIME_CAP,
             })}
           </Text>
-          <Text style={styles.statLabel}>{t('referrals.status.weeklyLabel')}</Text>
+          <Text style={styles.statLabel}>
+            {t('referrals.status.lifetimeLabel')}
+          </Text>
         </View>
         <View style={styles.stat}>
           <Text style={styles.statValue}>
@@ -144,9 +161,13 @@ export default function ReferralStatusCard({ refreshKey }: ReferralStatusCardPro
         </View>
         <View style={styles.stat}>
           <Text style={styles.statValue}>
-            {t('referrals.status.lifetimeValue', { count: status.total_lifetime_redemptions })}
+            {t('referrals.status.redemptionsValue', {
+              count: status.total_lifetime_redemptions,
+            })}
           </Text>
-          <Text style={styles.statLabel}>{t('referrals.status.lifetimeLabel')}</Text>
+          <Text style={styles.statLabel}>
+            {t('referrals.status.redemptionsLabel')}
+          </Text>
         </View>
       </View>
 
@@ -224,6 +245,21 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.text.secondary,
     fontWeight: '500',
+  },
+  // Bundle B/C/D § 4.2 — gift-thanks state shown when all 3 lifetime
+  // invites have converted. Celebration not punishment.
+  giftedRow: {
+    backgroundColor: colors.accentLight,
+    borderRadius: radii.button,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.base,
+  },
+  giftedText: {
+    ...typography.body,
+    color: colors.accentDark,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   statsGrid: {
     flexDirection: 'row',

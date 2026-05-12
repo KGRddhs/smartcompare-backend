@@ -116,7 +116,12 @@ describe('RegisterScreen — invite code field (Bundle A 4.8)', () => {
     fillRequired(getByPlaceholderText);
     fireEvent.changeText(
       getByPlaceholderText('register.inviteCode.placeholder'),
-      'QR-BADCODE',
+      // Bundle B/C/D Task #36 — onChangeText now strips chars outside
+      // the canonical alphabet `[A-HJ-NP-Z2-9]`, so wrong-shape inputs
+      // need a body that *survives* the strip yet still fails the regex.
+      // "BAD" survives (all canonical), but is only 3 chars — regex needs
+      // exactly 6 after the dash.
+      'QR-BAD',
     );
     fireEvent.press(getByText('auth.register'));
 

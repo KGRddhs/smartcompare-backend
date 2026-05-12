@@ -45,6 +45,7 @@ import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
 import InviteeQuizScreen from './src/screens/InviteeQuizScreen';
+import ScanCameraScreen from './src/screens/ScanCameraScreen';
 
 // Types
 import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/types';
@@ -52,6 +53,10 @@ import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/
 // Auth
 import { verifyAuth, initializeAuth, clearSession, configureGoogleSignIn, type User } from './src/services/authService';
 import { tryRegisterPushToken } from './src/services/pushTokenService';
+// Bundle B/C/D Task 2.11 — Play Install Referrer hand-off into the
+// module-scoped invite-code slot consumed later by RegisterScreen.
+import { tryReadPlayInstallReferrer } from './src/services/playInstallReferrerService';
+import { setDeferredInviteCode } from './src/services/deferredInviteCode';
 
 // Configure Google Sign-In at module level
 configureGoogleSignIn();
@@ -138,6 +143,16 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
+    // Bundle B/C/D Task 2.11 — Android Play Install Referrer hand-off.
+    // Fire-and-forget on the same tick as boot so the QR code lands in
+    // the module-scoped slot before the user can navigate to Register.
+    // No-op on iOS / non-Play-Store installs / missing native module.
+    tryReadPlayInstallReferrer()
+      .then((code) => {
+        if (code) setDeferredInviteCode(code);
+      })
+      .catch(() => { /* never blocks app boot */ });
+
     async function init() {
       // Set language + RTL before rendering
       const lang = await getSavedLanguage();
@@ -321,6 +336,12 @@ export default function App() {
               name="EditPreferences"
               component={EditPreferencesFlow}
               options={{ presentation: 'modal' }}
+            />
+            {/* Bundle B/C/D — Cal-AI-style fullscreen camera. See plan § Task 1.8. */}
+            <Stack.Screen
+              name="ScanCamera"
+              component={ScanCameraScreen}
+              options={{ presentation: 'modal', headerShown: false }}
             />
             {/* Authed users tapping a referral link still get the landing page. */}
             <Stack.Screen
