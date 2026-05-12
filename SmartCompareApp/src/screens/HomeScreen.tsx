@@ -40,6 +40,7 @@ import api from '../services/api';
 import { getSavedUser, User } from '../services/authService';
 import { isUsageLimitError, getUsageLimitDetail } from '../services/usageService';
 import CategorySelector from '../components/CategorySelector';
+import QarenLogo from '../components/QarenLogo';
 import { SearchOverlay } from '../components/SearchOverlay';
 import { ComparisonCounter } from '../components/ComparisonCounter';
 import { BonusCountdownCard } from '../components/BonusCountdownCard';
@@ -441,9 +442,11 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Compressed brand header + hero per § 4a. */}
+      {/* Compressed brand header + hero per § 4a.
+          Bundle B/C/D Task 2.10 — glyph + wordmark together pre-launch. */}
       <View style={styles.header}>
-        <Text style={styles.logo}>{t('app.name')}</Text>
+        <QarenLogo size={28} />
+        <Text style={[styles.logo, styles.logoSpaced]}>{t('app.name')}</Text>
       </View>
 
       <Text style={styles.hero}>{t('home.hero')}</Text>
@@ -652,6 +655,11 @@ const styles = StyleSheet.create({
     ...typography.title,
     fontWeight: '700',
     color: colors.text.primary,
+  },
+  // Bundle B/C/D Task 2.10 — leading-glyph spacer; RTL flips natively via
+  // marginStart so AR places the gap on the correct side of the wordmark.
+  logoSpaced: {
+    marginStart: spacing.sm,
   },
   /** Compressed hero per design § 4a — "Compare anything." 16pt body weight. */
   hero: {

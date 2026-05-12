@@ -16,6 +16,7 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => {
       const translations: Record<string, string> = {
+        'app.name': 'Qaren',
         'splash.tagline': 'Compare smarter',
       };
       return translations[key] || key;
@@ -32,10 +33,12 @@ describe('SplashScreen', () => {
     jest.useRealTimers();
   });
 
-  it('should render the logo text', () => {
+  it('should render the wordmark via i18n (no longer a hardcoded Arabic glyph)', () => {
+    // Bundle B/C/D Task 2.10 — splash header now uses t('app.name') so
+    // EN/AR users see their own locale's brand name.
     const mockOnFinish = jest.fn();
     const { getByText } = render(<SplashScreen onFinish={mockOnFinish} />);
-    expect(getByText('قارن')).toBeTruthy();
+    expect(getByText('Qaren')).toBeTruthy();
   });
 
   it('should render the tagline', () => {

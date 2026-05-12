@@ -22,6 +22,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Search, Trash2, RotateCcw, ChevronRight, Camera } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, spacing, radii, typography, shadows } from '../theme';
+import QarenLogo from '../components/QarenLogo';
 import { getComparisonHistory, deleteComparison, parseApiError } from '../services/api';
 import { clearSession } from '../services/authService';
 import { formatTimeAgo } from '../utils/formatDate';
@@ -252,7 +253,11 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t('history.title')}</Text>
+        {/* Bundle B/C/D Task 2.10 — brand glyph leading the screen title. */}
+        <QarenLogo size={24} />
+        <Text style={[styles.headerTitle, styles.headerTitleSpaced]}>
+          {t('history.title')}
+        </Text>
       </View>
 
       <View style={styles.searchContainer}>
@@ -302,6 +307,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg.primary,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.base,
     paddingBottom: spacing.md,
@@ -309,6 +316,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...typography.display,
     color: colors.text.primary,
+  },
+  // Bundle B/C/D Task 2.10 — RTL-safe spacer between the QarenLogo glyph
+  // and the screen-title text.
+  headerTitleSpaced: {
+    marginStart: spacing.sm,
   },
   searchContainer: {
     flexDirection: 'row',
