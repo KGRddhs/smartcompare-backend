@@ -167,8 +167,8 @@ async def share_comparison(
 ):
     """Create a referral invite and grant the referrer a Deep Review credit.
 
-    Returns ``{success, invite_id, share_link, weekly_invites_used,
-    weekly_invites_remaining, ...}`` per design Section 3.4.
+    Returns ``{success, invite_id, share_link, lifetime_invites_used,
+    lifetime_invites_remaining, ...}`` per design § 4.7.
     """
     service = ReferralService(access_token=user.get("access_token"))
     # Back-compat: if the legacy nested ``privacy`` block is present and
