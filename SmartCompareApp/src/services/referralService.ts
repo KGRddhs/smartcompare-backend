@@ -41,18 +41,26 @@ export interface CreateShareResult {
   success: true;
   invite_id: string;
   share_link: string;
-  weekly_invites_used: number;
-  weekly_invites_remaining: number;
+  // Bundle B/C/D § 4.2 + § 4.7 — share endpoint no longer decrements a
+  // counter at share time. The cap is informational only here; the
+  // actual lifetime increment fires at receiver signup. Field is
+  // optional so any backend revision that drops it doesn't crash.
+  lifetime_invites_used?: number;
+  lifetime_invites_remaining?: number;
   // Backend may add more keys; keep open for extension
   [key: string]: unknown;
 }
 
 export interface ReferralStatus {
   referral_code: string;
-  weekly_invites_used: number;
-  weekly_invites_remaining: number;
+  // Bundle B/C/D § 4.2 — referral cap moved from 3-per-week-per-user to
+  // 3-LIFETIME-per-device; decrement now fires at receiver signup (not
+  // at share time). Backend Task 2.5 returns the lifetime keys; legacy
+  // `weekly_*` keys are no longer surfaced.
+  lifetime_invites_used: number;
+  lifetime_invites_remaining: number;
   monthly_bonus_comparisons: number;
-  monthly_bonus_cap: number;
+  monthly_bonus_cap?: number;
   deep_review_credits_available: number;
   total_lifetime_redemptions: number;
 }

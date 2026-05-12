@@ -104,7 +104,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // Referral share sheet state (F2.3 + F2.4)
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [loop1ToastVisible, setLoop1ToastVisible] = useState(false);
-  const [weeklyRemaining, setWeeklyRemaining] = useState<number | null>(null);
+  const [lifetimeRemaining, setLifetimeRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     getUsageStatus().then(setUsageStatus);
@@ -213,11 +213,14 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   const handleShareCompleted = (response: CreateShareResult) => {
     setShareSheetVisible(false);
-    setWeeklyRemaining(response.weekly_invites_remaining);
+    // Bundle B/C/D § 4.2 — backend now returns lifetime_invites_remaining
+    // (3 lifetime per device). Defensive `?? null` for older share-endpoint
+    // responses during the rollout window.
+    setLifetimeRemaining(response.lifetime_invites_remaining ?? null);
     setLoop1ToastVisible(true);
     trackEvent('share_completed', {
       cta_variant: ctaVariant,
-      weekly_invites_remaining: response.weekly_invites_remaining,
+      lifetime_invites_remaining: response.lifetime_invites_remaining,
     });
     // Auto-dismiss the Loop 1 toast after 4s
     setTimeout(() => setLoop1ToastVisible(false), 4000);
@@ -999,10 +1002,10 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <Gift size={18} color={colors.bg.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.loop1ToastTitle}>{t('referrals.loop1.toast')}</Text>
-            {weeklyRemaining !== null ? (
+            {lifetimeRemaining !== null ? (
               <Text style={styles.loop1ToastSubtitle}>
                 {t('referrals.loop1.counter', {
-                  used: 3 - weeklyRemaining,
+                  used: 3 - lifetimeRemaining,
                   total: 3,
                 })}
               </Text>

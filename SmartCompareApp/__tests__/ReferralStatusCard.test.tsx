@@ -63,11 +63,18 @@ jest.mock('../src/services/referralService', () => ({
 
 const FULL_STATUS = {
   referral_code: 'QR-ABC123',
-  weekly_invites_used: 1,
-  weekly_invites_remaining: 2,
+  // Bundle B/C/D § 4.2 — lifetime keys replace weekly_*.
+  lifetime_invites_used: 1,
+  lifetime_invites_remaining: 2,
   monthly_bonus_comparisons: 5,
   deep_review_credits_available: 2,
   total_lifetime_redemptions: 3,
+};
+
+const MAXED_STATUS = {
+  ...FULL_STATUS,
+  lifetime_invites_used: 3,
+  lifetime_invites_remaining: 0,
 };
 
 const ZERO_CREDITS_STATUS = {
@@ -121,12 +128,43 @@ describe('ReferralStatusCard', () => {
     const { findByText } = render(<ReferralStatusCard />);
     expect(await findByText('referrals.status.title')).toBeTruthy();
     expect(await findByText('QR-ABC123')).toBeTruthy();
-    // Weekly stat: t('referrals.status.weeklyUsed', {used:1, total:3}) → 'referrals.status.weeklyUsed|1|3'
-    expect(await findByText(/referrals\.status\.weeklyUsed\|1\|3/)).toBeTruthy();
+    // Bundle B/C/D § 4.2 — lifetime stat: t('referrals.status.lifetime', {used:1, total:3})
+    expect(
+      await findByText(/referrals\.status\.lifetime\|1\|3/)
+    ).toBeTruthy();
     // Bonus value: +5
     expect(await findByText(/referrals\.status\.bonusValue\|5/)).toBeTruthy();
-    // Lifetime value: 3
-    expect(await findByText(/referrals\.status\.lifetimeValue\|3/)).toBeTruthy();
+    // Redemptions stat: 3
+    expect(
+      await findByText(/referrals\.status\.redemptionsValue\|3/)
+    ).toBeTruthy();
+  });
+
+  it('renders gift-thanks copy when lifetime_invites_remaining === 0', async () => {
+    mockGetStatus.mockResolvedValueOnce(MAXED_STATUS);
+    const { findByTestId, getByText } = render(<ReferralStatusCard />);
+    expect(await findByTestId('referral-status-gifted')).toBeTruthy();
+    // i18n mock returns 'referrals.status.gifted|3' with our pipe-join format.
+    expect(getByText(/referrals\.status\.gifted\|3/)).toBeTruthy();
+  });
+
+  it('does NOT render gift-thanks copy when remaining > 0', async () => {
+    mockGetStatus.mockResolvedValueOnce(FULL_STATUS);
+    const { findByText, queryByTestId } = render(<ReferralStatusCard />);
+    await findByText('QR-ABC123');
+    expect(queryByTestId('referral-status-gifted')).toBeNull();
+  });
+
+  it('lifetime stat label uses the new "Lifetime gifts" key, not the old "Gifts this week"', async () => {
+    mockGetStatus.mockResolvedValueOnce(FULL_STATUS);
+    const { findAllByText, queryByText } = render(<ReferralStatusCard />);
+    // The new label key appears (mock-t echoes the key).
+    expect(
+      (await findAllByText(/referrals\.status\.lifetimeLabel/)).length
+    ).toBeGreaterThan(0);
+    // The old key must NOT appear anywhere.
+    expect(queryByText(/referrals\.status\.weeklyLabel/)).toBeNull();
+    expect(queryByText(/referrals\.status\.weeklyUsed/)).toBeNull();
   });
 
   it('renders the Deep Review credits ribbon when count > 0', async () => {
