@@ -25,6 +25,17 @@ def test_parse_install_referrer_returns_none_for_empty():
 
 def test_parse_install_referrer_returns_none_for_self_referral_pattern():
     # Defense-in-depth: lowercase codes are invalid per the canonical
-    # ^QR-[A-Z0-9]{6}$ regex shared with RegisterRequest.invite_code.
-    assert parse_install_referrer("referrer=qr-abcde1") is None
-    assert parse_install_referrer("referrer=QR-abcde1") is None
+    # ^QR-[A-HJ-NP-Z2-9]{6}$ regex shared with RegisterRequest.invite_code.
+    assert parse_install_referrer("referrer=qr-abcde2") is None
+    assert parse_install_referrer("referrer=QR-abcde2") is None
+
+
+def test_parse_install_referrer_rejects_confusable_alphabet_chars():
+    # Canonical alphabet ^QR-[A-HJ-NP-Z2-9]{6}$ excludes I, O, 0, 1
+    # (per auth_routes._INVITE_CODE_RE — L is intentionally allowed since it
+    # is distinguishable from 1 in the app's monospace display font).
+    # Reject at the earliest layer so bad payloads never reach link_invite_to_user.
+    assert parse_install_referrer("referrer=QR-OOO222") is None  # O excluded
+    assert parse_install_referrer("referrer=QR-IIIIII") is None  # I excluded
+    assert parse_install_referrer("referrer=QR-000022") is None  # 0 excluded
+    assert parse_install_referrer("referrer=QR-111122") is None  # 1 excluded

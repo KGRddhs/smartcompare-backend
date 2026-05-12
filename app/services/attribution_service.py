@@ -10,7 +10,7 @@ import re
 from typing import Optional
 from urllib.parse import parse_qs
 
-_QR_CODE_PATTERN = re.compile(r'^QR-[A-Z0-9]{6}$')
+_QR_CODE_PATTERN = re.compile(r'^QR-[A-HJ-NP-Z2-9]{6}$')
 
 
 def parse_install_referrer(raw: str) -> Optional[str]:
