@@ -22,6 +22,14 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
+// Bundle B/C/D Task 3.2 — Reanimated press-scale on the shutter button.
+// Worklet-native; runs entirely on the UI thread.
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated';
 import {
   X,
   HelpCircle,
@@ -69,6 +77,31 @@ export default function ScanCameraScreen({ navigation }: Props) {
   const cameraRef = useRef<CameraView>(null);
   const [slots, setSlots] = useState<Slots>(_slotsCache);
   const [flash, setFlash] = useState<FlashMode>('off');
+  // Bundle B/C/D Task 3.2 — press-scale on the shutter. Tactile feedback
+  // without flashing the whole frame; 80ms in / 120ms out feels snappy
+  // without competing with the actual capture flash.
+  const shutterScale = useSharedValue(1);
+  const shutterAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: shutterScale.value }],
+  }));
+  const onShutterPressIn = () => {
+    shutterScale.value = withTiming(0.95, { duration: 80 });
+  };
+  const onShutterPressOut = () => {
+    shutterScale.value = withTiming(1, { duration: 120 });
+  };
+  const fireShutterHaptic = () => {
+    try {
+      const maybePromise = Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Light
+      );
+      if (maybePromise && typeof maybePromise.catch === 'function') {
+        maybePromise.catch(() => { /* haptic engine unavailable */ });
+      }
+    } catch {
+      /* synchronous haptic failure — silently no-op */
+    }
+  };
 
   const updateSlots = (next: Slots) => {
     _slotsCache = next;
@@ -204,16 +237,23 @@ export default function ScanCameraScreen({ navigation }: Props) {
               size={26}
             />
           </TouchableOpacity>
-          <TouchableOpacity
-            testID="shutter-button"
-            onPress={onCapture}
-            accessibilityRole="button"
-            accessibilityLabel={t('home.camera.a11y.shutter')}
-            style={styles.shutter}
-            disabled={nextEmptyIndex(slots) === null}
-          >
-            <View style={styles.shutterInner} />
-          </TouchableOpacity>
+          <Animated.View style={shutterAnimStyle}>
+            <TouchableOpacity
+              testID="shutter-button"
+              onPress={() => {
+                fireShutterHaptic();
+                onCapture();
+              }}
+              onPressIn={onShutterPressIn}
+              onPressOut={onShutterPressOut}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.camera.a11y.shutter')}
+              style={styles.shutter}
+              disabled={nextEmptyIndex(slots) === null}
+            >
+              <View style={styles.shutterInner} />
+            </TouchableOpacity>
+          </Animated.View>
           <TouchableOpacity
             testID="gallery-button"
             onPress={onGalleryPick}
