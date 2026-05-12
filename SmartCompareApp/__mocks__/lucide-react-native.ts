@@ -56,3 +56,4 @@ export const Info = createIcon('Info');
 export const AlertCircle = createIcon('AlertCircle');
 export const ExternalLink = createIcon('ExternalLink');
 export const Trophy = createIcon('Trophy');
+export const HelpCircle = createIcon('HelpCircle');

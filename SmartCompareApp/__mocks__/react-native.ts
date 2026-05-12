@@ -13,6 +13,8 @@ function createHostComponent(hostName: string) {
 
 export const View = createHostComponent('View');
 export const Text = createHostComponent('Text');
+export const Image = ({ source, ...props }: any) =>
+  createElement('Image', { ...props, source });
 export const TouchableOpacity = ({ children, onPress, disabled, ...props }: any) =>
   createElement('View', { ...props, onPress, disabled, accessible: true }, children);
 export const TextInput = React.forwardRef(({ ...props }: any, ref: any) =>
@@ -33,6 +35,11 @@ export const Pressable = ({ children, onPress, disabled, ...props }: any) =>
   createElement('View', { ...props, onPress, disabled, accessible: true }, children);
 export const Platform = { OS: 'ios', select: (obj: any) => obj.ios };
 
+export const Dimensions = {
+  get: (_dim: 'window' | 'screen') => ({ width: 390, height: 844, scale: 2, fontScale: 1 }),
+  addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+};
+
 export const StyleSheet = {
   create: <T extends Record<string, any>>(styles: T): T => styles,
   flatten: (style: any) => {
@@ -52,6 +59,7 @@ export const I18nManager = {
 export default {
   View,
   Text,
+  Image,
   TouchableOpacity,
   TextInput,
   SafeAreaView,
@@ -63,6 +71,7 @@ export default {
   Pressable,
   ActivityIndicator,
   Platform,
+  Dimensions,
   StyleSheet,
   I18nManager,
 };
