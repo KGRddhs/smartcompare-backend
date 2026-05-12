@@ -76,4 +76,27 @@ describe('clipboardFallbackService — edges', () => {
     await tryReadClipboardForInviteCode();
     expect(Clipboard.setStringAsync).not.toHaveBeenCalled();
   });
+
+  it('coerces null via `?? \'\'` BEFORE calling .trim (not via try/catch)', async () => {
+    // Mutation guard: removing the `?? ''` coalesce makes `null.trim()` throw,
+    // which would be silently swallowed by the surrounding try/catch and still
+    // return null — semantically equivalent at the return level, but the code
+    // path differs. We pin the impl to the explicit-coerce path by asserting
+    // String.prototype.trim IS called exactly once with the empty string,
+    // which only happens when the impl performs `null ?? ''` first.
+    Clipboard.getStringAsync.mockResolvedValue(null as any);
+    const trimSpy = jest.spyOn(String.prototype, 'trim');
+    try {
+      const result = await tryReadClipboardForInviteCode();
+      expect(result).toBeNull();
+      // The spy must have observed at least one call on an empty string —
+      // proof the null was coerced rather than allowed to throw.
+      const calledOnEmptyString = trimSpy.mock.contexts.some(
+        (ctx) => ctx === '' || (typeof ctx === 'object' && ctx?.toString() === '')
+      );
+      expect(calledOnEmptyString).toBe(true);
+    } finally {
+      trimSpy.mockRestore();
+    }
+  });
 });
