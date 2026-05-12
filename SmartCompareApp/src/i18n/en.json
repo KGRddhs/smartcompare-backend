@@ -245,6 +245,7 @@
   "referrals.share.toggle.budget": "Show my budget",
   "referrals.share.toggle.budgetLocked": "Never shared",
   "referrals.share.privacyNote": "We never share your budget or personal answers.",
+  "referrals.share.maxReached": "You've gifted Qaren to {{count}} friends — thank you 🎁",
   "referrals.share.message": "I compared {{productA}} and {{productB}}. Picked {{winner}} for my use. Try yours — your answer might differ:",
   "referrals.share.messagePreview": "Your message",
   "referrals.share.target.whatsapp": "WhatsApp",

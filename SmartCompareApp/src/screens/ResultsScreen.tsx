@@ -994,6 +994,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           }}
           onClose={() => setShareSheetVisible(false)}
           onShared={handleShareCompleted}
+          lifetimeRemaining={lifetimeRemaining ?? undefined}
         />
       ) : null}
 

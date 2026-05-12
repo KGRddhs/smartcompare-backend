@@ -245,6 +245,7 @@
   "referrals.share.toggle.budget": "إظهار ميزانيتي",
   "referrals.share.toggle.budgetLocked": "لا تُشارَك أبداً",
   "referrals.share.privacyNote": "ما نشارك ميزانيتك ولا إجاباتك الشخصية أبداً.",
+  "referrals.share.maxReached": "شاركتَ قارن مع {{count}} من أصدقائك — شكراً لك 🎁",
   "referrals.share.message": "قارنت بين {{productA}} و{{productB}}. اخترت {{winner}} لاستخدامي. جرّب أنت — جوابك ممكن يختلف:",
   "referrals.share.messagePreview": "رسالتك",
   "referrals.share.target.whatsapp": "واتساب",
