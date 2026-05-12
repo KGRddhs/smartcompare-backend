@@ -850,6 +850,24 @@ class ReferralService:
             {"user_id": invitee_id, "source": "invitee_signup"}
         ).execute()
 
+        # 4. Bundle B/C/D § 4.2: increment inviter's lifetime_invites_consumed.
+        # Read-modify-write rather than UPDATE...SET col = col + 1 because the
+        # Supabase Python client doesn't expose raw SQL on the user-client and
+        # this matches the pattern used for referral_bonus_comparisons_this_month
+        # above. Race window is acceptable — Loop 2 trigger is already gated by
+        # an unredeemed-invite check + first-comparison count.
+        current_lifetime = (
+            self.client.table("users")
+            .select("lifetime_invites_consumed")
+            .eq("id", referrer_id)
+            .single()
+            .execute()
+        )
+        current_count = (current_lifetime.data or {}).get("lifetime_invites_consumed") or 0
+        self.client.table("users").update(
+            {"lifetime_invites_consumed": current_count + 1}
+        ).eq("id", referrer_id).execute()
+
     async def _update_invite_as_redeemed(
         self, invite_id: str, comparison_id: str
     ) -> None:

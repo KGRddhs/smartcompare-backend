@@ -210,3 +210,88 @@ class TestLifetimeCapEnforcement:
             mock_audit.assert_called_once()
             call_kwargs = mock_audit.call_args.kwargs
             assert call_kwargs.get("event_type") == "referral_device_lifetime_cap_reached"
+
+
+class TestSignupDecrement:
+    """After Loop 2 fires successfully, the inviter's
+    ``users.lifetime_invites_consumed`` must increment by 1. This is the
+    'decrement at receiver signup completion' from § 4.2 — naming aside,
+    the column tracks consumption (one referrer → one consumed slot)."""
+
+    @pytest.mark.asyncio
+    async def test_signup_increments_inviter_lifetime_counter(self):
+        from app.services.referral_service import ReferralService
+
+        invite = {
+            "id": "invite-inc-1",
+            "referrer_user_id": "ref-inc-1",
+        }
+        invitee = {"id": "invitee-inc-1"}
+
+        svc = ReferralService()
+
+        # Track every users.update() call to assert we issued an increment
+        # on lifetime_invites_consumed for the referrer.
+        update_calls: list[dict] = []
+        select_calls: list[str] = []
+
+        def make_chain(table_name: str):
+            chain = MagicMock()
+
+            def select(cols, *args, **kwargs):
+                select_calls.append(f"{table_name}:{cols}")
+                return chain
+
+            def update(payload):
+                update_calls.append({"table": table_name, "payload": payload})
+                return chain
+
+            def insert(payload):
+                return chain
+
+            chain.select.side_effect = select
+            chain.update.side_effect = update
+            chain.insert.side_effect = insert
+            chain.eq.return_value = chain
+            chain.single.return_value = chain
+            chain.execute.return_value = MagicMock(
+                data={"referral_bonus_comparisons_this_month": 0}
+            )
+            return chain
+
+        mock_client = MagicMock()
+        mock_client.table.side_effect = lambda n: make_chain(n)
+        svc.client = mock_client
+
+        await svc._grant_loop2_rewards(invite, invitee, grant_amount=5)
+
+        # Find the increment call: users table, payload includes
+        # lifetime_invites_consumed.
+        increments = [
+            c for c in update_calls
+            if c["table"] == "users"
+            and "lifetime_invites_consumed" in c["payload"]
+        ]
+        assert len(increments) == 1, (
+            f"Expected exactly 1 lifetime_invites_consumed increment, "
+            f"saw updates: {update_calls}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_increment_does_not_fire_without_referrer_id(self):
+        """Defensive: if invite somehow lacks a referrer_user_id, skip the
+        increment rather than firing UPDATE with NULL filter (which would
+        increment ALL rows lacking a referrer)."""
+        from app.services.referral_service import ReferralService
+
+        invite = {"id": "invite-bad", "referrer_user_id": None}
+        invitee = {"id": "invitee-bad"}
+
+        svc = ReferralService()
+        mock_client = MagicMock()
+        svc.client = mock_client
+
+        await svc._grant_loop2_rewards(invite, invitee, grant_amount=5)
+
+        # Should not have touched the DB at all
+        mock_client.table.assert_not_called()
