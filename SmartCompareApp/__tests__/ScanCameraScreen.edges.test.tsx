@@ -11,6 +11,26 @@
  */
 import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
+
+jest.mock('expo-camera', () => {
+  const ReactInner = require('react');
+  class CameraView extends ReactInner.Component {
+    takePictureAsync = jest.fn();
+    render() {
+      return ReactInner.createElement('CameraView', this.props);
+    }
+  }
+  return {
+    CameraView,
+    useCameraPermissions: () => [{ granted: true }, jest.fn()],
+  };
+});
+
+jest.mock('expo-image-picker', () => ({
+  launchImageLibraryAsync: jest.fn(),
+  MediaTypeOptions: { Images: 'Images' },
+}));
+
 import ScanCameraScreen from '../src/screens/ScanCameraScreen';
 
 const makeNav = () => ({ goBack: jest.fn(), navigate: jest.fn() }) as any;

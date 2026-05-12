@@ -574,5 +574,9 @@
   "camera.help": "Camera help",
 
   "home.camera.tap_to_scan": "Tap to scan products",
-  "home.camera.slot": "{{current}} of {{total}}"
+  "home.camera.slot": "{{current}} of {{total}}",
+  "home.camera.compareCta": "Compare",
+  "home.camera.shutter": "Take photo",
+  "home.camera.gallery": "Pick from gallery",
+  "home.camera.flash": "Toggle flash"
 }
