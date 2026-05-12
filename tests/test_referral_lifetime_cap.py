@@ -109,6 +109,158 @@ class TestReferrerDeviceLifetimeCountHelper:
         count = await svc._referrer_device_lifetime_count("ghost")
         assert count == 0
 
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_referrer_user_id_is_none(self):
+        """Guard: a None or empty referrer_user_id short-circuits without
+        hitting the DB. Without this guard, `.eq("id", None)` would match
+        rows whose id IS NULL — should never happen in production (users.id
+        is the PK), but defense in depth."""
+        from app.services.referral_service import ReferralService
+
+        svc = ReferralService()
+        mock_client = MagicMock()
+        svc.client = mock_client
+
+        assert await svc._referrer_device_lifetime_count(None) == 0
+        assert await svc._referrer_device_lifetime_count("") == 0
+        # Importantly, mock_client.table was never called — no DB touched.
+        mock_client.table.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_single_user_no_device_mates(self):
+        """Common case: a referrer with a device fingerprint but no other
+        users registered on that device. Aggregate returns one row
+        containing only the referrer's own count."""
+        from app.services.referral_service import ReferralService
+
+        svc = ReferralService()
+        referrer_resp = MagicMock(data={"device_fingerprint_hash": "solo-device"})
+        sum_resp = MagicMock(data=[{"lifetime_invites_consumed": 1}])
+
+        chain_referrer = MagicMock()
+        chain_referrer.select.return_value = chain_referrer
+        chain_referrer.eq.return_value = chain_referrer
+        chain_referrer.single.return_value = chain_referrer
+        chain_referrer.execute.return_value = referrer_resp
+
+        chain_agg = MagicMock()
+        chain_agg.select.return_value = chain_agg
+        chain_agg.eq.return_value = chain_agg
+        chain_agg.execute.return_value = sum_resp
+
+        mock_client = MagicMock()
+        mock_client.table.side_effect = [chain_referrer, chain_agg]
+        svc.client = mock_client
+
+        count = await svc._referrer_device_lifetime_count("solo-user")
+        assert count == 1
+
+    @pytest.mark.asyncio
+    async def test_handles_null_lifetime_consumed_values(self):
+        """Migration 023 declares NOT NULL DEFAULT 0 so NULL shouldn't appear
+        in production — but legacy rows or a future migration that loosens
+        the constraint shouldn't crash the cap check. Coerce NULL/missing → 0."""
+        from app.services.referral_service import ReferralService
+
+        svc = ReferralService()
+        referrer_resp = MagicMock(data={"device_fingerprint_hash": "device-x"})
+        sum_resp = MagicMock(data=[
+            {"lifetime_invites_consumed": 2},
+            {"lifetime_invites_consumed": None},
+            {},  # row missing the column entirely
+        ])
+
+        chain_referrer = MagicMock()
+        chain_referrer.select.return_value = chain_referrer
+        chain_referrer.eq.return_value = chain_referrer
+        chain_referrer.single.return_value = chain_referrer
+        chain_referrer.execute.return_value = referrer_resp
+
+        chain_agg = MagicMock()
+        chain_agg.select.return_value = chain_agg
+        chain_agg.eq.return_value = chain_agg
+        chain_agg.execute.return_value = sum_resp
+
+        mock_client = MagicMock()
+        mock_client.table.side_effect = [chain_referrer, chain_agg]
+        svc.client = mock_client
+
+        count = await svc._referrer_device_lifetime_count("user-x")
+        assert count == 2  # NULL/missing coerce to 0
+
+    @pytest.mark.asyncio
+    async def test_cross_account_logout_resignup_farming_blocked(self):
+        """The cross-account abuse scenario the lifetime cap targets.
+
+        Sequence:
+          1. User A registers on phone, earns 3 successful Loop 2 referrals
+             (caps hit). users.lifetime_invites_consumed = 3.
+          2. User A logs out and creates User B account on the SAME phone
+             (same device_fingerprint_hash from Migration 021).
+          3. User B attempts a 4th referral. _referrer_device_lifetime_count
+             aggregates across BOTH users sharing the fingerprint → returns
+             3, blocking the cap as designed.
+
+        Without device aggregation, User B's per-user count would be 0 and
+        farming would succeed.
+        """
+        from app.services.referral_service import ReferralService, LIFETIME_CAP
+
+        svc = ReferralService()
+        referrer_resp = MagicMock(data={"device_fingerprint_hash": "abused-phone"})
+        sum_resp = MagicMock(data=[
+            {"lifetime_invites_consumed": 3},  # User A (logged out)
+            {"lifetime_invites_consumed": 0},  # User B (the active referrer)
+        ])
+
+        chain_referrer = MagicMock()
+        chain_referrer.select.return_value = chain_referrer
+        chain_referrer.eq.return_value = chain_referrer
+        chain_referrer.single.return_value = chain_referrer
+        chain_referrer.execute.return_value = referrer_resp
+
+        chain_agg = MagicMock()
+        chain_agg.select.return_value = chain_agg
+        chain_agg.eq.return_value = chain_agg
+        chain_agg.execute.return_value = sum_resp
+
+        mock_client = MagicMock()
+        mock_client.table.side_effect = [chain_referrer, chain_agg]
+        svc.client = mock_client
+
+        count = await svc._referrer_device_lifetime_count("user-B")
+        assert count == 3
+        assert count >= LIFETIME_CAP  # try_trigger_loop2 will reject the 4th
+
+    @pytest.mark.asyncio
+    async def test_empty_aggregate_returns_zero(self):
+        """Edge: referrer has a fingerprint set but the aggregate query
+        returns zero rows (eventually consistent read, or test fixture).
+        Should return 0, not crash."""
+        from app.services.referral_service import ReferralService
+
+        svc = ReferralService()
+        referrer_resp = MagicMock(data={"device_fingerprint_hash": "fresh-device"})
+        sum_resp = MagicMock(data=[])
+
+        chain_referrer = MagicMock()
+        chain_referrer.select.return_value = chain_referrer
+        chain_referrer.eq.return_value = chain_referrer
+        chain_referrer.single.return_value = chain_referrer
+        chain_referrer.execute.return_value = referrer_resp
+
+        chain_agg = MagicMock()
+        chain_agg.select.return_value = chain_agg
+        chain_agg.eq.return_value = chain_agg
+        chain_agg.execute.return_value = sum_resp
+
+        mock_client = MagicMock()
+        mock_client.table.side_effect = [chain_referrer, chain_agg]
+        svc.client = mock_client
+
+        count = await svc._referrer_device_lifetime_count("user-fresh")
+        assert count == 0
+
 
 class TestLifetimeCapEnforcement:
     """try_trigger_loop2 must short-circuit when the referrer's device has
