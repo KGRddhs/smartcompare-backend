@@ -571,5 +571,8 @@
   "cohort.trainedBy": "{{count}} GCC shoppers helped train this",
 
   "camera.close": "Close camera",
-  "camera.help": "Camera help"
+  "camera.help": "Camera help",
+
+  "home.camera.tap_to_scan": "Tap to scan products",
+  "home.camera.slot": "{{current}} of {{total}}"
 }

@@ -571,5 +571,8 @@
   "cohort.trainedBy": "{{count}} متسوّق خليجي ساعدوا في تدريب هذا",
 
   "camera.close": "إغلاق الكاميرا",
-  "camera.help": "مساعدة الكاميرا"
+  "camera.help": "مساعدة الكاميرا",
+
+  "home.camera.tap_to_scan": "اضغط لمسح المنتجات",
+  "home.camera.slot": "{{current}} من {{total}}"
 }

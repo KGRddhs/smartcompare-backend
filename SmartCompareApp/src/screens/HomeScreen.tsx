@@ -49,7 +49,9 @@ import { getReferralStatus } from '../services/referralService';
 const RECENT_SEARCHES_KEY = '@qaren_recent_searches';
 const MAX_RECENT = 5;
 const MIN_IMAGES = 2;
-const MAX_IMAGES = 4;
+// Bundle B/C/D Task 2.6 — exactly 2 products per comparison. Exported so
+// the new ScanCameraScreen modal + tests can read the same constant.
+export const MAX_IMAGES = 2;
 
 type HomeScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
@@ -424,7 +426,15 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
   // Phase 3 redesign — § 4a. The mode chip rail also handles the 'type'
   // mode by opening the existing SearchOverlay; the chip stays sticky-active
   // while the overlay is up so the visual feedback is consistent.
+  //
+  // Bundle B/C/D Task 2.6 — 'scan' now launches a fullscreen modal
+  // (ScanCameraScreen) instead of switching the inline camera card.
+  // See design doc § 4.6.
   const handleModeChange = (mode: InputMode) => {
+    if (mode === 'scan') {
+      navigation.navigate('ScanCamera');
+      return;
+    }
     setInputMode(mode);
     if (mode === 'type') setSearchOverlayVisible(true);
   };
@@ -461,118 +471,25 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
             </TouchableOpacity>
           </View>
         ) : inputMode === 'scan' ? (
-          <View style={styles.cameraContainer}>
-            <CameraView ref={cameraRef} style={styles.camera} facing={facing}>
-              {/* Overlay instruction */}
-              <View style={styles.cameraOverlay}>
-                <Text style={styles.cameraOverlayText}>
-                  {capturedImages.length === 0
-                    ? 'Point at first product'
-                    : `Product ${capturedImages.length + 1} of ${MAX_IMAGES}`}
-                </Text>
-              </View>
-            </CameraView>
-
-            {/* Detected product banner */}
-            {detectedProduct && (
-              <View style={styles.detectedBanner}>
-                <Text style={styles.detectedTitle}>
-                  {t('home.detected.found', {
-                    brand: detectedProduct.brand,
-                    name: detectedProduct.name,
-                    defaultValue: `Got ${detectedProduct.brand} ${detectedProduct.name}`,
-                  })}
-                </Text>
-                <Text style={styles.detectedSubtitle}>
-                  {t('home.detected.add_another', {
-                    defaultValue: 'Add a second product to compare them side-by-side.',
-                  })}
-                </Text>
-                <TouchableOpacity
-                  style={styles.retakeButton}
-                  onPress={() => setDetectedProduct(null)}
-                >
-                  <Text style={styles.retakeButtonText}>
-                    {t('home.detected.cta', { defaultValue: 'Snap another' })}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Captured images preview strip */}
-            {capturedImages.length > 0 && !detectedProduct && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.previewStrip}
-                contentContainerStyle={styles.previewStripContent}
-              >
-                {capturedImages.map((image, index) => (
-                  <View key={index} style={styles.previewItem}>
-                    <Image source={{ uri: image.uri }} style={styles.previewImage} />
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={() => removeImage(index)}
-                    >
-                      <X size={10} color="#FFF" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-
-            {/* Camera controls */}
-            {!detectedProduct && (
-              <View style={styles.cameraControls}>
-                {isProcessing ? (
-                  <View style={styles.processingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent} />
-                    <Text style={styles.processingText}>
-                      {t('home.processing', { defaultValue: 'Pulling in product details' })}
-                    </Text>
-                  </View>
-                ) : (
-                  <>
-                    <View style={styles.captureRow}>
-                      {/* Gallery */}
-                      <TouchableOpacity style={styles.sideButton} onPress={pickFromGallery}>
-                        <ImageIcon size={22} color="#FFF" />
-                      </TouchableOpacity>
-
-                      {/* Capture button (emerald ring) */}
-                      <TouchableOpacity
-                        style={[
-                          styles.captureButton,
-                          capturedImages.length >= MAX_IMAGES && styles.captureButtonDisabled,
-                        ]}
-                        onPress={takePicture}
-                        disabled={capturedImages.length >= MAX_IMAGES}
-                      >
-                        <View style={styles.captureButtonInner} />
-                      </TouchableOpacity>
-
-                      {/* Flip camera */}
-                      <TouchableOpacity style={styles.sideButton} onPress={toggleCameraFacing}>
-                        <RotateCcw size={22} color="#FFF" />
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Compare button */}
-                    {capturedImages.length >= MIN_IMAGES && (
-                      <TouchableOpacity
-                        style={styles.compareButton}
-                        onPress={handleIdentifyAndCompare}
-                      >
-                        <Text style={styles.compareButtonText}>
-                          {t('home.capture.compareCta', { count: capturedImages.length })}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </>
-                )}
-              </View>
-            )}
-          </View>
+          // Bundle B/C/D Task 2.6 — inline camera gutted in favor of the
+          // Cal-AI-style fullscreen ScanCameraScreen modal (design § 4.6).
+          // This placeholder keeps the camera card slot occupied + lets the
+          // user re-enter the scanner without going through the chip rail.
+          <TouchableOpacity
+            testID="home-scan-placeholder"
+            style={styles.scanPlaceholder}
+            onPress={() => navigation.navigate('ScanCamera')}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.camera.tap_to_scan')}
+          >
+            <Camera size={48} color={colors.text.secondary} />
+            <Text style={styles.scanPlaceholderTitle}>
+              {t('home.camera.tap_to_scan')}
+            </Text>
+            <Text style={styles.scanPlaceholderHint}>
+              {t('home.camera.slot', { current: 1, total: MAX_IMAGES })}
+            </Text>
+          </TouchableOpacity>
         ) : (
           /* URL input mode */
           <View style={styles.urlContainer}>
@@ -941,6 +858,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing['3xl'],
     backgroundColor: colors.bg.secondary,
+  },
+  // Bundle B/C/D — placeholder shown in the camera card slot when scan
+  // mode is selected; tapping it opens the fullscreen ScanCameraScreen
+  // modal. See plan § Task 2.6.
+  scanPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing['2xl'],
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.card,
+  },
+  scanPlaceholderTitle: {
+    ...typography.title,
+    color: colors.text.primary,
+    marginTop: spacing.base,
+    marginBottom: spacing.xs,
+    textAlign: 'center',
+  },
+  scanPlaceholderHint: {
+    ...typography.body,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
   permissionTitle: {
     ...typography.title,
