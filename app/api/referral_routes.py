@@ -184,6 +184,8 @@ async def share_comparison(
             merged_show_result = bool(body.privacy["show_result"])
         if "show_reasons" in body.privacy and body.show_reasons is True:
             merged_show_reasons = bool(body.privacy["show_reasons"])
+    # Bundle B/C/D § 4.7: weekly cap removed at /share. Lifetime device cap
+    # is enforced at receiver signup in try_trigger_loop2, NOT here.
     try:
         result = await service.create_invite(
             referrer_user_id=user["id"],
@@ -195,11 +197,14 @@ async def share_comparison(
             show_reasons=merged_show_reasons,
         )
     except WeeklyInviteCapExceeded:
+        # Defense in depth — service should no longer raise this, but if a
+        # future regression brings it back we still convert to a 429 rather
+        # than 500. Logged as a warning for canary monitoring.
         raise HTTPException(
             status_code=429,
             detail={
                 "code": "WEEKLY_INVITE_CAP",
-                "error": "You've used your 3 gifts this week. New invites refresh weekly.",
+                "error": "Too many shares — please try again later.",
             },
         )
     except ValueError as exc:

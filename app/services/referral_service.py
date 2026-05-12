@@ -280,17 +280,12 @@ class ReferralService:
             if show_reasons is not None:
                 merged_privacy["show_reasons"] = bool(show_reasons)
             privacy = merged_privacy
-        # 1. Weekly cap (compute dynamically per design Section 4.2)
-        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        recent = (
-            self.client.table("referral_invites")
-            .select("id", count="exact")
-            .eq("referrer_user_id", referrer_user_id)
-            .gte("created_at", seven_days_ago)
-            .execute()
-        )
-        if (recent.count or 0) >= _WEEKLY_INVITE_CAP:
-            raise WeeklyInviteCapExceeded()
+        # Bundle B/C/D § 4.7: /share no longer enforces a per-share cap.
+        # The only cap is the lifetime device cap at try_trigger_loop2
+        # (rejected AFTER receiver signup, not before sender shares).
+        # The legacy weekly cap query + WeeklyInviteCapExceeded raise are
+        # removed. We still surface an informational `lifetime_invites_remaining`
+        # in the response so the FE can disable the share CTA at 3 lifetime.
 
         # 2. share_target validation (defence-in-depth before DB CHECK)
         if share_target not in _VALID_SHARE_TARGETS:
@@ -351,16 +346,39 @@ class ReferralService:
         # quote() on share_token in case it ever contains url-unsafe chars; ref code is alnum.
         share_link = f"{APP_BASE_URL}/c/{quote(share_token or '', safe='')}?ref={code}"
 
-        used = (recent.count or 0) + 1
+        # Bundle B/C/D § 4.7: informational lifetime counter — does NOT block
+        # the share, but lets the FE disable the share CTA at 3 lifetime
+        # successful referrals + show "gifted to 3 friends" microcopy.
+        lifetime_used = await self._lifetime_invites_used(referrer_user_id)
         return {
             "invite_id": invite_id,
             "referrer_user_id": referrer_user_id,
             "share_link": share_link,
             "share_token": share_token,
             "referral_code": code,
-            "weekly_invites_used": used,
-            "weekly_invites_remaining": max(_WEEKLY_INVITE_CAP - used, 0),
+            "lifetime_invites_used": lifetime_used,
+            "lifetime_invites_remaining": max(LIFETIME_CAP - lifetime_used, 0),
         }
+
+    async def _lifetime_invites_used(self, user_id: str) -> int:
+        """Read ``users.lifetime_invites_consumed`` for this user (this is the
+        per-user view; the cap query in try_trigger_loop2 aggregates across
+        device-mates). Returns 0 on missing user or DB error."""
+        try:
+            row = (
+                self.client.table("users")
+                .select("lifetime_invites_consumed")
+                .eq("id", user_id)
+                .single()
+                .execute()
+            )
+            return int((row.data or {}).get("lifetime_invites_consumed") or 0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[referral] lifetime_invites_used lookup failed for %s: %s",
+                user_id, exc,
+            )
+            return 0
 
     # ---------- invitee landing (B3.1) ----------
 
@@ -491,30 +509,27 @@ class ReferralService:
     # ---------- status ----------
 
     async def get_status(self, user_id: str) -> dict[str, Any]:
-        """Return weekly + bonus + lifetime + code state.
+        """Return lifetime + bonus + redemptions + code state.
 
         Lazy-creates a referral code if the user doesn't have one yet.
-        """
-        # 1. Weekly invites used
-        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        weekly = (
-            self.client.table("referral_invites")
-            .select("id", count="exact")
-            .eq("referrer_user_id", user_id)
-            .gte("created_at", seven_days_ago)
-            .execute()
-        )
-        weekly_used = weekly.count or 0
 
-        # 2. User row — code + bonus comparisons
+        Bundle B/C/D § 4.7: replaces ``weekly_invites_used/remaining`` with
+        ``lifetime_invites_used/remaining`` (sourced from
+        ``users.lifetime_invites_consumed`` per Migration 023).
+        """
+        # 1. User row — code + bonus comparisons + lifetime counter
         user_row = (
             self.client.table("users")
-            .select("referral_code, referral_bonus_comparisons_this_month")
+            .select(
+                "referral_code, referral_bonus_comparisons_this_month, "
+                "lifetime_invites_consumed"
+            )
             .eq("id", user_id)
             .single()
             .execute()
         )
         user_data = user_row.data or {}
+        lifetime_used = int(user_data.get("lifetime_invites_consumed") or 0)
         code = user_data.get("referral_code")
         if not code:
             code = generate_referral_code()
@@ -546,8 +561,8 @@ class ReferralService:
 
         return {
             "referral_code": code,
-            "weekly_invites_used": weekly_used,
-            "weekly_invites_remaining": max(_WEEKLY_INVITE_CAP - weekly_used, 0),
+            "lifetime_invites_used": lifetime_used,
+            "lifetime_invites_remaining": max(LIFETIME_CAP - lifetime_used, 0),
             "monthly_bonus_comparisons": monthly_bonus,
             "deep_review_credits_available": credits_available,
             "total_lifetime_redemptions": lifetime,

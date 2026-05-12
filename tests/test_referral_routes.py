@@ -88,6 +88,7 @@ class TestGetReferralsStatus:
         assert resp.status_code in (401, 403, 422)
 
     def test_authorized_returns_status_envelope(self):
+        """Bundle B/C/D § 4.7: /status returns lifetime_invites_* not weekly_*."""
         from app.api.auth_routes import get_current_user
 
         async def fake_user():
@@ -98,8 +99,8 @@ class TestGetReferralsStatus:
             with patch("app.api.referral_routes.ReferralService") as MockSvc:
                 svc = MockSvc.return_value
                 svc.get_status = AsyncMock(return_value={
-                    "weekly_invites_used": 1,
-                    "weekly_invites_remaining": 2,
+                    "lifetime_invites_used": 1,
+                    "lifetime_invites_remaining": 2,
                     "monthly_bonus_comparisons": 0,
                     "deep_review_credits_available": 1,
                     "total_lifetime_redemptions": 0,
@@ -112,14 +113,124 @@ class TestGetReferralsStatus:
                 )
                 assert resp.status_code == 200, resp.text
                 data = resp.json()
-                # Either at top-level or nested under "data" — design says top-level
                 expected_keys = {
-                    "weekly_invites_used", "weekly_invites_remaining",
+                    "lifetime_invites_used", "lifetime_invites_remaining",
                     "monthly_bonus_comparisons", "deep_review_credits_available",
                     "total_lifetime_redemptions", "referral_code",
                 }
                 actual = set(data.keys())
                 assert expected_keys.issubset(actual), f"missing keys: {expected_keys - actual}"
+                # Negative: old weekly keys must NOT leak through
+                assert "weekly_invites_used" not in data
+                assert "weekly_invites_remaining" not in data
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_lifetime_remaining_clamps_at_zero(self):
+        """Sanity: if a user has consumed 3 (the cap), remaining clamps at 0."""
+        from app.api.auth_routes import get_current_user
+
+        async def fake_user():
+            return {"id": "user-capped", "email": "c@test.com", "access_token": "tok"}
+
+        app.dependency_overrides[get_current_user] = fake_user
+        try:
+            with patch("app.api.referral_routes.ReferralService") as MockSvc:
+                svc = MockSvc.return_value
+                svc.get_status = AsyncMock(return_value={
+                    "lifetime_invites_used": 3,
+                    "lifetime_invites_remaining": 0,
+                    "monthly_bonus_comparisons": 0,
+                    "deep_review_credits_available": 0,
+                    "total_lifetime_redemptions": 3,
+                    "referral_code": "QR-CAPPED",
+                })
+                resp = client.get(
+                    "/api/v1/referrals/status",
+                    headers={"Authorization": "Bearer tok"},
+                )
+                assert resp.status_code == 200
+                data = resp.json()
+                assert data["lifetime_invites_used"] == 3
+                assert data["lifetime_invites_remaining"] == 0
+        finally:
+            app.dependency_overrides.clear()
+
+
+class TestPostReferralsShareLifetimeShape:
+    """Bundle B/C/D § 4.7: /share returns lifetime_invites_remaining and
+    NEVER raises WeeklyInviteCapExceeded."""
+
+    def test_share_returns_lifetime_remaining_in_response(self):
+        from app.api.auth_routes import get_current_user
+
+        async def fake_user():
+            return {"id": "user-share", "email": "sh@test.com", "access_token": "tok"}
+
+        app.dependency_overrides[get_current_user] = fake_user
+        try:
+            with patch("app.api.referral_routes.ReferralService") as MockSvc:
+                svc = MockSvc.return_value
+                svc.create_invite = AsyncMock(return_value={
+                    "invite_id": "inv-1",
+                    "referrer_user_id": "user-share",
+                    "share_link": "https://qaren.app/c/tok?ref=QR-ABCD23",
+                    "share_token": "tok",
+                    "referral_code": "QR-ABCD23",
+                    "lifetime_invites_used": 1,
+                    "lifetime_invites_remaining": 2,
+                })
+                resp = client.post(
+                    "/api/v1/referrals/share",
+                    json={
+                        "comparison_id": "00000000-0000-0000-0000-000000000000",
+                        "share_target": "whatsapp",
+                    },
+                    headers={"Authorization": "Bearer tok"},
+                )
+                assert resp.status_code == 201, resp.text
+                data = resp.json()
+                assert data["success"] is True
+                assert data["lifetime_invites_remaining"] == 2
+                # Old weekly shape must NOT leak through
+                assert "weekly_invites_used" not in data
+                assert "weekly_invites_remaining" not in data
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_share_does_not_raise_weekly_cap_exceeded(self):
+        """The weekly cap is gone. A user with 100 prior invites this week can
+        still call /share — the only cap is the lifetime device cap, which is
+        enforced at try_trigger_loop2, NOT at /share."""
+        from app.api.auth_routes import get_current_user
+
+        async def fake_user():
+            return {"id": "user-many", "email": "m@test.com", "access_token": "tok"}
+
+        app.dependency_overrides[get_current_user] = fake_user
+        try:
+            with patch("app.api.referral_routes.ReferralService") as MockSvc:
+                svc = MockSvc.return_value
+                # Simulate 100 prior invites — old weekly cap would have raised here.
+                svc.create_invite = AsyncMock(return_value={
+                    "invite_id": "inv-101",
+                    "referrer_user_id": "user-many",
+                    "share_link": "https://qaren.app/c/x?ref=QR-MANY99",
+                    "share_token": "x",
+                    "referral_code": "QR-MANY99",
+                    "lifetime_invites_used": 2,
+                    "lifetime_invites_remaining": 1,
+                })
+                resp = client.post(
+                    "/api/v1/referrals/share",
+                    json={
+                        "comparison_id": "00000000-0000-0000-0000-000000000000",
+                        "share_target": "whatsapp",
+                    },
+                    headers={"Authorization": "Bearer tok"},
+                )
+                # Must NOT be 429 (the old WEEKLY_INVITE_CAP code)
+                assert resp.status_code == 201, resp.text
         finally:
             app.dependency_overrides.clear()
 
