@@ -21,6 +21,15 @@ import {
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
+// Bundle B/C/D Task 3.1 — Reanimated spring for the mode-chip selection.
+// Worklet-native; no useNativeDriver:false anywhere in the chip's animated
+// path. See plan § Task 3.1 + design § 5.1 Item 6.
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
+import { motion } from '../theme/motion';
 import { Camera, RotateCcw, ImageIcon, X } from 'lucide-react-native';
 // Custom mode icons (frontend-visual Task #51) — drop-in replacements for
 // Lucide Camera/Link2/Edit3 inside the 3-mode chip rail per design § 5a
@@ -623,19 +632,55 @@ interface ModeChipProps {
 }
 
 function ModeChip({ testID, label, icon, active, onPress }: ModeChipProps) {
+  // Bundle B/C/D Task 3.1 — spring scale on selection. Active chip
+  // settles at 1.0; inactive chips ride 0.96 so the active one reads as
+  // raised without a jumpy 60→0 transition. springConfig.chip is shared
+  // with onboarding chips (theme/motion.ts) for visual consistency.
+  const scale = useSharedValue(active ? 1 : 0.96);
+
+  React.useEffect(() => {
+    scale.value = withSpring(active ? 1 : 0.96, motion.springConfig.chip);
+  }, [active, scale]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePress = () => {
+    // Fire-and-forget haptic; never blocks the chip-tap path. motion.haptic.chip
+    // is locked to 'light' so the rail feels responsive without buzzing.
+    // Wrapped in try/catch (not Promise.catch) so test mocks that return
+    // `undefined` from impactAsync don't crash the press handler.
+    try {
+      const maybePromise = Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Light
+      );
+      if (maybePromise && typeof maybePromise.catch === 'function') {
+        maybePromise.catch(() => { /* haptic engine unavailable */ });
+      }
+    } catch {
+      /* haptic engine threw synchronously — silently no-op */
+    }
+    onPress();
+  };
+
   return (
-    <TouchableOpacity
-      testID={testID}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      style={[styles.modeChip, active && styles.modeChipActive]}
-    >
-      {icon}
-      <Text style={[styles.modeChipText, active && styles.modeChipTextActive]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
+    <Animated.View style={animStyle}>
+      <TouchableOpacity
+        testID={testID}
+        onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityState={{ selected: active }}
+        style={[styles.modeChip, active && styles.modeChipActive]}
+      >
+        {icon}
+        <Text
+          style={[styles.modeChipText, active && styles.modeChipTextActive]}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
