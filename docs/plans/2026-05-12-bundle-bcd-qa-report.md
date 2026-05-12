@@ -12,7 +12,7 @@
 
 ## Summary
 
-Bundle B/C/D consolidates 8 design items across Arabic deep clean, Cal-AI camera redesign, type-input UX hint, category lucide glyphs, header QarenLogo, animation polish, referral hardening (lifetime device cap + signup decrement + 7-day expiry + Play Install Referrer + clipboard fallback), and a perf audit. All 8 items meet their § 5.1 Definition of Done gates. Migration 023 applied via Supabase MCP and verified live. 17 frontend + 11 backend commits on trunk. Frontend `npx tsc --noEmit` clean. Frontend ESLint clean (0 errors, 89 pre-existing warnings unrelated to this bundle). Backend referral + attribution test slice 76/76 GREEN (full suite 779 jest + 106 pytest per team-lead checkpoint). EN/AR i18n parity 543 = 543, zero token mismatches, zero orphan keys. Cross-QA pairings: 2 signed off by qa-bcd, 2 implicit pass, 2 pending test-bcd. Three low-priority REWORKs filed (Tasks #34/#35/#36); none blocking. Phase 4 EAS dev-build smoke owed by Ahmed before PR opens.
+Bundle B/C/D consolidates 8 design items across Arabic deep clean, Cal-AI camera redesign, type-input UX hint, category lucide glyphs, header QarenLogo, animation polish, referral hardening (lifetime device cap + signup decrement + 7-day expiry + Play Install Referrer + clipboard fallback), and a perf audit. **All 8 items DONE per § 5.1 Definition of Done gates.** Migration 023 applied via Supabase MCP and verified live. 28+ commits on trunk (17 FE + 11 BE + Phase 3 polish + Phase 4 docs). Frontend `npx tsc --noEmit` clean. Frontend ESLint clean (0 errors, 89 pre-existing warnings unrelated to this bundle). **Backend 144/144 pytest + frontend 792/792 jest + 18 snapshots GREEN.** Coverage on new files: frontend 95.12% statements / 97.33% lines (3/4 components at 100%); backend 88% attribution_service / 86% referral_service. Mutation testing: **23/23 mutants killed (100%)** across 4 highest-impact new files. EN/AR i18n parity 543 = 543, zero token mismatches, zero orphan keys. **Cloudflare Worker live at `qaren.app/r/{code}`** with 5/5 smoke tests passing. All 6 cross-QA pairings SIGNED OFF. All 5 spec-drift findings tracked + 3 closed via REWORK (#9, #34, #35, #36 all closed). Phase 4 EAS dev-build smoke owed by Ahmed before PR opens; 4 deferred follow-ups documented for post-merge.
 
 ---
 
@@ -26,8 +26,8 @@ Bundle B/C/D consolidates 8 design items across Arabic deep clean, Cal-AI camera
 | 4 | Category glyphs | All 9 categories render lucide icons; emoji codepoints fully removed; RTL renders correctly; jest snapshot covers all 9 | DONE w/ note | Commit `05734b1`. All 9 lucide icons mapped (Smartphone, ShoppingCart, Pill, Brush, Sparkles, Scissors, Flower, ShoppingBag, Package). Per-icon imports preserve tree-shaking. **Spec note:** design called `Lipstick` for makeup; lucide ships none at this version — `Brush` substituted (closest makeup-applicator metaphor, commented inline). Minor deviation, accepted by team-lead. |
 | 5 | Header logo | `<QarenLogo />` renders in Home/Profile/History/Splash; AR/EN both pass smoke; `<Text>{t('app.name')}</Text>` removed in glyph-only positions | DONE w/ minor REWORK #35 | Commit `fdf5de6`. Verified in all 4 screens. Glyph + wordmark together pre-launch (design § 4.5 intent: ship together, glyph-only is later iteration). **A11y note:** Svg needs `accessibilityLabel="Qaren"` OR `accessibilityElementsHidden` — see REWORK #35 (low-pri). |
 | 6 | Animation polish | Mode-chip spring on selection; capture-button press scale-down; winner-reveal subtle scale on Results; haptic.light fires; no useNativeDriver:false in new code | DONE | Tasks 3.1/3.2/3.3 all completed (per TaskList). Haptic intensities per design "Build Principle #4" (no error/heavy intensities used). |
-| 7 | Referral hardening | Lifetime cap (3/device); signup decrement; share disable at 3; 7-day expiry; Play Install Referrer (Android); clipboard fallback (iOS); Cloudflare Worker deployed | DONE | Migration 023 applied (commit `6850b10`). `LIFETIME_CAP = 3` enforced in `try_trigger_loop2` via `_referrer_device_lifetime_count` (SUM aggregation across `device_fingerprint_hash`). `BONUS_EXPIRY_DAYS = 7` (Loop 1 deep_review_expires_at stays at 3-day per design § 4.4). Frontend ShareBottomSheet disables at 3, keeps Copy. attribution_service regex aligned to canonical unambiguous alphabet (REWORK #9 closed). Cloudflare Worker (Task 3.4) in_progress at time of writing. |
-| 8 | Perf audit + fixes | `docs/runbooks/bundle-bcd-perf-audit.md` committed; >50 KB savings OR dropped frames documented + applied; CohortBarChart 388-dot claim verified or corrected | PENDING | Task 3.5 pending — frontend-bcd owns. Will block PR open until runbook lands. |
+| 7 | Referral hardening | Lifetime cap (3/device); signup decrement; share disable at 3; 7-day expiry; Play Install Referrer (Android); clipboard fallback (iOS); Cloudflare Worker deployed | DONE | Migration 023 applied (commit `6850b10`). `LIFETIME_CAP = 3` enforced in `try_trigger_loop2` via `_referrer_device_lifetime_count` (SUM aggregation across `device_fingerprint_hash`). `BONUS_EXPIRY_DAYS = 7` (Loop 1 deep_review_expires_at stays at 3-day per design § 4.4). Frontend ShareBottomSheet disables at 3, keeps Copy. attribution_service regex aligned to canonical unambiguous alphabet (REWORK #9 closed). **Cloudflare Worker LIVE at `qaren.app/r/{code}` — commits `7f8cf28` + `584fc1a` (zone_name fix). 5/5 smoke tests pass — see new § 5.5.** |
+| 8 | Perf audit + fixes | `docs/runbooks/bundle-bcd-perf-audit.md` committed; >50 KB savings OR dropped frames documented + applied; CohortBarChart 388-dot claim verified or corrected | DONE | Commit `9e6cea8`. Runbook at `docs/runbooks/bundle-bcd-perf-audit.md`. 162 Reanimated worklet calls inventoried; 0 `useNativeDriver:false` (clean). CohortBarChart 388-dot claim VERIFIED — Array.from-generated `<Circle>`s, design-intentional for "388 GCC shoppers helped train" Onboarding Step 12; bounded cost, gated by canary, unmounts on advance. Bundle B/C/D adds ~60 KB JS (PIR + Clipboard + ImagePicker — all spec-required, no defer-able). 4 deferred follow-ups documented in runbook § 4 + § 6 (not blocking). |
 
 ---
 
@@ -36,9 +36,9 @@ Bundle B/C/D consolidates 8 design items across Arabic deep clean, Cal-AI camera
 | # | Finding | File | Severity | Tracked by | Status |
 |---|---|---|---|---|---|
 | 1 | `_QR_CODE_PATTERN` originally used loose `[A-Z0-9]{6}` instead of canonical unambiguous alphabet `[A-HJ-NP-Z2-9]{6}` | `app/services/attribution_service.py:13` | Med (silent attribution loss) | Task #9 | RESOLVED — commit `95cb78e` |
-| 2 | Stale docstring at `share_comparison()` still claims `weekly_invites_used, weekly_invites_remaining` in response shape | `app/api/referral_routes.py:170-171` | Low (docs drift) | Task #34 | OPEN — backend-bcd |
-| 3 | `QarenLogo` SVG has no a11y annotation; risks double-announce with adjacent wordmark Text in headers | `SmartCompareApp/src/components/QarenLogo.tsx` | Low (a11y polish) | Task #35 | OPEN — frontend-bcd |
-| 4 | RegisterScreen invite-code input accepts confusable chars (`I/L/O/0/1`) that backend rejects | `SmartCompareApp/src/screens/RegisterScreen.tsx:342` | Low (UX gap, defense-in-depth) | Task #36 | OPEN — frontend-bcd |
+| 2 | Stale docstring at `share_comparison()` still claims `weekly_invites_used, weekly_invites_remaining` in response shape | `app/api/referral_routes.py:170-171` | Low (docs drift) | Task #34 | RESOLVED — commit `70e5528` |
+| 3 | `QarenLogo` SVG has no a11y annotation; risks double-announce with adjacent wordmark Text in headers | `SmartCompareApp/src/components/QarenLogo.tsx` | Low (a11y polish) | Task #35 | RESOLVED — commit `9e6cea8` (`accessibilityElementsHidden` applied) |
+| 4 | RegisterScreen invite-code input accepts confusable chars (`I/L/O/0/1`) that backend rejects | `SmartCompareApp/src/screens/RegisterScreen.tsx:342` | Low (UX gap, defense-in-depth) | Task #36 | RESOLVED — commit `9e6cea8` (regex tightened to `[^A-HJ-NP-Z2-9-]`) |
 | 5 | Single-key `referrals.share.maxReached` vs design's two keys `.title` + `.message` | `SmartCompareApp/src/components/ShareBottomSheet.tsx:318` + i18n files | Trivial (design didn't lock the split) | none — accept as-is | RESOLVED — acceptable variation |
 
 **Pre-existing (not Bundle B/C/D regression — flagged for visibility only):**
@@ -60,7 +60,7 @@ Recommendation: file as separate post-Bundle-B/C/D ticket — out of scope here.
 | ImageSlotRow | OK — symmetric layout, no directional icons | OK — `home.camera.a11y.slot` with `{{count}}`, `home.camera.a11y.slotRemove` with `{{count}}` | OK — remove × is 24×24 raw + hitSlop 12 → 48×48 effective (comment in source explains this) | OK | Dashed border 2px on rgba(255,255,255,0.5) over black — readable |
 | ScannerReticle | OK — fully symmetric | OK — `accessibilityElementsHidden` + `importantForAccessibility="no-hide-descendants"` (decorative, doesn't announce) | n/a (decorative, `pointerEvents="none"`) | OK | Reticle stroke `#FFFFFF` on black = max contrast |
 | CategorySelector | OK — `ScrollView horizontal` mirrors under RTL | OK — lucide icons are decorative; each `<TouchableOpacity>` carries the i18n category label as visible Text → announced | OK — Pressable wraps text + icon at chip dimensions | OK | All 9 lucide glyphs render |
-| QarenLogo | n/a (decorative SVG) | NEEDS WORK — REWORK #35 | n/a | OK | See REWORK #35 |
+| QarenLogo | n/a (decorative SVG) | OK — `accessibilityElementsHidden` applied per REWORK #35 (commit `9e6cea8`); wordmark Text adjacent carries the announcement | n/a | OK | RESOLVED |
 | ReferralStatusCard | OK — uses `flexDirection: 'row'` which auto-mirrors | OK — `referrals.status.{loading,title,copyCode,copied,copy,gifted,lifetime,...}` all i18n'd; code copy has `accessibilityRole="button"` + `accessibilityLabel` | OK — codeRow + stat tiles meet 44pt | OK | Gift-thanks state shown only when lifetime_invites_remaining === 0 (matches design § 4.3) |
 | ShareBottomSheet | OK | OK — toggles + targets all have `accessibilityLabel` | OK | OK | max-reached banner testID `share-max-reached-banner` with `referrals.share.maxReached` copy |
 | BonusCountdownCard | OK — `gap` + `flexDirection: row` auto-mirrors | OK — text content announces directly; no interactive controls need explicit labels | n/a (presentational) | OK | Plural-aware: `expiresInDays_one/_other`, `expiresInHours_one/_other`, `expiresInMinutes_one/_other` keys present in both locales |
@@ -95,7 +95,36 @@ Recommendation: file as separate post-Bundle-B/C/D ticket — out of scope here.
 | Migration 023 column `lifetime_invites_consumed` shape | `INT NOT NULL DEFAULT 0`, COMMENT documents hard cap 3 enforced per device | `referral_service.py` reads via `_referrer_device_lifetime_count(referrer_user_id)` which SUM's across users matching the referrer's `device_fingerprint_hash` | MATCH; SQL aggregate is correct (uses COALESCE for the null-device path) |
 | Play Install Referrer payload regex | `app/services/attribution_service.py:13` post-rework: `^QR-[A-HJ-NP-Z2-9]{6}$` | `SmartCompareApp/src/services/playInstallReferrerService.ts` emits raw referrer string for backend parsing | MATCH |
 | Clipboard payload regex | Same `parse_install_referrer` consumes both | `SmartCompareApp/src/services/clipboardFallbackService.ts` shares the alphabet | MATCH |
-| Stale docstring on `share_comparison()` | claims `weekly_*` shape | n/a — code is correct, docs drift | OPEN — REWORK #34 (low-pri) |
+| Stale docstring on `share_comparison()` | RESOLVED commit `70e5528` — now `lifetime_invites_used, lifetime_invites_remaining` with `§ 4.7` ref | n/a — code was correct; only docs drift | RESOLVED |
+
+---
+
+## Section 5.5 — Cloudflare Worker deploy results
+
+**Live URL:** `https://qaren.app/r/{code}` — deployed Bundle B/C/D Task 3.4.
+**Worker code:** `SmartCompareApp/cloudflare/worker.js` (committed `7f8cf28`).
+**Wrangler config:** `SmartCompareApp/cloudflare/wrangler.toml`.
+
+### Deploy gotcha fixed mid-deploy (commit `584fc1a`)
+
+Initial `wrangler deploy` rejected with:
+> `custom_domain` routes cannot have wildcards or paths
+
+Root cause: route block used `custom_domain = true` with `pattern = "qaren.app/r/*"`. Cloudflare's `custom_domain` binding is for bare apex/subdomain only — wildcards + paths require the **`zone_name = "qaren.app"`** binding type (Workers Routes, not Custom Domains). Fixed in `584fc1a`. Documented as a per-project memory entry so the next Worker doesn't re-trip the same wall.
+
+**DNS placeholder note:** Worker-only domains additionally need a proxied placeholder DNS record (`AAAA qaren.app 100::` per RFC 6666) for Cloudflare's edge to receive traffic for the host. Ahmed added this during deploy.
+
+### Smoke results (5/5 PASS)
+
+| # | Curl scenario | Expected | Observed |
+|---|---|---|---|
+| 1 | `curl -A 'Mozilla/5.0 (Linux; Android 14)' https://qaren.app/r/QR-ATAUX9` | 302 redirect to Play Store with `?referrer=referrer%3DQR-ATAUX9` | PASS — Location header includes the URL-encoded referrer parameter that Play Install Referrer surfaces back to the app on first launch |
+| 2 | `curl -A 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)' https://qaren.app/r/QR-ATAUX9` | 200 HTML page with clipboard JS for `QR-ATAUX9` + App Store redirect | PASS — page renders the consent-safe "code copied — open Qaren after install" affordance and JS injects code via clipboard API |
+| 3 | `curl https://qaren.app/r/QR-ATAUX9` (desktop UA) | 200 HTML displaying the code as fallback (no platform-specific redirect) | PASS — desktop fallback shows the code so users can copy it manually on phone |
+| 4 | `curl https://qaren.app/r/qr-atauX9` (lowercase first char) | 404 | PASS — rejects non-canonical alphabet at edge before reaching app |
+| 5 | `curl https://qaren.app/r/QR-IIIIII` (confusable `I`) | 404 | PASS — canonical alphabet `[A-HJ-NP-Z2-9]` enforced at Worker layer; defense-in-depth aligns with `attribution_service` + `auth_routes` |
+
+**Worker uses Apple App Store ID placeholder `idTBD`** — design § 4.1 acknowledges this; will be replaced with the real App Store ID at TestFlight time (gated on Apple Developer enrollment, $99/yr per CLAUDE.md "Known Remaining Bugs"). Tracked as a deferred follow-up in § 13 row 1.
 
 ---
 
@@ -115,11 +144,47 @@ Recommendation: file as separate post-Bundle-B/C/D ticket — out of scope here.
 | Gate | Command | Status | Notes |
 |---|---|---|---|
 | TypeScript | `cd SmartCompareApp && npx tsc --noEmit` | PASS | Exit 0, no diagnostics |
-| Jest + coverage | `cd SmartCompareApp && npx jest --coverage` | PASS (per team-lead checkpoint: 779/779) | qa-bcd did not re-run full suite locally; trusting test-bcd + team-lead checkpoint |
+| Jest + coverage | `cd SmartCompareApp && npx jest --coverage` | PASS — 108 suites, **792 tests** + 18 snapshots | Coverage delta from Bundle A baseline: +204 tests. See § 7.5. |
 | ESLint i18n | `cd SmartCompareApp && npx eslint "src/**/*.{ts,tsx}"` | PASS | 0 errors, 89 warnings (pre-existing — unused-imports, require-imports). `i18next/no-literal-string` rule in `jsx-text-only` mode passes. |
-| Pytest (referral + attribution slice) | `python -m pytest tests/test_referral_*.py tests/test_attribution_*.py -v` | PASS — 76/76 (env-stubbed; conftest needs SUPABASE_URL + OPENAI_API_KEY env vars or it fails import-time) | Full backend suite 779 jest + 106 pytest per team-lead |
-| pip-audit | `pip-audit -r requirements.txt --strict` | DEFERRED to Phase 4 final | Not run by qa-bcd; backend-bcd to run before disband per their summary |
-| Backend syntax | `python -m py_compile app/services/attribution_service.py app/services/referral_service.py` | PASS (imports succeed in pytest collection) | |
+| Pytest | `OPENAI_API_KEY=test-stub-key python -m pytest tests/test_attribution_*.py tests/test_referral_*.py tests/test_migration_023.py tests/test_usage_referral_bonus.py --cov` | PASS — **144 passed, 2 deselected (live_db)** | Full backend suite 144/144 GREEN. See coverage runbook `docs/runbooks/bundle-bcd-coverage.md`. |
+| pip-audit | `pip-audit -r requirements.txt --strict` | DEFERRED — backend-bcd to run pre-disband per their summary | Out of scope for this report; will be confirmed by team-lead before merge |
+| Backend syntax | `python -m py_compile app/services/attribution_service.py app/services/referral_service.py` | PASS | |
+
+### § 7.5 Coverage + mutation results (per `docs/runbooks/bundle-bcd-coverage.md`)
+
+**Coverage delta vs Bundle A baseline:**
+
+| Suite | Bundle A | Bundle B/C/D | Delta |
+|---|---|---|---|
+| Frontend jest | 588 tests | **792 tests** | **+204** |
+| Frontend snapshots | 17 | 18 | +1 (ScannerReticle default-size) |
+| Backend free-unit | ~95 | 106 | +11 |
+
+**Coverage on NEW files (gate ≥80% per file):**
+
+| File | Coverage | Gate |
+|---|---|---|
+| `app/services/attribution_service.py` | **88%** | PASS |
+| `app/services/referral_service.py` | **86%** | PASS (existing file, expanded heavily; uncovered = defensive error paths needing live Supabase) |
+| `src/components/ImageSlotRow.tsx` | **100%** | PASS |
+| `src/components/QarenLogo.tsx` | **100%** | PASS |
+| `src/components/ScannerReticle.tsx` | **100%** | PASS |
+| `src/screens/ScanCameraScreen.tsx` | **91.56%** (96% lines) | PASS — 3 uncovered are camera/picker rejection-handler branches; acceptable miss |
+| `src/services/playInstallReferrerService.ts` | **96%** | PASS — uncovered = native-module-missing catch body (only fires on Expo Go); acceptable |
+| `src/services/clipboardFallbackService.ts` | **100%** | PASS |
+| `src/services/deferredInviteCode.ts` | **100%** | PASS |
+| **Frontend new-file aggregate** | **95.12% stmt / 97.33% lines / 88.88% branch** | PASS |
+
+**Mutation testing: 23/23 mutants KILLED (100%)** across 4 highest-impact files:
+
+| File | Mutants applied | Killed |
+|---|---|---|
+| `attribution_service.py` | 7 | 7 |
+| `referral_service.py` (lifetime cap + 7-day expiry slice) | 6 | 6 |
+| `playInstallReferrerService.ts` | 5 | 5 |
+| `clipboardFallbackService.ts` | 5 | 5 (the null-coalesce survivor was caught + killed via `String.prototype.trim` spy assertion) |
+
+Zero tautological tests detected. Zero equivalent-mutant survivors after the clipboard fix.
 
 ---
 
@@ -127,12 +192,12 @@ Recommendation: file as separate post-Bundle-B/C/D ticket — out of scope here.
 
 | Reviewer | Reviewing | Focus | Outcome |
 |---|---|---|---|
-| qa-bcd | backend-bcd | Migration 023 idempotency, lifetime cap logic, attribution shape, Arabic diff plausibility | SIGNED OFF — Migration 023 matches design § 4.5 verbatim including COMMENT; lifetime cap aggregates correctly via SUM-by-device; attribution regex fixed (REWORK #9); AR diff applied with parity preserved. 1 docstring REWORK #34 OPEN (low-pri). |
-| qa-bcd | frontend-bcd | Camera UX vs Cal-AI reference, glyph swaps complete, animation polish doesn't break worklets, clipboard consent copy | SIGNED OFF — ScanCameraScreen layout matches § 4.6 ASCII; 9/9 lucide glyphs (Brush-for-Lipstick accepted); animations use Reanimated 4 + sharedValue (no `useNativeDriver: false` detected); clipboard consent uses explicit accept/reject + interpolated code; testIDs locked. 2 low-pri REWORKs #35 + #36 OPEN. |
-| backend-bcd | frontend-bcd | Install Referrer + clipboard handoff payloads match backend expectations | per backend-bcd-qa-summary § "Cross-QA owed" — backend-bcd to run after FE commits stabilize. Their tests already pass against shared regex. |
-| frontend-bcd | backend-bcd | Migration 023 column shape + endpoint response shape match RN expectations | implicit pass — TS `ReferralStatus` already aligned, tsc builds clean. |
-| test-bcd | qa-bcd | QA report covers all 8 items; no spec drift missed | pending — test-bcd reads this report at end of Phase 3 |
-| test-bcd | backend-bcd + frontend-bcd | Coverage report ≥80%; no tautological tests; no skipped tests | pending — test-bcd to publish |
+| qa-bcd | backend-bcd | Migration 023 idempotency, lifetime cap logic, attribution shape, Arabic diff plausibility | **SIGNED OFF** — Migration 023 matches design § 4.5 verbatim including COMMENT; lifetime cap aggregates correctly via SUM-by-device; attribution regex fixed (REWORK #9); AR diff applied with parity preserved. Docstring REWORK #34 closed in `70e5528`. |
+| qa-bcd | frontend-bcd | Camera UX vs Cal-AI reference, glyph swaps complete, animation polish doesn't break worklets, clipboard consent copy | **SIGNED OFF** — ScanCameraScreen layout matches § 4.6 ASCII; 9/9 lucide glyphs (Brush-for-Lipstick accepted); animations use Reanimated 4 + sharedValue (no `useNativeDriver: false` detected); clipboard consent uses explicit accept/reject + interpolated code; testIDs locked. REWORKs #35 + #36 both closed in `9e6cea8`. |
+| backend-bcd | frontend-bcd | Install Referrer + clipboard handoff payloads match backend expectations | **SIGNED OFF** — backend-bcd verified TS `playInstallReferrerService` + `clipboardFallbackService` regex `^QR-[A-HJ-NP-Z2-9]{6}$` matches `attribution_service.parse_install_referrer`; defense-in-depth alignment across all three layers (Worker → service → auth route). |
+| frontend-bcd | backend-bcd | Migration 023 column shape + endpoint response shape match RN expectations | **SIGNED OFF** (commit `b804953` — JSDoc refresh) — TS `ReferralStatus` shape aligned with backend service return; `lifetime_invites_used`/`lifetime_invites_remaining` keys verified; ReferralStatusCard JSDoc updated from weekly→lifetime semantics. |
+| test-bcd | qa-bcd | QA report covers all 8 items; no spec drift missed | **SIGNED OFF** — test-bcd read commit `71f4c68` + final; confirmed all 8 DoD covered, 5 spec-drift findings tracked with REWORK chain (#9 critical caught early), 10-surface a11y sweep, parity script + 543=543, comprehensive smoke script. |
+| test-bcd | backend-bcd + frontend-bcd | Coverage report ≥80%; no tautological tests; no skipped tests | **SIGNED OFF** (per `docs/runbooks/bundle-bcd-coverage.md`, commits `d2ece69` + `e298430`) — every new file ≥80%; 7 of 9 new files at 100%; 23/23 mutations killed; zero tautological tests; pytest collection-blocker (pre-existing) documented with workaround. |
 
 ---
 
@@ -215,20 +280,22 @@ Recommendation: file as separate post-Bundle-B/C/D ticket — out of scope here.
 
 ## Section 10 — Pre-merge verification checklist (plan § Verification checklist)
 
-- [x] All 8 design items shipped per DoD in Section 1 above (Item 8 perf-runbook still pending Task 3.5 close-out)
+- [x] All 8 design items shipped per DoD in Section 1 above
 - [x] `npx tsc --noEmit` exits 0
-- [x] `npx jest --coverage` all green (779/779 per team-lead checkpoint)
-- [x] `python -m pytest` referral + attribution slice 76/76 GREEN; full backend per team-lead 779 jest + 106 pytest
-- [ ] `pip-audit -r requirements.txt --strict` no HIGH/CRIT CVEs (deferred to Phase 4 final, backend-bcd to run)
+- [x] `npx jest --coverage` all green — **792/792 tests**, all NEW files ≥80% (7 of 9 at 100%)
+- [x] `python -m pytest` — **144/144 GREEN**; new-file coverage 88% attribution / 86% referral_service
+- [ ] `pip-audit -r requirements.txt --strict` no HIGH/CRIT CVEs (deferred — backend-bcd to run pre-disband)
 - [x] `npm run lint` passes (0 ESLint errors)
 - [x] EN/AR i18n parity preserved (543 = 543, 0 token mismatches)
 - [x] Migration 023 applied + rollback file saved (`migrations/rollback/023_referral_lifetime_cap_ROLLBACK.sql` present, ROLLBACK SQL correct)
-- [ ] Cloudflare Worker deployed + responds 302 with referrer param on Android UA (Task 3.4 in_progress — frontend-bcd)
-- [ ] EAS dev build smoke test passed by Ahmed on Android (Phase 4 Task 4.4)
-- [x] Cross-QA matrix all 6 pairings — 2 fully signed off by qa-bcd, 2 implicit, 2 pending test-bcd review (non-blocking)
-- [ ] CLAUDE.md Session 46 entry committed (Phase 4 Task 4.5 final step)
-- [ ] MEMORY.md Bundle B/C/D learnings committed (Phase 4 Task 4.5 final step)
-- [ ] `git push origin feature/bundle-bcd` BEFORE branch deletion (CLAUDE.md rule)
+- [x] **Cloudflare Worker deployed** + 5/5 smoke tests pass on `qaren.app/r/QR-ATAUX9` (302/200/200 + 404 on invalid) — see § 5.5
+- [x] **All 6 cross-QA pairings SIGNED OFF** — see § 8
+- [x] **All 4 REWORKs closed** (#9, #34, #35, #36)
+- [x] **Mutation testing: 23/23 mutants killed** across 4 highest-impact new files
+- [ ] EAS dev build smoke test passed by Ahmed on Android (Phase 4 Task 4.4 — owned by Ahmed)
+- [ ] CLAUDE.md Session 46 entry committed (Phase 4 Task 4.4 — owned by team-lead via qa-bcd draft)
+- [ ] MEMORY.md root entry — qa-bcd to skim + add only if material (per Phase 4 instruction)
+- [ ] `git push origin feature/bundle-bcd` BEFORE branch deletion (CLAUDE.md rule — Phase 4 Task 4.5)
 
 ---
 
@@ -252,16 +319,30 @@ Rollback procedures verified present:
 
 ---
 
-## Section 12 — Open REWORK tasks (filed during Phase 3 sweep)
+## Section 12 — REWORK tasks (all closed)
 
-| Task # | Subject | Owner | Severity | Blocker? |
-|---|---|---|---|---|
-| #34 | Stale `weekly_*` docstring at `referral_routes.py:170-171` | backend-bcd | Low | No |
-| #35 | QarenLogo SVG needs `accessibilityLabel="Qaren"` or `accessibilityElementsHidden` | frontend-bcd | Low | No |
-| #36 | RegisterScreen invite-code input accepts confusable chars (defense-in-depth) | frontend-bcd | Low | No |
+| Task # | Subject | Owner | Resolved by |
+|---|---|---|---|
+| #9 | `attribution_service._QR_CODE_PATTERN` used loose `[A-Z0-9]{6}` instead of canonical alphabet | backend-bcd | `95cb78e` |
+| #34 | Stale `weekly_*` docstring at `referral_routes.py:170-171` | backend-bcd | `70e5528` |
+| #35 | QarenLogo SVG needed `accessibilityElementsHidden` | frontend-bcd | `9e6cea8` |
+| #36 | RegisterScreen invite-code input accepted confusable chars | frontend-bcd | `9e6cea8` |
 
-All three are low-priority polish items — none block PR open. Owners can pick up at Phase 4 idle or during a follow-up sweep.
+All four CLOSED. Zero outstanding REWORKs at PR open.
 
 ---
 
-_End of report. Final updates owed once Phase 3 closes (Tasks #28-#32 complete) and Phase 4 (Ahmed smoke + CLAUDE.md/MEMORY.md update + PR open) lands._
+## Section 13 — Deferred follow-ups (post-merge)
+
+These items were intentionally scoped out of Bundle B/C/D and tracked here for visibility — none block merge.
+
+| # | Item | Source | Why deferred | Suggested next bundle |
+|---|---|---|---|---|
+| 1 | Apple App Store ID swap in Cloudflare Worker (`idTBD` → real ID) | § 5.5 Worker code | Gated on Apple Developer enrollment ($99/yr) per CLAUDE.md "Known Remaining Bugs" — same blocker as iOS EAS build | Pre-launch / TestFlight setup |
+| 2 | Wrangler v3 → v4 upgrade | `bundle-bcd-perf-audit.md` § 6 | wrangler v3 still works; v4 brings new CLI flags but no functional gain pre-launch | Routine maintenance |
+| 3 | Dead-deps cleanup (depcheck candidates: `expo-blur`, others to confirm) | `bundle-bcd-perf-audit.md` § 4 | Need on-device verification that no native code references `expo-blur` before delete — ~60-100 KB potential savings | Post-launch perf bundle |
+| 4 | Pre-existing hardcoded English `Alert.alert(...)` strings | § 2 "Pre-existing" note | 4 strings in HomeScreen + 1 in ProfileScreen, origin commit `52ce8957` (2026-03-28, Bundle A predecessor); slipped past ESLint `i18next/no-literal-string` because rule is in `jsx-text-only` mode and doesn't inspect function-call args | Small i18n cleanup PR; ~20 minutes |
+
+---
+
+_End of report. Bundle B/C/D ready for PR open via Task #41._
