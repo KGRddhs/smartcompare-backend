@@ -22,6 +22,7 @@ module.exports = {
     '^@react-native-async-storage/async-storage$': '<rootDir>/__mocks__/async-storage.ts',
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
     '^expo-screen-capture$': '<rootDir>/__mocks__/expo-screen-capture.ts',
+    '^expo-clipboard$': '<rootDir>/__mocks__/expo-clipboard.ts',
     '^expo-crypto$': '<rootDir>/__mocks__/expo-crypto.ts',
     '^expo-font$': '<rootDir>/__mocks__/expo-font.ts',
     '^@expo-google-fonts/cairo$': '<rootDir>/__mocks__/expo-google-fonts-cairo.ts',

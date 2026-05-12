@@ -493,6 +493,10 @@
   "register.inviteCode.invalid": "صيغة الرمز QR- متبوع بـ 6 خانات",
   "register.inviteCode.label": "رمز الدعوة (اختياري)",
   "register.inviteCode.clear": "مسح رمز الدعوة",
+  "register.clipboardConsent.title": "رمز دعوة على الحافظة",
+  "register.clipboardConsent.message": "وجدنا رمز دعوة ({{code}}) على الحافظة. استخدمه؟",
+  "register.clipboardConsent.accept": "استخدم الرمز",
+  "register.clipboardConsent.reject": "ليس الآن",
 
   "referrals.share.messageWithLink": "أفكّر زيادة قبل أي شراء. قارن يحسم الجدال في 30 ثانية. جرّبه: {{link}} (أو استخدم رمز {{code}} داخل التطبيق)",
 

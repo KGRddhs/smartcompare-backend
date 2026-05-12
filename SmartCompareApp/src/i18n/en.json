@@ -493,6 +493,10 @@
   "register.inviteCode.invalid": "Code format is QR- followed by 6 characters",
   "register.inviteCode.label": "Invite code (optional)",
   "register.inviteCode.clear": "Clear invite code",
+  "register.clipboardConsent.title": "Invite code on clipboard",
+  "register.clipboardConsent.message": "We saw an invite code ({{code}}) on your clipboard. Use it?",
+  "register.clipboardConsent.accept": "Use code",
+  "register.clipboardConsent.reject": "Not now",
 
   "referrals.share.messageWithLink": "I overthink every purchase. Qaren ends the debate in 30 seconds. Try it: {{link}} (or use code {{code}} in the app)",
 
