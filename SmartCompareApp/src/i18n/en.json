@@ -568,5 +568,8 @@
   "results.metadata.fresh": " | Fresh data",
   "results.metadata.remainingDaily": "{{count}} comparisons remaining today",
 
-  "cohort.trainedBy": "{{count}} GCC shoppers helped train this"
+  "cohort.trainedBy": "{{count}} GCC shoppers helped train this",
+
+  "camera.close": "Close camera",
+  "camera.help": "Camera help"
 }
