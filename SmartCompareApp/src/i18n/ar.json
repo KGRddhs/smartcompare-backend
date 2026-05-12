@@ -72,6 +72,7 @@
   "home.url": "رابط",
   "home.freeCounter": "{{used}} من {{total}} مجاناً",
   "home.search.recent": "الأخيرة",
+  "home.search.needTwoHint": "أدخل منتجَين للمقارنة",
   "home.errors.camera": "صوّر مرّة ثانية — مع تركيز أوضح.",
   "home.errors.connection": "نُعيد الاتصال…",
   "home.errors.comparison": "نتيجة أدقّ قادمة — جرّب باسم العلامة أو الطراز.",

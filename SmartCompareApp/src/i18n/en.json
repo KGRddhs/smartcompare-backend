@@ -72,6 +72,7 @@
   "home.url": "URL",
   "home.freeCounter": "{{used}} of {{total}} free",
   "home.search.recent": "Recent",
+  "home.search.needTwoHint": "Enter TWO products to compare",
   "home.errors.camera": "Snap that one more time — sharper focus this round.",
   "home.errors.connection": "Reconnecting…",
   "home.errors.comparison": "Sharper match coming up — try with brand or model.",
