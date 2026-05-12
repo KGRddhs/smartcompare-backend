@@ -38,6 +38,12 @@ _WEEKLY_INVITE_CAP = 3
 # already provides users.device_fingerprint_hash.
 LIFETIME_CAP = 3
 
+# Bundle B/C/D § 4.4: bonus expiry 3 → 7 days. Constant applies only to NEW
+# referral_redemptions inserts; pre-existing rows keep their original deadlines.
+# Push reminder still fires 24h before expiry (now day 6 instead of day 2).
+# Loop 1's deep_review_expires_at in create_invite stays at 3 days per design.
+BONUS_EXPIRY_DAYS = 7
+
 # Default app base URL for invitee landing links. Override at deploy via env.
 # Kept as module attribute so tests/runtime can monkeypatch if needed.
 APP_BASE_URL = "https://qaren.app"
@@ -817,9 +823,10 @@ class ReferralService:
             return
 
         # 1. referral_redemptions row
-        # expires_at = now + 3 days. Source of truth for entitlement
+        # expires_at = now + BONUS_EXPIRY_DAYS. Source of truth for entitlement
         # (path-(a) decision per plan task 35); usage_service sums
         # active rows where expires_at > now() AND consumed_at IS NULL.
+        # Bundle B/C/D § 4.4: bumped 3 → 7 days; existing rows untouched.
         self.client.table("referral_redemptions").insert(
             {
                 "invite_id": invite["id"],
@@ -827,7 +834,7 @@ class ReferralService:
                 "invitee_user_id": invitee_id,
                 "loop2_comparisons_granted": grant_amount,
                 "expires_at": (
-                    datetime.now(timezone.utc) + timedelta(days=3)
+                    datetime.now(timezone.utc) + timedelta(days=BONUS_EXPIRY_DAYS)
                 ).isoformat(),
             }
         ).execute()
