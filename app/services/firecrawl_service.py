@@ -118,3 +118,64 @@ async def scrape_page_with_status(url: str) -> tuple[Optional[str], int]:
     except Exception as e:
         logger.warning(f"[FIRECRAWL] Error: {e}")
         return None, 0
+
+
+# =============================================================================
+# Bundle E Task 2.4 — SCRAPING_MODE classifier
+# Design: docs/plans/2026-05-13-results-quality-overhaul-design.md § Decision 8.
+# Tests: tests/test_scraping_mode.py
+# =============================================================================
+
+# Luxury / premium fashion + jewelry brand domains. Soft mode fans out
+# only for these (where Cloudflare/SPA rendering tends to defeat curl).
+# Subset mirrors price_service.OFFICIAL_BRAND_DOMAINS + GCC luxury retailers.
+_LUXURY_DOMAINS = frozenset({
+    "louisvuitton.com", "hermes.com", "chanel.com", "gucci.com", "prada.com",
+    "dior.com", "burberry.com", "fendi.com", "balenciaga.com", "cartier.com",
+    "tiffany.com", "rolex.com", "versace.com", "givenchy.com", "valentino.com",
+    "bloomingdales.com", "bloomingdales.ae", "ounass.com", "ounass.ae",
+    "harveynichols.com", "selfridges.com",
+})
+
+
+def _normalize_host(url: str) -> str:
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url).netloc.lower()
+        if host.startswith("www."):
+            host = host[4:]
+        return host
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _is_luxury_url(url: str) -> bool:
+    host = _normalize_host(url)
+    if not host:
+        return False
+    # Match exact host or any suffix match (e.g. uk.louisvuitton.com).
+    if host in _LUXURY_DOMAINS:
+        return True
+    for dom in _LUXURY_DOMAINS:
+        if host.endswith("." + dom) or host == dom:
+            return True
+    return False
+
+
+def should_fan_out(url: str, mode: Optional[str] = None) -> bool:
+    """Decide whether to fire Firecrawl/Scrape.do for a given URL.
+
+    `mode` precedence: explicit arg > SCRAPING_MODE env var > "hard".
+    Anything other than the literal "soft" string falls back to hard
+    (fail-OPEN: burn credits, produce results).
+
+    - hard: always fan out (Firecrawl + Scrape.do fire for every URL).
+    - soft: fan out only for known luxury/SPA domains where curl-only
+            scrape typically returns no price.
+    """
+    if mode is None:
+        mode = os.environ.get("SCRAPING_MODE", "hard")
+    if not isinstance(mode, str) or mode != "soft":
+        return True  # hard or unknown → fan out
+    # soft: only luxury domains
+    return _is_luxury_url(url)
