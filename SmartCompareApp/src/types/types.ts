@@ -284,6 +284,36 @@ export interface ScoringResult {
   category_weights?: Record<string, number>;
 }
 
+// --- Bundle E scoring_v2 (design § Decision 2) ---
+// Mirrors app/models/scoring_v2.py exactly. Backend emits this ALONGSIDE
+// the legacy ScoringResult during the rollout window — Bundle F drops
+// the legacy keys.
+
+export interface Dimension {
+  key: string;
+  label: string;
+  score_a: number;
+  score_b: number;
+  delta_text: string;
+  confidence: 'high' | 'medium' | 'low';
+  is_core: boolean;
+}
+
+export interface OverallScore {
+  product_a: number;
+  product_b: number;
+}
+
+export interface ScoringV2 {
+  overall_score: OverallScore;
+  win_margin: number;
+  dimensions: Dimension[];
+}
+
+export interface ComparisonResultV2 extends ComparisonResult {
+  scoring_v2?: ScoringV2;
+}
+
 // --- Camera ---
 
 export interface CapturedImage {

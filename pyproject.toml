@@ -40,6 +40,7 @@ markers = [
     "live_db: tests requiring live Supabase bahrain_approved_drugs table",
     "integration: tests calling live Railway production API",
     "live_unit: unit tests that call live external services (iHerb, Serper, OpenAI)",
+    "bench: latency/throughput benchmarks against live Railway (gated by BENCH=1 env)",
 ]
 
 [tool.poetry]

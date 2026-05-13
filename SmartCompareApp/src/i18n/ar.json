@@ -1,6 +1,7 @@
 {
   "app.name": "قارن",
   "app.tagline": "قارن بذكاء",
+  "common.or": "أو",
 
   "splash.tagline": "قارن بذكاء",
 
@@ -124,7 +125,7 @@
   "history.yesterday": "أمس",
   "history.thisWeek": "هذا الأسبوع",
   "history.older": "أقدم",
-  "history.winner": "الفائز: {{name}}",
+  "history.winner": "الأنسب: {{name}}",
   "history.delete": "حذف",
   "history.deleteError": "لحظة — لم يكتمل الحذف. اضغط مرّة ثانية.",
   "history.recompare": "قارن مرة أخرى",

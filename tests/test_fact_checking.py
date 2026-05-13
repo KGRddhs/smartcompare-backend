@@ -491,7 +491,9 @@ class TestBuildFactCheck:
             },
         }
         result = service._build_fact_check(product)
-        assert result["overall_confidence"] == "high"
+        # Bundle E § Decision 7: overall_confidence pill dropped — per-field
+        # signals are the new source of truth.
+        assert "overall_confidence" not in result
         assert result["specs_verified"] == 4
         assert result["specs_flagged"] == 0
         assert result["price_verified"] is True
@@ -515,7 +517,9 @@ class TestBuildFactCheck:
             },
         }
         result = service._build_fact_check(product)
-        assert result["overall_confidence"] == "low"
+        # Bundle E § Decision 7: overall_confidence dropped — flagged specs
+        # are now visible per-dimension via bar opacity instead.
+        assert "overall_confidence" not in result
         assert result["specs_flagged"] == 1
 
     def test_low_confidence_when_sentiment_inconsistent(self, service):
@@ -536,7 +540,8 @@ class TestBuildFactCheck:
             },
         }
         result = service._build_fact_check(product)
-        assert result["overall_confidence"] == "low"
+        # Bundle E § Decision 7: overall_confidence dropped.
+        assert "overall_confidence" not in result
 
     def test_medium_confidence_mixed(self, service):
         """Mix of verified and unverified -> 'medium'."""
@@ -559,7 +564,8 @@ class TestBuildFactCheck:
             },
         }
         result = service._build_fact_check(product)
-        assert result["overall_confidence"] == "medium"
+        # Bundle E § Decision 7: overall_confidence dropped.
+        assert "overall_confidence" not in result
 
     def test_internal_keys_popped(self, service):
         """_spec_confidence, _review_verification, _price_verification are removed from product."""
@@ -577,7 +583,8 @@ class TestBuildFactCheck:
         """No verification data at all -> medium confidence."""
         product = {}
         result = service._build_fact_check(product)
-        assert result["overall_confidence"] == "medium"
+        # Bundle E § Decision 7: overall_confidence dropped.
+        assert "overall_confidence" not in result
         assert result["specs_verified"] == 0
         assert result["specs_flagged"] == 0
         assert result["price_verified"] is False
@@ -591,10 +598,10 @@ class TestBuildFactCheck:
             "_price_verification": {"price_verified": True, "deviation_pct": 5.0, "source_count": 3},
         }
         result = service._build_fact_check(product)
+        # Bundle E § Decision 7: overall_confidence dropped from the contract.
         expected_keys = {
             "specs_verified", "specs_likely", "specs_flagged", "specs_unverified",
             "price_verified", "price_deviation_pct",
             "review_sentiment_consistent", "review_rating_deviation",
-            "overall_confidence",
         }
         assert set(result.keys()) == expected_keys

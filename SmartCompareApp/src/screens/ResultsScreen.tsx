@@ -79,6 +79,10 @@ import {
   parseApiError,
   DemographicsPayload,
 } from '../services/api';
+import { HeroRings } from '../components/results/HeroRings';
+import { DimensionBars } from '../components/results/DimensionBars';
+import { TopMatchBadge } from '../components/results/TopMatchBadge';
+import { FactualVerdict } from '../components/results/FactualVerdict';
 import { getUsageStatus, UsageStatus } from '../services/usageService';
 import {
   loadDemographicsState,
@@ -144,6 +148,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const key_differences = result?.key_differences;
   const metadata = result?.metadata;
   const scoring = result?.scoring;
+  // Bundle E § Decision 2 — new dimensions[] contract. Backend emits
+  // `scoring_v2` alongside legacy `scoring` for one release cycle.
+  const scoring_v2 = (result as any)?.scoring_v2;
 
   // Event tracking
   const mountTimeRef = useRef(Date.now());
@@ -930,8 +937,43 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           )
         )}
 
-        {/* 8. Score Breakdown */}
-        {scoring && (
+        {/* 8a. Bundle E § Decision 2/3 — scoring_v2 hero card */}
+        {scoring_v2 && scoring_v2.dimensions && scoring_v2.dimensions.length >= 3 && (
+          <Animated.View entering={FadeInDown.delay(750).duration(400)} style={styles.section} testID="results-scoring-v2">
+            <TopMatchBadge testID="results-v2-top-match" />
+            <HeroRings
+              scoreA={scoring_v2.overall_score?.product_a ?? 0}
+              scoreB={scoring_v2.overall_score?.product_b ?? 0}
+              winnerIndex={
+                (scoring_v2.overall_score?.product_a ?? 0) >=
+                (scoring_v2.overall_score?.product_b ?? 0)
+                  ? 0
+                  : 1
+              }
+              testID="results-v2-hero-rings"
+            />
+            {scoring_v2.factual_verdict?.line1 && (
+              <FactualVerdict
+                line1={scoring_v2.factual_verdict.line1 ?? ''}
+                line2={scoring_v2.factual_verdict.line2 ?? ''}
+                testID="results-v2-factual-verdict"
+              />
+            )}
+            <DimensionBars
+              dimensions={scoring_v2.dimensions}
+              winnerIndex={
+                (scoring_v2.overall_score?.product_a ?? 0) >=
+                (scoring_v2.overall_score?.product_b ?? 0)
+                  ? 0
+                  : 1
+              }
+              testID="results-v2-bars"
+            />
+          </Animated.View>
+        )}
+
+        {/* 8. Score Breakdown (legacy — hidden when scoring_v2 present) */}
+        {!scoring_v2 && scoring && (
           <Animated.View entering={FadeInDown.delay(800).duration(400)} style={styles.section}>
             <Text style={styles.sectionTitle}>{t('results.scores')}</Text>
 

@@ -6,13 +6,43 @@ and compare_from_text_streaming().
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from app.services.scoring_service import MISSING_SCORE
+from app.services.scoring_service import (
+    MISSING_SCORE,
+    build_dimensions_v2,
+    calibrate_score,
+)
 
 
 def derive_rating_from_scores(overall_score: float) -> float:
     """Derive a synthetic rating (1-5 scale) from overall score when no real rating exists."""
     rating = 2.5 + (overall_score / 100) * 2.3
     return round(min(rating, 4.8), 1)
+
+
+def _build_scoring_v2(
+    product_data: List[Dict[str, Any]],
+    scoring_result: Dict[str, Any],
+    category: str,
+    winner_index: int,
+) -> Dict[str, Any]:
+    """Bundle E § Decision 2 — emit calibrated overall_score + dimensions[].
+    Backward-compatible: lives alongside legacy `scoring` key for one release."""
+    if len(product_data) < 2:
+        return {}
+    raw_a = scoring_result.get("scores", {}).get("product_0", {}).get("overall", 50)
+    raw_b = scoring_result.get("scores", {}).get("product_1", {}).get("overall", 50)
+    score_a = calibrate_score(raw_a)
+    score_b = calibrate_score(raw_b)
+    dimensions = build_dimensions_v2(product_data, scoring_result, category)
+    return {
+        "overall_score": {
+            "product_a": score_a,
+            "product_b": score_b,
+            "winner_idx": winner_index,
+        },
+        "win_margin": abs(score_a - score_b),
+        "dimensions": dimensions,
+    }
 
 
 def build_comparison_response(
@@ -145,6 +175,8 @@ def build_comparison_response(
             "scoring_method": scoring_result.get("scoring_method", "category_weighted"),
             "category_weights": scoring_result.get("category_weights", {}),
         },
+
+        "scoring_v2": _build_scoring_v2(product_data, scoring_result, category_used, winner_index),
 
         "personalization": {
             "personalized": personalized,

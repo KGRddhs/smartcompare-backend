@@ -930,3 +930,132 @@ async def _try_pharmacy_urls(
                 continue
 
     return None
+
+
+# =============================================================================
+# Bundle E Task 2.2 — scatter-gather price lookup
+# Design: docs/plans/2026-05-13-results-quality-overhaul-design.md § Decision 8.
+# Tests: tests/test_scatter_gather_price.py
+# =============================================================================
+
+# Confirmation thresholds per design line 403.
+HIGH_RANK_THRESHOLD = 85               # rank >= 85 alone confirms (firecrawl_brand_domain etc.)
+AGREEMENT_PCT = 0.05                   # 2 sources within ±5% confirms
+
+
+def _candidates_agree(a: dict, b: dict, tolerance: float = AGREEMENT_PCT) -> bool:
+    """Two candidates agree if their price values are within ±tolerance fraction."""
+    if not a or not b:
+        return False
+    va = a.get("value")
+    vb = b.get("value")
+    if va is None or vb is None:
+        return False
+    if va <= 0 or vb <= 0:
+        return False
+    diff = abs(va - vb) / max(va, vb)
+    return diff <= tolerance
+
+
+def _confirmed(candidates: List[dict]) -> bool:
+    """True iff: (a) any candidate has rank >= HIGH_RANK_THRESHOLD, or
+       (b) any pair of candidates agrees within AGREEMENT_PCT."""
+    for c in candidates:
+        if c.get("rank", 0) >= HIGH_RANK_THRESHOLD:
+            return True
+    for i in range(len(candidates)):
+        for j in range(i + 1, len(candidates)):
+            if _candidates_agree(candidates[i], candidates[j]):
+                return True
+    return False
+
+
+def _select_best(candidates: List[dict]) -> Optional[dict]:
+    """Highest-rank wins; ties broken by lowest value."""
+    if not candidates:
+        return None
+    return max(candidates, key=lambda c: (c.get("rank", 0), -float(c.get("value", 0))))
+
+
+async def fan_out_price_lookup(
+    product: dict,
+    *,
+    scrapers: List[Any],
+    scraping_mode: str = "hard",
+) -> dict:
+    """Run price scrapers concurrently; cancel pending tasks once a
+    confirmed price lands (rank >= 85 OR 2 sources agree within 5%).
+
+    Returns:
+        {
+            "best": dict | None,
+            "alternates": list[dict],
+            "cancelled_count": int,
+            "elapsed_seconds": float,
+        }
+    """
+    start = time.monotonic()
+
+    if not scrapers:
+        return {
+            "best": None,
+            "alternates": [],
+            "cancelled_count": 0,
+            "elapsed_seconds": time.monotonic() - start,
+        }
+
+    tasks = [asyncio.create_task(s(product)) for s in scrapers]
+    completed: List[dict] = []
+    cancelled_count = 0
+
+    try:
+        for fut in asyncio.as_completed(tasks):
+            try:
+                result = await fut
+            except asyncio.CancelledError:
+                cancelled_count += 1
+                continue
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"[fan_out] scraper raised: {e}")
+                continue
+
+            if result and result.get("value") is not None:
+                completed.append(result)
+
+            if _confirmed(completed):
+                # Cancel any task still pending.
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+                # Drain the cancelled tasks so their handlers run + we
+                # observe the CancelledError. Without this, the cancel
+                # markers in tests never get appended.
+                for t in tasks:
+                    if t.cancelled() or t.done():
+                        continue
+                    try:
+                        await t
+                    except asyncio.CancelledError:
+                        cancelled_count += 1
+                    except Exception:  # noqa: BLE001
+                        pass
+                break
+    finally:
+        # Defensive: ensure no stray task survives the function.
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+
+    best = _select_best(completed)
+    alternates = [c for c in completed if c is not best] if best else []
+
+    return {
+        "best": best,
+        "alternates": alternates,
+        "cancelled_count": cancelled_count,
+        "elapsed_seconds": time.monotonic() - start,
+    }

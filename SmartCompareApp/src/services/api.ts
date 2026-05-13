@@ -256,6 +256,11 @@ export interface StreamCallbacks {
   onVerdict?: (data: any) => void;
   onComplete?: (data: ComparisonResult) => void;
   onError?: (error: Error) => void;
+  // Bundle E § Decision 8 — settle-window SSE events.
+  onFirstPaint?: (data: any) => void;
+  onSettleUpdate?: (data: any) => void;
+  onConfidenceUpgrade?: (data: any) => void;
+  onSettleComplete?: (data: ComparisonResult) => void;
 }
 
 export function streamComparison(
@@ -322,6 +327,11 @@ export function streamComparison(
                 case 'scores': callbacks.onScores?.(parsed); break;
                 case 'verdict': callbacks.onVerdict?.(parsed); break;
                 case 'complete': callbacks.onComplete?.(parsed); break;
+                // Bundle E § Decision 8 — settle-window events.
+                case 'first_paint': callbacks.onFirstPaint?.(parsed); break;
+                case 'settle_update': callbacks.onSettleUpdate?.(parsed); break;
+                case 'confidence_upgrade': callbacks.onConfidenceUpgrade?.(parsed); break;
+                case 'settle_complete': callbacks.onSettleComplete?.(parsed); break;
                 case 'error': callbacks.onError?.(new Error(parsed.error || 'Stream error')); break;
               }
             } catch {

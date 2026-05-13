@@ -234,17 +234,22 @@ class TestStreamingGenerator:
             async for event_type, _ in service.compare_from_text_streaming("iPhone 15 vs Galaxy S24"):
                 event_types.append(event_type)
 
-            # Expected order: status, status, specs, prices, status, reviews, scores, status, verdict, complete
+            # Expected order (Bundle E § Decision 8 inserts first_paint
+            # after reviews and settle_complete immediately before complete):
+            # status, status, specs, prices, status, reviews, first_paint,
+            # scores, status, verdict, settle_complete, complete
             assert event_types[0] == "status"   # Parsing query...
             assert event_types[1] == "status"   # Fetching specs...
             assert event_types[2] == "specs"
             assert event_types[3] == "prices"
             assert event_types[4] == "status"   # Analyzing reviews...
             assert event_types[5] == "reviews"
-            assert event_types[6] == "scores"
-            assert event_types[7] == "status"   # Generating verdict...
-            assert event_types[8] == "verdict"
-            assert event_types[9] == "complete"
+            assert event_types[6] == "first_paint"  # Bundle E 2.5
+            assert event_types[7] == "scores"
+            assert event_types[8] == "status"   # Generating verdict...
+            assert event_types[9] == "verdict"
+            assert event_types[10] == "settle_complete"  # Bundle E 2.3
+            assert event_types[11] == "complete"
 
     @pytest.mark.asyncio
     async def test_complete_event_has_full_response(self, mock_product_data, mock_comparison, mock_scoring_result):

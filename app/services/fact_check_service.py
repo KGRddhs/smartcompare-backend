@@ -195,15 +195,9 @@ def build_fact_check(product: Dict) -> Dict:
     price_verified = price_verification.get("price_verified", False)
     sentiment_consistent = review_verification.get("sentiment_consistent")
 
-    if specs_flagged > 0 or (sentiment_consistent is False):
-        overall = "low"
-    elif specs_unverified > specs_verified + specs_likely:
-        overall = "medium"
-    elif price_verified and (sentiment_consistent is True or sentiment_consistent is None):
-        overall = "high"
-    else:
-        overall = "medium"
-
+    # Bundle E § Decision 7: overall_confidence pill dropped; per-dimension
+    # confidence rendered via bar opacity instead. Use is_data_freshness_shaky
+    # for the rare "all-bad-signals" inline notice.
     return {
         "specs_verified": specs_verified,
         "specs_likely": specs_likely,
@@ -213,5 +207,27 @@ def build_fact_check(product: Dict) -> Dict:
         "price_deviation_pct": price_verification.get("deviation_pct"),
         "review_sentiment_consistent": sentiment_consistent,
         "review_rating_deviation": review_verification.get("deviation"),
-        "overall_confidence": overall,
     }
+
+
+def is_data_freshness_shaky(fact_check_results: list[Dict]) -> bool:
+    """Bundle E § Decision 7 — return True only when ≥2 of these
+    BOTH-product conditions hold:
+      (i)   both price_verified == False
+      (ii)  both review_sentiment_consistent is None
+      (iii) both specs_verified + specs_likely == 0
+    Otherwise False (default — no apologetic banner). Defensive on empty
+    or single-item input."""
+    if len(fact_check_results) < 2:
+        return False
+    a, b = fact_check_results[0], fact_check_results[1]
+    conditions = 0
+    if a.get("price_verified") is False and b.get("price_verified") is False:
+        conditions += 1
+    if a.get("review_sentiment_consistent") is None and b.get("review_sentiment_consistent") is None:
+        conditions += 1
+    a_specs = a.get("specs_verified", 0) + a.get("specs_likely", 0)
+    b_specs = b.get("specs_verified", 0) + b.get("specs_likely", 0)
+    if a_specs == 0 and b_specs == 0:
+        conditions += 1
+    return conditions >= 2
