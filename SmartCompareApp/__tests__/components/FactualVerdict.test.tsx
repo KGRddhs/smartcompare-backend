@@ -27,10 +27,7 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
 
-/* eslint-disable import/no-unresolved -- RED scaffold: Phase 3 Task 3.5 creates src/components/results/FactualVerdict.tsx; remove this directive when the module lands. */
-// @ts-expect-error Phase 3 Task 3.5 will create src/components/results/FactualVerdict.tsx
 import { FactualVerdict } from '../../src/components/results/FactualVerdict';
-/* eslint-enable import/no-unresolved */
 
 describe('FactualVerdict — Bundle E Phase 3 § Decision 5', () => {
   it('renders the backend-supplied delta_text + conditional line verbatim', () => {

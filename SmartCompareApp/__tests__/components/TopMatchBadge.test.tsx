@@ -33,10 +33,7 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-/* eslint-disable import/no-unresolved -- RED scaffold: Phase 3 Task 3.3 creates src/components/results/TopMatchBadge.tsx; remove this directive when the module lands. */
-// @ts-expect-error Phase 3 Task 3.3 will create src/components/results/TopMatchBadge.tsx
 import { TopMatchBadge } from '../../src/components/results/TopMatchBadge';
-/* eslint-enable import/no-unresolved */
 
 describe('TopMatchBadge — Bundle E Phase 3 § Decision 3 + 5', () => {
   it('renders the results.topMatch i18n key with no banned evaluative copy', () => {
