@@ -124,23 +124,61 @@ describe('ResultsScreen — Bundle E Task 0.1 defensive guards', () => {
   });
 });
 
+describe('ResultsScreen — Bundle E Task 0.2 button removal', () => {
+  it('removes the "What\'s next?" button (testID + i18n key)', () => {
+    // Decision 6 — `results-whats-next` testID + `t('results.whatsNext')`
+    // call must be GONE from source. The button throws a NAVIGATE error
+    // in production because the target route isn't wired; deleting the
+    // button is cheaper than fixing the route.
+    expect(SOURCE).not.toMatch(/results-whats-next/);
+    expect(SOURCE).not.toMatch(/t\(['"]results\.whatsNext['"]\)/);
+  });
+
+  it('removes the Save (bookmark) button (i18n key + Bookmark icon usage)', () => {
+    // The Save TouchableOpacity calls `t('results.save')` and renders
+    // the `Bookmark` icon from lucide. Both signals must be gone — the
+    // button has no working backend and ships dead.
+    expect(SOURCE).not.toMatch(/t\(['"]results\.save['"]\)/);
+    // Bookmark may legitimately survive if a future feature reuses it
+    // elsewhere; we don't assert removal of the import. We DO assert
+    // the active-button JSX is gone: no `<Bookmark ... />` rendered
+    // inside an actionButton context. Spot-check via the line where it
+    // sits between `Share2` action and `</View>` closing actionsRow.
+    // Simplest reliable signal: the literal `<Bookmark` JSX usage is
+    // removed (the lone use today is the Save button at line 981).
+    expect(SOURCE).not.toMatch(/<Bookmark\s/);
+  });
+
+  it('keeps the Share button intact (no regression)', () => {
+    // Decision 6 deletes whatsNext + save, NOT share. Make sure the
+    // share affordance survives the prune.
+    expect(SOURCE).toMatch(/t\(['"]results\.share['"]\)/);
+    expect(SOURCE).toMatch(/<Share2\s/);
+  });
+});
+
 /**
  * Verification plan:
  *
- * 1. Run this file against the pre-fix source — expect ≥3 failing
- *    assertions:
- *       - "handles undefined route.params" (no `route?.params`,
- *         empty-state appears only once)
+ * 1. Run this file against the pre-fix source — expect failing assertions:
+ *    Task 0.1:
+ *       - "handles undefined route.params" (no `route?.params`)
  *       - "uses optional chaining on `result.comparison_id`"
- *         (current source has `(result as any).comparison_id`)
  *       - "optional-chains all `(result as any).*` accesses"
- *         (offenders includes .category_switched, .category_used,
- *          .cohort_summary, .personalization, .comparison_id)
+ *       - "v2 row with comparison_id still uses metadata fallback"
+ *    Task 0.2:
+ *       - "removes the What's next? button" (testID + key still present)
+ *       - "removes the Save (bookmark) button" (key + Bookmark JSX still present)
  *
- * 2. After frontend-opus applies design § 1a all five tests pass.
+ * 2. After frontend-opus applies design § 1a + § 6 all tests pass.
  *
  * 3. Re-run alongside ResultsScreen.guards.test.tsx and
- *    ResultsScreen.redesign.test.tsx — no regressions in Bundle A
- *    contract (empty-state JSX + i18n keys) or Phase 3 redesign
- *    contract (whyWePicked / runnerUpWins / specs-collapsed).
+ *    ResultsScreen.redesign.test.tsx + __tests__/i18n/no-deleted-keys.test.ts —
+ *    no regressions in Bundle A contract (empty-state JSX + i18n keys)
+ *    or Phase 3 redesign contract (whyWePicked / runnerUpWins / specs-collapsed).
+ *    NOTE: ResultsScreen.redesign.test.tsx today asserts that
+ *    `t('results.whatsNext')` IS in source (line 44). frontend-opus
+ *    will need to drop that assertion when removing the button —
+ *    the test is mutually exclusive with this Bundle E test by design,
+ *    and the Phase 3 contract is intentionally being overridden here.
  */
