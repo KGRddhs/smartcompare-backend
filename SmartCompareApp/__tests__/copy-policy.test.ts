@@ -76,16 +76,22 @@ const BANNED_AR: { pattern: RegExp; label: string }[] = [
 const enRecord = en as Record<string, string>;
 const arRecord = ar as Record<string, string>;
 
+// Strip `{{interpolated}}` placeholders before the banned-word check.
+// Template variable names (e.g. `{{winner}}`) are never visible to the
+// user — they get replaced at runtime with the actual product name.
+// Only the literal copy around them is user-facing.
+function visibleCopy(value: string): string {
+  return value.replace(/\{\{[^}]+\}\}/g, '');
+}
+
 describe('Copy policy — Bundle E § Decision 5 banned vocabulary audit', () => {
   it('en.json contains no banned absolute-superlative or endorsement vocabulary', () => {
     const offenders: { key: string; banned: string; value: string }[] = [];
     for (const [key, value] of Object.entries(enRecord)) {
       if (typeof value !== 'string') continue;
-      // Skip Results-namespace KEY names that legitimately contain
-      // "best" as part of a translation key (e.g. `results.bestForYou`).
-      // The audit targets translation VALUES — what the user sees.
+      const visible = visibleCopy(value);
       for (const { pattern, label } of BANNED_EN) {
-        if (pattern.test(value)) {
+        if (pattern.test(visible)) {
           offenders.push({ key, banned: label, value });
         }
       }
@@ -98,8 +104,9 @@ describe('Copy policy — Bundle E § Decision 5 banned vocabulary audit', () =>
     const offenders: { key: string; banned: string; value: string }[] = [];
     for (const [key, value] of Object.entries(arRecord)) {
       if (typeof value !== 'string') continue;
+      const visible = visibleCopy(value);
       for (const { pattern, label } of BANNED_AR) {
-        if (pattern.test(value)) {
+        if (pattern.test(visible)) {
           offenders.push({ key, banned: label, value });
         }
       }
