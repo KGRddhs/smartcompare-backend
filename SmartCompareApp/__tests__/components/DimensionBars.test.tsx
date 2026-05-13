@@ -54,7 +54,7 @@ describe('DimensionBars — Bundle E Phase 3 § Decision 3', () => {
     const { getAllByTestId } = render(
       <DimensionBars dimensions={DIMENSIONS_HIGH} winnerIndex={0} testID="bars" />,
     );
-    const rows = getAllByTestId(/^bars-row-/);
+    const rows = getAllByTestId(/^bars-row-[^-]+$/);
     expect(rows).toHaveLength(DIMENSIONS_HIGH.length);
     // Each row's testID encodes the dimension key for reliable selection
     // downstream — assert the keys match the data exactly.
