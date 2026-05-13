@@ -1150,3 +1150,21 @@ def get_scoring_service() -> ScoringService:
     if _scoring_service is None:
         _scoring_service = ScoringService()
     return _scoring_service
+
+
+# Bundle E § Decision 4 — perceived-score calibration.
+# Formula: clamp(70 + (raw_score - 50) * 0.5, 60, 95).
+# Honesty guard: when every raw_signal < 40, force display < 70 (still ≥60).
+_CALIBRATION_CEILING = 95
+_CALIBRATION_FLOOR = 60
+_HONESTY_GUARD_THRESHOLD = 40
+_HONESTY_GUARD_CEILING = 69
+
+
+def calibrate_score(raw_score: float, raw_signals: list[float] | None = None) -> int:
+    base = 70 + (raw_score - 50) * 0.5
+    base = max(_CALIBRATION_FLOOR, min(_CALIBRATION_CEILING, base))
+    display = int(round(base))
+    if raw_signals and all(s < _HONESTY_GUARD_THRESHOLD for s in raw_signals):
+        display = max(_CALIBRATION_FLOOR, min(_HONESTY_GUARD_CEILING, display))
+    return display
