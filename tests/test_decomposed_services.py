@@ -466,7 +466,8 @@ class TestBuildFactCheck:
             "_price_verification": {"price_verified": True, "deviation_pct": 5},
         }
         fact_check = build_fact_check(product)
-        assert fact_check["overall_confidence"] == "high"
+        # Bundle E § Decision 7: overall_confidence dropped.
+        assert "overall_confidence" not in fact_check
         assert fact_check["specs_verified"] == 2
         assert fact_check["specs_likely"] == 1
         assert fact_check["price_verified"] is True
@@ -483,7 +484,8 @@ class TestBuildFactCheck:
             "_price_verification": {"price_verified": True},
         }
         fact_check = build_fact_check(product)
-        assert fact_check["overall_confidence"] == "medium"
+        # Bundle E § Decision 7: overall_confidence dropped.
+        assert "overall_confidence" not in fact_check
         assert fact_check["specs_unverified"] == 2
 
     def test_low_confidence_when_flagged(self):
@@ -497,7 +499,8 @@ class TestBuildFactCheck:
             "_price_verification": {"price_verified": True},
         }
         fact_check = build_fact_check(product)
-        assert fact_check["overall_confidence"] == "low"
+        # Bundle E § Decision 7: overall_confidence dropped.
+        assert "overall_confidence" not in fact_check
         assert fact_check["specs_flagged"] == 1
 
     def test_pops_internal_keys(self):
@@ -824,7 +827,9 @@ class TestDecomposedServicesIntegration:
             "_price_verification": price_check,
         }
         fact_check = build_fact_check(product)
-        assert fact_check["overall_confidence"] == "high"
+        # Bundle E § Decision 7: overall_confidence dropped.
+        assert "overall_confidence" not in fact_check
+        assert fact_check["price_verified"] is True
 
 
 if __name__ == "__main__":
