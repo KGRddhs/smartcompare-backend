@@ -60,6 +60,12 @@ from typing import Any, AsyncIterator
 
 import pytest
 
+# These tests exercise the real streaming pipeline (Serper + GPT). Tag as
+# `live_unit` so they're excluded from the default `pytest -m "not
+# live_unit"` regression sweep — same convention as other live-API tests
+# in this repo (see CLAUDE.md § Tests).
+pytestmark = pytest.mark.live_unit
+
 # RED gate — first_paint event type is not yet emitted by the streaming
 # service. We import the streaming function; the test collects events
 # and asserts presence/order/timing.

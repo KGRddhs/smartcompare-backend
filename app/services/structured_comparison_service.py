@@ -624,6 +624,16 @@ class StructuredComparisonService:
                 ]
             })
 
+            # Bundle E Task 2.5 § Decision 8 — first_paint marks "all core
+            # dimensions ready, frontend can paint the UI." Fires after
+            # specs+prices+reviews land; before scoring/verdict.
+            yield ("first_paint", {
+                "products": [
+                    {"brand": pd.get("brand"), "name": pd.get("name")}
+                    for pd in product_data
+                ]
+            })
+
             # Fetch behavioral profile + demographics_profile
             behavior_profile = None
             demographics_profile = None
@@ -747,6 +757,12 @@ class StructuredComparisonService:
             if user_id:
                 asyncio.create_task(self._update_behavior_profile(user_id))
 
+            # Bundle E Task 2.3 § Decision 8 — settle_complete closes the
+            # settle window; no further settle_update events can fire
+            # after this. Existing `complete` event is preserved
+            # immediately after for backward-compat with current EAS
+            # builds that listen on `complete`.
+            yield ("settle_complete", complete_response)
             yield ("complete", complete_response)
 
         except Exception as e:
