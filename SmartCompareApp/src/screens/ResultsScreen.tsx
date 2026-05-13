@@ -93,7 +93,10 @@ type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
 export default function ResultsScreen({ route, navigation }: ResultsScreenProps) {
   const { t } = useTranslation();
-  const { result } = route.params;
+  // Bundle E Task 0.1 — History → Results crash: deep-link / stale-cache
+  // navigations can hand us undefined `route.params`. Destructure defensively
+  // so the empty-state branch can render instead of throwing on line 1.
+  const result = route?.params?.result;
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   // Phase 3 § 4b — specs collapsed by default. The post-reveal moment
   // should feel like an answer, not a data dump; the user expands when
@@ -207,7 +210,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   })();
 
   const sharableComparisonId =
-    (result as any).comparison_id || (metadata as any)?.comparison_id;
+    (result as any)?.comparison_id || (metadata as any)?.comparison_id;
 
   const winnerName = isNewFormat
     ? result.overview!.winner.name
@@ -364,6 +367,40 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     return String(v0) !== String(v1);
   };
 
+  // Bundle E Task 0.1 — top-level defensive guard. `route.params.result`
+  // is undefined for deep-links or stale history rehydrations; without
+  // this branch every `result?.X` derivation below is fine but the JSX
+  // would still render an unusable comparison shell. Bail to the
+  // empty-state instead, matching the design § 1a intent.
+  if (!result) {
+    return (
+      <View style={styles.container} testID="results-empty-state">
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+            <ArrowLeft size={24} color={colors.text.primary} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <View style={styles.headerButton} />
+        </View>
+        <View style={styles.emptyStateContainer}>
+          <AlertCircle size={48} color={colors.text.secondary} />
+          <Text style={styles.emptyStateTitle}>
+            {t('results.emptyState.title')}
+          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.emptyStateCta}
+            accessibilityRole="button"
+          >
+            <Text style={styles.emptyStateCtaText}>
+              {t('results.emptyState.cta')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   // Bundle A §5.3 — render the empty state instead of crashing on
   // `products[0].name` when the comparison payload is missing both shapes.
   // This is belt-and-braces against the v1 history filter; v2 rows are
@@ -415,11 +452,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       </View>
 
       {/* Category switched banner */}
-      {(result as any).category_switched && (
+      {(result as any)?.category_switched && (
         <View style={styles.categorySwitchedBanner}>
           <Info size={14} color={colors.accent} />
           <Text style={styles.categorySwitchedText}>
-            {t('results.categorySwitched', { category: (result as any).category_used })}
+            {t('results.categorySwitched', { category: (result as any)?.category_used })}
           </Text>
         </View>
       )}
@@ -1054,8 +1091,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
  */
 function resolveCohortPeerCount(result: ComparisonResult): number {
   const summary: any =
-    (result as any).cohort_summary ??
-    (result as any).personalization?.cohort ??
+    (result as any)?.cohort_summary ??
+    (result as any)?.personalization?.cohort ??
     null;
   if (!summary) return 0;
   const n = summary.peer_count ?? summary.peers_count ?? summary.peers ?? 0;
@@ -1064,8 +1101,8 @@ function resolveCohortPeerCount(result: ComparisonResult): number {
 
 function resolveCohortGovernorate(result: ComparisonResult): string {
   const summary: any =
-    (result as any).cohort_summary ??
-    (result as any).personalization?.cohort ??
+    (result as any)?.cohort_summary ??
+    (result as any)?.personalization?.cohort ??
     null;
   if (!summary) return '';
   return typeof summary.governorate === 'string' ? summary.governorate : '';

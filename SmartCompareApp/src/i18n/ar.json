@@ -489,6 +489,8 @@
   "results.runnerUpWins": "أين يتفوق الوصيف",
   "results.whatsNext": "ما التالي؟",
   "results.bestForYou": "الأفضل لك",
+  "results.emptyState.title": "لا توجد مقارنة محملة",
+  "results.emptyState.cta": "العودة إلى السجل",
 
   "register.inviteCode.placeholder": "عندك رمز دعوة؟ (اختياري)",
   "register.inviteCode.accessibility": "رمز الدعوة",
