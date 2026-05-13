@@ -60,9 +60,10 @@ export function DimensionBars({
         testID={`${testID}-contract-violation`}
         {...({ 'data-contract-violation': 'true' } as any)}
       >
-        <Text style={styles.violationText}>
-          Dimension scored 0 — backend contract breach.
-        </Text>
+        {/* Dev-facing contract-violation surface; never shown in
+            production because backend never emits zero-score dims. */}
+        {/* eslint-disable-next-line i18next/no-literal-string */}
+        <Text style={styles.violationText}>Dimension scored 0 — backend contract breach.</Text>
       </View>
     );
   }
