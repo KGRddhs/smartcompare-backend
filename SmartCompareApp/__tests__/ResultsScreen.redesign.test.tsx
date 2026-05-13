@@ -91,8 +91,12 @@ describe('ResultsScreen redesign — i18n catalog', () => {
     }
   });
 
-  it('uses confident copy "Why we picked this" / "Where the runner-up wins"', () => {
-    expect(en).toContain('"Why we picked this"');
+  it('uses factual copy per Bundle E § Decision 5 (replaced Phase 3 evaluative phrasing)', () => {
+    // Bundle E Task 3.7 replaced "Why we picked this" → "Why this fits you"
+    // because § Decision 5 banned "picked" as evaluative first-person endorsement.
+    // The Phase 3 contract intent (a labeled section explaining the choice) is
+    // preserved; only the user-visible string changed. See copy-policy.test.ts.
+    expect(en).toContain('"Why this fits you"');
     expect(en).toContain('"Where the runner-up wins"');
   });
 });
