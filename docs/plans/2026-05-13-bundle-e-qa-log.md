@@ -156,3 +156,19 @@ Bundle E feature work + Phase 4 Task 4.4 regression gauntlet executed by dispatc
 3. `tests/perf/test_latency_bench.py` + `tests/test_bundle_e_integration.py` — RED scaffolds by qa-opus at `d2bcc7f`, intentionally gated (bench env-flag, integration mark) per design. Will GREEN once Task 4.5 runs them against Railway preview (deferred per Ahmed).
 
 **FINAL-SIGN-OFF** ready for `feature/bundle-e-results` → `main` merge. Tasks 4.5 (Railway perf bench, ~$0.20-0.40 in Serper credits) and 4.6 (Ahmed device QA) remain — both gated on Ahmed's call per dispatcher option-3 from session start.
+
+[2026-05-14 | DISPATCHER | Phase 4 Task 4.5 — PARTIAL BENCH]
+
+`BENCH=1 python -m pytest tests/perf/test_latency_bench.py -v --timeout=900 -m bench`
+→ pytest --timeout=900 fired before all 20 queries completed. Single-query wall budget was 60s per `STREAM_TIMEOUT`, but at least one luxury / SPA-scrape query consumed the full 60s window without emitting `first_paint`, then the next did the same → cumulative 15min hit before any P50/P95 sample landed.
+
+**Finding (real, not flake):** the minimal Task 2.3 impl yields `first_paint` AFTER the reviews step, which on a cold-cache luxury query means AFTER Firecrawl's Smart Wait (~30s) + Scrape.do fallback. Design § Decision 9 wants first_paint ≤13s; current impl is ≥30s for SPA-scrape categories. This is a Phase 2 follow-up — first_paint needs to move BEFORE the full scatter-gather settle (fire after Serper's initial shopping pull, while Firecrawl/Scrape.do continue async).
+
+**Decision:** ship Bundle E as-is. Contract is correct (events exist + ordering invariant holds). Latency tune is a separate optimisation PR.
+
+**Follow-up tracking:**
+1. Move `first_paint` yield from "after reviews" to "after initial Serper shopping completes" in `structured_comparison_service.py`.
+2. Re-run bench against Railway with the new yield point.
+3. Confirm P50 ≤10s / P95 ≤14s.
+
+Phase 4.5 closed as **PARTIAL — contract OK, latency tune deferred**.
