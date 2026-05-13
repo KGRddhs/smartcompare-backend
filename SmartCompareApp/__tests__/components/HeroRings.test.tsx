@@ -26,16 +26,7 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
 
-// HeroRings is the unit under test. Import will fail at RED time — the
-// component doesn't exist yet. When Phase 3 Task 3.1 lands, the module
-// resolves, `@ts-expect-error` flips to an error of its own (no
-// unused-suppression), and the next contributor is forced to remove it
-// — a self-disarming TDD breadcrumb that also keeps the baseline tsc
-// exit code at 0 while other agents work in parallel.
-/* eslint-disable import/no-unresolved -- RED scaffold: Phase 3 Task 3.1 creates src/components/results/HeroRings.tsx; remove this directive when the module lands. */
-// @ts-expect-error Phase 3 Task 3.1 will create src/components/results/HeroRings.tsx
 import { HeroRings } from '../../src/components/results/HeroRings';
-/* eslint-enable import/no-unresolved */
 
 import { colors } from '../../src/theme';
 

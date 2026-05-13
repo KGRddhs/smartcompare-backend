@@ -21,6 +21,14 @@ export function useAnimatedStyle(updater: () => any) {
   return updater();
 }
 
+// Bundle E HeroRings + DimensionBars use animatedProps for stroke-fill +
+// width animations. Mock simply evaluates the updater once so the host
+// node receives the *final* prop values — enough for source-prop
+// assertions; we don't time-travel through frames in jest.
+export function useAnimatedProps(updater: () => any) {
+  return updater();
+}
+
 export function withRepeat(animation: any, _count?: number, _reverse?: boolean) {
   return animation;
 }
