@@ -1168,3 +1168,164 @@ def calibrate_score(raw_score: float, raw_signals: list[float] | None = None) ->
     if raw_signals and all(s < _HONESTY_GUARD_THRESHOLD for s in raw_signals):
         display = max(_CALIBRATION_FLOOR, min(_HONESTY_GUARD_CEILING, display))
     return display
+
+
+# Bundle E § Decision 2 — self-describing dimensions[] contract.
+# Always emits 3 core dims (price, reviews, value); 0..3 contextual.
+# Never emits a dim where either product lacks the underlying data.
+_POPULARITY_MIN_REVIEW_COUNT = 50
+_NEUTRAL_DISPLAY_SCORE = 75
+
+
+def _get_price(product: dict) -> float | None:
+    price = product.get("price")
+    if isinstance(price, dict):
+        return price.get("amount")
+    return None
+
+
+def _get_currency(product: dict) -> str:
+    price = product.get("price")
+    if isinstance(price, dict):
+        return price.get("currency", "BHD")
+    return "BHD"
+
+
+def _dim_price(products: list[dict]) -> dict:
+    a, b = products[0], products[1]
+    pa, pb = _get_price(a) or 0.0, _get_price(b) or 0.0
+    if pa <= 0 or pb <= 0:
+        score_a = score_b = _NEUTRAL_DISPLAY_SCORE
+        delta = "Price data unavailable"
+        confidence = "low"
+    else:
+        lo, hi = min(pa, pb), max(pa, pb)
+        ratio = lo / hi
+        winner_raw = 80
+        loser_raw = 50 + 30 * ratio
+        if pa <= pb:
+            score_a, score_b = calibrate_score(winner_raw), calibrate_score(loser_raw)
+        else:
+            score_a, score_b = calibrate_score(loser_raw), calibrate_score(winner_raw)
+        diff = round(abs(pa - pb), 2)
+        currency = _get_currency(a) if pa <= pb else _get_currency(b)
+        delta = f"{currency} {diff:g} less"
+        confidence = "high"
+    return {
+        "key": "price", "label": "Price",
+        "score_a": score_a, "score_b": score_b,
+        "delta_text": delta, "confidence": confidence, "is_core": True,
+    }
+
+
+def _dim_reviews(products: list[dict]) -> dict:
+    a, b = products[0], products[1]
+    ra, rb = a.get("rating"), b.get("rating")
+    if ra is None or rb is None:
+        score_a = score_b = _NEUTRAL_DISPLAY_SCORE
+        delta = "Limited review data"
+        confidence = "low"
+    else:
+        score_a = calibrate_score(40 + ra * 10)
+        score_b = calibrate_score(40 + rb * 10)
+        diff = round(abs(ra - rb), 1)
+        if diff == 0:
+            delta = "Same rating"
+        else:
+            delta = f"{diff} stars higher"
+        confidence = "high"
+    return {
+        "key": "reviews", "label": "Reviews",
+        "score_a": score_a, "score_b": score_b,
+        "delta_text": delta, "confidence": confidence, "is_core": True,
+    }
+
+
+def _dim_value(products: list[dict]) -> dict:
+    a, b = products[0], products[1]
+    pa, pb = _get_price(a) or 0.0, _get_price(b) or 0.0
+    ra, rb = a.get("rating") or 4.0, b.get("rating") or 4.0
+    va = (ra / pa) if pa > 0 else 0.1
+    vb = (rb / pb) if pb > 0 else 0.1
+    hi = max(va, vb) or 1.0
+    score_a = calibrate_score(50 + 35 * (va / hi))
+    score_b = calibrate_score(50 + 35 * (vb / hi))
+    if va >= vb:
+        delta = "More features per dinar"
+    else:
+        delta = "Stronger value ratio"
+    return {
+        "key": "value", "label": "Value",
+        "score_a": score_a, "score_b": score_b,
+        "delta_text": delta, "confidence": "medium", "is_core": True,
+    }
+
+
+def _dim_dpi(products: list[dict]) -> dict | None:
+    a, b = products[0], products[1]
+    da = a.get("specs", {}).get("dpi")
+    db = b.get("specs", {}).get("dpi")
+    if not da or not db:
+        return None
+    hi = max(da, db)
+    score_a = calibrate_score(50 + 35 * (da / hi))
+    score_b = calibrate_score(50 + 35 * (db / hi))
+    return {
+        "key": "dpi", "label": "DPI",
+        "score_a": score_a, "score_b": score_b,
+        "delta_text": f"{da} DPI vs {db} DPI",
+        "confidence": "high", "is_core": False,
+    }
+
+
+def _dim_popularity(products: list[dict]) -> dict | None:
+    a, b = products[0], products[1]
+    ca, cb = a.get("review_count"), b.get("review_count")
+    if not ca or not cb or ca <= _POPULARITY_MIN_REVIEW_COUNT or cb <= _POPULARITY_MIN_REVIEW_COUNT:
+        return None
+    hi = max(ca, cb)
+    score_a = calibrate_score(50 + 35 * (ca / hi))
+    score_b = calibrate_score(50 + 35 * (cb / hi))
+    return {
+        "key": "popularity", "label": "Popularity",
+        "score_a": score_a, "score_b": score_b,
+        "delta_text": f"{ca} reviews vs {cb}",
+        "confidence": "high", "is_core": False,
+    }
+
+
+def _dim_build_quality(products: list[dict]) -> dict | None:
+    a, b = products[0], products[1]
+    wa, wb = a.get("warranty_years"), b.get("warranty_years")
+    if wa is None or wb is None:
+        return None
+    hi = max(wa, wb) or 1
+    score_a = calibrate_score(60 + 25 * (wa / hi))
+    score_b = calibrate_score(60 + 25 * (wb / hi))
+    return {
+        "key": "build_quality", "label": "Build",
+        "score_a": score_a, "score_b": score_b,
+        "delta_text": f"{wa}-year vs {wb}-year warranty",
+        "confidence": "medium", "is_core": False,
+    }
+
+
+def build_dimensions_v2(
+    products_data: list[dict],
+    scoring_result: dict,
+    category: str,
+) -> list[dict]:
+    dims: list[dict] = [
+        _dim_price(products_data),
+        _dim_reviews(products_data),
+        _dim_value(products_data),
+    ]
+    cat_a = products_data[0].get("category")
+    cat_b = products_data[1].get("category")
+    same_category = cat_a == cat_b and cat_a is not None
+    if same_category:
+        for builder in (_dim_build_quality, _dim_popularity, _dim_dpi):
+            dim = builder(products_data)
+            if dim is not None:
+                dims.append(dim)
+    return dims[:6]
