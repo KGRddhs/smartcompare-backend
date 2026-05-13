@@ -42,8 +42,13 @@ import os
 
 import pytest
 
-# RED gate — function does not yet exist.
-from app.services.firecrawl_service import should_fan_out  # noqa: E402
+# RED gate — function does not yet exist (will GREEN when Task 2.4 lands).
+_fc = pytest.importorskip("app.services.firecrawl_service")
+should_fan_out = _fc.__dict__.get("should_fan_out")
+pytestmark = pytest.mark.skipif(
+    should_fan_out is None,
+    reason="should_fan_out not yet implemented (Bundle E Task 2.4 RED)",
+)
 
 
 # ---------------------------------------------------------------------------

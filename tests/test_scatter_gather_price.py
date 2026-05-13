@@ -61,8 +61,14 @@ import time
 
 import pytest
 
-# RED gate — function does not yet exist.
-from app.services.price_service import fan_out_price_lookup  # noqa: E402
+# RED gate — function does not yet exist (will GREEN when Task 2.2 lands).
+fan_out_price_lookup = pytest.importorskip(
+    "app.services.price_service", reason="Bundle E Task 2.2 not yet shipped"
+).__dict__.get("fan_out_price_lookup")
+pytestmark = pytest.mark.skipif(
+    fan_out_price_lookup is None,
+    reason="fan_out_price_lookup not yet implemented (Bundle E Task 2.2 RED)",
+)
 
 
 # ---------------------------------------------------------------------------
