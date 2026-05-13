@@ -95,7 +95,6 @@
   "results.feedback.placeholder": "Tell us what could be better...",
   "results.feedback.submit": "Submit",
   "results.share": "Share",
-  "results.save": "Save",
   "results.priceNA": "Price N/A",
   "results.convertedUSD": "(converted from USD)",
   "results.estimated": "(estimated)",
@@ -487,7 +486,6 @@
 
   "results.whyWePicked": "Why we picked this",
   "results.runnerUpWins": "Where the runner-up wins",
-  "results.whatsNext": "What's next?",
   "results.bestForYou": "Best for you",
   "results.emptyState.title": "No comparison loaded",
   "results.emptyState.cta": "Back to history",

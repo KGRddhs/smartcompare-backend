@@ -40,9 +40,11 @@ describe('ResultsScreen redesign — Phase 3 Task 30 (source assertions)', () =>
     expect(SOURCE).not.toMatch(/t\(['"]results\.keyDifferences['"]\)/);
   });
 
-  it('renders the "What\'s next?" footer CTA', () => {
-    expect(SOURCE).toMatch(/t\(['"]results\.whatsNext['"]\)/);
-  });
+  // Phase 3 originally shipped a "What's next?" footer CTA — pruned in
+  // Bundle E § Decision 6 because the NAVIGATE target was never wired
+  // and the button threw in production. The Bundle E `no-deleted-keys`
+  // test + `ResultsScreen.test.tsx` Task 0.2 block now own the
+  // negative-assertion contract for this key.
 
   it('starts the specs section collapsed by default', () => {
     // useState(false) for specsExpanded → section collapsed on mount.
@@ -79,17 +81,18 @@ describe('ResultsScreen redesign — i18n catalog', () => {
     'utf8'
   );
 
-  it('adds whyWePicked / runnerUpWins / whatsNext keys EN + AR', () => {
-    for (const key of ['results.whyWePicked', 'results.runnerUpWins', 'results.whatsNext']) {
+  it('adds whyWePicked / runnerUpWins keys EN + AR', () => {
+    // Bundle E § Decision 6 pruned results.whatsNext — see
+    // __tests__/i18n/no-deleted-keys.test.ts for the negative-assertion
+    // contract. The remaining Phase 3 keys must still be present.
+    for (const key of ['results.whyWePicked', 'results.runnerUpWins']) {
       expect(en).toContain(`"${key}"`);
       expect(ar).toContain(`"${key}"`);
     }
   });
 
-  it('uses confident copy "Why we picked this" / "Where the runner-up wins" / "What\'s next?"', () => {
+  it('uses confident copy "Why we picked this" / "Where the runner-up wins"', () => {
     expect(en).toContain('"Why we picked this"');
     expect(en).toContain('"Where the runner-up wins"');
-    // Apostrophe escaped in JSON
-    expect(en).toMatch(/"What\\?'s next\?"/);
   });
 });

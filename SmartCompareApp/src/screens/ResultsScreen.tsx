@@ -28,7 +28,6 @@ import * as Haptics from 'expo-haptics';
 import {
   ArrowLeft,
   Share2,
-  Bookmark,
   ChevronDown,
   ChevronUp,
   Star,
@@ -997,26 +996,16 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           onSubmitted={() => setFeedbackSubmitted(true)}
         />
 
-        {/* 10. Action buttons — "What's next?" replaces the old "Compare
-            another" affordance per § 4g audit; tapping returns to Home so
-            the user can start a new compare with the camera/link/type
-            chip rail (Task 26). Save + Share retained. */}
+        {/* 10. Share action — Bundle E § Decision 6 pruned the "What's next?"
+            CTA (broken NAVIGATE target) and the dead Save button. Share
+            stays because the affordance has a working backend (handleShare
+            → referral share sheet). Header already renders an icon-only
+            share, but this labeled affordance below feedback gives users
+            who scrolled past the header a second entry point. */}
         <View style={styles.actionsRow}>
-          <TouchableOpacity
-            testID="results-whats-next"
-            accessibilityRole="button"
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('Home' as never)}
-          >
-            <Text style={styles.actionButtonText}>{t('results.whatsNext')}</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
             <Share2 size={18} color={colors.accent} />
             <Text style={styles.actionButtonText}>{t('results.share')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <Bookmark size={18} color={colors.accent} />
-            <Text style={styles.actionButtonText}>{t('results.save')}</Text>
           </TouchableOpacity>
         </View>
 
