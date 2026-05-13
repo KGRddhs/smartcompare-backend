@@ -136,14 +136,19 @@ class TestCalibrationMonotonicity:
 
     def test_winners_preserved_across_calibration(self):
         """Two products' rank-order must survive calibration. The plan
-        explicitly calls out winner-flipping as a bug."""
+        explicitly calls out winner-flipping as a bug. (r_high, r_low)
+        tuples have r_high strictly above r_low — calibration must
+        preserve that ordering."""
         pairs = [
-            (40, 60),   # mid raw gap
-            (55, 65),   # close-call
-            (75, 85),   # high band
-            (50.1, 50.0),  # near-tie — > stays >=
+            (60, 40),       # mid raw gap
+            (65, 55),       # close-call
+            (85, 75),       # high band
+            (50.1, 50.0),   # near-tie — > stays >=
         ]
         for r_high, r_low in pairs:
+            assert r_high > r_low, (
+                f"test fixture bug: {r_high} is not > {r_low}"
+            )
             assert calibrate_score(r_high) >= calibrate_score(r_low), (
                 f"rank flip: raw {r_high} > {r_low} but calibrated "
                 f"{calibrate_score(r_high)} < {calibrate_score(r_low)}"
