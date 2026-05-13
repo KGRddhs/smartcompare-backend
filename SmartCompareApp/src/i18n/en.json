@@ -489,6 +489,8 @@
   "results.runnerUpWins": "Where the runner-up wins",
   "results.whatsNext": "What's next?",
   "results.bestForYou": "Best for you",
+  "results.emptyState.title": "No comparison loaded",
+  "results.emptyState.cta": "Back to history",
 
   "register.inviteCode.placeholder": "Have an invite code? (optional)",
   "register.inviteCode.accessibility": "Invite code",
