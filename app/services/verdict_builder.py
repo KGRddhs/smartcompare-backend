@@ -43,16 +43,20 @@ def build_factual_verdict(
     line1 = ", ".join(winner_core_deltas)
 
     runner_dims = [d for d in dims if _dim_winner(d) == runner_idx]
+    name = products[runner_idx].get("name") or ""
+    name_tokens = name.split()
     runner_brand = (
         products[runner_idx].get("brand")
-        or products[runner_idx].get("name", "").split()[0]
+        or (name_tokens[0] if name_tokens else "")
         or "the alternative"
     )
+    runner_phrase = runner_brand if runner_brand == "the alternative" else f"the {runner_brand}"
+    opener = _CONDITIONAL_OPENER.get(lang, _CONDITIONAL_OPENER["en"])
     if runner_dims:
         token = _runner_label_token(runner_dims[0])
-        line2 = f"{_CONDITIONAL_OPENER.get(lang, _CONDITIONAL_OPENER['en'])} {token}, the {runner_brand} fits."
+        line2 = f"{opener} {token}, {runner_phrase} fits."
     else:
-        line2 = f"{_CONDITIONAL_OPENER.get(lang, _CONDITIONAL_OPENER['en'])} a different mix, the {runner_brand} is a fair alternative."
+        line2 = f"{opener} a different mix, {runner_phrase} is a fair alternative."
 
     if line1:
         return f"{line1}. {line2}"
