@@ -58,8 +58,7 @@ export function DimensionBars({
       <View
         style={styles.violation}
         testID={`${testID}-contract-violation`}
-        // @ts-expect-error data-* host prop pattern
-        data-contract-violation="true"
+        {...({ 'data-contract-violation': 'true' } as any)}
       >
         <Text style={styles.violationText}>
           Dimension scored 0 — backend contract breach.
@@ -180,10 +179,7 @@ function ScoreText({ score, prefix, testID }: ScoreTextProps) {
     <Text
       style={styles.score}
       testID={testID}
-      // @ts-expect-error data-* host prop pattern — tests assert the
-      // prefix existence via this surface so they don't depend on the
-      // rendered glyph order, which can change with RTL.
-      data-score-prefix={prefix}
+      {...({ 'data-score-prefix': prefix } as any)}
     >
       {prefix ? `${prefix} ${score}` : String(score)}
     </Text>

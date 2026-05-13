@@ -25,10 +25,7 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
 
-/* eslint-disable import/no-unresolved -- RED scaffold: Phase 3 Task 3.2 creates src/components/results/DimensionBars.tsx; remove this directive when the module lands. */
-// @ts-expect-error Phase 3 Task 3.2 will create src/components/results/DimensionBars.tsx
 import { DimensionBars } from '../../src/components/results/DimensionBars';
-/* eslint-enable import/no-unresolved */
 
 import { colors } from '../../src/theme';
 

@@ -138,14 +138,11 @@ export function HeroRings({
       // Expose calibrated inputs as host-node props so jest/runtime
       // probes can verify the worklet got the right values without
       // mocking through every Reanimated layer.
-      // @ts-expect-error data-* props are valid on host views but not
-      // typed in React Native's ViewProps; this is the standard pattern
-      // for test-only assertion surfaces (see CohortBadge).
-      data-score-a={scoreA}
-      // @ts-expect-error see above
-      data-score-b={scoreB}
-      // @ts-expect-error see above
-      data-winner-index={winnerIndex}
+      {...({
+        'data-score-a': scoreA,
+        'data-score-b': scoreB,
+        'data-winner-index': winnerIndex,
+      } as any)}
     >
       <Ring
         score={scoreA}
