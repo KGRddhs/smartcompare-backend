@@ -149,6 +149,106 @@ class TestCalibrationMonotonicity:
                 f"{calibrate_score(r_high)} < {calibrate_score(r_low)}"
             )
 
+    def test_random_pairs_preserve_order(self):
+        """Dispatcher Test-1.2 case 6 — 100 random (x, y) pairs from 0..100
+        with x < y must satisfy calibrate(x) <= calibrate(y). Property-style
+        check that catches any non-monotonic regression a future calibration
+        change might introduce."""
+        import random
+        rng = random.Random(20260513)  # deterministic seed — same pairs every run
+        for _ in range(100):
+            x = rng.randint(0, 100)
+            y = rng.randint(0, 100)
+            if x == y:
+                continue
+            lo, hi = (x, y) if x < y else (y, x)
+            cl, ch = calibrate_score(lo), calibrate_score(hi)
+            assert cl <= ch, (
+                f"monotonicity violated on random pair: "
+                f"calibrate({lo})={cl} > calibrate({hi})={ch}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Test 3b — Win-gap survival (dispatcher Test-1.2 case 7)
+# ---------------------------------------------------------------------------
+
+class TestWinGapSurvival:
+    """Dispatcher contract: `calibrate(80) - calibrate(50) > 5`. A
+    calibration that flattens raw spreads into a too-narrow band makes
+    every comparison feel like a tie and undermines the "winner" message.
+
+    The design formula `70 + (raw-50)*0.5` halves raw gaps but never
+    collapses them — a 30-point raw gap (50→80) yields a 15-point
+    calibrated gap (70→85), well above the 5-point minimum below."""
+
+    def test_30_point_raw_gap_yields_nontrivial_display_gap(self):
+        gap = calibrate_score(80) - calibrate_score(50)
+        assert gap > 5, (
+            f"win-gap collapse: calibrate(80)-calibrate(50)={gap} "
+            f"(≤5 — calibration is too flat to support a 'winner' verdict)"
+        )
+
+    def test_20_point_raw_gap_inside_active_band_yields_visible_gap(self):
+        """A 20-point raw gap entirely inside the active band (50→70)
+        must produce a calibrated gap ≥ 9 (= 0.5 * 20 — 1 fp epsilon)."""
+        gap = calibrate_score(70) - calibrate_score(50)
+        assert gap >= 9, (
+            f"sub-active-band gap collapsed: calibrate(70)-calibrate(50)={gap}"
+        )
+
+    def test_close_call_still_yields_nonzero_gap(self):
+        """A 5-point raw gap (60 vs 65) survives as a 2-3 point display
+        gap — small but non-zero, so the winner card still has signal."""
+        gap = calibrate_score(65) - calibrate_score(60)
+        assert gap >= 2, (
+            f"close-call gap collapsed: calibrate(65)-calibrate(60)={gap}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test 3c — Return type (dispatcher Test-1.2 case 8)
+# ---------------------------------------------------------------------------
+
+class TestReturnType:
+    """Dispatcher contract: `result is int (no floats)`. The hero ring
+    label and dimension bars render integer scores — returning 79.5
+    would force callers to round and risks `79.5` slipping into JSON.
+
+    Note: this anchors the contract that Agent A's `calibrate_score`
+    rounds (or truncates) internally rather than letting the *0.5 curve
+    produce halves like 79.5 (= 70 + (69-50)*0.5)."""
+
+    def test_returns_int_on_integer_input(self):
+        result = calibrate_score(70)
+        assert isinstance(result, int), (
+            f"calibrate(70) returned {type(result).__name__}, expected int"
+        )
+
+    def test_returns_int_on_curve_halfpoint(self):
+        """raw 69 maps to 79.5 pre-round. Result must still be int."""
+        result = calibrate_score(69)
+        assert isinstance(result, int), (
+            f"calibrate(69) returned {type(result).__name__}={result}, "
+            f"expected int (function must round/truncate the *0.5 curve)"
+        )
+
+    def test_returns_int_at_floor(self):
+        assert isinstance(calibrate_score(0), int)
+        assert isinstance(calibrate_score(20), int)
+
+    def test_returns_int_at_ceiling(self):
+        assert isinstance(calibrate_score(100), int)
+        assert isinstance(calibrate_score(120), int)
+
+    def test_returns_int_under_honesty_guard(self):
+        """Guard branch must also return int — defensive check that the
+        guard doesn't sneak a float past the type contract."""
+        result = calibrate_score(90, raw_signals=[35, 30, 38, 20])
+        assert isinstance(result, int), (
+            f"guard branch returned {type(result).__name__}, expected int"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Test 4 — Honesty guard (all raw signals < 40)
