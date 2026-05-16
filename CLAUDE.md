@@ -296,8 +296,7 @@ ToS/Privacy fact base, code-side blockers (delete cascade, expo-notifications pl
 **Canary phasing:** With <10 testers pre-launch, set new-feature canary % to 100 — lower % statistically hash-buckets a small tester set out of the feature being tested. Drop to 10 only at App Store soft-launch, then ramp 10→50→100 per `docs/runbooks/qaren-canary-onboarding.md`.
 
 ## Known Remaining Bugs (deferred)
-- **Scrape.do timing out** on GCC luxury retailers (Ounass, Bloomingdales). Firecrawl is primary — Scrape.do is Tier 1.5d fallback only.
-- **value_context identical for all products** — `overview.products[i].value_context` reuses the same string. Minor UX issue.
+- **Scrape.do timing out** on GCC luxury retailers (Ounass, Bloomingdales). Firecrawl is primary — Scrape.do is Tier 1.5d fallback only. Investigation `docs/investigations/2026-05-16-scrapedo-timeout-analysis.md` — recommendation: **accept current behavior** (graceful Tier 2 fallback).
 - **Apple Sign-In:** deferred — requires Apple Developer subscription ($99/year); code is ready.
 
 ## Detailed Context
