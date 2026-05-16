@@ -77,6 +77,10 @@
   "home.errors.camera": "صوّر مرّة ثانية — مع تركيز أوضح.",
   "home.errors.connection": "نُعيد الاتصال…",
   "home.errors.comparison": "نتيجة أدقّ قادمة — جرّب باسم العلامة أو الطراز.",
+  "home.limit.max_title": "هذا يكفي حالياً",
+  "home.limit.max_body": "قارن حتى {{max}} منتجات في المرّة.",
+  "home.limit.rate_title": "خذ نفساً",
+  "home.limit.rate_body": "أمهلها لحظة.",
   "home.search.trending": "الرائج في {{region}}",
 
   "results.bestPick": "الأفضل",
@@ -465,6 +469,10 @@
   "home.url.placeholder1": "رابط المنتج الأول (أمازون، نون، إلخ.)",
   "home.url.placeholder2": "رابط المنتج الثاني",
   "home.url.cta": "قارن الروابط",
+  "home.url.empty_title": "ألصق رابطين",
+  "home.url.empty_body": "روابط منتجات من أمازون، نون، إلخ.",
+  "home.url.invalid_title": "افحص الروابط",
+  "home.url.invalid_body": "تأكّد أن كلاهما يبدأ بـ http:// أو https://",
   "home.bonus.headline": "{{count}} مقارنة مجانية متاحة",
   "home.bonus.fromReferrer": "• {{count}} من {{referrer}}",
   "home.bonus.aFriend": "أحد الأصدقاء",
@@ -507,6 +515,8 @@
   "profile.password.current": "كلمة المرور الحالية",
   "profile.password.new": "كلمة مرور جديدة (٦ أحرف فأكثر)",
   "profile.password.confirm": "تأكيد كلمة المرور الجديدة",
+  "profile.password.success_title": "تمّ تغيير كلمة المرور",
+  "profile.password.success_body": "جاهز.",
 
   "history.row.untitled": "مقارنة بدون عنوان",
 

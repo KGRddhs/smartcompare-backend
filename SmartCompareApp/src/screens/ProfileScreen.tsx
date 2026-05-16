@@ -205,7 +205,7 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     try {
       const result = await changePassword(currentPassword, newPassword);
       if (result.success) {
-        Alert.alert('Success', 'Password changed successfully');
+        Alert.alert(t('profile.password.success_title'), t('profile.password.success_body'));
         setPasswordModalVisible(false);
         setCurrentPassword('');
         setNewPassword('');

@@ -77,6 +77,10 @@
   "home.errors.camera": "Snap that one more time — sharper focus this round.",
   "home.errors.connection": "Reconnecting…",
   "home.errors.comparison": "Sharper match coming up — try with brand or model.",
+  "home.limit.max_title": "That's enough for now",
+  "home.limit.max_body": "Compare up to {{max}} products at a time.",
+  "home.limit.rate_title": "Take a breath",
+  "home.limit.rate_body": "Give it a moment.",
   "home.search.trending": "Trending in {{region}}",
 
   "results.bestPick": "Top match",
@@ -465,6 +469,10 @@
   "home.url.placeholder1": "First product link (Amazon, Noon, etc.)",
   "home.url.placeholder2": "Second product link",
   "home.url.cta": "Compare links",
+  "home.url.empty_title": "Paste two links",
+  "home.url.empty_body": "Drop product URLs from Amazon, Noon, etc.",
+  "home.url.invalid_title": "Check the links",
+  "home.url.invalid_body": "Make sure both start with http:// or https://",
   "home.bonus.headline": "{{count}} free comparisons available",
   "home.bonus.fromReferrer": "• {{count}} from {{referrer}}",
   "home.bonus.aFriend": "a friend",
@@ -507,6 +515,8 @@
   "profile.password.current": "Current password",
   "profile.password.new": "New password (min 6 chars)",
   "profile.password.confirm": "Confirm new password",
+  "profile.password.success_title": "Password changed",
+  "profile.password.success_body": "All set.",
 
   "history.row.untitled": "Untitled comparison",
 

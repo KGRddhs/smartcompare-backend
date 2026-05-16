@@ -240,7 +240,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
   const pickFromGallery = async () => {
     const remainingSlots = MAX_IMAGES - capturedImages.length;
     if (remainingSlots <= 0) {
-      Alert.alert('Maximum Reached', `You can only compare up to ${MAX_IMAGES} products.`);
+      Alert.alert(t('home.limit.max_title'), t('home.limit.max_body', { max: MAX_IMAGES }));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -316,7 +316,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         const detail = getUsageLimitDetail(error);
         navigation.navigate('Paywall' as any, { initialUsage: detail });
       } else if (error.response?.status === 429) {
-        Alert.alert('Rate Limited', 'Too many requests. Please wait a moment.');
+        Alert.alert(t('home.limit.rate_title'), t('home.limit.rate_body'));
       } else if (error.message?.includes('Network')) {
         Alert.alert(t('common.error'), t('home.errors.connection'));
       } else {
@@ -382,7 +382,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
 
   const handleUrlCompare = async () => {
     if (!urlInput.trim() || !url2Input.trim()) {
-      Alert.alert('Enter URLs', 'Paste product URLs from Amazon, Noon, etc.');
+      Alert.alert(t('home.url.empty_title'), t('home.url.empty_body'));
       return;
     }
     const isValidUrl = (url: string): boolean => {
@@ -394,7 +394,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
       }
     };
     if (!isValidUrl(urlInput.trim()) || !isValidUrl(url2Input.trim())) {
-      Alert.alert('Invalid URL', 'Please enter valid product URLs (http:// or https://)');
+      Alert.alert(t('home.url.invalid_title'), t('home.url.invalid_body'));
       return;
     }
     if (!canCompare) {
