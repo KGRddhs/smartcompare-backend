@@ -360,7 +360,10 @@ Return ONLY valid JSON:
     "winner_declaration": "winning product name",
     "winner_reason": "ONE sentence, under 20 words, with a specific number or fact",
     "key_tradeoff": "ONE sentence naming the other product's strongest advantage",
-    "value_context": "ONE sentence about price-to-quality relationship for GCC market",
+    "value_context": {
+        "product_0": "ONE sentence on Product 1's price-to-quality relationship for the GCC market",
+        "product_1": "ONE sentence on Product 2's price-to-quality relationship for the GCC market"
+    },
     "best_for": {
         "product_0": "one sentence describing who should buy Product 1",
         "product_1": "one sentence describing who should buy Product 2"
@@ -387,7 +390,7 @@ RULES:
 - 4-6 pros, 2-4 cons per product -- each MUST include a specific number, percentage, or measurable fact
 - winner_reason MUST be under 20 words and cite the single most important numeric advantage
 - key_tradeoff: ONE sentence naming the losing product's single strongest advantage
-- value_context: ONE sentence about price-to-quality for GCC market. If cross-tier, frame as "different products for different needs."
+- value_context: per-product dict with keys product_0 and product_1. Each value is ONE sentence about THAT product's price-to-quality relationship for the GCC market. The two sentences MUST be distinct -- never reuse the same string for both products. If cross-tier, frame each as "different products for different needs" but still describe each product specifically.
 - best_for: one sentence per product describing the ideal buyer profile
 - Be DECISIVE -- pick a clear winner and defend it with data
 - For luxury/designer products, consider brand prestige and craftsmanship in value assessment
