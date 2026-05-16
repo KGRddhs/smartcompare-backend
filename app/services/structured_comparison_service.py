@@ -133,6 +133,54 @@ logger = logging.getLogger(__name__)
 # Cache TTLs
 SPECS_CACHE_TTL = 7 * 24 * 60 * 60    # 7 days
 
+# Bundle E § Decision 8 + Decision 9 — hard cap on the streaming pipeline.
+# A runaway scraper or slow GPT response cannot extend the SSE stream past
+# this many seconds. asyncio.wait_for(...) wraps the data-fetch + scoring
+# + verdict pipeline; on timeout the orchestrator yields a `settle_complete`
+# with whatever fields we have so far and the client unblocks.
+STREAM_HARD_CAP_SECONDS = float(os.getenv("STREAM_HARD_CAP_SECONDS", "25.0"))
+
+
+def build_settle_update_event(
+    *,
+    field: str,
+    new_value: Any,
+    source_rank: int,
+) -> Tuple[str, Dict[str, Any]]:
+    """Compose a `settle_update` SSE event per design § Decision 8.
+
+    Payload contract: `{field, new_value, source_rank}`. Frontend fades the
+    new value into the corresponding spot in result state. Returned as the
+    `(event_type, payload)` tuple our streaming generator yields.
+    """
+    return (
+        "settle_update",
+        {
+            "field": field,
+            "new_value": new_value,
+            "source_rank": source_rank,
+        },
+    )
+
+
+def build_confidence_upgrade_event(
+    *,
+    dimension_key: str,
+    new_confidence: str,
+) -> Tuple[str, Dict[str, Any]]:
+    """Compose a `confidence_upgrade` SSE event per design § Decision 8.
+
+    Payload contract: `{dimension_key, new_confidence}`. Frontend pops the
+    confidence dot from gray to emerald when this fires for a dimension.
+    """
+    return (
+        "confidence_upgrade",
+        {
+            "dimension_key": dimension_key,
+            "new_confidence": new_confidence,
+        },
+    )
+
 
 class StructuredComparisonService:
     """Main service for structured product comparisons.
@@ -581,10 +629,36 @@ class StructuredComparisonService:
             # Step 2: Fetch product data
             yield ("status", {"message": "Fetching specs and prices...", "progress": 20})
 
-            product_data = await asyncio.gather(
-                self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
-                self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache),
-            )
+            # Bundle E § Decision 8 — hard 25s cap on the data-fetch step.
+            # Wraps both products' fetches together so a single hung scraper
+            # can't extend the stream beyond the budget. On timeout we yield
+            # `settle_complete` with partial data + the backward-compat
+            # `complete` event, then exit cleanly.
+            try:
+                product_data = await asyncio.wait_for(
+                    asyncio.gather(
+                        self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
+                        self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache),
+                    ),
+                    timeout=STREAM_HARD_CAP_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "[stream] hard cap %.1fs exceeded while fetching product data for %r — "
+                    "yielding settle_complete with partial response",
+                    STREAM_HARD_CAP_SECONDS, query,
+                )
+                partial_response = {
+                    "success": False,
+                    "error": "Comparison timed out — please try again.",
+                    "code": "STREAM_TIMEOUT",
+                    "elapsed_seconds": (datetime.now() - start_time).total_seconds(),
+                    "total_cost": self.total_cost,
+                    "api_calls": self.api_calls,
+                }
+                yield ("settle_complete", partial_response)
+                yield ("complete", partial_response)
+                return
 
             # Yield specs
             yield ("specs", {
@@ -1116,7 +1190,14 @@ class StructuredComparisonService:
                             page_url = organic_item.get("link")
                             if not page_url or not validate_scrape_url(page_url):
                                 continue
-                            if firecrawl_service.is_available() and is_circuit_closed("firecrawl") and has_budget("firecrawl"):
+                            # Bundle E § Decision 8 — gate Firecrawl behind
+                            # SCRAPING_MODE. In `soft` mode only fan out for
+                            # known luxury/SPA domains where curl alone returns
+                            # nothing. In `hard` mode (default) always fan out.
+                            if (firecrawl_service.is_available()
+                                    and is_circuit_closed("firecrawl")
+                                    and has_budget("firecrawl")
+                                    and firecrawl_service.should_fan_out(page_url)):
                                 html, status = await firecrawl_service.scrape_page_with_status(page_url)
                                 if status == 200:
                                     record_usage("firecrawl")
@@ -1221,6 +1302,11 @@ class StructuredComparisonService:
                         )
                         for retry_url in sorted_urls[:2]:
                             if not validate_scrape_url(retry_url):
+                                continue
+                            # Bundle E § Decision 8 — same SCRAPING_MODE gate
+                            # as Firecrawl. Soft mode skips Scrape.do for
+                            # non-luxury domains; hard mode always fans out.
+                            if not firecrawl_service.should_fan_out(retry_url):
                                 continue
                             retry_domain = urlparse(retry_url).netloc.replace("www.", "")
                             html, status = await scrapedo_service.render_page_with_status(retry_url)
