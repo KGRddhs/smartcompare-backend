@@ -92,7 +92,15 @@
           }
         }
       ],
-      "@sentry/react-native"
+      [
+        "@sentry/react-native",
+        {
+          "url": "https://de.sentry.io/",
+          "organization": "qaren-rr",
+          "project": "react-native",
+          "disableAutoUpload": true
+        }
+      ]
     ],
     "extra": {
       "eas": {
