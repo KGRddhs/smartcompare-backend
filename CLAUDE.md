@@ -150,7 +150,7 @@ Applied 010–023 (all via MCP since 013). Migration files in `migrations/*.sql`
 - `referral_service.py` — Smart Decision Referrals. `link_invite_to_user`, `try_trigger_loop2`, code generation.
 - `abuse_detection_service.py` — `evaluate_invite()` priority: SAME_DEVICE > DISPOSABLE_EMAIL > BELOW_REAL_ACTION_THRESHOLD (`elapsed_seconds` proxy from `metadata.elapsed_seconds`, `REAL_ACTION_MIN_SECONDS` env, default 5s).
 - `push_service.py` — Expo Push (deep-link `qaren://profile/referrals`).
-- `reengagement_service.py` — Daily cron `scripts/cron_reengagement.py`. 3 detectors: `decision_insight`, `cohort_curiosity`, `decision_retrospective`. 7-day per-user cap.
+- `reengagement_service.py` — Daily cron `scripts/cron_reengagement.py`. 3 detectors: `decision_insight`, `cohort_curiosity`, `decision_retrospective`. 7-day per-user cap. Gated by `ENABLE_REENGAGEMENT_PUSHES` + `REENGAGEMENT_CANARY_PERCENT` (via `app/utils/feature_bucket.py::hash_bucket()`).
 - Other: `serper_service`, `feedback_service`, `drug_database_service`, `openai_service`, `sentry_service`, `analytics_service`, `auth_service`, `url_extraction_service`.
 
 **Security** (`app/utils/`): `url_validator.py` — SSRF: resolves hostnames, blocks private/loopback/link-local IPs, allows only http/https.
@@ -171,6 +171,7 @@ Applied 010–023 (all via MCP since 013). Migration files in `migrations/*.sql`
 - `api.ts` — Axios to Railway (120s timeout). SSE via `streamComparison()` (fetch+ReadableStream, fallback to non-streaming). JPEG transcoding before upload.
 - `authService.ts` — Supabase auth + social login. **`verifyAuth()` returns `User | null` (NOT boolean).** Tokens in `expo-secure-store` (NOT AsyncStorage). OAuth nonces via `expo-crypto`. All `console.log` wrapped in `__DEV__`.
 - `certificatePinning.ts` — SSL pinning for Railway backend (LE intermediate SPKI). Initialized once from `api.ts`. Requires EAS dev build (no-op in Expo Go). SPKI hashes + rotation in `docs/SECURITY_HARDENING_CONTEXT.md`.
+- `sentry.ts` — Mobile crash + breadcrumb reporting via `@sentry/react-native@8.11.1`. Mirrors backend `before_send` scrub patterns (JWT/OpenAI/Firecrawl/Bearer/sensitive headers). DSN → `qaren-rr/react-native` project. Sourcemap upload deferred (needs `SENTRY_AUTH_TOKEN` in EAS env + plugin config object form).
 
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls.
@@ -240,7 +241,7 @@ Cal-AI-Lite 17-step onboarding + black/emerald hybrid identity (emerald = signal
 See skill: `qaren-referrals` (auto-loads when `/api/v1/referrals/*` routes, invite codes (QR-XXXXXX), Loop 1/Loop 2, redemption chain, or `referral_invites`/`referral_redemptions` tables are mentioned). Critical inline: gated by `ENABLE_REFERRAL_SYSTEM` (default OFF in code, flipped in Railway). Bundle B/C/D moved cap to **3 LIFETIME per device** with fail-OPEN on DB error. Code redemption is **register-only** — `RegisterRequest.invite_code` accepts `^QR-[A-HJ-NP-Z2-9]{6}$`. Re-engagement gated by `ENABLE_REENGAGEMENT_PUSHES`.
 
 ### Bundle history (sessions 44-47)
-See `docs/SESSION_BUNDLES.md` — historical context for Bundles A (PR #3 `f9bf38f`), B/C/D (PR #4), and E (PR #5 `00a2ec1`). Read when investigating regressions or tracing deferred follow-ups. **Active state inline:** Bundle E EAS group `d540c1e6-c07c-46d7-ac69-5103dde1fb56` live on `preview` channel (both iOS + Android, runtime 1.0.0); Bundle F headline priority is **`SCRAPING_MODE=soft` on Railway** (drops cold-cache non-luxury comparison from ~51s → ~10-15s). **Worktree-team workflow:** multi-file features via `git worktree add -b feature/<name> ../smartcompare-<name> main` → 4-Opus TeamCreate → cross-QA → PR. Direct-to-main for hotfixes only. **Arabic-as-default DROPPED** (Session 44 locked, do not re-propose).
+See `docs/SESSION_BUNDLES.md` — Bundles A (PR #3), B/C/D (PR #4), E (PR #5 + Session 48 merge `e67d583`). **Active state:** Bundle E EAS group on `preview` channel is the latest `eas update` (superseded each release — check `eas update:list --branch preview`). `STREAM_HARD_CAP_SECONDS=25.0` locks comparison p95 ≤25s. `SCRAPING_MODE=soft` URL gate is **wired** at Firecrawl + Scrape.do call sites; wholesale `fan_out_price_lookup` integration **deferred** (parked on `experiment/scatter-gather-2026-05-16`) until cold-cache perf-bench p95 justifies it. **Worktree-team workflow:** `git worktree add -b feature/<name> ../smartcompare-<name> main` → 4-Opus TeamCreate (`mode: "bypassPermissions"` REQUIRED — sandbox blocks Bash otherwise) → cross-QA → merge `--no-ff`. **Arabic-as-default DROPPED** (Session 44).
 
 ### EAS Update infrastructure
 See skill: `qaren-eas-deploy` (auto-loads when `eas update`, `eas build`, channel names, `runtimeVersion.policy`, or `expo.version` bumps are mentioned). Quick recall: OTA via `cd SmartCompareApp && eas update --branch <channel> --message "..."` — free, lands on next app open. Rebuild required for native module / app.json plugin changes. `appVersionSource: "remote"`. Interactive Expo commands (`eas login`, `eas build`) need a real terminal — Ahmed runs these directly.
@@ -253,10 +254,10 @@ Reviews: `_clean_review_content()` strips garbage (min 8 words), fixes sentiment
 
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
-**Optional:** `SENTRY_DSN`, `LOG_LEVEL` (default INFO), `CORS_ORIGINS` (comma-separated, defaults to Railway + localhost)
+**Optional:** `SENTRY_DSN` (backend + mobile share org `qaren-rr`, different DSNs), `LOG_LEVEL` (default INFO), `CORS_ORIGINS`, `STREAM_HARD_CAP_SECONDS` (default 25.0 — outermost `asyncio.wait_for` on `compare_from_text_streaming`), `SCRAPING_MODE` (`hard` default / `soft` skips Firecrawl+Scrape.do for non-luxury URLs via `firecrawl_service.should_fan_out`)
 **Price Scraping:** `FIRECRAWL_API_KEY`, `SCRAPEDO_API_TOKEN` (timing out on GCC sites), `ENABLE_FIRECRAWL` (default true), `ENABLE_SCRAPEDO` (default true), `ENABLE_PAGE_SCRAPE` (curl_cffi).
 **Version Check:** `APP_MIN_VERSION`, `APP_LATEST_VERSION`, `APP_FORCE_UPDATE`.
-**Feature Flags:** `ENABLE_COHORT_PERSONALIZATION` (ON in Railway since 2026-05-05), `ENABLE_REFERRAL_SYSTEM`, `ENABLE_HYBRID_MODEL_ROUTING`, `ENABLE_REENGAGEMENT_PUSHES`. All default OFF in code; flip in Railway during canary. `REAL_ACTION_MIN_SECONDS` (default 5) — anti-abuse threshold for Loop 2.
+**Feature Flags:** `ENABLE_COHORT_PERSONALIZATION` (ON in Railway since 2026-05-05), `ENABLE_REFERRAL_SYSTEM`, `ENABLE_HYBRID_MODEL_ROUTING`, `ENABLE_REENGAGEMENT_PUSHES` (gates both `evaluate_user()` + cron — fail-CLOSED), `REENGAGEMENT_CANARY_PERCENT` (default 100; uses `app/utils/feature_bucket.py::hash_bucket()` djb2 mirror of `featureBucket.ts`). All flags default OFF in code; flip in Railway during canary. `REAL_ACTION_MIN_SECONDS` (default 5).
 
 Operational rollout sequence + canary monitoring guidance: see `docs/CONTEXT_SESSION_LOG.md`.
 
