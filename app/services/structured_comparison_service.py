@@ -14,7 +14,8 @@ import time
 import asyncio
 import logging
 import httpx
-from typing import Optional, List, Dict, Any, Tuple
+from functools import partial
+from typing import Optional, List, Dict, Any, Tuple, Callable, Awaitable
 from datetime import datetime, timedelta
 from urllib.parse import urlparse, quote_plus
 
@@ -71,6 +72,7 @@ from app.services.price_service import (
     fetch_page_price,
     fetch_iherb_price,
     fetch_pharmacy_price,
+    fan_out_price_lookup,
     # Constants re-exported for backward compat
     MODEL_VARIANT_PATTERN,
     PRICE_CACHE_TTL,
@@ -180,6 +182,162 @@ def build_confidence_upgrade_event(
             "new_confidence": new_confidence,
         },
     )
+
+
+# Bundle E § Decision 8 — quality-ranker rank values for the luxury cascade.
+# Mirrors PRICE_SOURCE_RANK in app/services/quality_ranker.py; centralised
+# here so the scraper-builder can stamp each candidate at construction time
+# without importing quality_ranker (which would create a circular dep risk
+# in the future if quality_ranker grows to need price_service helpers).
+_RANK_FIRECRAWL_BRAND_DOMAIN = 90
+_RANK_PAGE_SCRAPE_JSONLD = 85
+_RANK_SCRAPEDO_RENDERED = 70
+
+
+async def _curl_scraper(
+    url: str, full_name: str, currency: str, retailer_domain: str
+) -> Optional[Dict[str, Any]]:
+    """Wrap fetch_page_price() to return a fan_out candidate dict.
+
+    fan_out_price_lookup expects `{value, source_method, rank, raw_data}`.
+    fetch_page_price returns the legacy `{amount, currency, retailer, ...}`
+    price dict — translate the shape here so the existing scraper stays
+    untouched.
+    """
+    try:
+        page_price = await fetch_page_price(url, full_name, currency)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[fan_out curl] {url} raised: {e}")
+        return None
+    if not page_price or not page_price.get("amount"):
+        return None
+    page_price.pop("_got_html", None)
+    page_price["retailer"] = page_price.get("retailer") or retailer_domain
+    return {
+        "value": float(page_price["amount"]),
+        "source_method": "page_scrape_jsonld",
+        "rank": _RANK_PAGE_SCRAPE_JSONLD,
+        "raw_data": page_price,
+    }
+
+
+async def _firecrawl_scraper(
+    url: str, full_name: str, currency: str, retailer_domain: str
+) -> Optional[Dict[str, Any]]:
+    """Firecrawl wrapper that checks budget + circuit breaker before firing,
+    records usage/failure, and returns the fan_out candidate shape."""
+    if not (firecrawl_service.is_available()
+            and is_circuit_closed("firecrawl")
+            and has_budget("firecrawl")):
+        return None
+    try:
+        html, status = await firecrawl_service.scrape_page_with_status(url)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[fan_out firecrawl] {url} raised: {e}")
+        return None
+    if status == 200:
+        record_usage("firecrawl")
+    if not html:
+        if status in (429, 503) or status == 0:
+            record_failure("firecrawl")
+        return None
+    record_success("firecrawl")
+    price = extract_price_from_html(html, full_name, currency, retailer_domain, url)
+    if not price or not price.get("amount"):
+        return None
+    price["source_method"] = "firecrawl"
+    price["retailer"] = retailer_domain
+    return {
+        "value": float(price["amount"]),
+        "source_method": "firecrawl_brand_domain",
+        "rank": _RANK_FIRECRAWL_BRAND_DOMAIN,
+        "raw_data": price,
+    }
+
+
+async def _scrapedo_scraper(
+    url: str, full_name: str, currency: str, retailer_domain: str
+) -> Optional[Dict[str, Any]]:
+    """Scrape.do wrapper — residential proxy fallback for SPA pages."""
+    if not (scrapedo_service.is_available()
+            and is_circuit_closed("scrapedo")
+            and has_budget("scrapedo")):
+        return None
+    if not validate_scrape_url(url):
+        return None
+    try:
+        html, status = await scrapedo_service.render_page_with_status(url)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[fan_out scrapedo] {url} raised: {e}")
+        return None
+    if status == 200:
+        record_usage("scrapedo")
+    if not html:
+        if status in (429, 503) or status == 0:
+            record_failure("scrapedo")
+        return None
+    record_success("scrapedo")
+    price = extract_price_from_html(html, full_name, currency, retailer_domain, url)
+    if not price or not price.get("amount"):
+        return None
+    price["source_method"] = "scrapedo_rendered"
+    price["retailer"] = retailer_domain
+    return {
+        "value": float(price["amount"]),
+        "source_method": "scrapedo_rendered",
+        "rank": _RANK_SCRAPEDO_RENDERED,
+        "raw_data": price,
+    }
+
+
+def _build_luxury_scrapers(
+    *,
+    candidate_urls: List[Tuple[str, str]],
+    full_name: str,
+    currency: str,
+    scraping_mode: str,
+) -> List[Callable[[dict], Awaitable[Optional[Dict[str, Any]]]]]:
+    """Bundle E § Decision 8 — build the scraper list for fan_out_price_lookup().
+
+    For each (url, retailer_domain) pair discovered via the existing Serper
+    queries, emit:
+      - A curl scraper (always — free, fast).
+      - A Firecrawl scraper if should_fan_out(url) passes (SCRAPING_MODE gate).
+      - A Scrape.do scraper if should_fan_out(url) passes (residential fallback).
+
+    Each scraper accepts a `product` dict (ignored — closure captures
+    full_name/currency/retailer_domain) and returns either None or a
+    `{value, source_method, rank, raw_data}` candidate. fan_out_price_lookup
+    races them, applies select-best, and cancels pending tasks when 2
+    sources agree within 5% (or when one rank≥85 result lands).
+
+    candidate_urls is preserved in priority order from the Serper discovery:
+    official brand domains first, then authorized retailers, then GCC retailers.
+    Counterfeit domains never appear here because the discovery filters
+    (Tier 1.5b/c) exclude them via OFFICIAL_BRAND_DOMAINS + AUTHORIZED_LUXURY_RETAILERS
+    + GCC_LUXURY_RETAILERS whitelists.
+    """
+    scrapers: List[Callable[[dict], Awaitable[Optional[Dict[str, Any]]]]] = []
+    for url, retailer_domain in candidate_urls:
+        if not validate_scrape_url(url):
+            continue
+        # Curl scrape — always free, always fires.
+        async def _curl_with_args(_product, _url=url, _retailer=retailer_domain):
+            return await _curl_scraper(_url, full_name, currency, _retailer)
+        scrapers.append(_curl_with_args)
+
+        # Firecrawl + Scrape.do gated by SCRAPING_MODE per design § Decision 8.
+        # In soft mode only luxury/SPA domains get the rendered-scrape budget.
+        if firecrawl_service.should_fan_out(url, mode=scraping_mode):
+            async def _fc_with_args(_product, _url=url, _retailer=retailer_domain):
+                return await _firecrawl_scraper(_url, full_name, currency, _retailer)
+            scrapers.append(_fc_with_args)
+
+            async def _sd_with_args(_product, _url=url, _retailer=retailer_domain):
+                return await _scrapedo_scraper(_url, full_name, currency, _retailer)
+            scrapers.append(_sd_with_args)
+
+    return scrapers
 
 
 class StructuredComparisonService:
@@ -1173,12 +1331,23 @@ class StructuredComparisonService:
                 return price
 
         # --- Tier 1.5: Page scraping cascade (luxury brands only) ---
+        # Bundle E § Decision 8 — scatter-gather refactor. The 3 Serper
+        # discovery queries (official → authorized → GCC retailers) stay
+        # SEQUENTIAL so we keep cost control + ordered priority. The
+        # per-URL page-scrape attempts are then RACED via
+        # fan_out_price_lookup, which cancels still-pending scrapers when
+        # 2 sources agree within 5% or a rank≥85 result lands.
         if not price and is_luxury_brand(full_name) and ENABLE_PAGE_SCRAPE:
             tier15_start = time.monotonic()
             tier15_budget = TIER_15_BUDGET_TIMEOUT
-            failed_curl_urls = []
+            scraping_mode = os.environ.get("SCRAPING_MODE", "hard")
+            candidate_urls: List[Tuple[str, str]] = []
 
-            # --- Tier 1.5a: Official brand site ---
+            # --- Discovery: official brand site (priority 1) ---
+            # Counterfeit safety: even with a `site:louisvuitton.com` query
+            # Serper sometimes returns off-domain marketplace links — verify
+            # the link actually belongs to the official_domain before adding
+            # to the candidate pool. dispatcher invariant #1.
             official_domain = get_official_domain(full_name)
             if official_domain:
                 try:
@@ -1187,143 +1356,86 @@ class StructuredComparisonService:
                     self._track_cost_amount(0.001)
                     if official_results and official_results.get("organic"):
                         for organic_item in official_results["organic"][:2]:
-                            page_url = organic_item.get("link")
-                            if not page_url or not validate_scrape_url(page_url):
+                            link = organic_item.get("link")
+                            if not link or not validate_scrape_url(link):
                                 continue
-                            # Bundle E § Decision 8 — gate Firecrawl behind
-                            # SCRAPING_MODE. In `soft` mode only fan out for
-                            # known luxury/SPA domains where curl alone returns
-                            # nothing. In `hard` mode (default) always fan out.
-                            if (firecrawl_service.is_available()
-                                    and is_circuit_closed("firecrawl")
-                                    and has_budget("firecrawl")
-                                    and firecrawl_service.should_fan_out(page_url)):
-                                html, status = await firecrawl_service.scrape_page_with_status(page_url)
-                                if status == 200:
-                                    record_usage("firecrawl")
-                                if html:
-                                    record_success("firecrawl")
-                                    price = extract_price_from_html(html, full_name, currency, official_domain, page_url)
-                                    if price:
-                                        price["source_method"] = "firecrawl"
-                                        price["retailer"] = official_domain
-                                        set_cached(cache_key, price, PRICE_CACHE_TTL)
-                                        self._save_price_to_db(cache_key, brand, name, variant, region, price)
-                                        price["_cached"] = False
-                                        return price
-                                elif status in (429, 503) or status == 0:
-                                    record_failure("firecrawl")
-                            page_price = await fetch_page_price(page_url, full_name, currency)
-                            if page_price and page_price.get("amount"):
-                                page_price.pop("_got_html", None)
-                                page_price["retailer"] = official_domain
-                                set_cached(cache_key, page_price, PRICE_CACHE_TTL)
-                                page_price["_cached"] = False
-                                return page_price
+                            link_domain = urlparse(link).netloc.replace("www.", "").lower()
+                            od = official_domain.lower()
+                            if link_domain == od or link_domain.endswith("." + od):
+                                candidate_urls.append((link, official_domain))
                 except Exception as e:
-                    logger.warning(f"[PRICE] Tier 1.5a failed: {e}")
+                    logger.warning(f"[PRICE] Tier 1.5 official-domain discovery failed: {e}")
 
-            elapsed = time.monotonic() - tier15_start
-            if elapsed < tier15_budget:
-                # --- Tier 1.5b: Authorized luxury retailers ---
+            # --- Discovery: authorized luxury retailers (priority 2) ---
+            if time.monotonic() - tier15_start < tier15_budget:
                 try:
                     retailer_query = f"{full_name} farfetch OR ssense OR net-a-porter"
                     retailer_results = await search_web(retailer_query)
                     self.api_calls += 1
                     self._track_cost_amount(0.001)
                     if retailer_results and retailer_results.get("organic"):
-                        retailer_urls = []
                         for item in retailer_results["organic"][:5]:
                             link = item.get("link", "")
                             link_domain = urlparse(link).netloc.replace("www.", "")
+                            # Whitelist gate — counterfeit/marketplace domains
+                            # cannot enter the candidate pool. This is the
+                            # dispatcher's invariant #1.
                             if link_domain in AUTHORIZED_LUXURY_RETAILERS or link_domain in OFFICIAL_BRAND_DOMAINS:
-                                retailer_urls.append((link, link_domain))
-                        if retailer_urls:
-                            fetch_tasks = [fetch_page_price(url, full_name, currency) for url, _ in retailer_urls[:3]]
-                            page_prices = await asyncio.gather(*fetch_tasks, return_exceptions=True)
-                            valid_prices = []
-                            for i, pp in enumerate(page_prices):
-                                if isinstance(pp, dict) and pp.get("amount"):
-                                    pp["_retailer_domain"] = retailer_urls[i][1]
-                                    valid_prices.append(pp)
-                                elif isinstance(pp, dict) and pp.get("_got_html"):
-                                    failed_curl_urls.append(retailer_urls[i][0])
-                            if len(valid_prices) >= 2:
-                                amounts = [p["amount"] for p in valid_prices]
-                                if max(amounts) / min(amounts) <= 1.15:
-                                    best = min(valid_prices, key=lambda p: p["amount"])
-                                else:
-                                    best = valid_prices[0]
-                                best.pop("_retailer_domain", None)
-                                set_cached(cache_key, best, PRICE_CACHE_TTL)
-                                best["_cached"] = False
-                                return best
-                            elif len(valid_prices) == 1:
-                                best = valid_prices[0]
-                                best.pop("_retailer_domain", None)
-                                set_cached(cache_key, best, PRICE_CACHE_TTL)
-                                best["_cached"] = False
-                                return best
+                                candidate_urls.append((link, link_domain))
                 except Exception as e:
-                    logger.warning(f"[PRICE] Tier 1.5b failed: {e}")
+                    logger.warning(f"[PRICE] Tier 1.5 authorized-retailer discovery failed: {e}")
 
-                elapsed = time.monotonic() - tier15_start
-                if elapsed < tier15_budget:
-                    # --- Tier 1.5c: GCC luxury retailers ---
-                    try:
-                        gcc_query = f"{full_name} ounass OR bloomingdales dubai OR namshi"
-                        gcc_results = await search_web(gcc_query)
-                        self.api_calls += 1
-                        self._track_cost_amount(0.001)
-                        if gcc_results and gcc_results.get("organic"):
-                            for item in gcc_results["organic"][:3]:
-                                link = item.get("link", "")
-                                link_domain = urlparse(link).netloc.replace("www.", "")
-                                if link_domain in GCC_LUXURY_RETAILERS:
-                                    gcc_price = await fetch_page_price(link, full_name, currency)
-                                    if gcc_price and gcc_price.get("amount"):
-                                        set_cached(cache_key, gcc_price, PRICE_CACHE_TTL)
-                                        gcc_price["_cached"] = False
-                                        return gcc_price
-                                    elif gcc_price and gcc_price.get("_got_html"):
-                                        failed_curl_urls.append(link)
-                    except Exception as e:
-                        logger.warning(f"[PRICE] Tier 1.5c failed: {e}")
+            # --- Discovery: GCC luxury retailers (priority 3) ---
+            if time.monotonic() - tier15_start < tier15_budget:
+                try:
+                    gcc_query = f"{full_name} ounass OR bloomingdales dubai OR namshi"
+                    gcc_results = await search_web(gcc_query)
+                    self.api_calls += 1
+                    self._track_cost_amount(0.001)
+                    if gcc_results and gcc_results.get("organic"):
+                        for item in gcc_results["organic"][:3]:
+                            link = item.get("link", "")
+                            link_domain = urlparse(link).netloc.replace("www.", "")
+                            if link_domain in GCC_LUXURY_RETAILERS:
+                                candidate_urls.append((link, link_domain))
+                except Exception as e:
+                    logger.warning(f"[PRICE] Tier 1.5 GCC-retailer discovery failed: {e}")
 
-                    # --- Tier 1.5d: Scrape.do rendering fallback ---
-                    elapsed = time.monotonic() - tier15_start
-                    if (failed_curl_urls and elapsed < tier15_budget
-                            and scrapedo_service.is_available()
-                            and is_circuit_closed("scrapedo") and has_budget("scrapedo")):
-                        gcc_domains = GCC_LUXURY_RETAILERS
-                        sorted_urls = sorted(
-                            failed_curl_urls,
-                            key=lambda u: 0 if urlparse(u).netloc.replace("www.", "") in gcc_domains else 1,
-                        )
-                        for retry_url in sorted_urls[:2]:
-                            if not validate_scrape_url(retry_url):
-                                continue
-                            # Bundle E § Decision 8 — same SCRAPING_MODE gate
-                            # as Firecrawl. Soft mode skips Scrape.do for
-                            # non-luxury domains; hard mode always fans out.
-                            if not firecrawl_service.should_fan_out(retry_url):
-                                continue
-                            retry_domain = urlparse(retry_url).netloc.replace("www.", "")
-                            html, status = await scrapedo_service.render_page_with_status(retry_url)
-                            if status == 200:
-                                record_usage("scrapedo")
-                            if html:
-                                record_success("scrapedo")
-                                price = extract_price_from_html(html, full_name, currency, retry_domain, retry_url)
-                                if price:
-                                    price["source_method"] = "scrapedo_rendered"
-                                    set_cached(cache_key, price, PRICE_CACHE_TTL)
-                                    self._save_price_to_db(cache_key, brand, name, variant, region, price)
-                                    price["_cached"] = False
-                                    return price
-                            elif status in (429, 503) or status == 0:
-                                record_failure("scrapedo")
-                                break
+            # --- Race: fan_out_price_lookup runs all per-URL scrapers in
+            # parallel, cancels pending tasks when 2 sources confirm within
+            # 5% (or rank≥85 lands), returns the highest-ranked candidate. ---
+            if candidate_urls:
+                try:
+                    scrapers = _build_luxury_scrapers(
+                        candidate_urls=candidate_urls,
+                        full_name=full_name,
+                        currency=currency,
+                        scraping_mode=scraping_mode,
+                    )
+                    fan_result = await fan_out_price_lookup(
+                        product={"full_name": full_name, "brand": brand},
+                        scrapers=scrapers,
+                        scraping_mode=scraping_mode,
+                    )
+                    best = fan_result.get("best")
+                    if best and best.get("raw_data") and best["raw_data"].get("amount"):
+                        winning_price = best["raw_data"]
+                        # Stamp the design-decreed source_method names so
+                        # downstream rendering + analytics see the rank tier
+                        # (firecrawl_brand_domain / page_scrape_jsonld /
+                        # scrapedo_rendered / confirmed_multi_source).
+                        winning_price["source_method"] = best.get("source_method", "page_scrape")
+                        set_cached(cache_key, winning_price, PRICE_CACHE_TTL)
+                        self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
+                        winning_price["_cached"] = False
+                        if fan_result.get("cancelled_count", 0) > 0:
+                            logger.info(
+                                "[PRICE] fan_out cancelled %d pending scrapers after confirmation (elapsed=%.2fs)",
+                                fan_result["cancelled_count"], fan_result.get("elapsed_seconds", 0.0),
+                            )
+                        return winning_price
+                except Exception as e:
+                    logger.warning(f"[PRICE] Tier 1.5 fan_out_price_lookup failed: {e}")
 
         # --- Tier 2: GPT extraction from search context ---
         if is_supplement:
@@ -1462,7 +1574,14 @@ class StructuredComparisonService:
         price = tier3_estimate
         if price and price.get("amount"):
             price["estimated"] = True
-            price["source_method"] = "estimated"
+            # Preserve the gpt_* source_method when the upstream extractor
+            # provided one (Bundle E PRICE_SOURCE_RANK lookup needs the
+            # specific tier name, not the generic "estimated" alias).
+            # Legacy "estimated" stays as the fallback for callers that
+            # didn't stamp a specific gpt_* method.
+            existing_method = price.get("source_method", "")
+            if not (isinstance(existing_method, str) and existing_method.startswith("gpt_")):
+                price["source_method"] = "estimated"
             if price.get("retailer") and not price.get("url"):
                 price["url"] = build_retailer_url(price["retailer"], full_name)
             set_cached(cache_key, price, PRICE_CACHE_TTL // 2)
