@@ -98,6 +98,20 @@ def build_comparison_response(
     price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
     unique_methods = set(m for m in price_methods if m)
 
+    # value_context: per-product dict (preferred) with legacy-string fallback.
+    # Bug fix: previously a single comparison-level string was fanned out to
+    # every product slot, producing identical text on each product card.
+    raw_value_context = comparison.get("value_context", "")
+    if isinstance(raw_value_context, dict):
+        def _value_context_for(idx: int) -> str:
+            return raw_value_context.get(f"product_{idx}", "") or ""
+    else:
+        # Legacy comparison-level string — both products share it (old behaviour
+        # preserved for fixtures and pre-prompt-update payloads).
+        _legacy_vc = raw_value_context if isinstance(raw_value_context, str) else ""
+        def _value_context_for(idx: int) -> str:  # noqa: E306 — single-purpose helper
+            return _legacy_vc
+
     result = {
         "success": True,
         "query": query,
@@ -123,7 +137,7 @@ def build_comparison_response(
                     "review_count": pd.get("review_count"),
                     "overall_score": scoring_result.get("scores", {}).get(f"product_{i}", {}).get("overall"),
                     "value_badge": pd.get("value_badge", "fair_price"),
-                    "value_context": comparison.get("value_context", ""),
+                    "value_context": _value_context_for(i),
                     "pros": pd.get("pros_cons", {}).get("pros", []),
                     "cons": pd.get("pros_cons", {}).get("cons", []),
                     "best_for": comparison.get("best_for", {}).get(f"product_{i}", ""),

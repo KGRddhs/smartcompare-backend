@@ -295,6 +295,92 @@ class TestBuildComparisonResponse:
         assert "rating_derived" not in product_data[1] or not product_data[1].get("rating_derived")
 
 
+class TestPerProductValueContext:
+    """Bug fix: overview.products[i].value_context must NOT be identical across products.
+
+    Root cause: response_builder.py:126 read a single comparison-level
+    `value_context` string and fanned it out to every product slot. With the
+    prompt-side fix, `comparison['value_context']` is a dict keyed by
+    product_0/product_1 (mirroring `best_for`), so each product gets a
+    distinct value-context line.
+
+    Backward-compat: a legacy string `value_context` still resolves (used for
+    both products) — that preserves existing test fixtures without making the
+    new behaviour silently regress.
+    """
+
+    def _kwargs(self, comparison: dict) -> dict:
+        return dict(
+            product_data=[
+                {"brand": "Apple", "name": "iPhone 15"},
+                {"brand": "Samsung", "name": "Galaxy S24"},
+            ],
+            comparison=comparison,
+            scoring_result={
+                "scores": {
+                    "product_0": {"overall": 85, "breakdown": {"value_score": 70}},
+                    "product_1": {"overall": 75, "breakdown": {"value_score": 65}},
+                },
+                "winner_index": 0,
+                "win_margin": 10,
+            },
+            product_names=["Apple iPhone 15", "Samsung Galaxy S24"],
+            tradeoffs=[],
+            confidence={},
+            verdict_validation={},
+            user_preferences=None,
+            from_cache=False,
+            query="iPhone 15 vs Galaxy S24",
+            region="bahrain",
+            category_used="electronics",
+            category_switched=False,
+            original_category=None,
+            total_cost=0,
+            api_calls=0,
+            gpt_calls=0,
+            serper_calls=0,
+            elapsed_seconds=0,
+        )
+
+    def test_dict_shape_yields_distinct_per_product_value_context(self):
+        """When `comparison['value_context']` is a per-product dict, each
+        product gets its own string in overview.products[i].value_context."""
+        comparison = {
+            "winner_index": 0,
+            "value_context": {
+                "product_0": "Flagship specs at 12% below category average for the GCC market.",
+                "product_1": "Mid-range pricing with premium build quality; strong value in Bahrain retailers.",
+            },
+        }
+        result = build_comparison_response(**self._kwargs(comparison))
+        products = result["overview"]["products"]
+        assert len(products) == 2
+        vc0 = products[0]["value_context"]
+        vc1 = products[1]["value_context"]
+        assert vc0 == comparison["value_context"]["product_0"], vc0
+        assert vc1 == comparison["value_context"]["product_1"], vc1
+        # Core invariant: the two products must NOT receive identical strings.
+        assert vc0 != vc1, (
+            f"value_context is identical across products: {vc0!r}. "
+            "Bug: response_builder fanned a single comparison-level string "
+            "into every product slot."
+        )
+
+    def test_legacy_string_shape_falls_back_to_same_string(self):
+        """Backward-compat: when the comparison still emits the old
+        comparison-level string (pre-prompt-update), the builder must not
+        crash — both products fall back to the same string. New consumers
+        will see the dict shape and get distinct strings."""
+        comparison = {
+            "winner_index": 0,
+            "value_context": "Both products are mid-range flagships with competitive pricing.",
+        }
+        result = build_comparison_response(**self._kwargs(comparison))
+        products = result["overview"]["products"]
+        assert products[0]["value_context"] == comparison["value_context"]
+        assert products[1]["value_context"] == comparison["value_context"]
+
+
 # =====================================================
 # fact_check_service.py tests
 # =====================================================
