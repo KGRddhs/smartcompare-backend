@@ -298,8 +298,6 @@ ToS/Privacy fact base, code-side blockers (delete cascade, expo-notifications pl
 ## Known Remaining Bugs (deferred)
 - **Scrape.do timing out** on GCC luxury retailers (Ounass, Bloomingdales). Firecrawl is primary — Scrape.do is Tier 1.5d fallback only.
 - **value_context identical for all products** — `overview.products[i].value_context` reuses the same string. Minor UX issue.
-- **`common.or` i18n key missing** — `LoginScreen.tsx:198` + `RegisterScreen.tsx:386` call `t('common.or')` but neither `en.json` nor `ar.json` has a `common` namespace; renders literal "common.or" in the auth divider. Pre-Bundle B/C/D. Fix: add `"common": {"or": "or"}` / `"أو"`.
-- **Google Sign-In:** Supabase Google provider needs to be enabled in dashboard (client IDs already configured in code).
 - **Apple Sign-In:** deferred — requires Apple Developer subscription ($99/year); code is ready.
 
 ## Detailed Context
