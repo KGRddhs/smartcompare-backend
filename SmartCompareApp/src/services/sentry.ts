@@ -1,0 +1,127 @@
+/**
+ * Sentry crash reporting for the Qaren mobile app.
+ *
+ * Mirrors the backend scrubbing patterns in `app/services/sentry_service.py`
+ * so JWTs, OpenAI / Firecrawl API keys, generic long-hex tokens, and
+ * Bearer headers are redacted before events leave the device. Sensitive
+ * request headers (authorization, x-admin-key, cookie) are also redacted
+ * wholesale.
+ *
+ * Follow-ups (NOT in this commit):
+ *   - Move the DSN out of source into an EAS env secret
+ *     (`EXPO_PUBLIC_SENTRY_DSN`). The DSN is a write-only public key —
+ *     safe to commit as a fallback, but cleaner in EAS.
+ *   - Sourcemap upload via the expo plugin object form
+ *     `["@sentry/react-native", { url, organization, project }]`. Needs
+ *     `SENTRY_AUTH_TOKEN` in CI.
+ */
+import * as Sentry from '@sentry/react-native';
+
+// Apply in declared order — earlier patterns win over later ones (the
+// JWT pattern matches before the generic-long-hex pattern can swallow
+// a JWT payload segment, for example).
+const SENSITIVE_PATTERNS: Array<[RegExp, string]> = [
+  [/eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+/g, '[JWT_REDACTED]'],
+  [/sk-proj-[A-Za-z0-9_-]+/g, '[OPENAI_KEY_REDACTED]'],
+  [/fc-[a-f0-9]{20,}/g, '[FIRECRAWL_KEY_REDACTED]'],
+  [/[a-f0-9]{40,}/g, '[TOKEN_REDACTED]'],
+  [/Bearer\s+[A-Za-z0-9_.-]+/g, 'Bearer [REDACTED]'],
+];
+
+const SENSITIVE_HEADERS = new Set(['authorization', 'x-admin-key', 'cookie']);
+
+// Hard-coded write-only public DSN. Safe to commit; the EAS secret
+// follow-up is cosmetic.
+const FALLBACK_DSN =
+  'https://ac5bd897c6c0580bf79f3002efac58a6@o4511371892097024.ingest.de.sentry.io/4511397433180240';
+
+export function scrubString(s: string): string {
+  let out = s;
+  for (const [pattern, replacement] of SENSITIVE_PATTERNS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
+function scrubDict(data: Record<string, unknown>): Record<string, unknown> {
+  const scrubbed: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'string') {
+      scrubbed[key] = scrubString(value);
+    } else if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      scrubbed[key] = scrubDict(value as Record<string, unknown>);
+    } else if (Array.isArray(value)) {
+      scrubbed[key] = value.map((v) =>
+        typeof v === 'string'
+          ? scrubString(v)
+          : v !== null && typeof v === 'object'
+          ? scrubDict(v as Record<string, unknown>)
+          : v,
+      );
+    } else {
+      scrubbed[key] = value;
+    }
+  }
+  return scrubbed;
+}
+
+export function scrubBeforeSend(event: any, _hint: any): any {
+  if (!event) return event;
+
+  // Scrub exception messages.
+  if (event.exception && Array.isArray(event.exception.values)) {
+    for (const exc of event.exception.values) {
+      if (typeof exc?.value === 'string') {
+        exc.value = scrubString(exc.value);
+      }
+    }
+  }
+
+  // Scrub breadcrumbs.
+  if (event.breadcrumbs && Array.isArray(event.breadcrumbs.values)) {
+    for (const crumb of event.breadcrumbs.values) {
+      if (typeof crumb?.message === 'string') {
+        crumb.message = scrubString(crumb.message);
+      }
+      if (crumb?.data && typeof crumb.data === 'object' && !Array.isArray(crumb.data)) {
+        crumb.data = scrubDict(crumb.data as Record<string, unknown>);
+      }
+    }
+  }
+
+  // Redact sensitive request headers wholesale.
+  if (event.request && event.request.headers && typeof event.request.headers === 'object') {
+    const headers = event.request.headers as Record<string, unknown>;
+    for (const key of Object.keys(headers)) {
+      if (SENSITIVE_HEADERS.has(key.toLowerCase())) {
+        headers[key] = '[REDACTED]';
+      }
+    }
+  }
+
+  return event;
+}
+
+let _initialized = false;
+
+export function initSentry(dsn?: string): void {
+  if (_initialized) return;
+  const resolved =
+    dsn ||
+    (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_SENTRY_DSN) ||
+    FALLBACK_DSN;
+  if (!resolved) return;
+  try {
+    Sentry.init({
+      dsn: resolved,
+      sendDefaultPii: false,
+      tracesSampleRate: 0.1,
+      beforeSend: scrubBeforeSend,
+    });
+    _initialized = true;
+  } catch {
+    // Never let Sentry init crash app boot. Native bridge missing in
+    // Expo Go / test env is the most common cause; the SDK still
+    // captures unhandled errors via JS global hooks.
+  }
+}
