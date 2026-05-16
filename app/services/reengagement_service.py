@@ -19,12 +19,43 @@ Plan tasks B5.2 + B5.3.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from app.services.database_service import get_admin_supabase_client
+from app.utils.feature_bucket import hash_bucket
 
 logger = logging.getLogger(__name__)
+
+
+def _flag_on() -> bool:
+    """True iff ENABLE_REENGAGEMENT_PUSHES is set to a truthy string.
+
+    Fail-CLOSED: any unset/empty/false value means no pushes. Protects
+    ad-hoc invocations (tests, scripts) from accidentally bypassing the
+    Railway-controlled rollout gate.
+    """
+    return os.getenv("ENABLE_REENGAGEMENT_PUSHES", "").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    )
+
+
+def _canary_percent() -> int:
+    """Read REENGAGEMENT_CANARY_PERCENT (default 100 = everyone in).
+
+    Out-of-range values clamp to [0, 100]. Non-numeric values default to 100
+    (fail-open inside the flag; user already opted in via the global flag).
+    """
+    raw = os.getenv("REENGAGEMENT_CANARY_PERCENT", "100").strip()
+    try:
+        pct = int(raw)
+    except ValueError:
+        pct = 100
+    return max(0, min(100, pct))
 
 
 _RECENT_PUSH_WINDOW_DAYS = 7
@@ -59,6 +90,19 @@ class ReengagementService:
         direct call to ``evaluate`` (e.g. from tests or future
         integrations) honours the user's preference.
         """
+        # Global kill-switch — must be flipped ON in Railway to start sending
+        # any pushes. Fail-CLOSED so unset env never spams testers.
+        if not _flag_on():
+            return None
+
+        # Canary bucket gate — defaults to 100% (everyone in). Lower the
+        # REENGAGEMENT_CANARY_PERCENT env to ramp slowly post-launch. Uses
+        # djb2(user_id) parity-matched with featureBucket.ts so frontend
+        # canary buckets and backend canary buckets stay aligned.
+        user_id = user.get("id")
+        if user_id is not None and not hash_bucket(str(user_id), _canary_percent()):
+            return None
+
         prefs = (user.get("preferences") or {})
         # Missing key = treated as ON (default ON per design 9.2).
         if prefs.get("notifications_enabled") is False:

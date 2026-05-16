@@ -1,0 +1,30 @@
+{
+  "_doc": [
+    "Bundle E § Decision 5 copy policy. Single source of truth for banned",
+    "evaluative vocabulary across en.json + ar.json + per-component runtime",
+    "guards (FactualVerdict). The jest fence at __tests__/copy-policy.test.ts",
+    "consumes this file and runs on every CI build — see plan task 3.7."
+  ],
+  "banned_en": [
+    {"pattern": "\\bBest Pick\\b", "label": "Best Pick"},
+    {"pattern": "\\bBest Choice\\b", "label": "Best Choice"},
+    {"pattern": "\\bSmart Pick\\b", "label": "Smart Pick"},
+    {"pattern": "\\bWinner\\b", "label": "Winner"},
+    {"pattern": "\\bExcellent\\b", "label": "Excellent"},
+    {"pattern": "\\bChoose this\\b", "label": "Choose this"},
+    {"pattern": "\\bGet this\\b", "label": "Get this"},
+    {"pattern": "\\bThis is right\\b", "label": "This is right"},
+    {"pattern": "\\bBeats\\b", "label": "Beats"},
+    {"pattern": "\\bWhy we picked this\\b", "label": "Why we picked this"},
+    {"pattern": "\\bWe recommend\\b", "label": "We recommend"},
+    {"pattern": "\\bBest for\\b", "label": "Best for"}
+  ],
+  "banned_ar": [
+    {"pattern": "أفضل اختيار", "label": "أفضل اختيار (Best Choice)"},
+    {"pattern": "الخيار الأفضل", "label": "الخيار الأفضل (The Best Choice)"},
+    {"pattern": "الفائز", "label": "الفائز (Winner)"},
+    {"pattern": "نوصي بـ", "label": "نوصي بـ (We recommend)"}
+  ],
+  "scary_vocab_en": ["couldn't", "try again", "Failed to"],
+  "scary_vocab_ar": ["تعذر", "فشل"]
+}

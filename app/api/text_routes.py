@@ -286,6 +286,31 @@ async def text_compare_stream(
                 }
             )
 
+    # Bundle E Task 2.5 § Decision 8 — event-type contract documented here
+    # so future readers see the wire shape without grep'ing the service.
+    # The route handler is event-type-agnostic (lines below stream whatever
+    # the orchestrator yields), so adding a new event type to
+    # `compare_from_text_streaming()` requires no change here.
+    #
+    # Bundle E event types (orchestrator → client):
+    #   status, specs, prices, reviews,
+    #   first_paint          → "core dims ready, paint the UI"
+    #   scores, verdict,
+    #   settle_update        → `{field, new_value, source_rank}` (higher-trust
+    #                          value arrived for a specific field; fade in)
+    #   confidence_upgrade   → `{dimension_key, new_confidence}` (e.g. price
+    #                          confidence promoted gray → emerald)
+    #   settle_complete      → settle window closed, no more updates
+    #   complete             → BACKWARD COMPAT — duplicate of settle_complete
+    #                          for current EAS builds; remove in Bundle F
+    #   error                → terminal failure event
+    _BUNDLE_E_EVENT_TYPES = {  # noqa: F841 — kept as a doc breadcrumb
+        "status", "specs", "prices", "reviews",
+        "first_paint", "scores", "verdict",
+        "settle_update", "confidence_upgrade",
+        "settle_complete", "complete", "error",
+    }
+
     async def event_generator() -> AsyncGenerator[str, None]:
         complete_response = None
         had_error = False
@@ -305,6 +330,10 @@ async def text_compare_stream(
                 logger.info(f"[SSE] Client disconnected during stream for query: {q}")
                 return
 
+            # `complete` is the canonical final-payload event for analytics
+            # (post-stream logging below). `settle_complete` is the Bundle E
+            # equivalent; both carry the same payload — favour `complete`
+            # for the analytics hook so older clients still work.
             if event_type == "complete":
                 complete_response = data
             if event_type == "error":

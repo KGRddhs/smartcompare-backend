@@ -12,6 +12,15 @@ Selector logic (max 1/week per user):
 Cost guards:
 - decision_insight: only check products in top-100 globally most-saved
 - 7-day cap is HARD — never violated
+
+Bundle E (2026-05-16) added two outer gates that fire BEFORE the existing
+selector logic:
+- ENABLE_REENGAGEMENT_PUSHES global kill-switch (fail-closed).
+- REENGAGEMENT_CANARY_PERCENT bucket gate (djb2 parity with featureBucket.ts).
+The pre-Bundle-E test suite above assumed both gates were absent; the
+shared autouse fixture below turns the flag ON for the legacy tests so
+they keep passing, and the new TestFlagGate / TestCanaryGate classes
+exercise the gates explicitly.
 """
 from __future__ import annotations
 
@@ -19,6 +28,15 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _enable_reengagement_flag(monkeypatch):
+    """Default: flag ON so legacy detector tests still exercise the path
+    they were written for. Tests that need flag-off behaviour use
+    monkeypatch.delenv inside the test body."""
+    monkeypatch.setenv("ENABLE_REENGAGEMENT_PUSHES", "true")
+    yield
 
 
 # ============================================
@@ -249,3 +267,134 @@ class TestDecisionRetrospectiveDetector:
         with patch.object(svc, "_find_14d_comparison_no_retrospective", new_callable=AsyncMock, return_value=None):
             result = await svc._check_decision_retrospective(user)
             assert result is None
+
+
+# ============================================
+# Bundle E (2026-05-16) — ENABLE_REENGAGEMENT_PUSHES flag gate
+# ============================================
+
+
+class TestFlagGate:
+    """Fail-CLOSED: unset/false flag must short-circuit evaluate() to None."""
+
+    @pytest.mark.asyncio
+    async def test_flag_unset_returns_none(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_REENGAGEMENT_PUSHES", raising=False)
+        from app.services.reengagement_service import ReengagementService
+
+        svc = ReengagementService()
+        # User would otherwise be eligible — the gate must beat the detectors.
+        insight_payload = {"event_type": "decision_insight", "title": "X", "body": "Y", "deep_link_url": "u://"}
+        user = {"id": "u-eligible", "notifications_enabled": True}
+
+        with patch.object(svc, "_recent_push", new_callable=AsyncMock, return_value=False), \
+             patch.object(svc, "_check_decision_insight", new_callable=AsyncMock, return_value=insight_payload) as mock_insight:
+            result = await svc.evaluate(user)
+            assert result is None, "flag off must produce no push"
+            mock_insight.assert_not_called(), "detectors must not run when flag is off"
+
+    @pytest.mark.asyncio
+    async def test_flag_false_string_returns_none(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_REENGAGEMENT_PUSHES", "false")
+        from app.services.reengagement_service import ReengagementService
+
+        svc = ReengagementService()
+        user = {"id": "u-eligible", "notifications_enabled": True}
+
+        with patch.object(svc, "_recent_push", new_callable=AsyncMock, return_value=False), \
+             patch.object(svc, "_check_decision_insight", new_callable=AsyncMock, return_value={"event_type": "decision_insight", "title": "X", "body": "Y", "deep_link_url": "u://"}):
+            result = await svc.evaluate(user)
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_flag_on_with_eligible_user_fires_detectors(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_REENGAGEMENT_PUSHES", "true")
+        from app.services.reengagement_service import ReengagementService
+
+        svc = ReengagementService()
+        insight_payload = {"event_type": "decision_insight", "title": "X", "body": "Y", "deep_link_url": "u://"}
+        user = {"id": "u-eligible", "notifications_enabled": True}
+
+        with patch.object(svc, "_recent_push", new_callable=AsyncMock, return_value=False), \
+             patch.object(svc, "_check_decision_insight", new_callable=AsyncMock, return_value=insight_payload):
+            result = await svc.evaluate(user)
+            assert result is not None
+            assert result["event_type"] == "decision_insight"
+
+
+# ============================================
+# Bundle E (2026-05-16) — REENGAGEMENT_CANARY_PERCENT bucket gate
+# ============================================
+
+
+class TestCanaryGate:
+    """Canary % gates evaluate() after the flag passes. Deterministic per user_id."""
+
+    @pytest.mark.asyncio
+    async def test_canary_zero_percent_blocks_all_users(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_REENGAGEMENT_PUSHES", "true")
+        monkeypatch.setenv("REENGAGEMENT_CANARY_PERCENT", "0")
+        from app.services.reengagement_service import ReengagementService
+
+        svc = ReengagementService()
+        insight_payload = {"event_type": "decision_insight", "title": "X", "body": "Y", "deep_link_url": "u://"}
+
+        with patch.object(svc, "_recent_push", new_callable=AsyncMock, return_value=False), \
+             patch.object(svc, "_check_decision_insight", new_callable=AsyncMock, return_value=insight_payload) as mock_insight:
+            for i in range(50):
+                user = {"id": f"u-{i}", "notifications_enabled": True}
+                result = await svc.evaluate(user)
+                assert result is None
+            mock_insight.assert_not_called(), "canary 0% must short-circuit before detectors"
+
+    @pytest.mark.asyncio
+    async def test_canary_100_percent_lets_everyone_through(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_REENGAGEMENT_PUSHES", "true")
+        monkeypatch.setenv("REENGAGEMENT_CANARY_PERCENT", "100")
+        from app.services.reengagement_service import ReengagementService
+
+        svc = ReengagementService()
+        insight_payload = {"event_type": "decision_insight", "title": "X", "body": "Y", "deep_link_url": "u://"}
+
+        with patch.object(svc, "_recent_push", new_callable=AsyncMock, return_value=False), \
+             patch.object(svc, "_check_decision_insight", new_callable=AsyncMock, return_value=insight_payload):
+            sent = 0
+            for i in range(50):
+                user = {"id": f"u-{i}", "notifications_enabled": True}
+                result = await svc.evaluate(user)
+                if result is not None:
+                    sent += 1
+            assert sent == 50, f"canary 100% should pass all 50 users, got {sent}"
+
+    @pytest.mark.asyncio
+    async def test_canary_default_is_100(self, monkeypatch):
+        """Unset REENGAGEMENT_CANARY_PERCENT defaults to 100 — flag is the only switch."""
+        monkeypatch.setenv("ENABLE_REENGAGEMENT_PUSHES", "true")
+        monkeypatch.delenv("REENGAGEMENT_CANARY_PERCENT", raising=False)
+        from app.services.reengagement_service import ReengagementService
+
+        svc = ReengagementService()
+        insight_payload = {"event_type": "decision_insight", "title": "X", "body": "Y", "deep_link_url": "u://"}
+
+        with patch.object(svc, "_recent_push", new_callable=AsyncMock, return_value=False), \
+             patch.object(svc, "_check_decision_insight", new_callable=AsyncMock, return_value=insight_payload):
+            user = {"id": "u-typical", "notifications_enabled": True}
+            result = await svc.evaluate(user)
+            assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_canary_50_percent_deterministic_per_user(self, monkeypatch):
+        """Same user must always land in the same bucket across calls."""
+        monkeypatch.setenv("ENABLE_REENGAGEMENT_PUSHES", "true")
+        monkeypatch.setenv("REENGAGEMENT_CANARY_PERCENT", "50")
+        from app.services.reengagement_service import ReengagementService
+
+        svc = ReengagementService()
+        insight_payload = {"event_type": "decision_insight", "title": "X", "body": "Y", "deep_link_url": "u://"}
+
+        with patch.object(svc, "_recent_push", new_callable=AsyncMock, return_value=False), \
+             patch.object(svc, "_check_decision_insight", new_callable=AsyncMock, return_value=insight_payload):
+            user = {"id": "stable-user-1", "notifications_enabled": True}
+            first = await svc.evaluate(user)
+            for _ in range(20):
+                assert await svc.evaluate(user) == first, "bucket must be stable per user_id"
