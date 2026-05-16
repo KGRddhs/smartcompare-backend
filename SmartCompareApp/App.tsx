@@ -3,6 +3,13 @@
  * Bottom tabs navigation with splash, auth, and onboarding flows
  */
 
+// Crash reporting MUST init before any other module so we capture
+// failures during early imports (font loading, i18n, native bridge).
+// See src/services/sentry.ts for the DSN + scrubbing config.
+import { initSentry } from './src/services/sentry';
+initSentry();
+
+import * as Sentry from '@sentry/react-native';
 import React, { useState, useEffect, useCallback } from 'react';
 import { I18nManager, StyleSheet } from 'react-native';
 import { NavigationContainer, getStateFromPath, type LinkingOptions } from '@react-navigation/native';
@@ -134,7 +141,7 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-export default function App() {
+function App() {
   const fontsLoaded = useAppFonts();
   const [showSplash, setShowSplash] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -355,3 +362,8 @@ export default function App() {
     </NavigationContainer>
   );
 }
+
+// Sentry.wrap installs error boundaries + touch/navigation tracing on
+// the root component. Falls back to a passthrough if the SDK ever drops
+// the export in a future version.
+export default (typeof Sentry.wrap === 'function' ? Sentry.wrap(App) : App);
