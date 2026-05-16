@@ -15,6 +15,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _enable_reengagement_flag(monkeypatch):
+    """Bundle E (2026-05-16) gated the entire cron behind
+    ENABLE_REENGAGEMENT_PUSHES. The legacy tests below assume the cron
+    runs; flipping the env on by default keeps them green. The new
+    TestFlagSkip class below exercises the flag-off path explicitly.
+    """
+    monkeypatch.setenv("ENABLE_REENGAGEMENT_PUSHES", "true")
+    yield
+
+
 # ============================================
 # B5.1 — entrypoint exists
 # ============================================
@@ -137,3 +148,44 @@ class TestEligibleUserFilter:
 
         # Lookback window of 60 days must appear in query construction
         assert "60" in source, "_fetch_eligible_users must filter to last 60 days"
+
+
+# ============================================
+# Bundle E (2026-05-16) — ENABLE_REENGAGEMENT_PUSHES gate
+# ============================================
+
+
+class TestFlagSkip:
+    """When the global kill-switch is off, the cron must skip the run entirely."""
+
+    @pytest.mark.asyncio
+    async def test_flag_unset_skips_entire_run(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_REENGAGEMENT_PUSHES", raising=False)
+        from scripts import cron_reengagement
+
+        entry = getattr(cron_reengagement, "main", None) or cron_reengagement.run
+
+        with patch("scripts.cron_reengagement._fetch_eligible_users", new_callable=AsyncMock) as mock_fetch, \
+             patch("scripts.cron_reengagement.ReengagementService") as MockSvc, \
+             patch("scripts.cron_reengagement._dispatch_push", new_callable=AsyncMock) as mock_dispatch:
+
+            await entry()
+
+            mock_fetch.assert_not_called(), "cron must not query users when flag off"
+            MockSvc.assert_not_called(), "cron must not construct service when flag off"
+            mock_dispatch.assert_not_called(), "cron must not send pushes when flag off"
+
+    @pytest.mark.asyncio
+    async def test_flag_false_string_skips_entire_run(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_REENGAGEMENT_PUSHES", "false")
+        from scripts import cron_reengagement
+
+        entry = getattr(cron_reengagement, "main", None) or cron_reengagement.run
+
+        with patch("scripts.cron_reengagement._fetch_eligible_users", new_callable=AsyncMock) as mock_fetch, \
+             patch("scripts.cron_reengagement._dispatch_push", new_callable=AsyncMock) as mock_dispatch:
+
+            await entry()
+
+            mock_fetch.assert_not_called()
+            mock_dispatch.assert_not_called()

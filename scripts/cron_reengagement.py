@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -107,8 +108,25 @@ async def _dispatch_push(
         logger.warning("[cron_reengagement] dispatch failed for %s: %s", user_id, exc)
 
 
+def _flag_on() -> bool:
+    """Local mirror of reengagement_service._flag_on so the cron can skip
+    the entire run without importing the service module's private helper."""
+    return os.getenv("ENABLE_REENGAGEMENT_PUSHES", "").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    )
+
+
 async def main() -> None:
     """Cron entrypoint. Idempotent — safe to retry on transient failure."""
+    if not _flag_on():
+        logger.info(
+            "[cron_reengagement] ENABLE_REENGAGEMENT_PUSHES not set — skipping run"
+        )
+        return
+
     client = get_admin_supabase_client()
     users = await _fetch_eligible_users(client)
     if not users:

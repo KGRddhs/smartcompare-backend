@@ -14,6 +14,15 @@ import pytest
 from app.services.reengagement_service import ReengagementService
 
 
+@pytest.fixture(autouse=True)
+def _enable_reengagement_flag(monkeypatch):
+    """Bundle E (2026-05-16): both evaluate() and cron.main() are now gated
+    by ENABLE_REENGAGEMENT_PUSHES. Default the flag on for legacy internal
+    tests that exercise post-gate code paths."""
+    monkeypatch.setenv("ENABLE_REENGAGEMENT_PUSHES", "true")
+    yield
+
+
 # ============================================
 # 7-day cap helper internals
 # ============================================
