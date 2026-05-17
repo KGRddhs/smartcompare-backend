@@ -274,8 +274,17 @@ export interface StreamCallbacks {
   onSettleComplete?: (data: ComparisonResult) => void;
 }
 
+/**
+ * Bundle B § 5.1 — dual-shape input. Callers may pass a single query string
+ * (legacy `q=` shape) OR `{ product_a, product_b }` so the backend skips
+ * `parse_product_query()` for higher-confidence extraction.
+ */
+export type StreamComparisonInput =
+  | string
+  | { product_a: string; product_b: string };
+
 export function streamComparison(
-  query: string,
+  input: StreamComparisonInput,
   options?: { nocache?: boolean; selected_category?: string }
 ): {
   subscribe: (callbacks: StreamCallbacks) => void;
@@ -289,7 +298,13 @@ export function streamComparison(
         const { getToken } = require('./authService');
         const token = await getToken();
 
-        const params = new URLSearchParams({ q: query, region: 'bahrain' });
+        const params = new URLSearchParams({ region: 'bahrain' });
+        if (typeof input === 'string') {
+          params.set('q', input);
+        } else {
+          params.set('product_a', input.product_a.trim());
+          params.set('product_b', input.product_b.trim());
+        }
         if (options?.nocache) params.set('nocache', 'true');
         if (options?.selected_category) params.set('selected_category', options.selected_category);
 
@@ -355,13 +370,21 @@ export function streamComparison(
         // Fallback to non-streaming
         if (__DEV__) console.log('SSE failed, falling back to non-streaming:', err.message);
         try {
+          const baseParams: Record<string, any> = {
+            region: 'bahrain',
+            selected_category: options?.selected_category,
+            ...(options?.nocache && { nocache: true }),
+          };
+          const queryParams =
+            typeof input === 'string'
+              ? { q: input, ...baseParams }
+              : {
+                  product_a: input.product_a.trim(),
+                  product_b: input.product_b.trim(),
+                  ...baseParams,
+                };
           const response = await api.get('/api/v1/text/compare', {
-            params: {
-              q: query,
-              region: 'bahrain',
-              selected_category: options?.selected_category,
-              ...(options?.nocache && { nocache: true }),
-            },
+            params: queryParams,
             signal: controller.signal,
           });
           if (response.data.success) {
@@ -379,6 +402,31 @@ export function streamComparison(
   };
 
   return { subscribe, abort: () => controller.abort() };
+}
+
+/**
+ * Bundle B § 5.1 — POST `{ product_a, product_b }` to /api/v1/text/compare
+ * (non-streaming). Skips backend parse_product_query() for higher-confidence
+ * extraction when caller has the parsed pair on hand.
+ */
+export interface CompareOptions {
+  nocache?: boolean;
+  selected_category?: string;
+}
+
+export async function compareTextPair(
+  productA: string,
+  productB: string,
+  opts: CompareOptions = {}
+): Promise<ComparisonResult> {
+  const response = await api.post('/api/v1/text/compare', {
+    product_a: productA.trim(),
+    product_b: productB.trim(),
+    region: 'bahrain',
+    ...(opts.selected_category && { selected_category: opts.selected_category }),
+    ...(opts.nocache && { nocache: true }),
+  });
+  return response.data;
 }
 
 /**
