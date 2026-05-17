@@ -457,6 +457,32 @@ export async function trackEvents(events: Array<{
   }
 }
 
+/**
+ * Single-event analytics helper for the Bundle B compare_entry_* taxonomy
+ * (spec § 8). Wraps the batched trackEvents() so HomeScreen + TwoInputShell
+ * callers don't have to construct event arrays for every fire.
+ *
+ * __DEV__-gated console.log lets QA capture a clean per-event log during
+ * QA-6 walkthrough (plan § 4.6). NO-op in production builds — does NOT
+ * ship instrumentation noise to release.
+ *
+ * Privacy invariant per spec § 8: event_data must never contain user-typed
+ * text or pasted URLs. Only mode, booleans, timing, and source_box enum.
+ * QA-6 verifies this by grepping the captured log for iPhone / Galaxy /
+ * https:// patterns — any hit is a contract violation, NOT a test bug.
+ */
+export async function trackEvent(
+  event_type: string,
+  event_data?: Record<string, any>,
+  comparison_id?: string,
+): Promise<void> {
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.log('[analytics]', event_type, JSON.stringify(event_data || {}));
+  }
+  await trackEvents([{ event_type, event_data, comparison_id }]);
+}
+
 export function parseApiError(error: any): { message: string; code: string | null } {
   const data = error?.response?.data;
   if (data?.error) {

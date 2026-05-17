@@ -42,7 +42,7 @@ import {
   healthCheck,
   streamComparison,
   parseApiError,
-  trackEvents,
+  trackEvent,
 } from '../services/api';
 import api from '../services/api';
 import { getSavedUser, User } from '../services/authService';
@@ -204,33 +204,21 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   useEffect(() => {
     if (lastViewedModeRef.current !== inputMode) {
       lastViewedModeRef.current = inputMode;
-      trackEvents([
-        { event_type: 'compare_entry_view', event_data: { mode: inputMode } },
-      ]);
+      trackEvent('compare_entry_view', { mode: inputMode });
     }
   }, [inputMode]);
 
   // compare_entry_paywall_banner_view — fires when canCompare flips to false.
   useEffect(() => {
     if (prevCanCompareRef.current && !canCompare) {
-      trackEvents([
-        {
-          event_type: 'compare_entry_paywall_banner_view',
-          event_data: { mode: inputMode },
-        },
-      ]);
+      trackEvent('compare_entry_paywall_banner_view', { mode: inputMode });
     }
     prevCanCompareRef.current = canCompare;
   }, [canCompare, inputMode]);
 
   const handleContentUnavailable = useCallback(
     (mode: 'text' | 'url' | 'scan', layer: string) => {
-      trackEvents([
-        {
-          event_type: 'compare_entry_content_block',
-          event_data: { mode, layer },
-        },
-      ]);
+      trackEvent('compare_entry_content_block', { mode, layer });
       Alert.alert(
         t('home.compare.unavailable_title'),
         t('home.compare.unavailable_body')
@@ -256,16 +244,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     loadingStartedAtRef.current = Date.now();
     let navigated = false;
 
-    trackEvents([
-      {
-        event_type: 'compare_entry_submit',
-        event_data: {
-          mode: 'text',
-          used_paste_split: pasteSplitUsedRef.current,
-          used_autoswitch: autoswitchUsedRef.current,
-        },
-      },
-    ]);
+    trackEvent('compare_entry_submit', {
+      mode: 'text',
+      used_paste_split: pasteSplitUsedRef.current,
+      used_autoswitch: autoswitchUsedRef.current,
+    });
     pasteSplitUsedRef.current = false;
     autoswitchUsedRef.current = false;
 
@@ -322,16 +305,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       return;
     }
 
-    trackEvents([
-      {
-        event_type: 'compare_entry_submit',
-        event_data: {
-          mode: 'url',
-          used_paste_split: pasteSplitUsedRef.current,
-          used_autoswitch: autoswitchUsedRef.current,
-        },
-      },
-    ]);
+    trackEvent('compare_entry_submit', {
+      mode: 'url',
+      used_paste_split: pasteSplitUsedRef.current,
+      used_autoswitch: autoswitchUsedRef.current,
+    });
     pasteSplitUsedRef.current = false;
     autoswitchUsedRef.current = false;
 
@@ -375,12 +353,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       // true→false transitions, not chip-tap-while-already-false). Then
       // route to Paywall as before.
       if (mode !== inputMode) setInputMode(mode);
-      trackEvents([
-        {
-          event_type: 'compare_entry_paywall_banner_view',
-          event_data: { mode },
-        },
-      ]);
+      trackEvent('compare_entry_paywall_banner_view', { mode });
       navigation.navigate('Paywall' as any);
       return;
     }
@@ -414,12 +387,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       return (
         <PaywallBanner
           onSeeOptions={() => {
-            trackEvents([
-              {
-                event_type: 'compare_entry_paywall_banner_tap',
-                event_data: { mode: inputMode },
-              },
-            ]);
+            trackEvent('compare_entry_paywall_banner_tap', { mode: inputMode });
             navigation.navigate('Paywall' as any);
           }}
         />
@@ -476,36 +444,25 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         }}
         onPasteSplit={(sourceBox) => {
           pasteSplitUsedRef.current = true;
-          trackEvents([
-            {
-              event_type: 'compare_entry_paste_split',
-              event_data: {
-                source_box: sourceBox,
-                mode: inputMode === 'url' ? 'url' : 'text',
-              },
-            },
-          ]);
+          trackEvent('compare_entry_paste_split', {
+            source_box: sourceBox,
+            mode: inputMode === 'url' ? 'url' : 'text',
+          });
         }}
         onModeAutoswitch={(from, to) => {
           autoswitchUsedRef.current = true;
           setInputMode('url');
-          trackEvents([
-            {
-              event_type: 'compare_entry_mode_autoswitch',
-              event_data: { from, to, trigger: 'url_paste' },
-            },
-          ]);
+          trackEvent('compare_entry_mode_autoswitch', {
+            from,
+            to,
+            trigger: 'url_paste',
+          });
         }}
         onReady={(timeToReadyMs) => {
-          trackEvents([
-            {
-              event_type: 'compare_entry_ready',
-              event_data: {
-                mode: inputMode === 'url' ? 'url' : 'text',
-                time_to_ready_ms: timeToReadyMs,
-              },
-            },
-          ]);
+          trackEvent('compare_entry_ready', {
+            mode: inputMode === 'url' ? 'url' : 'text',
+            time_to_ready_ms: timeToReadyMs,
+          });
         }}
       />
     );
