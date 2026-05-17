@@ -198,3 +198,45 @@ Per user pivot from "ship D2 as-is" to "take one more fix to close errors," ship
 **Quality intact post-fix**: 15/15 live D2 spec-parity tests pass with ±1 field tolerance, all per-category wall-time ceilings met (fragrances ceiling is 60s; bench at 48s is well under).
 
 **Realistic ceiling on fragrances without further work**: ~45-50s cold cache. To break below 25s would require either (a) skipping Tier 1.5 entirely for fragrances and routing direct to Tier 2 GPT (significant quality regression — all fragrances would show `local_bhd`/`estimated` instead of real scraped prices), or (b) Firecrawl reliability improvement (out of our control), or (c) caching tomford.com / dior.com scrapes more aggressively across sessions. **Deferred to future session** — current bench-driven evidence doesn't justify further code changes without per-stage diagnostics.
+
+---
+
+## Session 51 — Bundle C: Scoring + Personalization Quality Pass (DESIGN + PLAN READY, 2026-05-17)
+
+Brainstorm → spec → 4-Opus plan, committed on `feature/bundle-c-scoring` (pushed to origin). NO implementation — plan execution is next-session work.
+
+**Deliverables:**
+- Spec: `docs/superpowers/specs/2026-05-17-bundle-c-scoring-quality-design.md` (525 lines, 11 sections, commit `adb4f2b`).
+- Plan: `docs/superpowers/plans/2026-05-17-bundle-c-scoring-quality.md` (5,785 lines / 170 tasks, commit `67ae50d`). Authored by 4-Opus team: backend-planner (Section A, 39 tasks), frontend-planner (Section B, 43 tasks), test-planner (Section C, 55 tasks), qa-planner (Section D, 33 tasks + assembly).
+
+**Cold-cache probes during brainstorm surfaced 3 production bugs (Section 1 of plan):**
+- **1a — pros/cons empty system-wide.** Both probes (iPhone vs Galaxy + CeraVe vs Cetaphil, `?nocache=true`) returned empty `pros[]`/`cons[]`. Root cause unknown — diagnostic-first gate (D.1.1) requires raw GPT response capture before any fix.
+- **1b — `scoring_v2.factual_verdict` always None.** Bundle E spec said it should always render. Pure template fix in `response_builder._build_scoring_v2` after evidence captured.
+- **1c — mainstream prices fall to `source_method="estimated"`.** Both probes hit estimated for products that should land Tier 1 Serper Shopping (iPhone 16, Galaxy S25, CeraVe, Cetaphil in Bahrain). Diagnostic with `DEBUG_STAGE_TIMINGS=true` + Firecrawl/Scrape.do invocation logging required to identify which tier each product traverses + where it falls.
+
+**Reframed scoring math (Sections 2-7 of plan):**
+- Missing-data floor of 30 creates phantom score gaps (legacy probe: iPhone overall=37.6 vs S25=77.5 is data-sparsity artifact, not real quality gap). KILLED — `None` propagation, silent omission of null-score dims.
+- Calibration band `[60, 95]` kept; honesty guard widens to ≥3 null dims; "Limited data" pill DROPPED next to hero (just shows the number).
+- 5-tier budget expansion (`top_tier` for 1000+ BHD shoppers per Ahmed's GCC reality check). `PRICE_TIERS_BY_CATEGORY` per-category breakpoints + geometric-mean sub-scale for `other` so cars/furniture/etc. map their tier semantic correctly.
+- Dynamic value formula by user priority (`price` priority → 0.4/0.6 split; `quality` → 0.7/0.3). Closes the original "iPhone 33% cheaper got 77 vs S25 85" complaint via priority-aware math + promoted delta-text hero ("40% less").
+- Confidence widget: threshold loosening (drop `verified=True` requirement; accept `review_count >= 100` or `shopping_count >= 3` even when one product estimated) + replace single-word banner with 3-leg pill row (Price · Reviews · Specs) + tap-reveal "What we know" bottom sheet. Price pill HIDDEN entirely when `source_method=estimated` — silent on provenance, disclosure shifts to Terms.
+- DimensionBars sourced from `CATEGORY_DIMENSIONS` (drops hand-coded `_dim_dpi/_dim_popularity/_dim_build_quality` builders), hero+expand UI with 3-4 visible + tappable "See full breakdown" for all 6 category dims.
+- Personalization chip below verdict: compact qualitative arrows ("↑ Performance · ↓ Brand") — direction ONLY, never magnitude/coefficients.
+- 3-tier spec fallback (Tier 1 primary → Tier 2 Serper+GPT-mini per missing non-negotiable → Tier 3 GPT-4o knowledge synthesis batched) — specs should not have missing fields.
+- `comparison_quality: "normal"|"weak"|"weird"` flag for cross-category/severe-gap/10x-price-spread cases — verdict text carries context, NO banner.
+
+**Three project-wide rules absorbed during brainstorm (saved to memory):**
+1. `memory/feedback_no_info_banners.md` — no top-of-screen banners ever, per-element microcopy only.
+2. `memory/feedback_no_backend_internals_in_reveals.md` — tap-reveals show qualitative arrows/labels; never coefficients, cap percentages, shift math.
+3. `memory/feedback_no_estimated_word_in_ui.md` — backend enum stays, UI never says "estimated"/"reference price"/"indicative", Terms covers disclosure.
+
+**4-Opus planning team pattern (validated this session):** spawn 4 agents in parallel writing to `docs/superpowers/plans/_<bundle>_staging/section_X.md`, qa-agent assembles into final plan, dispatcher cleans staging. ~45 min wall time for 170-task plan with 5,785 lines.
+
+**Pending next sessions (post Bundle C plan delivery):**
+- **Bundle C implementation** — 4-Opus team executes the 170-task plan. D.1 diagnostic gate BLOCKS all §1a/§1b/§1c patches until evidence captured.
+- **Bucket B brainstorm** — two-input UX redesign (text/URL paired boxes), dedicated session.
+
+**Resolved this session (stale MEMORY entries corrected):**
+- Supplements price pipeline (~21-25s wall noted) actually measures 11.6s cold-cache; iHerb scrape NOT the bottleneck (reviews_ms is). Session 50 silently resolved iHerb.
+- Fragrances pipeline (~48-50s wall noted) actually measures 12-16s; Firecrawl never fires in prod, prices fall to GPT estimate; the slow-fail path no longer reproduces.
+- Reviews + verdict are the post-D2 wall floor (~9-10s combined, sequential, hard to parallelize without quality regression).

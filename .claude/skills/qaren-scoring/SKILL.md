@@ -1,13 +1,15 @@
 ---
 name: qaren-scoring
 description: Use when touching deterministic scoring, scoring_service.py, value badges, tradeoff pairs, dimension winners, personalization caps (plus or minus 30/10/5 percent), prompt personalities, trust validation, behavioral profiles, behavior_service.py, scoring_method enum, or the three-layer personalization system.
-last_verified: 2026-05-16
+last_verified: 2026-05-17
 update_when_changing:
   - app/services/scoring_service.py
   - app/services/prompt_personalities.py
   - app/services/trust_validation_service.py
   - app/services/behavior_service.py
   - app/models/scoring_v2.py
+  - app/services/response_builder.py
+  - app/services/extraction_service.py (3-tier spec fallback, verdict prompt)
 ---
 
 # Qaren Scoring + Personalization System
@@ -43,6 +45,28 @@ Each category gets unique GPT verdict tone via `build_personality_prompt(categor
 - `app/services/verdict_builder.py::build_factual_verdict()` — composes factual line from top 3 winning core deltas + conditional alternative ("If you want X, the Y fits").
 - `fact_check_service.build_fact_check` no longer emits `overall_confidence` key by default; new `is_data_freshness_shaky()` predicate fires the pill only when ≥2 shakiness conditions met on BOTH products.
 - `response_builder` emits `scoring_v2` alongside legacy `scoring` for one release cycle (legacy slated for removal in Bundle F).
+
+## Bundle C design patterns (Session 51 brainstorm — plan-pending, NOT yet implemented)
+
+**Calibrated honesty** is the score-rendering north star: never punish a product for sparse data, never invent a low score, never apologize. Low/weird scores ONLY when the comparison itself is genuinely weird (cross-category, severe data gaps, 10×+ price spread).
+
+- **5-tier budget enum:** `budget | mid | premium | luxury | top_tier` (Migration 024 extends `users.preferences.budget` CHECK). `TIER_EXPECTATIONS` adds `luxury: 0.88, top_tier: 0.90`.
+- **`PRICE_TIERS_BY_CATEGORY`** replaces the flat `PRICE_TIERS` — category-aware breakpoints per electronics/supplements/fashion/fragrances/skincare/haircare/makeup/grocery.
+- **`other` runtime sub-scale:** geometric-mean detection (`other_light` <30 / `other_mid` 30-300 / `other_high` 300-5000 / `other_ultra` 5000+) so a car comparison (gm=5477 → `other_ultra`) maps "budget" semantic to <5000 BHD, not <11 BHD. `_detect_price_tier(price, category, *, comparison_prices=None)`.
+- **3-tier spec fallback** (gap-fill for non-negotiable specs): Tier 1 primary → Tier 2 targeted Serper+GPT-mini per missing field → Tier 3 GPT-4o knowledge synthesis batched. Stays inside `STREAM_HARD_CAP_SECONDS=25`. Output flag `inference_source="model_knowledge"` is QA-only, never user-visible.
+- **Kill missing-data floor of 30** — `None` propagation instead of `MISSING_SCORE=50`. Dims with `null` scores silently omitted from `dimensions[]` (no "—" pill spam).
+- **Dynamic value formula by priority** — `VALUE_FORMULA_BY_PRIORITY` dict: `price`=0.4 spec/0.6 price; `quality`=0.7/0.3; default=0.6/0.4. Coefficients NEVER exposed in API responses.
+- **`comparison_quality` flag:** `"normal" | "weak" | "weird"`. When `weird`, verdict text carries context (no forced winner); hero suppressed; NO banner.
+- **`personalization.applied_shifts[]`** carries direction (`up`/`down`) ONLY — never magnitude or coefficients.
+- **`build_dimensions_v2` becomes thin adapter** sourced from `CATEGORY_DIMENSIONS` (drops hand-coded `_dim_dpi/_dim_popularity/_dim_build_quality`).
+- **Confidence widget loosening:** drop `verified=True` requirement; `rating_strong` at `review_count >= 100`; `price_strong` accepts `shopping_count >= 3` even when one product estimated; `specs_strong` at `verified_pct >= 40` OR `citation_count >= 8`. Replace single-word banner with 3-leg pill row + tap-reveal "What we know" sheet. Price pill HIDDEN entirely when `source_method == "estimated"`.
+
+**Three rules absorbed during brainstorm (apply to ALL scoring + personalization UI):**
+1. No info banners — per-element microcopy only (`memory/feedback_no_info_banners.md`).
+2. No backend internals in user-facing reveals (`memory/feedback_no_backend_internals_in_reveals.md`).
+3. Never use "estimated" / "reference price" / "indicative" in UI — backend enum stays, UI silent on price provenance, disclosure in Terms (`memory/feedback_no_estimated_word_in_ui.md`).
+
+Spec: `docs/superpowers/specs/2026-05-17-bundle-c-scoring-quality-design.md`. Plan: `docs/superpowers/plans/2026-05-17-bundle-c-scoring-quality.md` (170 tasks, 4-Opus team).
 
 ## Sources (verify against current code before recommending changes)
 
