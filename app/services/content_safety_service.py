@@ -11,6 +11,7 @@ Spec ref: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md § 5
 """
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,22 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 _BLOCKLIST_PATH = Path(__file__).resolve().parent.parent / "data" / "content_blocklist.json"
+
+# QA-requested seeded sentinel for end-to-end content-safety verification
+# (spec sec 4.11 Q1). Hardcoded — deliberately NOT in content_blocklist.json
+# (that file is committed to prod and should not contain test strings).
+# Gated by an opt-in env var: production absence keeps prod fail-open semantics
+# untouched. When ENABLE_CONTENT_SAFETY_TEST_SEEDS=true (staging / QA only),
+# any L1 query or L3 output text containing this exact substring is treated
+# as blocked, letting QA reproduce a CONTENT_UNAVAILABLE response without
+# writing real offensive content into the audit log.
+_TEST_SENTINEL = "CONTENT_SAFETY_TEST_BLOCK_ME_42"
+_SENTINEL_REASON = "test_seed"
+
+
+def _test_seeds_enabled() -> bool:
+    """Cheap per-call env check — only fires the sentinel branch when set."""
+    return os.environ.get("ENABLE_CONTENT_SAFETY_TEST_SEEDS", "false").lower() == "true"
 
 
 @dataclass(frozen=True)
@@ -58,12 +75,35 @@ class ContentSafetyService:
         """L1 — pre-flight blocklist check on raw user query."""
         if not query or not query.strip():
             return SafetyResult(allowed=True)
+        # QA-only seeded sentinel (spec sec 4.11 Q1). Branch is dead in prod
+        # (env var absent → _test_seeds_enabled returns False, no behavior
+        # change). Match runs before the regex sweep so QA gets a deterministic
+        # blocklist_match value back.
+        if _test_seeds_enabled() and _TEST_SENTINEL in query:
+            return SafetyResult(allowed=False, reason=_SENTINEL_REASON, blocklist_match=_TEST_SENTINEL)
         haystack = query.lower()
         for cat, pattern in self._compiled.items():
             m = pattern.search(haystack)
             if m:
                 return SafetyResult(allowed=False, reason=cat, blocklist_match=m.group(1))
         return SafetyResult(allowed=True)
+
+    def is_text_safe(self, text: str) -> bool:
+        """L2 helper — boolean check for a single text blob (title + retailer,
+        post-scrape product surface, etc). Used by Tier 1.5 ingestion points
+        that don't have a Serper-shaped {title, snippet} item to filter.
+
+        Returns True on empty/whitespace input — empty surface can't carry
+        unsafe content, and an over-eager False here would silently drop
+        legitimate price candidates with thin metadata.
+        """
+        if not text or not text.strip():
+            return True
+        haystack = text.lower()
+        for pattern in self._compiled.values():
+            if pattern.search(haystack):
+                return False
+        return True
 
     def filter_shopping_items(self, items: list[dict]) -> list[dict]:
         """L2 — drop unsafe shopping items before they reach GPT extraction.
@@ -99,6 +139,11 @@ class ContentSafetyService:
         """
         if not text or not text.strip():
             return SafetyResult(allowed=True)
+        # QA-only seeded sentinel (spec sec 4.11 Q1). Same dead-branch
+        # discipline as L1 above — fires only when env var is set, returns
+        # a deterministic SafetyResult so QA can assert against `reason`.
+        if _test_seeds_enabled() and _TEST_SENTINEL in text:
+            return SafetyResult(allowed=False, reason=_SENTINEL_REASON, blocklist_match=_TEST_SENTINEL)
         try:
             # Inline import — keeps module importable without OPENAI_API_KEY at process boot.
             from app.services.openai_service import get_client

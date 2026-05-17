@@ -243,6 +243,15 @@ async def _curl_scraper(
         return None
     page_price.pop("_got_html", None)
     page_price["retailer"] = page_price.get("retailer") or retailer_domain
+    # L2 content safety — fan-out curl scraper entry point (Bundle B,
+    # team-lead expansion of spec sec 5.2). fetch_page_price() already
+    # filters at the HTML-extraction level, but we re-check the candidate
+    # surface here so retailer-domain garbling can't slip through.
+    from app.services.content_safety_service import get_content_safety_service
+    _surface = f"{page_price.get('title', '')} {page_price.get('retailer', '')} {full_name}"
+    if not get_content_safety_service().is_text_safe(_surface):
+        logger.info("[content_safety] L2 dropped fan-out curl candidate for %s", retailer_domain)
+        return None
     return {
         "value": float(page_price["amount"]),
         "source_method": "page_scrape_jsonld",
@@ -277,6 +286,13 @@ async def _firecrawl_scraper(
         return None
     price["source_method"] = "firecrawl"
     price["retailer"] = retailer_domain
+    # L2 content safety — Firecrawl Tier 1.5a entry point (Bundle B,
+    # team-lead expansion of spec sec 5.2).
+    from app.services.content_safety_service import get_content_safety_service
+    _surface = f"{price.get('title', '')} {retailer_domain} {full_name}"
+    if not get_content_safety_service().is_text_safe(_surface):
+        logger.info("[content_safety] L2 dropped Firecrawl candidate for %s", retailer_domain)
+        return None
     return {
         "value": float(price["amount"]),
         "source_method": "firecrawl_brand_domain",
@@ -312,6 +328,13 @@ async def _scrapedo_scraper(
         return None
     price["source_method"] = "scrapedo_rendered"
     price["retailer"] = retailer_domain
+    # L2 content safety — Scrape.do Tier 1.5d entry point (Bundle B,
+    # team-lead expansion of spec sec 5.2).
+    from app.services.content_safety_service import get_content_safety_service
+    _surface = f"{price.get('title', '')} {retailer_domain} {full_name}"
+    if not get_content_safety_service().is_text_safe(_surface):
+        logger.info("[content_safety] L2 dropped Scrape.do candidate for %s", retailer_domain)
+        return None
     return {
         "value": float(price["amount"]),
         "source_method": "scrapedo_rendered",

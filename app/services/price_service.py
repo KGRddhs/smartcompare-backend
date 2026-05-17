@@ -751,6 +751,15 @@ async def fetch_page_price(
     if html:
         price = extract_price_from_html(html, product_name, currency, domain, url)
         if price:
+            # L2 content safety — Tier 1.5 page-scrape entry point (Bundle B,
+            # team-lead expansion of spec sec 5.2). Drop the candidate if the
+            # title/retailer surface trips the blocklist, before it can become
+            # a price source on the response.
+            from app.services.content_safety_service import get_content_safety_service
+            _surface = f"{price.get('title', '')} {price.get('retailer', '') or domain} {product_name}"
+            if not get_content_safety_service().is_text_safe(_surface):
+                logger.info("[content_safety] L2 dropped page-scrape candidate for %s", domain)
+                return None
             return price
         return {"_got_html": True}
 
@@ -805,6 +814,12 @@ async def fetch_iherb_price(
                     review_count = int(review_count_str)
             except (ValueError, TypeError):
                 pass
+            # L2 content safety — iHerb entry point (Bundle B, team-lead
+            # expansion of spec sec 5.2). Per-card filter so unsafe items
+            # never enter the brand-match / best-pick pipeline below.
+            from app.services.content_safety_service import get_content_safety_service
+            if not get_content_safety_service().is_text_safe(f"{item_brand} {title}"):
+                continue
             products.append({
                 "url": href if href.startswith("http") else f"https://{region_code}.iherb.com{href}",
                 "brand": item_brand,
@@ -931,6 +946,13 @@ async def _try_pharmacy_urls(
 
                 price_data = extract_jsonld_price(resp.text, brand, currency)
                 if price_data:
+                    # L2 content safety — pharmacy JSON-LD entry point
+                    # (Bundle B, team-lead expansion of spec sec 5.2).
+                    from app.services.content_safety_service import get_content_safety_service
+                    _surface = f"{price_data.get('title', '')} {brand} {retailer_name}"
+                    if not get_content_safety_service().is_text_safe(_surface):
+                        logger.info("[content_safety] L2 dropped pharmacy candidate for %s", retailer_name)
+                        continue
                     return {
                         "amount": price_data["amount"],
                         "original_currency": currency,
