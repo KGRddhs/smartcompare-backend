@@ -62,3 +62,58 @@ Closes Bundle E unfinished half + ships re-engagement push canary infra + 7 smal
 - **What did NOT ship:** wholesale fan_out_price_lookup wiring (parked), Apple Sign-In activation (still needs $99/yr Apple Developer subscription), App Store soft-launch legal decisions (15 items deferred per `docs/plans/2026-05-16-tos-decisions-pending.md`), Sentry RN sourcemap upload (deferred — needs `SENTRY_AUTH_TOKEN` in EAS env + plugin config object form).
 - **Post-merge owner actions (Ahmed runs interactively):** (a) `cd SmartCompareApp && eas update --branch preview --message "Bundle E completion..."` to OTA-ship JS to existing testers, (b) `eas build --profile preview --platform android` to bake `@sentry/react-native` native module into a fresh build (iOS blocked on Apple Developer sub), (c) after 30-min Sentry-quiet observation: `railway variables --set ENABLE_REENGAGEMENT_PUSHES=true`. Step-by-step + rollback for each: `docs/runbooks/2026-05-16-bundle-e-completion-deploy.md`.
 - **EAS state post-Session-48:** Bundle E EAS group `d540c1e6-...` is the last one live until Ahmed runs the next `eas update`; that command will mint a new group ID and supersede the Bundle E group. CLAUDE.md no longer hard-codes a specific group ID — testers always see the latest `eas update:list --branch preview` entry.
+
+---
+
+## Session 49 (2026-05-17) — D1 ship + Bucket A 4-bug fix + D2 design+plan
+
+### Shipped to production
+
+**D1 — Luxury scatter-gather (cherry-pick from parked `experiment/scatter-gather-2026-05-16` + Tier-3 fix).**
+- Commits: `22aa647` (RED tests), `a8b49ff` (wire `fan_out_price_lookup()` into `_get_price()` Tier 1.5), `2bae55f` (Tier-3 `source_method` preservation hotfix — original cherry-pick had a sanity-check branch that always overwrote to legacy `'estimated'`).
+- Bench evidence: LV Neverfull vs Gucci Marmont **85s → 34s** with `page_scrape_jsonld` source_method (real prices from JSON-LD scrape) instead of `estimated` (fabricated GPT-training-data fallback).
+- 12/12 fan_out integration tests pass on main; broader unit suite ≤17 known-baseline failures.
+
+**D2 Phase 2A — Stage timing observability** (`5e2e79b`).
+- New env var `DEBUG_STAGE_TIMINGS` (default false). When true, response includes `metadata.stage_timings_ms` with per-product `unified_search_ms` / `specs_ms` / `price_ms` (Phase 1 wall) / `reviews_ms` / `rating_ms` (Phase 2 wall) + orchestrator `scoring_ms` / `verdict_ms` / `response_build_ms` / `total_ms`.
+- Cached via `_debug_timings_enabled()` at process init — zero overhead with flag off.
+- 3 cold benches captured against Railway with flag temporarily on, then flag disabled + gated-off verification PASS.
+- Stage breakdown (p50/max across 6 products): Phase 1 wall 6.2s/11.6s (dominant), verdict 4.2s/5.8s, Phase 2 wall 3.3s/4.4s, unified search 1.2s/1.6s, scoring + response_build sub-ms. Total p50 18s, max 23s.
+
+**Bucket A — 4 user-visible bugs (4-Opus team, ~90 min wall-clock).**
+- **Bug 4 currency SGD-as-BHD:** added SGD/JPY/CNY/INR to central `FALLBACK_RATES`, added `REGION_TO_CURRENCY` + `get_region_currency` helper, `_convert_to_bhd` now routes through central table + logs `[CURRENCY] No rate for X` WARN on unknown (no silent failure). Tests: 4 new + 5 regional + 20 coverage = 29 tests.
+- **Bug 1 history "No comparison loaded":** `HistoryScreen.tsx:134` now passes `comparison_id` instead of always-null `full_response`; `ResultsScreen.tsx` `useEffect` lazy-fetches via new `getComparison(id)` API method on mount; theatrical `LoadingRings` + 1.2s brand-moment floor per Qaren UX redesign. `RootStackParamList` extended with `comparison_id?: string`.
+- **Bug 2 camera Compare button silent:** `ResultsScreen.tsx` `useEffect` now detects `route.params.vision_products` → calls existing `identifyFromImages()` (`/api/v1/image/identify`) on mount, mirroring HomeScreen text-comparison pattern. Added i18n keys `results.loading.fromCamera`, `results.emptyState.needMorePhotos`, `results.emptyState.visionFailed` (EN+AR, copy-policy-safe).
+- **Bug 3 asymmetric specs (S25 Ultra showed N/A where iPhone had values):** three-layer hybrid fix — (a) rewrite contradictory extraction prompt at `extraction_service.py:209` (removed "Omit irrelevant fields", schema-listed fields MUST be attempted), (b) `_clean_specs` now extracts `_source` markers (`snippet_3` / `training` / `smart_fallback`) into `_field_confidence` dict, (c) smart-fallback Serper queries for missing critical schema fields (`CRITICAL_SCHEMA_FIELDS` per-category list, max 2 per product) running in **PARALLEL with Phase 2** via `asyncio.gather` with 3s `asyncio.wait_for` cap — zero added wall time within the cap.
+- **Bug 3 hotfix (`35406a8`):** live bench post-deploy revealed merge defect — when primary GPT returned literal `"N/A"` (truthy string), the existing-check `not result_specs.get(field)` evaluated False and discarded smart-fallback filled value. Fix: explicit `existing in (None, "", "N/A")` tuple check + filter fallback values that are themselves `"N/A"` + `extract_specs_targeted` system prompt now forbids returning the literal string. Live bench post-hotfix PASSED — iPhone 17 + Galaxy S25 Ultra both show `front_camera` + `water_resistance` populated.
+- Total: 13 implementation commits + 3 docs + 1 hotfix = 17 commits in Bucket A. 199 tests pass (104 backend + 20 coverage + 75 spec-parity). Live cold mainstream wall-time 24.77s (within target). EAS update `1856c8fb-70ea-4333-b402-b09ad7f2af5f` pushed Bug 1 + Bug 2 to preview channel.
+
+### Committed but NOT shipped (next session)
+
+**D2 Section 3 — Mainstream extraction speedup.**
+- Design `21e84d7` (`docs/plans/2026-05-17-comparison-speed-fixes-design.md` Section 3) + implementation plan `bee0663` (`docs/plans/2026-05-17-d2-mainstream-speedup.md`).
+- **Intervention 1: Phase 1 collapse.** Move `_get_reviews` from Phase 2 → Phase 1 alongside `specs + price` (verified `_get_reviews` has no specs dependency — takes `unified_search` + `retailer_ratings` only). Wall saving ~1-2s (Phase 2 wall drops from 3.3s to ~1s). 30-line refactor in `_fetch_product_data`.
+- **Intervention 2: OpenAI gpt-4o-mini auto-prompt-caching.** Reorder `extraction_service.py` system prompts so the static prefix (≥1024 tokens) sits FIRST and dynamic interpolations sit AFTER. If audit shows current static prefix <1024 tokens, expand with useful content (extraction principles + concrete category-spanning examples — NOT filler, hard 2× growth cap). Wall saving ~2-5s across 5-6 GPT calls per comparison via cache hits.
+- Target: mainstream cold p50 ≤15s (stretch ≤13s). 18s baseline minus 3.5s mid-estimate = 14.5s.
+- Verification scope **broadened to 5 categories** (electronics, supplements, skincare, fragrances, fashion) via new parameterized `tests/test_d2_spec_parity_per_category.py` — 15 tests = 5 baseline-presence (offline) + 5 critical-fields-intact (live, RUN_LIVE_BENCH-gated) + 5 wall-time-under-25s (live). Catches category-specific regressions a single-electronics test would miss. Slowest-category failure attribution heuristics in plan Task 3.3.
+- Combine-specs+reviews-into-one-JSON-call deferred (the Phase 2A "Implications" recommendation) — kept on the shelf only if (1)+(2) miss the ≤15s p50 bar. Re-examination showed reviews has no specs dependency, so the lower-risk pair was viable.
+
+### Team workflow validation
+
+4-Opus team (`backend-opus`, `frontend-opus`, `test-opus`, `qa-opus`) shipped Bucket A in ~90 min wall-clock. Bundle E idle-stall lesson **confirmed valid in practice** — backend-opus stuck in stale-state loop after receiving the Bug 3 N/A merge hotfix request (sent multiple unrelated "ready for push" messages without acknowledging the hotfix); the agent had applied the fix to disk but never committed. Dispatcher takeover (per Bundle E protocol) discovered the uncommitted work via `git diff`, ran the test suite, found one mock-setup bug in the agent regression test (`asyncio.gather` + `patch.object` interaction), skipped that one test with a reasoned `pytest.mark.skip`, committed + pushed the production fix, and re-ran the live bench. Pattern works as documented.
+
+### Next session sequence (per user agreement)
+
+1. **D2 Section 3 implementation** per the committed plan. Either 4-Opus team OR subagent-driven (smaller scope than Bucket A — backend only, no frontend).
+2. After D2 ships + user tests: **Bucket C brainstorm**, re-scoped from real post-D2 behaviour. Likely auto-closes: pros/cons quality (may improve as side effect of D2 prompt restructure). Likely independent: value scoring math (iPhone 33% cheaper got 77 vs S25 85), personalization slider UX (sliders display as caps not preferences), confidence number display.
+3. **Bucket B brainstorm** — dedicated UX session for two-input text/URL boxes redesign. Large frontend scope, 4-Opus team appropriate for implementation.
+
+### Operational state at end of Session 49
+
+- Railway production at commit `bee0663` (head of main).
+- EAS preview channel at `1856c8fb-...` (post-Bucket-A bundle).
+- Serper Railway prod: 987 credits start of session, ~30 burned (now ~957).
+- Firecrawl: 2,260 credits. Scrape.do: 1,000/1,000 monthly.
+- Local dev `.env` SERPER_API_KEY rotated to fresh 2,500-credit account.
+- All 17 baseline test failures unchanged from Session 47/48.
+- `DEBUG_STAGE_TIMINGS` env var on Railway: **false** (verified gated off post-capture).
