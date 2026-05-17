@@ -206,8 +206,10 @@ CRITICAL RULES:
 - Each field must be a SINGLE value, NEVER a list of options (e.g. storage: "128 GB" NOT "128, 256, 512 GB")
 - If the user specified a variant like "512GB", use that config. Otherwise use the base/entry-level config
 - If the product name or variant contains a count/quantity (e.g. "360 Softgels", "120 tablets", "1000mg"), use EXACTLY that number for the "count" field. Do NOT substitute a different count
-- Only include fields that are GENUINELY RELEVANT to this specific product. Omit irrelevant fields rather than writing N/A or null.
-- For well-known products, you KNOW the specs -- do NOT return null for fields that clearly apply
+- For fields explicitly listed in the schema above (e.g. front_camera, water_resistance, processor), you MUST attempt to provide a value. These fields are required for the category and cannot be omitted.
+- Use snippets as your primary source. If snippets don't mention a required schema field, fall back to your training data (you know specs for well-known products like phones, supplements, fragrances).
+- Only return null for a schema field if you genuinely don't know AND snippets are silent on it.
+- You MAY omit fields that are NOT in the schema (e.g. niche specs the schema doesn't list); only schema fields are required.
 - Be precise with numbers and units
 - Include ONLY the fields listed above, plus the _source citation fields described below
 - ONLY functional specs -- NO launch price, MSRP, release date, or marketing names
