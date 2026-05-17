@@ -178,10 +178,23 @@ User chose subagent-driven over 4-Opus team for D2's smaller scope (backend-only
 
 ### Operational state at end of Session 50
 
-- Railway production at commit `4eb1fb7` (head of main).
-- EAS preview channel unchanged (`1856c8fb-...`) — backend-only deploy this session.
-- Serper Railway prod: ~957 credits start of session → ~916 after ~41 benches (5 + 1 re-capture + 5×2 post-deploy + 5×2 live tests + 4 final).
-- Firecrawl: 2,260 → ~2,253 (a few luxury scrape benches).
+- Railway production at commit `d86834f` (head of main).
+- EAS preview channel unchanged (`1856c8fb-...`) — backend-only deploys this session.
+- Serper Railway prod: ~957 credits start of session → ~900 after ~48 benches (5 + 1 re-capture + 5×3 post-deploy + 5×2 live tests + 4 final + 1 fragrances re-bench).
+- Firecrawl: 2,260 → ~2,250 (a few luxury scrape benches).
 - All baseline test failures unchanged. 15/15 D2 tests pass.
 - `DEBUG_STAGE_TIMINGS` env var on Railway: still **false**.
 - `SCRAPING_MODE` env var on Railway: unknown to dispatcher (no `railway` CLI access); D2 didn't touch it.
+
+### Late-session addendum — fragrances Tier 1.5 timing fix (commit `d86834f`)
+
+Per user pivot from "ship D2 as-is" to "take one more fix to close errors," shipped a partial fragrances speedup:
+- **Parallel Tier 1.5 discovery** — the 3 Serper queries (official → authorized → GCC retailers) now run via `asyncio.gather(return_exceptions=True)` instead of sequential awaits. Saves ~2s on every luxury query. Priority ordering preserved by processing gathered results in [official, authorized, GCC] sequence when building `candidate_urls`.
+- **15s race cap** — `fan_out_price_lookup()` now wrapped with `asyncio.wait_for(timeout=15.0)`. When fired (cold-cache Cloudflare-protected sites like ssense.com via Scrape.do at 20+s), code falls through to Tier 2 GPT extract from organic. Sauvage went from `scrapedo_rendered` 60.16 BHD to `estimated` 37.6 BHD — that quality trade-off was user-approved.
+- **Tests**: `tests/test_tier15_timing.py` (2 new tests, both green): parallel-discovery wall<3s assertion (mock 3 search_web at 1.5s each, sequential=4.5s) + race-bounded-at-15s assertion (mock fan_out sleeping 30s, assert <20s with non-scraper source_method).
+
+**Empirical effect on fragrances bench:** baseline 47-53s → post-fix 48-50s. The 15s cap and parallel discovery are working as designed (verified by source_method change + test assertions), but the savings (~2-5s) are absorbed by other slowness in the fragrance pipeline that's outside Tier 1.5's domain — most likely Tom Ford's tomford.com Firecrawl JSON-LD scrape (cold-cache Firecrawl Smart Wait on luxury SPAs is intrinsically 10-15s) plus the expanded D2 fragrance specs extraction (concentration/longevity/sillage/notes). Per-stage breakdown requires `DEBUG_STAGE_TIMINGS=true` on Railway — flag is currently off.
+
+**Quality intact post-fix**: 15/15 live D2 spec-parity tests pass with ±1 field tolerance, all per-category wall-time ceilings met (fragrances ceiling is 60s; bench at 48s is well under).
+
+**Realistic ceiling on fragrances without further work**: ~45-50s cold cache. To break below 25s would require either (a) skipping Tier 1.5 entirely for fragrances and routing direct to Tier 2 GPT (significant quality regression — all fragrances would show `local_bhd`/`estimated` instead of real scraped prices), or (b) Firecrawl reliability improvement (out of our control), or (c) caching tomford.com / dior.com scrapes more aggressively across sessions. **Deferred to future session** — current bench-driven evidence doesn't justify further code changes without per-stage diagnostics.
