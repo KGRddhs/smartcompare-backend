@@ -1274,6 +1274,10 @@ class StructuredComparisonService:
 
         # Apply smart-fallback results before the regular Phase 2 result loop,
         # so the rest of the function sees the fully-populated specs dict.
+        # Live-bench hotfix: filter out fallback values that are themselves
+        # literal "N/A" - GPT sometimes echoes the placeholder back instead
+        # of returning null, which would noop-overwrite and stamp the wrong
+        # _field_confidence marker. Treat "N/A" as no-knowledge from fallback.
         if fallback_added:
             fb_idx = phase2_keys.index("_smart_fallback")
             fb_result = phase2_results[fb_idx]
@@ -1281,7 +1285,10 @@ class StructuredComparisonService:
                 result_specs = result.get("specs") or {}
                 fc = result_specs.setdefault("_field_confidence", {})
                 for field, value in fb_result.items():
-                    if value and result_specs.get(field) in (None, "", "N/A"):
+                    if not value or value == "N/A":
+                        continue
+                    existing = result_specs.get(field)
+                    if existing in (None, "", "N/A"):
                         result_specs[field] = value
                         fc[field] = "smart_fallback"
                 result["specs"] = result_specs

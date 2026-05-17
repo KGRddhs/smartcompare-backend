@@ -242,6 +242,7 @@ Return ONLY valid JSON with these exact keys:
 Rules:
 - For each field, give a single short value (e.g. '12 MP', 'IP68', 'Snapdragon 8 Gen 3')
 - If you cannot find or know the value, return null for that field
+- NEVER return the literal string 'N/A' - return null instead
 - Use your training data as a fallback when snippets are silent"""
 
     user = f"SNIPPETS:\n{context}\n\nReturn JSON for: {fields}"
@@ -260,8 +261,12 @@ Rules:
         )
         content = response.choices[0].message.content
         result = json.loads(content) if content else {}
-        # Filter to only requested fields, drop nulls
-        return {k: v for k, v in result.items() if k in fields and v is not None}
+        # Filter to only requested fields, drop nulls + literal "N/A"
+        # (defensive: prompt forbids "N/A" but GPT can still echo it).
+        return {
+            k: v for k, v in result.items()
+            if k in fields and v is not None and v != "N/A"
+        }
     except Exception as e:
         logger.warning(f"[EXTRACT_TARGETED] Failed: {e}")
         return {}
