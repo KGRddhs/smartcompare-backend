@@ -74,9 +74,11 @@ async def test_smart_fallback_runs_in_parallel_with_phase_2():
         )
         elapsed = asyncio.get_event_loop().time() - start
 
-        # Parallel: max(phase2=2.0, fallback=1.5) = 2.0s
-        # Sequential: 2.0 + 1.5 = 3.5s
-        assert elapsed < 2.8, f"Smart-fallback ran sequentially with Phase 2 (took {elapsed:.2f}s, expected <2.8s for parallel)"
+        # D2 Intervention 1: reviews moved to Phase 1. Phase 2 = max(rating=0.5, fallback=1.5).
+        # Parallel: Phase 1 (reviews=2.0) + Phase 2 max(rating=0.5, fallback=1.5) = 2.0 + 1.5 = 3.5s
+        # Sequential (regression): Phase 1 (2.0) + Phase 2 rating (0.5) + fallback after (1.5) = 4.0s
+        # Threshold 3.8s catches the regression while tolerating parallel jitter.
+        assert elapsed < 3.8, f"Smart-fallback ran sequentially with Phase 2 (took {elapsed:.2f}s, expected <3.8s for parallel)"
 
 
 @pytest.mark.asyncio

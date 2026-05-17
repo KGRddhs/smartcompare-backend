@@ -1164,7 +1164,11 @@ class StructuredComparisonService:
         if stage_timings is not None and "unified_search_ms" not in stage_timings:
             stage_timings["unified_search_ms"] = 0.0  # cache hit or skipped — no Serper call
 
-        # === Phase 1: specs + price (parallel) ===
+        # === Phase 1: specs + price + reviews (parallel) ===
+        # D2 Intervention 1: reviews moved from Phase 2 to Phase 1. _get_reviews
+        # has no dependency on specs — it just needs unified_search +
+        # retailer_ratings (which can be None; reviews skips snippet
+        # enrichment in that case).
         phase1_tasks = []
         phase1_keys = []
 
@@ -1185,17 +1189,30 @@ class StructuredComparisonService:
         phase1_tasks.append(self._get_price(brand, name, variant, region, search_query, nocache, category))
         phase1_keys.append("price")
 
+        if include_reviews:
+            # D2 Intervention 1: reviews moved from Phase 2 to Phase 1.
+            # retailer_ratings is None here because shopping_items_cache is
+            # populated DURING _get_price (Phase 1) so we can't pre-collect.
+            # _get_reviews accepts None and skips retailer_ratings enrichment.
+            phase1_tasks.append(self._get_reviews(
+                brand, name, variant, search_query, nocache,
+                category=category, retailer_ratings=None,
+                search_results=unified_search,
+            ))
+            phase1_keys.append("reviews")
+
         t1 = time.perf_counter() if stage_timings is not None else None
         phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
         if stage_timings is not None:
             phase1_elapsed_ms = round((time.perf_counter() - t1) * 1000, 1)
-            # Phase 1 runs specs+price in parallel — they share the same wall time;
-            # we can't measure them independently without breaking the gather.
-            if "specs" in phase1_keys:
-                stage_timings["specs_ms"] = phase1_elapsed_ms
-            else:
-                stage_timings["specs_ms"] = 0.0
-            stage_timings["price_ms"] = phase1_elapsed_ms
+            # D2 Intervention 1: Phase 1 now runs specs+price+reviews in parallel
+            # via asyncio.gather. They share the same wall time; we can't measure
+            # them independently without breaking the gather.
+            for k in ("specs", "price", "reviews"):
+                if k in phase1_keys:
+                    stage_timings[f"{k}_ms"] = phase1_elapsed_ms
+                else:
+                    stage_timings[f"{k}_ms"] = 0.0
 
         for i, key in enumerate(phase1_keys):
             if isinstance(phase1_results[i], Exception):
@@ -1227,20 +1244,17 @@ class StructuredComparisonService:
         if result.get("specs"):
             result["specs"] = self._clean_specs(result["specs"])
 
-        # === Phase 2: reviews + verified rating (parallel) + smart-fallback for missing critical specs ===
+        # === Phase 2: verified rating + smart-fallback for missing critical specs ===
+        # D2 Intervention 1: reviews moved to Phase 1. retailer_ratings is still
+        # collected here (after Phase 1 populated shopping_items_cache via
+        # _get_price) for downstream verify_review_sentiment + fact-check use.
         retailer_ratings = collect_retailer_ratings(full_name, self._shopping_items_cache)
 
         phase2_tasks = []
         phase2_keys = []
 
-        if include_reviews:
-            phase2_tasks.append(self._get_reviews(
-                brand, name, variant, search_query, nocache,
-                category=category, retailer_ratings=retailer_ratings,
-                search_results=unified_search
-            ))
-            phase2_keys.append("reviews")
-
+        # D2 Intervention 1: reviews moved to Phase 1. Phase 2 now only runs
+        # verified rating + smart-fallback (Bucket A bug 3c) in parallel.
         phase2_tasks.append(self._get_verified_rating(full_name))
         phase2_keys.append("_rating_data")
 
@@ -1266,11 +1280,11 @@ class StructuredComparisonService:
         phase2_results = await asyncio.gather(*phase2_tasks, return_exceptions=True)
         if stage_timings is not None:
             phase2_elapsed_ms = round((time.perf_counter() - t2) * 1000, 1)
-            if "reviews" in phase2_keys:
-                stage_timings["reviews_ms"] = phase2_elapsed_ms
-            else:
-                stage_timings["reviews_ms"] = 0.0
+            # D2 Intervention 1: Phase 2 no longer runs reviews. Just rating
+            # + optionally smart_fallback (Bucket A bug 3c).
             stage_timings["rating_ms"] = phase2_elapsed_ms
+            if "_smart_fallback" in phase2_keys:
+                stage_timings["smart_fallback_ms"] = phase2_elapsed_ms
 
         # Apply smart-fallback results before the regular Phase 2 result loop,
         # so the rest of the function sees the fully-populated specs dict.
@@ -1296,16 +1310,12 @@ class StructuredComparisonService:
         rating_data = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
         for i, key in enumerate(phase2_keys):
             if key == "_smart_fallback":
-                continue  # Handled above
+                continue  # Handled in the smart-fallback merge block above
             if isinstance(phase2_results[i], Exception):
                 logger.error(f"Error fetching {key}: {phase2_results[i]}")
-                if key != "_rating_data":
-                    result[key] = None
-            else:
-                if key == "_rating_data":
-                    rating_data = phase2_results[i]
-                else:
-                    result[key] = phase2_results[i]
+                continue
+            if key == "_rating_data":
+                rating_data = phase2_results[i]
 
         result["rating"] = rating_data.get("rating")
         result["review_count"] = rating_data.get("review_count")
