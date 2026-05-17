@@ -82,7 +82,8 @@ class TestCurrencyConversion:
         price = {"amount": 100.0, "original_currency": "USD", "currency": "USD"}
         service._convert_gpt_price_currency(price, "BHD")
         assert price["currency"] == "BHD"
-        assert price["amount"] == pytest.approx(37.7, abs=0.1)
+        # 1 USD = 0.376 BHD (currency-pegged); see FALLBACK_RATES.
+        assert price["amount"] == pytest.approx(37.6, abs=0.1)
 
     def test_convert_gpt_price_same_currency_noop(self, service):
         """GPT returns BHD price, target is BHD → no conversion."""

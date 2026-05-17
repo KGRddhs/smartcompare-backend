@@ -31,6 +31,25 @@ FALLBACK_RATES: Dict[str, float] = {
     "BHD": 1.0,
 }
 
+# Maps backend region codes to their native currency.
+# Used by price pipeline to display prices in the user's region currency.
+REGION_TO_CURRENCY: Dict[str, str] = {
+    "bahrain": "BHD",
+    "saudi_arabia": "SAR",
+    "uae": "AED",
+    "kuwait": "KWD",
+    "qatar": "QAR",
+    "oman": "OMR",
+}
+
+
+def get_region_currency(region: Optional[str]) -> str:
+    """Return native currency for a GCC region. Defaults to BHD."""
+    if not region:
+        return "BHD"
+    return REGION_TO_CURRENCY.get(region.lower(), "BHD")
+
+
 _CACHE_TTL = 24 * 3600  # 24 hours
 
 

@@ -27,9 +27,9 @@ class TestConvertToBhd:
         assert _convert_to_bhd(100, None) == 100
 
     def test_usd_to_bhd(self):
-        """1 USD = 0.377 BHD."""
+        """1 USD = 0.376 BHD (currency-pegged); see FALLBACK_RATES."""
         result = _convert_to_bhd(100, "USD")
-        assert result == pytest.approx(37.7, abs=0.1)
+        assert result == pytest.approx(37.6, abs=0.1)
 
     def test_bhd_to_bhd_is_identity(self):
         """BHD->BHD should be 1:1."""

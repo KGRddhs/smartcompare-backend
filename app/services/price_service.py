@@ -201,14 +201,23 @@ TIER_15_BUDGET_TIMEOUT = 20
 # ============================================
 
 def _convert_to_bhd(amount: float, currency: str) -> float:
-    """Convert amount to BHD (approximate rates)."""
+    """Convert amount to BHD using the central FALLBACK_RATES table.
+
+    Logs a warning if the currency is not in the rate table — this prevents
+    the silent-failure mode where unknown currencies were multiplied by 1.0
+    and labelled BHD (e.g. SGD values displayed as BHD on luxury queries).
+    """
     if not currency:
         return amount
-    rates = {
-        "BHD": 1.0, "SAR": 0.1, "AED": 0.1, "KWD": 1.22,
-        "QAR": 0.1, "OMR": 0.98, "USD": 0.377, "EUR": 0.41, "GBP": 0.47,
-    }
-    return amount * rates.get(currency.upper(), 1.0)
+    from app.services.exchange_rate_service import FALLBACK_RATES
+    currency_upper = currency.upper()
+    if currency_upper not in FALLBACK_RATES:
+        logger.warning(
+            f"[CURRENCY] No rate for {currency_upper}->BHD, returning amount unchanged. "
+            f"Add {currency_upper} to FALLBACK_RATES to enable conversion."
+        )
+        return amount
+    return amount * FALLBACK_RATES[currency_upper]
 
 
 def _convert_gpt_price_currency(price: Optional[Dict], target_currency: str) -> None:
