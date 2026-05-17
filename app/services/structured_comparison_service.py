@@ -471,10 +471,28 @@ class StructuredComparisonService:
 
     @staticmethod
     def _clean_specs(specs: Dict[str, Any]) -> Dict[str, Any]:
-        """Clean specs for display."""
+        """Clean specs for display; lift _source markers into _field_confidence."""
         if not specs or not isinstance(specs, dict):
             return {}
         meta_keys = {"brand", "model", "variant", "category", "_cached", "error"}
+
+        # Lift _source siblings into a confidence map: snippet_N -> 'snippet',
+        # 'training' -> 'training_data'. Used by UI to subtly indicate which
+        # specs came from live search vs general product knowledge.
+        field_confidence: Dict[str, str] = {}
+        for key, value in specs.items():
+            if not key.endswith("_source"):
+                continue
+            base_key = key[: -len("_source")]
+            if not isinstance(value, str):
+                continue
+            if value.startswith("snippet"):
+                field_confidence[base_key] = "snippet"
+            elif value == "training":
+                field_confidence[base_key] = "training_data"
+            else:
+                field_confidence[base_key] = value
+
         cleaned = {}
         for key, value in specs.items():
             if key in meta_keys:
@@ -491,6 +509,9 @@ class StructuredComparisonService:
                 cleaned[key] = json.dumps(value)
             else:
                 cleaned[key] = str(value) if not isinstance(value, str) else value
+
+        if field_confidence:
+            cleaned["_field_confidence"] = field_confidence
         return cleaned
 
     def _has_retailer_url(self, source: str) -> bool:

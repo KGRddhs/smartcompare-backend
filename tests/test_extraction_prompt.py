@@ -61,3 +61,36 @@ def test_prompt_field_source_marker_still_required():
     )
     system = p["system"]
     assert "_source" in system, "Prompt missing _source marker requirement"
+
+
+def test_clean_specs_extracts_field_confidence_from_source_markers():
+    """When GPT returns each spec key + a _source marker, _clean_specs
+    must extract those markers into a _field_confidence dict and remove
+    the _source siblings from the final spec output."""
+    from app.services.structured_comparison_service import StructuredComparisonService
+
+    raw_specs = {
+        "ram": "12 GB",
+        "ram_source": "snippet_3",
+        "front_camera": "12 MP f/2.2",
+        "front_camera_source": "training",
+        "water_resistance": "IP68",
+        "water_resistance_source": "snippet_5",
+    }
+    cleaned = StructuredComparisonService._clean_specs(raw_specs)
+
+    # _field_confidence stamped from _source markers
+    confidence = cleaned.get("_field_confidence", {})
+    assert confidence.get("ram") == "snippet", f"ram confidence wrong: {confidence}"
+    assert confidence.get("front_camera") == "training_data", f"front_camera confidence wrong: {confidence}"
+    assert confidence.get("water_resistance") == "snippet", f"water_resistance confidence wrong: {confidence}"
+
+    # _source sibling keys stripped from output
+    assert "ram_source" not in cleaned
+    assert "front_camera_source" not in cleaned
+    assert "water_resistance_source" not in cleaned
+
+    # Actual values preserved
+    assert cleaned.get("ram") == "12 GB"
+    assert cleaned.get("front_camera") == "12 MP f/2.2"
+    assert cleaned.get("water_resistance") == "IP68"
