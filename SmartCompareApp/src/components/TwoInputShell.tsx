@@ -1,8 +1,8 @@
 /**
- * Shared two-box shell used by Text and URL compare modes.
+ * TwoInputShell — shared two-box shell for Text and URL compare modes.
  *
  * Spec: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md
- *   § 3 (anatomy) · § 4 (interactions) · § 7 (RTL/i18n)
+ *   § 3 (anatomy) · § 4 (interactions) · § 7 (RTL/i18n) · § 8 (analytics)
  *
  * Renders numeral circles ① / ②, a hairline that connects them, an emerald
  * "vs" pill on its midpoint, both text/url boxes, the optional inline
@@ -13,6 +13,148 @@
  *
  * Build Principle #4: nothing scary — no shake, no red borders, no error
  * copy. Invalid state stays neutral; the disabled CTA does the work.
+ *
+ * ─── Contract for tests (Reviewer 1 notes for Test agent) ──────────────
+ *
+ * Props (TwoInputShellProps):
+ *   mode             — 'text' | 'url'. Drives placeholder set, validation
+ *                      predicate (validateText vs validateUrl), keyboard
+ *                      type, Box B returnKeyType ('search' for text, 'go'
+ *                      for url), and which slot in `_twoInputCache` is
+ *                      rendered. Flipping mode preserves the other mode's
+ *                      pair via the module-scoped cache (spec § 3.3).
+ *   onSubmit(a, b)   — required. Fires when CTA tapped AND both boxes are
+ *                      blur-valid AND !disabled. Receives trimmed strings.
+ *                      Order matches Box A then Box B (RTL does NOT swap
+ *                      argument order — only visual edges flip).
+ *   onPasteSplit(box)— optional. Fires AFTER auto-split (§ 4.1.1)
+ *                      successfully populates both boxes. `box` is the
+ *                      source box ('a' or 'b') the user pasted into.
+ *                      Caller fires `compare_entry_paste_split` analytics.
+ *   onModeAutoswitch — optional. Fires AFTER URL paste in TEXT mode
+ *      (from, to)      triggers mode-switch (§ 4.1.2). `from` is always
+ *                      'text', `to` is always 'url'. Caller is
+ *                      responsible for advancing the active mode on
+ *                      HomeScreen + firing compare_entry_mode_autoswitch
+ *                      analytics. The destination URL is already seeded
+ *                      into _twoInputCache.url.a before this fires.
+ *   onReady(deltaMs) — optional. Fires EXACTLY ONCE per ready-transition
+ *                      (both circles flip to emerald). `deltaMs` measured
+ *                      from `mountAtRef` (re-set on every mode flip).
+ *                      Re-renders with bothValid===true do NOT re-fire.
+ *                      Reverse direction (valid → invalid) does NOT fire.
+ *                      Caller fires compare_entry_ready analytics.
+ *   initialA / initialB — optional. Pre-seed boxes (used by the
+ *                      auto-mode-switch handoff). When provided, win over
+ *                      the module cache for that mode's seed. Read once
+ *                      at mount of the given mode, not on every render.
+ *   disabled         — optional. Locks all inputs + suppresses onSubmit
+ *                      AND dims CTA opacity to 0.5 via animated style.
+ *                      Boxes set editable={!disabled}.
+ *   testID           — optional. Default 'two-input-shell'. Children
+ *                      derive testIDs as `${testID}-a/-b`, `${testID}-vs-pill`,
+ *                      `${testID}-cta`, `${testID}-caption-paste-split`,
+ *                      `${testID}-caption-mode-switch`, `${testID}-a-circle`,
+ *                      `${testID}-b-circle`, `${testID}-a-input`, etc.
+ *
+ * Validation timing (spec § 4.2):
+ *   - Predicate runs on onBlur ONLY. Editing flips validA/validB back to
+ *     false on the next keystroke (so a previously-valid box that is
+ *     edited re-validates on next blur).
+ *   - validateText: trimmed.length ∈ [2, 80] AND no control chars
+ *     (U+0000..U+001F, U+007F).
+ *   - validateUrl:  trimmed.length ∈ [1, 2048] AND new URL(trimmed) parses
+ *     AND protocol ∈ {http:, https:}. Returns false on parse failure
+ *     (no thrown exception escapes).
+ *
+ * Paste-detection (spec § 4.1) — strict priority order in onBoxChange:
+ *   1. URL-paste-in-Text-mode → mode-switch (§ 4.1.2) — checked FIRST.
+ *      Conditions: mode==='text' AND length-jump>=10 AND
+ *      looksLikeUrl(trimmed) AND _twoInputCache.url is NOT occupied
+ *      (both url.a + url.b length 0). On match: seed url.a, restore origin
+ *      box to its pre-paste value via persistA/persistB, showCaption, fire
+ *      onModeAutoswitch.
+ *   2. Comparison-shape paste → auto-split (§ 4.1.1).
+ *      Conditions: length-jump>=10 AND looksLikeTwoProducts(next) AND
+ *      sibling box trim-length 0. On match: setBoxA(left), setBoxB(right),
+ *      showCaption('paste_split'), fire onPasteSplit(box), focus Box B.
+ *   3. Otherwise → raw paste / typing.
+ *
+ *   Edge cases protected:
+ *   - Sibling has content → fall back to raw paste (don't clobber).
+ *   - URL paste but URL mode already occupied → fall through to step 2 or
+ *     raw paste (don't overwrite link state).
+ *   - Length jump < 10 → never treated as paste (typing heuristic).
+ *
+ * Celebration (spec § 4.3) — fires when bothValid flips false→true:
+ *   1. circleAScale + circleBScale spring 1.0→1.12→1.0 via
+ *      withSequence(withSpring, withSpring) using motion.springConfig.chip
+ *      (shared with ModeChip per Q1 default — cross-mode visual
+ *      consistency).
+ *   2. ctaOpacity withTiming 0.5→1.0 over 200ms; ctaGlow withTiming
+ *      0→12 over 240ms (drives shadowRadius + shadowOpacity).
+ *   3. fireSuccessHaptic() → Haptics.notificationAsync(
+ *      Haptics.NotificationFeedbackType.Success). Wrapped in the SAME
+ *      try/catch + maybePromise.catch pattern as ModeChip — test mocks
+ *      that return undefined must not crash.
+ *   4. onReady(Date.now() - mountAtRef.current) fired.
+ *
+ *   Reverse direction (true→false): only ctaOpacity → 0.5 + ctaGlow → 0
+ *   over 300ms. NO haptic, NO un-celebrate animation on circles (the
+ *   per-box emerald fill handles that via the circleValid style swap).
+ *
+ *   Negative assertions Test agent should grep in THIS file:
+ *   - `shake|wobble|jitter|withSequence.*-` → MUST be zero hits.
+ *   - `useNativeDriver:\s*false` → MUST be zero hits.
+ *   - The comment on line ~14 mentioning "no shake" is documentary only;
+ *     scope grep to JSX/animation code or use word-boundary patterns to
+ *     exclude doc comments if false-positives surface.
+ *
+ * RTL (spec § 7.1):
+ *   - I18nManager.isRTL toggles styles.hairlineLTR/RTL and
+ *     styles.vsPillWrapLTR/RTL → numeral edges + hairline edge swap.
+ *   - Row flexDirection becomes 'row-reverse' when isRTL → numeral circle
+ *     sits on the right of the box in AR.
+ *   - Box textInput uses textAlign: 'auto' (RN auto-detects script).
+ *   - AR locale (i18n.language startsWith 'ar') triggers
+ *     arabicLineHeightMultiplier on input + caption (1.7/1.5).
+ *   - "vs" pill text textTransform: 'none' in AR (the eyebrow typography
+ *     defaults to uppercase which would mangle "مقابل").
+ *
+ * Focus + keyboard flow (spec § 4.4):
+ *   - First mount of each mode (tracked via firstMountedModesRef Set)
+ *     auto-focuses Box A after 250ms (FOCUS_DELAY_MS) so the
+ *     mode-chip spring + box hairline animation settle first.
+ *   - Box A returnKeyType="next" → focuses Box B.
+ *   - Box B returnKeyType "search" (text) / "go" (url) → submit if both
+ *     valid, else Keyboard.dismiss() (silent — no error UX per Q3).
+ *   - Tap outside boxes (Pressable wrapper) → Keyboard.dismiss().
+ *   - ⊗ clear button visible only when focused && value.length>0; tap
+ *     empties the box but does not change focus.
+ *
+ * Module-scoped cache (_twoInputCache):
+ *   - Survives component remount when caller toggles `mode` prop.
+ *   - text + url slots are independent.
+ *   - Reset between tests via __resetTwoInputCacheForTests() (named
+ *     export). Call this in jest beforeEach() to avoid cross-test
+ *     state bleed.
+ *
+ * Theme tokens consumed (so Test agent doesn't need to read theme/index.ts):
+ *   - colors.accent / accentDark / accentLight / border.light / border.medium
+ *   - colors.cta.primary / cta.onPrimary / bg.primary / text.primary
+ *   - radii.card (boxes) / radii.button (CTA) / radii.chip (vs pill)
+ *   - typography.eyebrow (vs pill) / typography.body (input) /
+ *     typography.bodyEmphasis (CTA label) / typography.caption (captions)
+ *   - motion.springConfig.chip (celebration)
+ *   - spacing.xs/sm/md/base/lg/xl/2xl
+ *
+ * What this component does NOT own (and tests should NOT assert):
+ *   - Mode-chip state on HomeScreen (caller owns inputMode).
+ *   - Analytics events (caller fires; component fires callbacks only).
+ *   - canCompare branching → handled by HomeScreen rendering
+ *     PaywallBanner in this component's slot when false.
+ *   - Min-display-floor 1.2s timing on Home→Results — HomeScreen owns it
+ *     via loadingStartedAtRef.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
