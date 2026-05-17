@@ -165,3 +165,43 @@ After D ships:
 - Original scatter-gather design: `docs/plans/2026-05-13-results-quality-overhaul-design.md` § Decision 8
 - Session 48 entry: `docs/SESSION_BUNDLES.md` ("next session: bench Railway cold-cache p95, if >15s ship the scatter-gather rewrite")
 - Memory follow-up: `MEMORY.md` → Pending follow-ups → "Scatter-gather scoping"
+
+---
+
+## Phase 2A Diagnostic Results (captured 2026-05-17, this session)
+
+Cold-cache p50/max stage timings from 3 sequential mainstream benches against Railway production with `DEBUG_STAGE_TIMINGS=true` temporarily enabled. Flag was disabled and gated-off verification PASSED immediately after data capture.
+
+### Bench results
+
+| Query | Total ms | Scoring | Verdict | Response build |
+|---|---|---|---|---|
+| iPhone 17 vs Galaxy S25 Ultra (electronics) | 18119 | 0.2 | 4164 | 0.1 |
+| Centrum Adults vs One A Day Men (supplements) | 22783 | 0.2 | 5811 | 0.1 |
+| Garnier Micellar vs Bioderma Sensibio (skincare) | 16785 | 0.1 | 4071 | 0.1 |
+
+### Per-product aggregate (n=6 products)
+
+| Stage | p50 ms | max ms |
+|---|---|---|
+| unified_search_ms | 1217 | 1579 |
+| specs_ms (= Phase 1 wall) | 6238 | 11559 |
+| price_ms (= Phase 1 wall) | 6238 | 11559 |
+| reviews_ms (= Phase 2 wall) | 3305 | 4412 |
+| rating_ms (= Phase 2 wall) | 3305 | 4412 |
+
+Note: `specs_ms` and `price_ms` are equal per product because they are the Phase 1 `asyncio.gather()` wall time (whichever finishes second sets the wall). Same for `reviews_ms`/`rating_ms` in Phase 2. The true bottleneck inside each phase is the slower of the two parallel calls — for Phase 1, that's the specs GPT extraction with full system prompt + drug-context injection (supplements bench hit 11.6s, ~85% of its 22.8s total).
+
+### Bottleneck identification
+
+The dominant cold-cache stage is **Phase 1 (specs + price parallel wall)** at p50 6.2s, max 11.6s across 6 product samples. Phase 1 alone accounts for ~6-12s of the 17-23s total; verdict generation is a distant second at p50 4.2s, max 5.8s. Unified search (~1.2s) is small. Scoring and response build are sub-millisecond — already optimal.
+
+The biggest D2 candidate fix mapping to this bottleneck is **#2: Combine specs + reviews into one structured `response_format=json_schema` call per product**. This would collapse the current 2-phase pipeline (Phase 1 ~6-12s + Phase 2 ~3-4s = ~9-16s of GPT wall time) into a single ~6-10s structured call, saving ~3-6s per product. Combined with **#1 OpenAI prompt caching** on the long static system prompt (free, zero quality risk, ~2-3s additional saving on warm cache hits), the realistic post-D2 total lands at ~10-15s — meeting the stretch goal of ≤15s average.
+
+### Implications for Section 3 design
+
+**Favored:** combination of D2 candidates **#1 (prompt caching) + #2 (combine specs + reviews)**. Prompt caching is the no-brainer first ship (zero quality risk, mechanical change in `extraction_service.py`). The combine-specs-and-reviews work is bigger scope (single JSON-schema call, requires 100% spec parity test from the plan's Phase 2C gate) but maps directly to the dominant bottleneck.
+
+**Ruled out:** Candidate **#4 (drop drug-context for non-supplement queries)** — the supplements bench was the slowest at 22.8s precisely *because* drug-context injection makes the specs prompt heavier; dropping it for electronics/skincare buys very little since those phones/skincare benches were already 17-18s without the drug context. The savings (estimated <500ms) don't justify a separate code path.
+
+**Defer:** Candidate **#3 (stream verdict last for perceived latency)** — verdict at 4-6s is significant but secondary to Phase 1. After #1 + #2 ship, if total wall stays >15s, stream-verdict-last becomes the next lever; until then it's UX polish on a pipeline that's already faster than the user sees today.
