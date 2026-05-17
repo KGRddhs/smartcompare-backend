@@ -43,6 +43,21 @@ from app.services.api_budget_service import (
 )
 from app.services import firecrawl_service, scrapedo_service
 
+# Phase 2A.1 — env-gated per-stage timing instrumentation.
+# Read once per process (cache_var lookup in hot path is O(1) attribute access).
+# Process restart picks up env changes; tests can reset via `scs._DEBUG_STAGE_TIMINGS = None`.
+_DEBUG_STAGE_TIMINGS = None
+
+
+def _debug_timings_enabled() -> bool:
+    """Cached env var lookup. Read once per process to avoid os.environ
+    hits in the hot path. Process restart picks up env changes."""
+    global _DEBUG_STAGE_TIMINGS
+    if _DEBUG_STAGE_TIMINGS is None:
+        _DEBUG_STAGE_TIMINGS = os.environ.get("DEBUG_STAGE_TIMINGS", "false").lower() == "true"
+    return _DEBUG_STAGE_TIMINGS
+
+
 # Import from new modules
 from app.services.price_service import (
     _convert_to_bhd,
@@ -576,6 +591,9 @@ class StructuredComparisonService:
         self.serper_calls = 0
         self._shopping_items_cache = {}
 
+        # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
+        orchestrator_timings = {} if _debug_timings_enabled() else None
+
         try:
             # Step 1: Parse the query (or use vision products directly)
             if vision_products and len(vision_products) >= 2:
@@ -631,9 +649,12 @@ class StructuredComparisonService:
 
             # Step 3: Compute deterministic scores
             scoring_service = get_scoring_service()
+            t_score = time.perf_counter() if orchestrator_timings is not None else None
             scoring_result = scoring_service.compute_scores(
                 product_data, preferences=user_preferences, behavior_profile=behavior_profile,
             )
+            if orchestrator_timings is not None:
+                orchestrator_timings["scoring_ms"] = round((time.perf_counter() - t_score) * 1000, 1)
             product_names = [
                 f"{p.get('brand', '')} {p.get('name', '')}".strip()
                 for p in product_data
@@ -642,6 +663,7 @@ class StructuredComparisonService:
 
             # Step 4: Generate comparison (passes demographics_profile so the cohort
             # priors block in extraction_service can render when conditions are met).
+            t_verdict = time.perf_counter() if orchestrator_timings is not None else None
             comparison, usage = await generate_comparison(
                 product_data[0], product_data[1], region,
                 parsed.get("comparison_type", "value") if not vision_products else "value",
@@ -649,6 +671,8 @@ class StructuredComparisonService:
                 scores_summary=scores_summary, category=detected_category,
                 demographics_profile=demographics_profile,
             )
+            if orchestrator_timings is not None:
+                orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
 
             # Trust validation
@@ -683,6 +707,7 @@ class StructuredComparisonService:
 
             elapsed = (datetime.now() - start_time).total_seconds()
 
+            t_build = time.perf_counter() if orchestrator_timings is not None else None
             result = build_comparison_response(
                 product_data=product_data,
                 comparison=comparison,
@@ -704,6 +729,18 @@ class StructuredComparisonService:
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
             )
+            if orchestrator_timings is not None:
+                orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
+                orchestrator_timings["total_ms"] = round(
+                    (datetime.now() - start_time).total_seconds() * 1000, 1
+                )
+                per_product = []
+                for p in product_data:
+                    t = p.pop("_stage_timings_ms", None)
+                    if t:
+                        per_product.append(t)
+                orchestrator_timings["per_product"] = per_product
+                result.setdefault("metadata", {})["stage_timings_ms"] = orchestrator_timings
 
             # Record whether the cohort priors block was active for this verdict.
             # Read by text_routes to write a `cohort_injected` user_events row
@@ -743,6 +780,9 @@ class StructuredComparisonService:
         self.gpt_calls = 0
         self.serper_calls = 0
         self._shopping_items_cache = {}
+
+        # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
+        orchestrator_timings = {} if _debug_timings_enabled() else None
 
         try:
             # Step 1: Parse the query
@@ -876,9 +916,12 @@ class StructuredComparisonService:
                 )
 
             # Step 3: Compute scores
+            t_score = time.perf_counter() if orchestrator_timings is not None else None
             scoring_result = scoring_service.compute_scores(
                 product_data, preferences=user_preferences, behavior_profile=behavior_profile,
             )
+            if orchestrator_timings is not None:
+                orchestrator_timings["scoring_ms"] = round((time.perf_counter() - t_score) * 1000, 1)
             product_names = [
                 f"{p.get('brand', '')} {p.get('name', '')}".strip()
                 for p in product_data
@@ -900,6 +943,7 @@ class StructuredComparisonService:
             # Step 4: Generate verdict (passes demographics_profile so the cohort
             # priors block in extraction_service can render when conditions are met).
             yield ("status", {"message": "Generating verdict...", "progress": 80})
+            t_verdict = time.perf_counter() if orchestrator_timings is not None else None
             comparison, usage = await generate_comparison(
                 product_data[0], product_data[1], region,
                 parsed.get("comparison_type", "value") if not vision_products else "value",
@@ -907,6 +951,8 @@ class StructuredComparisonService:
                 scores_summary=scores_summary, category=detected_category,
                 demographics_profile=demographics_profile,
             )
+            if orchestrator_timings is not None:
+                orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
 
             from app.services.trust_validation_service import validate_verdict
@@ -956,6 +1002,7 @@ class StructuredComparisonService:
             # Step 5: Build complete response
             elapsed = (datetime.now() - start_time).total_seconds()
 
+            t_build = time.perf_counter() if orchestrator_timings is not None else None
             complete_response = build_comparison_response(
                 product_data=product_data,
                 comparison=comparison,
@@ -977,6 +1024,18 @@ class StructuredComparisonService:
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
             )
+            if orchestrator_timings is not None:
+                orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
+                orchestrator_timings["total_ms"] = round(
+                    (datetime.now() - start_time).total_seconds() * 1000, 1
+                )
+                per_product = []
+                for p in product_data:
+                    t = p.pop("_stage_timings_ms", None)
+                    if t:
+                        per_product.append(t)
+                orchestrator_timings["per_product"] = per_product
+                complete_response.setdefault("metadata", {})["stage_timings_ms"] = orchestrator_timings
 
             # Mark cohort_injected on the complete response so route handler can
             # log a `cohort_injected` user_events row (powers vw_cohort_feedback_lift).
@@ -1062,6 +1121,9 @@ class StructuredComparisonService:
             "variant": variant, "category": category, "query": search_query,
         }
 
+        # Phase 2A.1 — per-product stage timings (only allocated when flag is on)
+        stage_timings = {} if _debug_timings_enabled() else None
+
         # === Unified web search ===
         unified_search = None
         if include_specs or include_reviews:
@@ -1070,10 +1132,16 @@ class StructuredComparisonService:
             specs_hit = get_cached(specs_key) if not nocache else None
             reviews_hit = get_cached(reviews_key) if not nocache else None
             if (include_specs and not specs_hit) or (include_reviews and not reviews_hit):
+                t0 = time.perf_counter() if stage_timings is not None else None
                 unified_search = await search_web(
                     f"{search_query} specifications reviews price", num_results=10
                 )
+                if stage_timings is not None:
+                    stage_timings["unified_search_ms"] = round((time.perf_counter() - t0) * 1000, 1)
                 self._track_serper_cost()
+
+        if stage_timings is not None and "unified_search_ms" not in stage_timings:
+            stage_timings["unified_search_ms"] = 0.0  # cache hit or skipped — no Serper call
 
         # === Phase 1: specs + price (parallel) ===
         phase1_tasks = []
@@ -1096,7 +1164,17 @@ class StructuredComparisonService:
         phase1_tasks.append(self._get_price(brand, name, variant, region, search_query, nocache, category))
         phase1_keys.append("price")
 
+        t1 = time.perf_counter() if stage_timings is not None else None
         phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
+        if stage_timings is not None:
+            phase1_elapsed_ms = round((time.perf_counter() - t1) * 1000, 1)
+            # Phase 1 runs specs+price in parallel — they share the same wall time;
+            # we can't measure them independently without breaking the gather.
+            if "specs" in phase1_keys:
+                stage_timings["specs_ms"] = phase1_elapsed_ms
+            else:
+                stage_timings["specs_ms"] = 0.0
+            stage_timings["price_ms"] = phase1_elapsed_ms
 
         for i, key in enumerate(phase1_keys):
             if isinstance(phase1_results[i], Exception):
@@ -1145,7 +1223,15 @@ class StructuredComparisonService:
         phase2_tasks.append(self._get_verified_rating(full_name))
         phase2_keys.append("_rating_data")
 
+        t2 = time.perf_counter() if stage_timings is not None else None
         phase2_results = await asyncio.gather(*phase2_tasks, return_exceptions=True)
+        if stage_timings is not None:
+            phase2_elapsed_ms = round((time.perf_counter() - t2) * 1000, 1)
+            if "reviews" in phase2_keys:
+                stage_timings["reviews_ms"] = phase2_elapsed_ms
+            else:
+                stage_timings["reviews_ms"] = 0.0
+            stage_timings["rating_ms"] = phase2_elapsed_ms
 
         rating_data = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
         for i, key in enumerate(phase2_keys):
@@ -1215,6 +1301,9 @@ class StructuredComparisonService:
 
         result["fact_check"] = build_fact_check(result)
         result["data_freshness"] = self._calculate_freshness(result)
+
+        if stage_timings is not None:
+            result["_stage_timings_ms"] = stage_timings
 
         return result
 
