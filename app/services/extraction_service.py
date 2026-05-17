@@ -16,6 +16,19 @@ from app.utils.prompt_sanitizer import sanitize_prompt_input, check_injection_pa
 
 logger = logging.getLogger(__name__)
 
+# Bundle C § 1a diagnostic flag — gated on DEBUG_STAGE_TIMINGS=true so
+# the pros/cons raw-response hook adds zero overhead in production.
+# Cached at process init; tests reset via monkeypatch on _PROS_CONS_DIAG_FLAG.
+_PROS_CONS_DIAG_FLAG = None
+
+
+def _pros_cons_diag_enabled() -> bool:
+    global _PROS_CONS_DIAG_FLAG
+    if _PROS_CONS_DIAG_FLAG is None:
+        _PROS_CONS_DIAG_FLAG = os.environ.get("DEBUG_STAGE_TIMINGS", "false").lower() == "true"
+    return _PROS_CONS_DIAG_FLAG
+
+
 # Lazy initialization - don't create client at import time
 _client = None
 
@@ -1122,6 +1135,21 @@ Primary concern: {concern}
                 result = result[4:]
 
         parsed = json.loads(result)
+
+        # Bundle C § 1a diagnostic — log raw response when pros/cons empty so
+        # post-deploy probes can identify which suspect fires (verdict JSON
+        # dropping keys / model omitting / validate_verdict stripping).
+        # Flag-gated; truncated to 2000 chars to keep log volume bounded.
+        if _pros_cons_diag_enabled():
+            p0_pros = parsed.get("product_0_pros") or []
+            p1_pros = parsed.get("product_1_pros") or []
+            if len(p0_pros) == 0 or len(p1_pros) == 0:
+                logger.warning(
+                    "PROS_CONS_DIAGNOSTIC empty_side=%s comparison_keys=%s raw_response=%s",
+                    "p0" if len(p0_pros) == 0 else "p1",
+                    list(parsed.keys()),
+                    (response.choices[0].message.content or "")[:2000],
+                )
 
         # Validate personalized_insights
         has_preferences = user_preferences and any(user_preferences.values())
