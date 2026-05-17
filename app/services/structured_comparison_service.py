@@ -1529,14 +1529,19 @@ class StructuredComparisonService:
                         high_threshold, low_threshold = 1.8, 0.6
                     else:
                         high_threshold, low_threshold = 2.0, 0.5
-                    if tier2_bhd > tier3_bhd * high_threshold:
+                    # Preserve the upstream gpt_* source_method when the
+                    # Tier-2 sanity check swaps in the Tier-3 estimate, so
+                    # quality_ranker's PRICE_SOURCE_RANK lookup sees the
+                    # specific tier name. Legacy "estimated" remains the
+                    # default for callers that didn't stamp a gpt_* method
+                    # (preserves backward-compat for tests asserting
+                    # source_method == 'estimated').
+                    if tier2_bhd > tier3_bhd * high_threshold or tier2_bhd < tier3_bhd * low_threshold:
                         price = tier3_estimate
                         price["estimated"] = True
-                        price["source_method"] = "estimated"
-                    elif tier2_bhd < tier3_bhd * low_threshold:
-                        price = tier3_estimate
-                        price["estimated"] = True
-                        price["source_method"] = "estimated"
+                        existing_method = price.get("source_method", "")
+                        if not (isinstance(existing_method, str) and existing_method.startswith("gpt_")):
+                            price["source_method"] = "estimated"
             if price.get("retailer") and not price.get("url"):
                 price["url"] = build_retailer_url(price["retailer"], full_name)
             set_cached(cache_key, price, PRICE_CACHE_TTL)
