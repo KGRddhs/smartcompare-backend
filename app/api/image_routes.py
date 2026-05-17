@@ -120,6 +120,37 @@ async def identify_and_compare(
             "vision_cost": vision_result.get("cost", 0),
         }
 
+    # L4 content safety — moderate vision output BEFORE compare flow. If a
+    # vision-identified product trips moderation (weapons / adult / etc),
+    # return the existing graceful 'need_second_product' shape so the frontend
+    # renders "Sharper match coming up" copy. Failing open on moderation API
+    # exception per Build Principle #4.
+    # Spec ref: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md sec 5.2.
+    import hashlib as _hashlib
+    from app.services.content_safety_service import get_content_safety_service
+    from app.services.audit_service import log_content_blocked
+
+    _safety = get_content_safety_service()
+    _l4 = await _safety.moderate_vision_output(vision_result)
+    if not _l4.allowed:
+        _hash_input = " ".join(
+            f"{p.get('brand', '')} {p.get('name', '')}".strip()
+            for p in vision_result.get("products", [])
+        )
+        asyncio.create_task(log_content_blocked(
+            layer="vision_moderation",
+            query_hash=_hashlib.sha256(_hash_input.encode("utf-8")).hexdigest(),
+        ))
+        return {
+            "success": False,
+            "action": "need_second_product",
+            "products": [],
+            "message": "Sharper match coming up — try a clearer photo or a different product.",
+            "vision_cost": vision_result.get("cost", 0),
+            "code": "CONTENT_UNAVAILABLE",
+            "layer": "vision_moderation",
+        }
+
     products = vision_result.get("products", [])
     vision_cost = vision_result.get("cost", 0)
 
