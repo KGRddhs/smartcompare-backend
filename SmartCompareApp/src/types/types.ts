@@ -400,7 +400,16 @@ export type RootStackParamList = {
   // source='styleProfile' signals an "inferred preferences" banner is appropriate.
   Onboarding: { mode?: 'edit'; source?: 'styleProfile' } | undefined;
   Main: undefined;
-  Results: { result: ComparisonResult };
+  // Bucket A bugs 1 + 2: Results accepts three entry shapes —
+  //   result            → pre-loaded comparison (Home text/SSE flow)
+  //   comparison_id     → fetch full payload via getComparison(id) (History tap)
+  //   vision_products   → identifyFromImages(uris) (Camera capture+compare)
+  // All three are optional; ResultsScreen renders an empty-state when none match.
+  Results: {
+    result?: ComparisonResult;
+    comparison_id?: string;
+    vision_products?: string[];
+  };
   // F3.2/F3.3 — invitee landing flow (gradual commitment, no signup gate).
   ReferralLanding: { share_token: string; ref: string };
   InviteeQuiz: { share_token: string; invite_id: string; ref: string };

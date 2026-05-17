@@ -219,8 +219,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     (result as any)?.comparison_id || (metadata as any)?.comparison_id;
 
   const winnerName = isNewFormat
-    ? result.overview!.winner.name
-    : products[winner_index]?.name;
+    ? result!.overview!.winner.name
+    : products[winner_index ?? 0]?.name;
 
   const handleShare = () => {
     if (!sharableComparisonId) {
@@ -708,10 +708,10 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               </View>
             ))}
           </Animated.View>
-        ) : !isNewFormat && key_differences?.length > 0 ? (
+        ) : !isNewFormat && (key_differences?.length ?? 0) > 0 ? (
           <Animated.View entering={FadeInDown.delay(400).duration(400)} style={styles.section}>
             <Text style={styles.sectionTitle}>{t('results.runnerUpWins')}</Text>
-            {key_differences.map((diff, index) => (
+            {key_differences!.map((diff, index) => (
               <Text key={index} style={styles.differenceItem}>
                 {diff}
               </Text>

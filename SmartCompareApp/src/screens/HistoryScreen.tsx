@@ -131,7 +131,10 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
   }, [history, t]);
 
   const viewAsResult = (item: HistoryItem) => {
-    navigation.navigate('Results', { result: item.full_response });
+    // Bucket A bug 1: list endpoint returns summary only — item.full_response
+    // is always null. Pass comparison_id so ResultsScreen can fetch the full
+    // payload via getComparison(id) on mount.
+    navigation.navigate('Results', { comparison_id: item.id });
   };
 
   const handleDelete = (item: HistoryItem) => {
