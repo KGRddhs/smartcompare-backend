@@ -1500,78 +1500,93 @@ class StructuredComparisonService:
 
         # --- Tier 1.5: Page scraping cascade (luxury brands only) ---
         # Bundle E § Decision 8 — scatter-gather refactor. The 3 Serper
-        # discovery queries (official → authorized → GCC retailers) stay
-        # SEQUENTIAL so we keep cost control + ordered priority. The
-        # per-URL page-scrape attempts are then RACED via
-        # fan_out_price_lookup, which cancels still-pending scrapers when
-        # 2 sources agree within 5% or a rank≥85 result lands.
+        # discovery queries (official → authorized → GCC retailers) now run
+        # in PARALLEL via asyncio.gather (D2 follow-up — saves ~2s on every
+        # luxury query). Priority ordering is preserved by processing the
+        # results in [official, authorized, GCC] sequence after the gather.
+        # The per-URL page-scrape attempts are then RACED via
+        # fan_out_price_lookup, which is bounded by asyncio.wait_for(15s)
+        # so Cloudflare-protected sites can't blow the per-product wall
+        # budget (e.g. ssense.com via Scrape.do typically 20-25s).
         if not price and is_luxury_brand(full_name) and ENABLE_PAGE_SCRAPE:
-            tier15_start = time.monotonic()
-            tier15_budget = TIER_15_BUDGET_TIMEOUT
             scraping_mode = os.environ.get("SCRAPING_MODE", "hard")
             candidate_urls: List[Tuple[str, str]] = []
 
-            # --- Discovery: official brand site (priority 1) ---
-            # Counterfeit safety: even with a `site:louisvuitton.com` query
-            # Serper sometimes returns off-domain marketplace links — verify
-            # the link actually belongs to the official_domain before adding
-            # to the candidate pool. dispatcher invariant #1.
+            # --- Discovery: all 3 queries fire concurrently ---
+            # Counterfeit safety preserved: even with `site:louisvuitton.com`,
+            # Serper sometimes returns off-domain marketplace links — every
+            # candidate is whitelisted post-fetch against
+            # OFFICIAL_BRAND_DOMAINS / AUTHORIZED_LUXURY_RETAILERS /
+            # GCC_LUXURY_RETAILERS before entering the candidate pool.
+            # Dispatcher invariant #1.
             official_domain = get_official_domain(full_name)
+            retailer_query = f"{full_name} farfetch OR ssense OR net-a-porter"
+            gcc_query = f"{full_name} ounass OR bloomingdales dubai OR namshi"
+
+            discovery_tasks = []
             if official_domain:
-                try:
-                    official_results = await search_web(f"{full_name} site:{official_domain}")
-                    self.api_calls += 1
-                    self._track_cost_amount(0.001)
-                    if official_results and official_results.get("organic"):
-                        for organic_item in official_results["organic"][:2]:
-                            link = organic_item.get("link")
-                            if not link or not validate_scrape_url(link):
-                                continue
-                            link_domain = urlparse(link).netloc.replace("www.", "").lower()
-                            od = official_domain.lower()
-                            if link_domain == od or link_domain.endswith("." + od):
-                                candidate_urls.append((link, official_domain))
-                except Exception as e:
-                    logger.warning(f"[PRICE] Tier 1.5 official-domain discovery failed: {e}")
+                discovery_tasks.append(
+                    ("official", search_web(f"{full_name} site:{official_domain}"))
+                )
+            discovery_tasks.append(("authorized", search_web(retailer_query)))
+            discovery_tasks.append(("gcc", search_web(gcc_query)))
 
-            # --- Discovery: authorized luxury retailers (priority 2) ---
-            if time.monotonic() - tier15_start < tier15_budget:
-                try:
-                    retailer_query = f"{full_name} farfetch OR ssense OR net-a-porter"
-                    retailer_results = await search_web(retailer_query)
+            results_by_tier = {}
+            try:
+                gathered = await asyncio.gather(
+                    *(coro for _, coro in discovery_tasks),
+                    return_exceptions=True,
+                )
+                for (tier_name, _), result in zip(discovery_tasks, gathered):
+                    if isinstance(result, Exception):
+                        logger.warning(f"[PRICE] Tier 1.5 {tier_name}-discovery failed: {result}")
+                        continue
                     self.api_calls += 1
                     self._track_cost_amount(0.001)
-                    if retailer_results and retailer_results.get("organic"):
-                        for item in retailer_results["organic"][:5]:
-                            link = item.get("link", "")
-                            link_domain = urlparse(link).netloc.replace("www.", "")
-                            # Whitelist gate — counterfeit/marketplace domains
-                            # cannot enter the candidate pool. This is the
-                            # dispatcher's invariant #1.
-                            if link_domain in AUTHORIZED_LUXURY_RETAILERS or link_domain in OFFICIAL_BRAND_DOMAINS:
-                                candidate_urls.append((link, link_domain))
-                except Exception as e:
-                    logger.warning(f"[PRICE] Tier 1.5 authorized-retailer discovery failed: {e}")
+                    results_by_tier[tier_name] = result
+            except Exception as e:
+                # gather itself failed (very unlikely with return_exceptions=True)
+                logger.warning(f"[PRICE] Tier 1.5 parallel discovery failed: {e}")
 
-            # --- Discovery: GCC luxury retailers (priority 3) ---
-            if time.monotonic() - tier15_start < tier15_budget:
-                try:
-                    gcc_query = f"{full_name} ounass OR bloomingdales dubai OR namshi"
-                    gcc_results = await search_web(gcc_query)
-                    self.api_calls += 1
-                    self._track_cost_amount(0.001)
-                    if gcc_results and gcc_results.get("organic"):
-                        for item in gcc_results["organic"][:3]:
-                            link = item.get("link", "")
-                            link_domain = urlparse(link).netloc.replace("www.", "")
-                            if link_domain in GCC_LUXURY_RETAILERS:
-                                candidate_urls.append((link, link_domain))
-                except Exception as e:
-                    logger.warning(f"[PRICE] Tier 1.5 GCC-retailer discovery failed: {e}")
+            # Build candidate_urls in priority order: official → authorized → GCC.
+            if official_domain and "official" in results_by_tier:
+                official_results = results_by_tier["official"]
+                if official_results and official_results.get("organic"):
+                    for organic_item in official_results["organic"][:2]:
+                        link = organic_item.get("link")
+                        if not link or not validate_scrape_url(link):
+                            continue
+                        link_domain = urlparse(link).netloc.replace("www.", "").lower()
+                        od = official_domain.lower()
+                        if link_domain == od or link_domain.endswith("." + od):
+                            candidate_urls.append((link, official_domain))
+
+            if "authorized" in results_by_tier:
+                retailer_results = results_by_tier["authorized"]
+                if retailer_results and retailer_results.get("organic"):
+                    for item in retailer_results["organic"][:5]:
+                        link = item.get("link", "")
+                        link_domain = urlparse(link).netloc.replace("www.", "")
+                        # Whitelist gate — counterfeit/marketplace domains
+                        # cannot enter the candidate pool. Dispatcher invariant #1.
+                        if link_domain in AUTHORIZED_LUXURY_RETAILERS or link_domain in OFFICIAL_BRAND_DOMAINS:
+                            candidate_urls.append((link, link_domain))
+
+            if "gcc" in results_by_tier:
+                gcc_results = results_by_tier["gcc"]
+                if gcc_results and gcc_results.get("organic"):
+                    for item in gcc_results["organic"][:3]:
+                        link = item.get("link", "")
+                        link_domain = urlparse(link).netloc.replace("www.", "")
+                        if link_domain in GCC_LUXURY_RETAILERS:
+                            candidate_urls.append((link, link_domain))
 
             # --- Race: fan_out_price_lookup runs all per-URL scrapers in
             # parallel, cancels pending tasks when 2 sources confirm within
-            # 5% (or rank≥85 lands), returns the highest-ranked candidate. ---
+            # 5% (or rank≥85 lands), returns the highest-ranked candidate.
+            # Bounded by asyncio.wait_for(timeout=15s) — Cloudflare-protected
+            # scrapes (e.g. ssense.com via Scrape.do) can blow 20+s and have
+            # to fall through to Tier 2 to honor the per-product wall budget. ---
             if candidate_urls:
                 try:
                     scrapers = _build_luxury_scrapers(
@@ -1580,10 +1595,13 @@ class StructuredComparisonService:
                         currency=currency,
                         scraping_mode=scraping_mode,
                     )
-                    fan_result = await fan_out_price_lookup(
-                        product={"full_name": full_name, "brand": brand},
-                        scrapers=scrapers,
-                        scraping_mode=scraping_mode,
+                    fan_result = await asyncio.wait_for(
+                        fan_out_price_lookup(
+                            product={"full_name": full_name, "brand": brand},
+                            scrapers=scrapers,
+                            scraping_mode=scraping_mode,
+                        ),
+                        timeout=15.0,
                     )
                     best = fan_result.get("best")
                     if best and best.get("raw_data") and best["raw_data"].get("amount"):
@@ -1602,6 +1620,14 @@ class StructuredComparisonService:
                                 fan_result["cancelled_count"], fan_result.get("elapsed_seconds", 0.0),
                             )
                         return winning_price
+                except asyncio.TimeoutError:
+                    # D2 follow-up: 15s race cap fired. Fall through to Tier 2
+                    # GPT extraction — trade real scrape for predictable wall.
+                    logger.info(
+                        "[PRICE] Tier 1.5 fan_out race exceeded 15s budget for %s; "
+                        "falling through to Tier 2 GPT extraction",
+                        full_name,
+                    )
                 except Exception as e:
                     logger.warning(f"[PRICE] Tier 1.5 fan_out_price_lookup failed: {e}")
 
