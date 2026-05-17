@@ -50,8 +50,12 @@ export function DimensionBars({
   // means the backend leaked a dimension where one product had no data,
   // which would paint a misleading empty bar. Render a contract-violation
   // node instead so the regression is visible in dev + jest.
+  //
+  // Bundle C — `score_a | score_b` widened to `number | null` (spec § 2h);
+  // silent-omission filter lands in B.5.2. Until then, null is treated as
+  // zero so the existing contract-violation node fires for stale clients.
   const hasZero = dimensions.some(
-    (d) => d.score_a <= 0 || d.score_b <= 0,
+    (d) => (d.score_a ?? 0) <= 0 || (d.score_b ?? 0) <= 0,
   );
   if (hasZero) {
     return (
@@ -89,7 +93,12 @@ interface DimensionRowProps {
 }
 
 function DimensionRow({ dimension, winnerIndex, testID }: DimensionRowProps) {
-  const { label, score_a, score_b, delta_text, confidence } = dimension;
+  const { label, delta_text, confidence } = dimension;
+  // Bundle C — `score_a | score_b` typed `number | null` (spec § 2h).
+  // Pre-B.5.2 narrowing: coerce null to 0; the parent contract-violation
+  // node already short-circuits before reaching here when scores are 0.
+  const score_a = dimension.score_a ?? 0;
+  const score_b = dimension.score_b ?? 0;
   const isLow = confidence === 'low';
   const rowOpacity = isLow ? LOW_CONFIDENCE_OPACITY : 1;
   const prefix = isLow ? LOW_CONFIDENCE_PREFIX : undefined;
