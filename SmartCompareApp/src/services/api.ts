@@ -187,6 +187,17 @@ export async function deleteComparison(comparisonId: string) {
 }
 
 /**
+ * Get a single comparison by ID with full payload.
+ * Used by ResultsScreen when navigated from History with only an ID
+ * (history list endpoint returns summary only — full_response is
+ * fetched lazily on tap).
+ */
+export async function getComparison(comparisonId: string) {
+  const response = await api.get(`/api/v1/comparisons/${comparisonId}`);
+  return response.data;
+}
+
+/**
  * Health check
  */
 export async function healthCheck(): Promise<boolean> {
