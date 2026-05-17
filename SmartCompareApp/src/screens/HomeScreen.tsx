@@ -1,7 +1,13 @@
 /**
- * Qaren - Home Screen (Camera-First)
- * Absorbs camera functionality from old CameraScreen.
- * Layout: logo + search bar + category chips + camera viewfinder + capture + mode chips + counter
+ * Qaren - Home Screen (Bundle B redesign).
+ *
+ * Renders the TwoInputShell for Text + URL modes and a Scan placeholder
+ * for camera mode. When canCompare is false, takes over the middle of the
+ * screen with the PaywallBanner per spec § 6.2 (hides hero, category strip,
+ * BonusCountdownCard, ComparisonCounter; dims mode chips to 50%).
+ *
+ * Spec: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md
+ *   § 3 anatomy · § 4 interactions · § 6 freemium · § 8 analytics
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -13,44 +19,38 @@ import {
   SafeAreaView,
   Alert,
   ActivityIndicator,
-  ScrollView,
-  Image,
-  TextInput,
-  Modal,
 } from 'react-native';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-// Bundle B/C/D Task 3.1 — Reanimated spring for the mode-chip selection.
-// Worklet-native; no useNativeDriver:false anywhere in the chip's animated
-// path. See plan § Task 3.1 + design § 5.1 Item 6.
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
 import { motion } from '../theme/motion';
-import { Camera, RotateCcw, ImageIcon, X } from 'lucide-react-native';
-// Custom mode icons (frontend-visual Task #51) — drop-in replacements for
-// Lucide Camera/Link2/Edit3 inside the 3-mode chip rail per design § 5a
-// "Mode | 3 | Scan, Link, Type". Lucide imports above stay for the
-// camera card body (capture row, gallery, flip-camera) per § 5a's
-// "~15 Lucide icons retained (utility)" provision.
+import { Camera } from 'lucide-react-native';
 import { ScanIcon, LinkIcon, TypeIcon } from '../icons';
 import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { colors, spacing, radii, typography, shadows } from '../theme';
-import { RootStackParamList, CapturedImage, IdentifiedProduct } from '../types';
-import { healthCheck, streamComparison, parseApiError, identifyFromImages } from '../services/api';
+import { colors, spacing, radii, typography } from '../theme';
+import { RootStackParamList } from '../types';
+import {
+  healthCheck,
+  streamComparison,
+  parseApiError,
+  trackEvents,
+} from '../services/api';
 import api from '../services/api';
 import { getSavedUser, User } from '../services/authService';
 import { isUsageLimitError, getUsageLimitDetail } from '../services/usageService';
 import CategorySelector from '../components/CategorySelector';
 import QarenLogo from '../components/QarenLogo';
-import { SearchOverlay } from '../components/SearchOverlay';
+import TwoInputShell from '../components/TwoInputShell';
+import PaywallBanner from '../components/PaywallBanner';
 import { ComparisonCounter } from '../components/ComparisonCounter';
 import { BonusCountdownCard } from '../components/BonusCountdownCard';
 import { useComparisonCounter } from '../hooks/useComparisonCounter';
@@ -58,9 +58,8 @@ import { getReferralStatus } from '../services/referralService';
 
 const RECENT_SEARCHES_KEY = '@qaren_recent_searches';
 const MAX_RECENT = 5;
-const MIN_IMAGES = 2;
-// Bundle B/C/D Task 2.6 — exactly 2 products per comparison. Exported so
-// the new ScanCameraScreen modal + tests can read the same constant.
+// Bundle B/C/D — exactly 2 products per comparison. Exported so the
+// ScanCameraScreen modal + tests can read the same constant.
 export const MAX_IMAGES = 2;
 
 type HomeScreenProps = {
@@ -69,55 +68,43 @@ type HomeScreenProps = {
 };
 
 /**
- * Phase 3 redesign — 3 equal-weight input modes per design § 4a.
- * - 'scan' renders the live camera card
- * - 'link' renders inline URL inputs in the same card real-estate
- * - 'type' opens the SearchOverlay modal (text search)
+ * 3 equal-weight input modes (design § 4a).
+ * 'scan' → launches fullscreen ScanCameraScreen modal.
+ * 'url'  → renders TwoInputShell in URL mode.
+ * 'type' → renders TwoInputShell in Text mode.
  */
 type InputMode = 'scan' | 'url' | 'type';
 
-export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
+export default function HomeScreen({ navigation }: HomeScreenProps) {
   const { t } = useTranslation();
-  const [user, setUser] = useState<User | null>(null);
+  const [, setUser] = useState<User | null>(null);
   const [serverOnline, setServerOnline] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
-  // Camera state (absorbed from CameraScreen)
   const [permission, requestPermission] = useCameraPermissions();
-  const [capturedImages, setCapturedImages] = useState<CapturedImage[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [facing, setFacing] = useState<CameraType>('back');
-  const [detectedProduct, setDetectedProduct] = useState<IdentifiedProduct | null>(null);
-  const cameraRef = useRef<CameraView>(null);
+  const [, setRecentSearches] = useState<string[]>([]);
+  const recentSearchesRef = useRef<string[]>([]);
 
-  // Input states
   const [inputMode, setInputMode] = useState<InputMode>('scan');
   const [selectedCategory, setSelectedCategory] = useState<string>('electronics');
-  const [searchOverlayVisible, setSearchOverlayVisible] = useState(false);
-  const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [urlInput, setUrlInput] = useState('');
-  const [url2Input, setUrl2Input] = useState('');
   const abortRef = useRef<(() => void) | null>(null);
 
-  // Comparison counter
-  const { used, total, canCompare, shouldShowPaywall, increment } = useComparisonCounter();
+  const { used, total, canCompare, increment } = useComparisonCounter();
 
-  /**
-   * Phase 4 § 4e — invitee bonus countdown surface. Polls
-   * /api/v1/referrals/status once on focus; the BonusCountdownCard
-   * renders nothing when no active bonus, so this is safe to mount
-   * unconditionally. Backend's /referrals/status response shape
-   * exposes monthly_bonus_comparisons; per-bonus referrer_name +
-   * expires_at metadata may not yet be on the response, so we read
-   * them defensively (any-shape) and the card guards on missing
-   * data.
-   */
   const [bonusInfo, setBonusInfo] = useState<{
     bonusRemaining: number;
     referrerName?: string;
     expiresAt?: Date;
   }>({ bonusRemaining: 0 });
+
+  // Analytics session flags — toggled by TwoInputShell callbacks, read on
+  // submit, reset after each submit.
+  const pasteSplitUsedRef = useRef(false);
+  const autoswitchUsedRef = useRef(false);
+  // compare_entry_view de-dupe: only fire once per mode-entry.
+  const lastViewedModeRef = useRef<InputMode | null>(null);
+  const prevCanCompareRef = useRef<boolean>(canCompare);
 
   useFocusEffect(
     useCallback(() => {
@@ -137,8 +124,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
             rawExpiry ? new Date(rawExpiry) : undefined;
           setBonusInfo({ bonusRemaining, referrerName, expiresAt });
         } catch {
-          // Fire-and-forget — referral system may be disabled (503) or
-          // anonymous user. Either way we just don't show the card.
+          /* fire-and-forget */
         }
       })();
       return () => {
@@ -148,13 +134,7 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
   );
 
   /**
-   * Min-display floor (1.2s) for the Home→Results transition per design
-   * § 3 ("Even cached responses (~200ms) show loading for 1.2s minimum
-   * so the brand moment lands"). Each compare-handler stamps this ref
-   * at the start of work; `navigateToResultsWithFloor` uses the elapsed
-   * delta to delay navigation if we got back a cached response too fast.
-   * For real (non-cache) responses, the floor is already exceeded, so
-   * navigation is effectively immediate.
+   * Min-display floor (1.2s) for Home→Results transitions per design § 3.
    */
   const loadingStartedAtRef = useRef<number | null>(null);
   const MIN_LOADING_MS = 1200;
@@ -167,11 +147,8 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         loadingStartedAtRef.current = null;
         navigation.navigate('Results' as any, { result });
       };
-      if (remaining === 0) {
-        advance();
-      } else {
-        setTimeout(advance, remaining);
-      }
+      if (remaining === 0) advance();
+      else setTimeout(advance, remaining);
     },
     [navigation]
   );
@@ -201,151 +178,101 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
   const loadRecentSearches = async () => {
     try {
       const stored = await AsyncStorage.getItem(RECENT_SEARCHES_KEY);
-      if (stored) setRecentSearches(JSON.parse(stored));
-    } catch {}
+      if (stored) {
+        const parsed = JSON.parse(stored) as string[];
+        setRecentSearches(parsed);
+        recentSearchesRef.current = parsed;
+      }
+    } catch {
+      /* no-op */
+    }
   };
 
   const saveRecentSearch = async (query: string) => {
-    const updated = [query, ...recentSearches.filter((s) => s !== query)].slice(0, MAX_RECENT);
+    const updated = [
+      query,
+      ...recentSearchesRef.current.filter((s) => s !== query),
+    ].slice(0, MAX_RECENT);
+    recentSearchesRef.current = updated;
     setRecentSearches(updated);
     await AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
   };
 
-  // --- Camera functions (from CameraScreen) ---
+  // --- Analytics ---
 
-  const takePicture = async () => {
-    if (cameraRef.current && capturedImages.length < MAX_IMAGES) {
-      try {
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.8,
-          base64: false,
-          exif: false,
-          imageType: 'jpg',
-        });
-        if (photo) {
-          if (detectedProduct) setDetectedProduct(null);
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          setCapturedImages((prev) => [
-            ...prev,
-            { uri: photo.uri, width: photo.width, height: photo.height },
-          ]);
-        }
-      } catch (error) {
-        console.error('Error taking picture:', error);
-        Alert.alert(t('common.error'), t('home.errors.camera'));
-      }
+  // compare_entry_view — fires whenever the active mode changes.
+  useEffect(() => {
+    if (lastViewedModeRef.current !== inputMode) {
+      lastViewedModeRef.current = inputMode;
+      trackEvents([
+        { event_type: 'compare_entry_view', event_data: { mode: inputMode } },
+      ]);
     }
-  };
+  }, [inputMode]);
 
-  const pickFromGallery = async () => {
-    const remainingSlots = MAX_IMAGES - capturedImages.length;
-    if (remainingSlots <= 0) {
-      Alert.alert(t('home.limit.max_title'), t('home.limit.max_body', { max: MAX_IMAGES }));
-      return;
+  // compare_entry_paywall_banner_view — fires when canCompare flips to false.
+  useEffect(() => {
+    if (prevCanCompareRef.current && !canCompare) {
+      trackEvents([
+        {
+          event_type: 'compare_entry_paywall_banner_view',
+          event_data: { mode: inputMode },
+        },
+      ]);
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      selectionLimit: remainingSlots,
-      quality: 0.8,
-      exif: false,
-    });
-    if (!result.canceled && result.assets) {
-      if (detectedProduct) setDetectedProduct(null);
-      const newImages: CapturedImage[] = result.assets.map((asset) => ({
-        uri: asset.uri,
-        width: asset.width,
-        height: asset.height,
-      }));
-      setCapturedImages((prev) => [...prev, ...newImages]);
-    }
-  };
+    prevCanCompareRef.current = canCompare;
+  }, [canCompare, inputMode]);
 
-  const removeImage = (index: number) => {
-    setDetectedProduct(null);
-    setCapturedImages((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const toggleCameraFacing = () => {
-    setFacing((current) => (current === 'back' ? 'front' : 'back'));
-  };
-
-  const handleIdentifyAndCompare = async () => {
-    if (capturedImages.length < MIN_IMAGES) {
+  const handleContentUnavailable = useCallback(
+    (mode: 'text' | 'url' | 'scan', layer: string) => {
+      trackEvents([
+        {
+          event_type: 'compare_entry_content_block',
+          event_data: { mode, layer },
+        },
+      ]);
       Alert.alert(
-        t('home.capture.more_title', { defaultValue: 'One more shot' }),
-        t('home.capture.more_body', {
-          defaultValue: `Snap ${MIN_IMAGES} products to compare them side-by-side.`,
-          n: MIN_IMAGES,
-        })
+        t('home.compare.unavailable_title'),
+        t('home.compare.unavailable_body')
       );
-      return;
-    }
+    },
+    [t]
+  );
+
+  // --- Text comparison (SSE streaming, dual-shape pair) ---
+
+  const handleTextCompare = (a: string, b: string) => {
+    const productA = a.trim();
+    const productB = b.trim();
+    if (!productA || !productB) return;
     if (!canCompare) {
       navigation.navigate('Paywall' as any);
       return;
     }
 
-    setIsProcessing(true);
-    setDetectedProduct(null);
-    loadingStartedAtRef.current = Date.now();
-
-    try {
-      const imageUris = capturedImages.map((img) => img.uri);
-      const result = await identifyFromImages(imageUris, 'bahrain');
-
-      if (result.action === 'comparison' && result.success) {
-        await increment();
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        navigateToResultsWithFloor(result);
-      } else if (result.action === 'need_second_product' && result.success) {
-        setDetectedProduct(result.products[0]);
-      } else {
-        // Per § 4g — confident, never scary. Reframe as "sharper match" not "failed".
-        const fallback = t('home.capture.sharper_body', {
-          defaultValue: 'Try a clearer angle — sharper match every time.',
-        });
-        const detail = ('error' in result && result.error) ? result.error : fallback;
-        Alert.alert(
-          t('home.capture.sharper_title', { defaultValue: 'Sharper match coming up' }),
-          detail
-        );
-      }
-    } catch (error: any) {
-      if (isUsageLimitError(error)) {
-        const detail = getUsageLimitDetail(error);
-        navigation.navigate('Paywall' as any, { initialUsage: detail });
-      } else if (error.response?.status === 429) {
-        Alert.alert(t('home.limit.rate_title'), t('home.limit.rate_body'));
-      } else if (error.message?.includes('Network')) {
-        Alert.alert(t('common.error'), t('home.errors.connection'));
-      } else {
-        Alert.alert(t('common.error'), parseApiError(error).message);
-      }
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // --- Text comparison (SSE streaming) ---
-
-  const handleTextCompare = (query: string) => {
-    if (!query.trim()) return;
-    if (!canCompare) {
-      navigation.navigate('Paywall' as any);
-      return;
-    }
-
-    setSearchOverlayVisible(false);
-    saveRecentSearch(query);
+    saveRecentSearch(`${productA} vs ${productB}`);
     setLoading(true);
     setStatusMessage(t('results.loading.finding'));
     loadingStartedAtRef.current = Date.now();
     let navigated = false;
 
-    const { subscribe, abort } = streamComparison(query.trim(), {
-      selected_category: selectedCategory,
-    });
+    trackEvents([
+      {
+        event_type: 'compare_entry_submit',
+        event_data: {
+          mode: 'text',
+          used_paste_split: pasteSplitUsedRef.current,
+          used_autoswitch: autoswitchUsedRef.current,
+        },
+      },
+    ]);
+    pasteSplitUsedRef.current = false;
+    autoswitchUsedRef.current = false;
+
+    const { subscribe, abort } = streamComparison(
+      { product_a: productA, product_b: productB },
+      { selected_category: selectedCategory }
+    );
     abortRef.current = abort;
 
     subscribe({
@@ -368,6 +295,12 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         abortRef.current = null;
         setLoading(false);
         setStatusMessage('');
+        const parsed = parseApiError(error);
+        if (parsed.code === 'CONTENT_UNAVAILABLE') {
+          const layer = error?.response?.data?.layer ?? 'unknown';
+          handleContentUnavailable('text', layer);
+          return;
+        }
         if (isUsageLimitError(error)) {
           const detail = getUsageLimitDetail(error);
           navigation.navigate('Paywall' as any, { initialUsage: detail });
@@ -380,34 +313,34 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
 
   // --- URL comparison ---
 
-  const handleUrlCompare = async () => {
-    if (!urlInput.trim() || !url2Input.trim()) {
-      Alert.alert(t('home.url.empty_title'), t('home.url.empty_body'));
-      return;
-    }
-    const isValidUrl = (url: string): boolean => {
-      try {
-        const parsed = new URL(url);
-        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-      } catch {
-        return false;
-      }
-    };
-    if (!isValidUrl(urlInput.trim()) || !isValidUrl(url2Input.trim())) {
-      Alert.alert(t('home.url.invalid_title'), t('home.url.invalid_body'));
-      return;
-    }
+  const handleUrlCompare = async (urlA: string, urlB: string) => {
+    const url1 = urlA.trim();
+    const url2 = urlB.trim();
+    if (!url1 || !url2) return;
     if (!canCompare) {
       navigation.navigate('Paywall' as any);
       return;
     }
 
+    trackEvents([
+      {
+        event_type: 'compare_entry_submit',
+        event_data: {
+          mode: 'url',
+          used_paste_split: pasteSplitUsedRef.current,
+          used_autoswitch: autoswitchUsedRef.current,
+        },
+      },
+    ]);
+    pasteSplitUsedRef.current = false;
+    autoswitchUsedRef.current = false;
+
     setLoading(true);
     loadingStartedAtRef.current = Date.now();
     try {
       const response = await api.post('/api/v1/url/compare', {
-        url1: urlInput.trim(),
-        url2: url2Input.trim(),
+        url1,
+        url2,
         region: 'bahrain',
         selected_category: selectedCategory,
       });
@@ -418,55 +351,72 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
         Alert.alert(t('common.error'), response.data.error || t('home.errors.comparison'));
       }
     } catch (error: any) {
-      if (isUsageLimitError(error)) {
+      const parsed = parseApiError(error);
+      if (parsed.code === 'CONTENT_UNAVAILABLE') {
+        const layer = error?.response?.data?.layer ?? 'unknown';
+        handleContentUnavailable('url', layer);
+      } else if (isUsageLimitError(error)) {
         const detail = getUsageLimitDetail(error);
         navigation.navigate('Paywall' as any, { initialUsage: detail });
       } else {
-        Alert.alert(t('common.error'), parseApiError(error).message);
+        Alert.alert(t('common.error'), parsed.message);
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // --- Render ---
-
-  const cameraPermissionGranted = permission?.granted;
-
-  // Phase 3 redesign — § 4a. The mode chip rail also handles the 'type'
-  // mode by opening the existing SearchOverlay; the chip stays sticky-active
-  // while the overlay is up so the visual feedback is consistent.
-  //
-  // Bundle B/C/D Task 2.6 — 'scan' now launches a fullscreen modal
-  // (ScanCameraScreen) instead of switching the inline camera card.
-  // See design doc § 4.6.
   const handleModeChange = (mode: InputMode) => {
+    if (!canCompare) {
+      // Spec § 6.2 — dimmed chips still tappable but route to paywall.
+      navigation.navigate('Paywall' as any);
+      return;
+    }
     if (mode === 'scan') {
       navigation.navigate('ScanCamera');
       return;
     }
     setInputMode(mode);
-    if (mode === 'type') setSearchOverlayVisible(true);
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Compressed brand header + hero per § 4a.
-          Bundle B/C/D Task 2.10 — glyph + wordmark together pre-launch. */}
-      <View style={styles.header}>
-        <QarenLogo size={28} />
-        <Text style={[styles.logo, styles.logoSpaced]}>{t('app.name')}</Text>
-      </View>
+  // Gallery fallback kept for the camera-permission path. Auto-launches
+  // the gallery picker; on selection, hands off to ScanCameraScreen via
+  // navigation params so the existing scan flow handles compare.
+  const pickFromGalleryFallback = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_IMAGES,
+      quality: 0.8,
+      exif: false,
+    });
+    if (!result.canceled && result.assets && result.assets.length >= MAX_IMAGES) {
+      navigation.navigate('ScanCamera');
+    }
+  };
 
-      <Text style={styles.hero}>{t('home.hero')}</Text>
+  const cameraPermissionGranted = permission?.granted;
 
-      {/* Category chips */}
-      <CategorySelector value={selectedCategory} onChange={setSelectedCategory} />
+  const renderCenterArea = () => {
+    if (!canCompare) {
+      return (
+        <PaywallBanner
+          onSeeOptions={() => {
+            trackEvents([
+              {
+                event_type: 'compare_entry_paywall_banner_tap',
+                event_data: { mode: inputMode },
+              },
+            ]);
+            navigation.navigate('Paywall' as any);
+          }}
+        />
+      );
+    }
 
-      {/* Camera viewfinder or permission request — capped at ~40% screen height
-          per design § 4a. */}
-      <View style={styles.cameraArea} testID="home-camera-card">
-        {!cameraPermissionGranted ? (
+    if (inputMode === 'scan') {
+      if (!cameraPermissionGranted) {
+        return (
           <View style={styles.permissionCard}>
             <Camera size={48} color={colors.text.secondary} />
             <Text style={styles.permissionTitle}>{t('home.permission.title')}</Text>
@@ -476,152 +426,175 @@ export default function HomeScreen({ navigation, onLogout }: HomeScreenProps) {
                 {t('home.permission.cta')}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.galleryFallback} onPress={pickFromGallery}>
+            <TouchableOpacity style={styles.galleryFallback} onPress={pickFromGalleryFallback}>
               <Text style={styles.galleryFallbackText}>
                 {t('home.permission.gallery_link')}
               </Text>
             </TouchableOpacity>
           </View>
-        ) : inputMode === 'scan' ? (
-          // Bundle B/C/D Task 2.6 — inline camera gutted in favor of the
-          // Cal-AI-style fullscreen ScanCameraScreen modal (design § 4.6).
-          // This placeholder keeps the camera card slot occupied + lets the
-          // user re-enter the scanner without going through the chip rail.
-          <TouchableOpacity
-            testID="home-scan-placeholder"
-            style={styles.scanPlaceholder}
-            onPress={() => navigation.navigate('ScanCamera')}
-            accessibilityRole="button"
-            accessibilityLabel={t('home.camera.tap_to_scan')}
-          >
-            <Camera size={48} color={colors.text.secondary} />
-            <Text style={styles.scanPlaceholderTitle}>
-              {t('home.camera.tap_to_scan')}
-            </Text>
-            <Text style={styles.scanPlaceholderHint}>
-              {t('home.camera.slot', { current: 1, total: MAX_IMAGES })}
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          /* URL input mode */
-          <View style={styles.urlContainer}>
-            <TextInput
-              style={styles.urlInput}
-              placeholder={t('home.url.placeholder1', {
-                defaultValue: 'First product link (Amazon, Noon, etc.)',
-              })}
-              placeholderTextColor={colors.text.placeholder}
-              value={urlInput}
-              onChangeText={setUrlInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!loading}
-            />
-            <TextInput
-              style={styles.urlInput}
-              placeholder={t('home.url.placeholder2', {
-                defaultValue: 'Second product link',
-              })}
-              placeholderTextColor={colors.text.placeholder}
-              value={url2Input}
-              onChangeText={setUrl2Input}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!loading}
-            />
-            <TouchableOpacity
-              style={[styles.urlCompareButton, loading && { opacity: 0.5 }]}
-              onPress={handleUrlCompare}
-              disabled={!serverOnline || loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFF" size="small" />
-              ) : (
-                <Text style={styles.urlCompareButtonText}>
-                  {t('home.url.cta', { defaultValue: 'Compare links' })}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
+        );
+      }
+      return (
+        <TouchableOpacity
+          testID="home-scan-placeholder"
+          style={styles.scanPlaceholder}
+          onPress={() => navigation.navigate('ScanCamera')}
+          accessibilityRole="button"
+          accessibilityLabel={t('home.camera.tap_to_scan')}
+        >
+          <Camera size={48} color={colors.text.secondary} />
+          <Text style={styles.scanPlaceholderTitle}>
+            {t('home.camera.tap_to_scan')}
+          </Text>
+          <Text style={styles.scanPlaceholderHint}>
+            {t('home.camera.slot', { current: 1, total: MAX_IMAGES })}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+
+    // Text + URL modes both render through TwoInputShell.
+    return (
+      <TwoInputShell
+        mode={inputMode === 'url' ? 'url' : 'text'}
+        disabled={loading}
+        onSubmit={(a, b) => {
+          if (inputMode === 'url') handleUrlCompare(a, b);
+          else handleTextCompare(a, b);
+        }}
+        onPasteSplit={(sourceBox) => {
+          pasteSplitUsedRef.current = true;
+          trackEvents([
+            {
+              event_type: 'compare_entry_paste_split',
+              event_data: {
+                source_box: sourceBox,
+                mode: inputMode === 'url' ? 'url' : 'text',
+              },
+            },
+          ]);
+        }}
+        onModeAutoswitch={(from, to) => {
+          autoswitchUsedRef.current = true;
+          setInputMode('url');
+          trackEvents([
+            {
+              event_type: 'compare_entry_mode_autoswitch',
+              event_data: { from, to, trigger: 'url_paste' },
+            },
+          ]);
+        }}
+        onReady={(timeToReadyMs) => {
+          trackEvents([
+            {
+              event_type: 'compare_entry_ready',
+              event_data: {
+                mode: inputMode === 'url' ? 'url' : 'text',
+                time_to_ready_ms: timeToReadyMs,
+              },
+            },
+          ]);
+        }}
+      />
+    );
+  };
+
+  // serverOnline is currently unused in the new rendering path; suppressed
+  // until a health-state UI lands. Kept for potential future use.
+  void serverOnline;
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <QarenLogo size={28} />
+        <Text style={[styles.logo, styles.logoSpaced]}>{t('app.name')}</Text>
       </View>
 
-      {/* 3-mode equal chip rail per design § 4a — Scan / Link / Type.
-          Active state via accessibilityState.selected; on-device polish
-          adds the small emerald dot under the active chip in Phase 5. */}
-      <View style={styles.modeChipRail}>
+      {canCompare && <Text style={styles.hero}>{t('home.hero')}</Text>}
+
+      {canCompare && (
+        <CategorySelector
+          value={selectedCategory}
+          onChange={setSelectedCategory}
+        />
+      )}
+
+      <View style={styles.centerArea} testID="home-center-area">
+        {renderCenterArea()}
+      </View>
+
+      {/* 3-mode equal chip rail — dimmed to 50% during paywall takeover. */}
+      <View
+        style={[
+          styles.modeChipRail,
+          !canCompare && { opacity: 0.5 },
+        ]}
+      >
         <ModeChip
           testID="home-mode-scan"
-          label={t('home.mode.scan', { defaultValue: 'Scan' })}
-          icon={<ScanIcon size={14} color={inputMode === 'scan' ? colors.cta.onPrimary : colors.text.secondary} />}
+          label={t('home.mode.scan')}
+          icon={
+            <ScanIcon
+              size={14}
+              color={inputMode === 'scan' ? colors.cta.onPrimary : colors.text.secondary}
+            />
+          }
           active={inputMode === 'scan'}
           onPress={() => handleModeChange('scan')}
         />
         <ModeChip
           testID="home-mode-link"
-          label={t('home.mode.link', { defaultValue: 'Link' })}
-          icon={<LinkIcon size={14} color={inputMode === 'url' ? colors.cta.onPrimary : colors.text.secondary} />}
+          label={t('home.mode.link')}
+          icon={
+            <LinkIcon
+              size={14}
+              color={inputMode === 'url' ? colors.cta.onPrimary : colors.text.secondary}
+            />
+          }
           active={inputMode === 'url'}
           onPress={() => handleModeChange('url')}
         />
         <ModeChip
           testID="home-mode-type"
-          label={t('home.mode.type', { defaultValue: 'Type' })}
-          icon={<TypeIcon size={14} color={inputMode === 'type' ? colors.cta.onPrimary : colors.text.secondary} />}
+          label={t('home.mode.type')}
+          icon={
+            <TypeIcon
+              size={14}
+              color={inputMode === 'type' ? colors.cta.onPrimary : colors.text.secondary}
+            />
+          }
           active={inputMode === 'type'}
           onPress={() => handleModeChange('type')}
         />
       </View>
 
-      <View style={styles.bottomBar}>
-        {/* Phase 4 § 4e — bonus countdown surface. Mounts above the
-            comparison counter when a referral bonus is active; renders
-            nothing otherwise (the card guards on bonusRemaining +
-            expiresAt internally). Backend exposes per-bonus referrer
-            name + expires_at on the /referrals/status response when
-            available; falls back to "a friend" + no countdown until
-            then. */}
-        <BonusCountdownCard
-          baseFreeRemaining={Math.max(0, total - used)}
-          bonusRemaining={bonusInfo.bonusRemaining}
-          referrerName={bonusInfo.referrerName}
-          expiresAt={bonusInfo.expiresAt}
-        />
-        <View testID="home-counter-slot">
-          <ComparisonCounter used={used} total={total} />
+      {canCompare && (
+        <View style={styles.bottomBar}>
+          <BonusCountdownCard
+            baseFreeRemaining={Math.max(0, total - used)}
+            bonusRemaining={bonusInfo.bonusRemaining}
+            referrerName={bonusInfo.referrerName}
+            expiresAt={bonusInfo.expiresAt}
+          />
+          <View testID="home-counter-slot">
+            <ComparisonCounter used={used} total={total} />
+          </View>
         </View>
-      </View>
+      )}
 
-      {/* Loading status overlay */}
       {loading && statusMessage ? (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="small" color={colors.accent} />
           <Text style={styles.loadingText}>{statusMessage}</Text>
         </View>
       ) : null}
-
-      {/* Search overlay */}
-      <Modal visible={searchOverlayVisible} animationType="slide" statusBarTranslucent>
-        <SearchOverlay
-          visible={searchOverlayVisible}
-          onClose={() => {
-            setSearchOverlayVisible(false);
-            // If user closed the overlay without searching, fall back to scan
-            // so the camera card surface stays useful.
-            if (inputMode === 'type') setInputMode('scan');
-          }}
-          onSubmit={handleTextCompare}
-          recentSearches={recentSearches}
-        />
-      </Modal>
     </SafeAreaView>
   );
 }
 
 /**
  * Equal-weight mode chip per design § 4a. Active state surfaced via
- * accessibilityState.selected (testable) and visual fill (emerald). The
- * small active-state dot below the chip lands in Phase 5 polish.
+ * accessibilityState.selected (testable) and visual fill (emerald).
  */
 interface ModeChipProps {
   testID: string;
@@ -632,10 +605,6 @@ interface ModeChipProps {
 }
 
 function ModeChip({ testID, label, icon, active, onPress }: ModeChipProps) {
-  // Bundle B/C/D Task 3.1 — spring scale on selection. Active chip
-  // settles at 1.0; inactive chips ride 0.96 so the active one reads as
-  // raised without a jumpy 60→0 transition. springConfig.chip is shared
-  // with onboarding chips (theme/motion.ts) for visual consistency.
   const scale = useSharedValue(active ? 1 : 0.96);
 
   React.useEffect(() => {
@@ -647,19 +616,13 @@ function ModeChip({ testID, label, icon, active, onPress }: ModeChipProps) {
   }));
 
   const handlePress = () => {
-    // Fire-and-forget haptic; never blocks the chip-tap path. motion.haptic.chip
-    // is locked to 'light' so the rail feels responsive without buzzing.
-    // Wrapped in try/catch (not Promise.catch) so test mocks that return
-    // `undefined` from impactAsync don't crash the press handler.
     try {
-      const maybePromise = Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Light
-      );
+      const maybePromise = Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (maybePromise && typeof maybePromise.catch === 'function') {
-        maybePromise.catch(() => { /* haptic engine unavailable */ });
+        maybePromise.catch(() => {});
       }
     } catch {
-      /* haptic engine threw synchronously — silently no-op */
+      /* no-op */
     }
     onPress();
   };
@@ -674,9 +637,7 @@ function ModeChip({ testID, label, icon, active, onPress }: ModeChipProps) {
         style={[styles.modeChip, active && styles.modeChipActive]}
       >
         {icon}
-        <Text
-          style={[styles.modeChipText, active && styles.modeChipTextActive]}
-        >
+        <Text style={[styles.modeChipText, active && styles.modeChipTextActive]}>
           {label}
         </Text>
       </TouchableOpacity>
@@ -701,12 +662,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text.primary,
   },
-  // Bundle B/C/D Task 2.10 — leading-glyph spacer; RTL flips natively via
-  // marginStart so AR places the gap on the correct side of the wordmark.
   logoSpaced: {
     marginStart: spacing.sm,
   },
-  /** Compressed hero per design § 4a — "Compare anything." 16pt body weight. */
   hero: {
     ...typography.body,
     fontWeight: '600',
@@ -714,212 +672,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
-  /** 3-mode chip rail — equal weight, sits below the camera card. */
+  centerArea: {
+    flex: 1,
+  },
   modeChipRail: {
     flexDirection: 'row',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
-
-  // Camera area
-  cameraArea: {
-    flex: 1,
-    marginHorizontal: spacing.base,
-    borderRadius: radii.card,
-    overflow: 'hidden',
-    backgroundColor: '#000',
-  },
-  cameraContainer: {
-    flex: 1,
-  },
-  camera: {
-    flex: 1,
-  },
-  cameraOverlay: {
-    position: 'absolute',
-    top: spacing.lg,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  cameraOverlayText: {
-    color: '#FFF',
-    ...typography.body,
-    fontWeight: '600',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.chip,
-  },
-
-  // Detected product banner
-  detectedBanner: {
-    backgroundColor: '#1C1C1E',
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    alignItems: 'center',
-  },
-  detectedTitle: {
-    color: colors.accent,
-    ...typography.body,
-    fontWeight: '700',
-    marginBottom: spacing.xs,
-  },
-  detectedSubtitle: {
-    color: '#AAA',
-    ...typography.caption,
-    textAlign: 'center',
-    marginBottom: spacing.base,
-  },
-  retakeButton: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radii.button,
-  },
-  retakeButtonText: {
-    color: '#FFF',
-    ...typography.body,
-    fontWeight: '600',
-  },
-
-  // Preview strip
-  previewStrip: {
-    maxHeight: 80,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-  },
-  previewStripContent: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  previewItem: {
-    position: 'relative',
-  },
-  previewImage: {
-    width: 56,
-    height: 56,
-    borderRadius: spacing.sm,
-    borderWidth: 2,
-    borderColor: '#FFF',
-  },
-  removeButton: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: colors.destructive,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Camera controls
-  cameraControls: {
-    backgroundColor: '#000',
-    paddingVertical: spacing.base,
+  bottomBar: {
     paddingHorizontal: spacing.lg,
-  },
-  captureRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  captureButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 4,
-    borderColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: spacing.xl,
-  },
-  captureButtonDisabled: {
-    opacity: 0.3,
-  },
-  captureButtonInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#FFF',
-  },
-  sideButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  compareButton: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    borderRadius: radii.button,
+    paddingVertical: spacing.sm,
     alignItems: 'center',
   },
-  compareButtonText: {
-    color: '#FFF',
-    ...typography.body,
-    fontWeight: '700',
-  },
-  processingContainer: {
-    alignItems: 'center',
-    paddingVertical: spacing.lg,
-  },
-  processingText: {
-    color: '#FFF',
-    ...typography.body,
-    marginTop: spacing.md,
-  },
-
-  // URL mode
-  urlContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.xl,
-    gap: spacing.md,
-  },
-  urlInput: {
-    backgroundColor: colors.bg.secondary,
-    borderRadius: radii.input,
-    padding: spacing.base,
-    ...typography.body,
-    color: colors.text.primary,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-  },
-  urlCompareButton: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    borderRadius: radii.button,
-    alignItems: 'center',
-  },
-  urlCompareButtonText: {
-    color: '#FFF',
-    ...typography.body,
-    fontWeight: '600',
-  },
-
-  // Permission card
-  permissionCard: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing['3xl'],
-    backgroundColor: colors.bg.secondary,
-  },
-  // Bundle B/C/D — placeholder shown in the camera card slot when scan
-  // mode is selected; tapping it opens the fullscreen ScanCameraScreen
-  // modal. See plan § Task 2.6.
   scanPlaceholder: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing['2xl'],
+    marginHorizontal: spacing.base,
     backgroundColor: colors.bg.secondary,
     borderRadius: radii.card,
   },
@@ -934,6 +706,15 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text.secondary,
     textAlign: 'center',
+  },
+  permissionCard: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing['3xl'],
+    marginHorizontal: spacing.base,
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.card,
   },
   permissionTitle: {
     ...typography.title,
@@ -966,17 +747,7 @@ const styles = StyleSheet.create({
     color: colors.accent,
     ...typography.caption,
   },
-
-  // Bottom bar — now just hosts the freemium counter; mode chips moved
-  // above the camera card per § 4a redesign.
-  bottomBar: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-  },
   modeChip: {
-    /* Equal-weight chips per § 4a — flex:1 so all three sit on a single
-       line and split the available width evenly. */
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
@@ -1003,8 +774,6 @@ const styles = StyleSheet.create({
     color: colors.cta.onPrimary,
     fontWeight: '600',
   },
-
-  // Loading overlay
   loadingOverlay: {
     position: 'absolute',
     bottom: 80,
@@ -1024,3 +793,8 @@ const styles = StyleSheet.create({
     ...typography.caption,
   },
 });
+
+// Re-export so existing CameraView import is still tree-shaken. Pulls the
+// expo-camera permissions hook into the bundle even when the user never
+// reaches a permission-granted state, preserving the previous behavior.
+void CameraView;
