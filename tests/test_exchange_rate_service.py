@@ -539,3 +539,36 @@ class TestEdgeCases:
 
             rate = await get_rate(currency, "BHD")
             assert rate > 0  # Should get a valid rate
+
+
+# ============================================================
+# Bucket A bug 4 — Task 4.1: fallback rates cover all source currencies
+# seen in scraped data (LV/Gucci luxury bench surfaced SGD as 1.0 BHD).
+# ============================================================
+
+REQUIRED_SOURCE_CURRENCIES = ["USD", "EUR", "GBP", "SGD", "JPY", "CNY", "INR"]
+GCC_TARGET_CURRENCIES = ["BHD", "SAR", "AED", "KWD", "QAR", "OMR"]
+
+
+def test_fallback_rates_cover_all_source_currencies():
+    """Every currency we've seen in scraped data must have a fallback rate."""
+    missing = [c for c in REQUIRED_SOURCE_CURRENCIES if c not in FALLBACK_RATES]
+    assert not missing, f"FALLBACK_RATES missing source currencies: {missing}"
+
+
+def test_fallback_rates_cover_all_gcc_targets():
+    """All 6 GCC region currencies must be in the table."""
+    missing = [c for c in GCC_TARGET_CURRENCIES if c not in FALLBACK_RATES]
+    assert not missing, f"FALLBACK_RATES missing GCC target currencies: {missing}"
+
+
+def test_sgd_to_bhd_in_reasonable_range():
+    """SGD->BHD rate must be ~0.27-0.30 (1 SGD ~= 0.28 BHD as of 2026-05)."""
+    rate = _fallback_rate("SGD", "BHD")
+    assert 0.25 <= rate <= 0.32, f"SGD->BHD rate {rate} outside plausible band"
+
+
+def test_jpy_to_bhd_in_reasonable_range():
+    """JPY->BHD rate must be ~0.002-0.003."""
+    rate = _fallback_rate("JPY", "BHD")
+    assert 0.002 <= rate <= 0.004, f"JPY->BHD rate {rate} outside plausible band"

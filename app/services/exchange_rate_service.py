@@ -19,6 +19,10 @@ FALLBACK_RATES: Dict[str, float] = {
     "USD": 0.376,
     "EUR": 0.41,
     "GBP": 0.475,
+    "SGD": 0.282,    # 1 SGD = 0.282 BHD (as of 2026-05)
+    "JPY": 0.0025,
+    "CNY": 0.052,
+    "INR": 0.0045,
     "SAR": 0.1003,
     "AED": 0.1024,
     "KWD": 1.23,
