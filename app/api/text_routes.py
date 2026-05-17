@@ -292,7 +292,9 @@ async def text_compare_get(
 @limiter.limit("10/minute")
 async def text_compare_stream(
     request: Request,
-    q: str = Query(..., max_length=500, description="Comparison query, e.g., 'iPhone 15 vs S24'"),
+    q: Optional[str] = Query(None, max_length=500, description="Legacy single-string query, e.g., 'iPhone 15 vs S24'"),
+    product_a: Optional[str] = Query(None, max_length=80, description="Bundle B: explicit first product, paired with product_b"),
+    product_b: Optional[str] = Query(None, max_length=80, description="Bundle B: explicit second product, paired with product_a"),
     region: str = Query("bahrain", description="GCC region for pricing"),
     specs: bool = Query(True, description="Include specifications"),
     reviews: bool = Query(True, description="Include reviews"),
@@ -301,7 +303,34 @@ async def text_compare_stream(
     selected_category: Optional[str] = Query(None, description="User-selected category hint"),
     user: Optional[Dict] = Depends(get_optional_user),
 ):
-    """SSE streaming version of text comparison. Returns Server-Sent Events."""
+    """SSE streaming version of text comparison. Returns Server-Sent Events.
+
+    Dual-shape (Bundle B sec 5.1) — same mutual-exclusion rules as POST /compare:
+      - ?q=iPhone+15+vs+Galaxy+S24                     (legacy single-string)
+      - ?product_a=iPhone+15&product_b=Galaxy+S24      (Bundle B pair)
+    Both shapes hit L1 + L3 identically. Pair shape forwards explicit_pair
+    so the service skips parse_product_query().
+    """
+    # Dual-shape validation — surfaces before StreamingResponse construction
+    # so clients get a clean 422, not a partial event stream.
+    has_pair = bool(product_a and product_a.strip() and product_b and product_b.strip())
+    has_query = bool(q and q.strip())
+    if has_pair and has_query:
+        raise HTTPException(
+            status_code=422,
+            detail="Send EITHER q OR product_a+product_b, not both",
+        )
+    if not has_pair and not has_query:
+        raise HTTPException(
+            status_code=422,
+            detail="Send product_a+product_b OR q",
+        )
+
+    explicit_pair = None
+    if has_pair:
+        explicit_pair = (product_a.strip(), product_b.strip())
+        q = f"{product_a.strip()} vs {product_b.strip()}"
+
     service = get_comparison_service()
     start_time = time.time()
 
@@ -371,6 +400,7 @@ async def text_compare_stream(
             selected_category=selected_category,
             user_preferences=user_prefs,
             user_id=user.get("id") if user else None,
+            explicit_pair=explicit_pair,
         ):
             if await request.is_disconnected():
                 logger.info(f"[SSE] Client disconnected during stream for query: {q}")
