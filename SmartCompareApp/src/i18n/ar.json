@@ -499,7 +499,10 @@
   "results.emptyState.title": "لا توجد مقارنة محملة",
   "results.emptyState.cta": "العودة إلى السجل",
   "results.emptyState.notFound": "المقارنة غير موجودة",
+  "results.emptyState.needMorePhotos": "وجدنا منتجاً واحداً. ضع المنتجين معاً في الصورة لمقارنة جنباً إلى جنب.",
+  "results.emptyState.visionFailed": "صوّر مرة أخرى بإضاءة أفضل ونرتّبها لك.",
   "results.loading.fromHistory": "نحضّر مقارنتك",
+  "results.loading.fromCamera": "نتعرّف على منتجاتك",
 
   "register.inviteCode.placeholder": "عندك رمز دعوة؟ (اختياري)",
   "register.inviteCode.accessibility": "رمز الدعوة",

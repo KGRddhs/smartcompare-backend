@@ -189,6 +189,55 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     };
   }, [route?.params?.comparison_id, result]);
 
+  // Bucket A bug 2 — Camera capture path. ScanCamera passes a
+  // vision_products: [uri0, uri1] array via React Nav; identifyFromImages
+  // returns either action='comparison' (full ComparisonResult inline) or
+  // action='need_second_product' / error. Same 1.2s min-display floor as
+  // the history path so the LoadingRings hero animation lands.
+  useEffect(() => {
+    const visionProducts = route?.params?.vision_products;
+    if (!visionProducts || visionProducts.length < 2 || result) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { identifyFromImages } = await import('../services/api');
+        const data: any = await identifyFromImages(visionProducts, 'bahrain');
+
+        if (data?.action === 'comparison') {
+          const remaining = minDisplayUntilRef.current - Date.now();
+          if (remaining > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+          }
+          if (!cancelled) {
+            // /image/identify returns the comparison inline; the result body
+            // may live at data.result or be the data object itself.
+            setResult((data.result ?? data) as ComparisonResult);
+            setLoadingResult(false);
+          }
+        } else if (data?.action === 'need_second_product') {
+          if (!cancelled) {
+            setLoadError('need_more_photos');
+            setLoadingResult(false);
+          }
+        } else {
+          if (!cancelled) {
+            setLoadError('vision_failed');
+            setLoadingResult(false);
+          }
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        setLoadError('vision_failed');
+        setLoadingResult(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [route?.params?.vision_products, result]);
+
   // Detect new structured format vs old flat format
   const isNewFormat = !!result?.overview?.winner;
 
@@ -447,7 +496,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         <View style={styles.loadingRingsContainer}>
           <LoadingRings size={120} />
           <Text style={styles.loadingRingsText}>
-            {t('results.loading.fromHistory')}
+            {route?.params?.vision_products
+              ? t('results.loading.fromCamera')
+              : t('results.loading.fromHistory')}
           </Text>
         </View>
       </View>
@@ -474,6 +525,10 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <Text style={styles.emptyStateTitle}>
             {loadError === 'not_found'
               ? t('results.emptyState.notFound')
+              : loadError === 'need_more_photos'
+              ? t('results.emptyState.needMorePhotos')
+              : loadError === 'vision_failed'
+              ? t('results.emptyState.visionFailed')
               : t('results.emptyState.title')}
           </Text>
           <TouchableOpacity
