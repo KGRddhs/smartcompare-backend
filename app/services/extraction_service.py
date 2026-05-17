@@ -173,6 +173,23 @@ CATEGORY_SPEC_SCHEMAS = {
 }
 
 
+# Critical schema fields per category - the ones we'll run a smart-fallback
+# Serper query for if GPT returns null after the primary extraction.
+# Cap is enforced in structured_comparison_service to keep the parallel
+# fallback within the Phase 2 wall-time budget (3s, asyncio.wait_for).
+CRITICAL_SCHEMA_FIELDS: Dict[str, List[str]] = {
+    "electronics": ["front_camera", "rear_camera", "processor", "ram", "battery", "water_resistance"],
+    "supplements": ["count", "dosage", "form"],
+    "fragrances": ["concentration", "longevity", "sillage"],
+    "fashion": ["material", "origin"],
+    "skincare": ["volume_ml", "ingredients"],
+    "haircare": ["volume_ml", "ingredients"],
+    "makeup": ["volume_ml", "shade_range"],
+    "grocery": ["weight_g", "ingredients"],
+    "other": [],
+}
+
+
 def _build_specs_prompt(brand: str, name: str, variant: str, category: str, search_context: str, drug_context: str = "") -> dict:
     """Build specs extraction prompt with system/user message separation.
 

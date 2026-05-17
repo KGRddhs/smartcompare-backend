@@ -1227,7 +1227,7 @@ class StructuredComparisonService:
         if result.get("specs"):
             result["specs"] = self._clean_specs(result["specs"])
 
-        # === Phase 2: reviews + verified rating (parallel) ===
+        # === Phase 2: reviews + verified rating (parallel) + smart-fallback for missing critical specs ===
         retailer_ratings = collect_retailer_ratings(full_name, self._shopping_items_cache)
 
         phase2_tasks = []
@@ -1244,6 +1244,24 @@ class StructuredComparisonService:
         phase2_tasks.append(self._get_verified_rating(full_name))
         phase2_keys.append("_rating_data")
 
+        # Smart-fallback (Bucket A bug 3c): identify critical schema fields still
+        # missing after primary extraction. Run a targeted Serper + small GPT
+        # extract in parallel with Phase 2; max 2 fields per product, 3s cap.
+        from app.services.extraction_service import CRITICAL_SCHEMA_FIELDS
+        critical_fields = CRITICAL_SCHEMA_FIELDS.get(category, [])
+        specs_so_far = result.get("specs") or {}
+        missing_critical = [
+            f for f in critical_fields
+            if specs_so_far.get(f) in (None, "", "N/A")
+        ][:2]
+        fallback_added = False
+        if missing_critical:
+            phase2_tasks.append(self._smart_fallback_extract(
+                brand, name, variant, category, missing_critical,
+            ))
+            phase2_keys.append("_smart_fallback")
+            fallback_added = True
+
         t2 = time.perf_counter() if stage_timings is not None else None
         phase2_results = await asyncio.gather(*phase2_tasks, return_exceptions=True)
         if stage_timings is not None:
@@ -1254,8 +1272,24 @@ class StructuredComparisonService:
                 stage_timings["reviews_ms"] = 0.0
             stage_timings["rating_ms"] = phase2_elapsed_ms
 
+        # Apply smart-fallback results before the regular Phase 2 result loop,
+        # so the rest of the function sees the fully-populated specs dict.
+        if fallback_added:
+            fb_idx = phase2_keys.index("_smart_fallback")
+            fb_result = phase2_results[fb_idx]
+            if not isinstance(fb_result, Exception) and fb_result:
+                result_specs = result.get("specs") or {}
+                fc = result_specs.setdefault("_field_confidence", {})
+                for field, value in fb_result.items():
+                    if value and result_specs.get(field) in (None, "", "N/A"):
+                        result_specs[field] = value
+                        fc[field] = "smart_fallback"
+                result["specs"] = result_specs
+
         rating_data = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
         for i, key in enumerate(phase2_keys):
+            if key == "_smart_fallback":
+                continue  # Handled above
             if isinstance(phase2_results[i], Exception):
                 logger.error(f"Error fetching {key}: {phase2_results[i]}")
                 if key != "_rating_data":
@@ -1723,6 +1757,63 @@ class StructuredComparisonService:
     async def _get_verified_rating(self, full_name: str) -> Dict[str, Any]:
         """Get verified rating."""
         return await get_verified_rating(full_name, self._shopping_items_cache, track_serper_cost_fn=self._track_serper_cost)
+
+    async def _smart_fallback_extract(
+        self,
+        brand: str,
+        name: str,
+        variant: Optional[str],
+        category: str,
+        missing_fields: List[str],
+    ) -> Dict[str, Any]:
+        """Targeted Serper + small GPT extract for missing critical schema fields.
+
+        Capped at 3s by asyncio.wait_for so the parallel Phase 2 gather can't
+        be dragged past its budget. Returns {field: value} for fields filled;
+        empty dict on timeout / failure (callers must treat empty as no-op).
+        """
+        if not missing_fields:
+            return {}
+
+        try:
+            fields_text = " ".join(missing_fields).replace("_", " ")
+            full_name = f"{brand} {name} {variant or ''}".strip()
+            query = f"{full_name} {fields_text} specifications"
+
+            async def _do_extract() -> Dict[str, Any]:
+                from app.services import openai_service as _openai_svc
+
+                search_results = await search_web(query, num_results=5)
+                self._track_serper_cost()
+
+                snippets = []
+                for hit in (search_results.get("organic") or [])[:5]:
+                    snippet = hit.get("snippet", "")
+                    if snippet:
+                        snippets.append(snippet)
+                context = "\n".join(snippets[:5])
+
+                if not context:
+                    return {}
+
+                return await _openai_svc.extract_specs_targeted(
+                    brand=brand,
+                    name=name,
+                    variant=variant,
+                    category=category,
+                    fields=missing_fields,
+                    context=context,
+                )
+
+            return await asyncio.wait_for(_do_extract(), timeout=3.0)
+        except asyncio.TimeoutError:
+            logger.info(
+                f"[SMART_FALLBACK] Timeout for {brand} {name} fields {missing_fields}"
+            )
+            return {}
+        except Exception as e:
+            logger.warning(f"[SMART_FALLBACK] Error for {brand} {name}: {e}")
+            return {}
 
     # ============================================
     # Formatting helpers (kept in orchestrator)

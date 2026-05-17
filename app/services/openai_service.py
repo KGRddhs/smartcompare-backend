@@ -3,11 +3,14 @@ OpenAI Service - Vision and text processing for product comparison
 """
 import json
 import base64
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
 import httpx
 from openai import AsyncOpenAI
+
+logger = logging.getLogger(__name__)
 
 # Initialize async client (reads OPENAI_API_KEY from env at request time).
 # Explicit timeout: 30s connect (Railway networking can be slow), 120s total.
@@ -209,3 +212,56 @@ EXAMPLES:
         "tokens_used": usage.total_tokens,
         "cost": round(total_cost, 6)
     }
+
+
+async def extract_specs_targeted(
+    brand: str,
+    name: str,
+    variant: Optional[str],
+    category: str,
+    fields: List[str],
+    context: str,
+) -> Dict[str, Any]:
+    """Extract a small set of specified fields from a focused context.
+
+    Used by smart-fallback when primary spec extraction left critical
+    fields null. Returns dict of {field: value} for fields it could fill.
+    """
+    if not fields:
+        return {}
+
+    fields_json = ",\n    ".join(f'"{f}": null' for f in fields)
+    full_name = f"{brand} {name} {variant or ''}".strip()
+
+    system = f"""Extract these specific fields for {full_name} from the snippets below.
+Return ONLY valid JSON with these exact keys:
+{{
+    {fields_json}
+}}
+
+Rules:
+- For each field, give a single short value (e.g. '12 MP', 'IP68', 'Snapdragon 8 Gen 3')
+- If you cannot find or know the value, return null for that field
+- Use your training data as a fallback when snippets are silent"""
+
+    user = f"SNIPPETS:\n{context}\n\nReturn JSON for: {fields}"
+
+    try:
+        client_local = get_client()
+        response = await client_local.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+            max_tokens=200,
+        )
+        content = response.choices[0].message.content
+        result = json.loads(content) if content else {}
+        # Filter to only requested fields, drop nulls
+        return {k: v for k, v in result.items() if k in fields and v is not None}
+    except Exception as e:
+        logger.warning(f"[EXTRACT_TARGETED] Failed: {e}")
+        return {}
