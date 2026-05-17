@@ -498,6 +498,8 @@
   "results.bestForYou": "Ideal for you",
   "results.emptyState.title": "No comparison loaded",
   "results.emptyState.cta": "Back to history",
+  "results.emptyState.notFound": "Comparison not found",
+  "results.loading.fromHistory": "Loading your comparison",
 
   "register.inviteCode.placeholder": "Have an invite code? (optional)",
   "register.inviteCode.accessibility": "Invite code",

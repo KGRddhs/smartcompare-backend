@@ -498,6 +498,8 @@
   "results.bestForYou": "الأفضل لك",
   "results.emptyState.title": "لا توجد مقارنة محملة",
   "results.emptyState.cta": "العودة إلى السجل",
+  "results.emptyState.notFound": "المقارنة غير موجودة",
+  "results.loading.fromHistory": "نحضّر مقارنتك",
 
   "register.inviteCode.placeholder": "عندك رمز دعوة؟ (اختياري)",
   "register.inviteCode.accessibility": "رمز الدعوة",

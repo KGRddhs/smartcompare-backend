@@ -79,6 +79,7 @@ import {
   parseApiError,
   DemographicsPayload,
 } from '../services/api';
+import { LoadingRings } from '../components/illustrations/LoadingRings';
 import { HeroRings } from '../components/results/HeroRings';
 import { DimensionBars } from '../components/results/DimensionBars';
 import { TopMatchBadge } from '../components/results/TopMatchBadge';
@@ -99,7 +100,25 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // Bundle E Task 0.1 — History → Results crash: deep-link / stale-cache
   // navigations can hand us undefined `route.params`. Destructure defensively
   // so the empty-state branch can render instead of throwing on line 1.
-  const result = route?.params?.result;
+  //
+  // Bucket A bugs 1 + 2: ResultsScreen now handles three nav-param shapes
+  //   route.params.result            → render directly (existing path)
+  //   route.params.comparison_id     → fetch full payload via getComparison(id)
+  //   route.params.vision_products   → identify+compare from camera URIs
+  // We hold `result` in state so async loads flow into the same render path.
+  const [result, setResult] = useState<ComparisonResult | null | undefined>(
+    route?.params?.result
+  );
+  const [loadingResult, setLoadingResult] = useState<boolean>(
+    !route?.params?.result &&
+      !!(route?.params?.comparison_id || route?.params?.vision_products)
+  );
+  const [loadError, setLoadError] = useState<
+    'not_found' | 'need_more_photos' | 'vision_failed' | 'generic' | null
+  >(null);
+  // 1.2s brand-moment floor (Qaren UX redesign § 3) — even fast fetches
+  // wait this long so the LoadingRings hero animation lands.
+  const minDisplayUntilRef = useRef<number>(Date.now() + 1200);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   // Phase 3 § 4b — specs collapsed by default. The post-reveal moment
   // should feel like an answer, not a data dump; the user expands when
@@ -130,6 +149,45 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   useEffect(() => {
     getUsageStatus().then(setUsageStatus);
   }, []);
+
+  // Bucket A bug 1 — History tap path. Fetch the full payload when only
+  // a comparison_id was passed. Respects the 1.2s brand-moment floor so
+  // the LoadingRings animation lands even on instant cache hits.
+  useEffect(() => {
+    const comparisonId = route?.params?.comparison_id;
+    if (!comparisonId || result) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { getComparison } = await import('../services/api');
+        const data = await getComparison(comparisonId);
+        const remaining = minDisplayUntilRef.current - Date.now();
+        if (remaining > 0) {
+          await new Promise((resolve) => setTimeout(resolve, remaining));
+        }
+        if (!cancelled) {
+          setResult(data);
+          setLoadingResult(false);
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        const status = err?.response?.status;
+        if (status === 404) {
+          setLoadError('not_found');
+        } else if (status === 401) {
+          // Axios 401 interceptor handles refresh/redirect — no-op here.
+        } else {
+          setLoadError('generic');
+        }
+        setLoadingResult(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [route?.params?.comparison_id, result]);
 
   // Detect new structured format vs old flat format
   const isNewFormat = !!result?.overview?.winner;
@@ -373,12 +431,35 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     return String(v0) !== String(v1);
   };
 
+  // Bucket A bugs 1 + 2: theatrical loading state while the async fetch
+  // (history payload or vision identify) is in flight. Renders LoadingRings
+  // hero animation with copy specific to the source (history vs camera).
+  if (loadingResult) {
+    return (
+      <View style={styles.container} testID="results-loading-state">
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+            <ArrowLeft size={24} color={colors.text.primary} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <View style={styles.headerButton} />
+        </View>
+        <View style={styles.loadingRingsContainer}>
+          <LoadingRings size={120} />
+          <Text style={styles.loadingRingsText}>
+            {t('results.loading.fromHistory')}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   // Bundle E Task 0.1 — top-level defensive guard. `route.params.result`
   // is undefined for deep-links or stale history rehydrations; without
   // this branch every `result?.X` derivation below is fine but the JSX
   // would still render an unusable comparison shell. Bail to the
   // empty-state instead, matching the design § 1a intent.
-  if (!result) {
+  if (!result || loadError) {
     return (
       <View style={styles.container} testID="results-empty-state">
         <View style={styles.header}>
@@ -391,7 +472,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         <View style={styles.emptyStateContainer}>
           <AlertCircle size={48} color={colors.text.secondary} />
           <Text style={styles.emptyStateTitle}>
-            {t('results.emptyState.title')}
+            {loadError === 'not_found'
+              ? t('results.emptyState.notFound')
+              : t('results.emptyState.title')}
           </Text>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -1149,6 +1232,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
+  },
+  loadingRingsContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    gap: spacing.xl,
+  },
+  loadingRingsText: {
+    ...typography.body,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
   },
   emptyStateTitle: {
     ...typography.title,
