@@ -65,6 +65,27 @@ def select_client_for_user(user_prefs: Optional[Dict[str, Any]] = None) -> Async
     return get_client(use_shared_project=True)
 
 
+def _log_cache_telemetry(response, call_label: str = "extract") -> None:
+    """D2 Intervention 2: log OpenAI auto-prompt-cache hits.
+
+    SDK shape: openai>=2.x exposes cached tokens at
+    response.usage.prompt_tokens_details.cached_tokens (nested). Older SDK
+    drafts and some Anthropic/proxy implementations expose it flat at
+    response.usage.prompt_tokens_cached. Use a getattr fallback so the
+    telemetry works regardless of which path the SDK populates.
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    cached_tokens = getattr(usage, "prompt_tokens_cached", None)
+    if cached_tokens is None:
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached_tokens = getattr(details, "cached_tokens", 0) if details is not None else 0
+    cached_tokens = cached_tokens or 0
+    if cached_tokens > 0:
+        logger.info(f"[OPENAI_CACHE] {call_label} hit {cached_tokens} cached prompt tokens")
+
+
 def encode_image_to_base64(image_path: str) -> str:
     """Convert image file to base64 string"""
     with open(image_path, "rb") as image_file:
@@ -172,7 +193,8 @@ EXAMPLES:
         max_tokens=500,
         temperature=0  # Deterministic output
     )
-    
+    _log_cache_telemetry(response, "identify_products")
+
     # Parse response
     raw_content = response.choices[0].message.content
     clean_content = clean_json_response(raw_content)
@@ -259,6 +281,7 @@ Rules:
             temperature=0.1,
             max_tokens=200,
         )
+        _log_cache_telemetry(response, "extract_specs_targeted")
         content = response.choices[0].message.content
         result = json.loads(content) if content else {}
         # Filter to only requested fields, drop nulls + literal "N/A"
