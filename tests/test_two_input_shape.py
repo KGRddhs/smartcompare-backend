@@ -413,15 +413,11 @@ class TestContentSafetyInterception:
     """Pins Backend § 1.4 sync-path L1 block. The handler must consult
     content_safety_service before invoking the comparison service."""
 
-    @pytest.mark.xfail(
-        reason="Backend § 1.4 L1 service-level block works, but text_compare handler "
-        "still maps {success:false} → HTTPException(400) — the structured "
-        "{code,layer} body is dropped. Route needs to early-return the "
-        "L1 dict instead of raising. Flagged for cross-QA with Backend agent.",
-        strict=False,
-    )
-    def test_pair_shape_blocked_query_returns_content_unavailable(self, mock_service):
+    def test_pair_shape_blocked_query_returns_content_unavailable(self):
         # "glock 19" is a weapons-seed term in app/data/content_blocklist.json.
+        # Backend § 1.4 + text_routes.py:165 early-return on CONTENT_UNAVAILABLE.
+        # Hit the REAL service so the L1 pre-flight inside compare_from_text
+        # actually runs — mocking the service replaces L1 too.
         response = client.post(
             "/api/v1/text/compare",
             json={"product_a": "glock 19", "product_b": "iPhone"},
@@ -439,13 +435,8 @@ class TestContentSafetyInterception:
         )
         assert response.status_code == 200
 
-    @pytest.mark.xfail(
-        reason="Same as test_pair_shape_blocked_query_returns_content_unavailable — "
-        "handler raises HTTPException on success:false from service. "
-        "L1 service-level block fires but body is dropped.",
-        strict=False,
-    )
-    def test_legacy_query_blocked_by_l1_same_path(self, mock_service):
+    def test_legacy_query_blocked_by_l1_same_path(self):
+        # Hit the REAL service for L1 to fire.
         response = client.post(
             "/api/v1/text/compare",
             json={"query": "glock 19 vs iPhone"},
