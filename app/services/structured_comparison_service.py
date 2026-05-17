@@ -1260,14 +1260,21 @@ class StructuredComparisonService:
 
         # Smart-fallback (Bucket A bug 3c): identify critical schema fields still
         # missing after primary extraction. Run a targeted Serper + small GPT
-        # extract in parallel with Phase 2; max 2 fields per product, 3s cap.
+        # extract in parallel with Phase 2; max 6 fields per product, 5s cap.
+        # D2 post-deploy tuning: bumped from [:2]/3s to [:6]/5s — Phase 2 wall
+        # budget freed up after Intervention 1 moved reviews to Phase 1 (was
+        # tight at 3s when reviews ran here too). [:6] covers electronics's
+        # max critical-field count; live bench showed iPhone 17 occasionally
+        # had 3 of 6 critical fields needing fill-in but the old [:2] cap
+        # silently dropped the 3rd, producing flaky test_post_d2_per_category_
+        # critical_fields_intact failures.
         from app.services.extraction_service import CRITICAL_SCHEMA_FIELDS
         critical_fields = CRITICAL_SCHEMA_FIELDS.get(category, [])
         specs_so_far = result.get("specs") or {}
         missing_critical = [
             f for f in critical_fields
             if specs_so_far.get(f) in (None, "", "N/A")
-        ][:2]
+        ][:6]
         fallback_added = False
         if missing_critical:
             phase2_tasks.append(self._smart_fallback_extract(
@@ -1785,9 +1792,13 @@ class StructuredComparisonService:
     ) -> Dict[str, Any]:
         """Targeted Serper + small GPT extract for missing critical schema fields.
 
-        Capped at 3s by asyncio.wait_for so the parallel Phase 2 gather can't
+        Capped at 5s by asyncio.wait_for so the parallel Phase 2 gather can't
         be dragged past its budget. Returns {field: value} for fields filled;
         empty dict on timeout / failure (callers must treat empty as no-op).
+
+        D2 post-deploy tuning: bumped 3s -> 5s after Intervention 1 moved
+        reviews to Phase 1, freeing Phase 2 wall budget. Cold-cache Serper +
+        OpenAI sometimes exceeded 3s, dropping the fallback fill silently.
         """
         if not missing_fields:
             return {}
@@ -1822,7 +1833,7 @@ class StructuredComparisonService:
                     context=context,
                 )
 
-            return await asyncio.wait_for(_do_extract(), timeout=3.0)
+            return await asyncio.wait_for(_do_extract(), timeout=5.0)
         except asyncio.TimeoutError:
             logger.info(
                 f"[SMART_FALLBACK] Timeout for {brand} {name} fields {missing_fields}"

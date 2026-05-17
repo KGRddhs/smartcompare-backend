@@ -82,10 +82,15 @@ async def test_smart_fallback_runs_in_parallel_with_phase_2():
 
 
 @pytest.mark.asyncio
-async def test_smart_fallback_capped_at_3_seconds():
-    """If fallback Serper query exceeds 3s cap, it gets cancelled gracefully."""
+async def test_smart_fallback_capped_at_5_seconds():
+    """If fallback Serper query exceeds 5s cap, it gets cancelled gracefully.
 
-    slow_search_web = _make_slow_search_web(fallback_delay=5.0, unified_delay=0.0)
+    D2 post-deploy tuning: cap bumped 3s -> 5s after Intervention 1 freed
+    Phase 2 wall budget. Old test name + 3s assertions retained behaviour
+    but failed structurally post-bump.
+    """
+
+    slow_search_web = _make_slow_search_web(fallback_delay=7.0, unified_delay=0.0)
 
     async def fake_extract_targeted(*args, **kwargs):
         return {}
@@ -123,8 +128,8 @@ async def test_smart_fallback_capped_at_3_seconds():
         )
         elapsed = asyncio.get_event_loop().time() - start
 
-        # Must complete despite slow fallback - within 3.5s (3s cap + buffer)
-        assert elapsed < 3.5, f"Smart-fallback did not respect 3s cap (took {elapsed:.2f}s)"
+        # Must complete despite slow fallback - within 5.5s (5s cap + buffer)
+        assert elapsed < 5.5, f"Smart-fallback did not respect 5s cap (took {elapsed:.2f}s)"
 
 
 # Extra coverage (Bucket A bug 3c follow-up) ---------------------------------
