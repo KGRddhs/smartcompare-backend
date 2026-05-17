@@ -1,0 +1,113 @@
+{
+  "version": "1",
+  "updated_at": "2026-05-17",
+  "notes": "Clinical/neutral terms only — see app/services/content_safety_service.py for usage. Bump version when changing categories array shape (not when only adding terms). EN terms use word-boundary matching; AR uses Unicode-aware boundary lookaround. NO term shorter than 3 chars (avoids 'ar' matching 'Mars Bar').",
+  "categories": {
+    "weapons": {
+      "en": [
+        "firearm",
+        "handgun",
+        "ar-15",
+        "ak-47",
+        "ammunition",
+        "silencer",
+        "ghost gun",
+        "assault rifle",
+        "tactical knife",
+        "switchblade",
+        "glock 19",
+        "shotgun shells"
+      ],
+      "ar": [
+        "مسدس",
+        "بندقية",
+        "سلاح ناري",
+        "ذخيرة",
+        "كاتم صوت",
+        "سكين قتالي",
+        "بندقية هجومية"
+      ]
+    },
+    "illegal_drugs": {
+      "en": [
+        "cocaine",
+        "heroin",
+        "methamphetamine",
+        "fentanyl",
+        "lsd tabs",
+        "mdma pills",
+        "psilocybin",
+        "crystal meth",
+        "crack cocaine",
+        "opium",
+        "ketamine recreational"
+      ],
+      "ar": [
+        "كوكايين",
+        "هيروين",
+        "ميثامفيتامين",
+        "فنتانيل",
+        "أفيون",
+        "حشيش مخدر",
+        "كريستال ميث"
+      ]
+    },
+    "adult_products": {
+      "en": [
+        "sex toy",
+        "vibrator adult",
+        "fleshlight",
+        "anal plug",
+        "bdsm",
+        "fetish gear",
+        "penis pump",
+        "adult novelty",
+        "sex doll",
+        "bondage kit"
+      ],
+      "ar": [
+        "لعبة جنسية",
+        "هزاز جنسي",
+        "أدوات بالغين",
+        "ألعاب جنسية",
+        "دمية جنسية"
+      ]
+    },
+    "gore": {
+      "en": [
+        "dismembered body",
+        "decapitation video",
+        "eviscerated",
+        "torture instrument",
+        "execution video",
+        "snuff film",
+        "beheading video"
+      ],
+      "ar": [
+        "تقطيع أوصال",
+        "قطع رأس",
+        "أداة تعذيب",
+        "فيديو إعدام",
+        "فيديو تعذيب"
+      ]
+    },
+    "self_harm": {
+      "en": [
+        "suicide method",
+        "self harm tool",
+        "suicide kit",
+        "how to overdose",
+        "noose tying guide",
+        "razor blade self harm",
+        "suicide instructions"
+      ],
+      "ar": [
+        "طريقة انتحار",
+        "أداة إيذاء النفس",
+        "كيفية الانتحار",
+        "وسيلة انتحار",
+        "تعليمات الانتحار"
+      ]
+    }
+  }
+}
