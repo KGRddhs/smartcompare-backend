@@ -205,3 +205,92 @@ The biggest D2 candidate fix mapping to this bottleneck is **#2: Combine specs +
 **Ruled out:** Candidate **#4 (drop drug-context for non-supplement queries)** — the supplements bench was the slowest at 22.8s precisely *because* drug-context injection makes the specs prompt heavier; dropping it for electronics/skincare buys very little since those phones/skincare benches were already 17-18s without the drug context. The savings (estimated <500ms) don't justify a separate code path.
 
 **Defer:** Candidate **#3 (stream verdict last for perceived latency)** — verdict at 4-6s is significant but secondary to Phase 1. After #1 + #2 ship, if total wall stays >15s, stream-verdict-last becomes the next lever; until then it's UX polish on a pipeline that's already faster than the user sees today.
+
+---
+
+## Section 3 — D2 mainstream speedup design (2026-05-17, this brainstorm)
+
+**Supersedes the Phase 2A "Implications" recommendation above** — re-examination of `_get_reviews` showed it does NOT actually depend on specs (takes `unified_search` + `retailer_ratings` only), so the Phase 1/Phase 2 split is historical, not required by data dependencies. This unlocks a lower-risk pair than "combine specs+reviews into one JSON call":
+
+| Intervention | Wall-time saving | Quality risk |
+|---|---|---|
+| **(1) Collapse Phase 1/Phase 2 — move reviews into Phase 1 parallel** | ~1-2s (Phase 2 wall drops from 3.3s to ~1s) | **Zero** (no GPT prompt change, just code shuffle) |
+| **(2) OpenAI prompt caching on `extraction_service.py` system prompts** | ~2-5s across 5-6 GPT calls (cache hits on 2nd+ call per category) | **Zero** (caching is transparent — same input, same output) |
+| **Combined** | **~3-7s** | **Zero** |
+
+**Math:** post-Bucket-A baseline ~18s p50 - 3.5s mid-estimate = 14.5s ≈ ≤15s target. Best case (both interventions at high estimate): 11s — hits stretch goal.
+
+**Combine-specs+reviews-into-one-JSON-call** (the Phase 2A "favored" path) is **deferred** — kept on the table only if (1)+(2) don't reach the ≤15s p50 bar.
+
+### Section 3.1 — Intervention 1: collapse Phase 1/Phase 2
+
+In `_fetch_product_data` (around line 920-1000 of `app/services/structured_comparison_service.py`):
+
+- **Current:** Phase 1 = `asyncio.gather(specs, price)` ; Phase 2 = `asyncio.gather(reviews, rating, [smart_fallback])`
+- **Change:** Phase 1 = `asyncio.gather(specs, price, reviews)` ; Phase 2 = `asyncio.gather(rating, [smart_fallback])`
+- `retailer_ratings = collect_retailer_ratings(...)` currently computed between phases — must move BEFORE the new combined Phase 1 since reviews now needs it as input.
+- `DEBUG_STAGE_TIMINGS` instrumentation needs updating: `phase1_wall = max(specs_ms, price_ms, reviews_ms)` ; `phase2_wall = max(rating_ms, smart_fallback_ms)`. Both products still run in parallel via outer `gather` (no outer change).
+
+**Verified preconditions:**
+- `_get_reviews` signature takes `(brand, name, variant, search_query, nocache, category, retailer_ratings, search_results=unified_search)` — no specs dependency.
+- Bucket A's smart-fallback (parallel-to-Phase-2 with 3s `wait_for` cap) stays in Phase 2 alongside rating — no smart-fallback re-architecture needed.
+
+**Test gates:**
+- `tests/test_fan_out_integration.py` (12 tests) + `tests/test_stage_timings.py` (2 tests) stay green
+- Add `tests/test_phase1_includes_reviews.py::test_phase1_runs_reviews_in_parallel_with_specs_price` asserting Phase 1 wall time ≈ max(specs, price, reviews) (not sum); use `asyncio.sleep` mocks with known durations
+- `tests/test_spec_parity.py::test_post_fix_iphone_vs_s25_has_critical_specs` (live bench) still passes
+- Review citation count ±2 per product vs current production behaviour (post-Bucket-A baseline)
+
+### Section 3.2 — Intervention 2: OpenAI prompt caching
+
+**Mechanism:** OpenAI's `gpt-4o-mini` auto-caches any prompt prefix >1024 tokens. Subsequent identical prefixes return ~50% faster + cost ~50% less for cached portion. Cache lifetime: ~5-10 min idle, resets on use (max ~1h). No explicit `cache_control` blocks needed (that's Anthropic-style — OpenAI is automatic on size threshold).
+
+**Where it helps:**
+- **Within a single comparison:** 2 spec calls + 2 review calls per comparison share the same system prompt per category → 2nd call of each pair hits cache. Savings ~500ms-1s per cached call × ~2 cached calls = ~1-2s per comparison.
+- **Across successive comparisons (same category):** more cache hits when bursty traffic to a category (e.g. multiple electronics compares in a window) lands within cache lifetime. Compounding savings.
+
+**Implementation steps:**
+
+1. **Audit prompt sizes** — script using `tiktoken` to count tokens in `_build_specs_prompt` + `_build_reviews_prompt` + `_build_verdict_prompt` (or wherever verdict is built). Check the STATIC prefix portion (before category interpolation) is >1024 tokens.
+
+2. **If <1024 tokens:** restructure system prompts to push static prefix over 1024. Add only **useful content** — more category guidance, concrete extraction examples, refined output-format rules. Better prompts often perform better; cache compliance is the side benefit. Hard cap on total prompt growth: 2× current size.
+
+3. **Reorder prompt structure** — put ALL static content FIRST (e.g. "You are an expert extractor..." + extraction principles + examples), then dynamic interpolations (`{category}`, `{fields_json}`, `{drug_context}`) AFTER. Currently `_build_specs_prompt` interpolates `{category}` at line 194 (relatively early) — restructure.
+
+4. **Verify cache hits via response telemetry** — log `response.usage.prompt_tokens_cached` after each OpenAI call. If 0 across all calls for 24h post-deploy, caching isn't engaging → debug prefix mismatch.
+
+5. **No explicit cache_control needed** — OpenAI auto-caches; just static-prefix discipline.
+
+**Test gates:**
+- Add `tests/test_prompt_caching.py::test_extraction_system_prompts_are_cacheable` — uses `tiktoken` to assert each prompt's static prefix tokenizes to >1024 tokens
+- Add `tests/test_prompt_caching.py::test_prompt_caching_hits_logged` — runs 2 sequential extraction calls with same category against mocked OpenAI client returning `usage.prompt_tokens_cached=500` on the 2nd call; asserts cache-hit log line fires
+- Spec parity test (Bucket A baseline fixture) must stay green — prompt restructure must not regress spec quality
+- Verdict prose manually spot-checked for one iPhone vs S25 comparison post-deploy
+
+**Quality risk + mitigation:**
+- Risk: expanding prompts to hit 1024-token threshold degrades GPT focus → output quality drops
+- Mitigation: only ADD useful content (examples, principles), NEVER filler; hard cap at 2× current size; spec parity regression test catches the failure mode
+- Mitigation: if quality regresses, revert the prompt restructure commit; caching benefit lost, quality restored
+
+### Section 3.3 — Combined verification + ship
+
+- Pre-deploy: all unit tests green; new tests in 3.1 + 3.2 added
+- Push both commits to Railway → wait `/health` 200 → run 3 cold mainstream benches (iPhone, Centrum, Garnier)
+- **Success criteria:** average total wall ≤17s, p95 ≤20s, p50 ≤15s. Stretch: average ≤13s.
+- Re-run `RUN_LIVE_BENCH=1 pytest tests/test_spec_parity.py::test_post_fix_iphone_vs_s25_has_critical_specs` → must still pass (both products have `front_camera` + `water_resistance` populated)
+- Inspect Railway logs after 2nd cold compare for OpenAI `usage.prompt_tokens_cached > 0` — confirms caching engaged
+- **Rollback:** any failed gate → `git revert <commit>` independently per intervention (don't mass-revert; we can ship one without the other)
+
+### Section 3.4 — Out of scope (for this section)
+
+- Stream-verdict-last (UX polish) — defer until D2 lands and we see if total wall justifies it
+- Combine specs+reviews into one JSON-schema call — deferred per supersession note above
+- Drop drug-context for non-supplements — savings <500ms, not worth code path divergence
+- Reducing the verdict gpt-4o latency — verdict is on the higher-quality model intentionally; not in scope here
+
+### Section 3.5 — References
+
+- Phase 2A diagnostic data (this doc, above appendix)
+- Bucket A baseline fixture: `tests/fixtures/comparison_baseline_d2.json` (committed `5aa5c22`)
+- Bucket A live bench script: `tests/test_spec_parity.py::test_post_fix_iphone_vs_s25_has_critical_specs`
+- OpenAI prompt caching docs (auto-caching, no API change needed for gpt-4o-mini): https://platform.openai.com/docs/guides/prompt-caching
