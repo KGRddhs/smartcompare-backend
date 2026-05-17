@@ -12,6 +12,7 @@ import re
 import json
 import time
 import asyncio
+import hashlib
 import logging
 import httpx
 from functools import partial
@@ -622,8 +623,7 @@ class StructuredComparisonService:
         """Main entry point for text-based comparisons.
 
         explicit_pair: when provided (Bundle B dual-shape), the service
-        will skip parse_product_query() and trust the caller's pair.
-        Wired in Task 1.4; Phase 1 accepts the kwarg without acting on it.
+        skips parse_product_query() and trusts the caller's pair.
         """
         start_time = datetime.now()
         self.total_cost = 0.0
@@ -635,8 +635,28 @@ class StructuredComparisonService:
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
 
+        # L1 content safety pre-filter (spec sec 5.2). Runs on the canonical query
+        # string — for explicit_pair shape, this is the concatenated "A vs B"
+        # form (validator already built it in text_routes.py), so the joined
+        # surface is checked even on dual-shape input.
+        from app.services.content_safety_service import get_content_safety_service
+        from app.services.audit_service import log_content_blocked
+        _safety = get_content_safety_service()
+        _l1 = _safety.check_query_intent(query)
+        if not _l1.allowed:
+            asyncio.create_task(log_content_blocked(
+                layer="query_prefilter",
+                query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+            ))
+            return {
+                "success": False,
+                "error": "We don't compare this category",
+                "code": "CONTENT_UNAVAILABLE",
+                "layer": "query_prefilter",
+            }
+
         try:
-            # Step 1: Parse the query (or use vision products directly)
+            # Step 1: Resolve products list (vision > explicit_pair > GPT parser)
             if vision_products and len(vision_products) >= 2:
                 products = []
                 for vp in vision_products[:2]:
@@ -650,6 +670,20 @@ class StructuredComparisonService:
                         "category": category, "search_query": full, "_vision": True,
                     })
                 parsed = {}
+            elif explicit_pair:
+                # Dual-shape (Bundle B): user explicitly typed both halves. Skip
+                # parse_product_query() but still run sanitize_prompt_input on each
+                # half so the same injection defense applies regardless of shape.
+                from app.utils.prompt_sanitizer import sanitize_prompt_input
+                products = []
+                for raw in explicit_pair[:2]:
+                    safe = sanitize_prompt_input(raw, max_length=80)
+                    category = "supplements" if is_supplement_query(safe) else "other"
+                    products.append({
+                        "brand": "", "name": safe, "variant": None,
+                        "category": category, "search_query": safe, "_explicit": True,
+                    })
+                parsed = {"comparison_type": "value"}
             else:
                 logger.info(f"Parsing query: {query}")
                 parsed, usage = await parse_product_query(query)
@@ -791,6 +825,34 @@ class StructuredComparisonService:
                     demographics_profile
                 )
 
+            # L3 output moderation (spec sec 5.2). Joined verdict text + product
+            # names + top review excerpts → omni-moderation-latest. Fails OPEN
+            # on API exception (Build Principle #4). $0 — no _track_cost bump.
+            _l3_text = " ".join(filter(None, [
+                comparison.get("winner_declaration", ""),
+                comparison.get("winner_reason", ""),
+                comparison.get("key_tradeoff", ""),
+                comparison.get("value_context", ""),
+                *product_names,
+                *[
+                    (h.get("text") if isinstance(h, dict) else str(h))
+                    for pd in product_data
+                    for h in (pd.get("reviews", {}) or {}).get("highlights", [])
+                ][:10],
+            ]))
+            _l3 = await _safety.moderate_output(_l3_text)
+            if not _l3.allowed:
+                asyncio.create_task(log_content_blocked(
+                    layer="moderation_api",
+                    query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+                ))
+                return {
+                    "success": False,
+                    "error": "We don't compare this category",
+                    "code": "CONTENT_UNAVAILABLE",
+                    "layer": "moderation_api",
+                }
+
             # Fire-and-forget: update behavioral profile
             if user_id:
                 asyncio.create_task(self._update_behavior_profile(user_id))
@@ -813,6 +875,7 @@ class StructuredComparisonService:
         vision_products: Optional[List[Dict]] = None,
         user_preferences: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
+        explicit_pair: Optional[Tuple[str, str]] = None,
     ):
         """Async generator version of compare_from_text that yields partial results."""
         start_time = datetime.now()
@@ -824,6 +887,26 @@ class StructuredComparisonService:
 
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
+
+        # L1 content safety pre-filter (spec sec 5.2). Same gate as sync path —
+        # blocked queries terminate the stream with an error event before any
+        # parse/scrape work runs.
+        from app.services.content_safety_service import get_content_safety_service
+        from app.services.audit_service import log_content_blocked
+        _safety = get_content_safety_service()
+        _l1 = _safety.check_query_intent(query)
+        if not _l1.allowed:
+            asyncio.create_task(log_content_blocked(
+                layer="query_prefilter",
+                query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+            ))
+            yield ("error", {
+                "success": False,
+                "error": "We don't compare this category",
+                "code": "CONTENT_UNAVAILABLE",
+                "layer": "query_prefilter",
+            })
+            return
 
         try:
             # Step 1: Parse the query
@@ -842,6 +925,19 @@ class StructuredComparisonService:
                         "category": category, "search_query": full, "_vision": True,
                     })
                 parsed = {}
+            elif explicit_pair:
+                # Dual-shape (Bundle B): user explicitly typed both halves. Skip
+                # parse_product_query() but still sanitize each half.
+                from app.utils.prompt_sanitizer import sanitize_prompt_input
+                products = []
+                for raw in explicit_pair[:2]:
+                    safe = sanitize_prompt_input(raw, max_length=80)
+                    category = "supplements" if is_supplement_query(safe) else "other"
+                    products.append({
+                        "brand": "", "name": safe, "variant": None,
+                        "category": category, "search_query": safe, "_explicit": True,
+                    })
+                parsed = {"comparison_type": "value"}
             else:
                 parsed, usage = await parse_product_query(query)
                 self._track_gpt_cost(usage)
@@ -1088,6 +1184,40 @@ class StructuredComparisonService:
             # Fire-and-forget: update behavioral profile
             if user_id:
                 asyncio.create_task(self._update_behavior_profile(user_id))
+
+            # L3 output moderation (spec sec 5.2) — runs once before the
+            # terminal events so a flagged response replaces the streamed
+            # accumulator with a graceful refusal payload. Prior stream
+            # events (specs/prices/reviews/scores/verdict) have already
+            # reached the client; frontend treats `complete` with
+            # success=false as the terminal refusal regardless of priors.
+            _l3_text = " ".join(filter(None, [
+                comparison.get("winner_declaration", ""),
+                comparison.get("winner_reason", ""),
+                comparison.get("key_tradeoff", ""),
+                comparison.get("value_context", ""),
+                *product_names,
+                *[
+                    (h.get("text") if isinstance(h, dict) else str(h))
+                    for pd in product_data
+                    for h in (pd.get("reviews", {}) or {}).get("highlights", [])
+                ][:10],
+            ]))
+            _l3 = await _safety.moderate_output(_l3_text)
+            if not _l3.allowed:
+                asyncio.create_task(log_content_blocked(
+                    layer="moderation_api",
+                    query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+                ))
+                refusal = {
+                    "success": False,
+                    "error": "We don't compare this category",
+                    "code": "CONTENT_UNAVAILABLE",
+                    "layer": "moderation_api",
+                }
+                yield ("settle_complete", refusal)
+                yield ("complete", refusal)
+                return
 
             # Bundle E Task 2.3 § Decision 8 — settle_complete closes the
             # settle window; no further settle_update events can fire

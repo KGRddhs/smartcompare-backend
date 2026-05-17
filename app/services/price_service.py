@@ -459,6 +459,14 @@ def extract_price_from_shopping(
     if not shopping_items:
         return None
 
+    # L2 content safety — drop unsafe shopping items before pricing/ranking
+    # logic runs. Inline import avoids circular-import risk at module load.
+    # Spec ref: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md sec 5.2.
+    from app.services.content_safety_service import get_content_safety_service
+    shopping_items = get_content_safety_service().filter_shopping_items(shopping_items)
+    if not shopping_items:
+        return None
+
     p_words = normalize_words(product_name)
     is_hv = is_high_value_query(product_name)
     is_lux = is_luxury_brand(product_name)
