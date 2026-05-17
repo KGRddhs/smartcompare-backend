@@ -18,51 +18,325 @@
 
 The pre-D1 baseline at `tests/fixtures/comparison_baseline_d2.json` is from before Bucket A landed. We need a fresh post-Bucket-A reference so D2 comparison is apples-to-apples.
 
-### Task 0.1: Capture post-Bucket-A baseline
+### Task 0.1: Capture 5 post-Bucket-A baselines (one per category)
 
 **Files:**
-- Create: `tests/fixtures/comparison_baseline_d2_post_bucket_a.json`
+- Create: `tests/fixtures/comparison_baseline_d2_post_bucket_a__electronics.json`
+- Create: `tests/fixtures/comparison_baseline_d2_post_bucket_a__supplements.json`
+- Create: `tests/fixtures/comparison_baseline_d2_post_bucket_a__skincare.json`
+- Create: `tests/fixtures/comparison_baseline_d2_post_bucket_a__fragrances.json`
+- Create: `tests/fixtures/comparison_baseline_d2_post_bucket_a__fashion.json`
 
-**Step 1: Run cold-cache bench against Railway**
+**Rationale:** A single-electronics baseline (the pre-D1 fixture from `5aa5c22`) misses category-specific regressions. The 5 chosen categories span the full schema diversity: electronics (large schema), supplements (drug_context path + iHerb scraping), skincare (mid-complexity), fragrances (unique notes/longevity/sillage extraction), fashion (smallest schema). Each catches different failure modes — e.g. fragrances has lower Serper coverage so it's the most likely to need smart-fallback; supplements is the slowest pipeline so it stresses the wall-time budget hardest.
+
+**Step 1: Define the bench manifest**
 
 ```bash
-curl -sS -o tests/fixtures/comparison_baseline_d2_post_bucket_a.json \
-  -w "TIME=%{time_total}s STATUS=%{http_code} SIZE=%{size_download}\n" \
-  "https://web-production-58776.up.railway.app/api/v1/text/compare?q=iPhone+17+vs+Galaxy+S25+Ultra&region=bahrain&nocache=true" \
-  --max-time 90
+# Per-category bench definitions used in 0.1 and 3.x
+declare -A BENCH_QUERIES=(
+  [electronics]="iPhone+17+vs+Galaxy+S25+Ultra"
+  [supplements]="Centrum+Adults+vs+One+A+Day+Men"
+  [skincare]="Garnier+Micellar+Water+vs+Bioderma+Sensibio"
+  [fragrances]="Tom+Ford+Tobacco+Vanille+vs+Dior+Sauvage"
+  [fashion]="Nike+Air+Force+1+vs+Adidas+Stan+Smith"
+)
 ```
 
-Expected: STATUS=200, SIZE>10000, TIME between 18-25s.
+**Step 2: Run cold-cache bench for each category sequentially**
 
-**Step 2: Verify shape + critical fields present**
+```bash
+for category in electronics supplements skincare fragrances fashion; do
+  case $category in
+    electronics) q="iPhone+17+vs+Galaxy+S25+Ultra" ;;
+    supplements) q="Centrum+Adults+vs+One+A+Day+Men" ;;
+    skincare)    q="Garnier+Micellar+Water+vs+Bioderma+Sensibio" ;;
+    fragrances)  q="Tom+Ford+Tobacco+Vanille+vs+Dior+Sauvage" ;;
+    fashion)     q="Nike+Air+Force+1+vs+Adidas+Stan+Smith" ;;
+  esac
+  echo "=== $category ==="
+  curl -sS -o "tests/fixtures/comparison_baseline_d2_post_bucket_a__${category}.json" \
+    -w "TIME=%{time_total}s STATUS=%{http_code} SIZE=%{size_download}\n" \
+    "https://web-production-58776.up.railway.app/api/v1/text/compare?q=${q}&region=bahrain&nocache=true" \
+    --max-time 90
+done
+```
+
+Expected: all 5 STATUS=200, all SIZE>8000 (fragrances/fashion may be smaller), TIME between 15-30s each. Sequential (not parallel) to avoid Serper rate-limit skew.
+
+**Step 3: Verify shape + per-category critical fields present**
 
 ```bash
 python -c "
 import json
-d = json.load(open('tests/fixtures/comparison_baseline_d2_post_bucket_a.json'))
-prods = d.get('products') or (d.get('specs') or {}).get('products', [])
-assert len(prods) == 2
-for p in prods:
-    s = p.get('specs') or {}
-    assert s.get('front_camera') not in (None, '', 'N/A'), f'{p.get(\"name\")} front_camera missing — Bucket A fix not effective?'
-    assert s.get('water_resistance') not in (None, '', 'N/A'), f'{p.get(\"name\")} water_resistance missing'
-    print(f\"  {p.get('name','?')[:40]}: front_camera={s.get('front_camera')!r}, water_resistance={s.get('water_resistance')!r}\")
-print('OK')
+import sys
+
+# Per-category critical fields — must be non-N/A in baseline,
+# pre-condition for D2's regression test to be meaningful.
+CRITICAL_FIELDS = {
+    'electronics': ['front_camera', 'rear_camera', 'processor', 'ram', 'battery', 'water_resistance'],
+    'supplements': ['count', 'dosage', 'form'],
+    'skincare':    ['volume_ml', 'ingredients'],
+    'fragrances':  ['concentration', 'longevity', 'sillage'],
+    'fashion':     ['material', 'origin'],
+}
+
+all_ok = True
+for category, fields in CRITICAL_FIELDS.items():
+    path = f'tests/fixtures/comparison_baseline_d2_post_bucket_a__{category}.json'
+    try:
+        d = json.load(open(path))
+    except FileNotFoundError:
+        print(f'  {category}: MISSING FIXTURE')
+        all_ok = False
+        continue
+    prods = d.get('products') or (d.get('specs') or {}).get('products', [])
+    if len(prods) != 2:
+        print(f'  {category}: expected 2 products, got {len(prods)}')
+        all_ok = False
+        continue
+    for p in prods:
+        s = p.get('specs') or {}
+        for f in fields:
+            v = s.get(f)
+            if v in (None, '', 'N/A'):
+                print(f'  {category} / {p.get(\"name\",\"?\")[:35]}: {f} = {v!r} (MISSING)')
+                # Don't fail hard — some real-world products genuinely lack
+                # certain fields (e.g. some fashion items don't have origin).
+                # Just log; the D2 regression test will tolerate baseline gaps.
+    print(f'  {category}: 2 products, schema check done')
+
+print('OK' if all_ok else 'WARN — some fixtures had issues; review above')
 "
 ```
 
-Expected: both products show non-N/A values for front_camera + water_resistance + ends with `OK`. If front_camera is N/A, Bucket A hotfix didn't land properly — STOP and investigate.
+Expected: prints `OK` (or warnings about specific missing fields — these are tolerated, the regression test will not assert fields that were already missing in baseline).
+
+If any baseline file is completely missing or has <2 products: STOP and re-run that specific curl.
+
+**Step 4: Commit all 5 fixtures**
+
+```bash
+git add tests/fixtures/comparison_baseline_d2_post_bucket_a__*.json
+git commit -m "test(fixtures): 5-category post-Bucket-A baselines for D2 spec-parity regression
+
+Per-category baselines so D2's regression test catches category-specific
+issues (electronics, supplements, skincare, fragrances, fashion). Single
+electronics baseline missed schema diversity — e.g. fragrances exercises
+notes/longevity/sillage extraction, fashion has minimal schema with
+different validation paths, supplements stresses drug_context + iHerb.
+
+Each fixture captured cold-cache against Railway production after
+Bucket A shipped (35406a8 N/A merge hotfix verified live). Used by
+tests/test_d2_spec_parity_per_category.py to assert D2 doesn't regress
+the per-product-per-category critical-fields set.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task 0.2: Write parameterized per-category spec-parity test scaffold
+
+**Files:**
+- Create: `tests/test_d2_spec_parity_per_category.py`
+
+This test loads each baseline fixture + asserts critical fields are present in BOTH products. Runs offline against the saved baselines AND against live Railway when `RUN_LIVE_BENCH=1` is set. Parameterized across all 5 categories so a single test run surfaces regressions in any category.
+
+**Step 1: Write the test file**
+
+```python
+"""D2 per-category spec-parity regression — runs against pre-D2 baseline
+(offline, always) and post-D2 live bench (gated by RUN_LIVE_BENCH=1).
+
+Catches category-specific regressions that a single-electronics test
+would miss: fragrances notes extraction, supplements drug_context,
+fashion minimal-schema validation paths, etc.
+"""
+import json
+import os
+import pytest
+
+
+CATEGORIES = ["electronics", "supplements", "skincare", "fragrances", "fashion"]
+
+QUERIES = {
+    "electronics": "iPhone 17 vs Galaxy S25 Ultra",
+    "supplements": "Centrum Adults vs One A Day Men",
+    "skincare":    "Garnier Micellar Water vs Bioderma Sensibio",
+    "fragrances":  "Tom Ford Tobacco Vanille vs Dior Sauvage",
+    "fashion":     "Nike Air Force 1 vs Adidas Stan Smith",
+}
+
+CRITICAL_FIELDS = {
+    "electronics": ["front_camera", "rear_camera", "processor", "ram", "battery", "water_resistance"],
+    "supplements": ["count", "dosage", "form"],
+    "skincare":    ["volume_ml", "ingredients"],
+    "fragrances":  ["concentration", "longevity", "sillage"],
+    "fashion":     ["material", "origin"],
+}
+
+
+def _baseline_path(category: str) -> str:
+    return f"tests/fixtures/comparison_baseline_d2_post_bucket_a__{category}.json"
+
+
+def _extract_specs(comparison: dict, product_index: int) -> dict:
+    prods = comparison.get("products") or (comparison.get("specs") or {}).get("products", [])
+    if len(prods) <= product_index:
+        return {}
+    return prods[product_index].get("specs") or {}
+
+
+def _present(value) -> bool:
+    return value not in (None, "", "N/A")
+
+
+@pytest.mark.parametrize("category", CATEGORIES)
+def test_baseline_has_critical_fields(category):
+    """Offline check: per-category baseline fixture must have critical
+    fields present for BOTH products. If this fails, the baseline was
+    captured during a degraded state — re-run the curl in Task 0.1."""
+    path = _baseline_path(category)
+    assert os.path.exists(path), f"Baseline fixture missing: {path}"
+
+    with open(path) as f:
+        baseline = json.load(f)
+
+    fields = CRITICAL_FIELDS[category]
+    for product_index in (0, 1):
+        specs = _extract_specs(baseline, product_index)
+        assert specs, f"{category} product {product_index}: no specs in baseline"
+        missing = [f for f in fields if not _present(specs.get(f))]
+        # Tolerate up to 1 missing field per product in baseline (some real
+        # products genuinely lack certain specs). More than 1 → baseline is
+        # too thin to be useful for regression detection.
+        assert len(missing) <= 1, (
+            f"{category} product {product_index} ({(baseline.get('products') or [{}])[product_index].get('name', '?')}) "
+            f"missing too many critical fields in baseline: {missing}. "
+            f"Re-capture baseline."
+        )
+
+
+@pytest.mark.live_unit
+@pytest.mark.parametrize("category", CATEGORIES)
+def test_post_d2_per_category_critical_fields_intact(category):
+    """Live bench: post-D2 deploy must not regress critical-fields presence
+    vs the baseline. Skipped unless RUN_LIVE_BENCH=1.
+
+    Strategy: for each baseline field that WAS present, the post-D2 response
+    must ALSO have it present (D2 must not drop fields). Fields absent in
+    baseline are tolerated post-D2 too.
+
+    Run after deploying D2:
+        RUN_LIVE_BENCH=1 pytest tests/test_d2_spec_parity_per_category.py -v
+    """
+    if os.environ.get("RUN_LIVE_BENCH") != "1":
+        pytest.skip("Set RUN_LIVE_BENCH=1 to run live bench")
+
+    import httpx
+
+    # Load baseline
+    with open(_baseline_path(category)) as f:
+        baseline = json.load(f)
+
+    # Live bench
+    query = QUERIES[category]
+    response = httpx.get(
+        "https://web-production-58776.up.railway.app/api/v1/text/compare",
+        params={"q": query, "region": "bahrain", "nocache": "true"},
+        timeout=90,
+    )
+    assert response.status_code == 200, f"{category} live bench HTTP {response.status_code}"
+    live = response.json()
+
+    fields = CRITICAL_FIELDS[category]
+    for product_index in (0, 1):
+        baseline_specs = _extract_specs(baseline, product_index)
+        live_specs = _extract_specs(live, product_index)
+        baseline_name = (baseline.get("products") or [{}, {}])[product_index].get("name", "?")
+        live_name = (live.get("products") or [{}, {}])[product_index].get("name", "?")
+
+        # For each critical field that WAS present in baseline, it must
+        # ALSO be present in live (post-D2). D2 can ADD fields; it cannot
+        # REMOVE them.
+        regressed = []
+        for f in fields:
+            if _present(baseline_specs.get(f)) and not _present(live_specs.get(f)):
+                regressed.append(f)
+
+        assert not regressed, (
+            f"{category} product {product_index} regressed critical fields: {regressed}\n"
+            f"  baseline ({baseline_name}): {{f: baseline_specs.get(f) for f in regressed}}\n"
+            f"  live ({live_name}): {{f: live_specs.get(f) for f in regressed}}"
+        )
+
+
+@pytest.mark.live_unit
+@pytest.mark.parametrize("category", CATEGORIES)
+def test_post_d2_per_category_wall_time_under_25s(category):
+    """Live bench wall-time: each category's cold compare must complete
+    under 25s post-D2. Skipped unless RUN_LIVE_BENCH=1.
+
+    25s is the hard ceiling (matches STREAM_HARD_CAP_SECONDS). D2's target
+    is ≤15s p50, so individual benches at 20-25s indicate a slow query
+    but not a blocker. Use the consolidated bench in Task 3.3 for p50/p95
+    aggregate assertions.
+    """
+    if os.environ.get("RUN_LIVE_BENCH") != "1":
+        pytest.skip("Set RUN_LIVE_BENCH=1 to run live bench")
+
+    import httpx
+    import time
+
+    query = QUERIES[category]
+    start = time.perf_counter()
+    response = httpx.get(
+        "https://web-production-58776.up.railway.app/api/v1/text/compare",
+        params={"q": query, "region": "bahrain", "nocache": "true"},
+        timeout=30,
+    )
+    elapsed = time.perf_counter() - start
+
+    assert response.status_code == 200, f"{category} HTTP {response.status_code}"
+    assert elapsed < 25.0, (
+        f"{category} cold bench took {elapsed:.1f}s (limit 25s). "
+        f"Query: {query!r}"
+    )
+```
+
+**Step 2: Run the offline baseline tests — should PASS for all 5 categories**
+
+```bash
+python -m pytest tests/test_d2_spec_parity_per_category.py::test_baseline_has_critical_fields -v --timeout=10
+```
+
+Expected: `5 passed`. If any category fails with `missing too many critical fields`, re-capture that category's baseline via Task 0.1 Step 2.
 
 **Step 3: Commit**
 
 ```bash
-git add tests/fixtures/comparison_baseline_d2_post_bucket_a.json
-git commit -m "test(fixtures): post-Bucket-A baseline for D2 spec-parity regression
+git add tests/test_d2_spec_parity_per_category.py
+git commit -m "test(d2): parameterized per-category spec-parity regression suite
 
-Captured against Railway production after Bucket A shipped (35406a8
-N/A merge hotfix verified live). Reference for D2's spec-parity gate —
-ensures the Phase 1 collapse + prompt-caching changes don't regress
-the per-spec key set vs the current production behavior.
+5 categories x 3 test variants:
+1. test_baseline_has_critical_fields — offline, always runs. Asserts
+   baseline fixtures have critical fields populated (with up to 1
+   field tolerance per product for genuine gaps).
+2. test_post_d2_per_category_critical_fields_intact — live bench
+   (RUN_LIVE_BENCH=1 gated). For each critical field PRESENT in
+   baseline, asserts it's STILL present post-D2. D2 may add fields
+   but cannot remove them.
+3. test_post_d2_per_category_wall_time_under_25s — live bench. Each
+   category's cold compare must complete under 25s (matches
+   STREAM_HARD_CAP_SECONDS ceiling).
+
+Per-category coverage: electronics (most common), supplements
+(drug_context + iHerb stress), skincare (mid-complexity), fragrances
+(unique notes/longevity/sillage), fashion (minimal schema with
+different validation).
+
+Catches category-specific D2 regressions a single-electronics
+spec-parity test would miss.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
@@ -934,38 +1208,126 @@ done
 
 Expected: 200 within 2 min.
 
-### Task 3.3: Cold mainstream bench (3 queries)
+### Task 3.3: Cold mainstream bench (5 categories)
+
+Bench ALL 5 categories cold-cache so we catch category-specific regressions:
 
 ```bash
 mkdir -p /tmp/d2_post
-for i in 1 2 3; do
-  case $i in
-    1) q="iPhone+17+vs+Galaxy+S25+Ultra" ; label="phones" ;;
-    2) q="Centrum+Adults+vs+One+A+Day+Men" ; label="supplements" ;;
-    3) q="Garnier+Micellar+Water+vs+Bioderma+Sensibio" ; label="skincare" ;;
-  esac
-  echo "=== Bench $i: $label ==="
-  curl -sS -o /tmp/d2_post/bench_$label.json \
+declare -A BENCH=(
+  [electronics]="iPhone+17+vs+Galaxy+S25+Ultra"
+  [supplements]="Centrum+Adults+vs+One+A+Day+Men"
+  [skincare]="Garnier+Micellar+Water+vs+Bioderma+Sensibio"
+  [fragrances]="Tom+Ford+Tobacco+Vanille+vs+Dior+Sauvage"
+  [fashion]="Nike+Air+Force+1+vs+Adidas+Stan+Smith"
+)
+for category in electronics supplements skincare fragrances fashion; do
+  q="${BENCH[$category]}"
+  echo "=== $category ==="
+  curl -sS -o "/tmp/d2_post/bench_${category}.json" \
     -w "TIME=%{time_total}s STATUS=%{http_code} SIZE=%{size_download}\n" \
-    "https://web-production-58776.up.railway.app/api/v1/text/compare?q=$q&region=bahrain&nocache=true" \
-    --max-time 60
+    "https://web-production-58776.up.railway.app/api/v1/text/compare?q=${q}&region=bahrain&nocache=true" \
+    --max-time 30
 done
 ```
 
+Sequential (not parallel) so Serper rate limits + cache effects don't skew timing comparisons across categories.
+
+**Step 2: Aggregate the results into a pass/fail report**
+
+```bash
+python -c "
+import json
+import statistics
+import glob
+
+print('=== D2 Combined Verification — Per-Category Wall Times ===')
+times = []
+fails = []
+for path in sorted(glob.glob('/tmp/d2_post/bench_*.json')):
+    category = path.split('bench_')[1].replace('.json','')
+    try:
+        d = json.load(open(path))
+    except Exception as e:
+        fails.append(f'{category}: failed to parse response ({e})')
+        continue
+    metadata = d.get('metadata') or {}
+    elapsed_ms = metadata.get('elapsed_ms')
+    if not elapsed_ms:
+        fails.append(f'{category}: no elapsed_ms in metadata')
+        continue
+    sec = elapsed_ms / 1000
+    times.append((category, sec))
+    flag = 'OK' if sec <= 17 else 'SLOW' if sec <= 25 else 'OVER'
+    print(f'  {category:12s}: {sec:5.1f}s [{flag}]')
+
+print()
+if times:
+    secs = [s for _, s in times]
+    avg = sum(secs) / len(secs)
+    p50 = statistics.median(secs)
+    p95 = sorted(secs)[int(len(secs) * 0.95)] if len(secs) >= 2 else max(secs)
+    mx = max(secs)
+    print(f'Aggregate: avg={avg:.1f}s  p50={p50:.1f}s  p95={p95:.1f}s  max={mx:.1f}s')
+    print()
+    target_avg = 17.0
+    target_p50 = 15.0
+    target_p95 = 20.0
+    stretch_avg = 13.0
+    avg_pass = avg <= target_avg
+    p50_pass = p50 <= target_p50
+    p95_pass = p95 <= target_p95
+    stretch_hit = avg <= stretch_avg
+    print(f'  avg ≤ {target_avg}s: {\"PASS\" if avg_pass else \"MISS\"}')
+    print(f'  p50 ≤ {target_p50}s: {\"PASS\" if p50_pass else \"MISS\"}')
+    print(f'  p95 ≤ {target_p95}s: {\"PASS\" if p95_pass else \"MISS\"}')
+    print(f'  stretch avg ≤ {stretch_avg}s: {\"HIT\" if stretch_hit else \"\"}')
+    if not (avg_pass and p50_pass and p95_pass):
+        print()
+        print('TARGETS MISSED — investigate which category dominated:')
+        for cat, sec in sorted(times, key=lambda x: -x[1])[:3]:
+            print(f'  slowest: {cat} @ {sec:.1f}s')
+
+if fails:
+    print()
+    print('FAILURES:')
+    for f in fails:
+        print(f'  {f}')
+"
+```
+
 Expected:
-- All 3 benches STATUS=200
-- Average TIME ≤17s, p95 ≤20s, p50 ≤15s
-- Stretch: average ≤13s
+- All 5 categories STATUS=200, parse cleanly
+- Aggregate avg TIME ≤17s, p50 ≤15s, p95 ≤20s
+- Stretch: avg ≤13s
 
-If average >17s: D2 didn't hit target. Investigate per-stage timings (run one bench with `DEBUG_STAGE_TIMINGS=true` temporarily) before deciding rollback vs accept-as-progress.
+If aggregate misses targets: identify the slowest category from the report and run ONE bench against it with `DEBUG_STAGE_TIMINGS=true` to find where the time goes. Likely culprit by category:
+- **supplements slow** → drug_context lookup heavy
+- **fragrances slow** → thin Serper coverage → smart-fallback firing
+- **fashion slow** → Tier 1.5 luxury scrape racing (similar to D1 dynamic)
+- **electronics slow** → prompt caching didn't engage; check `[OPENAI_CACHE]` logs
 
-### Task 3.4: Live spec-parity test (Bucket A regression)
+### Task 3.4: Live per-category spec-parity regression (5 categories)
+
+Replaces the single-electronics test from the original plan. Runs the parameterized test suite from Task 0.2:
+
+```bash
+RUN_LIVE_BENCH=1 python -m pytest tests/test_d2_spec_parity_per_category.py -v --timeout=120
+```
+
+Expected: 15 tests = (5 baseline-presence offline + 5 critical-fields-intact live + 5 wall-time-under-25s live). All pass.
+
+If any category fails `_critical_fields_intact`: D2 regressed that category's extraction. Investigate prompt-restructure side effects on the specific category's schema; rollback Intervention 2 if it's the culprit (Intervention 1 is mechanical and unlikely to cause category-specific regressions).
+
+If any category fails `_wall_time_under_25s`: the category genuinely exceeds the hard ceiling. Note which one, run with `DEBUG_STAGE_TIMINGS=true` for diagnosis. Not necessarily a rollback trigger if aggregate (Task 3.3) targets are still met — could be category-specific work for Bucket C later.
+
+Backward compat: also re-run the original Bucket A spec-parity test to confirm iPhone-vs-S25-specific assertions still pass:
 
 ```bash
 RUN_LIVE_BENCH=1 python -m pytest tests/test_spec_parity.py::test_post_fix_iphone_vs_s25_has_critical_specs -v --timeout=90
 ```
 
-Expected: PASS — both iPhone + S25 Ultra still show front_camera + water_resistance populated. If FAIL, D2 has regressed Bucket A's fix — investigate (likely the prompt restructure inadvertently changed extraction behavior).
+Expected: PASS — iPhone + S25 Ultra still show front_camera + water_resistance.
 
 ### Task 3.5: Verify OpenAI cache engagement
 
