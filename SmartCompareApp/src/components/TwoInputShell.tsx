@@ -368,10 +368,15 @@ function TwoInputShell({
   const handleBoxChange = useCallback(
     (box: 'a' | 'b', next: string, prev: string) => {
       const jumped = next.length - prev.length >= PASTE_JUMP_THRESHOLD;
+      // `trimmed` is reserved for the cache seed below (where leading/
+      // trailing whitespace would corrupt the saved URL). The predicate
+      // check itself MUST use the raw `next` per spec § 4.1.2 — anchored
+      // ^https?://[^\s]+$ rejects whitespace-prefixed pastes so the
+      // auto-mode-switch stays conservative (OQ-FE caller-side).
       const trimmed = next.trim();
 
       // § 4.1.2 — URL paste in TEXT mode → mode-switch (priority over split).
-      if (mode === 'text' && jumped && looksLikeUrl(trimmed)) {
+      if (mode === 'text' && jumped && looksLikeUrl(next)) {
         const urlCache = cacheRef.current.url;
         const linkOccupied = urlCache.a.length > 0 || urlCache.b.length > 0;
         if (!linkOccupied) {
