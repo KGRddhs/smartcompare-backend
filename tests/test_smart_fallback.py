@@ -123,3 +123,76 @@ async def test_smart_fallback_capped_at_3_seconds():
 
         # Must complete despite slow fallback - within 3.5s (3s cap + buffer)
         assert elapsed < 3.5, f"Smart-fallback did not respect 3s cap (took {elapsed:.2f}s)"
+
+
+# Extra coverage (Bucket A bug 3c follow-up) ---------------------------------
+# Unit-level tests targeting _smart_fallback_extract directly, sidestepping
+# the full _fetch_product_data orchestration for cheaper coverage.
+
+
+@pytest.mark.asyncio
+async def test_smart_fallback_empty_missing_fields_returns_empty_immediately():
+    """Empty missing_fields list short-circuits: no Serper call, no GPT call."""
+    svc = get_comparison_service()
+    with patch("app.services.structured_comparison_service.search_web") as m_search:
+        result = await svc._smart_fallback_extract(
+            brand="Samsung", name="Galaxy S25", variant=None,
+            category="electronics", missing_fields=[],
+        )
+    assert result == {}
+    m_search.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_smart_fallback_empty_serper_returns_empty():
+    """If Serper has no organic hits, fallback returns {} without calling GPT."""
+    async def empty_search(*args, **kwargs):
+        return {"organic": []}
+
+    svc = get_comparison_service()
+    with patch("app.services.structured_comparison_service.search_web", new=empty_search), \
+         patch("app.services.openai_service.extract_specs_targeted") as m_gpt:
+        result = await svc._smart_fallback_extract(
+            brand="Samsung", name="Galaxy S25", variant=None,
+            category="electronics", missing_fields=["front_camera"],
+        )
+    assert result == {}
+    m_gpt.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_smart_fallback_swallows_exceptions():
+    """If search_web raises an unexpected exception, fallback returns {}
+    rather than propagating (so Phase 2 gather doesn't see a stray failure)."""
+    async def broken_search(*args, **kwargs):
+        raise RuntimeError("upstream Serper failure")
+
+    svc = get_comparison_service()
+    with patch("app.services.structured_comparison_service.search_web", new=broken_search):
+        result = await svc._smart_fallback_extract(
+            brand="Samsung", name="Galaxy S25", variant=None,
+            category="electronics", missing_fields=["front_camera"],
+        )
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_smart_fallback_returns_only_filled_fields():
+    """If GPT returns some keys but not all requested, fallback hands back
+    only the filled ones (callers must treat absent keys as 'still missing')."""
+    async def fake_search(*args, **kwargs):
+        return {"organic": [{"snippet": "front cam 12 MP"}]}
+
+    async def fake_gpt(brand, name, variant, category, fields, context):
+        # Simulate partial knowledge: front_camera filled, rear_camera null
+        return {"front_camera": "12 MP f/2.2"}
+
+    svc = get_comparison_service()
+    with patch("app.services.structured_comparison_service.search_web", new=fake_search), \
+         patch("app.services.openai_service.extract_specs_targeted", new=fake_gpt):
+        result = await svc._smart_fallback_extract(
+            brand="Samsung", name="Galaxy S25", variant=None,
+            category="electronics", missing_fields=["front_camera", "rear_camera"],
+        )
+    assert result == {"front_camera": "12 MP f/2.2"}
+    assert "rear_camera" not in result

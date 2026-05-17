@@ -55,3 +55,34 @@ def test_convert_to_bhd_sgd_converts_correctly():
     result = _convert_to_bhd(1000.0, "SGD")
     assert 270 <= result <= 295, \
         f"SGD 1000 -> BHD should be ~282, got {result}"
+
+
+# Extra coverage (Bucket A bug 4 follow-up) ----------------------------------
+
+def test_convert_to_bhd_empty_currency_returns_amount_unchanged():
+    """Empty currency string should be the same as no currency: amount unchanged, no log."""
+    result = _convert_to_bhd(100.0, "")
+    assert result == 100.0
+
+
+def test_convert_to_bhd_lowercase_currency_normalises():
+    """Lowercase currency input must be uppercased before lookup."""
+    result = _convert_to_bhd(1000.0, "sgd")
+    assert 270 <= result <= 295, f"sgd (lowercase) should still convert; got {result}"
+
+
+def test_convert_to_bhd_mixed_case_currency_normalises():
+    """Mixed-case currency input must be uppercased before lookup."""
+    result = _convert_to_bhd(100.0, "uSd")
+    assert 37.0 <= result <= 38.0, f"uSd (mixed case) should still convert; got {result}"
+
+
+def test_convert_to_bhd_bhd_passes_through_unchanged():
+    """BHD -> BHD is identity (rate = 1.0); should preserve amount."""
+    assert _convert_to_bhd(123.45, "BHD") == 123.45
+
+
+def test_get_region_currency_uppercase_region_normalised():
+    """region.lower() ensures e.g. 'BAHRAIN' still maps to BHD."""
+    assert get_region_currency("BAHRAIN") == "BHD"
+    assert get_region_currency("Uae") == "AED"

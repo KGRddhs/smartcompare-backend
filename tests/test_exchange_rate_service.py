@@ -572,3 +572,24 @@ def test_jpy_to_bhd_in_reasonable_range():
     """JPY->BHD rate must be ~0.002-0.003."""
     rate = _fallback_rate("JPY", "BHD")
     assert 0.002 <= rate <= 0.004, f"JPY->BHD rate {rate} outside plausible band"
+
+
+# Extra coverage (Bucket A bug 4 follow-up) ----------------------------------
+
+def test_cny_to_bhd_in_reasonable_range():
+    """CNY->BHD rate must be ~0.04-0.06."""
+    rate = _fallback_rate("CNY", "BHD")
+    assert 0.04 <= rate <= 0.07, f"CNY->BHD rate {rate} outside plausible band"
+
+
+def test_inr_to_bhd_in_reasonable_range():
+    """INR->BHD rate must be ~0.004-0.005."""
+    rate = _fallback_rate("INR", "BHD")
+    assert 0.003 <= rate <= 0.006, f"INR->BHD rate {rate} outside plausible band"
+
+
+def test_fallback_rate_sgd_cross_rate_to_sar():
+    """SGD->SAR cross rate is computed via SGD->BHD->SAR."""
+    rate = _fallback_rate("SGD", "SAR")
+    # SGD=0.282, SAR=0.1003 -> 0.282/0.1003 = ~2.81
+    assert 2.7 <= rate <= 2.9, f"SGD->SAR cross rate {rate} outside plausible band"
