@@ -156,6 +156,14 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             success=False, error_message=result.get("error"),
             duration_ms=duration_ms,
         ))
+        # Bundle B content-safety surface (spec sec 5.2): the service returns
+        # a structured {success:false, code:"CONTENT_UNAVAILABLE", layer:...}
+        # dict. Wrapping that in HTTPException would drop the structured body
+        # (global error middleware reshapes detail strings). Early-return the
+        # service dict as-is so the wire shape matches the spec contract.
+        # Pattern: feedback_conditional_middleware_unwrap.md.
+        if result.get("code") == "CONTENT_UNAVAILABLE":
+            return result
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Comparison failed")
@@ -249,6 +257,10 @@ async def text_compare_get(
             success=False, error_message=result.get("error"),
             duration_ms=duration_ms,
         ))
+        # Bundle B: preserve structured CONTENT_UNAVAILABLE body — see POST
+        # handler comment above. Conditional unwrap pattern.
+        if result.get("code") == "CONTENT_UNAVAILABLE":
+            return result
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Comparison failed")
