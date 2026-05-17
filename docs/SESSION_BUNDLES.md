@@ -240,3 +240,123 @@ Brainstorm → spec → 4-Opus plan, committed on `feature/bundle-c-scoring` (pu
 - Supplements price pipeline (~21-25s wall noted) actually measures 11.6s cold-cache; iHerb scrape NOT the bottleneck (reviews_ms is). Session 50 silently resolved iHerb.
 - Fragrances pipeline (~48-50s wall noted) actually measures 12-16s; Firecrawl never fires in prod, prices fall to GPT estimate; the slow-fail path no longer reproduces.
 - Reviews + verdict are the post-D2 wall floor (~9-10s combined, sequential, hard to parallelize without quality regression).
+
+---
+
+## Bundle C — Scoring + Personalization Quality Pass (Session 51) — SKELETON
+
+**Status:** IN PROGRESS — populated incrementally by qa-bundle-c as D.1.3 / D.4.2 / D.4.3 / D.6.3 / D.6.4 / D.6.5 / D.7.1 / D.7.3 / D.9.2 land.
+
+**Plan:** `docs/superpowers/plans/2026-05-17-bundle-c-scoring-quality.md` (5,785 lines, 170 tasks).
+**Spec:** `docs/superpowers/specs/2026-05-17-bundle-c-scoring-quality-design.md` (525 lines, 11 sections).
+**Branch:** `feature/bundle-c-scoring` (head `71b360c` at session start).
+**Team:** 4-Opus (`backend-bundle-c`, `frontend-bundle-c`, `test-bundle-c`, `qa-bundle-c` — this agent).
+**Flag:** `ENABLE_BUNDLE_C_SCORING` (default OFF in code; flipped ON in Railway during testing per iteration-phase discipline).
+
+### Summary (TBD — fill at D.9.2 consolidation)
+
+> One paragraph: what shipped, why, head SHA after merge.
+
+### D.1 diagnostic findings (TBD — fill at D.1.3)
+
+> Per-category root-cause table for §1a (pros/cons empty), §1b (`factual_verdict` None), §1c (mainstream prices fall to `estimated`).
+> Evidence source: `docs/investigations/2026-05-17-bundle-c-cold-cache-evidence.md`.
+
+- §1a root cause: TBD
+- §1b root cause: TBD
+- §1c root cause: TBD
+- Diagnostic env-var window closed at: TBD (D.1.4)
+
+### Section A patches summary (TBD — fill at D.2.5)
+
+> Per-subsection list: A.1 migration, A.2 diagnostic hooks, A.3 fixes, A.4 missing-data, A.5 tier expansion, A.6 value math, A.7 confidence thresholds, A.8 applied_shifts, A.9 weird detector, A.10 cleanup, A.11 docs.
+
+### Section B components summary (TBD — fill at D.2.6)
+
+> BudgetPicker 5-tier · DimensionBars hero+expand · ConfidencePills 3-leg · ConfidenceDetailsSheet · PersonalizationChip · ResultsScreen integration · i18n EN/AR.
+
+### Section C tests summary (TBD — fill at D.2.7)
+
+> Coverage: `scoring_service` / `extraction_service` / `response_builder` ≥80%; new tier/value/confidence ≥90%. `tests/test_bundle_c_integration.py` 6-category cold-cache suite.
+
+### Migration 024 (TBD — fill at D.3.x)
+
+- Applied via Supabase MCP `apply_migration` at: TBD
+- Forward SQL: `migrations/024_*.sql`
+- Rollback SQL: `migrations/rollback/024_*.sql`
+- Pre-rollback downgrade SQL: `migrations/rollback/024_pre_rollback_downgrade.sql`
+- D.3.3 rollback drill outcome: TBD
+
+### D.4.2 backwards-compat probes (flag OFF) (TBD)
+
+> Diff of 3 prod probes vs Bundle E baseline. Must match exactly.
+
+| Probe | Shape match? | Notes |
+|---|---|---|
+| iPhone+16+vs+Galaxy+S25 | TBD | TBD |
+| CeraVe+vs+Cetaphil | TBD | TBD |
+| Centrum+vs+One+A+Day | TBD | TBD |
+
+### D.4.3 flag-ON smoke probes (TBD)
+
+> Same 3 probes with `ENABLE_BUNDLE_C_SCORING=true`. Must show populated `factual_verdict`, non-empty `pros/cons`, `dimensions[]` ≥ 3, `applied_shifts[]` present, `comparison_quality` enum.
+
+| Probe | `factual_verdict.line1` | `pros` non-empty | `dimensions[]` length | `applied_shifts` present | `comparison_quality` |
+|---|---|---|---|---|---|
+| iPhone+16+vs+Galaxy+S25 | TBD | TBD | TBD | TBD | TBD |
+| CeraVe+vs+Cetaphil | TBD | TBD | TBD | TBD | TBD |
+| Centrum+vs+One+A+Day | TBD | TBD | TBD | TBD | TBD |
+
+### D.6 post-deploy ship evidence (TBD — fill at D.6.3)
+
+> 7-probe acceptance table per `tests/post_deploy/bundle_c_acceptance.md`. ≥6/7 must satisfy all 6 criteria.
+
+| Probe | Crit 1 (real prices) | Crit 2 (pros/cons) | Crit 3 (dims ≥ 3) | Crit 4 (pills) | Crit 5 (value_match) | Crit 6 (personalization) | Phase 1 wall |
+|---|---|---|---|---|---|---|---|
+| electronics | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| skincare | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| supplements | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| fragrances | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| fashion | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| grocery | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| other_car | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| **weird (probe 8)** | n/a | n/a | n/a (silent omission) | n/a | n/a | n/a | hero overall `—`, NO banner: TBD |
+
+### D.6.4 Sentry baseline diff (24h post-flag-ON) (TBD)
+
+| Metric | Before D.4.3 | 24h after | Diff | Acceptable? |
+|---|---|---|---|---|
+| Unresolved issues (24h) | TBD | TBD | TBD | TBD |
+| New scoring_service stack traces | n/a | TBD | TBD | TBD (any → block) |
+| New extraction_service stack traces | n/a | TBD | TBD | TBD (any → block) |
+| New response_builder stack traces | n/a | TBD | TBD | TBD (any → block) |
+| Mobile frontend (DimensionBars/ResultsScreen/BudgetPicker) | TBD | TBD | TBD | TBD |
+
+### EAS Update group ID (D.6.5) (TBD)
+
+- Branch: `preview`
+- Group ID: TBD
+- Tester-device confirmation: TBD (build no, screenshots)
+
+### Canary state (D.5)
+
+- 100% (pre-launch, <10 testers, per CLAUDE.md rule).
+- `ENABLE_BUNDLE_C_SCORING=true` in Railway from: TBD
+- Drop to 10% trigger: App Store soft-launch (see D.5.2 + memory `project_bundle_c_canary_trigger.md`).
+- Ramp 10 → 50 → 100 per `docs/runbooks/qaren-canary-onboarding.md`.
+
+### Rollback path summary (D.7)
+
+- **Primary:** single env-var flip `ENABLE_BUNDLE_C_SCORING=false` in Railway → reverts all scoring/calibration/value/confidence/personalization changes.
+- **Migration:** `migrations/rollback/024_*.sql` drops `top_tier` from CHECK enum. Pre-step: run `migrations/rollback/024_pre_rollback_downgrade.sql` first to downgrade persisted `top_tier` / `luxury` rows to `premium` (else they violate the post-rollback CHECK).
+- **UI:** non-destructive (additive). 5-tier picker stays valid; selecting `top_tier` would fail backend CHECK after rollback until a fresh `eas update` reverts the picker.
+- **Sentry watch window:** 24h post-flip. Any scoring/extraction/response_builder stack trace → emergency flag-off + send-back to backend-bundle-c.
+
+### Post-mortem questions (qa-bundle-c idle-work backlog item 2 — fill late)
+
+> What surprised in diagnostics? Did D.1 evidence change implementation we'd planned? Did 100% canary catch anything a 10% would have? Pre-fill stubs:
+
+- D.1 surprises: TBD
+- Implementation deltas vs spec: TBD
+- 100%-canary unique finds: TBD
+
