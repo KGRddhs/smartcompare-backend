@@ -58,6 +58,20 @@ def _debug_timings_enabled() -> bool:
     return _DEBUG_STAGE_TIMINGS
 
 
+async def _timed_task(label: str, coro, timings_dict):
+    """Await a coroutine and record its elapsed time into timings_dict[label + '_ms'].
+    Safe inside asyncio.gather — each wrapper records its OWN per-task wall (independent
+    measurement) while gather still runs them concurrently. timings_dict=None → no-op."""
+    if timings_dict is None:
+        return await coro
+    import time as _t
+    t = _t.perf_counter()
+    try:
+        return await coro
+    finally:
+        timings_dict[f"{label}_ms"] = round((_t.perf_counter() - t) * 1000, 1)
+
+
 # Import from new modules
 from app.services.price_service import (
     _convert_to_bhd,
@@ -1183,10 +1197,10 @@ class StructuredComparisonService:
                 logger.warning(f"Drug DB lookup failed: {e}")
 
         if include_specs:
-            phase1_tasks.append(self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context))
+            phase1_tasks.append(_timed_task("specs", self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context), stage_timings))
             phase1_keys.append("specs")
 
-        phase1_tasks.append(self._get_price(brand, name, variant, region, search_query, nocache, category))
+        phase1_tasks.append(_timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings))
         phase1_keys.append("price")
 
         if include_reviews:
@@ -1194,25 +1208,21 @@ class StructuredComparisonService:
             # retailer_ratings is None here because shopping_items_cache is
             # populated DURING _get_price (Phase 1) so we can't pre-collect.
             # _get_reviews accepts None and skips retailer_ratings enrichment.
-            phase1_tasks.append(self._get_reviews(
+            phase1_tasks.append(_timed_task("reviews", self._get_reviews(
                 brand, name, variant, search_query, nocache,
                 category=category, retailer_ratings=None,
                 search_results=unified_search,
-            ))
+            ), stage_timings))
             phase1_keys.append("reviews")
 
         t1 = time.perf_counter() if stage_timings is not None else None
         phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
         if stage_timings is not None:
-            phase1_elapsed_ms = round((time.perf_counter() - t1) * 1000, 1)
-            # D2 Intervention 1: Phase 1 now runs specs+price+reviews in parallel
-            # via asyncio.gather. They share the same wall time; we can't measure
-            # them independently without breaking the gather.
+            # phase1_wall_ms = gather wall (max of parallel tasks);
+            # specs_ms / price_ms / reviews_ms = per-task wall (populated by _timed_task).
+            stage_timings["phase1_wall_ms"] = round((time.perf_counter() - t1) * 1000, 1)
             for k in ("specs", "price", "reviews"):
-                if k in phase1_keys:
-                    stage_timings[f"{k}_ms"] = phase1_elapsed_ms
-                else:
-                    stage_timings[f"{k}_ms"] = 0.0
+                stage_timings.setdefault(f"{k}_ms", 0.0)
 
         for i, key in enumerate(phase1_keys):
             if isinstance(phase1_results[i], Exception):
@@ -1255,7 +1265,7 @@ class StructuredComparisonService:
 
         # D2 Intervention 1: reviews moved to Phase 1. Phase 2 now only runs
         # verified rating + smart-fallback (Bucket A bug 3c) in parallel.
-        phase2_tasks.append(self._get_verified_rating(full_name))
+        phase2_tasks.append(_timed_task("rating", self._get_verified_rating(full_name), stage_timings))
         phase2_keys.append("_rating_data")
 
         # Smart-fallback (Bucket A bug 3c): identify critical schema fields still
@@ -1277,21 +1287,21 @@ class StructuredComparisonService:
         ][:6]
         fallback_added = False
         if missing_critical:
-            phase2_tasks.append(self._smart_fallback_extract(
+            phase2_tasks.append(_timed_task("smart_fallback", self._smart_fallback_extract(
                 brand, name, variant, category, missing_critical,
-            ))
+            ), stage_timings))
             phase2_keys.append("_smart_fallback")
             fallback_added = True
 
         t2 = time.perf_counter() if stage_timings is not None else None
         phase2_results = await asyncio.gather(*phase2_tasks, return_exceptions=True)
         if stage_timings is not None:
-            phase2_elapsed_ms = round((time.perf_counter() - t2) * 1000, 1)
-            # D2 Intervention 1: Phase 2 no longer runs reviews. Just rating
-            # + optionally smart_fallback (Bucket A bug 3c).
-            stage_timings["rating_ms"] = phase2_elapsed_ms
+            # phase2_wall_ms = gather wall (max of parallel tasks);
+            # rating_ms / smart_fallback_ms = per-task wall (populated by _timed_task).
+            stage_timings["phase2_wall_ms"] = round((time.perf_counter() - t2) * 1000, 1)
+            stage_timings.setdefault("rating_ms", 0.0)
             if "_smart_fallback" in phase2_keys:
-                stage_timings["smart_fallback_ms"] = phase2_elapsed_ms
+                stage_timings.setdefault("smart_fallback_ms", 0.0)
 
         # Apply smart-fallback results before the regular Phase 2 result loop,
         # so the rest of the function sees the fully-populated specs dict.
