@@ -1,9 +1,15 @@
 {
   "_doc": [
-    "Bundle E § Decision 5 copy policy. Single source of truth for banned",
-    "evaluative vocabulary across en.json + ar.json + per-component runtime",
-    "guards (FactualVerdict). The jest fence at __tests__/copy-policy.test.ts",
-    "consumes this file and runs on every CI build — see plan task 3.7."
+    "Single source of truth for banned vocabulary in user-facing i18n.",
+    "Bundle E § Decision 5: absolute superlatives + first-person Qaren",
+    "endorsements (banned_en / banned_ar arrays — block legal exposure).",
+    "Bundle B Build Principle #4: 'never frame the app as scary'",
+    "(scary_vocab_en / scary_vocab_ar arrays — block error/failure copy).",
+    "Bundle B feedback_no_estimated_word_in_ui.md: تقدير / مُقدَّر forbidden",
+    "in AR user-facing copy; backend keeps source_method='estimated' enum",
+    "but UI substitutes 'indicative' / 'reference' phrasing.",
+    "The jest fence at __tests__/copy-policy.test.ts consumes this file",
+    "and runs on every CI build."
   ],
   "banned_en": [
     {"pattern": "\\bBest Pick\\b", "label": "Best Pick"},
@@ -26,5 +32,5 @@
     {"pattern": "نوصي بـ", "label": "نوصي بـ (We recommend)"}
   ],
   "scary_vocab_en": ["couldn't", "try again", "Failed to"],
-  "scary_vocab_ar": ["تعذر", "فشل"]
+  "scary_vocab_ar": ["تعذر", "فشل", "تقدير", "مُقدَّر"]
 }

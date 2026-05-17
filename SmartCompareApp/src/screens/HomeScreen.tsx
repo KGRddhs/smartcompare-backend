@@ -368,7 +368,19 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const handleModeChange = (mode: InputMode) => {
     if (!canCompare) {
-      // Spec § 6.2 — dimmed chips still tappable but route to paywall.
+      // Spec § 6.2 — dimmed chips still tappable. Per team-lead approval
+      // of spec § 4.11 Q4: change active mode so the next paywall_banner_view
+      // re-fire reflects the user's intent, then re-fire that event with
+      // the new mode (the canCompare-flip useEffect above only catches
+      // true→false transitions, not chip-tap-while-already-false). Then
+      // route to Paywall as before.
+      if (mode !== inputMode) setInputMode(mode);
+      trackEvents([
+        {
+          event_type: 'compare_entry_paywall_banner_view',
+          event_data: { mode },
+        },
+      ]);
       navigation.navigate('Paywall' as any);
       return;
     }

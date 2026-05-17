@@ -42,6 +42,7 @@
 
 import en from '../src/i18n/en.json';
 import ar from '../src/i18n/ar.json';
+import policy from '../src/i18n/.copy-policy.json';
 
 const BANNED_EN: { pattern: RegExp; label: string }[] = [
   { pattern: /\bBest Pick\b/i, label: 'Best Pick' },
@@ -108,6 +109,81 @@ describe('Copy policy — Bundle E § Decision 5 banned vocabulary audit', () =>
       for (const { pattern, label } of BANNED_AR) {
         if (pattern.test(visible)) {
           offenders.push({ key, banned: label, value });
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * Bundle B Build Principle #4 — "never frame the app as scary".
+ *
+ * Spec: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md
+ *   § 7.4 Copy tone audit.
+ *
+ * Source of truth is `.copy-policy.json` — `scary_vocab_en` and
+ * `scary_vocab_ar` arrays. This guard loads them directly so any future
+ * additions to the policy file are picked up without touching the test.
+ *
+ * AR scope notes:
+ *   - `تقدير` / `مُقدَّر` are blocked here because Bundle B's
+ *     `feedback_no_estimated_word_in_ui.md` rule says user-facing AR copy
+ *     must never expose the backend `source_method="estimated"` enum
+ *     literally — UI must substitute "indicative" / "reference" phrasing.
+ *
+ * EN scope notes:
+ *   - The bare word `error` is intentionally NOT in scary_vocab_en. It
+ *     appears in many legitimate i18n KEY namespaces (e.g.
+ *     `home.errors.camera`, `common.error`) whose user-visible VALUES use
+ *     neutral copy ("Hold on — give it another tap."). Blocking the bare
+ *     word would surface unrelated pre-existing strings as false
+ *     positives. The other 3 EN patterns (`couldn't`, `try again`,
+ *     `Failed to`) plus all 4 AR patterns are unambiguous and load-bearing.
+ *
+ * This complements the Bundle E describe-block above with a second layer
+ * (scary copy vs. evaluative copy) so QA-5 (copy audit) is automated end
+ * to end — Build Principle #4 is now a build-time fence, not a manual
+ * checklist item.
+ */
+describe('Copy policy — Bundle B Build Principle #4 scary vocabulary audit', () => {
+  const enScary: string[] = Array.isArray((policy as any).scary_vocab_en)
+    ? (policy as any).scary_vocab_en
+    : [];
+  const arScary: string[] = Array.isArray((policy as any).scary_vocab_ar)
+    ? (policy as any).scary_vocab_ar
+    : [];
+
+  it('policy file loads scary_vocab_en and scary_vocab_ar arrays', () => {
+    // Sanity check — guards against an empty policy silently passing
+    // every subsequent assertion below.
+    expect(enScary.length).toBeGreaterThan(0);
+    expect(arScary.length).toBeGreaterThan(0);
+  });
+
+  it('en.json values contain no scary vocabulary from .copy-policy.json scary_vocab_en', () => {
+    const offenders: { key: string; banned: string; value: string }[] = [];
+    for (const [key, value] of Object.entries(enRecord)) {
+      if (typeof value !== 'string') continue;
+      const visible = visibleCopy(value);
+      const lower = visible.toLowerCase();
+      for (const term of enScary) {
+        if (lower.includes(term.toLowerCase())) {
+          offenders.push({ key, banned: term, value });
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('ar.json values contain no scary vocabulary from .copy-policy.json scary_vocab_ar', () => {
+    const offenders: { key: string; banned: string; value: string }[] = [];
+    for (const [key, value] of Object.entries(arRecord)) {
+      if (typeof value !== 'string') continue;
+      const visible = visibleCopy(value);
+      for (const term of arScary) {
+        if (visible.includes(term)) {
+          offenders.push({ key, banned: term, value });
         }
       }
     }
