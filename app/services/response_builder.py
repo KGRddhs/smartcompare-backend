@@ -3,6 +3,8 @@
 Extracted from duplicated response assembly code in compare_from_text()
 and compare_from_text_streaming().
 """
+import logging
+import os
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
@@ -11,6 +13,33 @@ from app.services.scoring_service import (
     build_dimensions_v2,
     calibrate_score,
 )
+
+logger = logging.getLogger(__name__)
+
+
+# Bundle C § 1b diagnostic flag — gated on DEBUG_STAGE_TIMINGS=true so
+# the factual_verdict None-emit hook adds zero overhead in production.
+# Cached at process init; tests reset via monkeypatch on _FACTUAL_VERDICT_DIAG_FLAG.
+_FACTUAL_VERDICT_DIAG_FLAG = None
+
+
+def _factual_verdict_diag_enabled() -> bool:
+    global _FACTUAL_VERDICT_DIAG_FLAG
+    if _FACTUAL_VERDICT_DIAG_FLAG is None:
+        _FACTUAL_VERDICT_DIAG_FLAG = (
+            os.environ.get("DEBUG_STAGE_TIMINGS", "false").lower() == "true"
+        )
+    return _FACTUAL_VERDICT_DIAG_FLAG
+
+
+def _factual_verdict_present_in_scoring_v2(scoring_v2: Dict[str, Any]) -> bool:
+    """Return True iff scoring_v2 has a factual_verdict with line1 or line2.
+    Used by the § 1b diagnostic and patchable from tests to simulate the
+    post-A.3.2 populated state."""
+    fv = scoring_v2.get("factual_verdict") if isinstance(scoring_v2, dict) else None
+    if not isinstance(fv, dict):
+        return False
+    return bool(fv.get("line1")) or bool(fv.get("line2"))
 
 
 def derive_rating_from_scores(overall_score: float) -> float:
@@ -34,7 +63,7 @@ def _build_scoring_v2(
     score_a = calibrate_score(raw_a)
     score_b = calibrate_score(raw_b)
     dimensions = build_dimensions_v2(product_data, scoring_result, category)
-    return {
+    scoring_v2 = {
         "overall_score": {
             "product_a": score_a,
             "product_b": score_b,
@@ -43,6 +72,30 @@ def _build_scoring_v2(
         "win_margin": abs(score_a - score_b),
         "dimensions": dimensions,
     }
+
+    # Bundle C § 1b diagnostic — log when scoring_v2 ships without a populated
+    # factual_verdict (current state per § 1b — builder missing entirely).
+    # Confirms whether the builder is genuinely absent vs gated by a flag,
+    # and surfaces winner + price/rating context to diagnose root cause.
+    if _factual_verdict_diag_enabled() and not _factual_verdict_present_in_scoring_v2(scoring_v2):
+        try:
+            product_summary = [
+                (
+                    p.get("name"),
+                    (p.get("price") or {}).get("amount") if isinstance(p.get("price"), dict) else p.get("price"),
+                    p.get("rating"),
+                )
+                for p in product_data
+            ]
+        except Exception:  # noqa: BLE001 — diagnostic must never raise
+            product_summary = "<unavailable>"
+        logger.warning(
+            "FACTUAL_VERDICT_DIAGNOSTIC scoring_v2_emitted_without_factual_verdict winner_index=%s products=%s",
+            winner_index,
+            product_summary,
+        )
+
+    return scoring_v2
 
 
 def build_comparison_response(
