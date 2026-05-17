@@ -476,10 +476,8 @@ export async function trackEvent(
   event_data?: Record<string, any>,
   comparison_id?: string,
 ): Promise<void> {
-  if (__DEV__) {
-    // eslint-disable-next-line no-console
-    console.log('[analytics]', event_type, JSON.stringify(event_data || {}));
-  }
+  // eslint-disable-next-line no-console
+  if (__DEV__) console.log('[analytics]', event_type, JSON.stringify(event_data || {}));
   await trackEvents([{ event_type, event_data, comparison_id }]);
 }
 
