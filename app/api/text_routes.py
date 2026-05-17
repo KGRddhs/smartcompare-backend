@@ -8,7 +8,7 @@ import time
 from typing import Optional, Dict, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Path, Query, Depends, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.services.structured_comparison_service import (
     get_comparison_service,
@@ -32,12 +32,38 @@ router = APIRouter(prefix="/api/v1/text", tags=["text-comparison"])
 # ============================================
 
 class TextCompareRequest(BaseModel):
-    """Request for text-based comparison"""
-    query: str  # e.g., "iPhone 15 vs Galaxy S24"
+    """Request for text-based comparison.
+
+    Accepts two shapes (dual-shape Pydantic pattern, spec § 5.1):
+      - Legacy: {"query": "iPhone 15 vs Galaxy S24"}
+      - New:    {"product_a": "iPhone 15", "product_b": "Galaxy S24"}
+
+    Sending both or neither raises 422. When product_a + product_b are
+    provided, they are concatenated into `query` so the rest of the
+    handler is shape-agnostic; the explicit pair is also surfaced via
+    a separate kwarg to skip parse_product_query() downstream.
+    """
+    query: Optional[str] = None
+    product_a: Optional[str] = None
+    product_b: Optional[str] = None
     region: str = "bahrain"
     include_specs: bool = True
     include_reviews: bool = True
     include_pros_cons: bool = True
+    selected_category: Optional[str] = None
+
+    @model_validator(mode="after")
+    def normalize_shape(self) -> "TextCompareRequest":
+        has_pair = bool(self.product_a and self.product_a.strip()
+                        and self.product_b and self.product_b.strip())
+        has_query = bool(self.query and self.query.strip())
+        if has_pair and has_query:
+            raise ValueError("Send EITHER query OR product_a+product_b, not both")
+        if not has_pair and not has_query:
+            raise ValueError("Send product_a+product_b OR query")
+        if has_pair:
+            self.query = f"{self.product_a.strip()} vs {self.product_b.strip()}"
+        return self
 
 
 class QuickCompareRequest(BaseModel):
@@ -102,14 +128,22 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
                 }
             )
 
+    # Dual-shape: explicit pair bypasses parse_product_query() in the service
+    # (wired via explicit_pair= kwarg in Phase 2). Stored here for forward use.
+    explicit_pair = None
+    if body.product_a and body.product_b:
+        explicit_pair = (body.product_a.strip(), body.product_b.strip())
+
     result = await service.compare_from_text(
         query=body.query,
         region=body.region,
         include_specs=body.include_specs,
         include_reviews=body.include_reviews,
         include_pros_cons=body.include_pros_cons,
+        selected_category=body.selected_category,
         user_preferences=user_prefs,
         user_id=user.get("id") if user else None,
+        explicit_pair=explicit_pair,
     )
 
     duration_ms = int((time.time() - start_time) * 1000)

@@ -617,8 +617,14 @@ class StructuredComparisonService:
         vision_products: Optional[List[Dict]] = None,
         user_preferences: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
+        explicit_pair: Optional[Tuple[str, str]] = None,
     ) -> Dict[str, Any]:
-        """Main entry point for text-based comparisons."""
+        """Main entry point for text-based comparisons.
+
+        explicit_pair: when provided (Bundle B dual-shape), the service
+        will skip parse_product_query() and trust the caller's pair.
+        Wired in Task 1.4; Phase 1 accepts the kwarg without acting on it.
+        """
         start_time = datetime.now()
         self.total_cost = 0.0
         self.api_calls = 0
