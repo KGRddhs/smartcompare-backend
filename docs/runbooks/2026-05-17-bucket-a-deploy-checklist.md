@@ -165,6 +165,19 @@ Test all 4 bug fixes end-to-end:
 4. Tap a deleted/invalid comparison ID (if available)
 5. **Expect:** "Comparison not found" empty state with "Back to history" CTA
 
+#### 5a-races — Bug 1 mount-time race scenarios (from test-opus review of 94f8958)
+
+These can't be jest-tested cleanly, so verify manually:
+
+1. **Back button mid-fetch.** History → tap item → press Back during LoadingRings. Expect: no crash, no setState-on-unmounted warning. (`cancelled` flag should prevent setResult.)
+2. **Tap same history item twice in quick succession.** Re-mount with same comparison_id. Expect: no broken state; second fetch either runs again or hits cache — both are acceptable.
+3. **Deleted comparison_id.** ID pointing at a row deleted from DB → backend 404 → loadError='not_found' → "Comparison not found" empty state. Expect: no crash.
+4. **401 mid-fetch (expired token).** Axios interceptor handles refresh/redirect. Expect: `loadingResult` stays true until redirect; no flash of empty state.
+5. **Network drop mid-fetch.** Airplane mode toggled after tap. Expect: error caught, `loadError='generic'`, default empty-state title shows; no crash.
+6. **Cached/fast fetch — 1.2s brand-moment floor.** Tap a comparison the backend will serve from cache instantly. Expect: LoadingRings still displays for full ~1.2s before render (brand moment lands).
+7. **route.params undefined entirely.** Deep-link / stale rehydration with no params at all. Expect: empty state immediately, no loading flash. (Pre-Bundle E defensive path.)
+8. **Both `result` AND `comparison_id` in params** (defensive). Initial useState reads `result` first; useEffect early-returns when result is truthy. Expect: renders directly, no spurious fetch. (Lower priority — would only matter if a future caller sets both.)
+
 ### 5b — Bug 2 (camera)
 1. Home → Camera mode → capture 2 distinct products clearly in frame
 2. Tap Compare
