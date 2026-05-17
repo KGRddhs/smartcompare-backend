@@ -28,6 +28,8 @@ import * as Haptics from 'expo-haptics';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  withSequence,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import {
@@ -36,9 +38,11 @@ import {
   Camera,
   Image as ImageIcon,
   Zap,
+  Check,
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { colors, spacing, radii, typography } from '../theme';
+import { motion } from '../theme/motion';
 import ImageSlotRow, { Slots, Slot } from '../components/ImageSlotRow';
 import ScannerReticle from '../components/ScannerReticle';
 
@@ -103,10 +107,68 @@ export default function ScanCameraScreen({ navigation }: Props) {
     }
   };
 
+  // Bundle B § 4.3 — 3-part "ready to compare" celebration. Fires once on
+  // partial → both-filled transition. Reverse direction dims silently with
+  // no haptic.
+  const slot0Scale = useSharedValue(1);
+  const slot1Scale = useSharedValue(1);
+  const ctaCelebrationOpacity = useSharedValue(0);
+  const ctaCelebrationGlow = useSharedValue(0);
+  const justFlippedReadyRef = useRef(false);
+
+  const fireReadyHaptic = () => {
+    try {
+      const maybePromise = Haptics.notificationAsync(
+        Haptics.NotificationFeedbackType.Success
+      );
+      if (maybePromise && typeof maybePromise.catch === 'function') {
+        maybePromise.catch(() => { /* haptic engine unavailable */ });
+      }
+    } catch {
+      /* synchronous haptic failure — silently no-op */
+    }
+  };
+
   const updateSlots = (next: Slots) => {
+    const wasReady = slots[0] !== null && slots[1] !== null;
+    const isReady = next[0] !== null && next[1] !== null;
     _slotsCache = next;
     setSlots(next);
+
+    if (!wasReady && isReady && !justFlippedReadyRef.current) {
+      justFlippedReadyRef.current = true;
+      const spring = motion.springConfig.chip;
+      slot0Scale.value = withSequence(
+        withSpring(1.12, spring),
+        withSpring(1.0, spring)
+      );
+      slot1Scale.value = withSequence(
+        withSpring(1.12, spring),
+        withSpring(1.0, spring)
+      );
+      ctaCelebrationOpacity.value = withTiming(1.0, { duration: 200 });
+      ctaCelebrationGlow.value = withTiming(12, { duration: 240 });
+      fireReadyHaptic();
+    } else if (wasReady && !isReady) {
+      justFlippedReadyRef.current = false;
+      ctaCelebrationOpacity.value = withTiming(0, { duration: 300 });
+      ctaCelebrationGlow.value = withTiming(0, { duration: 300 });
+    }
   };
+
+  const slot0AnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: slot0Scale.value }],
+  }));
+  const slot1AnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: slot1Scale.value }],
+  }));
+  const ctaAnimStyle = useAnimatedStyle(() => ({
+    opacity: ctaCelebrationOpacity.value,
+    shadowColor: colors.accent,
+    shadowOpacity: ctaCelebrationGlow.value > 0 ? 0.45 : 0,
+    shadowRadius: ctaCelebrationGlow.value,
+    shadowOffset: { width: 0, height: 0 },
+  }));
 
   const onCapture = async () => {
     const idx = nextEmptyIndex(slots);
@@ -211,16 +273,32 @@ export default function ScanCameraScreen({ navigation }: Props) {
       <View style={styles.bottomArea}>
         <ImageSlotRow slots={slots} onChange={updateSlots} />
         {bothFilled && (
-          <TouchableOpacity
-            testID="compare-cta"
-            style={styles.compareCta}
-            onPress={onCompare}
-            accessibilityRole="button"
+          <Animated.View
+            testID="scan-celebration-overlay"
+            pointerEvents="box-none"
+            style={[styles.celebrationOverlay]}
           >
-            <Text style={styles.compareCtaText}>
-              {t('home.camera.compareCta')}
-            </Text>
-          </TouchableOpacity>
+            <Animated.View style={[styles.slotPulse, styles.slotPulseLeft, slot0AnimStyle]}>
+              <Check size={14} color={colors.bg.primary} strokeWidth={3} />
+            </Animated.View>
+            <Animated.View style={[styles.slotPulse, styles.slotPulseRight, slot1AnimStyle]}>
+              <Check size={14} color={colors.bg.primary} strokeWidth={3} />
+            </Animated.View>
+          </Animated.View>
+        )}
+        {bothFilled && (
+          <Animated.View style={ctaAnimStyle}>
+            <TouchableOpacity
+              testID="compare-cta"
+              style={styles.compareCta}
+              onPress={onCompare}
+              accessibilityRole="button"
+            >
+              <Text style={styles.compareCtaText}>
+                {t('home.camera.compareCta')}
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
         )}
         <View style={styles.shutterRow}>
           <TouchableOpacity
@@ -340,5 +418,30 @@ const styles = StyleSheet.create({
     color: colors.text.onInverse,
     marginTop: spacing.lg,
     textAlign: 'center',
+  },
+  // Bundle B § 4.3 — celebration overlay sits above the ImageSlotRow,
+  // pointer-events transparent so taps still reach the underlying slots.
+  celebrationOverlay: {
+    position: 'absolute',
+    top: -28,
+    left: 0,
+    right: 0,
+    height: 24,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  slotPulse: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slotPulseLeft: {
+    marginEnd: spacing.lg,
+  },
+  slotPulseRight: {
+    marginStart: spacing.lg,
   },
 });
