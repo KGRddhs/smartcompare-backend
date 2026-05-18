@@ -318,8 +318,16 @@ PRICE_TIERS = {
     "luxury":  (189, float("inf")),
 }
 
-# Expected quality delivery per tier (0-1 scale) — A.5.2 will extend to 5 tiers.
-TIER_EXPECTATIONS = {"budget": 0.6, "mid": 0.7, "premium": 0.8, "luxury": 0.85}
+# Expected quality delivery per tier (0-1 scale). Bundle C § 3b re-splits
+# the legacy single luxury=0.85 into luxury=0.88 + top_tier=0.90 so the
+# value-formula cross-tier penalty rises monotonically across all 5 bands.
+TIER_EXPECTATIONS = {
+    "budget":   0.60,
+    "mid":      0.70,
+    "premium":  0.80,
+    "luxury":   0.88,
+    "top_tier": 0.90,
+}
 
 # Category-specific minimum coverage thresholds for spec penalty
 CATEGORY_MIN_COVERAGE = {
