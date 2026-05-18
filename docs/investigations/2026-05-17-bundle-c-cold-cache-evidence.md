@@ -138,6 +138,14 @@ Both can be built from EXISTING scoring response keys (no GPT call needed):
 
 **Sign-off (qa-bundle-c, confirmed):** Backend authorized to begin A.3.2 immediately upon D.1.3 commit landing. No Railway log needed — this is a code-trace-confirmed cause.
 
+**A.3.2 SHIPPED 2026-05-18 at commit `fb07ed8`. D.2.5 PASS.**
+- `_build_factual_verdict` at `response_builder.py:263-305` — pure-Python template, zero GPT cost.
+- Called from `_build_scoring_v2` at line 325; key set in dict at line 336.
+- 18/18 tests green: `tests/test_response_builder_factual_verdict.py` (14 tests covering price/rating/dim candidates, line1/line2 distinct, sparse-data fallback) + `tests/test_response_builder_factual_verdict_diagnostic.py` (4 regression-net tests).
+- All FIVE critical rules enforced by explicit test cases — no "estimated" / no scary copy / no backend internals / sparse-data fallback non-scary / A.2.2 regression-net diagnostic preserved.
+- Sparse-data path at line 299 ("edges ahead on the overall picture") — non-scary, presentational.
+- Production verification deferred to D.4.2/D.4.3 (Railway main currently lacks A.3.2; ships only after branch merge).
+
 ---
 
 ## §1c — Price pipeline regression (mainstream queries fall to `estimated`)
