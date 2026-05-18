@@ -14,11 +14,8 @@
 
 - Endpoint: `https://web-production-58776.up.railway.app/api/v1/text/compare`
 - Query params: `?q=<query>&region=bahrain&nocache=true`
-- Railway env vars during window (set by Ahmed via team-lead handoff):
-  - `DEBUG_STAGE_TIMINGS=true`
-  - `DEBUG_VERDICT_RAW=true` (A.2.1 hook)
-  - `DEBUG_FIRECRAWL_INVOCATIONS=true` (A.2.3 hook, if added)
-  - `DEBUG_SCRAPEDO_INVOCATIONS=true` (A.2.3 hook, if added)
+- Railway env var during window (single flag — backend consolidated all three diagnostic groups onto `DEBUG_STAGE_TIMINGS` per `_PROS_CONS_DIAG_FLAG` / `_FACTUAL_VERDICT_DIAG_FLAG` / `_PRICE_PIPELINE_DIAG_FLAG` cached process-init reads, mirroring `structured_comparison_service._DEBUG_STAGE_TIMINGS` pattern):
+  - `DEBUG_STAGE_TIMINGS=true` — gates ALL of: PROS_CONS_DIAGNOSTIC (A.2.1, `extraction_service.py:28`), FACTUAL_VERDICT_DIAGNOSTIC (A.2.2, `response_builder.py:30`), PRICE_PIPELINE_DIAG (A.2.3, `firecrawl_service.py:27` + `scrapedo_service.py:26`). Verified by grep — no `DEBUG_VERDICT_RAW` / `DEBUG_FIRECRAWL_INVOCATIONS` / `DEBUG_SCRAPEDO_INVOCATIONS` exists in code.
 - Sleep 5-8s between probes to avoid rate-limit / breaker false trips.
 
 ### 6 probe queries (one per category)
@@ -141,7 +138,7 @@
 
 ## D.1.4 — Diagnostic window closure
 
-**Closed at:** TBD (timestamp once Ahmed unsets the four DEBUG_* env vars on Railway)
+**Closed at:** TBD (timestamp once Ahmed unsets the single `DEBUG_STAGE_TIMINGS` env var on Railway — closes all three diagnostic groups in one flip)
 
 **Verification:** 1 probe run post-closure → `metadata.stage_timings_ms` MUST be absent from the response body.
 
