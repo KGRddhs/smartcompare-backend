@@ -162,17 +162,76 @@ CATEGORY_PRIORITY_ADJUSTMENTS = {
     },
 }
 
-# Budget adjustments per category (same keys as category dimension weights)
+# Budget adjustments per category (same keys as category dimension weights).
+# Bundle C § 3b: extend each category with `luxury` (mirrors the premium
+# shape — same dims, same magnitudes) and `top_tier` (= luxury with the
+# headline spec dim boosted by an extra +0.05). This keeps personalization
+# behavior continuous across tier boundaries while honoring the spec's
+# "top_tier expects more from the headline dimension" intent.
 CATEGORY_BUDGET_ADJUSTMENTS = {
-    "electronics": {"budget": {"value_score": 0.10, "performance_score": -0.05}, "mid": {}, "premium": {"performance_score": 0.10, "value_score": -0.05}},
-    "grocery": {"budget": {"serving_value_score": 0.10, "nutrition_score": -0.05}, "mid": {}, "premium": {"nutrition_score": 0.10, "serving_value_score": -0.05}},
-    "supplements": {"budget": {"serving_value_score": 0.10, "efficacy_score": -0.05}, "mid": {}, "premium": {"efficacy_score": 0.10, "serving_value_score": -0.05}},
-    "makeup": {"budget": {"perf_value_score": 0.10, "shade_score": -0.05}, "mid": {}, "premium": {"longevity_score": 0.10, "perf_value_score": -0.05}},
-    "skincare": {"budget": {"results_value_score": 0.10, "actives_score": -0.05}, "mid": {}, "premium": {"actives_score": 0.10, "results_value_score": -0.05}},
-    "haircare": {"budget": {"multi_value_score": 0.10, "results_score": -0.05}, "mid": {}, "premium": {"results_score": 0.10, "multi_value_score": -0.05}},
-    "fragrances": {"budget": {"wear_value_score": 0.10, "character_score": -0.05}, "mid": {}, "premium": {"character_score": 0.10, "wear_value_score": -0.05}},
-    "fashion": {"budget": {"cpw_score": 0.10, "craft_score": -0.05}, "mid": {}, "premium": {"craft_score": 0.10, "cpw_score": -0.05}},
-    "other": {"budget": {"value_score": 0.10, "function_score": -0.05}, "mid": {}, "premium": {"function_score": 0.10, "value_score": -0.05}},
+    "electronics": {
+        "budget":   {"value_score": 0.10, "performance_score": -0.05},
+        "mid":      {},
+        "premium":  {"performance_score": 0.10, "value_score": -0.05},
+        "luxury":   {"performance_score": 0.10, "value_score": -0.05},
+        "top_tier": {"performance_score": 0.15, "value_score": -0.05},
+    },
+    "grocery": {
+        "budget":   {"serving_value_score": 0.10, "nutrition_score": -0.05},
+        "mid":      {},
+        "premium":  {"nutrition_score": 0.10, "serving_value_score": -0.05},
+        "luxury":   {"nutrition_score": 0.10, "serving_value_score": -0.05},
+        "top_tier": {"nutrition_score": 0.15, "serving_value_score": -0.05},
+    },
+    "supplements": {
+        "budget":   {"serving_value_score": 0.10, "efficacy_score": -0.05},
+        "mid":      {},
+        "premium":  {"efficacy_score": 0.10, "serving_value_score": -0.05},
+        "luxury":   {"efficacy_score": 0.10, "serving_value_score": -0.05},
+        "top_tier": {"efficacy_score": 0.15, "serving_value_score": -0.05},
+    },
+    "makeup": {
+        "budget":   {"perf_value_score": 0.10, "shade_score": -0.05},
+        "mid":      {},
+        "premium":  {"longevity_score": 0.10, "perf_value_score": -0.05},
+        "luxury":   {"longevity_score": 0.10, "perf_value_score": -0.05},
+        "top_tier": {"longevity_score": 0.15, "perf_value_score": -0.05},
+    },
+    "skincare": {
+        "budget":   {"results_value_score": 0.10, "actives_score": -0.05},
+        "mid":      {},
+        "premium":  {"actives_score": 0.10, "results_value_score": -0.05},
+        "luxury":   {"actives_score": 0.10, "results_value_score": -0.05},
+        "top_tier": {"actives_score": 0.15, "results_value_score": -0.05},
+    },
+    "haircare": {
+        "budget":   {"multi_value_score": 0.10, "results_score": -0.05},
+        "mid":      {},
+        "premium":  {"results_score": 0.10, "multi_value_score": -0.05},
+        "luxury":   {"results_score": 0.10, "multi_value_score": -0.05},
+        "top_tier": {"results_score": 0.15, "multi_value_score": -0.05},
+    },
+    "fragrances": {
+        "budget":   {"wear_value_score": 0.10, "character_score": -0.05},
+        "mid":      {},
+        "premium":  {"character_score": 0.10, "wear_value_score": -0.05},
+        "luxury":   {"character_score": 0.10, "wear_value_score": -0.05},
+        "top_tier": {"character_score": 0.15, "wear_value_score": -0.05},
+    },
+    "fashion": {
+        "budget":   {"cpw_score": 0.10, "craft_score": -0.05},
+        "mid":      {},
+        "premium":  {"craft_score": 0.10, "cpw_score": -0.05},
+        "luxury":   {"craft_score": 0.10, "cpw_score": -0.05},
+        "top_tier": {"craft_score": 0.15, "cpw_score": -0.05},
+    },
+    "other": {
+        "budget":   {"value_score": 0.10, "function_score": -0.05},
+        "mid":      {},
+        "premium":  {"function_score": 0.10, "value_score": -0.05},
+        "luxury":   {"function_score": 0.10, "value_score": -0.05},
+        "top_tier": {"function_score": 0.15, "value_score": -0.05},
+    },
 }
 
 # Legacy aliases for backward compatibility
