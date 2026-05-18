@@ -186,20 +186,51 @@ CATEGORY_SPEC_SCHEMAS = {
 }
 
 
-# Critical schema fields per category - the ones we'll run a smart-fallback
-# Serper query for if GPT returns null after the primary extraction.
-# Cap is enforced in structured_comparison_service to keep the parallel
-# fallback within the Phase 2 wall-time budget (3s, asyncio.wait_for).
+# Bundle C § 2f Step 1 — split critical schema fields into two layers:
+#   - NON_NEGOTIABLE: A.4.7 Tier 2 + A.4.8 Tier 3 fallbacks chase these
+#     hard. If still missing after 3-tier fallback, the dependent dim is
+#     silently omitted (A.4.9) so the user never sees a phantom score.
+#   - PREFERRED: best-effort. Tier 1 smart-fallback covers them via the
+#     legacy CRITICAL_SCHEMA_FIELDS union below, but Tier 2/3 do NOT
+#     re-fire for them; missing-preferred is acceptable.
+#
+# Tier 2/3 budget is enforced in structured_comparison_service (4s + 3s
+# wall windows respectively, asyncio.wait_for).
+CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE: Dict[str, List[str]] = {
+    "electronics": ["battery", "processor", "ram", "rear_camera"],
+    "supplements": ["dosage", "form"],
+    "fragrances":  ["concentration", "longevity"],
+    "fashion":     ["material"],
+    "skincare":    ["volume", "ingredients"],
+    "haircare":    ["volume", "ingredients"],
+    "makeup":      ["volume", "shade_range"],
+    "grocery":     ["weight", "ingredients"],
+    "other":       [],
+}
+
+CRITICAL_SCHEMA_FIELDS_PREFERRED: Dict[str, List[str]] = {
+    "electronics": ["front_camera", "water_resistance", "os", "weight"],
+    "supplements": ["count", "serving_size", "active_ingredient"],
+    # Spec § 2f lists `notes_top/heart/base` as one item — we split into
+    # the three discrete schema fields so Tier 1 fallback can target each.
+    "fragrances":  ["sillage", "notes_top", "notes_heart", "notes_base", "season"],
+    "fashion":     ["origin", "style", "closure_type", "care_instructions"],
+    "skincare":    ["skin_type", "active_ingredient", "spf"],
+    "haircare":    ["hair_type", "scent", "sulfate_free"],
+    "makeup":      ["finish", "coverage", "cruelty_free", "spf"],
+    "grocery":     ["nutrition_protein", "nutrition_calories", "nutrition_fat",
+                    "nutrition_carbs", "origin", "organic"],
+    "other":       [],
+}
+
+# Legacy flat dict — preserved as the union of non-negotiable + preferred
+# so Tier 1 smart-fallback (driven from this in structured_comparison_service)
+# keeps targeting the same broad field set as before the A.4.6 split.
 CRITICAL_SCHEMA_FIELDS: Dict[str, List[str]] = {
-    "electronics": ["front_camera", "rear_camera", "processor", "ram", "battery", "water_resistance"],
-    "supplements": ["count", "dosage", "form"],
-    "fragrances": ["concentration", "longevity", "sillage"],
-    "fashion": ["material", "origin"],
-    "skincare": ["volume_ml", "ingredients"],
-    "haircare": ["volume_ml", "ingredients"],
-    "makeup": ["volume_ml", "shade_range"],
-    "grocery": ["weight_g", "ingredients"],
-    "other": [],
+    category: list(CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE.get(category, []))
+              + list(CRITICAL_SCHEMA_FIELDS_PREFERRED.get(category, []))
+    for category in set(CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE)
+                    | set(CRITICAL_SCHEMA_FIELDS_PREFERRED)
 }
 
 
