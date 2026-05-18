@@ -1459,12 +1459,43 @@ def _dim_reviews(products: list[dict]) -> dict:
 
 
 def _dim_value(products: list[dict]) -> dict:
+    """Bundle C § 2g — kill the `rating or 4.0` fabricated default. When
+    either rating OR price is missing on either side, the value ratio
+    cannot be computed honestly; short-circuit to a neutral display
+    score + low-confidence flag (mirrors the _dim_price / _dim_reviews
+    pattern at lines 1411 / 1438). No phantom 4.0 stars, no phantom
+    0.1 ratio injection."""
     a, b = products[0], products[1]
-    pa, pb = _get_price(a) or 0.0, _get_price(b) or 0.0
-    ra, rb = a.get("rating") or 4.0, b.get("rating") or 4.0
-    va = (ra / pa) if pa > 0 else 0.1
-    vb = (rb / pb) if pb > 0 else 0.1
-    hi = max(va, vb) or 1.0
+    pa_raw = _get_price(a)
+    pb_raw = _get_price(b)
+    ra = a.get("rating")
+    rb = b.get("rating")
+
+    # Honest-fallback: if any side lacks price or rating, the value ratio
+    # is undefined. Return neutral display score with low confidence so
+    # downstream calibration + UI don't surface a fake winner.
+    if pa_raw is None or pb_raw is None or ra is None or rb is None or pa_raw <= 0 or pb_raw <= 0:
+        return {
+            "key": "value", "label": "Value",
+            "score_a": _NEUTRAL_DISPLAY_SCORE, "score_b": _NEUTRAL_DISPLAY_SCORE,
+            "delta_text": "Limited value data",
+            "confidence": "low", "is_core": True,
+        }
+
+    pa, pb = float(pa_raw), float(pb_raw)
+    ra_f, rb_f = float(ra), float(rb)
+    va = ra_f / pa
+    vb = rb_f / pb
+    hi = max(va, vb)
+    if hi <= 0:
+        # Defensive — both ratings zero or negative; should not happen for
+        # real review data but keeps the function total.
+        return {
+            "key": "value", "label": "Value",
+            "score_a": _NEUTRAL_DISPLAY_SCORE, "score_b": _NEUTRAL_DISPLAY_SCORE,
+            "delta_text": "Limited value data",
+            "confidence": "low", "is_core": True,
+        }
     score_a = calibrate_score(50 + 35 * (va / hi))
     score_b = calibrate_score(50 + 35 * (vb / hi))
     if va >= vb:
