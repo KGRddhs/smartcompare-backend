@@ -408,6 +408,81 @@ TIER_EXPECTATIONS = {
     "top_tier": 0.90,
 }
 
+
+# Bundle C § 4a — value-formula coefficients keyed by user's top priority.
+# When `preferences.priorities[0]` matches a key, those (spec, price)
+# weights win. First-match semantics: priorities=['quality','price'] uses
+# the 'quality' row. Used only inside _compute_value_score and never
+# exposed in API responses (critical rule #2: no internals in user-facing
+# diagnostic reveals).
+VALUE_FORMULA_BY_PRIORITY = {
+    "price":             {"spec": 0.40, "price": 0.60},
+    "quality":           {"spec": 0.70, "price": 0.30},
+    "durability":        {"spec": 0.65, "price": 0.35},
+    "latest_features":   {"spec": 0.65, "price": 0.35},
+    "brand_reputation":  {"spec": 0.65, "price": 0.35},
+    "eco_friendly":      {"spec": 0.55, "price": 0.45},
+    "ease_of_use":       {"spec": 0.55, "price": 0.45},
+    "_default":          {"spec": 0.60, "price": 0.40},
+}
+
+
+def _resolve_value_coefficients(priorities=None) -> Dict[str, float]:
+    """Bundle C § 4a — first-match-wins lookup against VALUE_FORMULA_BY_PRIORITY.
+    Returns the (spec, price) coefficient dict for the highest-ranked priority
+    that has an entry, or the default row when no priorities are supplied or
+    none match. Stays internal; never bubbles into API responses."""
+    if not priorities:
+        return VALUE_FORMULA_BY_PRIORITY["_default"]
+    for p in priorities:
+        coeffs = VALUE_FORMULA_BY_PRIORITY.get(p)
+        if coeffs is not None and p != "_default":
+            return coeffs
+    return VALUE_FORMULA_BY_PRIORITY["_default"]
+
+
+def _compute_value_score(
+    spec_score: float,
+    price_score: float,
+    priorities=None,
+    *,
+    price_tier: str = "mid",
+    is_cross_tier: bool = False,
+) -> float:
+    """Bundle C § 4a — module-level value-formula entry point. Resolves
+    priority-driven coefficients from VALUE_FORMULA_BY_PRIORITY and combines
+    spec + price scores accordingly. For cross-tier comparisons the legacy
+    TIER_EXPECTATIONS penalty still applies (spec § 4a cross-tier note —
+    A.6.3 narrows the delivery multiplier further).
+
+    `priorities` is the user's ordered priority list (e.g. ['price','durability']).
+    Backwards-compat: the ScoringService._compute_value_score method below
+    delegates here, passing the preferences it received via _normalize_scores."""
+    # Sparse-signal fallbacks (mirror legacy method semantics — MISSING_SCORE
+    # behavior preserved for legacy callers; flag-on None propagation handled
+    # by upstream A.4.9 dim omission).
+    if spec_score is None and price_score is None:
+        return MISSING_SCORE
+    if spec_score is None:
+        return price_score
+    if price_score is None:
+        return spec_score
+    if spec_score == MISSING_SCORE and price_score == MISSING_SCORE:
+        return MISSING_SCORE
+    if spec_score == MISSING_SCORE:
+        return price_score
+    if price_score == MISSING_SCORE:
+        return spec_score
+
+    if is_cross_tier:
+        expected = TIER_EXPECTATIONS.get(price_tier, 0.7) * 100
+        delivery = spec_score
+        value = 50 + (delivery - expected) * 0.8
+        return round(max(0, min(100, value)), 1)
+
+    coeffs = _resolve_value_coefficients(priorities)
+    return round(spec_score * coeffs["spec"] + price_score * coeffs["price"], 1)
+
 # Category-specific minimum coverage thresholds for spec penalty
 CATEGORY_MIN_COVERAGE = {
     "electronics": 0.5, "fashion": 0.3, "fragrances": 0.3,
@@ -481,8 +556,12 @@ class ScoringService:
         for product in products_data:
             raw_scores.append(self._compute_raw_scores(product, category))
 
-        # Normalize scores relative to each other (0-100 scale)
-        normalized, price_tiers, is_cross_tier = self._normalize_scores(raw_scores, products_data, category)
+        # Normalize scores relative to each other (0-100 scale).
+        # Bundle C § 4a: pass `preferences` so the value-formula can read
+        # priorities and apply VALUE_FORMULA_BY_PRIORITY coefficients.
+        normalized, price_tiers, is_cross_tier = self._normalize_scores(
+            raw_scores, products_data, category, preferences=preferences,
+        )
 
         # Compute overall weighted score for each product
         dims = CATEGORY_DIMENSIONS.get(category, CATEGORY_DIMENSIONS["other"])
@@ -849,9 +928,13 @@ class ScoringService:
         raw_scores: List[Dict[str, Any]],
         products_data: List[Dict[str, Any]],
         category: str = "other",
+        preferences: Optional[Dict[str, Any]] = None,
     ):
         """Normalize raw scores to category-specific dimensions on 0-100 scale.
-        
+
+        Bundle C § 4a: `preferences` is threaded through so the value-formula
+        can apply priority-driven coefficients via _compute_value_score.
+
         Returns (normalized, price_tiers, is_cross_tier_flag) tuple.
         """
         if category not in CATEGORY_DIMENSIONS:
@@ -891,9 +974,17 @@ class ScoringService:
             else:
                 spec_secondary_scores.append(round(s * 0.6 + r * 0.4, 1))
 
-        # Value scores (tier-aware)
+        # Value scores (tier-aware + Bundle C § 4a priority-driven coefficients).
+        # `preferences.priorities` (first-match) selects the coefficient pair
+        # from VALUE_FORMULA_BY_PRIORITY. When preferences is None, falls
+        # back to the legacy default (0.60 spec / 0.40 price) → identical
+        # output to pre-A.6.1 behavior.
+        priorities = (preferences or {}).get("priorities") if preferences else None
         value_scores = [
-            self._compute_value_score(spec_scores[i], price_scores[i], price_tiers[i], is_cross_tier_flag)
+            self._compute_value_score(
+                spec_scores[i], price_scores[i], price_tiers[i],
+                is_cross_tier_flag, priorities=priorities,
+            )
             for i in range(len(raw_scores))
         ]
 
@@ -992,21 +1083,24 @@ class ScoringService:
             return MISSING_SCORE
         return round(max(0, min(100, val * 100)), 1)
 
-    def _compute_value_score(self, spec_score: float, price_score: float, price_tier: str, is_cross_tier: bool) -> float:
-        """Value = tier-aware combination of spec quality and price affordability."""
-        if spec_score == MISSING_SCORE and price_score == MISSING_SCORE:
-            return MISSING_SCORE
-        if spec_score == MISSING_SCORE:
-            return price_score
-        if price_score == MISSING_SCORE:
-            return spec_score
-        if is_cross_tier:
-            expected = TIER_EXPECTATIONS.get(price_tier, 0.7) * 100
-            delivery = spec_score
-            value = 50 + (delivery - expected) * 0.8
-            return round(max(0, min(100, value)), 1)
-        else:
-            return round(spec_score * 0.6 + price_score * 0.4, 1)
+    def _compute_value_score(
+        self,
+        spec_score: float,
+        price_score: float,
+        price_tier: str,
+        is_cross_tier: bool,
+        priorities=None,
+    ) -> float:
+        """Bundle C § 4a — delegate to module-level _compute_value_score so
+        priority-driven coefficients (VALUE_FORMULA_BY_PRIORITY) replace the
+        legacy hard-coded 0.6/0.4 split. Backwards-compat: priorities=None
+        falls back to the default coefficients identical to the legacy
+        formula, so all existing tests that don't pass priorities still
+        produce the same number."""
+        return _compute_value_score(
+            spec_score, price_score, priorities=priorities,
+            price_tier=price_tier, is_cross_tier=is_cross_tier,
+        )
 
     def _empty_result(self, count: int) -> Dict[str, Any]:
         """Return empty scoring result for edge cases."""
