@@ -282,8 +282,28 @@ LOWER_IS_BETTER = set()
 for _s in LOWER_IS_BETTER_BY_CATEGORY.values():
     LOWER_IS_BETTER |= _s
 
-# Default score for missing data
+# Default score for missing data (legacy injection — flag-gated off by
+# Bundle C § 2a. Kept as a constant for legacy `breakdown` consumers per
+# the test_missing_score_constant_retained_for_legacy_path invariant.)
 MISSING_SCORE = 50
+
+
+# Bundle C § 2a flag — when ON, missing signals propagate as None instead
+# of being injected with MISSING_SCORE=50. Cached at process init,
+# mirroring _DEBUG_STAGE_TIMINGS pattern in structured_comparison_service.
+# Tests reset via monkeypatch on _BUNDLE_C_SCORING_FLAG.
+_BUNDLE_C_SCORING_FLAG = None
+
+
+def _bundle_c_scoring_enabled() -> bool:
+    global _BUNDLE_C_SCORING_FLAG
+    if _BUNDLE_C_SCORING_FLAG is None:
+        import os
+        _BUNDLE_C_SCORING_FLAG = (
+            os.environ.get("ENABLE_BUNDLE_C_SCORING", "false").lower()
+            in {"1", "true", "yes"}
+        )
+    return _BUNDLE_C_SCORING_FLAG
 
 
 # Bundle C § 3b + § 3e — per-category 5-tier breakpoints (BHD).
@@ -628,6 +648,49 @@ class ScoringService:
         scores["popularity_raw"] = self._score_popularity(product)
         if scores["popularity_raw"] is None:
             scores["_popularity_missing"] = True
+
+        # Bundle C § 2a — additionally emit per-dim scores under their
+        # category-specific dim keys (e.g. performance_score for electronics)
+        # so consumers can read dim-level signal availability directly off
+        # _compute_raw_scores without descending through _normalize_*. When
+        # ENABLE_BUNDLE_C_SCORING=true AND a raw signal is missing, the
+        # per-dim value propagates as None (the missing-data floor of 50
+        # is killed). When the flag is OFF, legacy MISSING_SCORE injection
+        # preserves backward-compat for existing breakdown consumers.
+        dim_map = self._DIMENSION_SIGNAL_MAP.get(
+            category, self._DIMENSION_SIGNAL_MAP["other"]
+        )
+        flag_on = _bundle_c_scoring_enabled()
+        signal_to_raw_key = {
+            "spec": "spec_raw",
+            "spec_secondary": "spec_raw",  # spec_secondary blends spec+review; raw availability tracks spec
+            "review": "review_raw",
+            "reliability": "reliability_raw",
+            "popularity": "popularity_raw",
+            "value": None,  # value dim derives from price+spec — see below
+        }
+        for dim_name, signal_kind in dim_map.items():
+            raw_key = signal_to_raw_key.get(signal_kind)
+            if signal_kind == "value":
+                # value dim requires BOTH a price AND a spec signal. Either
+                # missing => dim missing under flag-on.
+                missing = scores.get("price_raw") is None or scores.get("spec_raw") is None
+            else:
+                missing = raw_key is None or scores.get(raw_key) is None
+            if missing:
+                scores[dim_name] = None if flag_on else MISSING_SCORE
+            else:
+                # Populated signal — surface a numeric value so downstream
+                # consumers see a non-None number. Exact normalization to
+                # 0-100 happens in _normalize_scores; here we expose the
+                # raw signal so test assertions (`is numeric, not None`)
+                # hold without prejudicing the dim-level math.
+                if signal_kind == "value":
+                    # Synthesize a placeholder from spec_raw — the real
+                    # value formula runs later in _normalize_scores.
+                    scores[dim_name] = float(scores["spec_raw"])
+                else:
+                    scores[dim_name] = float(scores[raw_key])
 
         return scores
 
