@@ -48,6 +48,263 @@ def derive_rating_from_scores(overall_score: float) -> float:
     return round(min(rating, 4.8), 1)
 
 
+# ---------------------------------------------------------------------------
+# Bundle C § 1b A.3.2 — _build_factual_verdict
+# ---------------------------------------------------------------------------
+# qa-bundle-c D.1.3 confirmed: every probe returned scoring_v2 with NO
+# factual_verdict key because the builder never existed. Pure-template fix:
+# compose line1 + line2 from existing product_data + scoring_result fields.
+# Zero GPT cost. Respects the FIVE critical rules:
+#   - no scary copy (no "couldn't" / "try again" / "Failed to")
+#   - no backend internals (no coefficients / cap %s / shift math)
+#   - no "estimated" / "reference price" / "approximate" leakage
+# Strings are short, factual, and presentational.
+
+
+def _product_name(p: Dict[str, Any]) -> str:
+    """Return a short user-facing name. Falls back to brand + name if name
+    alone is empty; final fallback 'this product'."""
+    name = (p.get("name") or "").strip()
+    if name:
+        return name
+    brand = (p.get("brand") or "").strip()
+    return brand if brand else "this product"
+
+
+def _safe_price_amount(p: Dict[str, Any]) -> Optional[float]:
+    price = p.get("price")
+    if isinstance(price, dict):
+        amt = price.get("amount")
+    else:
+        amt = price
+    try:
+        amt = float(amt) if amt is not None else None
+    except (TypeError, ValueError):
+        return None
+    return amt if (amt is not None and amt > 0) else None
+
+
+def _safe_rating(p: Dict[str, Any]) -> Optional[float]:
+    rating = p.get("rating")
+    if isinstance(rating, dict):
+        rating = rating.get("score") or rating.get("average")
+    try:
+        r = float(rating) if rating is not None else None
+    except (TypeError, ValueError):
+        return None
+    return r if r is not None else None
+
+
+def _price_candidate(products: List[Dict[str, Any]], winner_index: int) -> Optional[Dict[str, Any]]:
+    """Build the price-gap candidate fact. Magnitude is the % difference
+    between the two prices (0.0–1.0). Returns None if either price missing."""
+    if len(products) < 2:
+        return None
+    pa = _safe_price_amount(products[0])
+    pb = _safe_price_amount(products[1])
+    if pa is None or pb is None:
+        return None
+    lo, hi = min(pa, pb), max(pa, pb)
+    if hi <= 0:
+        return None
+    pct = (hi - lo) / hi
+    winner_price = (pa, pb)[winner_index]
+    runner_price = (pa, pb)[1 - winner_index]
+    winner_is_cheaper = winner_price <= runner_price
+    return {
+        "magnitude": pct,
+        "kind": "price",
+        "winner_cheaper": winner_is_cheaper,
+        "pct": pct,
+    }
+
+
+def _rating_candidate(products: List[Dict[str, Any]], winner_index: int) -> Optional[Dict[str, Any]]:
+    """Build the rating-gap candidate fact. Magnitude is the absolute star
+    difference normalized to 0–1 (divide by 5)."""
+    if len(products) < 2:
+        return None
+    ra = _safe_rating(products[0])
+    rb = _safe_rating(products[1])
+    if ra is None or rb is None:
+        return None
+    diff = abs(ra - rb)
+    if diff <= 0.0:
+        return None
+    winner_rating = (ra, rb)[winner_index]
+    runner_rating = (ra, rb)[1 - winner_index]
+    winner_higher = winner_rating >= runner_rating
+    return {
+        "magnitude": diff / 5.0,  # normalize to compare with other candidates
+        "kind": "rating",
+        "winner_higher": winner_higher,
+        "stars_diff": diff,
+    }
+
+
+def _top_dim_candidate(
+    dimensions: List[Dict[str, Any]],
+    winner_index: int,
+) -> Optional[Dict[str, Any]]:
+    """Build the dim-margin candidate fact for the WINNER's strongest dim.
+    Skips price + reviews (they're already covered by dedicated candidates)
+    so this fires for category-specific dims like build_quality / performance."""
+    if not dimensions:
+        return None
+    best = None
+    best_margin = 0.0
+    for d in dimensions:
+        key = d.get("key", "")
+        if key in ("price", "reviews", "value"):
+            continue
+        sa = d.get("score_a")
+        sb = d.get("score_b")
+        if sa is None or sb is None:
+            continue
+        margin = sb - sa if winner_index == 1 else sa - sb
+        if margin > best_margin:
+            best_margin = margin
+            best = d
+    if best is None or best_margin <= 0:
+        return None
+    return {
+        "magnitude": best_margin / 100.0,  # normalize to compare with other candidates
+        "kind": "dim",
+        "label": best.get("label", best.get("key", "")).strip(),
+        "margin": best_margin,
+    }
+
+
+def _runner_up_dim_candidate(
+    dimensions: List[Dict[str, Any]],
+    winner_index: int,
+) -> Optional[Dict[str, Any]]:
+    """Find the dim where the RUNNER-UP beats the winner by the largest
+    margin. Used by line2."""
+    if not dimensions:
+        return None
+    runner_index = 1 - winner_index
+    best = None
+    best_margin = 0.0
+    for d in dimensions:
+        sa = d.get("score_a")
+        sb = d.get("score_b")
+        if sa is None or sb is None:
+            continue
+        margin = (sa - sb) if runner_index == 0 else (sb - sa)
+        if margin > best_margin:
+            best_margin = margin
+            best = d
+    if best is None or best_margin <= 0:
+        return None
+    return {
+        "kind": best.get("key", "dim"),
+        "label": best.get("label", best.get("key", "")).strip(),
+        "margin": best_margin,
+    }
+
+
+def _format_line1(
+    winner_name: str,
+    candidate: Dict[str, Any],
+) -> str:
+    """Render the winner-anchored line1 from the largest-magnitude candidate.
+    Strings are concise + presentational; honor the FIVE critical rules."""
+    kind = candidate["kind"]
+    if kind == "price":
+        pct = round(candidate["pct"] * 100)
+        if candidate["winner_cheaper"]:
+            return f"{winner_name} comes in {pct}% cheaper."
+        return f"{winner_name} carries a {pct}% price premium for the upgrade."
+    if kind == "rating":
+        diff = round(candidate["stars_diff"], 1)
+        if candidate["winner_higher"]:
+            return f"{winner_name} earns {diff} more stars from reviewers."
+        return f"{winner_name} edges ahead despite slightly lower reviews."
+    if kind == "dim":
+        label = candidate["label"] or "its strongest dimension"
+        return f"{winner_name} leads on {label}."
+    return f"{winner_name} comes out on top."
+
+
+def _format_line2(
+    runner_name: str,
+    candidate: Optional[Dict[str, Any]],
+    products: List[Dict[str, Any]],
+    winner_index: int,
+) -> str:
+    """Render the runner-up counter-fact. If a dim candidate exists, anchor
+    on it. Otherwise fall back to price (if runner-up is cheaper) or a
+    neutral 'still worth a look' phrasing."""
+    if candidate is not None:
+        label = candidate["label"] or "its strongest area"
+        return f"{runner_name} pulls ahead on {label}."
+    # Fallback to price — runner-up may be cheaper even if winner wins overall.
+    pa = _safe_price_amount(products[0])
+    pb = _safe_price_amount(products[1])
+    if pa is not None and pb is not None:
+        runner_price = (pa, pb)[1 - winner_index]
+        winner_price = (pa, pb)[winner_index]
+        if runner_price < winner_price:
+            pct = round((winner_price - runner_price) / winner_price * 100)
+            return f"{runner_name} stays {pct}% lighter on the wallet."
+    # Fallback to rating mention
+    ra = _safe_rating(products[0])
+    rb = _safe_rating(products[1])
+    if ra is not None and rb is not None:
+        runner_rating = (ra, rb)[1 - winner_index]
+        winner_rating = (ra, rb)[winner_index]
+        if runner_rating > winner_rating:
+            return f"{runner_name} rates a touch higher with shoppers."
+    # Neutral fallback — comparable across the board.
+    return f"{runner_name} stays in the conversation as a close alternative."
+
+
+def _build_factual_verdict(
+    products: List[Dict[str, Any]],
+    scoring_result: Dict[str, Any],
+    winner_index: int,
+    dimensions: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Bundle C § 1b — compose factual_verdict.line1 + .line2 from existing
+    fields. Pure template, zero GPT cost.
+
+    line1 = winner declaration anchored on the strongest factual delta
+            (price gap %, rating gap stars, or top winner-dim margin).
+    line2 = runner-up counter-fact anchored on their strongest winning
+            dim (or a price/rating fallback if no dim margin found).
+
+    Returns None when fewer than 2 products are supplied (defensive — the
+    caller already short-circuits this case in _build_scoring_v2)."""
+    if len(products) < 2:
+        return None
+    dimensions = dimensions or []
+
+    winner_name = _product_name(products[winner_index])
+    runner_name = _product_name(products[1 - winner_index])
+
+    # Gather candidate facts for line1, pick the largest-magnitude one.
+    candidates = [c for c in (
+        _price_candidate(products, winner_index),
+        _rating_candidate(products, winner_index),
+        _top_dim_candidate(dimensions, winner_index),
+    ) if c is not None]
+
+    if candidates:
+        candidates.sort(key=lambda c: c["magnitude"], reverse=True)
+        line1 = _format_line1(winner_name, candidates[0])
+    else:
+        # Sparse-data fallback — neither price nor rating nor a usable dim
+        # margin. Keep it presentational and non-scary.
+        line1 = f"{winner_name} edges ahead on the overall picture."
+
+    # line2 — runner-up's strongest counter-fact.
+    runner_dim = _runner_up_dim_candidate(dimensions, winner_index)
+    line2 = _format_line2(runner_name, runner_dim, products, winner_index)
+
+    return {"line1": line1, "line2": line2}
+
+
 def _build_scoring_v2(
     product_data: List[Dict[str, Any]],
     scoring_result: Dict[str, Any],
@@ -63,6 +320,11 @@ def _build_scoring_v2(
     score_a = calibrate_score(raw_a)
     score_b = calibrate_score(raw_b)
     dimensions = build_dimensions_v2(product_data, scoring_result, category)
+    # Bundle C § 1b A.3.2 — compose factual_verdict from existing fields.
+    # Pure template, zero GPT cost. qa-bundle-c D.1.3 confirmed missing.
+    factual_verdict = _build_factual_verdict(
+        product_data, scoring_result, winner_index, dimensions
+    )
     scoring_v2 = {
         "overall_score": {
             "product_a": score_a,
@@ -71,6 +333,7 @@ def _build_scoring_v2(
         },
         "win_margin": abs(score_a - score_b),
         "dimensions": dimensions,
+        "factual_verdict": factual_verdict,
     }
 
     # Bundle C § 1b diagnostic — log when scoring_v2 ships without a populated

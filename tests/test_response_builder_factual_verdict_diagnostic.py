@@ -34,10 +34,19 @@ def _make_products() -> list:
 
 
 def test_logs_when_factual_verdict_none(caplog, monkeypatch):
-    """When _build_scoring_v2 emits without populated factual_verdict
-    (current state per § 1b — builder missing), the diagnostic fires."""
+    """Defensive-net diagnostic: if some future regression makes
+    _build_factual_verdict return None on a populated comparison, the
+    A.2.2 diagnostic MUST still fire so the regression surfaces in logs.
+
+    Post-A.3.2, the builder always populates factual_verdict, so we
+    simulate the regression by patching _build_factual_verdict to
+    return None — the diagnostic must catch it."""
     monkeypatch.setenv("DEBUG_STAGE_TIMINGS", "true")
     monkeypatch.setattr(response_builder, "_FACTUAL_VERDICT_DIAG_FLAG", None, raising=False)
+    monkeypatch.setattr(
+        response_builder, "_build_factual_verdict",
+        lambda *a, **kw: None,
+    )
 
     with caplog.at_level(logging.WARNING, logger="app.services.response_builder"):
         scoring_v2 = response_builder._build_scoring_v2(
@@ -55,9 +64,16 @@ def test_logs_when_factual_verdict_none(caplog, monkeypatch):
 
 
 def test_no_log_when_flag_off(caplog, monkeypatch):
-    """Per A.10.1 + measure-before-optimize: diagnostic MUST be flag-gated."""
+    """Per A.10.1 + measure-before-optimize: diagnostic MUST be flag-gated.
+    We force a simulated regression (builder returns None) so the test
+    proves the FLAG is the only thing keeping the log silent — not the
+    post-A.3.2 happy path."""
     monkeypatch.setenv("DEBUG_STAGE_TIMINGS", "false")
     monkeypatch.setattr(response_builder, "_FACTUAL_VERDICT_DIAG_FLAG", None, raising=False)
+    monkeypatch.setattr(
+        response_builder, "_build_factual_verdict",
+        lambda *a, **kw: None,
+    )
 
     with caplog.at_level(logging.WARNING, logger="app.services.response_builder"):
         response_builder._build_scoring_v2(
