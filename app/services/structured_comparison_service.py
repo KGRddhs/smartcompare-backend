@@ -851,11 +851,19 @@ class StructuredComparisonService:
             # L3 output moderation (spec sec 5.2). Joined verdict text + product
             # names + top review excerpts → omni-moderation-latest. Fails OPEN
             # on API exception (Build Principle #4). $0 — no _track_cost bump.
+            # value_context is a per-product dict ({product_0, product_1} per
+            # extraction_service.py:519). Flatten to a string before joining
+            # — empty dicts are falsy and filtered by `filter(None,...)`, but
+            # non-empty dicts pass through and crash str.join with
+            # "expected str instance, dict found".
+            _vc = comparison.get("value_context", "")
+            if isinstance(_vc, dict):
+                _vc = " ".join(str(v) for v in _vc.values() if v)
             _l3_text = " ".join(filter(None, [
                 comparison.get("winner_declaration", ""),
                 comparison.get("winner_reason", ""),
                 comparison.get("key_tradeoff", ""),
-                comparison.get("value_context", ""),
+                _vc,
                 *product_names,
                 *[
                     (h.get("text") if isinstance(h, dict) else str(h))
@@ -1214,11 +1222,16 @@ class StructuredComparisonService:
             # events (specs/prices/reviews/scores/verdict) have already
             # reached the client; frontend treats `complete` with
             # success=false as the terminal refusal regardless of priors.
+            # value_context is a per-product dict — flatten before joining
+            # (see sync path comment above for the join-crash repro).
+            _vc = comparison.get("value_context", "")
+            if isinstance(_vc, dict):
+                _vc = " ".join(str(v) for v in _vc.values() if v)
             _l3_text = " ".join(filter(None, [
                 comparison.get("winner_declaration", ""),
                 comparison.get("winner_reason", ""),
                 comparison.get("key_tradeoff", ""),
-                comparison.get("value_context", ""),
+                _vc,
                 *product_names,
                 *[
                     (h.get("text") if isinstance(h, dict) else str(h))
