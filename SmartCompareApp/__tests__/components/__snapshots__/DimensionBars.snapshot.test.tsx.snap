@@ -1,0 +1,2114 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`snapshot — 2 dims (no expand row) 1`] = `
+<View
+  style={
+    {
+      "gap": 12,
+      "paddingVertical": 8,
+    }
+  }
+  testID="bars"
+>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-price"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Price
+      </Text>
+    </View>
+    <Text
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "600",
+            "lineHeight": 30,
+            "marginVertical": 4,
+            "textAlign": "center",
+          },
+          {
+            "color": "#10B981",
+          },
+        ]
+      }
+      testID="bars-row-price-delta-hero"
+    >
+      13% less
+    </Text>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "85%",
+              },
+            ]
+          }
+          testID="bars-row-price-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-price-score-a"
+      >
+        85
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-price-score-b"
+      >
+        75
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "75%",
+              },
+            ]
+          }
+          testID="bars-row-price-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-reviews"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Reviews
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        0.5★ higher
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "88%",
+              },
+            ]
+          }
+          testID="bars-row-reviews-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-reviews-score-a"
+      >
+        88
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-reviews-score-b"
+      >
+        80
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "80%",
+              },
+            ]
+          }
+          testID="bars-row-reviews-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
+<View
+  style={
+    {
+      "gap": 12,
+      "paddingVertical": 8,
+    }
+  }
+  testID="bars"
+>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-price"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Price
+      </Text>
+    </View>
+    <Text
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "600",
+            "lineHeight": 30,
+            "marginVertical": 4,
+            "textAlign": "center",
+          },
+          {
+            "color": "#10B981",
+          },
+        ]
+      }
+      testID="bars-row-price-delta-hero"
+    >
+      13% less
+    </Text>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "85%",
+              },
+            ]
+          }
+          testID="bars-row-price-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-price-score-a"
+      >
+        85
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-price-score-b"
+      >
+        75
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "75%",
+              },
+            ]
+          }
+          testID="bars-row-price-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-reviews"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Reviews
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        0.5★ higher
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "88%",
+              },
+            ]
+          }
+          testID="bars-row-reviews-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-reviews-score-a"
+      >
+        88
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-reviews-score-b"
+      >
+        80
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "80%",
+              },
+            ]
+          }
+          testID="bars-row-reviews-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-value"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Value
+      </Text>
+    </View>
+    <Text
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "600",
+            "lineHeight": 30,
+            "marginVertical": 4,
+            "textAlign": "center",
+          },
+          {
+            "color": "#10B981",
+          },
+        ]
+      }
+      testID="bars-row-value-delta-hero"
+    >
+      Stronger value
+    </Text>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "90%",
+              },
+            ]
+          }
+          testID="bars-row-value-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-value-score-a"
+      >
+        90
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-value-score-b"
+      >
+        70
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "70%",
+              },
+            ]
+          }
+          testID="bars-row-value-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-performance"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Performance
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        4pt
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "82%",
+              },
+            ]
+          }
+          testID="bars-row-performance-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-performance-score-a"
+      >
+        82
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-performance-score-b"
+      >
+        78
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "78%",
+              },
+            ]
+          }
+          testID="bars-row-performance-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "expanded": false,
+      }
+    }
+    accessible={true}
+    onPress={[Function]}
+    style={
+      {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "gap": 4,
+        "justifyContent": "center",
+        "paddingVertical": 8,
+      }
+    }
+    testID="bars-expand-row"
+  >
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+        }
+      }
+    >
+      results.dimensions.see_full_breakdown
+    </Text>
+    <mock-icon-ChevronDown
+      color="#6B7280"
+      size={16}
+    />
+  </View>
+</View>
+`;
+
+exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
+<View
+  style={
+    {
+      "gap": 12,
+      "paddingVertical": 8,
+    }
+  }
+  testID="bars"
+>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-price"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Price
+      </Text>
+    </View>
+    <Text
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "600",
+            "lineHeight": 30,
+            "marginVertical": 4,
+            "textAlign": "center",
+          },
+          {
+            "color": "#10B981",
+          },
+        ]
+      }
+      testID="bars-row-price-delta-hero"
+    >
+      13% less
+    </Text>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "85%",
+              },
+            ]
+          }
+          testID="bars-row-price-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-price-score-a"
+      >
+        85
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-price-score-b"
+      >
+        75
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "75%",
+              },
+            ]
+          }
+          testID="bars-row-price-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-reviews"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Reviews
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        0.5★ higher
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "88%",
+              },
+            ]
+          }
+          testID="bars-row-reviews-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-reviews-score-a"
+      >
+        88
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-reviews-score-b"
+      >
+        80
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "80%",
+              },
+            ]
+          }
+          testID="bars-row-reviews-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-value"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Value
+      </Text>
+    </View>
+    <Text
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "600",
+            "lineHeight": 30,
+            "marginVertical": 4,
+            "textAlign": "center",
+          },
+          {
+            "color": "#10B981",
+          },
+        ]
+      }
+      testID="bars-row-value-delta-hero"
+    >
+      Stronger value
+    </Text>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "90%",
+              },
+            ]
+          }
+          testID="bars-row-value-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-value-score-a"
+      >
+        90
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-value-score-b"
+      >
+        70
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "70%",
+              },
+            ]
+          }
+          testID="bars-row-value-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-performance"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Performance
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        4pt
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "82%",
+              },
+            ]
+          }
+          testID="bars-row-performance-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-performance-score-a"
+      >
+        82
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-performance-score-b"
+      >
+        78
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "78%",
+              },
+            ]
+          }
+          testID="bars-row-performance-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-build"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Build
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        4pt
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "80%",
+              },
+            ]
+          }
+          testID="bars-row-build-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-build-score-a"
+      >
+        80
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-build-score-b"
+      >
+        76
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "76%",
+              },
+            ]
+          }
+          testID="bars-row-build-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      [
+        {
+          "gap": 4,
+        },
+        {
+          "opacity": 1,
+        },
+      ]
+    }
+    testID="bars-row-longevity"
+  >
+    <View
+      style={
+        {
+          "alignItems": "baseline",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "lineHeight": 24,
+          }
+        }
+      >
+        Longevity
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        3pt
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 4,
+        }
+      }
+    >
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-end",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-end",
+                "backgroundColor": "#10B981",
+                "width": "75%",
+              },
+            ]
+          }
+          testID="bars-row-longevity-fill-a"
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-longevity-score-a"
+      >
+        75
+      </Text>
+      <Text
+        style={
+          {
+            "color": "#0A0A0B",
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "400",
+            "lineHeight": 19.5,
+            "minWidth": 28,
+            "textAlign": "center",
+          }
+        }
+        testID="bars-row-longevity-score-b"
+      >
+        72
+      </Text>
+      <View
+        style={
+          [
+            {
+              "backgroundColor": "#E5E7EB",
+              "borderRadius": 3,
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 6,
+              "overflow": "hidden",
+            },
+            {
+              "justifyContent": "flex-start",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            [
+              {
+                "borderRadius": 3,
+                "height": 6,
+              },
+              {
+                "alignSelf": "flex-start",
+                "backgroundColor": "#6B7280",
+                "width": "72%",
+              },
+            ]
+          }
+          testID="bars-row-longevity-fill-b"
+        />
+      </View>
+    </View>
+  </View>
+  <View
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "expanded": true,
+      }
+    }
+    accessible={true}
+    onPress={[Function]}
+    style={
+      {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "gap": 4,
+        "justifyContent": "center",
+        "paddingVertical": 8,
+      }
+    }
+    testID="bars-expand-row"
+  >
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+        }
+      }
+    >
+      results.dimensions.see_full_breakdown
+    </Text>
+    <mock-icon-ChevronUp
+      color="#6B7280"
+      size={16}
+    />
+  </View>
+</View>
+`;
