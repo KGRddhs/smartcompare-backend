@@ -1373,43 +1373,62 @@ class TestBundleBContentSafety:
             oai.get_client = original_get_client
 
     def test_content_safety_image_filter_drops_unsafe_shopping_items(self):
-        """Spec § 5.2 L2 — unsafe Serper Shopping items are dropped before
-        reaching candidate ranking. Unit test on extract_price_from_shopping
-        per Backend § 1.5 insertion point."""
+        """Spec § 5.2 L2 — STRENGTHENED per Backend Reviewer 1.
+
+        Two-layer assertion:
+          (1) Direct unit test on filter_shopping_items — proves L2
+              drops the unsafe item even when it would otherwise win.
+          (2) Integration test via extract_price_from_shopping with the
+              search query engineered to favor the UNSAFE item's title.
+              If L2 is silently removed, the unsafe item wins ranking.
+        """
+        # ---- (1) Direct unit: L2 drops unsafe items at the filter ----
+        from app.services.content_safety_service import (
+            get_content_safety_service,
+        )
+
+        items_raw = [
+            {"title": "AR-15 rifle holder premium tactical", "snippet": ""},
+            {"title": "iPhone 15 Pro Max", "snippet": ""},
+        ]
+        filtered = get_content_safety_service().filter_shopping_items(items_raw)
+        assert len(filtered) == 1
+        assert "iPhone" in filtered[0]["title"]
+
+        # ---- (2) Integration: ranking would favor unsafe absent L2 ----
         from app.services.price_service import extract_price_from_shopping
 
+        # Search query matches the UNSAFE item's title exactly; safe item
+        # has unrelated title. Absent L2 the unsafe item wins on
+        # (-match_score, -retailer_score) sort. With L2 it never reaches
+        # the candidates list.
         items = [
-            # Unsafe: weapons-seed term in title; must NOT make it to candidates.
             {
-                "title": "Glock 19 holster premium leather",
+                "title": "AR-15 rifle holder premium tactical",
                 "snippet": "tactical accessory",
                 "price": "$45.00",
-                "source": "armory.example",
-                "link": "https://armory.example/glock",
+                "source": "amazon.com",
+                "link": "https://amazon.com/dp/AR15HOLDER",
             },
-            # Safe: legit comparison candidate.
             {
-                "title": "iPhone 15 Pro Max 256GB",
-                "snippet": "Apple flagship 2024",
-                "price": "$1199.00",
-                "source": "apple.com",
-                "link": "https://apple.com/iphone",
+                "title": "Phone case rifle holder accessory",
+                "snippet": "generic mount",
+                "price": "$25.00",
+                "source": "amazon.com",
+                "link": "https://amazon.com/dp/PHONECASE",
             },
         ]
         result = extract_price_from_shopping(
-            product_name="iPhone 15 Pro Max", shopping_items=items, currency="USD"
+            product_name="AR-15 rifle holder",
+            shopping_items=items,
+            currency="USD",
         )
-        # The function may return None if no candidate survives ranking,
-        # OR it may return a dict pointing at the iPhone. What it MUST
-        # NEVER do is point at the weapon listing.
+        # Must NEVER surface the weapon listing — even though it would
+        # win the ranking on raw match-score absent L2.
         if result is not None:
-            picked_title = (result.get("title") or "").lower()
-            picked_retailer = (result.get("retailer") or "").lower()
-            assert "glock" not in picked_title, (
-                f"L2 filter failed — unsafe item reached ranking. Picked: {result}"
-            )
-            assert "armory" not in picked_retailer, (
-                f"L2 filter failed — unsafe retailer reached ranking. "
+            picked_url = (result.get("url") or "").lower()
+            assert "ar15holder" not in picked_url, (
+                f"L2 silently removed — unsafe item won ranking. "
                 f"Picked: {result}"
             )
 
