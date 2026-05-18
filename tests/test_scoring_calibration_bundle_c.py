@@ -34,11 +34,30 @@ def _has_bundle_c_flag_on() -> bool:
     return os.getenv("ENABLE_BUNDLE_C_SCORING", "false").lower() in {"1", "true", "yes"}
 
 
+def _reset_flag_cache():
+    """Bust the module-level flag cache so monkeypatch.setenv actually wins.
+    `_BUNDLE_C_SCORING_FLAG` is lazily computed once per process — without a
+    reset, an earlier test that touches the flag locks every later test.
+    Backend-bundle-c confirmed this pattern via tests/test_scoring_missing_propagates_none.py.
+    """
+    try:
+        import app.services.scoring_service as svc
+        svc._BUNDLE_C_SCORING_FLAG = None
+    except (ImportError, AttributeError):
+        pass
+
+
 @pytest.fixture
 def bundle_c_flag_on(monkeypatch):
-    """Force ENABLE_BUNDLE_C_SCORING=true so the new None-propagation path fires."""
+    """Force ENABLE_BUNDLE_C_SCORING=true so the new None-propagation path fires.
+
+    Resets the module-level cache both on setup AND teardown so wider sweep
+    ordering doesn't poison subsequent tests.
+    """
     monkeypatch.setenv("ENABLE_BUNDLE_C_SCORING", "true")
+    _reset_flag_cache()
     yield
+    _reset_flag_cache()
 
 
 def _instantiate_service():
