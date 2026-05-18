@@ -226,15 +226,67 @@ for _s in LOWER_IS_BETTER_BY_CATEGORY.values():
 # Default score for missing data
 MISSING_SCORE = 50
 
-# Price tier thresholds (BHD)
-PRICE_TIERS = {
-    "budget":    (0, 11),
-    "mid":       (11, 57),
-    "premium":   (57, 189),
-    "luxury":    (189, float("inf")),
+
+# Bundle C § 3b + § 3e — per-category 5-tier breakpoints (BHD).
+# Each entry is an ordered list of (upper_bound_exclusive, tier_label) tuples;
+# walked low-to-high so the first range a price falls under wins. The final
+# tuple uses float("inf") so any price above the last named bound lands in
+# the top tier (or 'luxury' for categories that fold top_tier per § 3e:
+# supplements + grocery — no real top_tier market in GCC for those).
+PRICE_TIERS_BY_CATEGORY: dict = {
+    "electronics": [(100, "budget"), (400, "mid"), (800, "premium"), (2000, "luxury"), (float("inf"), "top_tier")],
+    "supplements": [(11, "budget"), (30, "mid"), (60, "premium"), (float("inf"), "luxury")],   # top_tier folded
+    "fashion":     [(30, "budget"), (150, "mid"), (500, "premium"), (2000, "luxury"), (float("inf"), "top_tier")],
+    "fragrances":  [(30, "budget"), (80, "mid"), (180, "premium"), (500, "luxury"), (float("inf"), "top_tier")],
+    "skincare":    [(11, "budget"), (40, "mid"), (100, "premium"), (300, "luxury"), (float("inf"), "top_tier")],
+    "haircare":    [(15, "budget"), (40, "mid"), (100, "premium"), (200, "luxury"), (float("inf"), "top_tier")],
+    "makeup":      [(15, "budget"), (50, "mid"), (120, "premium"), (300, "luxury"), (float("inf"), "top_tier")],
+    "grocery":     [(5, "budget"), (15, "mid"), (50, "premium"), (float("inf"), "luxury")],     # top_tier folded
 }
 
-# Expected quality delivery per tier (0-1 scale)
+# Bundle C § 3f — runtime sub-scale for category="other". A.5.5 will wire
+# geometric-mean detection from comparison-level prices; for now the default
+# `other_light` sub-scale extends the legacy flat PRICE_TIERS with a 500+
+# top_tier slot so back-compat one-arg _detect_price_tier(price) calls
+# remain stable for the budget/mid/premium boundaries.
+_OTHER_LIGHT_TIERS = [
+    (11, "budget"),
+    (57, "mid"),
+    (189, "premium"),
+    (500, "luxury"),
+    (float("inf"), "top_tier"),
+]
+
+
+def _detect_price_tier(price_bhd: float, category: str = "other", *, comparison_prices=None) -> str:
+    """Bundle C § 3b/3e/3f — return the tier label for a price in a category.
+
+    Walks the per-category breakpoint list low-to-high. Unknown categories
+    fall through to the `other_light` sub-scale (matches legacy ranges for
+    the budget/mid/premium tiers).
+    `comparison_prices` is wired in A.5.5 (geometric-mean sub-scale for
+    category='other'); for now it is accepted-but-ignored.
+    """
+    ranges = PRICE_TIERS_BY_CATEGORY.get(category) or _OTHER_LIGHT_TIERS
+    for upper, tier in ranges:
+        if price_bhd < upper:
+            return tier
+    # Defensive — ranges always terminate in float("inf"); unreachable in
+    # practice but keeps the function total.
+    return ranges[-1][1]
+
+
+# Legacy flat PRICE_TIERS preserved for back-compat — derived from the
+# pre-Bundle-C 4-tier set so any external import that ranges over it sees
+# the same (budget, mid, premium, luxury) keys.
+PRICE_TIERS = {
+    "budget":  (0, 11),
+    "mid":     (11, 57),
+    "premium": (57, 189),
+    "luxury":  (189, float("inf")),
+}
+
+# Expected quality delivery per tier (0-1 scale) — A.5.2 will extend to 5 tiers.
 TIER_EXPECTATIONS = {"budget": 0.6, "mid": 0.7, "premium": 0.8, "luxury": 0.85}
 
 # Category-specific minimum coverage thresholds for spec penalty
@@ -415,11 +467,11 @@ class ScoringService:
         return weights
 
     @staticmethod
-    def _detect_price_tier(price_bhd: float) -> str:
-        for tier, (low, high) in PRICE_TIERS.items():
-            if low <= price_bhd < high:
-                return tier
-        return "luxury"
+    def _detect_price_tier(price_bhd: float, category: str = "other", *, comparison_prices=None) -> str:
+        """Bundle C § 3b/3e/3f — thin shim that delegates to the module-level
+        function so existing one-arg callers (legacy unit tests) keep working
+        and new callers can pass a category for per-category breakpoints."""
+        return _detect_price_tier(price_bhd, category, comparison_prices=comparison_prices)
 
     @staticmethod
     def _is_cross_tier(tiers: List[str]) -> bool:
@@ -643,12 +695,15 @@ class ScoringService:
         if category not in CATEGORY_DIMENSIONS:
             category = "other"
 
-        # Detect price tiers for value score
+        # Detect price tiers for value score — Bundle C § 3e: pass category
+        # so per-category breakpoints apply (electronics 100/400/800/2000/inf
+        # vs. supplements 11/30/60/inf, etc.). A.5.5 will wire comparison_prices
+        # for the 'other' geometric-mean sub-scale.
         price_tiers = []
         for rs in raw_scores:
             price = rs.get("price_raw")
             if price is not None and price > 0:
-                price_tiers.append(self._detect_price_tier(price))
+                price_tiers.append(self._detect_price_tier(price, category))
             else:
                 price_tiers.append("mid")
         is_cross_tier_flag = self._is_cross_tier(price_tiers)
