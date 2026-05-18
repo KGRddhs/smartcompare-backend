@@ -1870,4 +1870,15 @@ def build_dimensions_v2(
             dim = builder(products_data)
             if dim is not None:
                 dims.append(dim)
+    # Bundle C § 2h A.4.9 — silent dim omission. The individual _dim_X
+    # builders mostly handle this already (returning None for genuinely
+    # missing data + A.4.4 caption_key='limited_data' for the last-resort
+    # neutral-score case). This defensive filter at the orchestrator
+    # layer makes the spec § 2h contract explicit: any dim that escapes
+    # an upstream builder with score_a is None AND score_b is None gets
+    # silently omitted here so the frontend never sees a phantom row.
+    dims = [
+        d for d in dims
+        if not (d.get("score_a") is None and d.get("score_b") is None)
+    ]
     return dims[:6]
