@@ -427,6 +427,48 @@ VALUE_FORMULA_BY_PRIORITY = {
 }
 
 
+# Bundle C § 7b A.9.1 — personalization chip qualitative-only contract.
+# Compute applied_shifts[] from weights_used vs CATEGORY_DIMENSION_WEIGHTS
+# defaults. Each shift is {dim_display, direction} ONLY — direction is
+# 'up' / 'down' based on sign of delta. Magnitude is INTENTIONALLY hidden
+# per critical rule #2 (no backend internals in user-facing reveals).
+# Sorted by absolute magnitude descending; top 3 returned for the chip.
+_APPLIED_SHIFT_NOISE_FLOOR = 0.001  # ignore <0.1% drift (rounding artifacts)
+
+
+def _compute_applied_shifts(weights_used, defaults) -> list:
+    """Bundle C § 7b A.9.1 — return the top 3 dim shifts as
+    [{dim_display, direction}] ordered by absolute magnitude descending.
+
+    Pure qualitative output — magnitude is computed internally for sorting
+    but NEVER surfaces in the returned dicts. Empty list when:
+      - either input is None/empty
+      - all shifts are below the noise floor (genuinely no personalization)
+    """
+    if not weights_used or not defaults:
+        return []
+    try:
+        deltas = []
+        for dim, used in weights_used.items():
+            default = defaults.get(dim, 0)
+            delta = used - default
+            if abs(delta) >= _APPLIED_SHIFT_NOISE_FLOOR:
+                deltas.append((dim, delta))
+        if not deltas:
+            return []
+        # Sort by absolute magnitude descending; keep top 3.
+        deltas.sort(key=lambda kv: abs(kv[1]), reverse=True)
+        out = []
+        for dim, delta in deltas[:3]:
+            out.append({
+                "dim_display": DIMENSION_DISPLAY_NAMES.get(dim, dim),
+                "direction": "up" if delta > 0 else "down",
+            })
+        return out
+    except (TypeError, AttributeError):
+        return []
+
+
 def _resolve_value_coefficients(priorities=None) -> Dict[str, float]:
     """Bundle C § 4a — first-match-wins lookup against VALUE_FORMULA_BY_PRIORITY.
     Returns the (spec, price) coefficient dict for the highest-ranked priority
