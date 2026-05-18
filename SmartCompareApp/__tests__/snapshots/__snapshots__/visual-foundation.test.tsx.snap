@@ -402,6 +402,7 @@ exports[`Theme tokens snapshot colors structure stable 1`] = `
     "primary": "#0A0A0B",
   },
   "destructive": "#EF4444",
+  "editorialDark": "#1A1A1A",
   "text": {
     "onInverse": "#FFFFFF",
     "placeholder": "#9CA3AF",

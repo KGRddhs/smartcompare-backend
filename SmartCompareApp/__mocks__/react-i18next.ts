@@ -3,6 +3,10 @@ const translations: Record<string, Record<string, string>> = {
     'home.freeCounter': '{{used}} of {{total}} free',
     'home.search.placeholder': 'Search products...',
     'home.search.recent': 'Recent',
+    // Bundle C (spec § 7c) — personalization chip needs interpolation.
+    'results.personalization.chip_template': 'Weighted {{arrows}} (based on your priorities)',
+    'results.personalization.arrow_up': '↑ {{dim}}',
+    'results.personalization.arrow_down': '↓ {{dim}}',
   },
 };
 
