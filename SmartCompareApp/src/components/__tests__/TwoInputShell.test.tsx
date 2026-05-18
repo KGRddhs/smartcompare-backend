@@ -55,6 +55,18 @@ jest.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: jest.fn() },
 }));
 
+// The global __mocks__/react-native.ts mock doesn't expose Keyboard. Add
+// it here for the TwoInputShell submit/dismiss paths (spec § 4.4 — silent
+// dismiss on invalid Box B submit, dismiss on tap-outside Pressable).
+// Spread the global mock + extend.
+jest.mock('react-native', () => {
+  const actual = jest.requireActual('../../../__mocks__/react-native');
+  return {
+    ...actual,
+    Keyboard: { dismiss: jest.fn() },
+  };
+});
+
 import TwoInputShell, {
   __resetTwoInputCacheForTests,
 } from '../TwoInputShell';
@@ -833,16 +845,21 @@ describe('TwoInputShell — per-mode cache survives mode flip', () => {
     );
   });
 
-  it('__resetTwoInputCacheForTests clears both slots', () => {
+  it('__resetTwoInputCacheForTests clears the module cache for the NEXT mount', () => {
+    // The helper is mount-time only — existing components hold a ref to the
+    // OLD cache object. Reset → next fresh mount sees a clean slate.
     const cb = buildCallbacks();
-    const { rerender, getByTestId } = render(
-      <TwoInputShell mode="text" onSubmit={cb.onSubmit} />
+    const first = render(<TwoInputShell mode="text" onSubmit={cb.onSubmit} />);
+    fireEvent.changeText(
+      first.getByTestId('two-input-shell-a-input'),
+      'iPhone 15'
     );
-    fireEvent.changeText(getByTestId('two-input-shell-a-input'), 'iPhone 15');
+    first.unmount();
+
     __resetTwoInputCacheForTests();
-    rerender(<TwoInputShell mode="url" onSubmit={cb.onSubmit} />);
-    rerender(<TwoInputShell mode="text" onSubmit={cb.onSubmit} />);
-    expect(getByTestId('two-input-shell-a-input').props.value).toBe('');
+
+    const second = render(<TwoInputShell mode="text" onSubmit={cb.onSubmit} />);
+    expect(second.getByTestId('two-input-shell-a-input').props.value).toBe('');
   });
 
   it('initialA / initialB win over cache when provided', () => {
