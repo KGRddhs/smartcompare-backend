@@ -231,3 +231,86 @@ Three possible distinct sub-causes per probe (Railway log will disambiguate):
 3. **A.3.3 (§1c price-pipeline) BLOCKED on Railway PRICE_PIPELINE_DIAG log paste** — high-confidence diagnosis points to Serper Shopping returning zero items + Firecrawl/Scrape.do not firing (either credit/breaker exhaust or no upstream URL to scrape). NO speculative fix.
 
 > **For team-lead / Ahmed:** Please run `railway logs --since 30m | grep -E "(PROS_CONS_DIAGNOSTIC|FACTUAL_VERDICT_DIAGNOSTIC|PRICE_PIPELINE_DIAG)"` and paste the output to qa-bundle-c via SendMessage. Once received, qa-bundle-c will append a follow-up commit to this file with the final-suspect resolutions and OPEN gates A.3.1 + A.3.3.
+
+---
+
+## D.1.3 FOLLOW-UP — Diagnostic-logs-not-deployed pivot (2026-05-18)
+
+**Pivot reason:** Backend's A.2.1/A.2.2/A.2.3 diagnostic logging commits sit on `feature/bundle-c-scoring` — NOT yet merged to main. Production Railway runs `main` HEAD `7ec42c8`. Even with `DEBUG_STAGE_TIMINGS=true` on Railway, the new `PROS_CONS_DIAGNOSTIC` / `FACTUAL_VERDICT_DIAGNOSTIC` / `PRICE_PIPELINE_DIAG` log groups never fire because that code isn't running on prod. team-lead dispatcher verified: `railway logs --lines 3000 | grep -E "(PROS_CONS_DIAGNOSTIC|FACTUAL_VERDICT_DIAGNOSTIC|PRICE_PIPELINE_DIAG)"` → ZERO matches.
+
+**Alternatives considered:**
+- (i) Open A.3.1 + A.3.3 gates on code-inspection evidence (parallel to §1b path). ✅ CHOSEN.
+- (ii) Cherry-pick A.2.x diagnostic commits to main, deploy, re-probe, capture, then revert. Rejected — adds 90s deploy + revert cycle + commit-history pollution for the same answer code inspection delivers.
+
+### NEW EVIDENCE — Admin endpoint `/api/v1/admin/costs` snapshot (2026-05-18)
+
+```
+Firecrawl: 52/450 used (398 remaining), breaker CLOSED, 0 failures
+Scrape.do: 44/900 used (856 remaining), breaker CLOSED, 0 failures
+Serper:    0/2200 used (2200 remaining), breaker CLOSED, 0 failures   ← INSTRUMENTATION HOLE
+comparisons_this_month: 8
+```
+
+8 comparisons month-to-date with `?nocache=true` would expect ~16-24 Serper Shopping calls. Counter=0 means EITHER (a) Serper is genuinely never called, OR (b) instrumentation is broken.
+
+### Code-inspection findings (smoking gun for §1c)
+
+`grep -nE "record_usage" app/services/` returns:
+- `structured_comparison_service.py:268: record_usage("firecrawl")` ✓
+- `structured_comparison_service.py:303: record_usage("scrapedo")` ✓
+- `extraction_service.py:1160: await model_router.record_usage(verdict_model, ...)` (different function — model_router, not api_budget)
+
+**NO `record_usage("serper")` call exists anywhere in app/services/.**
+
+Meanwhile Serper Shopping IS called at:
+- `serper_service.py:101-110` (function `search_shopping`, posts to `{SERPER_BASE_URL}/shopping`)
+- `rating_service.py:273` (rating Tier 1)
+- `structured_comparison_service.py:1471` (price Tier 1)
+- `price_service.py:458` (Serper Shopping result parser)
+
+**Conclusion:** Instrumentation bug confirmed (hypothesis a). Serper IS being called but `api_budget_service.record_usage("serper")` is never invoked. The counter=0 evidence DOES NOT prove Serper isn't being called — it proves the meter is broken.
+
+### §1c root cause (UPDATED — final, code-trace-confirmed)
+
+The §1c bug has TWO independent components:
+
+1. **Meter instrumentation hole:** `record_usage("serper")` missing at every Serper call site (`serper_service.py:search_shopping`, `rating_service.py:_fetch_rating_via_shopping`, `structured_comparison_service.py:1471`, `price_service.py:458`). Adds operator-visibility risk (Serper credit exhaustion would be silent until breaker trips). Small fix, surgical patches at 3-4 call sites.
+
+2. **Mainstream-query pipeline regression:** Even with Serper being called, `products[*].price.shopping_count=null` system-wide across all 6 cold-cache probes (electronics/skincare/supplements/fashion/fragrances/grocery) — including ultra-mainstream items like Almarai laban. This means EITHER Serper Shopping returns empty `shopping[]` arrays for `gl=bh` queries (regional coverage gap), OR `_extract_serper_shopping_prices` parser regressed and the items aren't being surfaced. Backend's A.3.3 fix must determine which.
+
+### Proposed A.3.3 fix scope (split):
+
+**A.3.3-fix-1 (meter, small):** Add `record_usage("serper")` calls at every Serper invocation point (4 locations identified). Restore counter visibility. Independent of pipeline fix.
+
+**A.3.3-fix-2 (pipeline, larger):** Backend reads `serper_service.search_shopping()` + `_extract_serper_shopping_prices` (`price_service.py:458+`) + the Tier 1 invocation at `structured_comparison_service.py:1471`. Confirms whether:
+- Serper Shopping API returns empty `shopping[]` for Bahrain region (then: pivot to either omit `gl` param OR loosen region filtering OR fall through to Tier 1.5 page-scrape faster), OR
+- Parser regressed and items exist in response but aren't being read (then: parser hotfix).
+
+A one-off direct Serper call against a known-good query (e.g., `gl=bh` "iPhone 16" with `SERPER_API_KEY`) will distinguish in <30s.
+
+### §1a root cause (UPDATED — code-inspection-confirmed)
+
+Cold-cache evidence (all 6 probes): `comparison.product_0_pros = comparison.product_0_cons = comparison.product_1_pros = comparison.product_1_cons = None`. Code trace at `structured_comparison_service.py:720-725`:
+
+```python
+product_data[0]["pros_cons"] = {
+    "pros": comparison.pop("product_0_pros", []),
+    ...
+```
+
+Default `[]` swallows missing keys. So either (i) verdict GPT response is dropping the keys, OR (ii) some intermediate stripper. Suspects 3+4 (`validate_verdict` + prompt clarity) ruled out earlier by code trace. Suspect 1 vs 2 (model omits vs mini routing) NEEDS the per-comparison raw GPT response to disambiguate — that IS what A.2.1's diagnostic log captures, but it's not deployed.
+
+**A.3.1 fix scope (CONSERVATIVE, code-inspection-only basis):** Backend must read verdict GPT call site (`extraction_service.py:1085+`, `generate_comparison`) and apply ONE of:
+- Add `response_format={"type": "json_object"}` to force structured-JSON mode (forces model to honor declared keys).
+- Hard-pin verdict to `gpt-4o` via `model_router.get_model(priority="critical")` (avoids mini omitting fields).
+- Both, with regression test asserting `parsed.get("product_0_pros")` non-empty across 6 categories.
+
+The choice between the two is SMALL-BLAST: `response_format=json_object` is the smaller-blast fix; if it doesn't resolve, then add the critical-priority pin. **NO speculative re-prompt fallback** (per spec §1a "require evidence" rule — falling back to a 2nd verdict call would double GPT cost for an unconfirmed cause).
+
+### Gate-open decision (qa-bundle-c, signed off 2026-05-18)
+
+Both **A.3.1 and A.3.3 OPEN** for backend-bundle-c on code-inspection evidence basis. Same approach validated for §1b A.3.2 (committed `effd2a1` — 18/18 tests green confirms the inspection-basis approach worked).
+
+Verification path: A.3.x patches land → re-run the 6 cold-cache probes → expect `pros≥1`, `cons≥1`, `shopping_count>0` for at least mainstream categories (Almarai, Centrum, CeraVe), or `source_method` no longer `estimated`.
+
+**D.1.4 closure deferred:** still set `DEBUG_STAGE_TIMINGS=false` on Railway once A.3.x ships AND post-deploy probes verify fixes. Net cost of leaving it on: zero per backend's cached-flag pattern, but cleanliness wins per `memory/feedback_measure_before_optimize.md`.
