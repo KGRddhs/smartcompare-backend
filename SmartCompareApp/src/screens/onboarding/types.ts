@@ -39,8 +39,12 @@ export type OnboardingAgeGroup =
 /** Gender — exact strings for cohort match. */
 export type OnboardingGender = 'Male' | 'Female';
 
-/** Budget tier — aligns with backend `_get_price_tier()`. */
-export type OnboardingBudget = 'budget' | 'mid' | 'premium';
+/**
+ * Budget tier — Bundle C (spec § 3a) extends to 5 semantic tiers.
+ * Mirrors the project-wide `BudgetValue` literal in `src/types`.
+ */
+import type { BudgetValue } from '../../types';
+export type OnboardingBudget = BudgetValue;
 
 /**
  * Brand attitude — original 3 + the cohort-derived `trust_known_brands`
