@@ -663,9 +663,12 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 {product.price?.source_method === 'converted_usd' && (
                   <Text style={styles.priceNote}>{t('results.convertedUSD')}</Text>
                 )}
-                {(product.price?.estimated || product.price?.source_method === 'estimated') && (
-                  <Text style={styles.priceNote}>{t('results.estimated')}</Text>
-                )}
+                {/* Bundle C § 5c — legacy `(estimated)` caption removed.
+                    Price provenance is silent in the UI; the Price
+                    confidence pill is hidden upstream via
+                    `hidePricePill={anyEstimated(products)}` on
+                    ConfidencePills (see scoring_v2 hero section below).
+                    Disclosure obligation handled by Terms (A.4.10). */}
                 {product.price?.retailer && !product.price?.unavailable && (
                   <Text style={styles.retailerText}>{product.price.retailer}</Text>
                 )}
