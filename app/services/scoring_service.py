@@ -1590,7 +1590,33 @@ _HONESTY_GUARD_THRESHOLD = 40
 _HONESTY_GUARD_CEILING = 69
 
 
-def calibrate_score(raw_score: float, raw_signals: list[float] | None = None) -> int:
+def calibrate_score(
+    raw_score: float | None,
+    raw_signals: list[float] | None = None,
+    *,
+    has_signal: bool = True,
+) -> int | None:
+    """Calibrate a raw 0–100 score into the [60, 95] honest display band.
+
+    Bundle C § 2c (A.4.3): when `has_signal=False`, short-circuit to None
+    so downstream A.4.9 silent-dim-omission can route missing-data dims
+    through cleanly — no phantom 60-floor sneaks into the response.
+
+    `raw_signals` (optional list of contributing raw values): when ALL
+    fall below the honesty-guard threshold (40), the display is capped
+    at 69 so weak-evidence comparisons never inflate above the
+    'genuinely respectable' band.
+
+    Backwards-compat: `has_signal=True` (the default) preserves the
+    legacy int-returning behavior for every existing call site.
+    """
+    if not has_signal:
+        return None
+    if raw_score is None:
+        # Defensive — has_signal=True but raw_score=None means a caller
+        # forgot to pass has_signal=False. Default to the calibration
+        # floor rather than crashing.
+        return _CALIBRATION_FLOOR
     base = 70 + (raw_score - 50) * 0.5
     base = max(_CALIBRATION_FLOOR, min(_CALIBRATION_CEILING, base))
     display = int(round(base))
