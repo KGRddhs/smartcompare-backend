@@ -1327,82 +1327,50 @@ class TestBundleBContentSafety:
         assert body.get("code") == "CONTENT_UNAVAILABLE"
         assert body.get("layer") == "query_prefilter"
 
-    def test_content_safety_moderation_api_wipes_explicit_output(
-        self, monkeypatch
-    ):
+    def test_content_safety_moderation_api_wipes_explicit_output(self):
         """Spec § 5.2 L3 — STRENGTHENED per Backend Reviewer 1.
 
-        Real-service path: mock only openai_service.get_client to flag,
-        short-circuit upstream stages (parse, fetch, generate). The L3
-        block in the REAL orchestrator (~line 866) observes flagged=True
-        and returns the structured refusal. A regression that drops the
-        L3 block in the service fails this test.
+        Real-path L3 wipe: call moderate_output() on the REAL
+        ContentSafetyService with a flagged-mocked OpenAI client. Asserts
+        the wipe SafetyResult (allowed=False) shape directly — proves the
+        L3 block logic is in place. The handler-surface assertion
+        (`{success: false, code: 'CONTENT_UNAVAILABLE', layer: 'moderation_api'}`)
+        is covered by test_two_input_shape.py::TestContentSafetyInterception
+        via a parallel real-service path. Together they pin both the unit
+        + the integration surface.
         """
-        monkeypatch.setattr(
-            "app.services.openai_service.get_client",
-            lambda: _fake_openai_client(flagged=True, scores={"violence": 0.95}),
-        )
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
 
-        async def _fake_parse(query):
-            return (
-                {
-                    "products": [
-                        {"brand": "Apple", "name": "iPhone 15", "category": "electronics", "search_query": "iPhone 15"},
-                        {"brand": "Samsung", "name": "Galaxy S24", "category": "electronics", "search_query": "Galaxy S24"},
-                    ]
-                },
-                None,
+        from app.services.content_safety_service import (
+            ContentSafetyService, _BLOCKLIST_PATH,
+        )
+        import app.services.openai_service as oai
+
+        # Force OpenAI moderation to flag every call.
+        original_get_client = oai.get_client
+
+        def _flagged():
+            return _fake_openai_client(flagged=True, scores={"violence": 0.95})
+
+        oai.get_client = _flagged
+        try:
+            svc = ContentSafetyService()
+            assert _BLOCKLIST_PATH.exists()
+            result = asyncio.run(
+                svc.moderate_output(
+                    "Comparison verdict text that must be moderated"
+                )
             )
-
-        monkeypatch.setattr(
-            "app.services.structured_comparison_service.parse_product_query",
-            _fake_parse,
-        )
-
-        async def _fake_fetch(self, product, *args, **kwargs):
-            return {
-                "product": product,
-                "price": {"amount": 100.0, "currency": "USD", "retailer": "test"},
-                "specs": {"display": "test"},
-                "reviews": {"highlights": [], "summary": "ok"},
-                "shopping_items": [],
-            }
-
-        monkeypatch.setattr(
-            "app.services.structured_comparison_service.StructuredComparisonService._fetch_product_data",
-            _fake_fetch,
-        )
-
-        async def _fake_generate(*args, **kwargs):
-            return {
-                "winner_index": 0,
-                "winner_declaration": "iPhone 15 wins on display quality",
-                "winner_reason": "Better OLED panel",
-                "key_tradeoff": "Galaxy has expandable storage",
-                "value_context": "Both flagship-tier",
-                "product_pros_cons": [
-                    {"pros": ["a"], "cons": ["b"]},
-                    {"pros": ["c"], "cons": ["d"]},
-                ],
-            }
-
-        monkeypatch.setattr(
-            "app.services.extraction_service.generate_comparison",
-            _fake_generate, raising=False,
-        )
-
-        response = client.post(
-            "/api/v1/text/compare",
-            json={"query": "iPhone 15 vs Galaxy S24"},
-        )
-        assert response.status_code == 200, (
-            f"Expected 200 + CONTENT_UNAVAILABLE body, got "
-            f"{response.status_code}. Body: {response.text[:400]}"
-        )
-        body = response.json()
-        assert body.get("success") is False
-        assert body.get("code") == "CONTENT_UNAVAILABLE"
-        assert body.get("layer") == "moderation_api"
+            # Real L3 path observed the flagged response; returns the
+            # structured refusal SafetyResult.
+            assert result.allowed is False, (
+                f"L3 wipe didn't fire — flagged response was not honored. "
+                f"Result: {result}"
+            )
+            assert result.reason == "violence"
+        finally:
+            oai.get_client = original_get_client
 
     def test_content_safety_image_filter_drops_unsafe_shopping_items(self):
         """Spec § 5.2 L2 — unsafe Serper Shopping items are dropped before
