@@ -169,6 +169,37 @@ def record_success(provider: str) -> None:
         logger.warning(f"[CIRCUIT] Error recording success for {provider}: {e}")
 
 
+def get_remaining(provider: str) -> int:
+    """Bundle C § 1c diagnostic helper — return remaining credits for a provider.
+    Read-only; safe to call from diagnostic logs without side effects. Fail-open:
+    on Redis error or unknown provider, returns the provider's full limit so
+    diagnostic output remains meaningful (or 0 for unknown providers)."""
+    config = PROVIDER_CONFIGS.get(provider)
+    if not config:
+        return 0
+    used = 0
+    try:
+        raw = _redis_get(_budget_key(provider))
+        if raw is not None:
+            used = int(raw)
+    except Exception:
+        pass
+    return max(0, config["monthly_limit"] - used)
+
+
+def get_breaker_state(provider: str) -> str:
+    """Bundle C § 1c diagnostic helper — return circuit-breaker state string.
+    Read-only; fail-open ('closed') on Redis error so logs never raise."""
+    try:
+        raw = _redis_get(_circuit_key(provider))
+        if not raw:
+            return CB_CLOSED
+        state = json.loads(raw)
+        return state.get("state", CB_CLOSED)
+    except Exception:
+        return CB_CLOSED
+
+
 def get_usage_summary() -> Dict[str, Any]:
     """Get usage summary for all providers (admin dashboard)."""
     result = {}

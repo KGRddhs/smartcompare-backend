@@ -14,6 +14,37 @@ SCRAPEDO_API_URL = "https://api.scrape.do"
 SCRAPEDO_TIMEOUT = 15  # seconds — render=true needs time
 
 
+# Bundle C § 1c diagnostic flag — flag-gated, zero prod overhead with off.
+# Cached at process init; tests reset via monkeypatch on _PRICE_PIPELINE_DIAG_FLAG.
+_PRICE_PIPELINE_DIAG_FLAG = None
+
+
+def _diag_enabled() -> bool:
+    global _PRICE_PIPELINE_DIAG_FLAG
+    if _PRICE_PIPELINE_DIAG_FLAG is None:
+        _PRICE_PIPELINE_DIAG_FLAG = (
+            os.environ.get("DEBUG_STAGE_TIMINGS", "false").lower() == "true"
+        )
+    return _PRICE_PIPELINE_DIAG_FLAG
+
+
+def _log_invocation(url: str) -> None:
+    """Read-only diagnostic — surface credit + breaker state at call site
+    for the §1c price-pipeline regression investigation. Never raises."""
+    if not _diag_enabled():
+        return
+    try:
+        from app.services import api_budget_service
+        logger.info(
+            "PRICE_PIPELINE_DIAG scrapedo_invocation url=%s credits_remaining=%s breaker_state=%s",
+            url,
+            api_budget_service.get_remaining("scrapedo"),
+            api_budget_service.get_breaker_state("scrapedo"),
+        )
+    except Exception:  # noqa: BLE001 — diagnostic must never raise
+        pass
+
+
 def is_available() -> bool:
     """Check if Scrape.do is configured (API token present)."""
     enabled = os.environ.get("ENABLE_SCRAPEDO", "true").lower() != "false"
@@ -30,6 +61,8 @@ async def render_page(url: str) -> Optional[str]:
     token = os.environ.get("SCRAPEDO_API_TOKEN")
     if not token:
         return None
+
+    _log_invocation(url)
 
     try:
         async with httpx.AsyncClient(timeout=SCRAPEDO_TIMEOUT) as client:
@@ -66,6 +99,8 @@ async def render_page_with_status(url: str) -> tuple[Optional[str], int]:
     token = os.environ.get("SCRAPEDO_API_TOKEN")
     if not token:
         return None, 0
+
+    _log_invocation(url)
 
     try:
         async with httpx.AsyncClient(timeout=SCRAPEDO_TIMEOUT) as client:
