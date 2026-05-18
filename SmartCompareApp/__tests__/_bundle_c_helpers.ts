@@ -8,7 +8,10 @@
 //
 // Import these helpers from any Bundle C frontend test file.
 
-import type { ReactTestInstance } from "react-test-renderer";
+// `ReactTestInstance` is used loosely as `unknown` here — keeping it as a
+// branded alias avoids an extra @types/react-test-renderer dependency while
+// preserving the helper's call-site readability.
+type ReactTestInstance = unknown;
 
 export const FORBIDDEN_UI_STRINGS: RegExp[] = [
   /estimated/i,

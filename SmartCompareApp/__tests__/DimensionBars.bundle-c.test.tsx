@@ -25,7 +25,7 @@ describe('DimensionBars (Bundle C §6 — hero + expand + silent omission)', () 
       // performance_score absent from dims[] (backend silent omission per §2h)
     ];
     const { queryByText, toJSON } = render(
-      <DimensionBars dimensions={dims as any} />,
+      <DimensionBars dimensions={dims as any} winnerIndex={0} />,
     );
     // No performance copy anywhere
     expect(queryByText(/performance/i)).toBeNull();
@@ -44,7 +44,7 @@ describe('DimensionBars (Bundle C §6 — hero + expand + silent omission)', () 
       { dim_key: 'reviews', label: 'Reviews', score_a: 85, score_b: 80,
         winner: 'a' as const },
     ];
-    const tree = render(<DimensionBars dimensions={dims as any} />).toJSON();
+    const tree = render(<DimensionBars dimensions={dims as any} winnerIndex={0} />).toJSON();
     expectNoForbiddenStrings(tree);
   });
 
@@ -54,7 +54,7 @@ describe('DimensionBars (Bundle C §6 — hero + expand + silent omission)', () 
         winner: 'a' as const },
     ];
     const { queryByRole, queryByLabelText } = render(
-      <DimensionBars dimensions={dims as any} />,
+      <DimensionBars dimensions={dims as any} winnerIndex={0} />,
     );
     expectNoBanner(queryByRole, queryByLabelText);
   });
@@ -70,7 +70,7 @@ describe('DimensionBars (Bundle C §6 — hero + expand + silent omission)', () 
       { dim_key: 'performance_score', label: 'Performance',
         score_a: 82, score_b: 79, winner: 'a' as const },
     ];
-    const tree = render(<DimensionBars dimensions={dims as any} />).toJSON();
+    const tree = render(<DimensionBars dimensions={dims as any} winnerIndex={0} />).toJSON();
     expect(tree).toMatchSnapshot();
   });
 });
