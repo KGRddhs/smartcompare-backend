@@ -244,36 +244,68 @@ PRICE_TIERS_BY_CATEGORY: dict = {
     "grocery":     [(5, "budget"), (15, "mid"), (50, "premium"), (float("inf"), "luxury")],     # top_tier folded
 }
 
-# Bundle C § 3f — runtime sub-scale for category="other". A.5.5 will wire
-# geometric-mean detection from comparison-level prices; for now the default
+# Bundle C § 3f — runtime sub-scale for category="other". The default
 # `other_light` sub-scale extends the legacy flat PRICE_TIERS with a 500+
 # top_tier slot so back-compat one-arg _detect_price_tier(price) calls
 # remain stable for the budget/mid/premium boundaries.
-_OTHER_LIGHT_TIERS = [
-    (11, "budget"),
-    (57, "mid"),
-    (189, "premium"),
-    (500, "luxury"),
-    (float("inf"), "top_tier"),
-]
+_OTHER_SUBSCALE_TIERS: dict = {
+    "other_light": [(11, "budget"), (57, "mid"), (189, "premium"), (500, "luxury"), (float("inf"), "top_tier")],
+    "other_mid":   [(30, "budget"), (120, "mid"), (400, "premium"), (1000, "luxury"), (float("inf"), "top_tier")],
+    "other_high":  [(300, "budget"), (1500, "mid"), (5000, "premium"), (15000, "luxury"), (float("inf"), "top_tier")],
+    "other_ultra": [(5000, "budget"), (15000, "mid"), (40000, "premium"), (100000, "luxury"), (float("inf"), "top_tier")],
+}
+
+
+def _detect_other_subscale(p1: float, p2: float) -> str:
+    """Bundle C § 3f — pick a sub-scale for the 'other' category based on
+    the geometric mean of the two comparison prices. Cars at ~5000 + 6000
+    BHD give gm ~5477 → other_ultra; snacks at 2 + 4 BHD give gm ~2.83 →
+    other_light. The geometric mean dampens extreme spreads so the chosen
+    sub-scale reflects the comparison's overall price magnitude."""
+    import math as _math
+    gm = _math.sqrt(max(p1, 0.0) * max(p2, 0.0))
+    if gm < 30:
+        return "other_light"
+    if gm < 300:
+        return "other_mid"
+    if gm < 5000:
+        return "other_high"
+    return "other_ultra"
 
 
 def _detect_price_tier(price_bhd: float, category: str = "other", *, comparison_prices=None) -> str:
     """Bundle C § 3b/3e/3f — return the tier label for a price in a category.
 
-    Walks the per-category breakpoint list low-to-high. Unknown categories
-    fall through to the `other_light` sub-scale (matches legacy ranges for
-    the budget/mid/premium tiers).
-    `comparison_prices` is wired in A.5.5 (geometric-mean sub-scale for
-    category='other'); for now it is accepted-but-ignored.
+    Walks the per-category breakpoint list low-to-high. For category='other'
+    with `comparison_prices=[p1, p2]` provided, the geometric-mean sub-scale
+    picker (§ 3f) decides the breakpoint table; otherwise falls back to the
+    `other_light` sub-scale. Unknown categories also fall through to
+    `other_light`.
     """
-    ranges = PRICE_TIERS_BY_CATEGORY.get(category) or _OTHER_LIGHT_TIERS
+    # Per-category fixed tier maps (electronics, fashion, fragrances, etc.)
+    ranges = PRICE_TIERS_BY_CATEGORY.get(category)
+    if ranges is None:
+        # category='other' (or unknown) — may use geometric-mean sub-scale.
+        subscale = "other_light"
+        if category == "other" and comparison_prices and len(comparison_prices) >= 2:
+            try:
+                p1, p2 = float(comparison_prices[0]), float(comparison_prices[1])
+                if p1 > 0 and p2 > 0:
+                    subscale = _detect_other_subscale(p1, p2)
+            except (TypeError, ValueError):
+                pass
+        ranges = _OTHER_SUBSCALE_TIERS[subscale]
     for upper, tier in ranges:
         if price_bhd < upper:
             return tier
     # Defensive — ranges always terminate in float("inf"); unreachable in
     # practice but keeps the function total.
     return ranges[-1][1]
+
+
+# Back-compat alias for the legacy _OTHER_LIGHT_TIERS constant — some code
+# may reference it directly.
+_OTHER_LIGHT_TIERS = _OTHER_SUBSCALE_TIERS["other_light"]
 
 
 # Legacy flat PRICE_TIERS preserved for back-compat — derived from the
