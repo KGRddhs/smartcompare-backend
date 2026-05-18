@@ -39,39 +39,70 @@ EXPECTED_NON_NEGOTIABLE = {
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("category,expected", sorted(EXPECTED_NON_NEGOTIABLE.items()))
-def test_non_negotiable_fields_per_category(category, expected):
-    """Spec §2f: NON_NEGOTIABLE_FIELDS_BY_CATEGORY matches the spec table."""
+def _import_non_negotiable():
+    """Import the non-negotiable map under either name (backend used
+    `CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE`; spec text used
+    `NON_NEGOTIABLE_FIELDS_BY_CATEGORY` — accept both)."""
     try:
         from app.services.extraction_service import (  # type: ignore
-            NON_NEGOTIABLE_FIELDS_BY_CATEGORY,
+            CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE as M,
         )
+        return M
     except ImportError:
+        pass
+    try:
+        from app.services.extraction_service import (  # type: ignore
+            NON_NEGOTIABLE_FIELDS_BY_CATEGORY as M,
+        )
+        return M
+    except ImportError:
+        return None
+
+
+def _import_preferred():
+    try:
+        from app.services.extraction_service import (  # type: ignore
+            CRITICAL_SCHEMA_FIELDS_PREFERRED as M,
+        )
+        return M
+    except ImportError:
+        pass
+    try:
+        from app.services.extraction_service import (  # type: ignore
+            PREFERRED_FIELDS_BY_CATEGORY as M,
+        )
+        return M
+    except ImportError:
+        return None
+
+
+@pytest.mark.parametrize("category,expected", sorted(EXPECTED_NON_NEGOTIABLE.items()))
+def test_non_negotiable_fields_per_category(category, expected):
+    """Spec §2f: non-negotiable fields per category match the spec table."""
+    non_neg_map = _import_non_negotiable()
+    if non_neg_map is None:
         pytest.fail(
-            "RED: A.4.6 not yet shipped — NON_NEGOTIABLE_FIELDS_BY_CATEGORY "
-            "missing from extraction_service"
+            "RED: A.4.6 not shipped — neither CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE "
+            "nor NON_NEGOTIABLE_FIELDS_BY_CATEGORY exposed by extraction_service"
         )
         return
-    actual = set(NON_NEGOTIABLE_FIELDS_BY_CATEGORY.get(category, []))
+    actual = set(non_neg_map.get(category, []))
     assert actual == expected, (
         f"{category}: expected {expected!r}, got {actual!r}"
     )
 
 
 def test_preferred_fields_map_exists_and_disjoint_from_non_negotiable():
-    """Spec §2f: PREFERRED_FIELDS_BY_CATEGORY exists; entries don't overlap
-    with the non-negotiable map for the same category."""
-    try:
-        from app.services.extraction_service import (  # type: ignore
-            NON_NEGOTIABLE_FIELDS_BY_CATEGORY,
-            PREFERRED_FIELDS_BY_CATEGORY,
-        )
-    except ImportError:
-        pytest.fail("RED: PREFERRED_FIELDS_BY_CATEGORY missing (A.4.6)")
+    """Spec §2f: preferred map exists; entries don't overlap with non-negotiable
+    for the same category."""
+    non_neg_map = _import_non_negotiable()
+    pref_map = _import_preferred()
+    if non_neg_map is None or pref_map is None:
+        pytest.fail("RED: A.4.6 not shipped — non-negotiable or preferred map missing")
         return
     for category in EXPECTED_NON_NEGOTIABLE:
-        non_neg = set(NON_NEGOTIABLE_FIELDS_BY_CATEGORY.get(category, []))
-        pref = set(PREFERRED_FIELDS_BY_CATEGORY.get(category, []))
+        non_neg = set(non_neg_map.get(category, []))
+        pref = set(pref_map.get(category, []))
         overlap = non_neg & pref
         assert not overlap, (
             f"{category}: overlap between non-negotiable and preferred: {overlap}"
