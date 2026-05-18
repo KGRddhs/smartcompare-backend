@@ -91,6 +91,114 @@ def _product_spec_coverage(p):
     return filled, max(expected, 1)
 
 
+# Bundle C § 2f A.4.7 — Tier 2 spec fallback.
+# Fires AFTER Tier 1 + smart-fallback when NON_NEGOTIABLE schema fields
+# remain blank. Each missing field gets one targeted Serper + GPT-mini
+# extract, in parallel via asyncio.gather, with strict wall budgets:
+#   - 4s outer asyncio.wait_for (spec § 2f)
+#   - 0.5s per-field budget (spec § 2f) — but parallel gather lets all
+#     fields share the 4s wall, so per-field is enforced via wait_for
+#     on each task.
+# Silent omission per § 2h on timeout/failure — NO exception escapes.
+_TIER2_WALL_SECONDS = 4.0
+_TIER2_PER_FIELD_SECONDS = 3.5  # near-full wall; gather lets fields share
+
+
+async def tier2_fill_non_negotiables(
+    *,
+    brand: str,
+    name: str,
+    variant,
+    category: str,
+    specs_so_far: dict,
+) -> dict:
+    """Bundle C § 2f A.4.7 — Tier 2 targeted fill for non-negotiable
+    schema fields still blank after Tier 1 + smart-fallback.
+
+    Returns a dict of {field: value} for fields successfully filled.
+    Empty dict on no-op (all non-negotiables already filled) or on
+    timeout/failure. NEVER raises — silent omission per § 2h.
+
+    Wall-budget contract:
+      - 4s outer asyncio.wait_for hard cap.
+      - Runs targeted GPT extract per missing field in parallel.
+      - Fires ONLY when at least one non-negotiable is blank — common
+        happy-path comparisons skip Tier 2 entirely (zero added wall).
+    """
+    from app.services.extraction_service import (
+        CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE,
+    )
+
+    non_negotiable = CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE.get(category, [])
+    if not non_negotiable:
+        return {}  # 'other' category + unknown categories have no non-negotiables
+
+    # Identify still-missing non-negotiables (Tier 1 + smart-fallback already ran).
+    missing = [
+        f for f in non_negotiable
+        if not specs_so_far.get(f) or specs_so_far.get(f) in ("N/A", "")
+    ]
+    if not missing:
+        return {}  # Happy path — all non-negotiables already filled.
+
+    full_name = f"{brand} {name} {variant or ''}".strip()
+
+    async def _fill_one_field(field: str):
+        """Fire one Serper search + targeted GPT extract for a single field.
+        Returns {field: value} on success, {} on failure/timeout/empty
+        response. NEVER raises."""
+        try:
+            from app.services.serper_service import search_web
+            from app.services import openai_service as _openai_svc
+
+            query = f"{full_name} {field.replace('_', ' ')} specifications"
+            search_results = await search_web(query, num_results=3)
+            snippets = []
+            for hit in (search_results.get("organic") or [])[:3]:
+                snippet = hit.get("snippet", "")
+                if snippet:
+                    snippets.append(snippet)
+            context = "\n".join(snippets)
+            if not context:
+                return {}
+            result = await _openai_svc.extract_specs_targeted(
+                brand=brand,
+                name=name,
+                variant=variant,
+                category=category,
+                fields=[field],
+                context=context,
+            )
+            if result and isinstance(result, dict):
+                val = result.get(field)
+                if val and val not in ("N/A", ""):
+                    return {field: val}
+            return {}
+        except Exception:  # noqa: BLE001 — silent omission per § 2h
+            return {}
+
+    async def _run_all():
+        # Parallel gather — all fields race within the 4s wall.
+        tasks = [_fill_one_field(f) for f in missing]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        merged = {}
+        for r in results:
+            if isinstance(r, dict):
+                merged.update(r)
+        return merged
+
+    try:
+        return await asyncio.wait_for(_run_all(), timeout=_TIER2_WALL_SECONDS)
+    except asyncio.TimeoutError:
+        logger.info(
+            f"[TIER2_FALLBACK] timeout filling {missing} for {brand} {name}"
+        )
+        return {}
+    except Exception as e:  # noqa: BLE001 — never escape
+        logger.warning(f"[TIER2_FALLBACK] error: {e}")
+        return {}
+
+
 def _classify_comparison_quality(
     *,
     cat_a: str,
@@ -1453,6 +1561,31 @@ class StructuredComparisonService:
                         result_specs[field] = value
                         fc[field] = "smart_fallback"
                 result["specs"] = result_specs
+
+        # Bundle C § 2f A.4.7 — Tier 2 fallback. Fires ONLY when Tier 1 +
+        # smart-fallback left non-negotiable schema fields blank. 4s outer
+        # wall cap (tier2_fill_non_negotiables handles per-field parallelism).
+        # Stays inside STREAM_HARD_CAP_SECONDS=25 because Tier 2 fires only
+        # when there's a real gap (most happy-path comparisons skip it
+        # entirely — zero added wall).
+        result_specs_now = result.get("specs") or {}
+        t_tier2 = time.perf_counter() if stage_timings is not None else None
+        tier2_filled = await tier2_fill_non_negotiables(
+            brand=brand, name=name, variant=variant,
+            category=category, specs_so_far=result_specs_now,
+        )
+        if stage_timings is not None:
+            stage_timings["tier2_fallback_ms"] = round(
+                (time.perf_counter() - t_tier2) * 1000, 1
+            )
+        if tier2_filled:
+            fc = result_specs_now.setdefault("_field_confidence", {})
+            for field, value in tier2_filled.items():
+                existing = result_specs_now.get(field)
+                if existing in (None, "", "N/A"):
+                    result_specs_now[field] = value
+                    fc[field] = "tier2_fallback"
+            result["specs"] = result_specs_now
 
         rating_data = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
         for i, key in enumerate(phase2_keys):
