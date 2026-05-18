@@ -547,6 +547,123 @@ class TestSingleton:
 
 
 # ============================================
+# Backend b828fe9 — seeded sentinel (ENABLE_CONTENT_SAFETY_TEST_SEEDS)
+# ============================================
+
+
+class TestSeededSentinel:
+    """Pins Backend's QA-only seeded-sentinel branch.
+
+    Production path: env var absent → branch dead → sentinel substring NOT
+    blocked. Staging path: env var=true → returns deterministic
+    SafetyResult(allowed=False, reason='test_seed').
+    """
+
+    SENTINEL = "CONTENT_SAFETY_TEST_BLOCK_ME_42"
+
+    def test_l1_sentinel_seed_disabled_passes_through(self, service, monkeypatch):
+        monkeypatch.delenv("ENABLE_CONTENT_SAFETY_TEST_SEEDS", raising=False)
+        result = service.check_query_intent(
+            f"iPhone 15 {self.SENTINEL} vs Galaxy S24"
+        )
+        assert result.allowed is True
+
+    def test_l1_sentinel_seed_explicit_false_passes_through(self, service, monkeypatch):
+        monkeypatch.setenv("ENABLE_CONTENT_SAFETY_TEST_SEEDS", "false")
+        result = service.check_query_intent(self.SENTINEL)
+        assert result.allowed is True
+
+    def test_l1_sentinel_seed_enabled_blocks(self, service, monkeypatch):
+        monkeypatch.setenv("ENABLE_CONTENT_SAFETY_TEST_SEEDS", "true")
+        result = service.check_query_intent(
+            f"iPhone 15 {self.SENTINEL} vs Galaxy S24"
+        )
+        assert result.allowed is False
+        assert result.reason == "test_seed"
+        assert result.blocklist_match == self.SENTINEL
+
+    def test_l1_sentinel_env_case_insensitive(self, service, monkeypatch):
+        monkeypatch.setenv("ENABLE_CONTENT_SAFETY_TEST_SEEDS", "TRUE")
+        result = service.check_query_intent(self.SENTINEL)
+        assert result.allowed is False
+        assert result.reason == "test_seed"
+
+    @pytest.mark.asyncio
+    async def test_l3_sentinel_seed_enabled_short_circuits_openai(
+        self, service, monkeypatch
+    ):
+        monkeypatch.setenv("ENABLE_CONTENT_SAFETY_TEST_SEEDS", "true")
+        fake = _make_fake_client(flagged=False)
+        monkeypatch.setattr(
+            "app.services.openai_service.get_client", lambda: fake
+        )
+        result = await service.moderate_output(
+            f"Comparison verdict mentions {self.SENTINEL}"
+        )
+        assert result.allowed is False
+        assert result.reason == "test_seed"
+        assert fake.moderations.create.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_l3_sentinel_seed_disabled_calls_openai(
+        self, service, monkeypatch
+    ):
+        monkeypatch.delenv("ENABLE_CONTENT_SAFETY_TEST_SEEDS", raising=False)
+        fake = _make_fake_client(flagged=False)
+        monkeypatch.setattr(
+            "app.services.openai_service.get_client", lambda: fake
+        )
+        result = await service.moderate_output(
+            f"Comparison verdict mentions {self.SENTINEL}"
+        )
+        assert result.allowed is True
+        assert fake.moderations.create.await_count == 1
+
+
+# ============================================
+# Backend b828fe9 — is_text_safe Tier 1.5 helper
+# ============================================
+
+
+class TestIsTextSafeHelper:
+    """Pins `is_text_safe(text) -> bool` shape + invariants.
+
+    Empty/whitespace returns True (Backend doc: over-eager False would
+    drop legit candidates with thin metadata). Seeded terms return False.
+    """
+
+    def test_signature_returns_bool(self, service):
+        assert service.is_text_safe("iPhone 15") is True
+        assert isinstance(service.is_text_safe("iPhone 15"), bool)
+
+    def test_empty_string_returns_true(self, service):
+        assert service.is_text_safe("") is True
+
+    def test_whitespace_only_returns_true(self, service):
+        assert service.is_text_safe("   \n\t  ") is True
+
+    def test_clean_text_returns_true(self, service):
+        assert service.is_text_safe("Apple iPhone 15 Pro Max 256GB") is True
+
+    def test_weapon_seed_returns_false(self, service):
+        assert service.is_text_safe("Glock 19 holster premium") is False
+
+    def test_ar_weapon_seed_returns_false(self, service):
+        assert service.is_text_safe("بيع مسدس مستعمل") is False
+
+    def test_case_insensitive(self, service):
+        assert service.is_text_safe("GLOCK 19 case") is False
+
+    def test_word_boundary_no_false_positive(self, service):
+        assert service.is_text_safe("Bahraini market overview") is True
+
+    def test_clean_iherb_supplement_surface(self, service):
+        assert service.is_text_safe(
+            "NOW Foods, Vitamin D-3, 5000 IU, 240 Softgels"
+        ) is True
+
+
+# ============================================
 # Symbol contract — pin Backend § 1.1 surface
 # ============================================
 
