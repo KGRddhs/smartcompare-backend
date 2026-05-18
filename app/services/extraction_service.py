@@ -1060,6 +1060,53 @@ def was_cohort_block_active(demographics_profile: Optional[Dict[str, Any]]) -> b
     return True
 
 
+# Bundle C § 2e A.4.5 — when comparison_quality='weird', the verdict
+# prompt rewrites winner_declaration into a non-forced "different
+# purposes" framing instead of picking a winner. Critical rule #1:
+# the prompt MUST NOT instruct the model to surface a UI banner —
+# the rewrite is text-only.
+_WEIRD_VERDICT_INSTRUCTION = """
+
+WEIRD-COMPARISON CONTEXT:
+The two products span different purposes or scale (cross-category, or
+prices differ by 10x+, or one product lacks half its specs even after
+fallback). Do NOT force a winner_declaration. Rewrite winner_reason as
+"These products serve different purposes" framing — help the user
+choose between the two options shown rather than declaring one
+objectively better. Keep best_for sentences accurate to each product's
+strength. Do not add UI directives; only rewrite the natural text.
+"""
+
+
+def build_verdict_prompt(products, comparison_quality: str = "normal") -> str:
+    """Bundle C § 2e A.4.5 — assemble the verdict-call system prompt with
+    an optional weird-comparison context block when comparison_quality
+    triggers the non-forced framing.
+
+    Returns the full system_msg string. The existing generate_comparison()
+    inline-builds its prompt with the same COMPARISON_SYSTEM base +
+    personality + scoring_summary + preferences — this helper exposes a
+    slim contract for unit tests that don't need the full async pipeline
+    and lets future callers route through build_verdict_prompt() once
+    the orchestration refactor lands.
+    """
+    # Best-effort category inference for personality block (test calls may
+    # pass an empty products list — fall back to 'other').
+    category = "other"
+    if products:
+        first = products[0] or {}
+        category = (first.get("category_used") or first.get("category") or "other").strip().lower()
+    base = COMPARISON_SYSTEM
+    try:
+        from app.services.prompt_personalities import build_personality_prompt
+        base += build_personality_prompt(category)
+    except Exception:  # noqa: BLE001 — personality helper is best-effort
+        pass
+    if comparison_quality == "weird":
+        base += _WEIRD_VERDICT_INSTRUCTION
+    return base
+
+
 async def generate_comparison(
     product1: Dict,
     product2: Dict,
