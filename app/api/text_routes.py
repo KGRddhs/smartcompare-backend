@@ -8,7 +8,7 @@ import time
 from typing import Optional, Dict, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Path, Query, Depends, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.services.structured_comparison_service import (
     get_comparison_service,
@@ -32,12 +32,38 @@ router = APIRouter(prefix="/api/v1/text", tags=["text-comparison"])
 # ============================================
 
 class TextCompareRequest(BaseModel):
-    """Request for text-based comparison"""
-    query: str  # e.g., "iPhone 15 vs Galaxy S24"
+    """Request for text-based comparison.
+
+    Accepts two shapes (dual-shape Pydantic pattern, spec § 5.1):
+      - Legacy: {"query": "iPhone 15 vs Galaxy S24"}
+      - New:    {"product_a": "iPhone 15", "product_b": "Galaxy S24"}
+
+    Sending both or neither raises 422. When product_a + product_b are
+    provided, they are concatenated into `query` so the rest of the
+    handler is shape-agnostic; the explicit pair is also surfaced via
+    a separate kwarg to skip parse_product_query() downstream.
+    """
+    query: Optional[str] = None
+    product_a: Optional[str] = None
+    product_b: Optional[str] = None
     region: str = "bahrain"
     include_specs: bool = True
     include_reviews: bool = True
     include_pros_cons: bool = True
+    selected_category: Optional[str] = None
+
+    @model_validator(mode="after")
+    def normalize_shape(self) -> "TextCompareRequest":
+        has_pair = bool(self.product_a and self.product_a.strip()
+                        and self.product_b and self.product_b.strip())
+        has_query = bool(self.query and self.query.strip())
+        if has_pair and has_query:
+            raise ValueError("Send EITHER query OR product_a+product_b, not both")
+        if not has_pair and not has_query:
+            raise ValueError("Send product_a+product_b OR query")
+        if has_pair:
+            self.query = f"{self.product_a.strip()} vs {self.product_b.strip()}"
+        return self
 
 
 class QuickCompareRequest(BaseModel):
@@ -102,14 +128,22 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
                 }
             )
 
+    # Dual-shape: explicit pair bypasses parse_product_query() in the service
+    # (wired via explicit_pair= kwarg in Phase 2). Stored here for forward use.
+    explicit_pair = None
+    if body.product_a and body.product_b:
+        explicit_pair = (body.product_a.strip(), body.product_b.strip())
+
     result = await service.compare_from_text(
         query=body.query,
         region=body.region,
         include_specs=body.include_specs,
         include_reviews=body.include_reviews,
         include_pros_cons=body.include_pros_cons,
+        selected_category=body.selected_category,
         user_preferences=user_prefs,
         user_id=user.get("id") if user else None,
+        explicit_pair=explicit_pair,
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -122,6 +156,14 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             success=False, error_message=result.get("error"),
             duration_ms=duration_ms,
         ))
+        # Bundle B content-safety surface (spec sec 5.2): the service returns
+        # a structured {success:false, code:"CONTENT_UNAVAILABLE", layer:...}
+        # dict. Wrapping that in HTTPException would drop the structured body
+        # (global error middleware reshapes detail strings). Early-return the
+        # service dict as-is so the wire shape matches the spec contract.
+        # Pattern: feedback_conditional_middleware_unwrap.md.
+        if result.get("code") == "CONTENT_UNAVAILABLE":
+            return result
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Comparison failed")
@@ -215,6 +257,10 @@ async def text_compare_get(
             success=False, error_message=result.get("error"),
             duration_ms=duration_ms,
         ))
+        # Bundle B: preserve structured CONTENT_UNAVAILABLE body — see POST
+        # handler comment above. Conditional unwrap pattern.
+        if result.get("code") == "CONTENT_UNAVAILABLE":
+            return result
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Comparison failed")
@@ -246,7 +292,9 @@ async def text_compare_get(
 @limiter.limit("10/minute")
 async def text_compare_stream(
     request: Request,
-    q: str = Query(..., max_length=500, description="Comparison query, e.g., 'iPhone 15 vs S24'"),
+    q: Optional[str] = Query(None, max_length=500, description="Legacy single-string query, e.g., 'iPhone 15 vs S24'"),
+    product_a: Optional[str] = Query(None, max_length=80, description="Bundle B: explicit first product, paired with product_b"),
+    product_b: Optional[str] = Query(None, max_length=80, description="Bundle B: explicit second product, paired with product_a"),
     region: str = Query("bahrain", description="GCC region for pricing"),
     specs: bool = Query(True, description="Include specifications"),
     reviews: bool = Query(True, description="Include reviews"),
@@ -255,7 +303,34 @@ async def text_compare_stream(
     selected_category: Optional[str] = Query(None, description="User-selected category hint"),
     user: Optional[Dict] = Depends(get_optional_user),
 ):
-    """SSE streaming version of text comparison. Returns Server-Sent Events."""
+    """SSE streaming version of text comparison. Returns Server-Sent Events.
+
+    Dual-shape (Bundle B sec 5.1) — same mutual-exclusion rules as POST /compare:
+      - ?q=iPhone+15+vs+Galaxy+S24                     (legacy single-string)
+      - ?product_a=iPhone+15&product_b=Galaxy+S24      (Bundle B pair)
+    Both shapes hit L1 + L3 identically. Pair shape forwards explicit_pair
+    so the service skips parse_product_query().
+    """
+    # Dual-shape validation — surfaces before StreamingResponse construction
+    # so clients get a clean 422, not a partial event stream.
+    has_pair = bool(product_a and product_a.strip() and product_b and product_b.strip())
+    has_query = bool(q and q.strip())
+    if has_pair and has_query:
+        raise HTTPException(
+            status_code=422,
+            detail="Send EITHER q OR product_a+product_b, not both",
+        )
+    if not has_pair and not has_query:
+        raise HTTPException(
+            status_code=422,
+            detail="Send product_a+product_b OR q",
+        )
+
+    explicit_pair = None
+    if has_pair:
+        explicit_pair = (product_a.strip(), product_b.strip())
+        q = f"{product_a.strip()} vs {product_b.strip()}"
+
     service = get_comparison_service()
     start_time = time.time()
 
@@ -325,6 +400,7 @@ async def text_compare_stream(
             selected_category=selected_category,
             user_preferences=user_prefs,
             user_id=user.get("id") if user else None,
+            explicit_pair=explicit_pair,
         ):
             if await request.is_disconnected():
                 logger.info(f"[SSE] Client disconnected during stream for query: {q}")

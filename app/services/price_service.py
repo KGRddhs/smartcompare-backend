@@ -459,6 +459,14 @@ def extract_price_from_shopping(
     if not shopping_items:
         return None
 
+    # L2 content safety — drop unsafe shopping items before pricing/ranking
+    # logic runs. Inline import avoids circular-import risk at module load.
+    # Spec ref: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md sec 5.2.
+    from app.services.content_safety_service import get_content_safety_service
+    shopping_items = get_content_safety_service().filter_shopping_items(shopping_items)
+    if not shopping_items:
+        return None
+
     p_words = normalize_words(product_name)
     is_hv = is_high_value_query(product_name)
     is_lux = is_luxury_brand(product_name)
@@ -743,6 +751,15 @@ async def fetch_page_price(
     if html:
         price = extract_price_from_html(html, product_name, currency, domain, url)
         if price:
+            # L2 content safety — Tier 1.5 page-scrape entry point (Bundle B,
+            # team-lead expansion of spec sec 5.2). Drop the candidate if the
+            # title/retailer surface trips the blocklist, before it can become
+            # a price source on the response.
+            from app.services.content_safety_service import get_content_safety_service
+            _surface = f"{price.get('title', '')} {price.get('retailer', '') or domain} {product_name}"
+            if not get_content_safety_service().is_text_safe(_surface):
+                logger.info("[content_safety] L2 dropped page-scrape candidate for %s", domain)
+                return None
             return price
         return {"_got_html": True}
 
@@ -797,6 +814,12 @@ async def fetch_iherb_price(
                     review_count = int(review_count_str)
             except (ValueError, TypeError):
                 pass
+            # L2 content safety — iHerb entry point (Bundle B, team-lead
+            # expansion of spec sec 5.2). Per-card filter so unsafe items
+            # never enter the brand-match / best-pick pipeline below.
+            from app.services.content_safety_service import get_content_safety_service
+            if not get_content_safety_service().is_text_safe(f"{item_brand} {title}"):
+                continue
             products.append({
                 "url": href if href.startswith("http") else f"https://{region_code}.iherb.com{href}",
                 "brand": item_brand,
@@ -923,6 +946,13 @@ async def _try_pharmacy_urls(
 
                 price_data = extract_jsonld_price(resp.text, brand, currency)
                 if price_data:
+                    # L2 content safety — pharmacy JSON-LD entry point
+                    # (Bundle B, team-lead expansion of spec sec 5.2).
+                    from app.services.content_safety_service import get_content_safety_service
+                    _surface = f"{price_data.get('title', '')} {brand} {retailer_name}"
+                    if not get_content_safety_service().is_text_safe(_surface):
+                        logger.info("[content_safety] L2 dropped pharmacy candidate for %s", retailer_name)
+                        continue
                     return {
                         "amount": price_data["amount"],
                         "original_currency": currency,

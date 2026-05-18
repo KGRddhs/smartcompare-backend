@@ -23,7 +23,7 @@ async def log_audit_event(
     Event types:
         login_success, login_failed, account_deleted, email_changed,
         password_changed, rate_limit_exceeded, brute_force_lockout,
-        admin_access, usage_limit_hit, injection_attempt
+        admin_access, usage_limit_hit, injection_attempt, content_blocked
     """
     try:
         client = get_admin_supabase_client()
@@ -37,3 +37,33 @@ async def log_audit_event(
         }).execute()
     except Exception as e:
         logger.error(f"Failed to log audit event '{event_type}': {e}")
+
+
+# Spec ref: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md § 5.2
+_CONTENT_BLOCK_LAYERS = frozenset({
+    "query_prefilter",
+    "image_filter",
+    "moderation_api",
+    "vision_moderation",
+})
+
+
+async def log_content_blocked(layer: str, query_hash: str) -> None:
+    """Log a content_blocked event to admin_audit_log.
+
+    Privacy invariant: we log a SHA-256 hash of the offending input, never
+    the raw input (spec § 5.2). Caller is responsible for hashing before
+    calling this helper.
+
+    Args:
+        layer: which moderation layer rejected the input. One of:
+            "query_prefilter", "image_filter", "moderation_api",
+            "vision_moderation".
+        query_hash: SHA-256 hex digest of the offending input (64 chars).
+    """
+    if layer not in _CONTENT_BLOCK_LAYERS:
+        logger.warning(f"log_content_blocked called with unknown layer {layer!r}; allowing through")
+    await log_audit_event(
+        event_type="content_blocked",
+        details={"layer": layer, "query_hash": query_hash},
+    )
