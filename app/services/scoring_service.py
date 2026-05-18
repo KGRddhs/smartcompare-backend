@@ -441,6 +441,166 @@ def _resolve_value_coefficients(priorities=None) -> Dict[str, float]:
     return VALUE_FORMULA_BY_PRIORITY["_default"]
 
 
+# Bundle C § 5a — loosened confidence thresholds.
+# - rating_strong: drop verified=True; require review_count >= 100.
+# - price_strong:  drop the "method != estimated" blocker IF at least one
+#                  product's source_method is in the trust set OR
+#                  shopping_count >= 3 (Serper coverage alone qualifies).
+# - specs_strong:  lower verified_pct >= 60 → 40, OR citation_count >= 8.
+# - overall:       3 strong → high, 2 → medium, ≤1 → low (unchanged).
+_PRICE_TRUST_SET = frozenset({
+    "official_brand", "page_scrape", "page_scrape_rendered",
+    "firecrawl", "scrapedo_rendered", "local_bhd",
+})
+
+
+def _product_review_count(p: Dict[str, Any]) -> int:
+    val = p.get("review_count")
+    try:
+        return int(val) if val is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _product_shopping_count(p: Dict[str, Any]) -> int:
+    val = p.get("shopping_count")
+    try:
+        return int(val) if val is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _product_source_method(p: Dict[str, Any]) -> str:
+    price = p.get("price") or {}
+    if not isinstance(price, dict):
+        return "estimated"
+    return price.get("source_method") or "estimated"
+
+
+def _product_fact_check_pcts(p: Dict[str, Any]) -> tuple[int, int]:
+    """Return (verified_pct, citation_count). Tolerates two shapes:
+    legacy {specs_verified, specs_likely, specs_unverified, specs_flagged}
+    OR new {verified_pct, citation_count}."""
+    fc = p.get("fact_check") or {}
+    if not isinstance(fc, dict):
+        return 0, 0
+    if "verified_pct" in fc or "citation_count" in fc:
+        return int(fc.get("verified_pct") or 0), int(fc.get("citation_count") or 0)
+    verified = int(fc.get("specs_verified") or 0)
+    likely = int(fc.get("specs_likely") or 0)
+    unverified = int(fc.get("specs_unverified") or 0)
+    flagged = int(fc.get("specs_flagged") or 0)
+    total = verified + likely + unverified + flagged
+    verified_pct = round((verified / total) * 100) if total > 0 else 0
+    return verified_pct, total
+
+
+def _classify_leg(strong: bool, near_strong: bool) -> str:
+    """Map two-stage threshold check → user-facing leg strength enum."""
+    if strong:
+        return "strong"
+    if near_strong:
+        return "acceptable"
+    return "weak"
+
+
+def compute_confidence(
+    products: List[Dict[str, Any]],
+    cached: bool = False,
+) -> Dict[str, Any]:
+    """Bundle C § 5a — module-level confidence with loosened thresholds.
+
+    New contract:
+      {
+        "legs": {"price": "strong|acceptable|weak", "reviews": ..., "specs": ...},
+        "overall": "high|medium|low",      # backwards-compat per spec § 5d
+        "price": {...details...},          # legacy per-leg detail dicts
+        "rating": {...},
+        "specs": {...},
+      }
+
+    Per-leg strength reads across ALL supplied products (e.g. price_strong
+    fires if ANY product has trust-set source_method OR shopping_count >= 3).
+    Frontend renders the 3 pills (Section B.7); legacy `overall` stays so
+    existing consumers keep parsing.
+    """
+    products = products or []
+    if not products:
+        return {
+            "legs": {"price": "weak", "reviews": "weak", "specs": "weak"},
+            "overall": "low",
+            "price": {"source_count": 0, "method": "estimated", "freshness": "live" if not cached else "cached"},
+            "rating": {"review_count": 0, "source": None, "verified": False},
+            "specs": {"verified_pct": 0, "citation_count": 0},
+        }
+
+    # --- reviews leg ---------------------------------------------------------
+    max_reviews = max((_product_review_count(p) for p in products), default=0)
+    reviews_strong = max_reviews >= 100
+    reviews_acceptable = max_reviews >= 50
+
+    # --- price leg -----------------------------------------------------------
+    any_trust_method = any(_product_source_method(p) in _PRICE_TRUST_SET for p in products)
+    max_shopping = max((_product_shopping_count(p) for p in products), default=0)
+    price_strong = any_trust_method or max_shopping >= 3
+    price_acceptable = max_shopping >= 2
+
+    # --- specs leg -----------------------------------------------------------
+    best_pct = 0
+    best_citations = 0
+    for p in products:
+        pct, citations = _product_fact_check_pcts(p)
+        best_pct = max(best_pct, pct)
+        best_citations = max(best_citations, citations)
+    specs_strong = best_pct >= 40 or best_citations >= 8
+    specs_acceptable = best_pct >= 20 or best_citations >= 4
+
+    legs = {
+        "price":   _classify_leg(price_strong, price_acceptable),
+        "reviews": _classify_leg(reviews_strong, reviews_acceptable),
+        "specs":   _classify_leg(specs_strong, specs_acceptable),
+    }
+
+    strong_count = sum(1 for v in legs.values() if v == "strong")
+    if strong_count >= 3:
+        overall = "high"
+    elif strong_count >= 2:
+        overall = "medium"
+    else:
+        overall = "low"
+
+    # Legacy per-leg detail dicts — preserved so older consumers
+    # (admin dashboards, history serializers) keep working.
+    product0 = products[0] or {}
+    price_data = product0.get("price") if isinstance(product0.get("price"), dict) else {}
+    source_method = (price_data or {}).get("source_method", "estimated")
+    if source_method in ("local_bhd", "page_scrape", "page_scrape_rendered"):
+        method = "retailer_verified"
+    elif source_method == "converted_usd":
+        method = "converted"
+    else:
+        method = source_method or "estimated"
+    rating_source = product0.get("rating_source") if isinstance(product0, dict) else None
+    return {
+        "legs": legs,
+        "overall": overall,
+        "price": {
+            "source_count": _product_shopping_count(product0),
+            "method": method,
+            "freshness": "live" if not cached else "cached",
+        },
+        "rating": {
+            "review_count": _product_review_count(product0),
+            "source": rating_source.get("name") if isinstance(rating_source, dict) else None,
+            "verified": bool(product0.get("rating_verified")),
+        },
+        "specs": {
+            "verified_pct": _product_fact_check_pcts(product0)[0],
+            "citation_count": _product_fact_check_pcts(product0)[1],
+        },
+    }
+
+
 def _compute_value_score(
     spec_score: float,
     price_score: float,
@@ -1229,62 +1389,20 @@ class ScoringService:
         shopping_count: int = 0,
         cached: bool = False,
     ) -> Dict[str, Any]:
-        """Assemble confidence indicators from existing product data."""
-        product = products[0] if products else {}
-        price_data = product.get("price", {})
-        fact_check = product.get("fact_check", {})
-
-        source_method = price_data.get("source_method", "estimated")
-        if source_method in ("local_bhd", "page_scrape", "page_scrape_rendered"):
-            method = "retailer_verified"
-        elif source_method == "converted_usd":
-            method = "converted"
-        else:
-            method = "estimated"
-
-        price_conf = {
-            "source_count": shopping_count,
-            "method": method,
-            "freshness": "live" if not cached else "cached",
-        }
-        price_strong = shopping_count >= 2 and method != "estimated"
-
-        review_count = product.get("review_count") or 0
-        rating_verified = product.get("rating_verified", False)
-        rating_source = product.get("rating_source")
-        rating_conf = {
-            "review_count": review_count,
-            "source": rating_source.get("name") if rating_source else None,
-            "verified": rating_verified,
-        }
-        rating_strong = review_count >= 50 and rating_verified
-
-        verified = fact_check.get("specs_verified", 0)
-        likely = fact_check.get("specs_likely", 0)
-        unverified = fact_check.get("specs_unverified", 0)
-        flagged = fact_check.get("specs_flagged", 0)
-        total = verified + likely + unverified + flagged
-        verified_pct = round((verified / total) * 100) if total > 0 else 0
-        specs_conf = {
-            "verified_pct": verified_pct,
-            "citation_count": total,
-        }
-        specs_strong = verified_pct >= 60
-
-        strong_count = sum([price_strong, rating_strong, specs_strong])
-        if strong_count >= 3:
-            overall = "high"
-        elif strong_count >= 2:
-            overall = "medium"
-        else:
-            overall = "low"
-
-        return {
-            "price": price_conf,
-            "rating": rating_conf,
-            "specs": specs_conf,
-            "overall": overall,
-        }
+        """Bundle C § 5a — delegate to module-level compute_confidence.
+        Legacy callers pass a single `shopping_count` kwarg; we feed it
+        into the first product so the new per-product computation sees
+        it. Result includes both the legacy {price, rating, specs}
+        per-leg dicts AND the new {legs, overall} contract."""
+        # Inject the legacy single shopping_count into the first product
+        # so the new contract (per-product shopping_count) reads it.
+        enriched = []
+        for i, p in enumerate(products or []):
+            if i == 0 and shopping_count and "shopping_count" not in p:
+                enriched.append({**p, "shopping_count": shopping_count})
+            else:
+                enriched.append(p)
+        return compute_confidence(enriched, cached=cached)
 
     @staticmethod
     def _apply_capped_adjustments(
