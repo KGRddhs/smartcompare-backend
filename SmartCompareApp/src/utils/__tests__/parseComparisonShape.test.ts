@@ -1,6 +1,6 @@
 /**
- * Tests for `parseComparisonShape` — extracted from `SearchOverlay.tsx` as
- * part of Bundle B. Spec ref: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md § 4.1.1.
+ * Tests for `parseComparisonShape` — extracted as a standalone util as part
+ * of Bundle B. Spec ref: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md § 4.1.1.
  * Plan ref: docs/superpowers/plans/2026-05-17-bundle-b-two-input-ux.md § 3.6a.
  *
  * Coverage target: 100% (tiny pure functions).

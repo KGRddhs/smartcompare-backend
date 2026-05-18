@@ -2,9 +2,8 @@
  * Comparison-shape detector + splitter. Spec ref:
  * docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md § 4.1.1.
  *
- * Originally lifted from SearchOverlay.tsx:27 (the regex) and extracted here
- * as part of Bundle B so TwoInputShell can paste-split without depending on
- * the to-be-deleted overlay.
+ * Extracted as part of Bundle B so TwoInputShell can paste-split as a
+ * standalone util (no component dependency).
  */
 
 /**
