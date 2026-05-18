@@ -300,22 +300,16 @@ class TestSseEndpointDualShape:
         # accepts the shape).
         assert response.status_code != 422
 
-    @pytest.mark.xfail(
-        reason="Backend § 1.4 streaming-endpoint widen not yet shipped",
-        strict=False,
-    )
     def test_sse_endpoint_accepts_pair_shape(self, mock_service):
+        # Backend be44b04 widened the SSE endpoint to accept ?product_a=&product_b=.
         response = client.get(
             "/api/v1/text/compare/stream",
             params={"product_a": "iPhone 15", "product_b": "Galaxy S24"},
         )
         assert response.status_code != 422
 
-    @pytest.mark.xfail(
-        reason="Backend § 1.4 streaming-endpoint widen not yet shipped",
-        strict=False,
-    )
     def test_sse_endpoint_rejects_both_shapes(self, mock_service):
+        # Mutual-exclusion: ?q=…&product_a=…&product_b=… rejected per be44b04.
         response = client.get(
             "/api/v1/text/compare/stream",
             params={
@@ -327,16 +321,10 @@ class TestSseEndpointDualShape:
         assert response.status_code == 422
 
     def test_sse_endpoint_rejects_neither_shape(self, mock_service):
-        # `q=` is currently a required FastAPI Query param, so the route
-        # 422s on no params today. When Backend widens to dual-shape with
-        # a model_validator this assertion still holds.
+        # Empty params → 422 (be44b04 still requires one shape).
         response = client.get("/api/v1/text/compare/stream")
         assert response.status_code == 422
 
-    @pytest.mark.xfail(
-        reason="Backend § 1.4 streaming-endpoint widen not yet shipped",
-        strict=False,
-    )
     def test_sse_endpoint_propagates_explicit_pair_to_service(self, mock_service):
         # Mock compare_from_text_streaming as an async generator.
         async def _empty_stream(*args, **kwargs):
