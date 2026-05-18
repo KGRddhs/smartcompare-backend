@@ -1330,41 +1330,74 @@ class TestBundleBContentSafety:
     def test_content_safety_moderation_api_wipes_explicit_output(
         self, monkeypatch
     ):
-        """Spec § 5.2 L3 — assembled response is moderated; flagged output
-        is replaced with refusal (success:false, code, layer=moderation_api).
+        """Spec § 5.2 L3 — STRENGTHENED per Backend Reviewer 1.
+
+        Real-service path: mock only openai_service.get_client to flag,
+        short-circuit upstream stages (parse, fetch, generate). The L3
+        block in the REAL orchestrator (~line 866) observes flagged=True
+        and returns the structured refusal. A regression that drops the
+        L3 block in the service fails this test.
         """
-        # Bypass L1 by using a clean query, then force L3 to flag.
         monkeypatch.setattr(
             "app.services.openai_service.get_client",
             lambda: _fake_openai_client(flagged=True, scores={"violence": 0.95}),
         )
-        # Mock the heavy comparison surface so the service reaches L3 quickly.
-        # Instead of stubbing inside the orchestrator (deep mock surface),
-        # we make compare_from_text return what an L3-blocked response
-        # looks like — proving the surface contract.
 
-        async def _l3_blocked(*args, **kwargs):
+        async def _fake_parse(query):
+            return (
+                {
+                    "products": [
+                        {"brand": "Apple", "name": "iPhone 15", "category": "electronics", "search_query": "iPhone 15"},
+                        {"brand": "Samsung", "name": "Galaxy S24", "category": "electronics", "search_query": "Galaxy S24"},
+                    ]
+                },
+                None,
+            )
+
+        monkeypatch.setattr(
+            "app.services.structured_comparison_service.parse_product_query",
+            _fake_parse,
+        )
+
+        async def _fake_fetch(self, product, *args, **kwargs):
             return {
-                "success": False,
-                "error": "We don't compare this category",
-                "code": "CONTENT_UNAVAILABLE",
-                "layer": "moderation_api",
+                "product": product,
+                "price": {"amount": 100.0, "currency": "USD", "retailer": "test"},
+                "specs": {"display": "test"},
+                "reviews": {"highlights": [], "summary": "ok"},
+                "shopping_items": [],
             }
 
-        service = MagicMock()
-        service.compare_from_text = AsyncMock(side_effect=_l3_blocked)
         monkeypatch.setattr(
-            "app.api.text_routes.get_comparison_service", lambda: service
+            "app.services.structured_comparison_service.StructuredComparisonService._fetch_product_data",
+            _fake_fetch,
+        )
+
+        async def _fake_generate(*args, **kwargs):
+            return {
+                "winner_index": 0,
+                "winner_declaration": "iPhone 15 wins on display quality",
+                "winner_reason": "Better OLED panel",
+                "key_tradeoff": "Galaxy has expandable storage",
+                "value_context": "Both flagship-tier",
+                "product_pros_cons": [
+                    {"pros": ["a"], "cons": ["b"]},
+                    {"pros": ["c"], "cons": ["d"]},
+                ],
+            }
+
+        monkeypatch.setattr(
+            "app.services.extraction_service.generate_comparison",
+            _fake_generate, raising=False,
         )
 
         response = client.post(
             "/api/v1/text/compare",
             json={"query": "iPhone 15 vs Galaxy S24"},
         )
-        # Spec § 5.2 — graceful refusal is 200 + structured body.
         assert response.status_code == 200, (
             f"Expected 200 + CONTENT_UNAVAILABLE body, got "
-            f"{response.status_code}. Body: {response.text[:300]}"
+            f"{response.status_code}. Body: {response.text[:400]}"
         )
         body = response.json()
         assert body.get("success") is False
