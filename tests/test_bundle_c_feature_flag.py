@@ -16,22 +16,39 @@ import os
 import pytest
 
 
+def _reset_flag_cache():
+    """Bust the module-level flag cache so monkeypatch.setenv actually wins.
+    `_BUNDLE_C_SCORING_FLAG` is lazily computed once per process — without a
+    reset, the first test that touches the flag locks every later test.
+    """
+    try:
+        import app.services.scoring_service as svc
+        svc._BUNDLE_C_SCORING_FLAG = None
+    except (ImportError, AttributeError):
+        pass
+
+
 @pytest.fixture
 def bundle_c_flag_off(monkeypatch):
     monkeypatch.setenv("ENABLE_BUNDLE_C_SCORING", "false")
+    _reset_flag_cache()
     yield
+    _reset_flag_cache()
 
 
 @pytest.fixture
 def bundle_c_flag_on(monkeypatch):
     monkeypatch.setenv("ENABLE_BUNDLE_C_SCORING", "true")
+    _reset_flag_cache()
     yield
+    _reset_flag_cache()
 
 
 def _instantiate_service():
+    """Canonical class is `ScoringService` per app.services.scoring_service."""
     try:
-        from app.services.scoring_service import StructuredScoringService
-        return StructuredScoringService()
+        from app.services.scoring_service import ScoringService
+        return ScoringService()
     except (ImportError, AttributeError):
         return None
 

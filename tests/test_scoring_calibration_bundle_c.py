@@ -42,12 +42,13 @@ def bundle_c_flag_on(monkeypatch):
 
 
 def _instantiate_service():
-    """Helper to instantiate StructuredScoringService or equivalent."""
+    """Instantiate the scoring service. The canonical class is `ScoringService`
+    (per `app.services.scoring_service`). Older drafts referenced
+    `StructuredScoringService` — that name does not exist."""
     try:
-        from app.services.scoring_service import StructuredScoringService
-        return StructuredScoringService()
+        from app.services.scoring_service import ScoringService
+        return ScoringService()
     except (ImportError, AttributeError):
-        # Some refactor variants expose only module-level functions
         return None
 
 
