@@ -7,6 +7,12 @@ import httpx
 import logging
 from typing import Optional, Dict, Any, List
 
+# Bundle C § 1c A.3.3-fix-1 — Serper credit-meter integration. Every
+# successful Serper call (HTTP 200) bumps the Redis counter so the
+# admin/costs Serper figure reflects actual usage. Missing-API-key and
+# exception paths skip the bump (we don't bill non-events).
+from app.services.api_budget_service import record_usage
+
 logger = logging.getLogger(__name__)
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -85,8 +91,9 @@ async def search_web(
                 }
             )
             response.raise_for_status()
+            record_usage("serper")
             return response.json()
-    
+
     except Exception as e:
         logger.error(f"Search error: {e}")
         return {"organic": [], "error": str(e)}
@@ -123,6 +130,7 @@ async def search_product_prices(
             shopping_results = {}
             if shopping_response.status_code == 200:
                 shopping_results = shopping_response.json()
+                record_usage("serper")
 
             return {
                 "shopping": shopping_results.get("shopping", []),
@@ -176,6 +184,7 @@ async def search_price_organic(
             results = {}
             if response.status_code == 200:
                 results = response.json()
+                record_usage("serper")
 
             return {
                 "organic": results.get("organic", []),
@@ -258,8 +267,9 @@ async def search_videos(
                 }
             )
             response.raise_for_status()
+            record_usage("serper")
             return response.json()
-    
+
     except Exception as e:
         logger.error(f"Video search error: {e}")
         return {"videos": [], "error": str(e)}
@@ -287,8 +297,9 @@ async def search_images(
                 }
             )
             response.raise_for_status()
+            record_usage("serper")
             return response.json()
-    
+
     except Exception as e:
         logger.error(f"Image search error: {e}")
         return {"images": [], "error": str(e)}
@@ -316,6 +327,7 @@ async def search_news(
                 }
             )
             response.raise_for_status()
+            record_usage("serper")
             return response.json()
     
     except Exception as e:

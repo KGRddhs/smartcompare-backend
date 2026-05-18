@@ -280,6 +280,13 @@ async def get_verified_rating(
             if response.status_code != 200:
                 return empty
 
+            # Bundle C § 1c A.3.3-fix-1 — bump Redis credit meter on the
+            # 7th Serper call site (US shopping fallback). track_serper_cost_fn
+            # above only tracks per-request USD cost; this updates the
+            # lifetime/monthly counter that admin/costs reads.
+            from app.services.api_budget_service import record_usage
+            record_usage("serper")
+
             us_items = response.json().get("shopping", [])
             if us_items:
                 result = extract_rating_from_shopping(full_name, us_items)
