@@ -20,6 +20,10 @@ export const colors = {
   accentDark: '#059669',
   accentLight: '#ECFDF5',
   accentGlow: 'rgba(16,185,129,0.20)',
+  // Bundle C (spec § 3c) — restrained dark accent for premium / luxury /
+  // top_tier picker cards. Editorial only — not used for state or CTA.
+  // Sits on bg.secondary as a hairline border, never as full fill or glow.
+  editorialDark: '#1A1A1A',
   destructive: '#EF4444',
   warning: '#F59E0B',
   border: {

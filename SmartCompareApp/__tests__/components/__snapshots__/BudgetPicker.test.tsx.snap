@@ -1,0 +1,308 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`snapshot — 5 tier picker with luxury selected 1`] = `
+<View
+  style={{}}
+>
+  <View
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "selected": false,
+      }
+    }
+    accessible={true}
+    onPress={[Function]}
+    style={
+      [
+        {
+          "backgroundColor": "#F8F8FA",
+          "borderColor": "transparent",
+          "borderLeftWidth": 2,
+          "borderRadius": 16,
+          "borderWidth": 2,
+          "marginBottom": 8,
+          "paddingHorizontal": 20,
+          "paddingVertical": 20,
+        },
+        false,
+        false,
+      ]
+    }
+    testID="budget-budget"
+  >
+    <Text
+      style={
+        [
+          {
+            "color": "#0A0A0B",
+            "fontSize": 20,
+            "fontWeight": "600",
+            "lineHeight": 30,
+            "marginBottom": 4,
+          },
+          false,
+        ]
+      }
+      testID="budget-budget-label"
+    >
+      onboarding.s9.budget
+    </Text>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+        }
+      }
+    >
+      onboarding.s9.budget_range
+    </Text>
+  </View>
+  <View
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "selected": false,
+      }
+    }
+    accessible={true}
+    onPress={[Function]}
+    style={
+      [
+        {
+          "backgroundColor": "#F8F8FA",
+          "borderColor": "transparent",
+          "borderLeftWidth": 2,
+          "borderRadius": 16,
+          "borderWidth": 2,
+          "marginBottom": 8,
+          "paddingHorizontal": 20,
+          "paddingVertical": 20,
+        },
+        false,
+        false,
+      ]
+    }
+    testID="budget-mid"
+  >
+    <Text
+      style={
+        [
+          {
+            "color": "#0A0A0B",
+            "fontSize": 20,
+            "fontWeight": "600",
+            "lineHeight": 30,
+            "marginBottom": 4,
+          },
+          false,
+        ]
+      }
+      testID="budget-mid-label"
+    >
+      onboarding.s9.mid
+    </Text>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+        }
+      }
+    >
+      onboarding.s9.mid_range
+    </Text>
+  </View>
+  <View
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "selected": false,
+      }
+    }
+    accessible={true}
+    onPress={[Function]}
+    style={
+      [
+        {
+          "backgroundColor": "#F8F8FA",
+          "borderColor": "transparent",
+          "borderLeftWidth": 2,
+          "borderRadius": 16,
+          "borderWidth": 2,
+          "marginBottom": 8,
+          "paddingHorizontal": 20,
+          "paddingVertical": 20,
+        },
+        {
+          "borderLeftColor": "#1A1A1A",
+          "borderLeftWidth": 3,
+        },
+        false,
+      ]
+    }
+    testID="budget-premium"
+  >
+    <Text
+      style={
+        [
+          {
+            "color": "#0A0A0B",
+            "fontSize": 20,
+            "fontWeight": "600",
+            "lineHeight": 30,
+            "marginBottom": 4,
+          },
+          false,
+        ]
+      }
+      testID="budget-premium-label"
+    >
+      onboarding.s9.premium
+    </Text>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+        }
+      }
+    >
+      onboarding.s9.premium_range
+    </Text>
+  </View>
+  <View
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "selected": true,
+      }
+    }
+    accessible={true}
+    onPress={[Function]}
+    style={
+      [
+        {
+          "backgroundColor": "#F8F8FA",
+          "borderColor": "transparent",
+          "borderLeftWidth": 2,
+          "borderRadius": 16,
+          "borderWidth": 2,
+          "marginBottom": 8,
+          "paddingHorizontal": 20,
+          "paddingVertical": 20,
+        },
+        {
+          "borderLeftColor": "#1A1A1A",
+          "borderLeftWidth": 3,
+        },
+        {
+          "backgroundColor": "#FFFFFF",
+          "borderColor": "#0A0A0B",
+        },
+      ]
+    }
+    testID="budget-luxury"
+  >
+    <Text
+      style={
+        [
+          {
+            "color": "#0A0A0B",
+            "fontSize": 20,
+            "fontWeight": "600",
+            "lineHeight": 30,
+            "marginBottom": 4,
+          },
+          false,
+        ]
+      }
+      testID="budget-luxury-label"
+    >
+      onboarding.s9.luxury
+    </Text>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+        }
+      }
+    >
+      onboarding.s9.luxury_range
+    </Text>
+  </View>
+  <View
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "selected": false,
+      }
+    }
+    accessible={true}
+    onPress={[Function]}
+    style={
+      [
+        {
+          "backgroundColor": "#F8F8FA",
+          "borderColor": "transparent",
+          "borderLeftWidth": 2,
+          "borderRadius": 16,
+          "borderWidth": 2,
+          "marginBottom": 8,
+          "paddingHorizontal": 20,
+          "paddingVertical": 20,
+        },
+        {
+          "borderLeftColor": "#1A1A1A",
+          "borderLeftWidth": 3,
+        },
+        false,
+      ]
+    }
+    testID="budget-top_tier"
+  >
+    <Text
+      style={
+        [
+          {
+            "color": "#0A0A0B",
+            "fontSize": 20,
+            "fontWeight": "600",
+            "lineHeight": 30,
+            "marginBottom": 4,
+          },
+          {
+            "fontFamily": "Geist-Bold",
+            "fontWeight": "700",
+          },
+        ]
+      }
+      testID="budget-top_tier-label"
+    >
+      onboarding.s9.top_tier
+    </Text>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+        }
+      }
+    >
+      onboarding.s9.top_tier_range
+    </Text>
+  </View>
+</View>
+`;
