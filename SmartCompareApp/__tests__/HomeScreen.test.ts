@@ -78,6 +78,11 @@ jest.mock('../src/services/api', () => ({
   streamComparison: jest.fn(),
   parseApiError: jest.fn((e: any) => ({ message: e.message || 'Error' })),
   identifyFromImages: jest.fn(),
+  // Bundle B added `trackEvent` (singular) + kept `trackEvents` (batched);
+  // HomeScreen.tsx now imports `trackEvent` for the 8 compare_entry_* events.
+  // Both stubbed so any code path through this test file doesn't crash.
+  trackEvent: jest.fn(() => Promise.resolve()),
+  trackEvents: jest.fn(() => Promise.resolve()),
   default: { post: jest.fn() },
 }));
 
