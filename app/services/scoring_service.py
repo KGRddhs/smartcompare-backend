@@ -1691,10 +1691,12 @@ def _get_currency(product: dict) -> str:
 def _dim_price(products: list[dict]) -> dict:
     a, b = products[0], products[1]
     pa, pb = _get_price(a) or 0.0, _get_price(b) or 0.0
+    caption_key = None  # Bundle C § 2b A.4.4 — limited_data marker for missing-data path
     if pa <= 0 or pb <= 0:
         score_a = score_b = _NEUTRAL_DISPLAY_SCORE
         delta = "Price data unavailable"
         confidence = "low"
+        caption_key = "limited_data"
     else:
         lo, hi = min(pa, pb), max(pa, pb)
         ratio = lo / hi
@@ -1708,20 +1710,25 @@ def _dim_price(products: list[dict]) -> dict:
         currency = _get_currency(a) if pa <= pb else _get_currency(b)
         delta = f"{currency} {diff:g} less"
         confidence = "high"
-    return {
+    result = {
         "key": "price", "label": "Price",
         "score_a": score_a, "score_b": score_b,
         "delta_text": delta, "confidence": confidence, "is_core": True,
     }
+    if caption_key:
+        result["caption_key"] = caption_key
+    return result
 
 
 def _dim_reviews(products: list[dict]) -> dict:
     a, b = products[0], products[1]
     ra, rb = a.get("rating"), b.get("rating")
+    caption_key = None  # Bundle C § 2b A.4.4
     if ra is None or rb is None:
         score_a = score_b = _NEUTRAL_DISPLAY_SCORE
         delta = "Limited review data"
         confidence = "low"
+        caption_key = "limited_data"
     else:
         score_a = calibrate_score(40 + ra * 10)
         score_b = calibrate_score(40 + rb * 10)
@@ -1731,11 +1738,14 @@ def _dim_reviews(products: list[dict]) -> dict:
         else:
             delta = f"{diff} stars higher"
         confidence = "high"
-    return {
+    result = {
         "key": "reviews", "label": "Reviews",
         "score_a": score_a, "score_b": score_b,
         "delta_text": delta, "confidence": confidence, "is_core": True,
     }
+    if caption_key:
+        result["caption_key"] = caption_key
+    return result
 
 
 def _dim_value(products: list[dict]) -> dict:
@@ -1760,6 +1770,8 @@ def _dim_value(products: list[dict]) -> dict:
             "score_a": _NEUTRAL_DISPLAY_SCORE, "score_b": _NEUTRAL_DISPLAY_SCORE,
             "delta_text": "Limited value data",
             "confidence": "low", "is_core": True,
+            # Bundle C § 2b A.4.4 — limited_data marker for the missing-data path
+            "caption_key": "limited_data",
         }
 
     pa, pb = float(pa_raw), float(pb_raw)
@@ -1775,6 +1787,8 @@ def _dim_value(products: list[dict]) -> dict:
             "score_a": _NEUTRAL_DISPLAY_SCORE, "score_b": _NEUTRAL_DISPLAY_SCORE,
             "delta_text": "Limited value data",
             "confidence": "low", "is_core": True,
+            # Bundle C § 2b A.4.4 — limited_data marker for the missing-data path
+            "caption_key": "limited_data",
         }
     score_a = calibrate_score(50 + 35 * (va / hi))
     score_b = calibrate_score(50 + 35 * (vb / hi))
