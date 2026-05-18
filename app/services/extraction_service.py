@@ -1124,6 +1124,16 @@ User's region: {region}
 Primary concern: {concern}
 </USER_INPUT>"""
 
+        # Bundle C § 1a A.3.1 — `response_format={"type": "json_object"}`
+        # forces OpenAI's structured-output guarantee: the model MUST return
+        # valid JSON honoring every declared key. qa-bundle-c D.1.3 evidence
+        # showed product_0_pros / product_1_pros / product_0_cons /
+        # product_1_cons were ABSENT from the parsed dict on all 6 cold-cache
+        # probes — model dropping keys under prompt pressure. JSON mode is
+        # the smallest-blast fix per spec § 1a (no re-prompt fallback;
+        # if insufficient, escalate to model_router priority='critical').
+        # COMPARISON_SYSTEM already contains "Return ONLY valid JSON" so
+        # OpenAI's prompt-validation contract is satisfied.
         try:
             response = await client.chat.completions.create(
                 model=verdict_model,
@@ -1133,6 +1143,7 @@ Primary concern: {concern}
                 ],
                 max_tokens=1000,
                 temperature=0.2,
+                response_format={"type": "json_object"},
             )
         except Exception as primary_err:  # noqa: BLE001
             # Hard-cap retry: 429 / cap-exceeded mid-call falls back to mini once.
@@ -1150,6 +1161,7 @@ Primary concern: {concern}
                     ],
                     max_tokens=1000,
                     temperature=0.2,
+                    response_format={"type": "json_object"},
                 )
             else:
                 raise
