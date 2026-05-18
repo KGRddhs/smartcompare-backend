@@ -99,18 +99,21 @@ async def search_web(
         return {"organic": [], "error": str(e)}
 
 
-async def search_product_prices(
-    product: str,
-    country: str = "bh",
-    currency: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Search for product prices via Serper Shopping API only.
-    Organic search is deferred to search_price_organic() and only called if Tier 1 fails.
-    """
-    if not SERPER_API_KEY:
-        return {"shopping": [], "organic": [], "error": "Search not configured"}
+# Bundle C § 1c A.3.3-fix-2 — Serper Shopping has thin GCC coverage.
+# Direct-curl diagnostic (Session 52) showed gl=bh returns empty
+# shopping[] for mainstream queries (iPhone 16, CeraVe, Centrum) while
+# gl=us returns 20-40 items. The fallback below retries once with gl=us
+# when the primary GCC country returns empty; downstream price_service
+# converts USD→BHD via exchange_rate_service + tags source_method:
+# 'converted_usd'. OPERATIONAL STOPGAP until Google Shopping's Bahrain
+# merchant feed catches up.
+_GCC_COUNTRIES = frozenset({"bh", "sa", "ae", "kw", "qa", "om"})
 
+
+async def _do_serper_shopping(product: str, gl: str) -> Dict[str, Any]:
+    """Single Serper Shopping call. Records usage on HTTP 200. Returns
+    parsed JSON or {} on error. No retry, no fallback — fallback logic
+    lives in the caller (search_product_prices)."""
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             shopping_response = await client.post(
@@ -121,26 +124,78 @@ async def search_product_prices(
                 },
                 json={
                     "q": product,
-                    "gl": country,
+                    "gl": gl,
                     "hl": "en",
                     "num": 10
                 }
             )
-
-            shopping_results = {}
             if shopping_response.status_code == 200:
-                shopping_results = shopping_response.json()
                 record_usage("serper")
-
-            return {
-                "shopping": shopping_results.get("shopping", []),
-                "organic": [],
-                "query": product
-            }
-
+                return shopping_response.json()
+            return {}
     except Exception as e:
-        logger.error(f"Price search error: {e}")
-        return {"shopping": [], "organic": [], "error": str(e)}
+        logger.error(f"Serper shopping call error (gl={gl}): {e}")
+        return {}
+
+
+async def search_product_prices(
+    product: str,
+    country: str = "bh",
+    currency: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Search for product prices via Serper Shopping API.
+
+    Bundle C § 1c A.3.3-fix-2: when the GCC primary call returns an empty
+    `shopping[]` array, retry ONCE with `gl=us` so downstream USD→BHD
+    conversion can land real prices. The response's `shopping_region`
+    field identifies which call's items are returned so admin
+    dashboards can monitor fallback rate.
+
+    Organic search is deferred to search_price_organic() and only
+    called if both shopping calls return empty (Saudi-only items like
+    Almarai laban — pipeline naturally falls through to Tier 1.5).
+    """
+    if not SERPER_API_KEY:
+        return {"shopping": [], "organic": [], "error": "Search not configured"}
+
+    primary = await _do_serper_shopping(product, gl=country)
+    primary_shopping = primary.get("shopping", []) or []
+    if primary_shopping:
+        return {
+            "shopping": primary_shopping,
+            "organic": [],
+            "query": product,
+            "shopping_region": country,
+        }
+
+    # GCC fallback to gl=us — only when primary is empty AND country is GCC.
+    if country in _GCC_COUNTRIES:
+        fallback = await _do_serper_shopping(product, gl="us")
+        fallback_shopping = fallback.get("shopping", []) or []
+        if fallback_shopping:
+            return {
+                "shopping": fallback_shopping,
+                "organic": [],
+                "query": product,
+                "shopping_region": "us_fallback",
+            }
+        # Both empty — pipeline falls through to Tier 1.5 / Tier 2 / Tier 3.
+        return {
+            "shopping": [],
+            "organic": [],
+            "query": product,
+            "shopping_region": "us_fallback",
+        }
+
+    # Non-GCC primary returned empty — no fallback, just echo the primary
+    # region tag so callers know we tried.
+    return {
+        "shopping": [],
+        "organic": [],
+        "query": product,
+        "shopping_region": country,
+    }
 
 
 async def search_price_organic(
