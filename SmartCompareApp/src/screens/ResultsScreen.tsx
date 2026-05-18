@@ -1075,40 +1075,50 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           )
         )}
 
-        {/* 8a. Bundle E § Decision 2/3 — scoring_v2 hero card */}
-        {scoring_v2 && scoring_v2.dimensions && scoring_v2.dimensions.length >= 3 && (
-          <Animated.View entering={FadeInDown.delay(750).duration(400)} style={styles.section} testID="results-scoring-v2">
-            <TopMatchBadge testID="results-v2-top-match" />
-            <HeroRings
-              scoreA={scoring_v2.overall_score?.product_a ?? 0}
-              scoreB={scoring_v2.overall_score?.product_b ?? 0}
-              winnerIndex={
-                (scoring_v2.overall_score?.product_a ?? 0) >=
-                (scoring_v2.overall_score?.product_b ?? 0)
-                  ? 0
-                  : 1
-              }
-              testID="results-v2-hero-rings"
-            />
-            {scoring_v2.factual_verdict?.line1 && (
-              <FactualVerdict
-                line1={scoring_v2.factual_verdict.line1 ?? ''}
-                line2={scoring_v2.factual_verdict.line2 ?? ''}
-                testID="results-v2-factual-verdict"
+        {/* 8a. Bundle E § Decision 2/3 — scoring_v2 hero card.
+            Bundle C § 2e — in weird-mode (comparison_quality === 'weird')
+            the hero rings + TopMatchBadge are suppressed and replaced by
+            a calm em-dash placeholder. Verdict text (rewritten by the
+            backend prompt in weird-mode) carries the meaning. NO banner
+            anywhere — per FIVE critical rules #1. */}
+        {scoring_v2 && scoring_v2.dimensions && scoring_v2.dimensions.length >= 3 && (() => {
+          const isWeird = scoring_v2.comparison_quality === 'weird';
+          const winnerIndex: 0 | 1 = (
+            (scoring_v2.overall_score?.product_a ?? 0) >=
+            (scoring_v2.overall_score?.product_b ?? 0)
+          ) ? 0 : 1;
+          return (
+            <Animated.View entering={FadeInDown.delay(750).duration(400)} style={styles.section} testID="results-scoring-v2">
+              {!isWeird && <TopMatchBadge testID="results-v2-top-match" />}
+              {isWeird ? (
+                <View style={styles.weirdHero}>
+                  <Text style={styles.weirdHeroEmDash} testID="results-v2-hero-em-dash">
+                    {'\u2014'}
+                  </Text>
+                </View>
+              ) : (
+                <HeroRings
+                  scoreA={scoring_v2.overall_score?.product_a ?? 0}
+                  scoreB={scoring_v2.overall_score?.product_b ?? 0}
+                  winnerIndex={winnerIndex}
+                  testID="results-v2-hero-rings"
+                />
+              )}
+              {scoring_v2.factual_verdict?.line1 && (
+                <FactualVerdict
+                  line1={scoring_v2.factual_verdict.line1 ?? ''}
+                  line2={scoring_v2.factual_verdict.line2 ?? ''}
+                  testID="results-v2-factual-verdict"
+                />
+              )}
+              <DimensionBars
+                dimensions={scoring_v2.dimensions}
+                winnerIndex={winnerIndex}
+                testID="results-v2-bars"
               />
-            )}
-            <DimensionBars
-              dimensions={scoring_v2.dimensions}
-              winnerIndex={
-                (scoring_v2.overall_score?.product_a ?? 0) >=
-                (scoring_v2.overall_score?.product_b ?? 0)
-                  ? 0
-                  : 1
-              }
-              testID="results-v2-bars"
-            />
-          </Animated.View>
-        )}
+            </Animated.View>
+          );
+        })()}
 
         {/* 8. Score Breakdown (legacy — hidden when scoring_v2 present) */}
         {!scoring_v2 && scoring && (
@@ -1281,6 +1291,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg.primary,
+  },
+  // Bundle C § 2e — weird-comparison hero placeholder. Calm, single
+  // em-dash in muted display weight. Verdict text below carries
+  // meaning; this is intentional restraint, not an empty state.
+  weirdHero: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+  },
+  weirdHeroEmDash: {
+    ...typography.display,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
   emptyStateContainer: {
     flex: 1,
