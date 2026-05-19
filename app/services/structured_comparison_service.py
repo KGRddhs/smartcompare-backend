@@ -954,6 +954,25 @@ class StructuredComparisonService:
 
             # Extract pros/cons
             if include_pros_cons:
+                # Bundle C v1 hot-fix (round 2) § 1a diagnostic — log BEFORE
+                # the pop so we see whether the keys are present in the
+                # parsed comparison dict at this stage. If keys ARE present
+                # but lists are empty → GPT emitted [] (prompt issue still).
+                # If keys are MISSING → upstream stripper. Always-on WARNING
+                # level — appears in Railway prod logs without flag gate.
+                logger.warning(
+                    "PROS_POP_DIAGNOSTIC path=compare_from_text keys=%s "
+                    "p0_pros_present=%s p1_pros_present=%s "
+                    "p0_pros_type=%s p1_pros_type=%s "
+                    "p0_pros_len=%s p1_pros_len=%s",
+                    list(comparison.keys()),
+                    "product_0_pros" in comparison,
+                    "product_1_pros" in comparison,
+                    type(comparison.get("product_0_pros")).__name__,
+                    type(comparison.get("product_1_pros")).__name__,
+                    len(comparison.get("product_0_pros") or []) if isinstance(comparison.get("product_0_pros"), list) else "non-list",
+                    len(comparison.get("product_1_pros") or []) if isinstance(comparison.get("product_1_pros"), list) else "non-list",
+                )
                 product_data[0]["pros_cons"] = {
                     "pros": comparison.pop("product_0_pros", []),
                     "cons": comparison.pop("product_0_cons", []),
@@ -1232,6 +1251,20 @@ class StructuredComparisonService:
             verdict_validation = validate_verdict(comparison, scoring_result, detected_category)
 
             if include_pros_cons:
+                # Bundle C v1 hot-fix (round 2) § 1a diagnostic — streaming path
+                logger.warning(
+                    "PROS_POP_DIAGNOSTIC path=compare_from_text_streaming keys=%s "
+                    "p0_pros_present=%s p1_pros_present=%s "
+                    "p0_pros_type=%s p1_pros_type=%s "
+                    "p0_pros_len=%s p1_pros_len=%s",
+                    list(comparison.keys()),
+                    "product_0_pros" in comparison,
+                    "product_1_pros" in comparison,
+                    type(comparison.get("product_0_pros")).__name__,
+                    type(comparison.get("product_1_pros")).__name__,
+                    len(comparison.get("product_0_pros") or []) if isinstance(comparison.get("product_0_pros"), list) else "non-list",
+                    len(comparison.get("product_1_pros") or []) if isinstance(comparison.get("product_1_pros"), list) else "non-list",
+                )
                 product_data[0]["pros_cons"] = {
                     "pros": comparison.pop("product_0_pros", []),
                     "cons": comparison.pop("product_0_cons", []),
