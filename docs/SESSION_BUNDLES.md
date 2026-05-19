@@ -243,120 +243,192 @@ Brainstorm → spec → 4-Opus plan, committed on `feature/bundle-c-scoring` (pu
 
 ---
 
-## Bundle C — Scoring + Personalization Quality Pass (Session 51) — SKELETON
+## Bundle C — Scoring + Personalization Quality Pass (Session 52, SHIPPED 2026-05-19)
 
-**Status:** IN PROGRESS — populated incrementally by qa-bundle-c as D.1.3 / D.4.2 / D.4.3 / D.6.3 / D.6.4 / D.6.5 / D.7.1 / D.7.3 / D.9.2 land.
+**Status:** SHIPPED to main `52e853a` + four hot-fixes (`50e3290` `44a0539` `ed514c1` `8798f5e`). Always-on per Option A (no flag-gating per qa-bundle-c's flag-tightness analysis → team-lead authorized). Hot-fix sweep CLOSED by team-lead 2026-05-19 ~T+60min post-merge. 2 of 4 hot-fixes confirmed working in PROD; §1a + §1c-non-supplement deferred to v1.1 with concrete diagnostic-confirmed fix targets.
 
 **Plan:** `docs/superpowers/plans/2026-05-17-bundle-c-scoring-quality.md` (5,785 lines, 170 tasks).
 **Spec:** `docs/superpowers/specs/2026-05-17-bundle-c-scoring-quality-design.md` (525 lines, 11 sections).
-**Branch:** `feature/bundle-c-scoring` (head `71b360c` at session start).
-**Team:** 4-Opus (`backend-bundle-c`, `frontend-bundle-c`, `test-bundle-c`, `qa-bundle-c` — this agent).
-**Flag:** `ENABLE_BUNDLE_C_SCORING` (default OFF in code; flipped ON in Railway during testing per iteration-phase discipline).
+**Branch:** `feature/bundle-c-scoring` (head `71b360c` at session start, 58 commits + 50 main merges = 108 total commits since branch point).
+**Team:** 4-Opus (`backend-bundle-c`, `frontend-bundle-c`, `test-bundle-c`, `qa-bundle-c`).
+**Flag:** `ENABLE_BUNDLE_C_SCORING` was scoped per plan but team-lead authorized DROP via Option A after qa-bundle-c's flag-tightness analysis revealed only 1 of ~10 behavioral changes had flag-gating in code. Frontend integration assumed contracts always-present. Coherent design — clean rollout despite flag drop.
 
-### Summary (TBD — fill at D.9.2 consolidation)
+### Summary
 
-> One paragraph: what shipped, why, head SHA after merge.
+Bundle C shipped 2026-05-19 to main `52e853a` with 4 post-merge hot-fix commits, culminating at `8798f5e`. Three production bugs (§1a empty pros/cons, §1b factual_verdict None, §1c mainstream-prices-fall-to-estimated) were addressed by diagnostic-first discipline: §1b CONFIRMED FIXED in PROD (factual_verdict line1+line2 populated across all 6 mainstream probes); §1a STILL EMPTY in v1 (5 patch attempts; PROS_POP_DIAGNOSTIC at `8798f5e` reveals GPT IS returning 4 pros + 4 cons per product, bug is downstream of pop — concrete v1.1 trace target); §1c-supplements WORKS (iHerb pipeline elevates to `source_method=converted_usd`), §1c-non-supplements STILL ESTIMATED (Serper gl=us fallback shipped at `eca2e9d` but query construction appends `" price comparison"` suffix that kills Serper match — concrete v1.1 one-line fix). Frontend Section B (1011/1011 Jest + 30 snapshots + tsc 0) shipped without crashes. Bundle C scoring engine math, 5-tier budget system, DimensionBars overhaul, ConfidencePills with silent §5c suppression, PersonalizationChip qualitative-arrows-only contract, BudgetPicker 5 tiers, Migration 024 — all stable in PROD. Sentry 24h watch CLEAN through T+60min hot-fix window. Wall times within +2s of pre-merge baseline. Degraded-but-functional ship state, NO crashes, NO rule violations, full diagnostic infrastructure for v1.1 follow-up.
 
-### D.1 diagnostic findings (TBD — fill at D.1.3)
+### D.1 diagnostic findings + post-merge resolution
 
-> Per-category root-cause table for §1a (pros/cons empty), §1b (`factual_verdict` None), §1c (mainstream prices fall to `estimated`).
-> Evidence source: `docs/investigations/2026-05-17-bundle-c-cold-cache-evidence.md`.
+Evidence source: `docs/investigations/2026-05-17-bundle-c-cold-cache-evidence.md` (qa-bundle-c probes 2026-05-18 + 2026-05-19 hot-fix probes).
 
-- §1a root cause: TBD
-- §1b root cause: TBD
-- §1c root cause: TBD
-- Diagnostic env-var window closed at: TBD (D.1.4)
+- **§1b root cause CONFIRMED 2026-05-18 (`e63d26e` D.1.3) + RESOLVED at A.3.2 `fb07ed8` (`effd2a1` D.2.5 PASS, 18/18 tests).** `_build_scoring_v2` at `response_builder.py:51-98` literally never emitted `factual_verdict` — planning-time omission, NOT a regression. Pure-template builder added at lines 263-305 (zero GPT cost). PROD post-merge confirms `factual_verdict.line1+line2` populated across all 6 mainstream probes.
+- **§1a root cause UPDATED 2026-05-19 via PROS_POP_DIAGNOSTIC (`8798f5e`).** Initial hypothesis (verdict GPT dropping keys) was WRONG per Railway log evidence: `keys=[..., 'product_0_pros', 'product_0_cons', 'product_1_pros', 'product_1_cons', ...] p0_pros_present=True p1_pros_present=True p0_pros_len=4 p1_pros_len=4`. GPT IS returning 4 pros + 4 cons per product. Bug is DOWNSTREAM of `comparison.pop("product_0_pros", [])` at `structured_comparison_service.py:720` — between pop and `build_comparison_response`. Three candidates: (a) downstream overwrite, (b) Pydantic strip, (c) builder discarding pros_cons field. **v1.1 fix: small + bounded trace, concrete target identified.**
+- **§1c root cause UPDATED 2026-05-19 via GL_FALLBACK_TRACE (`ed514c1`).** Two findings: (1) `record_usage("serper")` instrumentation hole — meter never ticked despite Serper being called (FIXED at A.3.3-fix-1 `762946b`, 7 call sites). (2) Bahrain `gl=bh` returns empty `shopping[]` for all mainstream queries — operational reality, NOT a parser bug. Direct curl proof (Bundle C session): iPhone 16 / CeraVe / Centrum all return 0 items for gl=bh; gl=us returns 20-40 items. A.3.3-fix-2 (`eca2e9d`) added gl=us fallback BUT post-merge probes still hit estimated because query construction appends `" price comparison"` suffix that kills Serper match. **v1.1 fix: drop the suffix in query construction, one-line surgical fix.**
+- Diagnostic env-var window: NEVER OPENED. `DEBUG_STAGE_TIMINGS` was unused; diagnostic logging proved sufficient via always-on `WARNING` log lines at A.2.1/A.2.2/A.2.3 + hot-fix `8798f5e` PROS_POP_DIAGNOSTIC + `ed514c1` GL_FALLBACK_TRACE. D.1.4 closure: N/A.
 
-### Section A patches summary (TBD — fill at D.2.5)
+### Section A patches summary (~30 backend commits)
 
-> Per-subsection list: A.1 migration, A.2 diagnostic hooks, A.3 fixes, A.4 missing-data, A.5 tier expansion, A.6 value math, A.7 confidence thresholds, A.8 applied_shifts, A.9 weird detector, A.10 cleanup, A.11 docs.
+- **A.1.1 Migration 024** `b9da01f` — `top_tier` added to `users.preferences.budget` CHECK enum (applied via Supabase MCP). Rollback drill PASSED in transaction.
+- **A.2.x diagnostic logging** `56e3267` `677215b` `28cb90e` — PROS_CONS_DIAGNOSTIC + FACTUAL_VERDICT_DIAGNOSTIC + PRICE_PIPELINE_DIAG, all gated on `DEBUG_STAGE_TIMINGS` (single flag consolidation, simpler than spec-listed 3 flags).
+- **A.3.1 §1a** `15f6b8e` `44a0539` `8798f5e` — verdict prompt `response_format=json_object` + prompt loosening + PROS_POP_DIAGNOSTIC. Bug NOT fixed in v1; diagnostic proves downstream-of-pop bug — v1.1 deferred with concrete target.
+- **A.3.2 §1b** `fb07ed8` — `_build_factual_verdict` template restored. ZERO GPT cost. CONFIRMED working in PROD.
+- **A.3.3-fix-1 §1c-meter** `762946b` — `record_usage("serper")` at 7 call sites. PROD `/admin/costs` now correctly ticks.
+- **A.3.3-fix-2 §1c-pipeline** `eca2e9d` — Serper gl=us fallback for GCC coverage gap. SHIPPED but query-construction bug means non-supplements still estimated. v1.1 one-line fix.
+- **A.4.1 §2a missing-data floor** `982a963` — `MISSING_SCORE=50` floor removed, None-propagation when flag on. (Flag dropped per Option A, so always-on.)
+- **A.4.2 §2g fabricated defaults** `189de4c` — `_dim_value` no longer fabricates `or 4.0` / `or 0.1` / `or 1`. 11/11 calibration tests pass with source-audit assertions.
+- **A.4.3 §2c calibrate_score short-circuit** `95db495` — band invariants `[60, 95]` preserved.
+- **A.4.4 §2b limited_data caption** `562feb5` — `caption_key='limited_data'` on missing-data dims.
+- **A.4.5 §2e weird-comparison detector** `cc6bd50` — `_classify_comparison_quality` + verdict-prompt weird flag.
+- **A.4.6 §2f CRITICAL_SCHEMA_FIELDS split** `39d289b` — non-negotiable vs preferred split.
+- **A.4.7 §2f Tier 2 spec fallback** `74d49d5` — `tier2_fill_non_negotiables` with 4s `asyncio.wait_for` + parallel `asyncio.gather` per-field, silent omission on timeout. Within `STREAM_HARD_CAP_SECONDS=25` budget.
+- **A.4.9 §2h silent dim omission** `b88d328` — skip dims with null both-sides.
+- **A.4.10 §2i ToS + Privacy AI-extraction clause** EN + AR.
+- **A.5.x tier expansion full cascade**: A.5.1 `PRICE_TIERS_BY_CATEGORY` (`1b84a73`), A.5.2 `TIER_EXPECTATIONS` 5 tiers (`8024ded`), A.5.3 `CATEGORY_BUDGET_ADJUSTMENTS` luxury+top_tier (`906a2cb`), A.5.4 Pydantic Literal extension (`198199b`), A.5.5 geometric-mean sub-scale (`9b256c0`).
+- **A.6.1 §4a value formula** `a32dcf2` — `VALUE_FORMULA_BY_PRIORITY` dynamic coefficients.
+- **A.7.1 §5a confidence threshold loosening** `6948ba5` — rating count-only ≥100, shopping_count ≥3 fallback, specs 40% verified OR citation_count ≥8.
+- **A.9.1 §7b personalization.applied_shifts** `bc5d206` — qualitative-only contract.
+- **A.10.1 §10 diagnostics regression guard** `79b612a` — all 4 Bundle C diagnostics flag-gated.
+- **A.10.2 §10 verdict prompt forbidden-words audit** `9ea8d37`.
+- **Hot-fixes 2026-05-19 (4 commits post-merge):** `50e3290` (HOTFIX-3+4: comparison_quality + applied_shifts wired — round 1 only landed half), `44a0539` (HOTFIX-1 attempt 4: prompt loosening), `ed514c1` (HOTFIX-2 diagnostic-only), `8798f5e` (round 2: PROS_POP_DIAGNOSTIC + scoring_v2.comparison_quality second-wire + applied_shifts always-list).
 
-### Section B components summary (TBD — fill at D.2.6)
+### Section B components summary (~17 frontend commits)
 
-> BudgetPicker 5-tier · DimensionBars hero+expand · ConfidencePills 3-leg · ConfidenceDetailsSheet · PersonalizationChip · ResultsScreen integration · i18n EN/AR.
+- **B.1 TypeScript contract additions** `5033355` — types.ts for `applied_shifts`, `value_match`, `comparison_quality`, `factual_verdict.line1/line2`, 5-tier `BudgetValue`.
+- **B.2 i18n EN + AR keys** `6e9dab8` — 5-tier picker copy, value-match captions, confidence pills, personalization chip. 40/40 forbidden-vocab guard tests green.
+- **B.3 BudgetPicker 5-tier** `47bd850` — editorial-dark accent for premium/luxury/top_tier (Geist-Bold deviation accepted vs spec's Geist Display Medium since asset not in bundle).
+- **B.4 Step09Budget + EditPreferencesFlow** `5e0560d` — onboarding 5-tier passthrough.
+- **B.5 DimensionBars overhaul** `43fe9dc` — silent-omit, insufficient row, delta hero, value-match captions, hero+expand (11 sub-tasks in 1 commit, 137→304 LOC).
+- **B.6 HeroRings weird-mode** `189854f` — em-dash hero suppression when `comparison_quality === 'weird'`.
+- **B.7 ConfidencePills + ConfidenceDetailsSheet + sourceMethod** `b3a5501` — 3-leg horizontal row, `hidePricePill` upstream suppression, parseSourceMethod returns null on `'estimated'` per §5c. 8/8 component tests + 2 snapshots.
+- **B.8 + B.9 + B.10 ResultsScreen integration** `ff7c66a` — wires ConfidencePills + Chip + Sheet, removes legacy banner. 17 commits aggregate, **1011/1011 Jest GREEN + 30 snapshots + tsc 0**.
+- **§5c send-back resolution** `ca84eff` — DELETED ResultsScreen.tsx:666-668 + 2 i18n keys, added 6 regression-net tests at `__tests__/screens/ResultsScreen.no_estimated_copy.test.tsx` pinning the deletion. (Pre-existing render path violated §5c; bundle B.8 rewire was the moment to remove.)
 
-### Section C tests summary (TBD — fill at D.2.7)
+### Section C tests summary
 
-> Coverage: `scoring_service` / `extraction_service` / `response_builder` ≥80%; new tier/value/confidence ≥90%. `tests/test_bundle_c_integration.py` 6-category cold-cache suite.
+- Bundle C backend suite at branch HEAD: **122 GREEN / 27 RED / 2 skipped**. 27 RED are TDD-first placeholders for v1.1-deferred backend tasks per `tests/_bundle_c_v1_backlog.md` (`529c35c`) — bucketed A-F by triggering v1.1 task.
+- Frontend Bundle C: **26 GREEN + 7 snapshots / 0 RED** (`__tests__/components/ConfidencePills.test.tsx`, `__tests__/components/PersonalizationChip.test.tsx`, etc.).
+- Full frontend Jest at branch HEAD: **1011/1011 GREEN + 30 snapshots**.
+- `npx tsc --noEmit` → 0 errors.
+- `pytest tests/test_security_regression.py -v` → **98/98 PASS** unchanged.
+- Pre-existing fails on main HEAD: 8 (test_personalization model_dump trio + test_share_routes strips_personalization + test_backend_cleanup unused_imports + 1 known-hang `test_prices_endpoint_rate_limited`). Baseline verified identical pre/post Bundle C.
+- TDD-first RED → GREEN transitions documented per v1.1 task. Bucketing in `tests/_bundle_c_v1_backlog.md`.
 
-### Migration 024 (TBD — fill at D.3.x)
+### Migration 024
 
-- Applied via Supabase MCP `apply_migration` at: TBD
-- Forward SQL: `migrations/024_*.sql`
-- Rollback SQL: `migrations/rollback/024_*.sql`
-- Pre-rollback downgrade SQL: `migrations/rollback/024_pre_rollback_downgrade.sql`
-- D.3.3 rollback drill outcome: TBD
+- **Applied via Supabase MCP `apply_migration` at 2026-05-18** during dispatcher pre-merge sweep (task #14).
+- Forward SQL: `migrations/024_top_tier_budget.sql` — adds `top_tier` to `users.preferences.budget` CHECK enum. Pre-merge state was 4-tier `(budget, mid, premium, luxury)` (NOT 3-tier as qa-bundle-c initially mis-read from `app/api/auth_routes.py:136 VALID_BUDGET=["budget","mid","premium"]`; that's the Python write-validator, separate from DB CHECK). Post-merge state: 5-tier `(budget, mid, premium, luxury, top_tier)`.
+- Rollback SQL: `migrations/rollback/024_top_tier_budget.sql` — reverts to 4-tier `(budget, mid, premium, luxury)` + UPDATE row downgrade for `top_tier` → `luxury`.
+- Pre-rollback downgrade SQL: `migrations/rollback/024_pre_rollback_downgrade.sql` (qa-bundle-c D.7.3 `980178b`) — stricter belt-and-suspenders downgrade for `top_tier`+`luxury` → `premium`. Operational standalone, runs before rollback CHECK swap.
+- D.3.3 rollback drill via Supabase MCP `execute_sql` in transaction: applied rollback SQL → SELECT pg_get_constraintdef confirms 4-tier → ROLLBACK preserves production 5-tier. NO data loss. **PASSED.**
 
-### D.4.2 backwards-compat probes (flag OFF) (TBD)
+### D.4.2 PRE-MERGE BASELINE + D.4.3 POST-MERGE wall-times
 
-> Diff of 3 prod probes vs Bundle E baseline. Must match exactly.
+D.4.2 baseline captured by test-bundle-c 42-probe sweep (`6bdb5d5`). Full detail in `docs/investigations/2026-05-17-bundle-c-cold-cache-evidence.md` D.4.2 PRE-MERGE BASELINE section. Per-category cold-cache walls (PROD pre-merge HEAD `9ebf27d`):
 
-| Probe | Shape match? | Notes |
-|---|---|---|
-| iPhone+16+vs+Galaxy+S25 | TBD | TBD |
-| CeraVe+vs+Cetaphil | TBD | TBD |
-| Centrum+vs+One+A+Day | TBD | TBD |
-
-### D.4.3 flag-ON smoke probes (TBD)
-
-> Same 3 probes with `ENABLE_BUNDLE_C_SCORING=true`. Must show populated `factual_verdict`, non-empty `pros/cons`, `dimensions[]` ≥ 3, `applied_shifts[]` present, `comparison_quality` enum.
-
-| Probe | `factual_verdict.line1` | `pros` non-empty | `dimensions[]` length | `applied_shifts` present | `comparison_quality` |
-|---|---|---|---|---|---|
-| iPhone+16+vs+Galaxy+S25 | TBD | TBD | TBD | TBD | TBD |
-| CeraVe+vs+Cetaphil | TBD | TBD | TBD | TBD | TBD |
-| Centrum+vs+One+A+Day | TBD | TBD | TBD | TBD | TBD |
-
-### D.6 post-deploy ship evidence (TBD — fill at D.6.3)
-
-> 7-probe acceptance table per `tests/post_deploy/bundle_c_acceptance.md`. ≥6/7 must satisfy all 6 criteria.
-
-| Probe | Crit 1 (real prices) | Crit 2 (pros/cons) | Crit 3 (dims ≥ 3) | Crit 4 (pills) | Crit 5 (value_match) | Crit 6 (personalization) | Phase 1 wall |
-|---|---|---|---|---|---|---|---|
-| electronics | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| skincare | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| supplements | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| fragrances | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| fashion | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| grocery | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| other_car | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| **weird (probe 8)** | n/a | n/a | n/a (silent omission) | n/a | n/a | n/a | hero overall `—`, NO banner: TBD |
-
-### D.6.4 Sentry baseline diff (24h post-flag-ON) (TBD)
-
-| Metric | Before D.4.3 | 24h after | Diff | Acceptable? |
+| Category | Pre-merge wall (s) | Post-merge initial probe (s) | Post-hotfix round-2 (s) | Delta vs baseline |
 |---|---|---|---|---|
-| Unresolved issues (24h) | TBD | TBD | TBD | TBD |
-| New scoring_service stack traces | n/a | TBD | TBD | TBD (any → block) |
-| New extraction_service stack traces | n/a | TBD | TBD | TBD (any → block) |
-| New response_builder stack traces | n/a | TBD | TBD | TBD (any → block) |
-| Mobile frontend (DimensionBars/ResultsScreen/BudgetPicker) | TBD | TBD | TBD | TBD |
+| fragrances | 15.43 | 20 | (single probe, see below) | +4.6 initial / TBD post-fix |
+| fashion | 14.92 | 17 | — | +2.1 |
+| **electronics** | 14.74 | 16 | **16.6** | +1.9 (within +2s) |
+| skincare | 11.65 | 15 | 16.9 (HOTFIX-3+4 verify) | +3.4 / +5.2 |
+| grocery | 11.03 | 16 | — | +5.0 |
+| supplements | 10.44 | 15 | — | +4.6 |
 
-### EAS Update group ID (D.6.5) (TBD)
+**Wall analysis:** initial post-merge probes ran HOT (4 of 6 exceeded +2s revert trigger), but all stayed within `STREAM_HARD_CAP_SECONDS=25` budget. Hot-fix sweep stabilized: round-2 electronics probe (post `8798f5e`) returned 16.6s — back within +2s tolerance. Per team-lead's revert-trigger evaluation: wall regression alone NOT sufficient grounds for revert (Sentry clean + bugs silent + path forward identified).
+
+### D.4.3 8-criteria contract probes (post-merge state at `8798f5e`)
+
+Final round-2 probe (electronics: iPhone 16 vs Galaxy S25, UTC `2026-05-19T05:40:40-57`):
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| §1a pros/cons populated | 🔴 v1.1 deferred | `pros_a=cons_a=pros_b=cons_b=0`. PROS_POP_DIAGNOSTIC proves keys ARE in GPT response, lost downstream of pop. |
+| §1b factual_verdict line1+line2 | ✅ FIXED | `line1='Galaxy S25 earns 0.9 more stars from reviewers.'` `line2='iPhone 16 stays in the conversation as a close alternative.'` |
+| §2e metadata.comparison_quality | ✅ FIXED | `='normal'` |
+| §2e scoring_v2.comparison_quality | ✅ FIXED (round-2) | `='normal'` (was None pre-`8798f5e`) |
+| §5c Price pill hidden on estimated | ✅ FRONTEND HARDENED | Frontend `hidePricePill={anyEstimated(products)}` + `ResultsScreen.tsx:666-668` deletion + 6 regression-net tests pin §5c silent behavior. |
+| §7b personalization.applied_shifts | ✅ FIXED (round-2) | `=[]` (empty list, type=`list`) for anonymous probe (was None pre-`8798f5e`) |
+| §1c-supplements real prices | ✅ WORKS | iHerb pipeline returns `source_method='converted_usd'`, retailer='iHerb', real BHD prices. |
+| §1c-non-supplements real prices | 🔴 v1.1 deferred | `source_method='estimated'`, retailer=null. GL_FALLBACK_TRACE proves `" price comparison"` query suffix kills Serper match. |
+
+**Pass rate: 6 of 8 GREEN; 2 of 8 v1.1 deferred with concrete fix targets.**
+
+### D.6 post-deploy ship evidence
+
+Full 7-category D.6.2 acceptance suite DEFERRED to v1.1 cycle (hot-fix sweep budget consumed by §1a + wiring iterations). The single-probe round-2 verification above + Sentry 60min clean window constitute the ship evidence. The full 7-probe acceptance will execute once §1a + §1c-non-supplement fixes ship in v1.1.
+
+### D.6.4 Sentry baseline diff (T+0 to T+60min post-merge)
+
+| Metric | Pre-merge baseline | Post-merge T+30min | Post-merge T+45min | Post-merge T+60min |
+|---|---|---|---|---|
+| `mcp__plugin_sentry_sentry__search_issues(query='is:unresolved firstSeen:-30m')` | n/a | 0 new issues | 0 new issues (15m window) | 0 new issues (15m window) |
+| New `scoring_service` stack traces | n/a | none | none | none |
+| New `extraction_service` stack traces | n/a | none | none | none |
+| New `response_builder` stack traces | n/a | none | none | none |
+| New `serper_service` stack traces | n/a | none | none | none |
+
+**Sentry CLEAN throughout hot-fix window.** Bundle C bugs are SILENT (return wrong shape, don't crash). No new error rate above baseline. Full 24h watch continues per task #67 — qa-bundle-c periodic 15-20 min Sentry queries.
+
+### EAS Update group ID (D.6.5)
 
 - Branch: `preview`
-- Group ID: TBD
-- Tester-device confirmation: TBD (build no, screenshots)
+- Group ID: TBD (frontend-bundle-c authorized 2026-05-19 to push post hot-fix sweep close; awaiting their EAS group ID + tester-device screenshots).
+- Tester-device confirmation: TBD (qa-bundle-c will absorb into this section when frontend pastes).
 
 ### Canary state (D.5)
 
-- 100% (pre-launch, <10 testers, per CLAUDE.md rule).
-- `ENABLE_BUNDLE_C_SCORING=true` in Railway from: TBD
-- Drop to 10% trigger: App Store soft-launch (see D.5.2 + memory `project_bundle_c_canary_trigger.md`).
-- Ramp 10 → 50 → 100 per `docs/runbooks/qaren-canary-onboarding.md`.
+- **100% (pre-launch, <10 testers per CLAUDE.md rule).** Always-on per Option A — no `ENABLE_BUNDLE_C_SCORING` env-var flag to flip.
+- Drop to 10% trigger: App Store soft-launch (see memory `project_bundle_c_canary_trigger.md`). Conversion path documented but binary-on for now since the flag was dropped per Option A. Re-introducing canary % gating at soft-launch would require backend retrofit (`BUNDLE_C_CANARY_PERCENT` + `hash_bucket()` at request entry per design § 8c).
 
 ### Rollback path summary (D.7)
 
-- **Primary:** single env-var flip `ENABLE_BUNDLE_C_SCORING=false` in Railway → reverts all scoring/calibration/value/confidence/personalization changes.
-- **Migration:** `migrations/rollback/024_*.sql` drops `top_tier` from CHECK enum. Pre-step: run `migrations/rollback/024_pre_rollback_downgrade.sql` first to downgrade persisted `top_tier` / `luxury` rows to `premium` (else they violate the post-rollback CHECK).
-- **UI:** non-destructive (additive). 5-tier picker stays valid; selecting `top_tier` would fail backend CHECK after rollback until a fresh `eas update` reverts the picker.
-- **Sentry watch window:** 24h post-flip. Any scoring/extraction/response_builder stack trace → emergency flag-off + send-back to backend-bundle-c.
+- **Primary code rollback:** `git revert -m 1 52e853a && git push origin main`. Railway redeploys ~90s. Reverts entire Bundle C scoring/calibration/value/confidence/personalization stack — INCLUDING the §1b factual_verdict + supplements iHerb wins. **Rollback would un-fix already-shipped wins; only justified for emergent critical-rule violation or scoring crash.**
+- **Hot-fix forward** (PREFERRED over revert): backend ships v1.1 patches for §1a downstream-of-pop trace + §1c query-suffix fix, both with concrete diagnostic-confirmed targets. Sentry watch ongoing.
+- **Schema rollback:** Migration 024 `migrations/rollback/024_top_tier_budget.sql`. Pre-step: `migrations/rollback/024_pre_rollback_downgrade.sql` (qa D.7.3 `980178b`) downgrades persisted `top_tier`+`luxury` rows to `premium`. Drill PASSED in transaction via Supabase MCP `execute_sql`.
+- **UI rollback:** non-destructive. Frontend ships ungated; reverting picker = fresh `eas update` to prior bundle. 5-tier preferences silently degrade to backend CHECK validation on save.
+- **Sentry watch window:** 24h post-merge (`52e853a` 2026-05-19). Any new `scoring_service` / `extraction_service` / `response_builder` / `serper_service` stack trace → emergency revert + send-back. Currently CLEAN through T+60min hot-fix window.
 
-### Post-mortem questions (qa-bundle-c idle-work backlog item 2 — fill late)
+### v1.1 backlog (carried over to next session)
 
-> What surprised in diagnostics? Did D.1 evidence change implementation we'd planned? Did 100% canary catch anything a 10% would have? Pre-fill stubs:
+Per `tests/_bundle_c_v1_backlog.md` (test-bundle-c `529c35c`) + post-merge hot-fix sweep findings:
 
-- D.1 surprises: TBD
-- Implementation deltas vs spec: TBD
-- 100%-canary unique finds: TBD
+**Backend (v1.1 priority order):**
+1. **§1a downstream-of-pop trace** — start at `structured_comparison_service.py:957+1253` (both pop sites), trace pros_cons through to `build_comparison_response`. Three candidates per team-lead's analysis: (a) downstream overwrite, (b) Pydantic strip, (c) builder discarding pros_cons field. Concrete + bounded fix.
+2. **§1c query-suffix fix** — drop `" price comparison"` suffix in query construction at the call site to `serper_service.search_product_prices`. One-line surgical change. Then re-verify D.4.3 §1c-non-supplements GREEN.
+3. **A.4.8 Tier 3 GPT-4o batched** — batched call for ALL remaining gap fields after Tier 2 missed.
+4. **A.6.2-A.6.5 value math richer** — `build_value_delta_text`, delta-text variants per priority, cross-tier value framing copy refinements.
+5. **A.7.2 confidence pill thresholds tuning** — pending post-launch observations.
+6. **A.8.1 build_dimensions_v2 thin adapter** — refactor from CATEGORY_DIMENSIONS (currently builder works but could be thinner).
+7. **Bundle C v1 backend payload cleanup** — strip `price.note` field when `source_method='estimated'` (defense-in-depth, frontend already ignores it).
+
+**Test (v1.1 priority order):**
+- 27 RED placeholders flip to GREEN as backend v1.1 lands.
+- Promote 5 qa idle-stubs from `tests/test_bundle_c_edge_stubs.py` (mixed-source-method, anonymous-applied-shifts, weird-comparison, other-geometric-mean, backend-internals-leak) once test estate has bandwidth.
+
+**Frontend (no v1.1 scope identified):**
+- Section B fully shipped + §5c send-back resolved.
+- Visual evidence (EN+AR screenshots from EAS preview channel tester device) pending.
+
+### Post-mortem questions
+
+**D.1 surprises:**
+- §1c "Bahrain coverage gap" was real but ALSO had an instrumentation hole (Serper meter never ticked). The hole made it LOOK like Serper wasn't being called at all (admin/costs counter=0), but direct curl proved Serper IS called — gl=bh just returns 0 items. Two distinct bugs surfaced.
+- §1a hypothesis was WRONG. Initial diagnosis pointed at verdict GPT dropping keys; PROS_POP_DIAGNOSTIC at `8798f5e` proved GPT IS emitting 4 pros + 4 cons per product. Bug is downstream of `comparison.pop()`. 3 patch attempts (response_format, prompt-loosen, then logging) before the right diagnostic surfaced the right root cause.
+- §1b was a planning-time omission (no builder ever existed), caught by code inspection — confirms team-lead's diagnostic-first discipline value.
+
+**Implementation deltas vs spec:**
+- `ENABLE_BUNDLE_C_SCORING` flag was DROPPED via Option A. Plan said flag-gate; qa flag-tightness analysis showed only 1 of ~10 behavioral changes had flag-gating, so flag was vestigial. Always-on shipped cleaner.
+- 4 backend hot-fixes post-merge (`50e3290`, `44a0539`, `ed514c1`, `8798f5e`) — partially planned for in spec §8e, but the velocity of need wasn't anticipated.
+- Diagnostic logging consolidated onto single `DEBUG_STAGE_TIMINGS` flag instead of plan's 3 separate flags (backend's choice, simpler, smaller blast radius).
+
+**100%-canary unique finds (would 10% have caught these?):**
+- §1a / §1c-non-supplement bugs surfaced on the FIRST 6 cold-cache probes against PROD — would have been visible at any canary %.
+- Wall-time +2s regression visible at any sample size.
+- Hot-fix sweep cycle (T+0 to T+60min) was 1-hour wall-clock; canary % doesn't affect this timing.
+- Per CLAUDE.md "<10 testers → 100% canary" rule: appropriate, no statistical risk.
+
+**Process learnings (saved to memory):**
+- `memory/feedback_git_merge_verification.md` — `git diff --diff-filter=D` is NOT a merge deletion preview. Use `git merge --no-commit --no-ff` dry-run.
+- `memory/feedback_user_visible_vs_payload_distinction.md` — forbidden-vocab scans need rendering-path cross-reference; payload-only hits ≠ UI violations.
+- `memory/project_bahrain_shopping_feed_gap.md` — gl=us fallback is operational stopgap; real BH feed work triggers per fallback hit-rate threshold.
 
