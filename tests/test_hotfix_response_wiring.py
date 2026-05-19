@@ -149,6 +149,56 @@ def test_response_personalization_applied_shifts_is_list_not_none():
     assert isinstance(shifts, list)
 
 
+def test_response_scoring_v2_has_comparison_quality_round2_fix():
+    """Hot-fix round 2: scoring_v2 must ALSO carry comparison_quality
+    (in addition to metadata.comparison_quality) per spec § 2e — frontend
+    HeroRings.tsx reads scoring_v2.comparison_quality for weird-mode em-dash."""
+    response = build_comparison_response(
+        product_data=_minimal_product_data(),
+        comparison={"winner_index": 1},
+        scoring_result=_minimal_scoring_result(),
+        product_names=["iPhone 16", "Galaxy S25"],
+        tradeoffs=[], confidence={"overall": "high"}, verdict_validation={},
+        user_preferences=None, from_cache=False, query="x", region="bahrain",
+        category_used="electronics", category_switched=False,
+        original_category=None, total_cost=0.0, api_calls=0, gpt_calls=0,
+        serper_calls=0, elapsed_seconds=1.0,
+    )
+    sv2 = response.get("scoring_v2") or {}
+    cq = sv2.get("comparison_quality")
+    assert cq is not None and cq in {"normal", "weak", "weird"}, (
+        f"scoring_v2.comparison_quality missing or invalid: {cq!r} — "
+        f"round-2 hot-fix not landed. sv2 keys: {list(sv2.keys())}"
+    )
+
+
+def test_response_scoring_v2_has_personalization_applied_shifts_round2_fix():
+    """Hot-fix round 2: scoring_v2.personalization.applied_shifts must be
+    a list (per spec § 7b) — frontend chip reads this path."""
+    response = build_comparison_response(
+        product_data=_minimal_product_data(),
+        comparison={"winner_index": 1},
+        scoring_result=_minimal_scoring_result(),
+        product_names=["iPhone 16", "Galaxy S25"],
+        tradeoffs=[], confidence={"overall": "high"}, verdict_validation={},
+        user_preferences=None, from_cache=False, query="x", region="bahrain",
+        category_used="electronics", category_switched=False,
+        original_category=None, total_cost=0.0, api_calls=0, gpt_calls=0,
+        serper_calls=0, elapsed_seconds=1.0,
+    )
+    sv2 = response.get("scoring_v2") or {}
+    pers = sv2.get("personalization")
+    assert pers is not None, (
+        f"scoring_v2.personalization missing — round-2 hot-fix not landed. "
+        f"sv2 keys: {list(sv2.keys())}"
+    )
+    shifts = pers.get("applied_shifts")
+    assert shifts is not None and isinstance(shifts, list), (
+        f"scoring_v2.personalization.applied_shifts must be list (NEVER None), "
+        f"got {shifts!r}"
+    )
+
+
 def test_response_applied_shifts_qualitative_only_no_magnitude_leak():
     """Critical rule #2 still enforced in the hot-fix path: applied_shifts
     items must have ONLY {dim_display, direction}, NEVER magnitude/coefficient."""

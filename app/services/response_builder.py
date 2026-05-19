@@ -367,6 +367,19 @@ def _build_scoring_v2(
         "win_margin": abs(score_a - score_b),
         "dimensions": dimensions,
         "factual_verdict": factual_verdict,
+        # Bundle C v1 hot-fix (round 2) — HeroRings.tsx reads
+        # scoring_v2.comparison_quality per spec § 2e for weird-mode em-dash.
+        # Also surface in scoring_v2 (in addition to metadata.comparison_quality
+        # from the first hot-fix round) so both consumers see it.
+        "comparison_quality": _safe_detect_comparison_quality(product_data),
+        # Bundle C v1 hot-fix (round 2) — spec § 7b: scoring_v2.personalization
+        # contains the chip's applied_shifts contract. ALWAYS emit the
+        # personalization wrapper with applied_shifts as a list (empty
+        # when no priorities/no shifts) so the frontend can iterate
+        # safely.
+        "personalization": {
+            "applied_shifts": _safe_compute_applied_shifts(scoring_result),
+        },
     }
 
     # Bundle C § 1b diagnostic — log when scoring_v2 ships without a populated
