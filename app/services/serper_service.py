@@ -110,6 +110,42 @@ async def search_web(
 _GCC_COUNTRIES = frozenset({"bh", "sa", "ae", "kw", "qa", "om"})
 
 
+# Bundle C HOTFIX-2 round 2 — GPT-emitted product_info["search_query"]
+# sometimes appends operator-style suffixes like "price", "buy", "best
+# price" because PRODUCT_PARSER_PROMPT (extraction_service.py:71+82)
+# tells GPT to emit "an optimized search query for price searches".
+# Direct curl proves these suffixes KILL Google Shopping match:
+#   q="Apple iPhone 16 price" gl=us → 0 items
+#   q="iPhone 16"             gl=us → 20 items
+# Strip defensively so cached + new GPT outputs both work. The match
+# is case-insensitive, only trailing tokens, only the operator words
+# below (does not touch product-essential keywords like "Pro", "Plus").
+import re as _re
+
+_SHOPPING_QUERY_TAIL_NOISE = _re.compile(
+    r"(?:\s+(?:price|prices|pricing|cost|buy|best\s+price|cheapest|deals?|sale|"
+    r"on\s+sale|amazon|noon|carrefour|bahrain|saudi(?:\s+arabia)?|uae|"
+    r"dubai|kuwait|qatar|oman|bhd|sar|aed|kwd|qar|omr|usd))+\s*$",
+    _re.IGNORECASE,
+)
+
+
+def _clean_shopping_query(product: str) -> str:
+    """Strip trailing operator-style suffixes that wreck Google Shopping
+    match. Idempotent — calling twice is a no-op. Preserves all interior
+    tokens (only the trailing run is removed). Applied repeatedly until
+    no more trailing tail noise — handles 'iPhone price Bahrain BHD buy'
+    by chewing one operator-run at a time."""
+    if not product:
+        return product
+    prev = None
+    cleaned = product
+    while cleaned != prev:
+        prev = cleaned
+        cleaned = _SHOPPING_QUERY_TAIL_NOISE.sub("", cleaned).strip()
+    return cleaned or product  # never return empty string
+
+
 async def _do_serper_shopping(product: str, gl: str) -> Dict[str, Any]:
     """Single Serper Shopping call. Records usage on HTTP 200. Returns
     parsed JSON or {} on error. No retry, no fallback — fallback logic
@@ -158,6 +194,18 @@ async def search_product_prices(
     """
     if not SERPER_API_KEY:
         return {"shopping": [], "organic": [], "error": "Search not configured"}
+
+    # HOTFIX-2 round 2 — drop GPT-emitted " price"/"buy"/etc. tails.
+    # Both primary GCC and us_fallback share the cleaned string so
+    # behaviour is consistent. Log when we actually changed something
+    # so Ahmed can see in Railway whether old GPT outputs are still
+    # producing dirty queries.
+    original_product = product
+    product = _clean_shopping_query(product)
+    if product != original_product:
+        logger.info(
+            f"[SHOPPING_QUERY_CLEAN] before={original_product!r} after={product!r}"
+        )
 
     primary = await _do_serper_shopping(product, gl=country)
     primary_shopping = primary.get("shopping", []) or []

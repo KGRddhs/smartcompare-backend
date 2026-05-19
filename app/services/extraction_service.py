@@ -68,7 +68,7 @@ Extract and return ONLY valid JSON (no markdown, no explanation):
             "name": "product name",
             "variant": "variant/size if mentioned (e.g., 128GB, Pro, 2.5kg)",
             "category": "electronics|grocery|supplements|makeup|skincare|haircare|fragrances|fashion|other",
-            "search_query": "optimized search query for this product"
+            "search_query": "exact product name only (brand + model + variant). DO NOT add words like 'price', 'buy', 'best price', 'cheapest', 'deals'."
         }
     ],
     "comparison_type": "price|specs|general",
@@ -79,7 +79,7 @@ RULES:
 - Extract ALL products mentioned (typically 2 for comparison)
 - Normalize brand names (e.g., "iphone" -> "Apple", "galaxy" -> "Samsung")
 - Include variant if specified (storage, size, color, etc.)
-- search_query should be specific for price searches
+- search_query MUST be the exact product name only (brand + model + variant). Never append "price", "buy", "best price", "cheapest", "deals", retailer names, or country names — those tokens break Google Shopping match. Example: "iPhone 16 Pro 256GB" NOT "iPhone 16 Pro 256GB price Bahrain"
 - Category detection -- match based on PRODUCT TYPE, not brand:
   * electronics: phones, laptops, TVs, cameras, headphones, tablets, consoles, smartwatches
   * grocery: food, beverages, household items, cleaning products
