@@ -48,6 +48,39 @@ def derive_rating_from_scores(overall_score: float) -> float:
     return round(min(rating, 4.8), 1)
 
 
+# Bundle C v1 hot-fix wrappers — wire the A.4.5 + A.9.1 helpers from
+# scoring_service + structured_comparison_service into the response so
+# they actually surface in production payloads. Both are defensive — any
+# import / runtime error falls back to a safe default (None for
+# comparison_quality so frontend gets the legacy null contract; [] for
+# applied_shifts per spec § 7a chip-hides-when-empty rule).
+
+
+def _safe_detect_comparison_quality(product_data: List[Dict[str, Any]]):
+    try:
+        from app.services.structured_comparison_service import detect_comparison_quality
+        return detect_comparison_quality(product_data, post_fallback=True)
+    except Exception:  # noqa: BLE001 — never let a hot-fix wrapper crash the response
+        return None
+
+
+def _safe_compute_applied_shifts(scoring_result: Dict[str, Any]) -> list:
+    """Spec § 7a: chip hides itself when applied_shifts is empty list — so
+    we ALWAYS return a list (never None). Reads weights_used from the
+    first product's scoring entry (both products share the same weights
+    per `compute_scores` flow) and the category defaults from the
+    scoring_result top-level."""
+    try:
+        from app.services.scoring_service import _compute_applied_shifts
+        scores = (scoring_result or {}).get("scores") or {}
+        first = scores.get("product_0") or {}
+        weights_used = first.get("weights_used") or {}
+        defaults = (scoring_result or {}).get("category_weights") or {}
+        return _compute_applied_shifts(weights_used, defaults) or []
+    except Exception:  # noqa: BLE001 — never crash the response
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Bundle C § 1b A.3.2 — _build_factual_verdict
 # ---------------------------------------------------------------------------
@@ -512,6 +545,11 @@ def build_comparison_response(
             "personalized": personalized,
             "factors": personalization_factors,
             "personalized_insights": comparison.get("personalized_insights", []),
+            # Bundle C § 7b A.9.1 hot-fix — wire _compute_applied_shifts so
+            # the personalization chip can read the qualitative direction
+            # arrows. Empty list (NOT None) when no priorities set OR no
+            # significant shifts — chip hides itself naturally.
+            "applied_shifts": _safe_compute_applied_shifts(scoring_result),
         },
 
         "metadata": {
@@ -530,6 +568,10 @@ def build_comparison_response(
             },
             "verdict_validation": verdict_validation,
             "timestamp": datetime.now().isoformat(),
+            # Bundle C § 2e A.4.5 hot-fix — wire detect_comparison_quality so
+            # the frontend can adapt verdict framing without a UI banner.
+            # Returns 'normal' | 'weak' | 'weird' per spec § 2e triggers.
+            "comparison_quality": _safe_detect_comparison_quality(product_data),
         },
     }
 
