@@ -619,6 +619,22 @@ def build_comparison_response(
     }
 
     # Backward compatibility aliases
+    # Bundle C v1.1 § 1a defensive — the canonical v2 path
+    # `overview.products[i].pros / .cons` is already flat (lines
+    # 533-534 project from `pros_cons`). But this legacy alias ships
+    # the RAW `product_data` list which has `pros_cons` NESTED only —
+    # no flat `pros`/`cons` keys. qa's parser-ambiguity confusion this
+    # session traced to a consumer reading `response.products[*].pros`
+    # (legacy path) and getting undefined → 0. Project flat keys onto
+    # each product_data dict in-place BEFORE alias assignment so both
+    # paths agree. Idempotent — honors pre-set flat values; only
+    # fills from `pros_cons` when the flat key is absent. Nested
+    # `pros_cons` retained for any consumer that already reads it.
+    for pd in product_data:
+        if "pros" not in pd:
+            pd["pros"] = (pd.get("pros_cons") or {}).get("pros") or []
+        if "cons" not in pd:
+            pd["cons"] = (pd.get("pros_cons") or {}).get("cons") or []
     result["products"] = product_data
     result["comparison"] = comparison
     result["recommendation"] = comparison.get("winner_reason", "")
