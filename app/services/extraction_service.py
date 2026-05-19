@@ -587,7 +587,7 @@ Return ONLY valid JSON:
 }
 
 RULES:
-- 4-6 pros, 2-4 cons per product -- each MUST include a specific number, percentage, or measurable fact
+- 4-6 pros, 2-4 cons per product -- INCLUDE a specific number, percentage, or measurable fact when available; otherwise use a concrete qualitative attribute (e.g. "OLED display", "Cruelty-free certified", "Hypoallergenic formula"). NEVER return empty pros[] or cons[] arrays — every product has SOME observable strengths and weaknesses, and the user is comparing precisely BECAUSE they want to see them. If two products feel close to identical, surface what makes each one distinctive in PRACTICAL use, even small differences.
 - winner_reason MUST be under 20 words and cite the single most important numeric advantage
 - key_tradeoff: ONE sentence naming the losing product's single strongest advantage
 - value_context: per-product dict with keys product_0 and product_1. Each value is ONE sentence about THAT product's price-to-quality relationship for the GCC market. The two sentences MUST be distinct -- never reuse the same string for both products. If cross-tier, frame each as "different products for different needs" but still describe each product specifically.
