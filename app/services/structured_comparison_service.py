@@ -1913,6 +1913,16 @@ class StructuredComparisonService:
             self._track_serper_cost()
             shopping_items = search_results.get("shopping", [])
             self._shopping_items_cache[full_name] = shopping_items
+            # Bundle C v1 hot-fix — always-on log of gl=us fallback activity.
+            # Helps Ahmed/qa see in Railway logs WHY non-supplement queries
+            # still hit estimated despite the A.3.3-fix-2 gl=us fallback.
+            # Lightweight (1 line per product, INFO level) — no flag gate.
+            shopping_region = search_results.get("shopping_region", "unknown")
+            logger.info(
+                f"[GL_FALLBACK_TRACE] query={search_query!r} "
+                f"region={region_info['code']} shopping_region={shopping_region} "
+                f"items={len(shopping_items)} category={category}"
+            )
 
         tier3_estimate = None
 
