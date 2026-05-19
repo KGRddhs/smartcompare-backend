@@ -36,6 +36,19 @@ export interface ReviewData {
   } | null;
 }
 
+// Bundle C — Mirror of backend price_service `source_method` enum.
+// `estimated` is kept in the enum (Tier 3 GPT fallback), but UI MUST
+// suppress the Price confidence pill when any product carries it
+// (spec § 5c, `feedback_no_estimated_word_in_ui.md`).
+export type SourceMethod =
+  | 'local_bhd'
+  | 'converted_usd'
+  | 'page_scrape'
+  | 'page_scrape_rendered'
+  | 'firecrawl'
+  | 'scrapedo_rendered'
+  | 'estimated';
+
 export interface ProductPrice {
   amount: number | null;
   currency: string;
@@ -46,7 +59,7 @@ export interface ProductPrice {
   confidence?: number;
   note?: string;
   unavailable?: boolean;
-  source_method?: 'local_bhd' | 'converted_usd' | 'estimated' | 'page_scrape' | 'page_scrape_rendered';
+  source_method?: SourceMethod;
 }
 
 export interface Product {
@@ -289,14 +302,25 @@ export interface ScoringResult {
 // the legacy ScoringResult during the rollout window — Bundle F drops
 // the legacy keys.
 
+// Bundle C — Dimension contract loosens score_a/score_b to allow null
+// (silent omission per spec § 2h) and makes confidence optional so
+// flag-OFF rows still parse. Adds `data_insufficient` flag for the
+// rare last-resort "Limited data" row (spec § 2b), plus optional
+// per-row `value_match_a`/`value_match_b` (spec § 4d) and
+// `is_cross_tier` carry-down (spec § 4c).
 export interface Dimension {
   key: string;
   label: string;
-  score_a: number;
-  score_b: number;
+  score_a: number | null;
+  score_b: number | null;
   delta_text: string;
-  confidence: 'high' | 'medium' | 'low';
-  is_core: boolean;
+  confidence?: 'high' | 'medium' | 'low';
+  is_core?: boolean;
+  data_insufficient?: boolean;
+  value_match_a?: ValueMatch;
+  value_match_b?: ValueMatch;
+  is_cross_tier?: boolean;
+  key_tradeoff?: string;
 }
 
 export interface OverallScore {
@@ -304,10 +328,45 @@ export interface OverallScore {
   product_b: number;
 }
 
+// Bundle C — Per-product value-vs-budget classification (spec § 4d).
+export type ValueMatch = 'in_range' | 'above_range' | 'below_range';
+
+// Bundle C — Comparison-quality classifier (spec § 2e). `weird` triggers
+// hero suppression + verdict-text adaptation; banner-free per design rule 1.
+export type ComparisonQuality = 'normal' | 'weak' | 'weird';
+
+// Bundle C — Personalization shift contract (spec § 7b). Direction-only,
+// no coefficients or cap math (per `feedback_no_backend_internals_in_reveals.md`).
+export interface PersonalizationApplied {
+  applied_shifts: Array<{ dim_display: string; direction: 'up' | 'down' }>;
+}
+
+// Bundle C — confidence_details strings per leg, composed by backend
+// for the "What we know" bottom sheet (spec § 5b). Frontend never
+// composes these strings; regex test guards against threshold leaks.
+export interface ConfidenceDetails {
+  price?: string[];
+  reviews?: string[];
+  specs?: string[];
+}
+
+export interface ConfidenceLegs {
+  price?: 'strong' | 'acceptable' | 'weak';
+  reviews?: 'strong' | 'acceptable' | 'weak';
+  specs?: 'strong' | 'acceptable' | 'weak';
+}
+
 export interface ScoringV2 {
   overall_score: OverallScore;
   win_margin: number;
   dimensions: Dimension[];
+  // Bundle C additions — all optional so flag-OFF rows parse cleanly.
+  comparison_quality?: ComparisonQuality;
+  value_match?: { product_a: ValueMatch; product_b: ValueMatch };
+  personalization?: PersonalizationApplied;
+  confidence_legs?: ConfidenceLegs;
+  confidence_details?: ConfidenceDetails;
+  factual_verdict?: { line1: string; line2: string };
 }
 
 export interface ComparisonResultV2 extends ComparisonResult {
@@ -369,9 +428,13 @@ export interface NotificationTypes {
   decision_retrospective?: boolean;
 }
 
+// Bundle C — 5-tier budget literal (spec § 3a). Backwards-compat: API
+// still accepts older 3-tier values; persisted `premium` rows stay valid.
+export type BudgetValue = 'budget' | 'mid' | 'premium' | 'luxury' | 'top_tier';
+
 export interface UserPreferences {
   priorities: string[];
-  budget: 'budget' | 'mid' | 'premium';
+  budget: BudgetValue;
   lifestyle: string[];
   brand_attitude: 'brand_loyal' | 'function_first' | 'best_of_both';
   ai_sharing_enabled?: boolean;
@@ -452,7 +515,7 @@ export interface OnboardingData {
   language: 'en' | 'ar';
   region: 'bahrain' | 'saudi_arabia' | 'uae' | 'kuwait' | 'qatar' | 'oman';
   priorities: string[];
-  budget: 'budget' | 'mid' | 'premium';
+  budget: BudgetValue;
   lifestyle: string[];
   brand_attitude: 'brand_loyal' | 'function_first' | 'best_of_both';
 }

@@ -198,3 +198,165 @@ Per user pivot from "ship D2 as-is" to "take one more fix to close errors," ship
 **Quality intact post-fix**: 15/15 live D2 spec-parity tests pass with ±1 field tolerance, all per-category wall-time ceilings met (fragrances ceiling is 60s; bench at 48s is well under).
 
 **Realistic ceiling on fragrances without further work**: ~45-50s cold cache. To break below 25s would require either (a) skipping Tier 1.5 entirely for fragrances and routing direct to Tier 2 GPT (significant quality regression — all fragrances would show `local_bhd`/`estimated` instead of real scraped prices), or (b) Firecrawl reliability improvement (out of our control), or (c) caching tomford.com / dior.com scrapes more aggressively across sessions. **Deferred to future session** — current bench-driven evidence doesn't justify further code changes without per-stage diagnostics.
+
+---
+
+## Session 51 — Bundle C: Scoring + Personalization Quality Pass (DESIGN + PLAN READY, 2026-05-17)
+
+Brainstorm → spec → 4-Opus plan, committed on `feature/bundle-c-scoring` (pushed to origin). NO implementation — plan execution is next-session work.
+
+**Deliverables:**
+- Spec: `docs/superpowers/specs/2026-05-17-bundle-c-scoring-quality-design.md` (525 lines, 11 sections, commit `adb4f2b`).
+- Plan: `docs/superpowers/plans/2026-05-17-bundle-c-scoring-quality.md` (5,785 lines / 170 tasks, commit `67ae50d`). Authored by 4-Opus team: backend-planner (Section A, 39 tasks), frontend-planner (Section B, 43 tasks), test-planner (Section C, 55 tasks), qa-planner (Section D, 33 tasks + assembly).
+
+**Cold-cache probes during brainstorm surfaced 3 production bugs (Section 1 of plan):**
+- **1a — pros/cons empty system-wide.** Both probes (iPhone vs Galaxy + CeraVe vs Cetaphil, `?nocache=true`) returned empty `pros[]`/`cons[]`. Root cause unknown — diagnostic-first gate (D.1.1) requires raw GPT response capture before any fix.
+- **1b — `scoring_v2.factual_verdict` always None.** Bundle E spec said it should always render. Pure template fix in `response_builder._build_scoring_v2` after evidence captured.
+- **1c — mainstream prices fall to `source_method="estimated"`.** Both probes hit estimated for products that should land Tier 1 Serper Shopping (iPhone 16, Galaxy S25, CeraVe, Cetaphil in Bahrain). Diagnostic with `DEBUG_STAGE_TIMINGS=true` + Firecrawl/Scrape.do invocation logging required to identify which tier each product traverses + where it falls.
+
+**Reframed scoring math (Sections 2-7 of plan):**
+- Missing-data floor of 30 creates phantom score gaps (legacy probe: iPhone overall=37.6 vs S25=77.5 is data-sparsity artifact, not real quality gap). KILLED — `None` propagation, silent omission of null-score dims.
+- Calibration band `[60, 95]` kept; honesty guard widens to ≥3 null dims; "Limited data" pill DROPPED next to hero (just shows the number).
+- 5-tier budget expansion (`top_tier` for 1000+ BHD shoppers per Ahmed's GCC reality check). `PRICE_TIERS_BY_CATEGORY` per-category breakpoints + geometric-mean sub-scale for `other` so cars/furniture/etc. map their tier semantic correctly.
+- Dynamic value formula by user priority (`price` priority → 0.4/0.6 split; `quality` → 0.7/0.3). Closes the original "iPhone 33% cheaper got 77 vs S25 85" complaint via priority-aware math + promoted delta-text hero ("40% less").
+- Confidence widget: threshold loosening (drop `verified=True` requirement; accept `review_count >= 100` or `shopping_count >= 3` even when one product estimated) + replace single-word banner with 3-leg pill row (Price · Reviews · Specs) + tap-reveal "What we know" bottom sheet. Price pill HIDDEN entirely when `source_method=estimated` — silent on provenance, disclosure shifts to Terms.
+- DimensionBars sourced from `CATEGORY_DIMENSIONS` (drops hand-coded `_dim_dpi/_dim_popularity/_dim_build_quality` builders), hero+expand UI with 3-4 visible + tappable "See full breakdown" for all 6 category dims.
+- Personalization chip below verdict: compact qualitative arrows ("↑ Performance · ↓ Brand") — direction ONLY, never magnitude/coefficients.
+- 3-tier spec fallback (Tier 1 primary → Tier 2 Serper+GPT-mini per missing non-negotiable → Tier 3 GPT-4o knowledge synthesis batched) — specs should not have missing fields.
+- `comparison_quality: "normal"|"weak"|"weird"` flag for cross-category/severe-gap/10x-price-spread cases — verdict text carries context, NO banner.
+
+**Three project-wide rules absorbed during brainstorm (saved to memory):**
+1. `memory/feedback_no_info_banners.md` — no top-of-screen banners ever, per-element microcopy only.
+2. `memory/feedback_no_backend_internals_in_reveals.md` — tap-reveals show qualitative arrows/labels; never coefficients, cap percentages, shift math.
+3. `memory/feedback_no_estimated_word_in_ui.md` — backend enum stays, UI never says "estimated"/"reference price"/"indicative", Terms covers disclosure.
+
+**4-Opus planning team pattern (validated this session):** spawn 4 agents in parallel writing to `docs/superpowers/plans/_<bundle>_staging/section_X.md`, qa-agent assembles into final plan, dispatcher cleans staging. ~45 min wall time for 170-task plan with 5,785 lines.
+
+**Pending next sessions (post Bundle C plan delivery):**
+- **Bundle C implementation** — 4-Opus team executes the 170-task plan. D.1 diagnostic gate BLOCKS all §1a/§1b/§1c patches until evidence captured.
+- **Bucket B brainstorm** — two-input UX redesign (text/URL paired boxes), dedicated session.
+
+**Resolved this session (stale MEMORY entries corrected):**
+- Supplements price pipeline (~21-25s wall noted) actually measures 11.6s cold-cache; iHerb scrape NOT the bottleneck (reviews_ms is). Session 50 silently resolved iHerb.
+- Fragrances pipeline (~48-50s wall noted) actually measures 12-16s; Firecrawl never fires in prod, prices fall to GPT estimate; the slow-fail path no longer reproduces.
+- Reviews + verdict are the post-D2 wall floor (~9-10s combined, sequential, hard to parallelize without quality regression).
+
+---
+
+## Bundle C — Scoring + Personalization Quality Pass (Session 51) — SKELETON
+
+**Status:** IN PROGRESS — populated incrementally by qa-bundle-c as D.1.3 / D.4.2 / D.4.3 / D.6.3 / D.6.4 / D.6.5 / D.7.1 / D.7.3 / D.9.2 land.
+
+**Plan:** `docs/superpowers/plans/2026-05-17-bundle-c-scoring-quality.md` (5,785 lines, 170 tasks).
+**Spec:** `docs/superpowers/specs/2026-05-17-bundle-c-scoring-quality-design.md` (525 lines, 11 sections).
+**Branch:** `feature/bundle-c-scoring` (head `71b360c` at session start).
+**Team:** 4-Opus (`backend-bundle-c`, `frontend-bundle-c`, `test-bundle-c`, `qa-bundle-c` — this agent).
+**Flag:** `ENABLE_BUNDLE_C_SCORING` (default OFF in code; flipped ON in Railway during testing per iteration-phase discipline).
+
+### Summary (TBD — fill at D.9.2 consolidation)
+
+> One paragraph: what shipped, why, head SHA after merge.
+
+### D.1 diagnostic findings (TBD — fill at D.1.3)
+
+> Per-category root-cause table for §1a (pros/cons empty), §1b (`factual_verdict` None), §1c (mainstream prices fall to `estimated`).
+> Evidence source: `docs/investigations/2026-05-17-bundle-c-cold-cache-evidence.md`.
+
+- §1a root cause: TBD
+- §1b root cause: TBD
+- §1c root cause: TBD
+- Diagnostic env-var window closed at: TBD (D.1.4)
+
+### Section A patches summary (TBD — fill at D.2.5)
+
+> Per-subsection list: A.1 migration, A.2 diagnostic hooks, A.3 fixes, A.4 missing-data, A.5 tier expansion, A.6 value math, A.7 confidence thresholds, A.8 applied_shifts, A.9 weird detector, A.10 cleanup, A.11 docs.
+
+### Section B components summary (TBD — fill at D.2.6)
+
+> BudgetPicker 5-tier · DimensionBars hero+expand · ConfidencePills 3-leg · ConfidenceDetailsSheet · PersonalizationChip · ResultsScreen integration · i18n EN/AR.
+
+### Section C tests summary (TBD — fill at D.2.7)
+
+> Coverage: `scoring_service` / `extraction_service` / `response_builder` ≥80%; new tier/value/confidence ≥90%. `tests/test_bundle_c_integration.py` 6-category cold-cache suite.
+
+### Migration 024 (TBD — fill at D.3.x)
+
+- Applied via Supabase MCP `apply_migration` at: TBD
+- Forward SQL: `migrations/024_*.sql`
+- Rollback SQL: `migrations/rollback/024_*.sql`
+- Pre-rollback downgrade SQL: `migrations/rollback/024_pre_rollback_downgrade.sql`
+- D.3.3 rollback drill outcome: TBD
+
+### D.4.2 backwards-compat probes (flag OFF) (TBD)
+
+> Diff of 3 prod probes vs Bundle E baseline. Must match exactly.
+
+| Probe | Shape match? | Notes |
+|---|---|---|
+| iPhone+16+vs+Galaxy+S25 | TBD | TBD |
+| CeraVe+vs+Cetaphil | TBD | TBD |
+| Centrum+vs+One+A+Day | TBD | TBD |
+
+### D.4.3 flag-ON smoke probes (TBD)
+
+> Same 3 probes with `ENABLE_BUNDLE_C_SCORING=true`. Must show populated `factual_verdict`, non-empty `pros/cons`, `dimensions[]` ≥ 3, `applied_shifts[]` present, `comparison_quality` enum.
+
+| Probe | `factual_verdict.line1` | `pros` non-empty | `dimensions[]` length | `applied_shifts` present | `comparison_quality` |
+|---|---|---|---|---|---|
+| iPhone+16+vs+Galaxy+S25 | TBD | TBD | TBD | TBD | TBD |
+| CeraVe+vs+Cetaphil | TBD | TBD | TBD | TBD | TBD |
+| Centrum+vs+One+A+Day | TBD | TBD | TBD | TBD | TBD |
+
+### D.6 post-deploy ship evidence (TBD — fill at D.6.3)
+
+> 7-probe acceptance table per `tests/post_deploy/bundle_c_acceptance.md`. ≥6/7 must satisfy all 6 criteria.
+
+| Probe | Crit 1 (real prices) | Crit 2 (pros/cons) | Crit 3 (dims ≥ 3) | Crit 4 (pills) | Crit 5 (value_match) | Crit 6 (personalization) | Phase 1 wall |
+|---|---|---|---|---|---|---|---|
+| electronics | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| skincare | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| supplements | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| fragrances | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| fashion | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| grocery | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| other_car | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| **weird (probe 8)** | n/a | n/a | n/a (silent omission) | n/a | n/a | n/a | hero overall `—`, NO banner: TBD |
+
+### D.6.4 Sentry baseline diff (24h post-flag-ON) (TBD)
+
+| Metric | Before D.4.3 | 24h after | Diff | Acceptable? |
+|---|---|---|---|---|
+| Unresolved issues (24h) | TBD | TBD | TBD | TBD |
+| New scoring_service stack traces | n/a | TBD | TBD | TBD (any → block) |
+| New extraction_service stack traces | n/a | TBD | TBD | TBD (any → block) |
+| New response_builder stack traces | n/a | TBD | TBD | TBD (any → block) |
+| Mobile frontend (DimensionBars/ResultsScreen/BudgetPicker) | TBD | TBD | TBD | TBD |
+
+### EAS Update group ID (D.6.5) (TBD)
+
+- Branch: `preview`
+- Group ID: TBD
+- Tester-device confirmation: TBD (build no, screenshots)
+
+### Canary state (D.5)
+
+- 100% (pre-launch, <10 testers, per CLAUDE.md rule).
+- `ENABLE_BUNDLE_C_SCORING=true` in Railway from: TBD
+- Drop to 10% trigger: App Store soft-launch (see D.5.2 + memory `project_bundle_c_canary_trigger.md`).
+- Ramp 10 → 50 → 100 per `docs/runbooks/qaren-canary-onboarding.md`.
+
+### Rollback path summary (D.7)
+
+- **Primary:** single env-var flip `ENABLE_BUNDLE_C_SCORING=false` in Railway → reverts all scoring/calibration/value/confidence/personalization changes.
+- **Migration:** `migrations/rollback/024_*.sql` drops `top_tier` from CHECK enum. Pre-step: run `migrations/rollback/024_pre_rollback_downgrade.sql` first to downgrade persisted `top_tier` / `luxury` rows to `premium` (else they violate the post-rollback CHECK).
+- **UI:** non-destructive (additive). 5-tier picker stays valid; selecting `top_tier` would fail backend CHECK after rollback until a fresh `eas update` reverts the picker.
+- **Sentry watch window:** 24h post-flip. Any scoring/extraction/response_builder stack trace → emergency flag-off + send-back to backend-bundle-c.
+
+### Post-mortem questions (qa-bundle-c idle-work backlog item 2 — fill late)
+
+> What surprised in diagnostics? Did D.1 evidence change implementation we'd planned? Did 100% canary catch anything a 10% would have? Pre-fill stubs:
+
+- D.1 surprises: TBD
+- Implementation deltas vs spec: TBD
+- 100%-canary unique finds: TBD
+

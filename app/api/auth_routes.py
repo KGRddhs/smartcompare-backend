@@ -133,7 +133,7 @@ VALID_PRIORITIES = [
     "best_price", "quality_reliability", "trusted_brand", "warranty_support",
     "design_aesthetics", "value_for_money",
 ]
-VALID_BUDGET = ["budget", "mid", "premium"]
+VALID_BUDGET = ["budget", "mid", "premium", "luxury", "top_tier"]
 VALID_LIFESTYLE = ["gamer", "photographer", "fitness_enthusiast", "vegan", "sensitive_skin", "parent", "student", "professional", "outdoor_adventurer", "minimalist", "tech_enthusiast"]
 VALID_BRAND_ATTITUDE = [
     "brand_loyal", "function_first", "best_of_both",

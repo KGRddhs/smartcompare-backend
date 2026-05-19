@@ -16,6 +16,19 @@ from app.utils.prompt_sanitizer import sanitize_prompt_input, check_injection_pa
 
 logger = logging.getLogger(__name__)
 
+# Bundle C § 1a diagnostic flag — gated on DEBUG_STAGE_TIMINGS=true so
+# the pros/cons raw-response hook adds zero overhead in production.
+# Cached at process init; tests reset via monkeypatch on _PROS_CONS_DIAG_FLAG.
+_PROS_CONS_DIAG_FLAG = None
+
+
+def _pros_cons_diag_enabled() -> bool:
+    global _PROS_CONS_DIAG_FLAG
+    if _PROS_CONS_DIAG_FLAG is None:
+        _PROS_CONS_DIAG_FLAG = os.environ.get("DEBUG_STAGE_TIMINGS", "false").lower() == "true"
+    return _PROS_CONS_DIAG_FLAG
+
+
 # Lazy initialization - don't create client at import time
 _client = None
 
@@ -173,20 +186,51 @@ CATEGORY_SPEC_SCHEMAS = {
 }
 
 
-# Critical schema fields per category - the ones we'll run a smart-fallback
-# Serper query for if GPT returns null after the primary extraction.
-# Cap is enforced in structured_comparison_service to keep the parallel
-# fallback within the Phase 2 wall-time budget (3s, asyncio.wait_for).
+# Bundle C § 2f Step 1 — split critical schema fields into two layers:
+#   - NON_NEGOTIABLE: A.4.7 Tier 2 + A.4.8 Tier 3 fallbacks chase these
+#     hard. If still missing after 3-tier fallback, the dependent dim is
+#     silently omitted (A.4.9) so the user never sees a phantom score.
+#   - PREFERRED: best-effort. Tier 1 smart-fallback covers them via the
+#     legacy CRITICAL_SCHEMA_FIELDS union below, but Tier 2/3 do NOT
+#     re-fire for them; missing-preferred is acceptable.
+#
+# Tier 2/3 budget is enforced in structured_comparison_service (4s + 3s
+# wall windows respectively, asyncio.wait_for).
+CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE: Dict[str, List[str]] = {
+    "electronics": ["battery", "processor", "ram", "rear_camera"],
+    "supplements": ["dosage", "form"],
+    "fragrances":  ["concentration", "longevity"],
+    "fashion":     ["material"],
+    "skincare":    ["volume", "ingredients"],
+    "haircare":    ["volume", "ingredients"],
+    "makeup":      ["volume", "shade_range"],
+    "grocery":     ["weight", "ingredients"],
+    "other":       [],
+}
+
+CRITICAL_SCHEMA_FIELDS_PREFERRED: Dict[str, List[str]] = {
+    "electronics": ["front_camera", "water_resistance", "os", "weight"],
+    "supplements": ["count", "serving_size", "active_ingredient"],
+    # Spec § 2f lists `notes_top/heart/base` as one item — we split into
+    # the three discrete schema fields so Tier 1 fallback can target each.
+    "fragrances":  ["sillage", "notes_top", "notes_heart", "notes_base", "season"],
+    "fashion":     ["origin", "style", "closure_type", "care_instructions"],
+    "skincare":    ["skin_type", "active_ingredient", "spf"],
+    "haircare":    ["hair_type", "scent", "sulfate_free"],
+    "makeup":      ["finish", "coverage", "cruelty_free", "spf"],
+    "grocery":     ["nutrition_protein", "nutrition_calories", "nutrition_fat",
+                    "nutrition_carbs", "origin", "organic"],
+    "other":       [],
+}
+
+# Legacy flat dict — preserved as the union of non-negotiable + preferred
+# so Tier 1 smart-fallback (driven from this in structured_comparison_service)
+# keeps targeting the same broad field set as before the A.4.6 split.
 CRITICAL_SCHEMA_FIELDS: Dict[str, List[str]] = {
-    "electronics": ["front_camera", "rear_camera", "processor", "ram", "battery", "water_resistance"],
-    "supplements": ["count", "dosage", "form"],
-    "fragrances": ["concentration", "longevity", "sillage"],
-    "fashion": ["material", "origin"],
-    "skincare": ["volume_ml", "ingredients"],
-    "haircare": ["volume_ml", "ingredients"],
-    "makeup": ["volume_ml", "shade_range"],
-    "grocery": ["weight_g", "ingredients"],
-    "other": [],
+    category: list(CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE.get(category, []))
+              + list(CRITICAL_SCHEMA_FIELDS_PREFERRED.get(category, []))
+    for category in set(CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE)
+                    | set(CRITICAL_SCHEMA_FIELDS_PREFERRED)
 }
 
 
@@ -1016,6 +1060,53 @@ def was_cohort_block_active(demographics_profile: Optional[Dict[str, Any]]) -> b
     return True
 
 
+# Bundle C § 2e A.4.5 — when comparison_quality='weird', the verdict
+# prompt rewrites winner_declaration into a non-forced "different
+# purposes" framing instead of picking a winner. Critical rule #1:
+# the prompt MUST NOT instruct the model to surface a UI banner —
+# the rewrite is text-only.
+_WEIRD_VERDICT_INSTRUCTION = """
+
+WEIRD-COMPARISON CONTEXT:
+The two products span different purposes or scale (cross-category, or
+prices differ by 10x+, or one product lacks half its specs even after
+fallback). Do NOT force a winner_declaration. Rewrite winner_reason as
+"These products serve different purposes" framing — help the user
+choose between the two options shown rather than declaring one
+objectively better. Keep best_for sentences accurate to each product's
+strength. Do not add UI directives; only rewrite the natural text.
+"""
+
+
+def build_verdict_prompt(products, comparison_quality: str = "normal") -> str:
+    """Bundle C § 2e A.4.5 — assemble the verdict-call system prompt with
+    an optional weird-comparison context block when comparison_quality
+    triggers the non-forced framing.
+
+    Returns the full system_msg string. The existing generate_comparison()
+    inline-builds its prompt with the same COMPARISON_SYSTEM base +
+    personality + scoring_summary + preferences — this helper exposes a
+    slim contract for unit tests that don't need the full async pipeline
+    and lets future callers route through build_verdict_prompt() once
+    the orchestration refactor lands.
+    """
+    # Best-effort category inference for personality block (test calls may
+    # pass an empty products list — fall back to 'other').
+    category = "other"
+    if products:
+        first = products[0] or {}
+        category = (first.get("category_used") or first.get("category") or "other").strip().lower()
+    base = COMPARISON_SYSTEM
+    try:
+        from app.services.prompt_personalities import build_personality_prompt
+        base += build_personality_prompt(category)
+    except Exception:  # noqa: BLE001 — personality helper is best-effort
+        pass
+    if comparison_quality == "weird":
+        base += _WEIRD_VERDICT_INSTRUCTION
+    return base
+
+
 async def generate_comparison(
     product1: Dict,
     product2: Dict,
@@ -1080,6 +1171,16 @@ User's region: {region}
 Primary concern: {concern}
 </USER_INPUT>"""
 
+        # Bundle C § 1a A.3.1 — `response_format={"type": "json_object"}`
+        # forces OpenAI's structured-output guarantee: the model MUST return
+        # valid JSON honoring every declared key. qa-bundle-c D.1.3 evidence
+        # showed product_0_pros / product_1_pros / product_0_cons /
+        # product_1_cons were ABSENT from the parsed dict on all 6 cold-cache
+        # probes — model dropping keys under prompt pressure. JSON mode is
+        # the smallest-blast fix per spec § 1a (no re-prompt fallback;
+        # if insufficient, escalate to model_router priority='critical').
+        # COMPARISON_SYSTEM already contains "Return ONLY valid JSON" so
+        # OpenAI's prompt-validation contract is satisfied.
         try:
             response = await client.chat.completions.create(
                 model=verdict_model,
@@ -1089,6 +1190,7 @@ Primary concern: {concern}
                 ],
                 max_tokens=1000,
                 temperature=0.2,
+                response_format={"type": "json_object"},
             )
         except Exception as primary_err:  # noqa: BLE001
             # Hard-cap retry: 429 / cap-exceeded mid-call falls back to mini once.
@@ -1106,6 +1208,7 @@ Primary concern: {concern}
                     ],
                     max_tokens=1000,
                     temperature=0.2,
+                    response_format={"type": "json_object"},
                 )
             else:
                 raise
@@ -1122,6 +1225,21 @@ Primary concern: {concern}
                 result = result[4:]
 
         parsed = json.loads(result)
+
+        # Bundle C § 1a diagnostic — log raw response when pros/cons empty so
+        # post-deploy probes can identify which suspect fires (verdict JSON
+        # dropping keys / model omitting / validate_verdict stripping).
+        # Flag-gated; truncated to 2000 chars to keep log volume bounded.
+        if _pros_cons_diag_enabled():
+            p0_pros = parsed.get("product_0_pros") or []
+            p1_pros = parsed.get("product_1_pros") or []
+            if len(p0_pros) == 0 or len(p1_pros) == 0:
+                logger.warning(
+                    "PROS_CONS_DIAGNOSTIC empty_side=%s comparison_keys=%s raw_response=%s",
+                    "p0" if len(p0_pros) == 0 else "p1",
+                    list(parsed.keys()),
+                    (response.choices[0].message.content or "")[:2000],
+                )
 
         # Validate personalized_insights
         has_preferences = user_preferences and any(user_preferences.values())

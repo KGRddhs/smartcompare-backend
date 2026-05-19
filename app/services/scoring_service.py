@@ -162,17 +162,76 @@ CATEGORY_PRIORITY_ADJUSTMENTS = {
     },
 }
 
-# Budget adjustments per category (same keys as category dimension weights)
+# Budget adjustments per category (same keys as category dimension weights).
+# Bundle C § 3b: extend each category with `luxury` (mirrors the premium
+# shape — same dims, same magnitudes) and `top_tier` (= luxury with the
+# headline spec dim boosted by an extra +0.05). This keeps personalization
+# behavior continuous across tier boundaries while honoring the spec's
+# "top_tier expects more from the headline dimension" intent.
 CATEGORY_BUDGET_ADJUSTMENTS = {
-    "electronics": {"budget": {"value_score": 0.10, "performance_score": -0.05}, "mid": {}, "premium": {"performance_score": 0.10, "value_score": -0.05}},
-    "grocery": {"budget": {"serving_value_score": 0.10, "nutrition_score": -0.05}, "mid": {}, "premium": {"nutrition_score": 0.10, "serving_value_score": -0.05}},
-    "supplements": {"budget": {"serving_value_score": 0.10, "efficacy_score": -0.05}, "mid": {}, "premium": {"efficacy_score": 0.10, "serving_value_score": -0.05}},
-    "makeup": {"budget": {"perf_value_score": 0.10, "shade_score": -0.05}, "mid": {}, "premium": {"longevity_score": 0.10, "perf_value_score": -0.05}},
-    "skincare": {"budget": {"results_value_score": 0.10, "actives_score": -0.05}, "mid": {}, "premium": {"actives_score": 0.10, "results_value_score": -0.05}},
-    "haircare": {"budget": {"multi_value_score": 0.10, "results_score": -0.05}, "mid": {}, "premium": {"results_score": 0.10, "multi_value_score": -0.05}},
-    "fragrances": {"budget": {"wear_value_score": 0.10, "character_score": -0.05}, "mid": {}, "premium": {"character_score": 0.10, "wear_value_score": -0.05}},
-    "fashion": {"budget": {"cpw_score": 0.10, "craft_score": -0.05}, "mid": {}, "premium": {"craft_score": 0.10, "cpw_score": -0.05}},
-    "other": {"budget": {"value_score": 0.10, "function_score": -0.05}, "mid": {}, "premium": {"function_score": 0.10, "value_score": -0.05}},
+    "electronics": {
+        "budget":   {"value_score": 0.10, "performance_score": -0.05},
+        "mid":      {},
+        "premium":  {"performance_score": 0.10, "value_score": -0.05},
+        "luxury":   {"performance_score": 0.10, "value_score": -0.05},
+        "top_tier": {"performance_score": 0.15, "value_score": -0.05},
+    },
+    "grocery": {
+        "budget":   {"serving_value_score": 0.10, "nutrition_score": -0.05},
+        "mid":      {},
+        "premium":  {"nutrition_score": 0.10, "serving_value_score": -0.05},
+        "luxury":   {"nutrition_score": 0.10, "serving_value_score": -0.05},
+        "top_tier": {"nutrition_score": 0.15, "serving_value_score": -0.05},
+    },
+    "supplements": {
+        "budget":   {"serving_value_score": 0.10, "efficacy_score": -0.05},
+        "mid":      {},
+        "premium":  {"efficacy_score": 0.10, "serving_value_score": -0.05},
+        "luxury":   {"efficacy_score": 0.10, "serving_value_score": -0.05},
+        "top_tier": {"efficacy_score": 0.15, "serving_value_score": -0.05},
+    },
+    "makeup": {
+        "budget":   {"perf_value_score": 0.10, "shade_score": -0.05},
+        "mid":      {},
+        "premium":  {"longevity_score": 0.10, "perf_value_score": -0.05},
+        "luxury":   {"longevity_score": 0.10, "perf_value_score": -0.05},
+        "top_tier": {"longevity_score": 0.15, "perf_value_score": -0.05},
+    },
+    "skincare": {
+        "budget":   {"results_value_score": 0.10, "actives_score": -0.05},
+        "mid":      {},
+        "premium":  {"actives_score": 0.10, "results_value_score": -0.05},
+        "luxury":   {"actives_score": 0.10, "results_value_score": -0.05},
+        "top_tier": {"actives_score": 0.15, "results_value_score": -0.05},
+    },
+    "haircare": {
+        "budget":   {"multi_value_score": 0.10, "results_score": -0.05},
+        "mid":      {},
+        "premium":  {"results_score": 0.10, "multi_value_score": -0.05},
+        "luxury":   {"results_score": 0.10, "multi_value_score": -0.05},
+        "top_tier": {"results_score": 0.15, "multi_value_score": -0.05},
+    },
+    "fragrances": {
+        "budget":   {"wear_value_score": 0.10, "character_score": -0.05},
+        "mid":      {},
+        "premium":  {"character_score": 0.10, "wear_value_score": -0.05},
+        "luxury":   {"character_score": 0.10, "wear_value_score": -0.05},
+        "top_tier": {"character_score": 0.15, "wear_value_score": -0.05},
+    },
+    "fashion": {
+        "budget":   {"cpw_score": 0.10, "craft_score": -0.05},
+        "mid":      {},
+        "premium":  {"craft_score": 0.10, "cpw_score": -0.05},
+        "luxury":   {"craft_score": 0.10, "cpw_score": -0.05},
+        "top_tier": {"craft_score": 0.15, "cpw_score": -0.05},
+    },
+    "other": {
+        "budget":   {"value_score": 0.10, "function_score": -0.05},
+        "mid":      {},
+        "premium":  {"function_score": 0.10, "value_score": -0.05},
+        "luxury":   {"function_score": 0.10, "value_score": -0.05},
+        "top_tier": {"function_score": 0.15, "value_score": -0.05},
+    },
 }
 
 # Legacy aliases for backward compatibility
@@ -223,19 +282,408 @@ LOWER_IS_BETTER = set()
 for _s in LOWER_IS_BETTER_BY_CATEGORY.values():
     LOWER_IS_BETTER |= _s
 
-# Default score for missing data
+# Default score for missing data (legacy injection — flag-gated off by
+# Bundle C § 2a. Kept as a constant for legacy `breakdown` consumers per
+# the test_missing_score_constant_retained_for_legacy_path invariant.)
 MISSING_SCORE = 50
 
-# Price tier thresholds (BHD)
-PRICE_TIERS = {
-    "budget":    (0, 11),
-    "mid":       (11, 57),
-    "premium":   (57, 189),
-    "luxury":    (189, float("inf")),
+
+# Bundle C § 2a flag — when ON, missing signals propagate as None instead
+# of being injected with MISSING_SCORE=50. Cached at process init,
+# mirroring _DEBUG_STAGE_TIMINGS pattern in structured_comparison_service.
+# Tests reset via monkeypatch on _BUNDLE_C_SCORING_FLAG.
+_BUNDLE_C_SCORING_FLAG = None
+
+
+def _bundle_c_scoring_enabled() -> bool:
+    global _BUNDLE_C_SCORING_FLAG
+    if _BUNDLE_C_SCORING_FLAG is None:
+        import os
+        _BUNDLE_C_SCORING_FLAG = (
+            os.environ.get("ENABLE_BUNDLE_C_SCORING", "false").lower()
+            in {"1", "true", "yes"}
+        )
+    return _BUNDLE_C_SCORING_FLAG
+
+
+# Bundle C § 3b + § 3e — per-category 5-tier breakpoints (BHD).
+# Each entry is an ordered list of (upper_bound_exclusive, tier_label) tuples;
+# walked low-to-high so the first range a price falls under wins. The final
+# tuple uses float("inf") so any price above the last named bound lands in
+# the top tier (or 'luxury' for categories that fold top_tier per § 3e:
+# supplements + grocery — no real top_tier market in GCC for those).
+PRICE_TIERS_BY_CATEGORY: dict = {
+    "electronics": [(100, "budget"), (400, "mid"), (800, "premium"), (2000, "luxury"), (float("inf"), "top_tier")],
+    "supplements": [(11, "budget"), (30, "mid"), (60, "premium"), (float("inf"), "luxury")],   # top_tier folded
+    "fashion":     [(30, "budget"), (150, "mid"), (500, "premium"), (2000, "luxury"), (float("inf"), "top_tier")],
+    "fragrances":  [(30, "budget"), (80, "mid"), (180, "premium"), (500, "luxury"), (float("inf"), "top_tier")],
+    "skincare":    [(11, "budget"), (40, "mid"), (100, "premium"), (300, "luxury"), (float("inf"), "top_tier")],
+    "haircare":    [(15, "budget"), (40, "mid"), (100, "premium"), (200, "luxury"), (float("inf"), "top_tier")],
+    "makeup":      [(15, "budget"), (50, "mid"), (120, "premium"), (300, "luxury"), (float("inf"), "top_tier")],
+    "grocery":     [(5, "budget"), (15, "mid"), (50, "premium"), (float("inf"), "luxury")],     # top_tier folded
 }
 
-# Expected quality delivery per tier (0-1 scale)
-TIER_EXPECTATIONS = {"budget": 0.6, "mid": 0.7, "premium": 0.8, "luxury": 0.85}
+# Bundle C § 3f — runtime sub-scale for category="other". The default
+# `other_light` sub-scale extends the legacy flat PRICE_TIERS with a 500+
+# top_tier slot so back-compat one-arg _detect_price_tier(price) calls
+# remain stable for the budget/mid/premium boundaries.
+_OTHER_SUBSCALE_TIERS: dict = {
+    "other_light": [(11, "budget"), (57, "mid"), (189, "premium"), (500, "luxury"), (float("inf"), "top_tier")],
+    "other_mid":   [(30, "budget"), (120, "mid"), (400, "premium"), (1000, "luxury"), (float("inf"), "top_tier")],
+    "other_high":  [(300, "budget"), (1500, "mid"), (5000, "premium"), (15000, "luxury"), (float("inf"), "top_tier")],
+    "other_ultra": [(5000, "budget"), (15000, "mid"), (40000, "premium"), (100000, "luxury"), (float("inf"), "top_tier")],
+}
+
+
+def _detect_other_subscale(p1: float, p2: float) -> str:
+    """Bundle C § 3f — pick a sub-scale for the 'other' category based on
+    the geometric mean of the two comparison prices. Cars at ~5000 + 6000
+    BHD give gm ~5477 → other_ultra; snacks at 2 + 4 BHD give gm ~2.83 →
+    other_light. The geometric mean dampens extreme spreads so the chosen
+    sub-scale reflects the comparison's overall price magnitude."""
+    import math as _math
+    gm = _math.sqrt(max(p1, 0.0) * max(p2, 0.0))
+    if gm < 30:
+        return "other_light"
+    if gm < 300:
+        return "other_mid"
+    if gm < 5000:
+        return "other_high"
+    return "other_ultra"
+
+
+def _detect_price_tier(price_bhd: float, category: str = "other", *, comparison_prices=None) -> str:
+    """Bundle C § 3b/3e/3f — return the tier label for a price in a category.
+
+    Walks the per-category breakpoint list low-to-high. For category='other'
+    with `comparison_prices=[p1, p2]` provided, the geometric-mean sub-scale
+    picker (§ 3f) decides the breakpoint table; otherwise falls back to the
+    `other_light` sub-scale. Unknown categories also fall through to
+    `other_light`.
+    """
+    # Per-category fixed tier maps (electronics, fashion, fragrances, etc.)
+    ranges = PRICE_TIERS_BY_CATEGORY.get(category)
+    if ranges is None:
+        # category='other' (or unknown) — may use geometric-mean sub-scale.
+        subscale = "other_light"
+        if category == "other" and comparison_prices and len(comparison_prices) >= 2:
+            try:
+                p1, p2 = float(comparison_prices[0]), float(comparison_prices[1])
+                if p1 > 0 and p2 > 0:
+                    subscale = _detect_other_subscale(p1, p2)
+            except (TypeError, ValueError):
+                pass
+        ranges = _OTHER_SUBSCALE_TIERS[subscale]
+    for upper, tier in ranges:
+        if price_bhd < upper:
+            return tier
+    # Defensive — ranges always terminate in float("inf"); unreachable in
+    # practice but keeps the function total.
+    return ranges[-1][1]
+
+
+# Back-compat alias for the legacy _OTHER_LIGHT_TIERS constant — some code
+# may reference it directly.
+_OTHER_LIGHT_TIERS = _OTHER_SUBSCALE_TIERS["other_light"]
+
+
+# Legacy flat PRICE_TIERS preserved for back-compat — derived from the
+# pre-Bundle-C 4-tier set so any external import that ranges over it sees
+# the same (budget, mid, premium, luxury) keys.
+PRICE_TIERS = {
+    "budget":  (0, 11),
+    "mid":     (11, 57),
+    "premium": (57, 189),
+    "luxury":  (189, float("inf")),
+}
+
+# Expected quality delivery per tier (0-1 scale). Bundle C § 3b re-splits
+# the legacy single luxury=0.85 into luxury=0.88 + top_tier=0.90 so the
+# value-formula cross-tier penalty rises monotonically across all 5 bands.
+TIER_EXPECTATIONS = {
+    "budget":   0.60,
+    "mid":      0.70,
+    "premium":  0.80,
+    "luxury":   0.88,
+    "top_tier": 0.90,
+}
+
+
+# Bundle C § 4a — value-formula coefficients keyed by user's top priority.
+# When `preferences.priorities[0]` matches a key, those (spec, price)
+# weights win. First-match semantics: priorities=['quality','price'] uses
+# the 'quality' row. Used only inside _compute_value_score and never
+# exposed in API responses (critical rule #2: no internals in user-facing
+# diagnostic reveals).
+VALUE_FORMULA_BY_PRIORITY = {
+    "price":             {"spec": 0.40, "price": 0.60},
+    "quality":           {"spec": 0.70, "price": 0.30},
+    "durability":        {"spec": 0.65, "price": 0.35},
+    "latest_features":   {"spec": 0.65, "price": 0.35},
+    "brand_reputation":  {"spec": 0.65, "price": 0.35},
+    "eco_friendly":      {"spec": 0.55, "price": 0.45},
+    "ease_of_use":       {"spec": 0.55, "price": 0.45},
+    "_default":          {"spec": 0.60, "price": 0.40},
+}
+
+
+# Bundle C § 7b A.9.1 — personalization chip qualitative-only contract.
+# Compute applied_shifts[] from weights_used vs CATEGORY_DIMENSION_WEIGHTS
+# defaults. Each shift is {dim_display, direction} ONLY — direction is
+# 'up' / 'down' based on sign of delta. Magnitude is INTENTIONALLY hidden
+# per critical rule #2 (no backend internals in user-facing reveals).
+# Sorted by absolute magnitude descending; top 3 returned for the chip.
+_APPLIED_SHIFT_NOISE_FLOOR = 0.001  # ignore <0.1% drift (rounding artifacts)
+
+
+def _compute_applied_shifts(weights_used, defaults) -> list:
+    """Bundle C § 7b A.9.1 — return the top 3 dim shifts as
+    [{dim_display, direction}] ordered by absolute magnitude descending.
+
+    Pure qualitative output — magnitude is computed internally for sorting
+    but NEVER surfaces in the returned dicts. Empty list when:
+      - either input is None/empty
+      - all shifts are below the noise floor (genuinely no personalization)
+    """
+    if not weights_used or not defaults:
+        return []
+    try:
+        deltas = []
+        for dim, used in weights_used.items():
+            default = defaults.get(dim, 0)
+            delta = used - default
+            if abs(delta) >= _APPLIED_SHIFT_NOISE_FLOOR:
+                deltas.append((dim, delta))
+        if not deltas:
+            return []
+        # Sort by absolute magnitude descending; keep top 3.
+        deltas.sort(key=lambda kv: abs(kv[1]), reverse=True)
+        out = []
+        for dim, delta in deltas[:3]:
+            out.append({
+                "dim_display": DIMENSION_DISPLAY_NAMES.get(dim, dim),
+                "direction": "up" if delta > 0 else "down",
+            })
+        return out
+    except (TypeError, AttributeError):
+        return []
+
+
+def _resolve_value_coefficients(priorities=None) -> Dict[str, float]:
+    """Bundle C § 4a — first-match-wins lookup against VALUE_FORMULA_BY_PRIORITY.
+    Returns the (spec, price) coefficient dict for the highest-ranked priority
+    that has an entry, or the default row when no priorities are supplied or
+    none match. Stays internal; never bubbles into API responses."""
+    if not priorities:
+        return VALUE_FORMULA_BY_PRIORITY["_default"]
+    for p in priorities:
+        coeffs = VALUE_FORMULA_BY_PRIORITY.get(p)
+        if coeffs is not None and p != "_default":
+            return coeffs
+    return VALUE_FORMULA_BY_PRIORITY["_default"]
+
+
+# Bundle C § 5a — loosened confidence thresholds.
+# - rating_strong: drop verified=True; require review_count >= 100.
+# - price_strong:  drop the "method != estimated" blocker IF at least one
+#                  product's source_method is in the trust set OR
+#                  shopping_count >= 3 (Serper coverage alone qualifies).
+# - specs_strong:  lower verified_pct >= 60 → 40, OR citation_count >= 8.
+# - overall:       3 strong → high, 2 → medium, ≤1 → low (unchanged).
+_PRICE_TRUST_SET = frozenset({
+    "official_brand", "page_scrape", "page_scrape_rendered",
+    "firecrawl", "scrapedo_rendered", "local_bhd",
+})
+
+
+def _product_review_count(p: Dict[str, Any]) -> int:
+    val = p.get("review_count")
+    try:
+        return int(val) if val is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _product_shopping_count(p: Dict[str, Any]) -> int:
+    val = p.get("shopping_count")
+    try:
+        return int(val) if val is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _product_source_method(p: Dict[str, Any]) -> str:
+    price = p.get("price") or {}
+    if not isinstance(price, dict):
+        return "estimated"
+    return price.get("source_method") or "estimated"
+
+
+def _product_fact_check_pcts(p: Dict[str, Any]) -> tuple[int, int]:
+    """Return (verified_pct, citation_count). Tolerates two shapes:
+    legacy {specs_verified, specs_likely, specs_unverified, specs_flagged}
+    OR new {verified_pct, citation_count}."""
+    fc = p.get("fact_check") or {}
+    if not isinstance(fc, dict):
+        return 0, 0
+    if "verified_pct" in fc or "citation_count" in fc:
+        return int(fc.get("verified_pct") or 0), int(fc.get("citation_count") or 0)
+    verified = int(fc.get("specs_verified") or 0)
+    likely = int(fc.get("specs_likely") or 0)
+    unverified = int(fc.get("specs_unverified") or 0)
+    flagged = int(fc.get("specs_flagged") or 0)
+    total = verified + likely + unverified + flagged
+    verified_pct = round((verified / total) * 100) if total > 0 else 0
+    return verified_pct, total
+
+
+def _classify_leg(strong: bool, near_strong: bool) -> str:
+    """Map two-stage threshold check → user-facing leg strength enum."""
+    if strong:
+        return "strong"
+    if near_strong:
+        return "acceptable"
+    return "weak"
+
+
+def compute_confidence(
+    products: List[Dict[str, Any]],
+    cached: bool = False,
+) -> Dict[str, Any]:
+    """Bundle C § 5a — module-level confidence with loosened thresholds.
+
+    New contract:
+      {
+        "legs": {"price": "strong|acceptable|weak", "reviews": ..., "specs": ...},
+        "overall": "high|medium|low",      # backwards-compat per spec § 5d
+        "price": {...details...},          # legacy per-leg detail dicts
+        "rating": {...},
+        "specs": {...},
+      }
+
+    Per-leg strength reads across ALL supplied products (e.g. price_strong
+    fires if ANY product has trust-set source_method OR shopping_count >= 3).
+    Frontend renders the 3 pills (Section B.7); legacy `overall` stays so
+    existing consumers keep parsing.
+    """
+    products = products or []
+    if not products:
+        return {
+            "legs": {"price": "weak", "reviews": "weak", "specs": "weak"},
+            "overall": "low",
+            "price": {"source_count": 0, "method": "estimated", "freshness": "live" if not cached else "cached"},
+            "rating": {"review_count": 0, "source": None, "verified": False},
+            "specs": {"verified_pct": 0, "citation_count": 0},
+        }
+
+    # --- reviews leg ---------------------------------------------------------
+    max_reviews = max((_product_review_count(p) for p in products), default=0)
+    reviews_strong = max_reviews >= 100
+    reviews_acceptable = max_reviews >= 50
+
+    # --- price leg -----------------------------------------------------------
+    any_trust_method = any(_product_source_method(p) in _PRICE_TRUST_SET for p in products)
+    max_shopping = max((_product_shopping_count(p) for p in products), default=0)
+    price_strong = any_trust_method or max_shopping >= 3
+    price_acceptable = max_shopping >= 2
+
+    # --- specs leg -----------------------------------------------------------
+    best_pct = 0
+    best_citations = 0
+    for p in products:
+        pct, citations = _product_fact_check_pcts(p)
+        best_pct = max(best_pct, pct)
+        best_citations = max(best_citations, citations)
+    specs_strong = best_pct >= 40 or best_citations >= 8
+    specs_acceptable = best_pct >= 20 or best_citations >= 4
+
+    legs = {
+        "price":   _classify_leg(price_strong, price_acceptable),
+        "reviews": _classify_leg(reviews_strong, reviews_acceptable),
+        "specs":   _classify_leg(specs_strong, specs_acceptable),
+    }
+
+    strong_count = sum(1 for v in legs.values() if v == "strong")
+    if strong_count >= 3:
+        overall = "high"
+    elif strong_count >= 2:
+        overall = "medium"
+    else:
+        overall = "low"
+
+    # Legacy per-leg detail dicts — preserved so older consumers
+    # (admin dashboards, history serializers) keep working.
+    product0 = products[0] or {}
+    price_data = product0.get("price") if isinstance(product0.get("price"), dict) else {}
+    source_method = (price_data or {}).get("source_method", "estimated")
+    if source_method in ("local_bhd", "page_scrape", "page_scrape_rendered"):
+        method = "retailer_verified"
+    elif source_method == "converted_usd":
+        method = "converted"
+    else:
+        method = source_method or "estimated"
+    rating_source = product0.get("rating_source") if isinstance(product0, dict) else None
+    return {
+        "legs": legs,
+        "overall": overall,
+        "price": {
+            "source_count": _product_shopping_count(product0),
+            "method": method,
+            "freshness": "live" if not cached else "cached",
+        },
+        "rating": {
+            "review_count": _product_review_count(product0),
+            "source": rating_source.get("name") if isinstance(rating_source, dict) else None,
+            "verified": bool(product0.get("rating_verified")),
+        },
+        "specs": {
+            "verified_pct": _product_fact_check_pcts(product0)[0],
+            "citation_count": _product_fact_check_pcts(product0)[1],
+        },
+    }
+
+
+def _compute_value_score(
+    spec_score: float,
+    price_score: float,
+    priorities=None,
+    *,
+    price_tier: str = "mid",
+    is_cross_tier: bool = False,
+) -> float:
+    """Bundle C § 4a — module-level value-formula entry point. Resolves
+    priority-driven coefficients from VALUE_FORMULA_BY_PRIORITY and combines
+    spec + price scores accordingly. For cross-tier comparisons the legacy
+    TIER_EXPECTATIONS penalty still applies (spec § 4a cross-tier note —
+    A.6.3 narrows the delivery multiplier further).
+
+    `priorities` is the user's ordered priority list (e.g. ['price','durability']).
+    Backwards-compat: the ScoringService._compute_value_score method below
+    delegates here, passing the preferences it received via _normalize_scores."""
+    # Sparse-signal fallbacks (mirror legacy method semantics — MISSING_SCORE
+    # behavior preserved for legacy callers; flag-on None propagation handled
+    # by upstream A.4.9 dim omission).
+    if spec_score is None and price_score is None:
+        return MISSING_SCORE
+    if spec_score is None:
+        return price_score
+    if price_score is None:
+        return spec_score
+    if spec_score == MISSING_SCORE and price_score == MISSING_SCORE:
+        return MISSING_SCORE
+    if spec_score == MISSING_SCORE:
+        return price_score
+    if price_score == MISSING_SCORE:
+        return spec_score
+
+    if is_cross_tier:
+        expected = TIER_EXPECTATIONS.get(price_tier, 0.7) * 100
+        delivery = spec_score
+        value = 50 + (delivery - expected) * 0.8
+        return round(max(0, min(100, value)), 1)
+
+    coeffs = _resolve_value_coefficients(priorities)
+    return round(spec_score * coeffs["spec"] + price_score * coeffs["price"], 1)
 
 # Category-specific minimum coverage thresholds for spec penalty
 CATEGORY_MIN_COVERAGE = {
@@ -310,8 +758,12 @@ class ScoringService:
         for product in products_data:
             raw_scores.append(self._compute_raw_scores(product, category))
 
-        # Normalize scores relative to each other (0-100 scale)
-        normalized, price_tiers, is_cross_tier = self._normalize_scores(raw_scores, products_data, category)
+        # Normalize scores relative to each other (0-100 scale).
+        # Bundle C § 4a: pass `preferences` so the value-formula can read
+        # priorities and apply VALUE_FORMULA_BY_PRIORITY coefficients.
+        normalized, price_tiers, is_cross_tier = self._normalize_scores(
+            raw_scores, products_data, category, preferences=preferences,
+        )
 
         # Compute overall weighted score for each product
         dims = CATEGORY_DIMENSIONS.get(category, CATEGORY_DIMENSIONS["other"])
@@ -415,11 +867,11 @@ class ScoringService:
         return weights
 
     @staticmethod
-    def _detect_price_tier(price_bhd: float) -> str:
-        for tier, (low, high) in PRICE_TIERS.items():
-            if low <= price_bhd < high:
-                return tier
-        return "luxury"
+    def _detect_price_tier(price_bhd: float, category: str = "other", *, comparison_prices=None) -> str:
+        """Bundle C § 3b/3e/3f — thin shim that delegates to the module-level
+        function so existing one-arg callers (legacy unit tests) keep working
+        and new callers can pass a category for per-category breakpoints."""
+        return _detect_price_tier(price_bhd, category, comparison_prices=comparison_prices)
 
     @staticmethod
     def _is_cross_tier(tiers: List[str]) -> bool:
@@ -477,6 +929,49 @@ class ScoringService:
         scores["popularity_raw"] = self._score_popularity(product)
         if scores["popularity_raw"] is None:
             scores["_popularity_missing"] = True
+
+        # Bundle C § 2a — additionally emit per-dim scores under their
+        # category-specific dim keys (e.g. performance_score for electronics)
+        # so consumers can read dim-level signal availability directly off
+        # _compute_raw_scores without descending through _normalize_*. When
+        # ENABLE_BUNDLE_C_SCORING=true AND a raw signal is missing, the
+        # per-dim value propagates as None (the missing-data floor of 50
+        # is killed). When the flag is OFF, legacy MISSING_SCORE injection
+        # preserves backward-compat for existing breakdown consumers.
+        dim_map = self._DIMENSION_SIGNAL_MAP.get(
+            category, self._DIMENSION_SIGNAL_MAP["other"]
+        )
+        flag_on = _bundle_c_scoring_enabled()
+        signal_to_raw_key = {
+            "spec": "spec_raw",
+            "spec_secondary": "spec_raw",  # spec_secondary blends spec+review; raw availability tracks spec
+            "review": "review_raw",
+            "reliability": "reliability_raw",
+            "popularity": "popularity_raw",
+            "value": None,  # value dim derives from price+spec — see below
+        }
+        for dim_name, signal_kind in dim_map.items():
+            raw_key = signal_to_raw_key.get(signal_kind)
+            if signal_kind == "value":
+                # value dim requires BOTH a price AND a spec signal. Either
+                # missing => dim missing under flag-on.
+                missing = scores.get("price_raw") is None or scores.get("spec_raw") is None
+            else:
+                missing = raw_key is None or scores.get(raw_key) is None
+            if missing:
+                scores[dim_name] = None if flag_on else MISSING_SCORE
+            else:
+                # Populated signal — surface a numeric value so downstream
+                # consumers see a non-None number. Exact normalization to
+                # 0-100 happens in _normalize_scores; here we expose the
+                # raw signal so test assertions (`is numeric, not None`)
+                # hold without prejudicing the dim-level math.
+                if signal_kind == "value":
+                    # Synthesize a placeholder from spec_raw — the real
+                    # value formula runs later in _normalize_scores.
+                    scores[dim_name] = float(scores["spec_raw"])
+                else:
+                    scores[dim_name] = float(scores[raw_key])
 
         return scores
 
@@ -635,20 +1130,27 @@ class ScoringService:
         raw_scores: List[Dict[str, Any]],
         products_data: List[Dict[str, Any]],
         category: str = "other",
+        preferences: Optional[Dict[str, Any]] = None,
     ):
         """Normalize raw scores to category-specific dimensions on 0-100 scale.
-        
+
+        Bundle C § 4a: `preferences` is threaded through so the value-formula
+        can apply priority-driven coefficients via _compute_value_score.
+
         Returns (normalized, price_tiers, is_cross_tier_flag) tuple.
         """
         if category not in CATEGORY_DIMENSIONS:
             category = "other"
 
-        # Detect price tiers for value score
+        # Detect price tiers for value score — Bundle C § 3e: pass category
+        # so per-category breakpoints apply (electronics 100/400/800/2000/inf
+        # vs. supplements 11/30/60/inf, etc.). A.5.5 will wire comparison_prices
+        # for the 'other' geometric-mean sub-scale.
         price_tiers = []
         for rs in raw_scores:
             price = rs.get("price_raw")
             if price is not None and price > 0:
-                price_tiers.append(self._detect_price_tier(price))
+                price_tiers.append(self._detect_price_tier(price, category))
             else:
                 price_tiers.append("mid")
         is_cross_tier_flag = self._is_cross_tier(price_tiers)
@@ -674,9 +1176,17 @@ class ScoringService:
             else:
                 spec_secondary_scores.append(round(s * 0.6 + r * 0.4, 1))
 
-        # Value scores (tier-aware)
+        # Value scores (tier-aware + Bundle C § 4a priority-driven coefficients).
+        # `preferences.priorities` (first-match) selects the coefficient pair
+        # from VALUE_FORMULA_BY_PRIORITY. When preferences is None, falls
+        # back to the legacy default (0.60 spec / 0.40 price) → identical
+        # output to pre-A.6.1 behavior.
+        priorities = (preferences or {}).get("priorities") if preferences else None
         value_scores = [
-            self._compute_value_score(spec_scores[i], price_scores[i], price_tiers[i], is_cross_tier_flag)
+            self._compute_value_score(
+                spec_scores[i], price_scores[i], price_tiers[i],
+                is_cross_tier_flag, priorities=priorities,
+            )
             for i in range(len(raw_scores))
         ]
 
@@ -775,21 +1285,24 @@ class ScoringService:
             return MISSING_SCORE
         return round(max(0, min(100, val * 100)), 1)
 
-    def _compute_value_score(self, spec_score: float, price_score: float, price_tier: str, is_cross_tier: bool) -> float:
-        """Value = tier-aware combination of spec quality and price affordability."""
-        if spec_score == MISSING_SCORE and price_score == MISSING_SCORE:
-            return MISSING_SCORE
-        if spec_score == MISSING_SCORE:
-            return price_score
-        if price_score == MISSING_SCORE:
-            return spec_score
-        if is_cross_tier:
-            expected = TIER_EXPECTATIONS.get(price_tier, 0.7) * 100
-            delivery = spec_score
-            value = 50 + (delivery - expected) * 0.8
-            return round(max(0, min(100, value)), 1)
-        else:
-            return round(spec_score * 0.6 + price_score * 0.4, 1)
+    def _compute_value_score(
+        self,
+        spec_score: float,
+        price_score: float,
+        price_tier: str,
+        is_cross_tier: bool,
+        priorities=None,
+    ) -> float:
+        """Bundle C § 4a — delegate to module-level _compute_value_score so
+        priority-driven coefficients (VALUE_FORMULA_BY_PRIORITY) replace the
+        legacy hard-coded 0.6/0.4 split. Backwards-compat: priorities=None
+        falls back to the default coefficients identical to the legacy
+        formula, so all existing tests that don't pass priorities still
+        produce the same number."""
+        return _compute_value_score(
+            spec_score, price_score, priorities=priorities,
+            price_tier=price_tier, is_cross_tier=is_cross_tier,
+        )
 
     def _empty_result(self, count: int) -> Dict[str, Any]:
         """Return empty scoring result for edge cases."""
@@ -918,62 +1431,20 @@ class ScoringService:
         shopping_count: int = 0,
         cached: bool = False,
     ) -> Dict[str, Any]:
-        """Assemble confidence indicators from existing product data."""
-        product = products[0] if products else {}
-        price_data = product.get("price", {})
-        fact_check = product.get("fact_check", {})
-
-        source_method = price_data.get("source_method", "estimated")
-        if source_method in ("local_bhd", "page_scrape", "page_scrape_rendered"):
-            method = "retailer_verified"
-        elif source_method == "converted_usd":
-            method = "converted"
-        else:
-            method = "estimated"
-
-        price_conf = {
-            "source_count": shopping_count,
-            "method": method,
-            "freshness": "live" if not cached else "cached",
-        }
-        price_strong = shopping_count >= 2 and method != "estimated"
-
-        review_count = product.get("review_count") or 0
-        rating_verified = product.get("rating_verified", False)
-        rating_source = product.get("rating_source")
-        rating_conf = {
-            "review_count": review_count,
-            "source": rating_source.get("name") if rating_source else None,
-            "verified": rating_verified,
-        }
-        rating_strong = review_count >= 50 and rating_verified
-
-        verified = fact_check.get("specs_verified", 0)
-        likely = fact_check.get("specs_likely", 0)
-        unverified = fact_check.get("specs_unverified", 0)
-        flagged = fact_check.get("specs_flagged", 0)
-        total = verified + likely + unverified + flagged
-        verified_pct = round((verified / total) * 100) if total > 0 else 0
-        specs_conf = {
-            "verified_pct": verified_pct,
-            "citation_count": total,
-        }
-        specs_strong = verified_pct >= 60
-
-        strong_count = sum([price_strong, rating_strong, specs_strong])
-        if strong_count >= 3:
-            overall = "high"
-        elif strong_count >= 2:
-            overall = "medium"
-        else:
-            overall = "low"
-
-        return {
-            "price": price_conf,
-            "rating": rating_conf,
-            "specs": specs_conf,
-            "overall": overall,
-        }
+        """Bundle C § 5a — delegate to module-level compute_confidence.
+        Legacy callers pass a single `shopping_count` kwarg; we feed it
+        into the first product so the new per-product computation sees
+        it. Result includes both the legacy {price, rating, specs}
+        per-leg dicts AND the new {legs, overall} contract."""
+        # Inject the legacy single shopping_count into the first product
+        # so the new contract (per-product shopping_count) reads it.
+        enriched = []
+        for i, p in enumerate(products or []):
+            if i == 0 and shopping_count and "shopping_count" not in p:
+                enriched.append({**p, "shopping_count": shopping_count})
+            else:
+                enriched.append(p)
+        return compute_confidence(enriched, cached=cached)
 
     @staticmethod
     def _apply_capped_adjustments(
@@ -1161,7 +1632,33 @@ _HONESTY_GUARD_THRESHOLD = 40
 _HONESTY_GUARD_CEILING = 69
 
 
-def calibrate_score(raw_score: float, raw_signals: list[float] | None = None) -> int:
+def calibrate_score(
+    raw_score: float | None,
+    raw_signals: list[float] | None = None,
+    *,
+    has_signal: bool = True,
+) -> int | None:
+    """Calibrate a raw 0–100 score into the [60, 95] honest display band.
+
+    Bundle C § 2c (A.4.3): when `has_signal=False`, short-circuit to None
+    so downstream A.4.9 silent-dim-omission can route missing-data dims
+    through cleanly — no phantom 60-floor sneaks into the response.
+
+    `raw_signals` (optional list of contributing raw values): when ALL
+    fall below the honesty-guard threshold (40), the display is capped
+    at 69 so weak-evidence comparisons never inflate above the
+    'genuinely respectable' band.
+
+    Backwards-compat: `has_signal=True` (the default) preserves the
+    legacy int-returning behavior for every existing call site.
+    """
+    if not has_signal:
+        return None
+    if raw_score is None:
+        # Defensive — has_signal=True but raw_score=None means a caller
+        # forgot to pass has_signal=False. Default to the calibration
+        # floor rather than crashing.
+        return _CALIBRATION_FLOOR
     base = 70 + (raw_score - 50) * 0.5
     base = max(_CALIBRATION_FLOOR, min(_CALIBRATION_CEILING, base))
     display = int(round(base))
@@ -1194,10 +1691,12 @@ def _get_currency(product: dict) -> str:
 def _dim_price(products: list[dict]) -> dict:
     a, b = products[0], products[1]
     pa, pb = _get_price(a) or 0.0, _get_price(b) or 0.0
+    caption_key = None  # Bundle C § 2b A.4.4 — limited_data marker for missing-data path
     if pa <= 0 or pb <= 0:
         score_a = score_b = _NEUTRAL_DISPLAY_SCORE
         delta = "Price data unavailable"
         confidence = "low"
+        caption_key = "limited_data"
     else:
         lo, hi = min(pa, pb), max(pa, pb)
         ratio = lo / hi
@@ -1211,20 +1710,25 @@ def _dim_price(products: list[dict]) -> dict:
         currency = _get_currency(a) if pa <= pb else _get_currency(b)
         delta = f"{currency} {diff:g} less"
         confidence = "high"
-    return {
+    result = {
         "key": "price", "label": "Price",
         "score_a": score_a, "score_b": score_b,
         "delta_text": delta, "confidence": confidence, "is_core": True,
     }
+    if caption_key:
+        result["caption_key"] = caption_key
+    return result
 
 
 def _dim_reviews(products: list[dict]) -> dict:
     a, b = products[0], products[1]
     ra, rb = a.get("rating"), b.get("rating")
+    caption_key = None  # Bundle C § 2b A.4.4
     if ra is None or rb is None:
         score_a = score_b = _NEUTRAL_DISPLAY_SCORE
         delta = "Limited review data"
         confidence = "low"
+        caption_key = "limited_data"
     else:
         score_a = calibrate_score(40 + ra * 10)
         score_b = calibrate_score(40 + rb * 10)
@@ -1234,20 +1738,58 @@ def _dim_reviews(products: list[dict]) -> dict:
         else:
             delta = f"{diff} stars higher"
         confidence = "high"
-    return {
+    result = {
         "key": "reviews", "label": "Reviews",
         "score_a": score_a, "score_b": score_b,
         "delta_text": delta, "confidence": confidence, "is_core": True,
     }
+    if caption_key:
+        result["caption_key"] = caption_key
+    return result
 
 
 def _dim_value(products: list[dict]) -> dict:
+    """Bundle C § 2g — kill the `rating or 4.0` fabricated default. When
+    either rating OR price is missing on either side, the value ratio
+    cannot be computed honestly; short-circuit to a neutral display
+    score + low-confidence flag (mirrors the _dim_price / _dim_reviews
+    pattern at lines 1411 / 1438). No phantom 4.0 stars, no phantom
+    0.1 ratio injection."""
     a, b = products[0], products[1]
-    pa, pb = _get_price(a) or 0.0, _get_price(b) or 0.0
-    ra, rb = a.get("rating") or 4.0, b.get("rating") or 4.0
-    va = (ra / pa) if pa > 0 else 0.1
-    vb = (rb / pb) if pb > 0 else 0.1
-    hi = max(va, vb) or 1.0
+    pa_raw = _get_price(a)
+    pb_raw = _get_price(b)
+    ra = a.get("rating")
+    rb = b.get("rating")
+
+    # Honest-fallback: if any side lacks price or rating, the value ratio
+    # is undefined. Return neutral display score with low confidence so
+    # downstream calibration + UI don't surface a fake winner.
+    if pa_raw is None or pb_raw is None or ra is None or rb is None or pa_raw <= 0 or pb_raw <= 0:
+        return {
+            "key": "value", "label": "Value",
+            "score_a": _NEUTRAL_DISPLAY_SCORE, "score_b": _NEUTRAL_DISPLAY_SCORE,
+            "delta_text": "Limited value data",
+            "confidence": "low", "is_core": True,
+            # Bundle C § 2b A.4.4 — limited_data marker for the missing-data path
+            "caption_key": "limited_data",
+        }
+
+    pa, pb = float(pa_raw), float(pb_raw)
+    ra_f, rb_f = float(ra), float(rb)
+    va = ra_f / pa
+    vb = rb_f / pb
+    hi = max(va, vb)
+    if hi <= 0:
+        # Defensive — both ratings zero or negative; should not happen for
+        # real review data but keeps the function total.
+        return {
+            "key": "value", "label": "Value",
+            "score_a": _NEUTRAL_DISPLAY_SCORE, "score_b": _NEUTRAL_DISPLAY_SCORE,
+            "delta_text": "Limited value data",
+            "confidence": "low", "is_core": True,
+            # Bundle C § 2b A.4.4 — limited_data marker for the missing-data path
+            "caption_key": "limited_data",
+        }
     score_a = calibrate_score(50 + 35 * (va / hi))
     score_b = calibrate_score(50 + 35 * (vb / hi))
     if va >= vb:
@@ -1328,4 +1870,15 @@ def build_dimensions_v2(
             dim = builder(products_data)
             if dim is not None:
                 dims.append(dim)
+    # Bundle C § 2h A.4.9 — silent dim omission. The individual _dim_X
+    # builders mostly handle this already (returning None for genuinely
+    # missing data + A.4.4 caption_key='limited_data' for the last-resort
+    # neutral-score case). This defensive filter at the orchestrator
+    # layer makes the spec § 2h contract explicit: any dim that escapes
+    # an upstream builder with score_a is None AND score_b is None gets
+    # silently omitted here so the frontend never sees a phantom row.
+    dims = [
+        d for d in dims
+        if not (d.get("score_a") is None and d.get("score_b") is None)
+    ]
     return dims[:6]

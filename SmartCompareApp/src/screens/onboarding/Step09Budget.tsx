@@ -1,14 +1,21 @@
 /**
- * Step09Budget — Phase 2 Task 15.
+ * Step09Budget — Phase 2 Task 15 + Bundle C § 3a / § 3c.
  *
- * 3 budget tier cards with BHD ranges. Aligns with backend
- * `_get_price_tier()`: budget(<11), mid(11-57), premium(57-189).
- * See design spec § 2 row 9.
+ * 5 budget tier cards with general-guidance BHD ranges (default
+ * `other_light` sub-scale per spec § 3e). Per-category re-anchoring
+ * happens server-side via PRICE_TIERS_BY_CATEGORY and is invisible
+ * to the user — the picker only shows general guidance.
+ *
+ * Editorial restraint per spec § 3c: premium / luxury / top_tier carry
+ * a subtle dark hairline accent; top_tier label uses the heaviest
+ * available font weight (Geist-Bold; spec calls for "Geist Display
+ * Medium" — see Bundle C deviation note in BudgetPicker.tsx).
  */
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
+
 import { colors, spacing, typography, radii } from '../../theme';
 import { OnboardingBudget } from './types';
 
@@ -21,12 +28,16 @@ interface BudgetRow {
   value: OnboardingBudget;
   labelKey: string;
   rangeKey: string;
+  editorial: boolean;
+  heavy: boolean;
 }
 
 const BUDGETS: BudgetRow[] = [
-  { value: 'budget', labelKey: 'onboarding.s9.budget', rangeKey: 'onboarding.s9.budget_range' },
-  { value: 'mid', labelKey: 'onboarding.s9.mid', rangeKey: 'onboarding.s9.mid_range' },
-  { value: 'premium', labelKey: 'onboarding.s9.premium', rangeKey: 'onboarding.s9.premium_range' },
+  { value: 'budget',   labelKey: 'onboarding.s9.budget',   rangeKey: 'onboarding.s9.budget_range',   editorial: false, heavy: false },
+  { value: 'mid',      labelKey: 'onboarding.s9.mid',      rangeKey: 'onboarding.s9.mid_range',      editorial: false, heavy: false },
+  { value: 'premium',  labelKey: 'onboarding.s9.premium',  rangeKey: 'onboarding.s9.premium_range',  editorial: true,  heavy: false },
+  { value: 'luxury',   labelKey: 'onboarding.s9.luxury',   rangeKey: 'onboarding.s9.luxury_range',   editorial: true,  heavy: false },
+  { value: 'top_tier', labelKey: 'onboarding.s9.top_tier', rangeKey: 'onboarding.s9.top_tier_range', editorial: true,  heavy: true  },
 ];
 
 export function Step09Budget({ value, onChange }: Props) {
@@ -46,9 +57,20 @@ export function Step09Budget({ value, onChange }: Props) {
               onPress={() => onChange(b.value)}
               accessibilityRole="button"
               accessibilityState={{ selected }}
-              style={[styles.card, selected && styles.cardSelected]}
+              style={[
+                styles.card,
+                b.editorial && styles.cardEditorial,
+                selected && styles.cardSelected,
+              ]}
             >
-              <Text style={[styles.cardLabel, selected && styles.cardLabelSelected]}>
+              <Text
+                testID={`budget-${b.value}-label`}
+                style={[
+                  styles.cardLabel,
+                  selected && styles.cardLabelSelected,
+                  b.heavy && styles.cardLabelHeavy,
+                ]}
+              >
                 {t(b.labelKey)}
               </Text>
               <Text style={styles.cardRange}>{t(b.rangeKey)}</Text>
@@ -56,6 +78,10 @@ export function Step09Budget({ value, onChange }: Props) {
           );
         })}
       </View>
+
+      <Text testID="s9-caveat" style={styles.caveat}>
+        {t('onboarding.s9.caveat')}
+      </Text>
     </View>
   );
 }
@@ -80,7 +106,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
     borderWidth: 2,
+    borderLeftWidth: 2,
     borderColor: 'transparent',
+  },
+  cardEditorial: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.editorialDark,
   },
   cardSelected: {
     backgroundColor: colors.bg.primary,
@@ -94,8 +125,18 @@ const styles = StyleSheet.create({
   cardLabelSelected: {
     color: colors.text.primary,
   },
+  cardLabelHeavy: {
+    fontFamily: 'Geist-Bold',
+    fontWeight: '700',
+  },
   cardRange: {
     ...typography.caption,
     color: colors.text.secondary,
+  },
+  caveat: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginTop: spacing.sm,
+    textAlign: 'center',
   },
 });

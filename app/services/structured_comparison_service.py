@@ -44,6 +44,244 @@ from app.services.api_budget_service import (
 )
 from app.services import firecrawl_service, scrapedo_service
 
+
+# Bundle C § 2e A.4.5 — comparison_quality detector. Returns one of
+# 'normal' / 'weak' / 'weird' so the verdict prompt + frontend can adjust
+# framing WITHOUT triggering a UI banner (per critical rule #1). The
+# 'weird' label only fires on the three hard triggers from spec § 2e:
+#   1. Cross-category (category_used mismatch).
+#   2. Post-fallback >50% spec coverage gap on either product.
+#   3. Price spread >= 10x order of magnitude.
+# 'weak' is reserved for the softer signal: pre-fallback >50% spec gap
+# (means Tier 2/3 still has a chance to fill).
+_EXPECTED_SPEC_FIELD_COUNT = {
+    "electronics": 6, "supplements": 5, "fragrances": 6, "fashion": 5,
+    "skincare": 5, "haircare": 5, "makeup": 6, "grocery": 5, "other": 4,
+}
+
+
+def _product_category(p):
+    return (p.get("category_used") or p.get("category") or "").strip().lower()
+
+
+def _product_price_amount(p):
+    price = p.get("price")
+    if isinstance(price, dict):
+        amt = price.get("amount")
+    else:
+        amt = price
+    try:
+        amt = float(amt) if amt is not None else None
+    except (TypeError, ValueError):
+        return None
+    return amt if (amt is not None and amt > 0) else None
+
+
+def _product_spec_coverage(p):
+    """Return (filled_count, expected_count) for the product's specs."""
+    specs = p.get("specs") or {}
+    if not isinstance(specs, dict):
+        return 0, 1
+    cat = _product_category(p) or "other"
+    expected = _EXPECTED_SPEC_FIELD_COUNT.get(cat, _EXPECTED_SPEC_FIELD_COUNT["other"])
+    # Count non-empty, non-N/A spec values.
+    filled = sum(
+        1 for v in specs.values()
+        if v not in (None, "", "N/A", "n/a") and not (isinstance(v, str) and not v.strip())
+    )
+    return filled, max(expected, 1)
+
+
+# Bundle C § 2f A.4.7 — Tier 2 spec fallback.
+# Fires AFTER Tier 1 + smart-fallback when NON_NEGOTIABLE schema fields
+# remain blank. Each missing field gets one targeted Serper + GPT-mini
+# extract, in parallel via asyncio.gather, with strict wall budgets:
+#   - 4s outer asyncio.wait_for (spec § 2f)
+#   - 0.5s per-field budget (spec § 2f) — but parallel gather lets all
+#     fields share the 4s wall, so per-field is enforced via wait_for
+#     on each task.
+# Silent omission per § 2h on timeout/failure — NO exception escapes.
+_TIER2_WALL_SECONDS = 4.0
+_TIER2_PER_FIELD_SECONDS = 3.5  # near-full wall; gather lets fields share
+
+
+async def tier2_fill_non_negotiables(
+    *,
+    brand: str,
+    name: str,
+    variant,
+    category: str,
+    specs_so_far: dict,
+) -> dict:
+    """Bundle C § 2f A.4.7 — Tier 2 targeted fill for non-negotiable
+    schema fields still blank after Tier 1 + smart-fallback.
+
+    Returns a dict of {field: value} for fields successfully filled.
+    Empty dict on no-op (all non-negotiables already filled) or on
+    timeout/failure. NEVER raises — silent omission per § 2h.
+
+    Wall-budget contract:
+      - 4s outer asyncio.wait_for hard cap.
+      - Runs targeted GPT extract per missing field in parallel.
+      - Fires ONLY when at least one non-negotiable is blank — common
+        happy-path comparisons skip Tier 2 entirely (zero added wall).
+    """
+    from app.services.extraction_service import (
+        CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE,
+    )
+
+    non_negotiable = CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE.get(category, [])
+    if not non_negotiable:
+        return {}  # 'other' category + unknown categories have no non-negotiables
+
+    # Identify still-missing non-negotiables (Tier 1 + smart-fallback already ran).
+    missing = [
+        f for f in non_negotiable
+        if not specs_so_far.get(f) or specs_so_far.get(f) in ("N/A", "")
+    ]
+    if not missing:
+        return {}  # Happy path — all non-negotiables already filled.
+
+    full_name = f"{brand} {name} {variant or ''}".strip()
+
+    async def _fill_one_field(field: str):
+        """Fire one Serper search + targeted GPT extract for a single field.
+        Returns {field: value} on success, {} on failure/timeout/empty
+        response. NEVER raises."""
+        try:
+            from app.services.serper_service import search_web
+            from app.services import openai_service as _openai_svc
+
+            query = f"{full_name} {field.replace('_', ' ')} specifications"
+            search_results = await search_web(query, num_results=3)
+            snippets = []
+            for hit in (search_results.get("organic") or [])[:3]:
+                snippet = hit.get("snippet", "")
+                if snippet:
+                    snippets.append(snippet)
+            context = "\n".join(snippets)
+            if not context:
+                return {}
+            result = await _openai_svc.extract_specs_targeted(
+                brand=brand,
+                name=name,
+                variant=variant,
+                category=category,
+                fields=[field],
+                context=context,
+            )
+            if result and isinstance(result, dict):
+                val = result.get(field)
+                if val and val not in ("N/A", ""):
+                    return {field: val}
+            return {}
+        except Exception:  # noqa: BLE001 — silent omission per § 2h
+            return {}
+
+    async def _run_all():
+        # Parallel gather — all fields race within the 4s wall.
+        tasks = [_fill_one_field(f) for f in missing]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        merged = {}
+        for r in results:
+            if isinstance(r, dict):
+                merged.update(r)
+        return merged
+
+    try:
+        return await asyncio.wait_for(_run_all(), timeout=_TIER2_WALL_SECONDS)
+    except asyncio.TimeoutError:
+        logger.info(
+            f"[TIER2_FALLBACK] timeout filling {missing} for {brand} {name}"
+        )
+        return {}
+    except Exception as e:  # noqa: BLE001 — never escape
+        logger.warning(f"[TIER2_FALLBACK] error: {e}")
+        return {}
+
+
+def _classify_comparison_quality(
+    *,
+    cat_a: str,
+    cat_b: str,
+    spec_coverage_a: float,
+    spec_coverage_b: float,
+    price_a: float,
+    price_b: float,
+) -> str:
+    """Bundle C § 2e — explicit-args classifier (test-bundle-c contract).
+
+    Used by unit tests that want to drive the classifier with already-
+    computed coverage ratios + prices. detect_comparison_quality() is
+    the products-list orchestration entry point and delegates here.
+    """
+    # Rule 1: cross-category → weird.
+    if cat_a and cat_b and cat_a.strip().lower() != cat_b.strip().lower():
+        return "weird"
+    # Rule 3: 10x+ price spread → weird (boundary inclusive per spec).
+    if price_a is not None and price_b is not None and price_a > 0 and price_b > 0:
+        lo, hi = min(price_a, price_b), max(price_a, price_b)
+        if hi / lo >= 10.0:
+            return "weird"
+    # Rule 2: post-fallback >50% missing on either side → weird.
+    # (When callers pass already-resolved coverage ratios, those reflect the
+    # post-fallback state — apply the weird-jump immediately.)
+    if spec_coverage_a is not None and spec_coverage_a < 0.5:
+        return "weird"
+    if spec_coverage_b is not None and spec_coverage_b < 0.5:
+        return "weird"
+    # Soft signal: under 0.85 coverage on either side → weak (gives Tier 2/3 room).
+    if (spec_coverage_a is not None and spec_coverage_a < 0.85) or (
+        spec_coverage_b is not None and spec_coverage_b < 0.85
+    ):
+        return "weak"
+    return "normal"
+
+
+def detect_comparison_quality(products, post_fallback=False) -> str:
+    """Bundle C § 2e — classify a comparison as normal / weak / weird.
+
+    `post_fallback=True` signals that the 3-tier spec fallback has already
+    run, so any remaining missing-spec gap is structural rather than fixable.
+    Defaults to False so callers in pre-Phase-2 paths get the softer 'weak'
+    label instead of jumping straight to 'weird'.
+
+    Returns 'normal' for happy-path comparisons; spec § 2e detector triggers
+    are intentionally conservative — 'weird' must reflect a genuinely
+    suspect pairing, never just sparse early-pipeline data.
+    """
+    if not products or len(products) < 2:
+        return "normal"
+
+    # Rule 1: cross-category (category_used mismatch) → weird.
+    cats = [_product_category(p) for p in products]
+    if cats[0] and cats[1] and cats[0] != cats[1]:
+        return "weird"
+
+    # Rule 3: 10x+ price spread → weird (only when both prices present).
+    p0 = _product_price_amount(products[0])
+    p1 = _product_price_amount(products[1])
+    if p0 is not None and p1 is not None:
+        lo, hi = min(p0, p1), max(p0, p1)
+        if lo > 0 and hi / lo >= 10.0:
+            return "weird"
+
+    # Rule 2: post-fallback spec coverage check. Either product < 50% filled → weird.
+    if post_fallback:
+        for p in products:
+            filled, expected = _product_spec_coverage(p)
+            if filled / expected < 0.5:
+                return "weird"
+
+    # Soft signal: pre-fallback heavy spec gap → weak (gives Tier 2/3 room).
+    for p in products:
+        filled, expected = _product_spec_coverage(p)
+        if filled / expected < 0.5:
+            return "weak"
+
+    return "normal"
+
+
 # Phase 2A.1 — env-gated per-stage timing instrumentation.
 # Read once per process (cache_var lookup in hot path is O(1) attribute access).
 # Process restart picks up env changes; tests can reset via `scs._DEBUG_STAGE_TIMINGS = None`.
@@ -1495,6 +1733,31 @@ class StructuredComparisonService:
                         result_specs[field] = value
                         fc[field] = "smart_fallback"
                 result["specs"] = result_specs
+
+        # Bundle C § 2f A.4.7 — Tier 2 fallback. Fires ONLY when Tier 1 +
+        # smart-fallback left non-negotiable schema fields blank. 4s outer
+        # wall cap (tier2_fill_non_negotiables handles per-field parallelism).
+        # Stays inside STREAM_HARD_CAP_SECONDS=25 because Tier 2 fires only
+        # when there's a real gap (most happy-path comparisons skip it
+        # entirely — zero added wall).
+        result_specs_now = result.get("specs") or {}
+        t_tier2 = time.perf_counter() if stage_timings is not None else None
+        tier2_filled = await tier2_fill_non_negotiables(
+            brand=brand, name=name, variant=variant,
+            category=category, specs_so_far=result_specs_now,
+        )
+        if stage_timings is not None:
+            stage_timings["tier2_fallback_ms"] = round(
+                (time.perf_counter() - t_tier2) * 1000, 1
+            )
+        if tier2_filled:
+            fc = result_specs_now.setdefault("_field_confidence", {})
+            for field, value in tier2_filled.items():
+                existing = result_specs_now.get(field)
+                if existing in (None, "", "N/A"):
+                    result_specs_now[field] = value
+                    fc[field] = "tier2_fallback"
+            result["specs"] = result_specs_now
 
         rating_data = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
         for i, key in enumerate(phase2_keys):

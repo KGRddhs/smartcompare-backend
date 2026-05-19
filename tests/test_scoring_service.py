@@ -778,7 +778,13 @@ class TestPriceTierDetection:
         assert ScoringService._detect_price_tier(100.0) == "premium"
 
     def test_price_tier_luxury(self):
-        assert ScoringService._detect_price_tier(500.0) == "luxury"
+        # Bundle C § 3e/3f — under the default 'other_light' sub-scale,
+        # 189–500 is luxury, 500+ is the new top_tier slot.
+        assert ScoringService._detect_price_tier(300.0) == "luxury"
+
+    def test_price_tier_top_tier(self):
+        # Bundle C § 3a — 500+ BHD under other_light → top_tier.
+        assert ScoringService._detect_price_tier(800.0) == "top_tier"
 
     def test_price_tier_boundary_budget_mid(self):
         tier = ScoringService._detect_price_tier(15.0)

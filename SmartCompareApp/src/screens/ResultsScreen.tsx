@@ -84,6 +84,10 @@ import { HeroRings } from '../components/results/HeroRings';
 import { DimensionBars } from '../components/results/DimensionBars';
 import { TopMatchBadge } from '../components/results/TopMatchBadge';
 import { FactualVerdict } from '../components/results/FactualVerdict';
+import { ConfidencePills } from '../components/results/ConfidencePills';
+import { ConfidenceDetailsSheet } from '../components/results/ConfidenceDetailsSheet';
+import { PersonalizationChip } from '../components/results/PersonalizationChip';
+import { anyEstimated } from '../services/sourceMethod';
 import { getUsageStatus, UsageStatus } from '../services/usageService';
 import {
   loadDemographicsState,
@@ -120,6 +124,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // wait this long so the LoadingRings hero animation lands.
   const minDisplayUntilRef = useRef<number>(Date.now() + 1200);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  // Bundle C § 5b — which leg's "What we know" sheet is currently open.
+  // `null` keeps the sheet closed; tapping a pill sets the leg.
+  const [sheetLeg, setSheetLeg] = useState<'price' | 'reviews' | 'specs' | null>(null);
   // Phase 3 § 4b — specs collapsed by default. The post-reveal moment
   // should feel like an answer, not a data dump; the user expands when
   // they want detail.
@@ -656,9 +663,12 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 {product.price?.source_method === 'converted_usd' && (
                   <Text style={styles.priceNote}>{t('results.convertedUSD')}</Text>
                 )}
-                {(product.price?.estimated || product.price?.source_method === 'estimated') && (
-                  <Text style={styles.priceNote}>{t('results.estimated')}</Text>
-                )}
+                {/* Bundle C § 5c — legacy `(estimated)` caption removed.
+                    Price provenance is silent in the UI; the Price
+                    confidence pill is hidden upstream via
+                    `hidePricePill={anyEstimated(products)}` on
+                    ConfidencePills (see scoring_v2 hero section below).
+                    Disclosure obligation handled by Terms (A.4.10). */}
                 {product.price?.retailer && !product.price?.unavailable && (
                   <Text style={styles.retailerText}>{product.price.retailer}</Text>
                 )}
@@ -734,31 +744,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           })}
         </Animated.View>
 
-        {/* Confidence indicator */}
-        {isNewFormat && result.overview!.confidence?.overall && (
-          <View style={styles.confidenceBanner}>
-            {result.overview!.confidence.overall === 'high' ? (
-              <Shield size={14} color={colors.accent} />
-            ) : (
-              <AlertCircle size={14} color={colors.warning} />
-            )}
-            <Text
-              style={[
-                styles.confidenceText,
-                {
-                  color:
-                    result.overview!.confidence.overall === 'high'
-                      ? colors.accent
-                      : result.overview!.confidence.overall === 'medium'
-                      ? colors.warning
-                      : colors.destructive,
-                },
-              ]}
-            >
-              {t(`results.confidence.${result.overview!.confidence.overall}`)}
-            </Text>
-          </View>
-        )}
+        {/* Bundle C § 5b/5d — legacy single-word confidence banner removed.
+            The 3-pill ConfidencePills row + ConfidenceDetailsSheet now live
+            inside the scoring_v2 hero card below. */}
 
         {/* 2. Why we picked this — was "Verdict". Per design § 4g audit. */}
         <Animated.View entering={FadeInDown.delay(200).duration(400)} style={styles.section}>
@@ -1075,40 +1063,79 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           )
         )}
 
-        {/* 8a. Bundle E § Decision 2/3 — scoring_v2 hero card */}
-        {scoring_v2 && scoring_v2.dimensions && scoring_v2.dimensions.length >= 3 && (
-          <Animated.View entering={FadeInDown.delay(750).duration(400)} style={styles.section} testID="results-scoring-v2">
-            <TopMatchBadge testID="results-v2-top-match" />
-            <HeroRings
-              scoreA={scoring_v2.overall_score?.product_a ?? 0}
-              scoreB={scoring_v2.overall_score?.product_b ?? 0}
-              winnerIndex={
-                (scoring_v2.overall_score?.product_a ?? 0) >=
-                (scoring_v2.overall_score?.product_b ?? 0)
-                  ? 0
-                  : 1
-              }
-              testID="results-v2-hero-rings"
-            />
-            {scoring_v2.factual_verdict?.line1 && (
-              <FactualVerdict
-                line1={scoring_v2.factual_verdict.line1 ?? ''}
-                line2={scoring_v2.factual_verdict.line2 ?? ''}
-                testID="results-v2-factual-verdict"
+        {/* 8a. Bundle E § Decision 2/3 — scoring_v2 hero card.
+            Bundle C § 2e — in weird-mode (comparison_quality === 'weird')
+            the hero rings + TopMatchBadge are suppressed and replaced by
+            a calm em-dash placeholder. Verdict text (rewritten by the
+            backend prompt in weird-mode) carries the meaning. NO banner
+            anywhere — per FIVE critical rules #1. */}
+        {scoring_v2 && scoring_v2.dimensions && scoring_v2.dimensions.length >= 3 && (() => {
+          const isWeird = scoring_v2.comparison_quality === 'weird';
+          const winnerIndex: 0 | 1 = (
+            (scoring_v2.overall_score?.product_a ?? 0) >=
+            (scoring_v2.overall_score?.product_b ?? 0)
+          ) ? 0 : 1;
+          return (
+            <Animated.View entering={FadeInDown.delay(750).duration(400)} style={styles.section} testID="results-scoring-v2">
+              {!isWeird && <TopMatchBadge testID="results-v2-top-match" />}
+              {/* Bundle C § 5b — 3-pill row above the hero. § 5c — Price
+                  pill hidden whenever ANY product fell to estimated. */}
+              {scoring_v2.confidence_legs && (
+                <ConfidencePills
+                  confidence={scoring_v2.confidence_legs}
+                  hidePricePill={anyEstimated(products)}
+                  onPillPress={(leg) => setSheetLeg(leg)}
+                  testID="results-v2-confidence-pills"
+                />
+              )}
+              {isWeird ? (
+                <View style={styles.weirdHero}>
+                  <Text style={styles.weirdHeroEmDash} testID="results-v2-hero-em-dash">
+                    {'\u2014'}
+                  </Text>
+                </View>
+              ) : (
+                <HeroRings
+                  scoreA={scoring_v2.overall_score?.product_a ?? 0}
+                  scoreB={scoring_v2.overall_score?.product_b ?? 0}
+                  winnerIndex={winnerIndex}
+                  testID="results-v2-hero-rings"
+                />
+              )}
+              {scoring_v2.factual_verdict?.line1 && (
+                <FactualVerdict
+                  line1={scoring_v2.factual_verdict.line1 ?? ''}
+                  line2={scoring_v2.factual_verdict.line2 ?? ''}
+                  testID="results-v2-factual-verdict"
+                />
+              )}
+              {/* Bundle C § 7a — single-line chip below the verdict; the
+                  component hides itself when applied_shifts is empty or
+                  undefined. */}
+              <PersonalizationChip
+                appliedShifts={scoring_v2.personalization?.applied_shifts}
+                testID="results-v2-personalization-chip"
               />
-            )}
-            <DimensionBars
-              dimensions={scoring_v2.dimensions}
-              winnerIndex={
-                (scoring_v2.overall_score?.product_a ?? 0) >=
-                (scoring_v2.overall_score?.product_b ?? 0)
-                  ? 0
-                  : 1
-              }
-              testID="results-v2-bars"
-            />
-          </Animated.View>
-        )}
+              <DimensionBars
+                dimensions={scoring_v2.dimensions}
+                winnerIndex={winnerIndex}
+                testID="results-v2-bars"
+              />
+              {/* Bundle C § 5b — "What we know" details sheet driven by
+                  the active sheetLeg. Backend-composed strings rendered
+                  verbatim (frontend NEVER composes — guarded by tests). */}
+              {sheetLeg && (
+                <ConfidenceDetailsSheet
+                  visible
+                  leg={sheetLeg}
+                  details={scoring_v2.confidence_details ?? {}}
+                  onClose={() => setSheetLeg(null)}
+                  testID="results-v2-confidence-sheet"
+                />
+              )}
+            </Animated.View>
+          );
+        })()}
 
         {/* 8. Score Breakdown (legacy — hidden when scoring_v2 present) */}
         {!scoring_v2 && scoring && (
@@ -1281,6 +1308,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg.primary,
+  },
+  // Bundle C § 2e — weird-comparison hero placeholder. Calm, single
+  // em-dash in muted display weight. Verdict text below carries
+  // meaning; this is intentional restraint, not an empty state.
+  weirdHero: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+  },
+  weirdHeroEmDash: {
+    ...typography.display,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
   emptyStateContainer: {
     flex: 1,
@@ -1485,21 +1525,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
 
-  // Confidence
-  confidenceBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.base,
-    marginBottom: spacing.sm,
-    padding: spacing.md,
-    backgroundColor: colors.bg.secondary,
-    borderRadius: radii.button,
-  },
-  confidenceText: {
-    ...typography.caption,
-    fontWeight: '500',
-  },
+  // Bundle C § 5b/5d — legacy `confidenceBanner` + `confidenceText`
+  // styles removed alongside the banner block above. The 3-pill
+  // ConfidencePills + ConfidenceDetailsSheet replace this surface.
 
   // Sections
   section: {

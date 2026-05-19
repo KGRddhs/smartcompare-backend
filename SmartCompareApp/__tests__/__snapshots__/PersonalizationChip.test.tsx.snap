@@ -1,0 +1,73 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`PersonalizationChip (Bundle C §7) snapshot — 1 arrow 1`] = `
+<View
+  style={
+    {
+      "alignSelf": "flex-start",
+      "backgroundColor": "#F8F8FA",
+      "borderRadius": 999,
+      "marginTop": 8,
+      "paddingHorizontal": 12,
+      "paddingVertical": 4,
+    }
+  }
+  testID="personalization-chip"
+>
+  <Text
+    style={
+      {
+        "color": "#6B7280",
+        "fontSize": 13,
+        "fontWeight": "400",
+        "lineHeight": 19.5,
+      }
+    }
+  >
+    <Text>
+      results.personalization.chip_template
+    </Text>
+    <Text
+      testID="personalization-chip-arrows"
+    >
+      ↑ performance score
+    </Text>
+  </Text>
+</View>
+`;
+
+exports[`PersonalizationChip (Bundle C §7) snapshot — 3 arrows mixed direction 1`] = `
+<View
+  style={
+    {
+      "alignSelf": "flex-start",
+      "backgroundColor": "#F8F8FA",
+      "borderRadius": 999,
+      "marginTop": 8,
+      "paddingHorizontal": 12,
+      "paddingVertical": 4,
+    }
+  }
+  testID="personalization-chip"
+>
+  <Text
+    style={
+      {
+        "color": "#6B7280",
+        "fontSize": 13,
+        "fontWeight": "400",
+        "lineHeight": 19.5,
+      }
+    }
+  >
+    <Text>
+      results.personalization.chip_template
+    </Text>
+    <Text
+      testID="personalization-chip-arrows"
+    >
+      ↑ performance score · ↑ build quality score · ↓ brand recognition
+    </Text>
+  </Text>
+</View>
+`;

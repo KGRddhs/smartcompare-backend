@@ -25,8 +25,11 @@
  * regression is loud and visible.
  */
 
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import * as Haptics from 'expo-haptics';
+import { ChevronDown, ChevronUp } from 'lucide-react-native';
 
 import { colors, spacing, typography } from '../../theme';
 import type { Dimension } from '../../types';
@@ -46,12 +49,27 @@ export function DimensionBars({
   winnerIndex,
   testID = 'bars',
 }: DimensionBarsProps) {
-  // § Decision 2 invariant — fail loud on zero scores. A score of 0
-  // means the backend leaked a dimension where one product had no data,
-  // which would paint a misleading empty bar. Render a contract-violation
-  // node instead so the regression is visible in dev + jest.
-  const hasZero = dimensions.some(
-    (d) => d.score_a <= 0 || d.score_b <= 0,
+  // Bundle C § 2b — last-resort "Limited data" visible row. Backend
+  // flags `data_insufficient: true` only when the dim can't be silently
+  // omitted (single-dim scenarios). Most missing dims hit § 2h silent
+  // omission instead and never reach this state.
+  const insufficientDims = dimensions.filter((d) => d.data_insufficient === true);
+
+  // Bundle C — silent omission per spec § 2h. Dims with `null` on either
+  // side (and NOT flagged data_insufficient) disappear from the rendered
+  // tree entirely. Done at component entry so the downstream contract-
+  // violation check + DimensionRow logic see only renderable rows.
+  const renderableDims = dimensions.filter(
+    (d) => !d.data_insufficient && d.score_a != null && d.score_b != null,
+  );
+
+  // § Decision 2 invariant — fail loud on ACTUAL zero scores. A score of
+  // 0 means the backend leaked a dimension where one product had no
+  // data, which would paint a misleading empty bar. Bundle C separates
+  // `null` (silent omission per § 2h, filtered out above) from `0`
+  // (contract violation per § 6d, still trips this guard).
+  const hasZero = renderableDims.some(
+    (d) => (d.score_a as number) <= 0 || (d.score_b as number) <= 0,
   );
   if (hasZero) {
     return (
@@ -68,9 +86,59 @@ export function DimensionBars({
     );
   }
 
+  // Bundle C § 6b — hero card shows top 4 dims by default; remaining
+  // dims hide behind a "See full breakdown" expand row that toggles
+  // visibility inline. ≤4 renderable dims → expand row never appears.
+  const HERO_CAP = 4;
+  const showExpandRow = renderableDims.length > HERO_CAP;
+
   return (
     <View style={styles.container} testID={testID}>
-      {dimensions.map((d) => (
+      <HeroExpand
+        renderableDims={renderableDims}
+        winnerIndex={winnerIndex}
+        heroCap={HERO_CAP}
+        showExpandRow={showExpandRow}
+        testID={testID}
+      />
+      {insufficientDims.map((d) => (
+        <InsufficientRow
+          key={d.key}
+          dimension={d}
+          testID={`${testID}-row-${d.key}-insufficient`}
+        />
+      ))}
+    </View>
+  );
+}
+
+interface HeroExpandProps {
+  renderableDims: Dimension[];
+  winnerIndex: 0 | 1;
+  heroCap: number;
+  showExpandRow: boolean;
+  testID: string;
+}
+
+function HeroExpand({ renderableDims, winnerIndex, heroCap, showExpandRow, testID }: HeroExpandProps) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const heroDims = renderableDims.slice(0, heroCap);
+  const extraDims = renderableDims.slice(heroCap);
+  const visibleDims = expanded ? renderableDims : heroDims;
+
+  const onToggle = () => {
+    // Haptic only on transition INTO expanded (per CLAUDE.md motion
+    // vocabulary — chip:light, never error/heavy intensities).
+    if (!expanded) {
+      try { Haptics.selectionAsync(); } catch {}
+    }
+    setExpanded((x) => !x);
+  };
+
+  return (
+    <>
+      {visibleDims.map((d) => (
         <DimensionRow
           key={d.key}
           dimension={d}
@@ -78,6 +146,41 @@ export function DimensionBars({
           testID={`${testID}-row-${d.key}`}
         />
       ))}
+      {showExpandRow && (
+        <TouchableOpacity
+          testID={`${testID}-expand-row`}
+          onPress={onToggle}
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          style={styles.expandRow}
+        >
+          <Text style={styles.expandLabel}>
+            {t('results.dimensions.see_full_breakdown')}
+          </Text>
+          {expanded ? (
+            <ChevronUp size={16} color={colors.text.secondary} />
+          ) : (
+            <ChevronDown size={16} color={colors.text.secondary} />
+          )}
+        </TouchableOpacity>
+      )}
+    </>
+  );
+}
+
+interface InsufficientRowProps {
+  dimension: Dimension;
+  testID: string;
+}
+
+function InsufficientRow({ dimension, testID }: InsufficientRowProps) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.insufficientRow} testID={testID}>
+      <Text style={styles.label}>{dimension.label}</Text>
+      <Text style={styles.insufficientCaption}>
+        {t('results.dimensions.limited_data')}
+      </Text>
     </View>
   );
 }
@@ -89,7 +192,12 @@ interface DimensionRowProps {
 }
 
 function DimensionRow({ dimension, winnerIndex, testID }: DimensionRowProps) {
-  const { label, score_a, score_b, delta_text, confidence } = dimension;
+  const { t } = useTranslation();
+  const { key, label, delta_text, confidence } = dimension;
+  // Bundle C — `score_a | score_b` typed `number | null` (spec § 2h).
+  // Parent filters out null pairs already, but we narrow defensively.
+  const score_a = dimension.score_a ?? 0;
+  const score_b = dimension.score_b ?? 0;
   const isLow = confidence === 'low';
   const rowOpacity = isLow ? LOW_CONFIDENCE_OPACITY : 1;
   const prefix = isLow ? LOW_CONFIDENCE_PREFIX : undefined;
@@ -101,12 +209,38 @@ function DimensionRow({ dimension, winnerIndex, testID }: DimensionRowProps) {
   const fillA = aWins ? colors.accent : colors.text.secondary;
   const fillB = aWins ? colors.text.secondary : colors.accent;
 
+  // Bundle C § 4b — value + price rows promote delta_text to a hero
+  // typography slot beneath the label. Other dims keep the existing
+  // inline-right caption (incremental migration).
+  const isHeroDeltaRow = key === 'value' || key === 'price';
+  // § 4c — cross-tier framing suppresses the winner emerald + replaces
+  // delta_text with neutral "Different tier — held to higher bar".
+  const isCrossTier = dimension.is_cross_tier === true && key === 'value';
+  const heroDeltaColor = isCrossTier
+    ? colors.text.primary
+    : (aWins ? colors.accent : colors.text.primary);
+  const heroDeltaText = isCrossTier
+    ? t('results.value.different_tier')
+    : delta_text;
+
+  // § 4d — per-row caption on the value row ONLY, surfacing tier
+  // mismatches without a banner. Silent on in_range/in_range.
+  const valueMatchCaptionKey = computeValueMatchCaptionKey(dimension);
+
   return (
     <View style={[styles.row, { opacity: rowOpacity }]} testID={testID}>
       <View style={styles.labelRow}>
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.delta}>{delta_text}</Text>
+        {!isHeroDeltaRow && <Text style={styles.delta}>{delta_text}</Text>}
       </View>
+      {isHeroDeltaRow && (
+        <Text
+          testID={`${testID}-delta-hero`}
+          style={[styles.deltaHero, { color: heroDeltaColor }]}
+        >
+          {heroDeltaText}
+        </Text>
+      )}
       <View style={styles.barsRow}>
         <BarSide
           score={score_a}
@@ -131,8 +265,40 @@ function DimensionRow({ dimension, winnerIndex, testID }: DimensionRowProps) {
           testID={`${testID}-fill-b`}
         />
       </View>
+      {key === 'value' && valueMatchCaptionKey && (
+        <Text
+          testID={`${testID}-value-match-caption`}
+          style={styles.valueMatchCaption}
+        >
+          {t(valueMatchCaptionKey)}
+        </Text>
+      )}
     </View>
   );
+}
+
+// Bundle C § 4d + 4e — pick the right caption key for the VALUE row based
+// on per-product `value_match_*` flags. Returns `null` for the silent
+// in_range/in_range case. Caller renders only when key !== null.
+function computeValueMatchCaptionKey(d: Dimension): string | null {
+  const a = d.value_match_a;
+  const b = d.value_match_b;
+  if (!a && !b) return null;
+  if (a === 'in_range' && b === 'in_range') return null;
+  // Both below → "cheaper of the two" (spec § 4e case 2).
+  if (a === 'below_range' && b === 'below_range') return 'results.valueMatch.cheaper_of_two';
+  // Any product above → caption surfaces above-range, with tradeoff
+  // variant if backend supplied a key_tradeoff snippet.
+  if (a === 'above_range' || b === 'above_range') {
+    return d.key_tradeoff
+      ? 'results.valueMatch.above_range_with_tradeoff'
+      : 'results.valueMatch.above_range';
+  }
+  // Single product below_range → "within your range" framing.
+  if (a === 'below_range' || b === 'below_range') {
+    return 'results.valueMatch.below_range';
+  }
+  return null;
 }
 
 interface BarSideProps {
@@ -195,6 +361,19 @@ const styles = StyleSheet.create({
   row: {
     gap: spacing.xs,
   },
+  // Bundle C § 2b — last-resort visible state for truly-missing data.
+  // Neutral muted styling — never emerald, never destructive. The
+  // caption "Limited data" is the user-facing equivalent of "no signal
+  // to score this dim with yet" without apologizing.
+  insufficientRow: {
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    opacity: 0.7,
+  },
+  insufficientCaption: {
+    ...typography.caption,
+    color: colors.text.secondary,
+  },
   labelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -210,6 +389,32 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     marginStart: spacing.sm,
     textAlign: 'right',
+  },
+  // Bundle C § 4b — hero promotion: value + price rows put the delta
+  // text center-stage above the bars, title-weight, emerald when winning.
+  deltaHero: {
+    ...typography.title,
+    textAlign: 'center',
+    marginVertical: spacing.xs,
+  },
+  // Bundle C § 4d — per-row caption under the value bars only.
+  valueMatchCaption: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  // Bundle C § 6b — expand row sits under the hero 4 dims.
+  expandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  expandLabel: {
+    ...typography.caption,
+    color: colors.text.secondary,
   },
   barsRow: {
     flexDirection: 'row',
