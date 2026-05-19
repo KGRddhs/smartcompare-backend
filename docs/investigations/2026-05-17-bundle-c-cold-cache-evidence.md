@@ -314,3 +314,50 @@ Both **A.3.1 and A.3.3 OPEN** for backend-bundle-c on code-inspection evidence b
 Verification path: A.3.x patches land → re-run the 6 cold-cache probes → expect `pros≥1`, `cons≥1`, `shopping_count>0` for at least mainstream categories (Almarai, Centrum, CeraVe), or `source_method` no longer `estimated`.
 
 **D.1.4 closure deferred:** still set `DEBUG_STAGE_TIMINGS=false` on Railway once A.3.x ships AND post-deploy probes verify fixes. Net cost of leaving it on: zero per backend's cached-flag pattern, but cleanliness wins per `memory/feedback_measure_before_optimize.md`.
+
+---
+
+## D.4.2 PRE-MERGE BASELINE (captured 2026-05-18 by test-bundle-c)
+
+> Authoritative baseline for the post-merge diff. Captured BEFORE the `feature/bundle-c-scoring → main` merge from current PROD HEAD (`9ebf27d`, which has Bundle B PR#6+PR#7 but NOT Bundle C scoring). Source: test-bundle-c's `tests/test_bundle_c_integration.py` 42-probe sweep, team-lead-authorized at ~$0.14 cost.
+
+### Wall-time per category (cold-cache, `?nocache=true`, PROD)
+
+| Category | Query | Wall (s) |
+|---|---|---|
+| fragrances | `Tom Ford Black Orchid vs Dior Sauvage` | 15.43 |
+| fashion | `Adidas Samba vs Nike Air Force 1` | 14.92 |
+| electronics | `iPhone 16 vs Galaxy S25` | 14.74 |
+| skincare | `CeraVe vs Cetaphil moisturizing cream` | 11.65 |
+| grocery | `Lurpak butter vs President butter` | 11.03 |
+| supplements | `Solgar Vitamin D3 vs NOW Foods Vitamin D3` | 10.44 |
+
+**Stats:** p95 ≈ 15.4s · median ~13s · max 15.43s. **All 6 within `STREAM_HARD_CAP_SECONDS=25` budget.** Matches Session 51 floor (supplements 11.6s, fragrances 12-16s, electronics 14.3s) — PROD stable at Session 50 mainstream-target band (14-17s).
+
+### Integration sweep result (PROD pre-merge)
+
+- **12 PASS** — Bundle-C-independent invariants (wall-cap, no-forbidden-vocab, no-banner) intact.
+- **8 FAIL — EXPECTED.** Probes assert post-merge contracts: `factual_verdict.line1/line2` (A.3.2), `price_tier` (A.5.x), `value_match` (A.6.x), `comparison_quality` enum (A.4.5), `personalization.applied_shifts[]` (A.9.1). Failing now CONFIRMS PROD lacks Bundle C features as expected. These flip GREEN post-merge.
+- **5 SKIP** — qa edge stubs (`@pytest.mark.skip(reason="bundle-c idle stub")`) pending B.x ship + Tier 3 (A.4.8).
+
+### Post-merge expected deltas (Gate 5 final-check criterion)
+
+When Bundle C lands + Railway redeploys (~90s):
+
+| Probe set | PRE-MERGE | POST-MERGE expected |
+|---|---|---|
+| Invariants (12 probes) | 12 PASS | 12 PASS (unchanged) |
+| Bundle C contracts (8 probes) | 8 FAIL EXPECTED | 8 PASS (contracts wired) |
+| Skipped edge stubs (5 probes) | 5 SKIP | 5 SKIP (unchanged, v1.1 deferred) |
+| Wall-time per category | 10.44-15.43s | within +2s of baseline (per team-lead's hard-revert trigger) |
+| Serper `admin/costs` counter | 0 (meter hole) | >0 (A.3.3-fix-1) |
+| `source_method=='estimated'` rate | likely high for mainstream | low (A.3.3-fix-2 `gl=us` fallback) |
+
+### Hard-revert triggers (from team-lead, captured here for execution reference)
+
+- Wall time regression >2s on any category vs baseline above
+- ANY new `scoring_service` / `extraction_service` / `response_builder` / `serper_service` stack trace in 24h Sentry window
+- Any critical-rule-1-through-5 violation discovered in production
+- >2 pre-existing tests regress on main post-merge
+
+Rollback command: `git revert <merge-commit> && git push origin main` (Railway ~90s) + `migrations/rollback/024_top_tier_budget.sql` via Supabase MCP if needed + EAS Update push previous bundle.
