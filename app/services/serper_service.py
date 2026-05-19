@@ -168,6 +168,39 @@ async def _do_serper_shopping(product: str, gl: str) -> Dict[str, Any]:
             if shopping_response.status_code == 200:
                 record_usage("serper")
                 return shopping_response.json()
+            # Bundle C v1.1 § 1c SERPER_SHOPPING_NON_200 — capture what
+            # Serper actually returns when not 200 so we can disambiguate
+            # the 3 likely production failure modes:
+            #   1. HTTP 429 + Retry-After  → rate limit (op fix)
+            #   2. HTTP 200 empty shopping  → genuine coverage gap
+            #      (this branch never fires for empty-but-200; here for
+            #      completeness as a reminder that 200 is the success arm)
+            #   3. HTTP 4xx other-shape    → request-side bug grep missed
+            # All Serper POSTs in this codebase explicitly set
+            # Content-Type: application/json AND use httpx json= kwarg
+            # (auto-set) — verified by grep at all 7 sites. So a 400
+            # here would point to a different cause than the header.
+            # Always-on WARNING — appears in Railway prod without flag.
+            # Body truncated to 300 chars to keep log lines bounded.
+            try:
+                body_snippet = (shopping_response.text or "")[:300]
+            except Exception:  # noqa: BLE001
+                body_snippet = "<unreadable>"
+            retry_after = shopping_response.headers.get("retry-after")
+            ratelimit_remaining = shopping_response.headers.get(
+                "x-ratelimit-remaining"
+            )
+            logger.warning(
+                "SERPER_SHOPPING_NON_200 gl=%s status=%s "
+                "retry_after=%s ratelimit_remaining=%s "
+                "body=%r product=%r",
+                gl,
+                shopping_response.status_code,
+                retry_after,
+                ratelimit_remaining,
+                body_snippet,
+                product[:80],
+            )
             return {}
     except Exception as e:
         logger.error(f"Serper shopping call error (gl={gl}): {e}")
