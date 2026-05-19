@@ -527,6 +527,17 @@ def extract_price_from_shopping(
         })
 
     if not candidates:
+        # Bundle C v1 hot-fix — diagnostic log when ZERO candidates survive
+        # the filters despite shopping_items having results. Helps Ahmed/qa
+        # see which filter is rejecting items (numbers_match, strict_title_match,
+        # match_score < 0.4, counterfeit, accessory). Lightweight INFO log.
+        logger.info(
+            f"[PRICE_FILTER_TRACE] zero candidates from {len(shopping_items)} "
+            f"shopping items for {product_name!r} — all rejected by "
+            f"counterfeit/accessory/min_price/strict_title_match/numbers_match/"
+            f"match_score filters. First 3 titles: "
+            f"{[(item.get('title') or '')[:60] for item in shopping_items[:3]]}"
+        )
         return None
 
     tier1_exists = any(c["retailer_score"] >= 1.0 for c in candidates)
