@@ -4,6 +4,42 @@
 
 ---
 
+## Session 53: Bahrain Lead-Gen Skill Bundle for claude.ai web — COMPLETE 2026-05-22
+
+**Design:** `docs/plans/2026-05-22-bahrain-lead-gen-skills-design.md`
+**Plan:** `docs/plans/2026-05-22-bahrain-lead-gen-skills.md`
+**Skill files:** `docs/skills/claude-web/*.md` (4 skills + README)
+
+**Built:** 4-skill bundle for claude.ai web (paired with Meta Ads MCP at `mcp.facebook.com/ads`):
+- `qaren-meta-campaign-setup-bahrain` — one-shot create campaign + ad set + 2 ads + 2 Instant Forms (PAUSED)
+- `qaren-meta-daily-check` — decision-rule playbook (CPL<$5 → +20% boost; $5-10 → hold; >$10 → pause)
+- `qaren-fillout-meta-reconcile` — UTM-match Fillout completers to Meta ads
+- `qaren-brand-voice` — copy contract (no scary words, AR-first, emerald = signal only)
+
+**Context:** First paid acquisition push pre-app-launch. Bahrain only, 80% AR / 20% EN, 2 videos ready (one pure Arabic, one Arabic-with-English code-switching). $10/day × 3-4 days = $40 total budget. Approach B (Tilted Advantage+) — single ad set, Advantage+ audience, manual IG-heavy placement filter (IG Feed/Reels/Stories + FB Stories). Fillout survey (n=337) baseline used for targeting decisions: 91% are 18-34, 73% F (treated as distribution bias, not locked at targeting), 69% would first see ad on IG/TikTok/Snap, 75% have delayed purchase due to uncertainty.
+
+**Funnel:** Reels → video (5s hook on hesitation/regret) → Instant Form (Name+Email pre-filled, 1-tap) → thank-you screen with Follow-IG CTA + Fillout-survey deep-engagement CTA (UTM-tagged for attribution).
+
+**Why claude.ai web, not Claude Code CLI:** Meta MCP OAuth fails in Claude Code (Anthropic issues #55002/#55556/#57191 — Meta hasn't whitelisted CC's dynamic-port redirect URIs). claude.ai web custom-connector flow works fine.
+
+**Iteration rules (codified in qaren-meta-daily-check):**
+- <3 leads → HOLD, too early
+- CPL <$5 + ≥5 leads → +20% budget boost (preserves learning phase)
+- CPL $5-10 + ≥5 leads → HOLD
+- CPL >$10 + ≥10 link clicks/lead → PAUSE + redesign
+- Video A vs B CPL gap >3× with ≥5 leads on winner → pause loser
+- Never auto-execute boost/pause — always require user confirmation in same chat
+
+**Deferred to v2:**
+- Meta CAPI integration (once qaren.app/ landing page exists — Cloudflare Worker only serves /r/* today)
+- TikTok skill bundle (business verification pending)
+- Custom audience seeding (need ~100 leads first)
+- Lookalike audience (need pixel/CAPI data)
+
+**To deploy:** Ahmed uploads each `docs/skills/claude-web/qaren-*.md` (skip README) to claude.ai → Settings → Skills. One-time Ads Manager prep: upload 2 videos to Media Library (note IDs), confirm payment method on file, set $50 lifetime account spend cap, create AR + EN Fillout survey URLs.
+
+---
+
 ## Session 47: Bundle E Results Quality Overhaul (4-Opus team → dispatcher recovery) — COMPLETE 2026-05-14
 
 **Spec:** `docs/plans/2026-05-13-results-quality-overhaul-design.md`
