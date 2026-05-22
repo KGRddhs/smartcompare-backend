@@ -1,4 +1,5 @@
 {
+  "enabledMcpjsonServers": ["railway"],
   "permissions": {
     "allow": [
       "Bash(railway logs:*)",
@@ -165,7 +166,34 @@
       "Bash(shutdown /s /t 5 /c \"Shutdown by Claude Code per user request — Session 50 wrapped, all work pushed to main.\")",
       "Bash(shutdown /s /t 5)",
       "Bash(MSYS_NO_PATHCONV=1 shutdown //s //t 5)",
-      "PowerShell(Stop-Computer -Force)"
+      "PowerShell(Stop-Computer -Force)",
+      "Bash(git -C \"C:/Users/SynAckITPC/Documents/AI/smartcompare\" add CLAUDE.md)",
+      "Bash(git -C \"C:/Users/SynAckITPC/Documents/AI/smartcompare\" commit -m \"docs\\(bundle-c\\): Session 52 refinement — post-merge hot-fix sweep + v1.1 backlog\" -- CLAUDE.md)",
+      "Bash(git -C \"C:/Users/SynAckITPC/Documents/AI/smartcompare\" push origin main)",
+      "Bash(git -C \"C:/Users/SynAckITPC/Documents/AI/smartcompare\" stash pop)",
+      "Bash(git -C \"C:/Users/SynAckITPC/Documents/AI/smartcompare-bundle-c\" fetch origin)",
+      "Bash(git -C \"C:/Users/SynAckITPC/Documents/AI/smartcompare-bundle-c\" log --oneline origin/main -2)",
+      "Bash(git -C \"C:/Users/SynAckITPC/Documents/AI/smartcompare\" fetch origin)",
+      "Bash(git -C \"C:/Users/SynAckITPC/Documents/AI/smartcompare\" stash push -m \"WIP: cherry-pick-stash-2\" .claude/settings.local.json)",
+      "Bash(git -C \"C:/Users/SynAckITPC/Documents/AI/smartcompare\" cherry-pick fe9abce)",
+      "Bash(git *)",
+      "WebFetch(domain:newsroom.tiktok.com)",
+      "Bash(claude mcp *)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(command -v uvx)",
+      "Bash(command -v uv)",
+      "Skill(code-review:code-review)",
+      "Bash(grep -v \"^$\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)",
+      "Bash(echo \"---EXIT: $?\")",
+      "Bash(railway login *)",
+      "Skill(update-config)",
+      "Bash(railway --help)",
+      "Bash(railway mcp *)",
+      "Bash(where railway *)"
     ]
   }
 }

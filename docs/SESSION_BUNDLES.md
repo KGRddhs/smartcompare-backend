@@ -434,3 +434,7 @@ Per `tests/_bundle_c_v1_backlog.md` (test-bundle-c `529c35c`) + post-merge hot-f
 - `memory/feedback_user_visible_vs_payload_distinction.md` — forbidden-vocab scans need rendering-path cross-reference; payload-only hits ≠ UI violations.
 - `memory/project_bahrain_shopping_feed_gap.md` — gl=us fallback is operational stopgap; real BH feed work triggers per fallback hit-rate threshold.
 
+
+---
+
+**RETRACTION (2026-05-22):** Whole-project audit verified `ENABLE_BUNDLE_C_SCORING=false` on Railway. The flag gates exactly one site in `scoring_service.py:944` — the `None vs MISSING_SCORE=50` swap for missing raw signals. In current production, missing signals get `MISSING_SCORE=50`, so the A.4.9 silent dim omission filter never fires and the calibration cascade operates on numeric defaults. All other Bundle C behaviors (A.3.x, A.4.5, A.4.7, A.5.x, A.6.x, A.7.x, A.9.x, A.10.x, frontend Section B) are unconditional and remain live. The "always-on per Option A" claim above describes the *shipped code intent*, not the *deployed runtime*. Canonical state with full table: [BUNDLE_C_PROD_STATE.md](BUNDLE_C_PROD_STATE.md). Re-validation checklist in that doc; flag remains off until the checklist is run.
