@@ -15,6 +15,13 @@ from app.middleware.rate_limiter import limiter
 # matching app/services/referral_service.py::_CODE_ALPHABET (no 0/1/I/L/O).
 _INVITE_CODE_RE = re.compile(r"^QR-[A-HJ-NP-Z2-9]{6}$")
 
+# H5 (audit 2026-05-22) — SHA-256 hex format for X-Device-Fingerprint header.
+# Frontend `deviceFingerprint.ts` computes SHA-256(appId|osBuildId|nonce) and
+# emits 64-char lowercase hex. Anything else is dropped at the register
+# endpoint to prevent fingerprint forging / inheritance poisoning of the
+# Migration 021 anti-farming counter.
+_DEVICE_FINGERPRINT_RE = re.compile(r"^[a-f0-9]{64}$")
+
 from app.services.auth_service import (
     register_user,
     login_user,
@@ -335,7 +342,20 @@ async def register(request: Request, body: RegisterRequest):
     new_user_id = (result.get("user") or {}).get("id")
 
     # §1.5 — device fingerprint inheritance (best-effort, never blocks signup)
+    # H5 (audit 2026-05-22): validate the header is a real SHA-256 hex hash
+    # before using it. Without this, a malicious client could send any string
+    # (empty, garbage, or another user's known hash) to poison or inherit
+    # `lifetime_comparisons_used` counters — defeating the Migration 021
+    # anti-farming gate. Legitimate clients (deviceFingerprint.ts) always
+    # produce 64-char lowercase hex. Invalid values are dropped silently
+    # so signup never blocks on a misconfigured/tampered client.
     fp = request.headers.get("X-Device-Fingerprint")
+    if fp and not _DEVICE_FINGERPRINT_RE.match(fp):
+        logger.info(
+            "device-fp header rejected: invalid format (expected 64-char hex), len=%d",
+            len(fp),
+        )
+        fp = None
     if fp and new_user_id:
         try:
             admin_client = get_admin_supabase_client()

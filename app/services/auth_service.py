@@ -214,6 +214,19 @@ async def verify_token(access_token: str) -> Optional[Dict]:
     """
     Verify JWT token and return user data.
     Returns None if token is invalid or revoked.
+
+    H4 (audit 2026-05-22): also returns `access_token` so endpoints that
+    need the user-scoped Supabase client (RLS-enforced) can pass it to
+    `get_user_supabase_client(token)`. Previously omitted; callers like
+    auth_routes.py:752 (push_token) read `current_user.get("access_token")`
+    which was always None, so the ternary always fell through to
+    `get_admin_supabase_client()` — silently bypassing RLS. The .eq("id", ...)
+    filter limited blast radius but the documented security model
+    (dual-client / RLS-enforced for user writes) was not actually realized.
+
+    Security note: do NOT log the full `current_user` dict at any call
+    site (it now contains a secret). Existing log statements use only
+    `current_user['id']` — verified safe at audit time.
     """
     try:
         # Check revocation blacklist first (fast Redis lookup)
@@ -228,6 +241,7 @@ async def verify_token(access_token: str) -> Optional[Dict]:
             return {
                 "id": response.user.id,
                 "email": response.user.email,
+                "access_token": access_token,
             }
         return None
 

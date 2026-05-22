@@ -101,7 +101,14 @@ class ShareRequest(BaseModel):
 
     comparison_id: str = Field(..., min_length=1, max_length=128)
     share_target: ShareTarget
-    device_fingerprint_hash: Optional[str] = Field(default=None, max_length=128)
+    # H5 (audit 2026-05-22): tightened from max_length=128 to a strict
+    # SHA-256 hex regex so a malicious client can't poison the anti-farming
+    # counter by sending arbitrary strings or another user's known hash.
+    # Matches deviceFingerprint.ts client output exactly; nulls (missing
+    # header on older builds) still pass via Optional.
+    device_fingerprint_hash: Optional[str] = Field(
+        default=None, pattern=r"^[a-f0-9]{64}$"
+    )
     show_name: bool = True
     show_result: bool = True
     show_reasons: bool = True

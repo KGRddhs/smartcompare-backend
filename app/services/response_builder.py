@@ -460,36 +460,6 @@ def build_comparison_response(
         winner_index = _gpt_winner
     win_margin = scoring_result.get("win_margin", 0)
 
-    # Bundle C v1.1 § 1a PROS_RESPONSE_DIAG — pairs with PROS_POP_DIAGNOSTIC
-    # at structured_comparison_service lines 957 + 1253. PROS_POP confirmed
-    # GPT emits pros/cons with len=4 and the orchestrator writes them to
-    # product_data[i]["pros_cons"]["pros"]. But PROD responses show
-    # products[*].pros == []. This log measures what build_comparison_response
-    # actually sees on product_data at the moment of response assembly.
-    # If pros_cons is missing or pros == 0 here → orchestrator overwrote
-    # the data between the pop and the response_builder call (walk forward
-    # from line 957/1253). If pros_cons is present with len > 0 here →
-    # bug is downstream of this log (Pydantic/serialization). Always-on
-    # WARNING level — appears in Railway prod without flag gate.
-    try:
-        _p0 = product_data[0] if len(product_data) > 0 else {}
-        _p1 = product_data[1] if len(product_data) > 1 else {}
-        logger.warning(
-            "PROS_RESPONSE_DIAG p0_keys=%s p1_keys=%s "
-            "p0_pros_cons_present=%s p1_pros_cons_present=%s "
-            "p0_pros_len=%s p0_cons_len=%s p1_pros_len=%s p1_cons_len=%s",
-            sorted(_p0.keys()),
-            sorted(_p1.keys()),
-            "pros_cons" in _p0,
-            "pros_cons" in _p1,
-            len((_p0.get("pros_cons") or {}).get("pros") or []),
-            len((_p0.get("pros_cons") or {}).get("cons") or []),
-            len((_p1.get("pros_cons") or {}).get("pros") or []),
-            len((_p1.get("pros_cons") or {}).get("cons") or []),
-        )
-    except Exception:  # noqa: BLE001 — diagnostic must never crash response build
-        pass
-
     # Build personalization metadata
     personalized = user_preferences is not None and bool(user_preferences)
     personalization_factors = []

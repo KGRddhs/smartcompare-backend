@@ -163,7 +163,14 @@ def test_register_resolves_code_then_links_invite(fresh_register_success):
 
 
 def test_register_with_fingerprint_inherits_lifetime_counter(fresh_register_success):
-    """When X-Device-Fingerprint matches a prior user, lifetime_comparisons_used is inherited."""
+    """When X-Device-Fingerprint matches a prior user, lifetime_comparisons_used is inherited.
+
+    H5 (audit 2026-05-22): the header must be valid SHA-256 hex (64-char lowercase).
+    Updated fixture from the prior 8-char `deadbeef` value to a realistic full-length
+    hash that the new _DEVICE_FINGERPRINT_RE in auth_routes.py accepts.
+    """
+    # 64-char lowercase hex — matches the format deviceFingerprint.ts produces.
+    fp = "a" * 64
     # Mock the admin supabase chain: SELECT returns 1 prior user with used=3,
     # then UPDATE persists fingerprint + inherited counter on new user.
     select_chain = MagicMock()
@@ -208,12 +215,12 @@ def test_register_with_fingerprint_inherits_lifetime_counter(fresh_register_succ
         resp = client.post(
             "/api/v1/auth/register",
             json={"email": "u@example.com", "password": "ValidP@ss123"},
-            headers={"X-Device-Fingerprint": "deadbeef"},
+            headers={"X-Device-Fingerprint": fp},
         )
 
     assert resp.status_code == 200
     # The new user row was updated with the inherited counter + fingerprint.
-    assert captured_updates.get("device_fingerprint_hash") == "deadbeef"
+    assert captured_updates.get("device_fingerprint_hash") == fp
     assert captured_updates.get("lifetime_comparisons_used") == 3
 
 

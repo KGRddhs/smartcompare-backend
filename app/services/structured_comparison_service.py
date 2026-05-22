@@ -64,6 +64,43 @@ def _product_category(p):
     return (p.get("category_used") or p.get("category") or "").strip().lower()
 
 
+def _fire_and_forget(coro, label: str) -> None:
+    """M6 (audit 2026-05-22): create a fire-and-forget asyncio task with an
+    exception-logging done callback. Without this, exceptions raised inside
+    the coroutine are silently swallowed — the audit trail (log_content_blocked,
+    _update_behavior_profile, etc.) just stops getting written and nothing
+    surfaces to Sentry or logs. Done callback logs a WARNING with the task
+    label so we can spot the failure pattern without crashing the request.
+    """
+    task = asyncio.create_task(coro)
+
+    def _on_done(t: asyncio.Task) -> None:
+        if t.cancelled():
+            return
+        try:
+            exc = t.exception()
+        except Exception:  # noqa: BLE001 — callback must never raise
+            return
+        if exc is not None:
+            logger.warning("fire-and-forget %s failed: %r", label, exc)
+
+    task.add_done_callback(_on_done)
+
+
+def _phase1_completely_failed(pd: Dict[str, Any]) -> bool:
+    """H6 (audit 2026-05-22): True when a product's Phase 1 fetches all came
+    back as None — i.e., asyncio.gather caught exceptions for BOTH specs AND
+    price. Distinct from 'got data but it's poor quality' (specs={} or
+    price={'amount': None, ...}) which still lets scoring proceed.
+
+    Used by compare_from_text + compare_from_text_streaming to bail out
+    when both products satisfy this — otherwise scoring would run with
+    all-MISSING_SCORE and the deterministic tie-break would always elect
+    product_0 as a fake winner.
+    """
+    return pd.get("specs") is None and pd.get("price") is None
+
+
 def _product_price_amount(p):
     price = p.get("price")
     if isinstance(price, dict):
@@ -905,10 +942,13 @@ class StructuredComparisonService:
         _safety = get_content_safety_service()
         _l1 = _safety.check_query_intent(query)
         if not _l1.allowed:
-            asyncio.create_task(log_content_blocked(
-                layer="query_prefilter",
-                query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
-            ))
+            _fire_and_forget(
+                log_content_blocked(
+                    layer="query_prefilter",
+                    query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+                ),
+                "log_content_blocked(query_prefilter)",
+            )
             return {
                 "success": False,
                 "error": "We don't compare this category",
@@ -973,6 +1013,27 @@ class StructuredComparisonService:
                 self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
                 self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache)
             )
+
+            # H6 (audit 2026-05-22): when both products' Phase 1 fetches
+            # totally failed (specs=None AND price=None on both, meaning the
+            # underlying gather caught exceptions for everything), bail out
+            # instead of marching to scoring with all-MISSING_SCORE. The
+            # deterministic tie-break in that path always picks product_0,
+            # producing a fake "winner" with no data backing the verdict.
+            if _phase1_completely_failed(product_data[0]) and _phase1_completely_failed(product_data[1]):
+                logger.warning(
+                    "INSUFFICIENT_DATA: both products' Phase 1 fetches returned None "
+                    "for specs+price — refusing to score; query=%r region=%s",
+                    query, region,
+                )
+                return {
+                    "success": False,
+                    "error": "Comparison data was incomplete — choose different products.",
+                    "code": "INSUFFICIENT_DATA",
+                    "elapsed_seconds": (datetime.now() - start_time).total_seconds(),
+                    "total_cost": self.total_cost,
+                    "api_calls": self.api_calls,
+                }
 
             # Fetch behavioral profile + demographics_profile if user is logged in
             behavior_profile = None
@@ -1130,10 +1191,13 @@ class StructuredComparisonService:
             ]))
             _l3 = await _safety.moderate_output(_l3_text)
             if not _l3.allowed:
-                asyncio.create_task(log_content_blocked(
-                    layer="moderation_api",
-                    query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
-                ))
+                _fire_and_forget(
+                    log_content_blocked(
+                        layer="moderation_api",
+                        query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+                    ),
+                    "log_content_blocked(moderation_api)",
+                )
                 return {
                     "success": False,
                     "error": "We don't compare this category",
@@ -1141,9 +1205,13 @@ class StructuredComparisonService:
                     "layer": "moderation_api",
                 }
 
-            # Fire-and-forget: update behavioral profile
+            # Fire-and-forget: update behavioral profile (M6: tracked so
+            # silent task failures surface as WARNING logs).
             if user_id:
-                asyncio.create_task(self._update_behavior_profile(user_id))
+                _fire_and_forget(
+                    self._update_behavior_profile(user_id),
+                    "behavior_profile_update",
+                )
 
             return result
 
@@ -1184,10 +1252,13 @@ class StructuredComparisonService:
         _safety = get_content_safety_service()
         _l1 = _safety.check_query_intent(query)
         if not _l1.allowed:
-            asyncio.create_task(log_content_blocked(
-                layer="query_prefilter",
-                query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
-            ))
+            _fire_and_forget(
+                log_content_blocked(
+                    layer="query_prefilter",
+                    query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+                ),
+                "log_content_blocked(query_prefilter)",
+            )
             yield ("error", {
                 "success": False,
                 "error": "We don't compare this category",
@@ -1281,6 +1352,28 @@ class StructuredComparisonService:
                 }
                 yield ("settle_complete", partial_response)
                 yield ("complete", partial_response)
+                return
+
+            # H6 (audit 2026-05-22): same dual-failure guard as the sync path.
+            # Refuse to march downstream when both products' fetches totally
+            # failed — otherwise the SSE stream would yield empty `specs` +
+            # `prices` events followed by a fake-winner verdict.
+            if _phase1_completely_failed(product_data[0]) and _phase1_completely_failed(product_data[1]):
+                logger.warning(
+                    "INSUFFICIENT_DATA (stream): both products' Phase 1 fetches "
+                    "returned None for specs+price — query=%r region=%s",
+                    query, region,
+                )
+                insufficient_response = {
+                    "success": False,
+                    "error": "Comparison data was incomplete — choose different products.",
+                    "code": "INSUFFICIENT_DATA",
+                    "elapsed_seconds": (datetime.now() - start_time).total_seconds(),
+                    "total_cost": self.total_cost,
+                    "api_calls": self.api_calls,
+                }
+                yield ("settle_complete", insufficient_response)
+                yield ("complete", insufficient_response)
                 return
 
             # Yield specs
@@ -1483,9 +1576,13 @@ class StructuredComparisonService:
                     demographics_profile
                 )
 
-            # Fire-and-forget: update behavioral profile
+            # Fire-and-forget: update behavioral profile (M6: tracked so
+            # silent task failures surface as WARNING logs).
             if user_id:
-                asyncio.create_task(self._update_behavior_profile(user_id))
+                _fire_and_forget(
+                    self._update_behavior_profile(user_id),
+                    "behavior_profile_update",
+                )
 
             # L3 output moderation (spec sec 5.2) — runs once before the
             # terminal events so a flagged response replaces the streamed
@@ -1512,10 +1609,13 @@ class StructuredComparisonService:
             ]))
             _l3 = await _safety.moderate_output(_l3_text)
             if not _l3.allowed:
-                asyncio.create_task(log_content_blocked(
-                    layer="moderation_api",
-                    query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
-                ))
+                _fire_and_forget(
+                    log_content_blocked(
+                        layer="moderation_api",
+                        query_hash=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+                    ),
+                    "log_content_blocked(moderation_api)",
+                )
                 refusal = {
                     "success": False,
                     "error": "We don't compare this category",

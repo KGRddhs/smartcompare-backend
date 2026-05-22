@@ -182,7 +182,15 @@ async def test_verify_token_returns_user_dict():
     with patch("app.services.auth_service.get_auth_client", return_value=mock_client):
         result = await verify_token("test-access-token")
 
-    assert result == {"id": "supabase-uid-123", "email": "user@test.com"}
+    # H4 (audit 2026-05-22): verify_token now includes access_token so
+    # endpoints can pass it to get_user_supabase_client() for RLS-enforced
+    # writes (push_token, behavior_profile, etc.). See auth_service.py
+    # docstring for security note on log-leak avoidance.
+    assert result == {
+        "id": "supabase-uid-123",
+        "email": "user@test.com",
+        "access_token": "test-access-token",
+    }
     mock_auth.get_user.assert_called_once_with("test-access-token")
 
 

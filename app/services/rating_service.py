@@ -267,12 +267,20 @@ async def get_verified_rating(
     if not SERPER_API_KEY:
         return empty
 
+    # M3 (audit 2026-05-22): apply the same operator-tail clean as
+    # serper_service.search_product_prices (HOTFIX-2 / commit eb0f675).
+    # Without this, vision-mode flows can pass `full_name = search_query`
+    # with GPT-emitted tokens ("price", "best price", "Bahrain", etc.)
+    # that produce zero Shopping hits — the same symptom that triggered
+    # the price-path fix. Same cleaner, same fix class.
+    from app.services.serper_service import _clean_shopping_query
+    cleaned_query = _clean_shopping_query(full_name)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 "https://google.serper.dev/shopping",
                 headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
-                json={"q": full_name, "gl": "us", "num": 10}
+                json={"q": cleaned_query, "gl": "us", "num": 10}
             )
             if track_serper_cost_fn:
                 track_serper_cost_fn()

@@ -5,14 +5,27 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Patterns to scrub from Sentry events
+# Patterns to scrub from Sentry events.
+# M4 (audit 2026-05-22): widened the generic hex pattern from {40,} to {32,}
+# so 32-char lowercase Serper API keys (e.g., 1d3cf422...) get caught.
+# Also added key-name scrubbing below so any value living in a dict key
+# matching api_key / token / secret gets redacted regardless of format —
+# defense-in-depth against future provider keys (Scrape.do, Upstash REST,
+# etc.) that don't match any specific pattern here.
 _SENSITIVE_PATTERNS = [
     (re.compile(r'eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+'), '[JWT_REDACTED]'),
     (re.compile(r'sk-proj-[A-Za-z0-9_-]+'), '[OPENAI_KEY_REDACTED]'),
     (re.compile(r'fc-[a-f0-9]{20,}'), '[FIRECRAWL_KEY_REDACTED]'),
-    (re.compile(r'[a-f0-9]{40,}'), '[TOKEN_REDACTED]'),  # Generic long hex tokens
+    (re.compile(r'[a-f0-9]{32,}'), '[TOKEN_REDACTED]'),  # Generic long hex tokens (Serper 32+, SHA-256 64, etc.)
     (re.compile(r'Bearer\s+[A-Za-z0-9_.-]+'), 'Bearer [REDACTED]'),
 ]
+
+# Key-name denylist (case-insensitive substring match). When _scrub_dict
+# encounters a string value under a key matching one of these, the whole
+# value is replaced — regardless of whether the value itself matches a
+# pattern above. Catches provider-specific tokens whose shape we don't
+# explicitly pattern-match (e.g., Scrape.do, Upstash REST token, future).
+_SENSITIVE_KEY_FRAGMENTS = ("api_key", "apikey", "token", "secret", "password")
 
 
 def _scrub_string(value: str) -> str:
@@ -22,11 +35,24 @@ def _scrub_string(value: str) -> str:
     return value
 
 
+def _key_is_sensitive(key: str) -> bool:
+    """True when a dict key name suggests its value is a secret."""
+    lowered = key.lower()
+    return any(frag in lowered for frag in _SENSITIVE_KEY_FRAGMENTS)
+
+
 def _scrub_dict(data: dict) -> dict:
-    """Recursively scrub sensitive values from a dict."""
+    """Recursively scrub sensitive values from a dict.
+
+    M4 fix: if the key name suggests a secret (api_key / token / secret /
+    password), redact the value wholesale even when the string content
+    doesn't match a specific pattern.
+    """
     scrubbed = {}
     for key, value in data.items():
-        if isinstance(value, str):
+        if isinstance(key, str) and _key_is_sensitive(key) and value is not None:
+            scrubbed[key] = "[REDACTED]"
+        elif isinstance(value, str):
             scrubbed[key] = _scrub_string(value)
         elif isinstance(value, dict):
             scrubbed[key] = _scrub_dict(value)
