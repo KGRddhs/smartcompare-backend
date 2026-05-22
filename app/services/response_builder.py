@@ -434,7 +434,30 @@ def build_comparison_response(
     This is used by both compare_from_text() and compare_from_text_streaming()
     to avoid duplicating ~100 lines of response assembly.
     """
-    winner_index = comparison.get("winner_index", 0)
+    # H1 fix: prefer the deterministic scoring winner over GPT's. GPT's
+    # comparison["winner_index"] is prose-derived and can disagree with the
+    # calibrated math, which previously caused a visible contradiction
+    # between overview.winner.product_index (was GPT) and
+    # scoring_v2.overall_score.winner_idx (always deterministic). Fall back
+    # to GPT only when scoring did not produce a winner (legacy fixtures
+    # or scoring-disabled mode).
+    _scoring_winner = scoring_result.get("winner_index")
+    _gpt_winner = comparison.get("winner_index", 0)
+    if _scoring_winner is not None:
+        winner_index = _scoring_winner
+        if _scoring_winner != _gpt_winner:
+            # Surface the disagreement so we can audit how often the GPT
+            # verdict prose names a different winner than the score. Low
+            # volume (only fires on mismatch); not flag-gated for now.
+            logger.warning(
+                "WINNER_INDEX_MISMATCH scoring=%s gpt=%s "
+                "win_margin=%s — using deterministic scoring",
+                _scoring_winner,
+                _gpt_winner,
+                scoring_result.get("win_margin", 0),
+            )
+    else:
+        winner_index = _gpt_winner
     win_margin = scoring_result.get("win_margin", 0)
 
     # Bundle C v1.1 § 1a PROS_RESPONSE_DIAG — pairs with PROS_POP_DIAGNOSTIC

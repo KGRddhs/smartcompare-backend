@@ -131,12 +131,77 @@ app.include_router(referral_router)  # /api/v1/referrals/*
 
 # Static admin assets — serves cohort dashboard at /admin/cohort.html
 # (The admin endpoints these pages call are still under /api/v1/admin/*.)
+#
+# Auth model: the StaticFiles mount is wrapped to require the admin key
+# via EITHER `X-Admin-Key` header (curl / scripts) OR HTTP Basic auth
+# (browsers — the WWW-Authenticate response triggers the native prompt).
+# Without this gate, /admin/*.html shells were world-readable even though
+# the underlying /api/v1/admin/* JSON endpoints were protected.
+import base64
+import binascii
+import hmac as _hmac
 from pathlib import Path as _Path
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from starlette.types import Receive, Scope, Send
+from starlette.responses import Response as _Response
+
+
+class _AdminAuthenticatedStaticFiles(StaticFiles):
+    """StaticFiles subclass that gates every request on the admin key.
+
+    Accepts the key from `X-Admin-Key` header (timing-safe compare) or
+    from HTTP Basic auth's password field (any username). On miss, returns
+    401 + `WWW-Authenticate: Basic` so a browser prompts the operator.
+    """
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await super().__call__(scope, receive, send)
+            return
+
+        expected = os.getenv("ADMIN_API_KEY", "")
+        if not expected:
+            # Misconfigured deploy — refuse to serve admin pages at all.
+            await _Response("Admin not configured", status_code=503)(scope, receive, send)
+            return
+
+        # Header lookup is case-insensitive per HTTP/1.1.
+        headers = {
+            k.decode("latin-1").lower(): v.decode("latin-1")
+            for k, v in scope.get("headers", [])
+        }
+
+        x_admin = headers.get("x-admin-key", "")
+        if x_admin and _hmac.compare_digest(x_admin, expected):
+            await super().__call__(scope, receive, send)
+            return
+
+        authz = headers.get("authorization", "")
+        if authz.lower().startswith("basic "):
+            try:
+                decoded = base64.b64decode(authz[6:]).decode("utf-8")
+                _, _, password = decoded.partition(":")
+                if password and _hmac.compare_digest(password, expected):
+                    await super().__call__(scope, receive, send)
+                    return
+            except (binascii.Error, UnicodeDecodeError):
+                pass
+
+        await _Response(
+            "Unauthorized",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="Qaren Admin"'},
+        )(scope, receive, send)
+
+
 _static_dir = _Path(__file__).parent / "static"
 if _static_dir.exists():
-    app.mount("/admin", StaticFiles(directory=str(_static_dir / "admin"), html=True), name="admin-static")
+    app.mount(
+        "/admin",
+        _AdminAuthenticatedStaticFiles(directory=str(_static_dir / "admin"), html=True),
+        name="admin-static",
+    )
 
 _favicon_path = _static_dir / "favicon.png"
 
