@@ -599,6 +599,7 @@
   "editProfile.editStyleProfile": "Edit style profile",
   "editProfile.dangerZone": "Account actions",
   "editProfile.deleteAccount": "Delete account",
+  "editProfile.error.deleteTitle": "Something didn't go through",
 
   "common.error.generic": "Hold on — something didn't go through.",
 

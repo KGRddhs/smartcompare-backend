@@ -20,15 +20,30 @@ import * as Sentry from '@sentry/react-native';
 // Apply in declared order — earlier patterns win over later ones (the
 // JWT pattern matches before the generic-long-hex pattern can swallow
 // a JWT payload segment, for example).
+// M4 (audit 2026-05-22): widened the generic hex pattern from {40,} to
+// {32,} so 32-char lowercase Serper API keys get redacted. Also added
+// SENSITIVE_KEY_FRAGMENTS-based scrubbing below for provider-specific
+// tokens whose shape we don't pattern-match (Scrape.do, Upstash REST,
+// future providers). Mirrors the backend sentry_service.py changes.
 const SENSITIVE_PATTERNS: Array<[RegExp, string]> = [
   [/eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+/g, '[JWT_REDACTED]'],
   [/sk-proj-[A-Za-z0-9_-]+/g, '[OPENAI_KEY_REDACTED]'],
   [/fc-[a-f0-9]{20,}/g, '[FIRECRAWL_KEY_REDACTED]'],
-  [/[a-f0-9]{40,}/g, '[TOKEN_REDACTED]'],
+  [/[a-f0-9]{32,}/g, '[TOKEN_REDACTED]'],
   [/Bearer\s+[A-Za-z0-9_.-]+/g, 'Bearer [REDACTED]'],
 ];
 
 const SENSITIVE_HEADERS = new Set(['authorization', 'x-admin-key', 'cookie']);
+
+// Dict key fragments (case-insensitive) — when a key matches, the whole
+// value is replaced regardless of pattern match. Catches provider tokens
+// whose format isn't explicitly listed above.
+const SENSITIVE_KEY_FRAGMENTS = ['api_key', 'apikey', 'token', 'secret', 'password'];
+
+function keyIsSensitive(key: string): boolean {
+  const lower = key.toLowerCase();
+  return SENSITIVE_KEY_FRAGMENTS.some((frag) => lower.includes(frag));
+}
 
 // Hard-coded write-only public DSN. Safe to commit; the EAS secret
 // follow-up is cosmetic.
@@ -46,7 +61,11 @@ export function scrubString(s: string): string {
 function scrubDict(data: Record<string, unknown>): Record<string, unknown> {
   const scrubbed: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
-    if (typeof value === 'string') {
+    // M4: key-name scrub takes priority — secret-shaped keys get redacted
+    // regardless of value shape.
+    if (keyIsSensitive(key) && value !== null && value !== undefined) {
+      scrubbed[key] = '[REDACTED]';
+    } else if (typeof value === 'string') {
       scrubbed[key] = scrubString(value);
     } else if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
       scrubbed[key] = scrubDict(value as Record<string, unknown>);

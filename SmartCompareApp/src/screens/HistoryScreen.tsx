@@ -74,7 +74,7 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
         setHistory([]);
         setTotal(0);
       } else {
-        console.error('Error loading history:', error);
+        if (__DEV__) console.error('Error loading history:', error);
         Alert.alert(t('common.error'), parseApiError(error).message);
       }
     } finally {

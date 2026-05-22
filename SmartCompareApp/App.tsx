@@ -198,7 +198,7 @@ function App() {
           tryRegisterPushToken().catch(() => { /* never blocks app boot */ });
         }
       } catch (error) {
-        console.error('Auth initialization error:', error);
+        if (__DEV__) console.error('Auth initialization error:', error);
       }
       setIsLoading(false);
     }
@@ -226,7 +226,7 @@ function App() {
         tryRegisterPushToken().catch(() => { /* swallow */ });
       }
     } catch (error) {
-      console.error('Login verification error:', error);
+      if (__DEV__) console.error('Login verification error:', error);
     }
   }, []);
 

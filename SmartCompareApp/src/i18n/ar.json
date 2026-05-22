@@ -599,6 +599,7 @@
   "editProfile.editStyleProfile": "تعديل ملف التفضيلات",
   "editProfile.dangerZone": "إجراءات الحساب",
   "editProfile.deleteAccount": "حذف الحساب",
+  "editProfile.error.deleteTitle": "شيء لم يكتمل",
 
   "common.error.generic": "لحظة — شيء لم يكتمل.",
 
