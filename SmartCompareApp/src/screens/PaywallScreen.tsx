@@ -1,7 +1,8 @@
 /**
  * Qaren - Paywall Screen
- * Bottom sheet overlay showing usage status, tier comparison, and upgrade CTA.
- * Accepts optional usageStatus from USAGE_LIMIT error or fetches from backend.
+ * Bottom-sheet overlay shown via Stack.Navigator with presentation:
+ * 'transparentModal'. Reads optional initialUsage from route.params
+ * (populated by USAGE_LIMIT error detail); otherwise fetches from backend.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -10,39 +11,39 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
   ActivityIndicator,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Check, Crown, Zap } from 'lucide-react-native';
 import { colors, spacing, radii, typography } from '../theme';
 import { getUsageStatus, UsageStatus } from '../services/usageService';
+import type { RootStackParamList } from '../types/types';
 
-interface PaywallScreenProps {
-  visible: boolean;
-  onDismiss: () => void;
-  /** Pre-populated from USAGE_LIMIT error detail, or fetched on mount */
-  initialUsage?: {
-    tier?: string;
-    reason?: string;
-    remaining?: { daily: number; monthly: number; lifetime_free: number };
-  };
-}
+type PaywallRouteProp = RouteProp<RootStackParamList, 'Paywall'>;
+type PaywallNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Paywall'>;
 
-export default function PaywallScreen({ visible, onDismiss, initialUsage }: PaywallScreenProps) {
+export default function PaywallScreen() {
   const { t } = useTranslation();
+  const navigation = useNavigation<PaywallNavigationProp>();
+  const route = useRoute<PaywallRouteProp>();
+  const initialUsage = route.params?.initialUsage;
+
   const [usage, setUsage] = useState<UsageStatus | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (visible && !usage) {
+    if (!usage) {
       setLoading(true);
       getUsageStatus().then((data) => {
         setUsage(data);
         setLoading(false);
       });
     }
-  }, [visible]);
+  }, [usage]);
+
+  const onDismiss = () => navigation.goBack();
 
   const tier = usage?.tier || initialUsage?.tier || 'free';
   const reason = initialUsage?.reason;
@@ -57,91 +58,89 @@ export default function PaywallScreen({ visible, onDismiss, initialUsage }: Payw
   ];
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.overlay}>
-        <TouchableOpacity style={styles.backdrop} onPress={onDismiss} activeOpacity={1} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>{t('paywall.title')}</Text>
+    <View style={styles.overlay}>
+      <TouchableOpacity style={styles.backdrop} onPress={onDismiss} activeOpacity={1} />
+      <View style={styles.sheet}>
+        <View style={styles.handle} />
+        <Text style={styles.title}>{t('paywall.title')}</Text>
 
-          {/* Usage status */}
-          {loading ? (
-            <ActivityIndicator size="small" color={colors.accent} style={{ marginBottom: spacing.lg }} />
-          ) : (
-            <View style={styles.usageSection}>
-              {reason && (
-                <Text style={styles.limitMessage}>
-                  {reason === 'daily_limit' ? t('paywall.dailyLimit') : t('paywall.monthlyLimit')}
-                </Text>
-              )}
-              <Text style={styles.usageText}>
-                {t('paywall.usageMessage', { used: usedMonthly, limit: limitMonthly })}
+        {/* Usage status */}
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.accent} style={{ marginBottom: spacing.lg }} />
+        ) : (
+          <View style={styles.usageSection}>
+            {reason && (
+              <Text style={styles.limitMessage}>
+                {reason === 'daily_limit' ? t('paywall.dailyLimit') : t('paywall.monthlyLimit')}
               </Text>
-              {/* Progress bar */}
-              <View style={styles.progressBar}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${Math.min(100, (usedMonthly / limitMonthly) * 100)}%` },
-                    usedMonthly >= limitMonthly && styles.progressFillFull,
-                  ]}
-                />
-              </View>
-            </View>
-          )}
-
-          {/* Tier comparison */}
-          <View style={styles.tierRow}>
-            {/* Free tier card */}
-            <View style={[styles.tierCard, tier === 'free' && styles.tierCardCurrent]}>
-              <Zap size={20} color={colors.text.secondary} />
-              <Text style={styles.tierName}>{t('paywall.free.title')}</Text>
-              <Text style={styles.tierDetail}>{t('paywall.free.daily', { count: 3 })}</Text>
-              <Text style={styles.tierDetail}>{t('paywall.free.monthly', { count: 10 })}</Text>
-              {tier === 'free' && (
-                <View style={styles.currentBadge}>
-                  <Text style={styles.currentBadgeText}>{t('paywall.free.current')}</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Premium tier card */}
-            <View style={[styles.tierCard, styles.tierCardPremium]}>
-              <Crown size={20} color={colors.accent} />
-              <Text style={[styles.tierName, { color: colors.accent }]}>{t('paywall.premium.title')}</Text>
-              <Text style={styles.tierDetail}>{t('paywall.premium.daily', { count: 10 })}</Text>
-              <Text style={styles.tierDetail}>{t('paywall.premium.monthly', { count: 70 })}</Text>
+            )}
+            <Text style={styles.usageText}>
+              {t('paywall.usageMessage', { used: usedMonthly, limit: limitMonthly })}
+            </Text>
+            {/* Progress bar */}
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${Math.min(100, (usedMonthly / limitMonthly) * 100)}%` },
+                  usedMonthly >= limitMonthly && styles.progressFillFull,
+                ]}
+              />
             </View>
           </View>
+        )}
 
-          {/* Premium features */}
-          <View style={styles.features}>
-            {features.map((f, i) => (
-              <View key={i} style={styles.featureRow}>
-                <Check size={18} color={colors.accent} />
-                <Text style={styles.featureText}>{f}</Text>
+        {/* Tier comparison */}
+        <View style={styles.tierRow}>
+          {/* Free tier card */}
+          <View style={[styles.tierCard, tier === 'free' && styles.tierCardCurrent]}>
+            <Zap size={20} color={colors.text.secondary} />
+            <Text style={styles.tierName}>{t('paywall.free.title')}</Text>
+            <Text style={styles.tierDetail}>{t('paywall.free.daily', { count: 3 })}</Text>
+            <Text style={styles.tierDetail}>{t('paywall.free.monthly', { count: 10 })}</Text>
+            {tier === 'free' && (
+              <View style={styles.currentBadge}>
+                <Text style={styles.currentBadgeText}>{t('paywall.free.current')}</Text>
               </View>
-            ))}
+            )}
           </View>
 
-          {/* Subscribe button */}
-          <TouchableOpacity
-            style={styles.subscribeButton}
-            activeOpacity={0.8}
-            onPress={() => {
-              // Placeholder — will integrate Tap Payments / Benefit Pay
-            }}
-          >
-            <Text style={styles.subscribeText}>{t('paywall.subscribe')}</Text>
-          </TouchableOpacity>
-
-          {/* Payment providers note */}
-          <Text style={styles.paymentNote}>{t('paywall.payment')}</Text>
-
-          <Text style={styles.social}>{t('paywall.social')}</Text>
+          {/* Premium tier card */}
+          <View style={[styles.tierCard, styles.tierCardPremium]}>
+            <Crown size={20} color={colors.accent} />
+            <Text style={[styles.tierName, { color: colors.accent }]}>{t('paywall.premium.title')}</Text>
+            <Text style={styles.tierDetail}>{t('paywall.premium.daily', { count: 10 })}</Text>
+            <Text style={styles.tierDetail}>{t('paywall.premium.monthly', { count: 70 })}</Text>
+          </View>
         </View>
+
+        {/* Premium features */}
+        <View style={styles.features}>
+          {features.map((f, i) => (
+            <View key={i} style={styles.featureRow}>
+              <Check size={18} color={colors.accent} />
+              <Text style={styles.featureText}>{f}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Subscribe button */}
+        <TouchableOpacity
+          style={styles.subscribeButton}
+          activeOpacity={0.8}
+          onPress={() => {
+            // Placeholder — will integrate Tap Payments / Benefit Pay
+          }}
+        >
+          <Text style={styles.subscribeText}>{t('paywall.subscribe')}</Text>
+        </TouchableOpacity>
+
+        {/* Payment providers note */}
+        <Text style={styles.paymentNote}>{t('paywall.payment')}</Text>
+
+        <Text style={styles.social}>{t('paywall.social')}</Text>
       </View>
-    </Modal>
+    </View>
   );
 }
 

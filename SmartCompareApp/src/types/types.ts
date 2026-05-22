@@ -484,6 +484,17 @@ export type RootStackParamList = {
   // Bundle B/C/D — Cal-AI-style fullscreen camera modal launched from
   // HomeScreen's "Scan" mode chip. See plan § Task 1.8.
   ScanCamera: undefined;
+  // Freemium gate — opened when a USAGE_LIMIT response fires from any
+  // compare path, or when canCompare=false UI elements (chip/banner) are
+  // tapped. initialUsage is the parsed USAGE_LIMIT detail (skips the
+  // first /usage/status fetch when present).
+  Paywall: {
+    initialUsage?: {
+      tier?: string;
+      reason?: string;
+      remaining?: { daily: number; monthly: number; lifetime_free: number };
+    };
+  } | undefined;
   // Legacy screen names for backward compatibility with screen components
   Home: undefined;
   History: undefined;

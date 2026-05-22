@@ -53,6 +53,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
 import InviteeQuizScreen from './src/screens/InviteeQuizScreen';
 import ScanCameraScreen from './src/screens/ScanCameraScreen';
+import PaywallScreen from './src/screens/PaywallScreen';
 
 // Types
 import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/types';
@@ -349,6 +350,18 @@ function App() {
               name="ScanCamera"
               component={ScanCameraScreen}
               options={{ presentation: 'modal', headerShown: false }}
+            />
+            {/* Freemium gate — bottom-sheet overlay reachable from HomeScreen
+                (text/url/scan compare on canCompare=false, PaywallBanner CTA,
+                chip taps) and ResultsScreen vision USAGE_LIMIT path. */}
+            <Stack.Screen
+              name="Paywall"
+              component={PaywallScreen}
+              options={{
+                presentation: 'transparentModal',
+                animation: 'slide_from_bottom',
+                headerShown: false,
+              }}
             />
             {/* Authed users tapping a referral link still get the landing page. */}
             <Stack.Screen

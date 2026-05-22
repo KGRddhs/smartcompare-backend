@@ -235,6 +235,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         }
       } catch (err: any) {
         if (cancelled) return;
+        // H3: USAGE_LIMIT on the camera path routes to Paywall rather than
+        // showing "Snap one more in better light" (which was the catch-all
+        // misleading message — the user isn't holding the camera wrong,
+        // they've hit their freemium cap).
+        if (err?.code === 'USAGE_LIMIT') {
+          setLoadingResult(false);
+          navigation.navigate('Paywall', { initialUsage: err.detail ?? undefined });
+          return;
+        }
         setLoadError('vision_failed');
         setLoadingResult(false);
       }
@@ -243,7 +252,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     return () => {
       cancelled = true;
     };
-  }, [route?.params?.vision_products, result]);
+  }, [route?.params?.vision_products, result, navigation]);
 
   // Detect new structured format vs old flat format
   const isNewFormat = !!result?.overview?.winner;

@@ -54,9 +54,16 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle USAGE_LIMIT specifically — let caller handle paywall trigger
-    if (error.response?.status === 429 && error.response?.data?.detail?.code === 'USAGE_LIMIT') {
-      return Promise.reject(error);
+    // Handle USAGE_LIMIT specifically — let caller handle paywall trigger.
+    // H2: dual-read both shapes — legacy FastAPI (detail.code) and unified
+    // error format (top-level code). Keep in sync with usageService.ts.
+    if (error.response?.status === 429) {
+      const data = error.response?.data;
+      const usageLimit =
+        data?.detail?.code === 'USAGE_LIMIT' || data?.code === 'USAGE_LIMIT';
+      if (usageLimit) {
+        return Promise.reject(error);
+      }
     }
 
     // Only retry once, and only for 401s
@@ -159,6 +166,32 @@ export async function identifyFromImages(
 
   if (!response.ok) {
     const errorText = await response.text();
+
+    // H3: detect USAGE_LIMIT on the camera path (raw fetch — no axios
+    // interceptor here). Backend returns the same shapes as axios
+    // endpoints: legacy { detail: { code, ... } } OR unified { code, ... }.
+    // Throw a tagged error so ResultsScreen can route to Paywall instead
+    // of showing the misleading "Snap one more in better light" message.
+    if (response.status === 429) {
+      let usageDetail: any = null;
+      try {
+        const data = JSON.parse(errorText);
+        if (data?.detail?.code === 'USAGE_LIMIT') {
+          usageDetail = data.detail;
+        } else if (data?.code === 'USAGE_LIMIT') {
+          usageDetail = data;
+        }
+      } catch {
+        // Body wasn't JSON — fall through to generic error.
+      }
+      if (usageDetail) {
+        const err: any = new Error('Usage limit reached');
+        err.code = 'USAGE_LIMIT';
+        err.detail = usageDetail;
+        throw err;
+      }
+    }
+
     if (__DEV__) console.error('Identify response error:', response.status, errorText);
     throw new Error(`Server error ${response.status}: ${errorText}`);
   }

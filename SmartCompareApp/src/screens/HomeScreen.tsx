@@ -234,7 +234,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     const productB = b.trim();
     if (!productA || !productB) return;
     if (!canCompare) {
-      navigation.navigate('Paywall' as any);
+      navigation.navigate('Paywall');
       return;
     }
 
@@ -286,7 +286,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         }
         if (isUsageLimitError(error)) {
           const detail = getUsageLimitDetail(error);
-          navigation.navigate('Paywall' as any, { initialUsage: detail });
+          navigation.navigate('Paywall', { initialUsage: detail ?? undefined });
           return;
         }
         Alert.alert(t('common.error'), error.message || t('home.errors.comparison'));
@@ -301,7 +301,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     const url2 = urlB.trim();
     if (!url1 || !url2) return;
     if (!canCompare) {
-      navigation.navigate('Paywall' as any);
+      navigation.navigate('Paywall');
       return;
     }
 
@@ -335,7 +335,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         handleContentUnavailable('url', layer);
       } else if (isUsageLimitError(error)) {
         const detail = getUsageLimitDetail(error);
-        navigation.navigate('Paywall' as any, { initialUsage: detail });
+        navigation.navigate('Paywall', { initialUsage: detail ?? undefined });
       } else {
         Alert.alert(t('common.error'), parsed.message);
       }
@@ -354,7 +354,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       // route to Paywall as before.
       if (mode !== inputMode) setInputMode(mode);
       trackEvent('compare_entry_paywall_banner_view', { mode });
-      navigation.navigate('Paywall' as any);
+      navigation.navigate('Paywall');
       return;
     }
     if (mode === 'scan') {
@@ -388,7 +388,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         <PaywallBanner
           onSeeOptions={() => {
             trackEvent('compare_entry_paywall_banner_tap', { mode: inputMode });
-            navigation.navigate('Paywall' as any);
+            navigation.navigate('Paywall');
           }}
         />
       );
