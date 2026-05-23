@@ -127,3 +127,159 @@ class TestA63CrossTierFraming:
         value_dim = next(d for d in dims if d["key"] == "value")
         assert value_dim["is_cross_tier"] is True
         assert "Across tiers" in value_dim["delta_text"]
+
+
+class TestA64ValueMatch:
+    """A.6.4 — per-product `value_match` indicator: match / near / mismatch / unknown."""
+
+    @pytest.mark.parametrize("product_tier,budget,expected", [
+        ("budget", "budget", "match"),
+        ("mid", "mid", "match"),
+        ("premium", "premium", "match"),
+        ("luxury", "luxury", "match"),
+        ("top_tier", "top_tier", "match"),
+        # Adjacent → near
+        ("budget", "mid", "near"),
+        ("mid", "premium", "near"),
+        ("premium", "luxury", "near"),
+        ("luxury", "top_tier", "near"),
+        # 2+ apart → mismatch
+        ("budget", "premium", "mismatch"),
+        ("budget", "luxury", "mismatch"),
+        ("budget", "top_tier", "mismatch"),
+        ("top_tier", "budget", "mismatch"),
+        # Unknown inputs
+        ("mid", None, "unknown"),
+        ("mid", "", "unknown"),
+        ("", "mid", "unknown"),
+        ("nonsense", "mid", "unknown"),
+        ("mid", "nonsense", "unknown"),
+    ])
+    def test_compute_value_match(self, product_tier, budget, expected):
+        from app.services.response_builder import _compute_value_match
+        assert _compute_value_match(product_tier, budget) == expected
+
+    def test_response_includes_value_match_per_product(self):
+        """build_comparison_response must expose value_match on each
+        overview.products entry."""
+        from app.services.response_builder import build_comparison_response
+
+        products = [
+            {"name": "iPhone", "brand": "Apple", "specs": {},
+             "price": {"amount": 1199}},
+            {"name": "Galaxy", "brand": "Samsung", "specs": {},
+             "price": {"amount": 1099}},
+        ]
+        response = build_comparison_response(
+            products=products,
+            comparison={"winner_index": 0},
+            scoring_result={
+                "price_tiers": {
+                    "Apple iPhone": "premium",
+                    "Samsung Galaxy": "mid",
+                },
+                "scores": {},
+            },
+            user_preferences={"budget": "premium"},
+        )
+        p0 = response["overview"]["products"][0]
+        p1 = response["overview"]["products"][1]
+        assert p0["value_match"] == "match"  # premium == premium
+        assert p1["value_match"] == "near"   # mid is 1 off from premium
+
+    def test_response_value_match_unknown_when_no_budget(self):
+        """If user has no budget set, value_match is 'unknown' (not crash, not 'match')."""
+        from app.services.response_builder import build_comparison_response
+
+        products = [
+            {"name": "A", "brand": "X", "specs": {}, "price": {"amount": 100}},
+            {"name": "B", "brand": "Y", "specs": {}, "price": {"amount": 100}},
+        ]
+        response = build_comparison_response(
+            products=products,
+            comparison={"winner_index": 0},
+            scoring_result={"price_tiers": {"X A": "mid", "Y B": "mid"}, "scores": {}},
+            user_preferences=None,  # no preferences at all
+        )
+        for p in response["overview"]["products"]:
+            assert p["value_match"] == "unknown"
+
+
+class TestA65BudgetMismatch:
+    """A.6.5 — metadata.budget_mismatch flag based on WINNER tier vs budget."""
+
+    def test_budget_mismatch_false_when_aligned(self):
+        from app.services.response_builder import build_comparison_response
+
+        products = [
+            {"name": "iPhone", "brand": "Apple", "specs": {}, "price": {"amount": 1199}},
+            {"name": "Galaxy", "brand": "Samsung", "specs": {}, "price": {"amount": 1099}},
+        ]
+        response = build_comparison_response(
+            products=products,
+            comparison={"winner_index": 0},  # iPhone wins
+            scoring_result={
+                "price_tiers": {"Apple iPhone": "premium", "Samsung Galaxy": "mid"},
+                "scores": {},
+            },
+            user_preferences={"budget": "premium"},
+        )
+        assert response["metadata"]["budget_mismatch"] is False
+
+    def test_budget_mismatch_true_when_winner_too_pricey(self):
+        from app.services.response_builder import build_comparison_response
+
+        products = [
+            {"name": "luxury", "brand": "X", "specs": {}, "price": {"amount": 5000}},
+            {"name": "budget", "brand": "Y", "specs": {}, "price": {"amount": 100}},
+        ]
+        response = build_comparison_response(
+            products=products,
+            comparison={"winner_index": 0},
+            scoring_result={
+                "price_tiers": {"X luxury": "luxury", "Y budget": "budget"},
+                "scores": {},
+            },
+            user_preferences={"budget": "budget"},
+        )
+        # Winner is X luxury, user wants budget → 3 tiers apart → mismatch
+        assert response["metadata"]["budget_mismatch"] is True
+
+    def test_budget_mismatch_false_for_unknown_budget(self):
+        """No user budget set → budget_mismatch is False (not None, not crash)."""
+        from app.services.response_builder import build_comparison_response
+
+        products = [
+            {"name": "luxury", "brand": "X", "specs": {}, "price": {"amount": 5000}},
+            {"name": "budget", "brand": "Y", "specs": {}, "price": {"amount": 100}},
+        ]
+        response = build_comparison_response(
+            products=products,
+            comparison={"winner_index": 0},
+            scoring_result={
+                "price_tiers": {"X luxury": "luxury", "Y budget": "budget"},
+                "scores": {},
+            },
+            user_preferences=None,
+        )
+        assert response["metadata"]["budget_mismatch"] is False
+
+    def test_budget_mismatch_false_when_adjacent_tier(self):
+        """One tier off → 'near' → budget_mismatch=False."""
+        from app.services.response_builder import build_comparison_response
+
+        products = [
+            {"name": "mid_prod", "brand": "X", "specs": {}, "price": {"amount": 600}},
+            {"name": "budget", "brand": "Y", "specs": {}, "price": {"amount": 100}},
+        ]
+        response = build_comparison_response(
+            products=products,
+            comparison={"winner_index": 0},
+            scoring_result={
+                "price_tiers": {"X mid_prod": "mid", "Y budget": "budget"},
+                "scores": {},
+            },
+            user_preferences={"budget": "premium"},  # 1 tier off from mid
+        )
+        # premium vs mid = 1 tier off = "near" — not mismatch
+        assert response["metadata"]["budget_mismatch"] is False

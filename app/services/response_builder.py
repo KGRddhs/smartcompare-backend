@@ -64,6 +64,63 @@ def _safe_detect_comparison_quality(product_data: List[Dict[str, Any]]):
         return None
 
 
+# Bundle D Task 2.B.5 (A.6.4 + A.6.5) — per-product value_match + bundle-
+# level budget_mismatch metadata. value_match indicates whether a product's
+# price tier matches the user's stated budget preference; budget_mismatch
+# flips True when the WINNER product's tier disagrees with the user's
+# budget. Both are pure-derivation helpers (no API calls, no side effects)
+# so they can be computed unconditionally from existing scoring_result
+# data + user_preferences.budget.
+
+# Tier alignment matrix — exact match scores 'match', adjacent tiers score
+# 'near', everything else scores 'mismatch'. The 5-tier ordering follows
+# Migration 024: budget < mid < premium < luxury < top_tier.
+_PRICE_TIER_ORDER = ["budget", "mid", "premium", "luxury", "top_tier"]
+
+
+def _compute_value_match(product_tier: str, budget_pref: Optional[str]) -> str:
+    """Bundle D A.6.4 — classify a product's value-vs-budget alignment.
+
+    Returns 'match' (exact tier hit), 'near' (one tier off either way),
+    'mismatch' (two+ tiers off), or 'unknown' (no budget preference, or
+    unrecognized tier).
+
+    Used by FE to render a per-product budget-fit indicator next to the
+    price chip on the overview card.
+    """
+    if not budget_pref or budget_pref not in _PRICE_TIER_ORDER:
+        return "unknown"
+    if not product_tier or product_tier not in _PRICE_TIER_ORDER:
+        return "unknown"
+    pref_idx = _PRICE_TIER_ORDER.index(budget_pref)
+    product_idx = _PRICE_TIER_ORDER.index(product_tier)
+    gap = abs(pref_idx - product_idx)
+    if gap == 0:
+        return "match"
+    if gap == 1:
+        return "near"
+    return "mismatch"
+
+
+def _compute_budget_mismatch(
+    winner_tier: Optional[str],
+    budget_pref: Optional[str],
+) -> bool:
+    """Bundle D A.6.5 — flag at metadata level when the chosen winner's
+    price tier doesn't align with the user's stated budget preference.
+
+    True iff the winner's tier is two or more tiers off from the user's
+    budget (i.e. _compute_value_match returns 'mismatch'). False when:
+      - user has no budget set ('unknown')
+      - winner tier is unknown
+      - winner is in-tier or one tier off
+
+    FE uses this to decide whether to render a 'this might stretch your
+    budget' caption beside the verdict.
+    """
+    return _compute_value_match(winner_tier, budget_pref) == "mismatch"
+
+
 def _safe_compute_applied_shifts(scoring_result: Dict[str, Any]) -> list:
     """Spec § 7a: chip hides itself when applied_shifts is empty list — so
     we ALWAYS return a list (never None). Reads weights_used from the
@@ -571,6 +628,17 @@ def build_comparison_response(
                     "pros": pd.get("pros_cons", {}).get("pros", []),
                     "cons": pd.get("pros_cons", {}).get("cons", []),
                     "best_for": comparison.get("best_for", {}).get(f"product_{i}", ""),
+                    # Bundle D A.6.4 — per-product budget-fit indicator.
+                    # 'match' / 'near' / 'mismatch' / 'unknown'.
+                    # price_tiers map is keyed by "{brand} {name}".strip()
+                    # per scoring_service:price_tiers_map construction.
+                    "value_match": _compute_value_match(
+                        scoring_result.get("price_tiers", {}).get(
+                            f"{pd.get('brand', '')} {pd.get('name', '')}".strip(),
+                            "",
+                        ),
+                        (user_preferences or {}).get("budget"),
+                    ),
                 }
                 for i, pd in enumerate(product_data)
             ],
@@ -653,6 +721,17 @@ def build_comparison_response(
             # the frontend can adapt verdict framing without a UI banner.
             # Returns 'normal' | 'weak' | 'weird' per spec § 2e triggers.
             "comparison_quality": _safe_detect_comparison_quality(product_data),
+            # Bundle D A.6.5 — bundle-level flag for FE caption rendering.
+            # True when the WINNER's price tier is two or more tiers off
+            # the user's stated budget preference. False when user has no
+            # budget set, winner tier unknown, or tiers align within ±1.
+            "budget_mismatch": _compute_budget_mismatch(
+                scoring_result.get("price_tiers", {}).get(
+                    f"{product_data[winner_index].get('brand', '')} {product_data[winner_index].get('name', '')}".strip(),
+                    "",
+                ) if product_data and 0 <= winner_index < len(product_data) else "",
+                (user_preferences or {}).get("budget"),
+            ),
         },
     }
 
