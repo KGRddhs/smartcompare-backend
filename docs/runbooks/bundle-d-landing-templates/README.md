@@ -12,8 +12,8 @@ Universal Links AASA file. **MUST be served at:**
 - **NO `.json` extension** in URL (Apple's CDN looks for the extensionless path)
 - `Content-Type: application/json` (Vercel header override required)
 
-**Placeholder to substitute before deploy:**
-- `APPLE_TEAM_ID_PLACEHOLDER` → Ahmed's Apple Developer Team ID (A2, 10 chars alphanumeric)
+**Placeholder substitutions:**
+- ~~`APPLE_TEAM_ID_PLACEHOLDER` → Ahmed's Apple Developer Team ID (A2, 10 chars alphanumeric)~~ **RESOLVED 2026-05-23**: Team ID `8K562M549D` substituted in `apple-app-site-association.json`. App ID is now `8K562M549D.com.qaren.app`.
 
 Shape per dispatcher confirmation in 2026-05-23 session: `appID` (single string) + `paths` (array). Compatible with iOS 9+ (deprecated `applinks.apps` empty array kept for backward compat).
 
@@ -40,7 +40,7 @@ Package name `com.qaren.app` matches `app.json:23` `android.package`. Confirmed 
 
 ## Deploy step-by-step
 
-1. Wait for A2 (Apple Team ID) — substitute placeholder in `apple-app-site-association.json`.
+1. ✅ A2 RESOLVED 2026-05-23 — Apple Team ID `8K562M549D` substituted; appID is `8K562M549D.com.qaren.app`.
 2. Wait for Task 2.N.1 EAS preview build to complete — pull Android signing cert SHA-256 — substitute placeholder in `assetlinks.json`.
 3. Copy both files into the Vercel deployment under `public/.well-known/`:
    ```

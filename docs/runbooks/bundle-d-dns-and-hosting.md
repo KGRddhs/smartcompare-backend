@@ -58,7 +58,7 @@ Assuming current DNS host is Cloudflare (verify with `dig NS qaren.app` before P
   "applinks": {
     "details": [
       {
-        "appIDs": ["<APPLE_TEAM_ID>.com.qaren.app"],
+        "appIDs": ["8K562M549D.com.qaren.app"],
         "components": [
           { "/": "/r/*", "comment": "referral invite codes" },
           { "/": "/c/*", "comment": "shared comparison links" },
@@ -70,7 +70,7 @@ Assuming current DNS host is Cloudflare (verify with `dig NS qaren.app` before P
 }
 ```
 
-**Blocked on Ahmed (A2):** Apple Developer Team ID is the 10-character prefix in `appIDs`. Format: `ABC1234DEF.com.qaren.app`. Will be substituted in once Ahmed shares Team ID.
+**A2 RESOLVED 2026-05-23:** Apple Developer Team ID is `8K562M549D` (provided by Ahmed via dispatcher session). The 10-character alphanumeric prefix in `appIDs` is now substituted in the snippet above and in the deploy-ready template at `docs/runbooks/bundle-d-landing-templates/apple-app-site-association.json`.
 
 **Validation after Phase 2 cutover:**
 ```bash
