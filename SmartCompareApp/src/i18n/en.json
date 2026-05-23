@@ -639,6 +639,11 @@
   "home.camera.a11y.flash": "Toggle flash",
   "home.camera.a11y.slot": "Image slot {{count}} of 2",
   "home.camera.a11y.slotRemove": "Remove image from slot {{count}}",
+  "home.camera.help.title": "Snap both products",
+  "home.camera.help.step1": "Place each item flat with good lighting.",
+  "home.camera.help.step2": "Tap the shutter to fill slot 1, then slot 2.",
+  "home.camera.help.step3": "Hit Compare and we'll match them side by side.",
+  "home.camera.help.close": "Close help",
 
   "referrals.bonus.expiringSoon": "Expiring soon",
   "referrals.bonus.expiresInDays_one": "Expires in {{count}} day",

@@ -45,6 +45,7 @@ import { colors, spacing, radii, typography } from '../theme';
 import { motion } from '../theme/motion';
 import ImageSlotRow, { Slots, Slot } from '../components/ImageSlotRow';
 import ScannerReticle from '../components/ScannerReticle';
+import { CameraHelpOverlay } from '../components/CameraHelpOverlay';
 
 type FlashMode = 'off' | 'on' | 'auto';
 const FLASH_CYCLE: FlashMode[] = ['off', 'on', 'auto'];
@@ -81,6 +82,9 @@ export default function ScanCameraScreen({ navigation }: Props) {
   const cameraRef = useRef<CameraView>(null);
   const [slots, setSlots] = useState<Slots>(_slotsCache);
   const [flash, setFlash] = useState<FlashMode>('off');
+  // Bundle D 1.F.4 (R17): controls the CameraHelpOverlay modal opened
+  // from the ? button in the top-right of the camera surface.
+  const [helpVisible, setHelpVisible] = useState(false);
   // Bundle B/C/D Task 3.2 — press-scale on the shutter. Tactile feedback
   // without flashing the whole frame; 80ms in / 120ms out feels snappy
   // without competing with the actual capture flash.
@@ -262,6 +266,7 @@ export default function ScanCameraScreen({ navigation }: Props) {
         </TouchableOpacity>
         <TouchableOpacity
           testID="scan-camera-help"
+          onPress={() => setHelpVisible(true)}
           accessibilityRole="button"
           accessibilityLabel={t('home.camera.a11y.help')}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -269,6 +274,10 @@ export default function ScanCameraScreen({ navigation }: Props) {
           <HelpCircle color={colors.text.onInverse} size={28} />
         </TouchableOpacity>
       </View>
+      <CameraHelpOverlay
+        visible={helpVisible}
+        onClose={() => setHelpVisible(false)}
+      />
       <ScannerReticle />
       <View style={styles.bottomArea}>
         <ImageSlotRow slots={slots} onChange={updateSlots} />

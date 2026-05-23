@@ -639,6 +639,11 @@
   "home.camera.a11y.flash": "تبديل الفلاش",
   "home.camera.a11y.slot": "خانة الصورة {{count}} من 2",
   "home.camera.a11y.slotRemove": "إزالة الصورة من الخانة {{count}}",
+  "home.camera.help.title": "صوّر المنتجين",
+  "home.camera.help.step1": "ضع كل منتج على سطح مستوٍ بإضاءة جيدة.",
+  "home.camera.help.step2": "اضغط زر التصوير لملء الخانة الأولى ثم الثانية.",
+  "home.camera.help.step3": "اضغط مقارنة ونرتّبها لك جنباً إلى جنب.",
+  "home.camera.help.close": "إغلاق المساعدة",
 
   "referrals.bonus.expiringSoon": "تنتهي قريباً",
   "referrals.bonus.expiresInDays_one": "تنتهي خلال {{count}} يوم",
