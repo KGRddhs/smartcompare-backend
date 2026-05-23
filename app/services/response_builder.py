@@ -511,6 +511,19 @@ def build_comparison_response(
             pd_item["rating"] = derive_rating_from_scores(overall)
             pd_item["rating_derived"] = True
 
+    # Bundle D Task 2.B.2 (A.7.2) — defense-in-depth: strip the `note`
+    # field from price objects whose source_method is "estimated".
+    # Frontend already silences "Estimated from training data" copy per
+    # Bundle C `ca84eff`, but backend should not ship the string at all
+    # when the source is Tier 3 GPT fallback. Keeps the source_method
+    # enum value (consumed by analytics + admin dashboards) untouched —
+    # only the user-rendered `note` text is removed.
+    for pd_item in product_data:
+        _price = pd_item.get("price")
+        if isinstance(_price, dict) and _price.get("source_method") == "estimated":
+            if "note" in _price:
+                _price["note"] = None
+
     # Detect price method mismatch
     price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
     unique_methods = set(m for m in price_methods if m)
