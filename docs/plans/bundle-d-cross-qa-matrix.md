@@ -72,7 +72,9 @@ GREEN / SEND-BACK
 
 | Commit SHA | Lane | Task # | Reviewer | Status | Verdict | Notes |
 |---|---|---|---|---|---|---|
-| _(awaiting first lane commit)_ | — | — | — | — | — | — |
+| `29e4d76` | Test | 1.T.1 | QA | reviewed | **GREEN** | RED triage doc only; defer of `test_phase1_includes_reviews` cites design § 12 line 385. Doc-only, no test status manipulation. |
+| `70a34b3` | Native/Ops | 1.N.4 (C16) | QA | reviewed | **GREEN** | expo-notifications plugin object-form, brand `#10B981` tint, lines 87-92 of `SmartCompareApp/app.json`. Plugin separation discipline preserved. |
+| `03cdc1e` | Native/Ops | R5 citation | QA | reviewed | **GREEN** | R5 → ADDRESSED with proper citation per Risk Ledger update protocol. Surfaces R14 BOTH-gate split correctly (app.json leg done, Apple Dev Portal leg PENDING). |
 
 Append rows as commits land on the worktree. Statuses: `pending` → `in_review` → `GREEN` / `SEND-BACK` (→ re-review).
 
