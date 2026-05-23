@@ -18,7 +18,7 @@ type: project
 | R8 | App Store Connect 30-min upload+processing window | Phase 3 timing budgets this explicitly; tester invite waits until processing complete | Native/Ops | PENDING |
 | R9 | Refresh-token mutex must be module-scope singleton | Frontend PR comment includes code excerpt showing singleton `Promise` cached at module scope, not function scope | Frontend | ADDRESSED |
 | R10 | HomeScreen Claude-Design output integration — token conflicts with existing `src/theme/index.ts` | Frontend extends theme, doesn't replace; tokens applied additively; cross-QA verifies no breaking theme change | Frontend | PENDING |
-| R11 | `profile.name` i18n naming — `profile.title`/`profile.editProfile` exist; new key conflicts? | Frontend agent picks "Name" / "الاسم" as default; if Ahmed wants different (e.g., "Display name"), agent asks before commit | Frontend | PENDING |
+| R11 | `profile.name` i18n naming — `profile.title`/`profile.editProfile` exist; new key conflicts? | Frontend agent picks "Name" / "الاسم" as default; if Ahmed wants different (e.g., "Display name"), agent asks before commit | Frontend | ADDRESSED |
 | R12 | Reengagement flag flip ON during TestFlight may spam testers if cron has bug | Backend confirms cron stable + payload-safe BEFORE flipping; Phase 4 dispatcher action only after Ahmed acknowledges | Backend | PENDING |
 | R13 | App Privacy Nutrition Labels — Apple still asks for these even for internal TestFlight | Native/Ops drafts based on observed data flows; Ahmed approves answers before ASC submission | Native/Ops | PENDING |
 | R14 | Apple "Sign in with Apple" entitlement must exist in BOTH Apple Dev Portal + `eas.json` `ios.entitlements` | Native/Ops anchor includes literal entitlements snippet to paste; checklist verifies both locations | Native/Ops | PENDING |
@@ -29,7 +29,7 @@ type: project
 | R19 | Force-update env vars dangerous — `APP_FORCE_UPDATE=true` boots all old-version users | Sequence: `APP_MIN_VERSION` = TestFlight build version FIRST; flip `APP_FORCE_UPDATE=true` only AFTER all testers on new build | Backend | PENDING |
 | R20 | C13 `delete_user_cascade` SQL changes must not break existing cascade flow | Backend writes migration 025 with rollback file; tests delete flow end-to-end on staging Supabase before prod apply | Backend | PENDING |
 | R21 | C14 Sentry query-string scrub — `_before_send` regex must not eat legitimate non-PII URL data | Backend writes targeted regex (matches `?q=`, `?query=`, `?email=` patterns; preserves `?nocache=true`, `?token=` already handled); test pack verifies | Backend | PENDING |
-| R22 | C15 legal-doc rebrand — risk of breaking existing in-app rendering if markdown structure shifts | Backend rewrites brand strings only, preserves heading/paragraph structure; FE LegalScreen renders unchanged | Backend | PENDING |
+| R22 | C15 legal-doc rebrand — risk of breaking existing in-app rendering if markdown structure shifts | Backend rewrites brand strings only, preserves heading/paragraph structure; FE LegalScreen renders unchanged | Backend | ADDRESSED |
 | R23 | C17 `ai_sharing_enabled` default flip OFF — existing users with ON should NOT be reset | Frontend default applies to NEW users only; existing `users.preferences.ai_sharing_enabled = true` rows untouched; verified via SQL spot-check | Frontend | PENDING |
 | R24 | Landing page hosting (O1-O3) — DNS propagation delay could leave qaren.app offline mid-cutover | Native/Ops sets up hosting + tests via direct hostname FIRST; DNS cutover only after green; TTL set low (300s) for fast revert | Native/Ops | PENDING |
 
@@ -57,6 +57,10 @@ When an agent addresses a risk:
        Method: <one-line summary>
        Citation: <commit SHA or test output excerpt or PR comment URL>
 -->
+
+### R11 — ADDRESSED 2026-05-23 by frontend
+Method: Inserted `"profile.name"` key alphabetically between `profile.editProfile` and `profile.settings` in BOTH `SmartCompareApp/src/i18n/en.json:153` ("Name") and `SmartCompareApp/src/i18n/ar.json:153` ("الاسم"). No conflict with `profile.title` (which renders the screen header) — `profile.name` is for the form-field label on EditProfileScreen. Defaults per Bundle D anchor; if Ahmed wants alternate wording, swap in follow-up commit with AR parity. Gate tests GREEN: `__tests__/i18n.test.ts` (6/6 incl. EN/AR key-set equality, no-empty, interpolation parity, app.name=Qaren/قارن, 9 categories, 6 GCC regions) + `__tests__/copy-policy.test.ts` (no forbidden vocab couldn't/try again/Failed to/تعذر/فشل/estimated). 12/12 tests passing.
+Citation: commit `4121d23` (`feat(bundle-d-fe): profile.name i18n key — EN/AR (R11, 1.F.2)`).
 
 ### R9 — ADDRESSED 2026-05-23 by frontend
 Method: `SmartCompareApp/src/services/api.ts` lines 41-81 — module-scope `let refreshPromise: Promise<RefreshResult> | null = null;` cached at module top, accessor `getOrStartRefresh()` returns existing in-flight Promise OR creates new one, `.finally(() => { refreshPromise = null; })` releases mutex on settle. Test hooks `__resetRefreshMutex()` + `__testRefreshDedup()` exported for test (production never calls). Old `isRefreshing` boolean + `failedQueue` array deleted. 5/5 tests GREEN: `__tests__/api.refreshMutex.test.ts` proves (a) `p1 === p2 === p3` Promise identity, (b) `mockRefreshSession` called exactly 1× for 3 concurrent triggers, (c) mutex releases after settle, (d) mutex releases after reject, (e) `__resetRefreshMutex()` clears in-flight Promise. tsc 0 errors; api.demographics + api.settle pre-existing tests still GREEN.
