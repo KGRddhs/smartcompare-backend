@@ -38,16 +38,47 @@ api.interceptors.request.use(
 );
 
 // Response interceptor — auto-refresh on 401
-let isRefreshing = false;
-let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: any) => void }> = [];
+// R9 (Bundle D Task 1.F.1): module-scope singleton Promise so that N concurrent
+// 401s share a single refreshSession() network call instead of stampeding the
+// refresh endpoint. Identity-stable across coalesced callers — Promise.all on
+// the cached value works.
+type RefreshResult = { success: boolean; token: string | null; error?: unknown };
 
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (token) prom.resolve(token);
-    else prom.reject(error);
+let refreshPromise: Promise<RefreshResult> | null = null;
+
+async function performRefresh(): Promise<RefreshResult> {
+  try {
+    const { refreshSession, getToken } = require('./authService');
+    await refreshSession();
+    const newToken = await getToken();
+    if (newToken) {
+      return { success: true, token: newToken };
+    }
+    return { success: false, token: null, error: new Error('No token after refresh') };
+  } catch (err) {
+    const { clearSession } = require('./authService');
+    await clearSession();
+    throw err;
+  }
+}
+
+function getOrStartRefresh(): Promise<RefreshResult> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = performRefresh().finally(() => {
+    refreshPromise = null;
   });
-  failedQueue = [];
-};
+  return refreshPromise;
+}
+
+/** Test-only: clear the in-flight refresh Promise. Do NOT call in production. */
+export function __resetRefreshMutex(): void {
+  refreshPromise = null;
+}
+
+/** Test-only: trigger the dedup path and return the cached Promise. */
+export function __testRefreshDedup(): Promise<RefreshResult> {
+  return getOrStartRefresh();
+}
 
 api.interceptors.response.use(
   (response) => response,
@@ -78,39 +109,17 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (isRefreshing) {
-      return new Promise((resolve, reject) => {
-        failedQueue.push({
-          resolve: (token: string) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            resolve(api(originalRequest));
-          },
-          reject,
-        });
-      });
-    }
-
     originalRequest._retry = true;
-    isRefreshing = true;
 
     try {
-      const { refreshSession, getToken } = require('./authService');
-      await refreshSession();
-      const newToken = await getToken();
-      if (newToken) {
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        processQueue(null, newToken);
+      const result = await getOrStartRefresh();
+      if (result.success && result.token) {
+        originalRequest.headers.Authorization = `Bearer ${result.token}`;
         return api(originalRequest);
       }
-      processQueue(new Error('No token after refresh'));
       return Promise.reject(error);
     } catch (refreshError) {
-      const { clearSession } = require('./authService');
-      await clearSession();
-      processQueue(refreshError);
       return Promise.reject(refreshError);
-    } finally {
-      isRefreshing = false;
     }
   }
 );
