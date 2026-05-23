@@ -1,0 +1,64 @@
+# Qaren landing-page nginx config (template form).
+# envsubst renders ${PORT} from environment at container boot per
+# nginx:alpine docker-entrypoint.sh behavior.
+
+server {
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Default Content-Type for HTML; .well-known files override below.
+    default_type text/html;
+
+    # Apple Universal Links AASA — NO file extension, must be application/json.
+    location = /.well-known/apple-app-site-association {
+        default_type application/json;
+        add_header Cache-Control "public, max-age=3600, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    # Android App Links assetlinks — application/json (Google convention).
+    location = /.well-known/assetlinks.json {
+        default_type application/json;
+        add_header Cache-Control "public, max-age=3600, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    # /support → /support.html clean URL (matches Vercel cleanUrls behavior).
+    # Why no HTTP redirect to mailto: — 301/302 to mailto: scheme is broken
+    # cross-browser (Firefox rejects, Chrome+Safari inconsistent). support.html
+    # ships meta-refresh + visible CTA button as the working fallback.
+    location = /support {
+        try_files /support.html =404;
+    }
+
+    # Global security headers — matches vercel.json.alternative + iOS WKWebView
+    # expectations.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+    # All other paths: serve from root.
+    location / {
+        try_files $uri $uri.html $uri/ =404;
+    }
+
+    # Health check endpoint for Railway monitoring.
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+        default_type text/plain;
+    }
+
+    # Don't log favicon 404 spam if asset is missing during A5-blocked window.
+    location = /favicon.png {
+        log_not_found off;
+        access_log off;
+        try_files $uri =404;
+    }
+}
