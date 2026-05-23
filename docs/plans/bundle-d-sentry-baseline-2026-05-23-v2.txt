@@ -1,0 +1,86 @@
+# Bundle D Sentry baseline v2 (2026-05-23)
+# Updated after Backend R4 gradient curl produced 2 new EXPECTED types.
+# Phase 3 close-out gate: any NEW issue type NOT in this list = block merge.
+#
+# Authored by: QA agent (FINAL REVIEWER)
+# Supersedes: bundle-d-sentry-baseline-2026-05-23.txt (v1, Phase 0 snapshot)
+# v1 retained in repo for audit trail — DO NOT overwrite.
+# Sentry org: qaren-rr   Backend project: python   Mobile project: react-native
+
+==============================================================================
+Known pre-existing (Phase 0 — captured before Bundle D opened):
+==============================================================================
+
+1. PYTHON-FASTAPI-A
+   Title:     Auth error in social_login: Provider (issuer "https://appleid.apple.com") is not enabled
+   Culprit:   app.api.auth_routes.social_login
+   Status at v1: pre-existing
+   Status now:   RESOLVED by Backend 1.B.4 / R4 close (commit `faead5e`)
+                 Apple provider toggled ON in Supabase dashboard 2026-05-23 (Ahmed A8).
+                 Should NOT re-fire post-deploy. Re-fire = regression flag.
+
+2. REACT-NATIVE-1
+   Title:     Invariant Violation: TurboModuleRegistry.getEnforcing(...): 'RNGoogleSignin' could not be found
+   Culprit:   invariant(...SmartCompareApp\node_modules\invariant\browser.js)
+   Status at v1: pre-existing (Expo Go limitation)
+   Status now:   RESOLVED by Bundle D Frontend Phase 1 work + EAS preview build
+                 RNGoogleSignin links in native binary when built with config plugin.
+                 Verify zero re-fire after Task 2.N.1 EAS preview build lands.
+                 Re-fire = regression flag.
+
+3. PYTHON-FASTAPI-9
+   Title:     Auth error in refresh: Invalid Refresh Token: Already Used
+   Culprit:   app.api.auth_routes.refresh
+   Status at v1: pre-existing (refresh-token race)
+   Status now:   RESOLVED by Frontend 1.F.1 R9 mutex (commit `03b9139`)
+                 Module-scope singleton Promise coalesces N concurrent refresh
+                 calls into 1 Supabase RPC. Verify zero re-fire post-EAS-update.
+                 Re-fire = regression flag.
+
+==============================================================================
+Expected from Bundle D verification (added 2026-05-23):
+==============================================================================
+
+4. PYTHON-FASTAPI-B
+   Title:     Auth error in social_login: Unable to detect issuer in ID token for Apple provider
+   Culprit:   app.api.auth_routes.social_login
+   First seen: 2026-05-23 ~ at Backend R4 gradient triangulation curl time
+   Events:    2  Users: 0
+   Why expected: One of the Backend R4 closure probes — sent invalid Apple
+                 id_token to verify the route is enabled (it reaches
+                 sign_in_with_id_token() then surfaces upstream Supabase error).
+                 NOT a regression. Will not fire under normal user flow.
+
+5. PYTHON-FASTAPI-C
+   Title:     Auth error in social_login: Bad ID token
+   Culprit:   app.api.auth_routes.social_login
+   First seen: 2026-05-23 ~ at Backend R4 gradient triangulation curl time
+   Events:    2  Users: 0
+   Why expected: Companion to #4 — second gradient probe (different invalid
+                 token shape) to confirm both error paths surface symmetrically.
+                 Same closure-signal status: NOT a regression. Should not fire
+                 under normal user flow.
+
+==============================================================================
+Phase 3 watch logic:
+==============================================================================
+
+Query (every 30 min during Phase 3 post-deploy watch):
+  mcp__plugin_sentry_sentry__search_issues \
+      organizationSlug=qaren-rr \
+      query=firstSeen:-2h \
+      sort=date \
+      limit=30
+
+Classification rules:
+  - Issue with the EXACT title from #1-#5 above            → ABSORBED (known)
+  - NEW title at a culprit not in this list                → INVESTIGATE before sign-off
+  - Re-fire of #1, #2, or #3 (RESOLVED) under real user    → REGRESSION FLAG — block merge
+  - Re-fire of #4 or #5 under non-test conditions          → INVESTIGATE (likely real user with bad token)
+
+==============================================================================
+Final GREEN gate (Bundle D close-out):
+==============================================================================
+  - Zero NEW issue types over this list ✓
+  - Zero re-fire of #1, #2, #3 under real-user traffic ✓
+  - #4 + #5 quiescent after R4 test-curl window closes ✓
