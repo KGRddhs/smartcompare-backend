@@ -382,7 +382,8 @@ Team CANNOT disassemble until all 5 lane sign-offs are GREEN in the PR. If any R
 - **Bundle B 7 deferred polish items** (recent searches, autocomplete, voice input, soft hints, sound on celebration, per-mode CTA labels, admin content_safety dashboard) — tester data should drive triage
 - **External TestFlight (up to 10,000)** — needs Apple Beta App Review, full 15 legal decisions resolved, App Privacy Nutrition Labels final, Beta App Description; separate bundle once internal testers validate
 - **Full legal-doc redraft** — C15 only swaps brand strings; full Qaren-specific ToS/Privacy redraft per `docs/plans/2026-05-16-tos-decisions-pending.md` (15 items) is a separate legal-decisions bundle
-- **HomeScreen UI variants** (`HomeScreen.redesign.test.tsx`, `.modeChipAnim.test.tsx`, `.scanCamera.test.tsx`) re-mocking — pre-existing red tests from Bundle B `21e7bc0`; not introduced by Bundle D
+- **HomeScreen UI variants** (`HomeScreen.redesign.test.tsx`, `.modeChipAnim.test.tsx`, `.scanCamera.test.tsx`, `.minDisplayFloor.test.ts`) re-mocking — pre-existing red tests from Bundle B `21e7bc0`; not introduced by Bundle D. The 4 files together account for the 13 RED jest cases at the `1118/1131` baseline.
+- **`tests/test_phase1_includes_reviews.py::test_phase1_runs_reviews_in_parallel_with_specs_price`** — pre-existing RED asserting reviews run in Phase 1 parallel with specs+price (<1.2s wall budget). This is a D2 Intervention 1 follow-up; restructuring `_fetch_product_data` to start review fetch in Phase 1 is a price-pipeline change, not TestFlight-readiness. Triage doc anchor: `docs/plans/bundle-d-red-test-triage.md` row 2.
 - **Apple App Store production submission** — separate from TestFlight; happens once internal + external testing complete
 
 ---
