@@ -63,6 +63,8 @@ Apple is strict on accuracy. **Be conservative**: if uncertain, mark "needs Ahme
 
 NOTE: If Qaren ever ships a marketing-email program (newsletters, promo campaigns), add **Developer's Advertising or Marketing** purpose.
 
+NOTE: `support@qaren.app` mailto outbound from ContactUsScreen / Profile is the OTHER place a user's email is exposed. The Bundle D DNS+hosting plan (`docs/runbooks/bundle-d-dns-and-hosting.md`) covers the `/support` 301 redirect to `mailto:support@qaren.app`. The forwarding policy (whether the mailbox is a Gmail forward to Ahmed's personal account, a shared inbox, or an external help-desk SaaS like Front / HelpScout / Zendesk) is A7 — pending Ahmed. **Impact on Privacy Nutrition Labels:** if Ahmed routes `support@qaren.app` through a third-party help-desk SaaS, that SaaS becomes a sub-processor and MUST be listed in the Privacy Policy (Row 1 storage list expands). If `support@qaren.app` is a Gmail forward to Ahmed personally, Gmail is the sub-processor — already in scope as standard email infrastructure. Native-ops will revisit this row when A7 resolves.
+
 ---
 
 ### Row 2 — Identifiers → User ID (Supabase UUID)
@@ -104,20 +106,30 @@ NOTE: Apple sometimes asks "Is this a static device identifier like IDFA?" — a
 
 **Collected?** Y
 - **Where:** `GET /api/v1/text/compare?q=...` (`app/api/text_routes.py` → `compare_from_text(query, region, ...)`). Plus `POST /api/v1/share/...` saves comparison + query in `comparisons.product_names`.
-- **Storage:** Supabase `comparisons` table for logged-in users; Redis L1 cache (24h prices, 7d specs/reviews) per query; OpenAI servers (transient, per the `ai_sharing_enabled` toggle).
+- **Storage destinations (FOUR, ordered by always→conditional):**
+  1. **ALWAYS — `search_logs` Supabase table** (`app/services/database_service.py:451-475` `log_search(query, input_type, user_id, products_found, success, error_message, cost, duration_ms)`). Fire-and-forget via `asyncio.create_task` at 8 call sites: `text_routes.py:153/179/254/275/429/442` + `image_routes.py:219/237`. UNCONDITIONAL — runs regardless of `ai_sharing_enabled`. Includes the raw `query` string + `user_id` (NULL when anonymous). Used by `analytics_service.py` to power the `/admin/costs` operator dashboard.
+  2. **ALWAYS — Redis L1 cache** (24h prices, 7d specs/reviews) per query, normalized.
+  3. **CONDITIONAL on auth — `comparisons` table** (`comparisons.product_names` + `comparisons.user_id`) so the query renders in the History tab. Anonymous queries are NOT written here.
+  4. **CONDITIONAL on `ai_sharing_enabled=true` (default OFF post-Bundle-D) — OpenAI servers** for the shared/improvement-eligible project. Opt-OFF routes to the private OpenAI project where data is not used for training.
 
-**Linked to user?** Y when authenticated (saved to `comparisons.user_id` and visible in History tab). N when anonymous (query hits cache + responds but is NOT persisted to the user's history).
+**Linked to user?** Y when authenticated (search_logs.user_id, comparisons.user_id, OpenAI metadata if opted in). N when anonymous (search_logs row exists with user_id=NULL — the query text is there but not linked to identity).
 
-**Tracking?** N — search queries are NEVER shared with third parties for advertising or sold to data brokers. They DO transit OpenAI's servers when `ai_sharing_enabled=true` (default ON, per `app/services/openai_service.py:56-65` `select_client_for_user` + `auth_routes.py:166` Pydantic toggle). The Bundle D plan flips this default to **OFF** (R23, Task 1.F.6); after that flip, only users who explicitly opt in send queries to OpenAI's shared (improvement-eligible) project.
+**Tracking?** N — search queries are NEVER shared with third parties for advertising or sold to data brokers. The four destinations are:
+- `search_logs` + Redis + `comparisons` — internal Qaren stores; queried only by Qaren's own admin operators (X-Admin-Key gated) and by the user themselves via the History tab.
+- OpenAI — operational service provider under contract; subject to the user's explicit opt-in via `ai_sharing_enabled=true` (default OFF post-Bundle-D per `auth_routes.py:166` + `openai_service.py:56-65 select_client_for_user`).
+
+None of the four flows match Apple's definition of Tracking (3rd-party advertising joins / data broker sales).
 
 **Purpose:**
-- **App Functionality** — execute the comparison (query → AI extraction)
+- **App Functionality** — execute the comparison (query → AI extraction); show user their own History
 - **Product Personalization** — query history feeds personalized scoring (last-N category affinity, price tier signal)
-- **Analytics** — aggregate trending categories, popular query patterns
+- **Analytics** — `search_logs` powers the operator admin dashboard (cost/usage trends) AND aggregate trending-categories analysis
 
-NOTE: Bundle D ships `ai_sharing_enabled=false` default for NEW users (Task 1.F.6, R23). Existing users with `ai_sharing_enabled=true` are NOT reset. Apple labels must reflect the **default state for new installs**, which post-Bundle-D = OFF.
+NOTE: Bundle D ships `ai_sharing_enabled=false` default for NEW users (Task 1.F.6, R23 — COMPLETED). Existing users with `ai_sharing_enabled=true` are NOT reset. Apple labels reflect the **default state for new installs**, which post-Bundle-D = OFF for the OpenAI-shared-project destination. The `search_logs` + Redis + `comparisons` destinations are ALWAYS-ON and reflected as such in the table.
 
 NOTE: When a user shares a comparison via `POST /api/v1/share`, the share URL is public; the GET endpoint strips personalization but the query + product names remain readable. This is consensual — user actively shares.
+
+NOTE: `search_logs` query strings are subject to existing security-regression test pack — `tests/test_security_regression.py` SQL-LIKE escaping (~98 tests). Direct SQL injection through query field is structurally blocked.
 
 ---
 
