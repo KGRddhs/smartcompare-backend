@@ -16,11 +16,14 @@ landing/
 ├── index.html                                     ← "Coming soon" placeholder
 ├── privacy.html                                   ← Privacy Policy (HTML render of app/legal/privacy_policy.md post-Qaren-rebrand commit eeaea11)
 ├── terms.html                                     ← Terms of Service (same source)
-├── vercel.json                                    ← Headers + redirects config
+├── support.html                                   ← Support — meta-refresh to mailto + visible button fallback
+├── vercel.json                                    ← Headers config (cleanUrls: true → /support resolves to /support.html)
 └── .well-known/
     ├── apple-app-site-association                 ← AASA, NO file extension, Team ID 8K562M549D substituted
     └── assetlinks.json                            ← Android App Links, cert SHA-256 placeholder
 ```
+
+**Note on `/support`:** an HTTP 301/308 redirect with `mailto:` destination does NOT work cross-browser (Chrome/Safari inconsistent, Firefox rejects). Instead, `vercel.json` `cleanUrls: true` resolves `/support` → `/support.html`, which combines a `<meta http-equiv="refresh" content="0; url=mailto:support@qaren.app">` immediate-redirect with a visible "Email support@qaren.app" button as the no-redirect fallback.
 
 ## Design notes
 
@@ -70,7 +73,11 @@ curl -sI "$PREV/.well-known/assetlinks.json" | grep -i content-type
 # Expect: content-type: application/json
 
 curl -sI "$PREV/support" | head -3
-# Expect: 308 redirect to mailto:support@qaren.app (Vercel's 308 ≈ 301)
+curl -sI "$PREV/support.html" | head -3
+# Expect: both 200 with text/html (cleanUrls true → /support resolves to /support.html).
+# /support.html ships a <meta http-equiv="refresh"> to mailto: AND a visible
+# "Email support@qaren.app" button as the no-redirect fallback (HTTP 301 to
+# mailto: does NOT work cross-browser; this two-track approach does).
 
 # Security headers smoke
 curl -sI "$PREV/" | grep -iE 'strict-transport|x-frame|x-content|referrer|permissions'
