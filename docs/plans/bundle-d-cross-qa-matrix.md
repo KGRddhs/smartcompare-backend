@@ -84,15 +84,26 @@ GREEN / SEND-BACK
 | `975f921` | Native/Ops | R6 citation | QA | reviewed | **GREEN** | R6 → ADDRESSED. Ahmed dispatcher-session confirmation cited + on-disk verification (`SmartCompareApp/app.json:17 ios.bundleIdentifier "com.qaren.app"`, :23 android.package, :20 associatedDomains). Fallback ladder preserved. Citation entry per protocol. |
 | `9008e5f` | Native/Ops | 1.N.6 DNS plan | QA | reviewed | **GREEN** | docs/runbooks/bundle-d-dns-and-hosting.md — Vercel + Cloudflare alt, TTL 300s for fast revert (R24 control respected), AASA/assetlinks paths match app.json deep-link config, vercel.json snippet with .well-known Content-Type + HSTS. Phase 2 cutover-only — no Phase 1 DNS change yet (correct). |
 | `52e7f01` | Backend | R3 RCA + Migration 026 | QA | reviewed | **GREEN-with-caveat** | Migration 026 SQL parsed: data-only backfill of 7 renderable v1 rows using identical `_validate_renderable` predicate (jsonb-path-aware for both `products` flat + `overview.products` nested), DO $$ verification block, rollback file present. Tests `test_get_comparison_returns_404_for_v1_row` + `test_delete_comparison_works_for_v1_rows` PASS. **CAVEAT: R3 ledger row still PENDING at line 13 — needs citation commit before R3 closes.** Migration not yet MCP-applied to live Supabase (Task #33). |
-| `7c677c9` | Frontend | 1.F.3 Edit nav fix | QA | reviewed | **GREEN** | Onboarding route registered permanently in authed stack as transparentModal (not just needs-preferences branch). NewOnboardingHost accepts `mode: 'full' \| 'edit'` + `onEditDone`. Test lane (528d53a peer review) accepted source-grep gate as right level. |
+| `7c677c9` | Frontend | 1.F.3 Edit nav fix | QA | reviewed | **GREEN (caveated)** | Code GREEN + source-grep contract GREEN (`App.navigation.test.tsx` 4/4) + **jest runtime DEFERRED to device smoke** (Test lane abandoned i18n-init hoist after 3 iterations, infra cost > delta). Onboarding route now permanent transparentModal; NewOnboardingHost accepts `mode: 'full' \| 'edit'` + `onEditDone`. **DEVICE-SMOKE CHECKPOINT (must verify at Task 2.N.1 EAS preview):** EditProfile → Edit style profile button → onboarding steps 8-10 progression → save returns to EditProfile screen. |
 | `2dba367` | Frontend | 1.F.5 history-404 test pin | QA | reviewed | **GREEN** | Pins existing 404 handler at `ResultsScreen.tsx:182-189` (renders `t('results.emptyState.notFound')`). No new screen code — correct per R3 anchor recipe. Backed by Migration 026 backfill. |
 | `6c17ca8` + `0dc774e` | Backend | 1.B.5 (R20) Migration 025 | QA | reviewed | **GREEN** | Migration 025 SQL: SECURITY DEFINER, `CREATE OR REPLACE` idempotent. Adds `user_usage` + `referral_invites` (referrer + redeemed_by) + `referral_redemptions` (referrer + invitee) + clears `users.preferences`/`expo_push_token`/`device_fingerprint_hash` for App Store delete-cascade. `admin_audit_log` correctly RETAINED per Session 43 forensics. Rollback file present. QA ran `pytest tests/test_delete_user_cascade.py tests/test_history_routes.py` → **30/30 GREEN in 2.24s**. R20 → ADDRESSED. Migration not yet MCP-applied (Task #34). |
 | `5449da7` | Backend | 1.B.3 refresh-token docstring | QA | reviewed | **GREEN** | Docstring-only change documenting single-use rotation contract + client-side dedup is Frontend's responsibility (mutex landed in 03b9139). Anchor-prescribed scope, no logic change. |
 | `6121432` | Native/Ops | AASA Team ID substitution | QA | reviewed | **GREEN** | Apple Team ID `8K562M549D` (10-char alphanumeric, valid format) substituted in `apple-app-site-association.json:6`, README + `dns-and-hosting.md` updated. JSON syntax preserved. Unblocks R4 / R14 / 1.N.2 / 1.B.4. assetlinks.json SHA-256 still placeholder (correct — waits on Task 2.N.1 EAS preview build). |
 
-**Risk Ledger progress:** 6 of 24 ADDRESSED (R5, R6, R9, R11, R20, R22). 18 PENDING. **R3 SHIPPED but NEEDS LEDGER CITATION COMMIT** (Backend follow-up).
+**Risk Ledger progress:** 6 of 24 ADDRESSED (R5, R6, R9, R11, R20, R22). 18 PENDING. **R3 SHIPPED + Migration 026 PROD-APPLIED (10 v2 / 1 v1 confirmed via dispatcher Supabase MCP)** — needs ledger citation commit (Backend follow-up).
 
 Append rows as commits land on the worktree. Statuses: `pending` → `in_review` → `GREEN` / `SEND-BACK` (→ re-review).
+
+---
+
+## Phase 2/3 device-smoke gates (must verify at EAS preview build before Final GREEN)
+
+Each item below is a Phase 1 commit whose runtime cannot be exercised in CI and is held back to device-smoke at Task 2.N.1. QA will NOT close Final GREEN until every gate here is checked.
+
+| Source commit | Lane | What to smoke | Acceptance criterion |
+|---|---|---|---|
+| `7c677c9` | Frontend 1.F.3 | EditProfile → "Edit style profile" button → onboarding steps 8-10 progression → save returns to EditProfile screen | NewOnboardingHost mounted in edit-mode, `onEditDone` called on save, no silent no-op |
+| (more rows as commits land) | | | |
 
 ---
 
