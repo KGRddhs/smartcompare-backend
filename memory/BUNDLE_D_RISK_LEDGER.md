@@ -24,7 +24,7 @@ type: project
 | R14 | Apple "Sign in with Apple" entitlement must exist in BOTH Apple Dev Portal + `eas.json` `ios.entitlements` | Native/Ops anchor includes literal entitlements snippet to paste; checklist verifies both locations | Native/Ops | PENDING |
 | R15 | 24 `_fire_and_forget` audit sites — false positives (some legitimate plain `create_task` sites) | Backend judges per site; PR comment lists each site with decision (WRAP / SKIP-with-reason) | Backend | PENDING |
 | R16 | HomeScreen redesign may REMOVE TwoInputShell behavior | Frontend acceptance test = full Bundle B PR #6 EN+AR walkthrough on new design; ZERO regressions on TwoInputShell contract | Frontend | PENDING |
-| R17 | Camera help button i18n — new copy must pass scary-vocab gate | Frontend uses approved vocabulary; copy-policy test (`.copy-policy.json`) catches violations | Frontend | PENDING |
+| R17 | Camera help button i18n — new copy must pass scary-vocab gate | Frontend uses approved vocabulary; copy-policy test (`.copy-policy.json`) catches violations | Frontend | ADDRESSED |
 | R18 | Profile toggle wiring — Reengagement subs endpoint may not exist | Backend FIRST action = grep for `reengagement_subscriptions` table + endpoint; if missing, Backend creates BEFORE Frontend wires UI | Backend | PENDING |
 | R19 | Force-update env vars dangerous — `APP_FORCE_UPDATE=true` boots all old-version users | Sequence: `APP_MIN_VERSION` = TestFlight build version FIRST; flip `APP_FORCE_UPDATE=true` only AFTER all testers on new build | Backend | PENDING |
 | R20 | C13 `delete_user_cascade` SQL changes must not break existing cascade flow | Backend writes migration 025 with rollback file; tests delete flow end-to-end on staging Supabase before prod apply | Backend | ADDRESSED |
@@ -57,6 +57,10 @@ When an agent addresses a risk:
        Method: <one-line summary>
        Citation: <commit SHA or test output excerpt or PR comment URL>
 -->
+
+### R17 — ADDRESSED 2026-05-23 by frontend
+Method: New `SmartCompareApp/src/components/CameraHelpOverlay.tsx` (Modal-based 3-step overlay) + onPress wiring at `ScanCameraScreen.tsx:264` (`onPress={() => setHelpVisible(true)}`) + 5 new i18n keys in EN/AR (`home.camera.help.{title,step1,step2,step3,close}`). Copy is approved vocabulary only — verified by `__tests__/CameraHelpOverlay.test.tsx` gate-test that scans the entire `home.camera.help.*` namespace for forbidden EN/AR vocab (couldn't/try again/failed to/estimated/تعذر/فشل). Component uses `TouchableOpacity activeOpacity=1` for tap-to-close instead of `TouchableWithoutFeedback` to keep the existing react-native test mock compatible. No haptics on open/close per Build Principle #4. Tests GREEN: CameraHelpOverlay 5/5 + ScanCameraScreen.edges 6/6 + i18n 6/6 + copy-policy 6/6 = 23/23. tsc 0; full jest 1153/1166 + 30 snapshots.
+Citation: commit `6bd81a0` (`feat(bundle-d-fe): Camera ? help overlay + i18n (R17, 1.F.4)`).
 
 ### R23 — ADDRESSED 2026-05-23 by frontend
 Method: `SmartCompareApp/src/screens/ProfileScreen.tsx:93` flipped from `preferences?.ai_sharing_enabled !== false` (coerced undefined → true, opt-out default) to `preferences?.ai_sharing_enabled ?? false` (opt-IN default). Truth table preserved: undefined → false (new users + pre-column rows), `true` → true (existing opted-in users untouched), `false` → false (existing opted-out untouched). R23 invariant met — the flip ONLY affects the undefined branch; QA SQL spot-check in Phase 2 cross-review confirms zero unintended resets. Acceptance test `__tests__/ProfileScreen.aiSharingDefault.test.tsx` 3/3 GREEN (legacy `!== false` absent; opt-in pattern present; 3-case truth-table proven). Bundle A regression suite `ProfileScreen.bundleA.test.tsx` 11/11 still GREEN. tsc 0 errors.
