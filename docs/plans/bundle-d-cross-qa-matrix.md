@@ -77,8 +77,9 @@ GREEN / SEND-BACK
 | `03cdc1e` | Native/Ops | R5 citation | QA | reviewed | **GREEN** | R5 → ADDRESSED with proper citation per Risk Ledger update protocol. Surfaces R14 BOTH-gate split correctly (app.json leg done, Apple Dev Portal leg PENDING). |
 | `03b9139` + `a654a55` | Frontend | 1.F.1 (R9) | QA | reviewed | **GREEN** | Module-scope `refreshPromise` at api.ts:47 (verified outside function body); `.finally()` release on settle path at lines 67-69; 401 interceptor at line 115 calls `getOrStartRefresh()`. Jest 5/5 GREEN re-run by QA locally (0.447s). R9 → ADDRESSED. |
 | `966c66c` | Test | 1.T.1 amend | QA | reviewed | **GREEN** | Triage doc adds `HomeScreen.minDisplayFloor.test.ts` as 4th out-of-scope file. QA independently re-ran the 4 HomeScreen variant suites: **13 failed / 23 total** — 13-RED floor 100% concentrated in these 4 files (root cause `trackEvent` undefined at HomeScreen.tsx:207, Bundle B `21e7bc0` rewire). Zero net-new RED from `03b9139` confirmed. |
+| `eeaea11` + `83a83f0` | Backend | 1.B.1 + 1.B.7 (R22) | QA | reviewed | **GREEN** | Double `@router.get()` decorator pattern on existing handlers (no logic change); markdown structure preserved (only 5 SmartCompare→Qaren + 2 email rewrites); 3 new tests named correctly (privacy/terms returns_200 + brand_residue at lines 73/83/93). QA re-ran `pytest tests/test_legal_routes.py tests/test_security_regression.py` → **114/114 GREEN in 87.5s**. Static grep: 0 "SmartCompare" + 0 "smartcompare.app" residue. R22 → ADDRESSED. |
 
-**Risk Ledger progress:** 2 of 24 ADDRESSED (R5, R9). 22 PENDING.
+**Risk Ledger progress:** 3 of 24 ADDRESSED (R5, R9, R22). 21 PENDING.
 
 Append rows as commits land on the worktree. Statuses: `pending` → `in_review` → `GREEN` / `SEND-BACK` (→ re-review).
 
