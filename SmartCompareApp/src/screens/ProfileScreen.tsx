@@ -89,8 +89,12 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     setPreferences(p);
   };
 
-  // Default ON when undefined (matches backend semantics from B1.4)
-  const aiSharingEnabled = preferences?.ai_sharing_enabled !== false;
+  // Default OFF when undefined (Bundle D 1.F.6, R23). App-Store privacy
+  // requires AI data sharing to be opt-IN, not opt-out. Existing rows
+  // with explicit `true` are untouched — the flip only affects the
+  // `undefined` case (e.g. fresh signups + users whose preferences row
+  // pre-dates the column).
+  const aiSharingEnabled = preferences?.ai_sharing_enabled ?? false;
 
   // Build a complete UserPreferences shape from current state + an override.
   // PUT /preferences requires the 4 onboarding fields, so we backfill defaults
