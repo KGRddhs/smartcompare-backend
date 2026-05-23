@@ -85,6 +85,12 @@
       ],
       "expo-apple-authentication",
       [
+        "expo-notifications",
+        {
+          "color": "#10B981"
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "ios": {
