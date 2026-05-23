@@ -228,6 +228,103 @@ async def tier2_fill_non_negotiables(
         return {}
 
 
+# Bundle D Task 2.B.4 (A.4.8) — Tier 3 GPT-4o batched synthesis fallback.
+# Fires AFTER Tier 1 + smart-fallback + Tier 2 when non-negotiable schema
+# fields STILL remain blank. Last-resort: a single batched gpt-4o call
+# (priority="high" via model_router) synthesizes all still-missing fields
+# from the model's training knowledge in one round-trip — no Serper, no
+# per-field fan-out. Marked confidence='tier3_synthesis' so downstream
+# fact-check / trust validation can flag these values as inferred.
+#
+# Wall budget: 3s outer asyncio.wait_for (per spec § 2f).
+# Cost guard: ONE gpt-4o call per product (vs Tier 2's per-field-mini fan-out).
+#   Single call typical cost is ~$0.001-0.005 with priority="high" routing;
+#   only fires when both Tier 1 + Tier 2 failed (rare on warm cache, more
+#   likely on cold-cache niche products).
+# Silent omission per § 2h on timeout/failure — NO exception escapes.
+_TIER3_WALL_SECONDS = 3.0
+
+
+async def tier3_synthesize_non_negotiables(
+    *,
+    brand: str,
+    name: str,
+    variant,
+    category: str,
+    specs_so_far: dict,
+) -> dict:
+    """Bundle D A.4.8 — Tier 3 batched GPT-4o synthesis for non-negotiable
+    schema fields still blank after Tier 1 + smart-fallback + Tier 2.
+
+    Returns a dict of {field: value} for fields successfully filled by
+    GPT-4o synthesis. Empty dict on no-op (all non-negotiables already
+    filled) or on timeout/failure. NEVER raises — silent omission per § 2h.
+
+    Differs from Tier 2:
+      - ONE GPT call per product (Tier 2 = N calls, one per field).
+      - Uses gpt-4o (priority='high' via model_router) — better synthesis
+        from training data; Tier 2 uses gpt-4o-mini for speed.
+      - NO Serper search — pure training-data synthesis.
+      - Marks each filled field as confidence='tier3_synthesis' so trust
+        validation can treat it as inferred rather than retrieved.
+    """
+    from app.services.extraction_service import (
+        CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE,
+    )
+    from app.services.model_router_service import model_router
+
+    non_negotiable = CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE.get(category, [])
+    if not non_negotiable:
+        return {}
+
+    missing = [
+        f for f in non_negotiable
+        if not specs_so_far.get(f) or specs_so_far.get(f) in ("N/A", "")
+    ]
+    if not missing:
+        return {}
+
+    full_name = f"{brand} {name} {variant or ''}".strip()
+
+    async def _synth_call():
+        from app.services import openai_service as _openai_svc
+
+        # Single batched call — list all missing fields in one prompt.
+        model = await model_router.get_model(priority="high")
+        return await _openai_svc.extract_specs_synthesized(
+            brand=brand,
+            name=name,
+            variant=variant,
+            category=category,
+            fields=missing,
+            model=model,
+        )
+
+    try:
+        result = await asyncio.wait_for(_synth_call(), timeout=_TIER3_WALL_SECONDS)
+        if not result or not isinstance(result, dict):
+            return {}
+        filled = {}
+        for field in missing:
+            val = result.get(field)
+            if val and val not in ("N/A", ""):
+                filled[field] = val
+        return filled
+    except asyncio.TimeoutError:
+        logger.info(
+            f"[TIER3_SYNTH] timeout synthesizing {missing} for {brand} {name}"
+        )
+        return {}
+    except AttributeError as e:
+        # extract_specs_synthesized may not exist yet on openai_service in
+        # some test fixtures — log + skip cleanly rather than crash.
+        logger.warning(f"[TIER3_SYNTH] openai_service missing helper: {e}")
+        return {}
+    except Exception as e:  # noqa: BLE001 — never escape
+        logger.warning(f"[TIER3_SYNTH] error: {e}")
+        return {}
+
+
 def _classify_comparison_quality(
     *,
     cat_a: str,
@@ -1881,6 +1978,29 @@ class StructuredComparisonService:
                 if existing in (None, "", "N/A"):
                     result_specs_now[field] = value
                     fc[field] = "tier2_fallback"
+            result["specs"] = result_specs_now
+
+        # Bundle D A.4.8 — Tier 3 batched GPT-4o synthesis. Fires ONLY when
+        # non-negotiable schema fields STILL blank after Tier 2. Single
+        # gpt-4o call per product (vs Tier 2's per-field mini fan-out).
+        # 3s outer wall cap. Skips entirely when nothing's missing — happy
+        # path adds zero wall.
+        t_tier3 = time.perf_counter() if stage_timings is not None else None
+        tier3_filled = await tier3_synthesize_non_negotiables(
+            brand=brand, name=name, variant=variant,
+            category=category, specs_so_far=result_specs_now,
+        )
+        if stage_timings is not None:
+            stage_timings["tier3_synth_ms"] = round(
+                (time.perf_counter() - t_tier3) * 1000, 1
+            )
+        if tier3_filled:
+            fc = result_specs_now.setdefault("_field_confidence", {})
+            for field, value in tier3_filled.items():
+                existing = result_specs_now.get(field)
+                if existing in (None, "", "N/A"):
+                    result_specs_now[field] = value
+                    fc[field] = "tier3_synthesis"
             result["specs"] = result_specs_now
 
         rating_data = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}

@@ -293,3 +293,72 @@ Rules:
     except Exception as e:
         logger.warning(f"[EXTRACT_TARGETED] Failed: {e}")
         return {}
+
+
+async def extract_specs_synthesized(
+    brand: str,
+    name: str,
+    variant: Optional[str],
+    category: str,
+    fields: List[str],
+    model: str = "gpt-4o",
+) -> Dict[str, Any]:
+    """Bundle D A.4.8 — Tier 3 batched synthesis (NO context).
+
+    Last-resort fallback when Tier 1 + smart-fallback + Tier 2 all left
+    non-negotiable schema fields blank. Uses the higher-capacity model
+    (gpt-4o by default, routed via `model_router.get_model(priority='high')`)
+    to synthesize values directly from training-data knowledge — no
+    Serper search, no snippet context.
+
+    Returns dict of {field: value} for fields the model could fill from
+    training data. Caller marks each filled field as
+    confidence='tier3_synthesis' so trust validation downstream can flag
+    these as inferred rather than retrieved.
+
+    Cost: one call per product, max_tokens=300, ~$0.001-0.005 with
+    priority='high' routing. Only fires when Tier 2 also failed (rare).
+    """
+    if not fields:
+        return {}
+
+    fields_json = ",\n    ".join(f'"{f}": null' for f in fields)
+    full_name = f"{brand} {name} {variant or ''}".strip()
+
+    system = f"""You are a product specifications expert. Synthesize these specific fields for {full_name} from your training-data knowledge.
+Return ONLY valid JSON with these exact keys:
+{{
+    {fields_json}
+}}
+
+Rules:
+- For each field, give a single short value (e.g. '12 MP', 'IP68', 'Snapdragon 8 Gen 3')
+- If you genuinely do not know a value, return null for that field — DO NOT guess
+- NEVER return the literal string 'N/A' — return null instead
+- Prefer high-confidence values from manufacturer documentation
+- This is a last-resort fallback; accuracy matters more than completeness"""
+
+    user = f"Synthesize JSON for category={category}, fields={fields}"
+
+    try:
+        client_local = get_client()
+        response = await client_local.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+            max_tokens=300,
+        )
+        _log_cache_telemetry(response, "extract_specs_synthesized")
+        content = response.choices[0].message.content
+        result = json.loads(content) if content else {}
+        return {
+            k: v for k, v in result.items()
+            if k in fields and v is not None and v != "N/A"
+        }
+    except Exception as e:
+        logger.warning(f"[EXTRACT_SYNTH] Failed: {e}")
+        return {}
