@@ -351,6 +351,7 @@
   "profile.notifs.cohort": "Peer Decision Updates",
   "profile.notifs.retrospective": "Decision Retrospectives",
   "profile.notifs.errorSave": "Hold on — your setting didn't save. Tap to retry.",
+  "profile.notifs.errorTitle": "Setting didn't save",
 
   "common.back": "Back",
   "onboarding.finish": "Finish",

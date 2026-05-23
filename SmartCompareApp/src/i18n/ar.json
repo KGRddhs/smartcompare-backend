@@ -351,6 +351,7 @@
   "profile.notifs.cohort": "قرارات الناس قريبين منك",
   "profile.notifs.retrospective": "متابعة بعد القرار",
   "profile.notifs.errorSave": "لحظة — لم يُحفظ الإعداد. اضغط لإعادة المحاولة.",
+  "profile.notifs.errorTitle": "الإعداد لم يُحفظ",
 
   "common.back": "رجوع",
   "onboarding.finish": "إنهاء",

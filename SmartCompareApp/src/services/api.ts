@@ -296,6 +296,35 @@ export async function savePreferences(preferences: UserPreferences): Promise<{ s
 }
 
 /**
+ * Bundle D 2.F.1 (R18) — wire the 3 re-engagement sub-toggles to a
+ * dedicated endpoint instead of rolling them through the full
+ * /preferences body. Backend (commit `228ff63`) translates the FE-facing
+ * plural keys into the DB-side singular keys (`decision_insight`,
+ * `cohort_curiosity`, `decision_retrospective`) and read-modify-writes
+ * `users.preferences.notification_types` while preserving every other
+ * preference field. 10/min rate limit; auth required.
+ *
+ * Body shape (all 3 fields REQUIRED — Pydantic 422 if missing):
+ *   {
+ *     decision_insights: boolean,
+ *     peer_decision_updates: boolean,
+ *     decision_retrospectives: boolean,
+ *   }
+ */
+export interface ReengagementSubsBody {
+  decision_insights: boolean;
+  peer_decision_updates: boolean;
+  decision_retrospectives: boolean;
+}
+
+export async function putReengagementSubs(
+  body: ReengagementSubsBody
+): Promise<{ success: boolean; notification_types?: Record<string, boolean>; error?: string }> {
+  const response = await api.put('/api/v1/auth/reengagement-subs', body);
+  return response.data;
+}
+
+/**
  * SSE streaming comparison.
  * Uses fetch + ReadableStream (EventSource not reliable in React Native).
  * Falls back to non-streaming on failure.
