@@ -1,0 +1,58 @@
+Bundle D — Sentry MCP Phase 0 Baseline
+Captured: 2026-05-23 by QA agent
+Query: organizationSlug=qaren-rr query=firstSeen:-30d sort=freq limit=50
+
+==============================================================================
+RESULT: 3 issue types over the last 30 days.
+==============================================================================
+
+Issue 1: PYTHON-FASTAPI-A
+  Title:         Auth error in social_login: Provider (issuer "https://appleid.apple.com") is not enabled
+  Status:        unresolved
+  Users:         0
+  Events:        1
+  First seen:    ~3 hours before capture (2026-05-22 evening / 2026-05-23 morning UTC)
+  Last seen:     same
+  Culprit:       app.api.auth_routes.social_login
+  Seer:          super_low
+  URL:           https://qaren-rr.sentry.io/issues/PYTHON-FASTAPI-A
+  Note:          EXPECTED. Apple provider not yet enabled in Supabase (R4 pending). Bundle D Phase 2 will activate Apple Sign-In — this issue should naturally resolve once Native/Ops completes the 3-leg checkpoint (Service ID + .p8 + Supabase provider + backend test).
+
+Issue 2: REACT-NATIVE-1
+  Title:         Invariant Violation: TurboModuleRegistry.getEnforcing(...): 'RNGoogleSignin' could not be found
+  Status:        unresolved
+  Users:         0
+  Events:        1
+  First seen:    ~3 hours before capture
+  Last seen:     same
+  Culprit:       invariant(...SmartCompareApp\node_modules\invariant\browser.js)
+  Seer:          medium
+  URL:           https://qaren-rr.sentry.io/issues/REACT-NATIVE-1
+  Note:          PRE-EXISTING. Google Sign-In native module missing — Expo Go limitation. Bundle D production build via EAS should resolve this (RNGoogleSignin links in native binary when built with config plugin).
+
+Issue 3: PYTHON-FASTAPI-9
+  Title:         Auth error in refresh: Invalid Refresh Token: Already Used
+  Status:        unresolved
+  Users:         0
+  Events:        1
+  First seen:    ~3 hours before capture
+  Last seen:     same
+  Culprit:       app.api.auth_routes.refresh
+  Seer:          low
+  URL:           https://qaren-rr.sentry.io/issues/PYTHON-FASTAPI-9
+  Note:          PRE-EXISTING. Refresh-token race condition — Bundle D Task 1.F.1 (R9 module-scope refresh mutex) is designed specifically to address this. Should naturally drop in frequency post-Bundle-D.
+
+==============================================================================
+Phase 3 close-out gate:
+  After EAS production build + Apple processing + Ahmed install, re-run:
+    mcp__plugin_sentry_sentry__search_issues organizationSlug=qaren-rr query=firstSeen:-2h sort=date limit=30
+  ZERO new issue types over this baseline = GREEN.
+  ANY new issue type = block merge until triaged.
+==============================================================================
+
+Authentication-status sanity:
+  - Sentry MCP: authenticated, qaren-rr org accessible
+  - Railway MCP: authenticated, project empowering-enthusiasm (9e9ed59c-1b30-444a-9de8-1914a5566f49) accessible
+  - Supabase MCP: authenticated, project qulajmyxdbdkchvecmvc accessible
+  - Supabase noted: 18 public tables; admin_audit_log has 190 rows (privacy SQL pack will validate on Phase 4)
+  - Supabase advisory flag: 2 tables RLS-disabled (public.products, public.comparisons_cache). PRE-EXISTING, surfaced to dispatcher — out of Bundle D scope.
