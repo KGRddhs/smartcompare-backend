@@ -76,6 +76,7 @@ GREEN / SEND-BACK
 | `70a34b3` | Native/Ops | 1.N.4 (C16) | QA | reviewed | **GREEN** | expo-notifications plugin object-form, brand `#10B981` tint, lines 87-92 of `SmartCompareApp/app.json`. Plugin separation discipline preserved. |
 | `03cdc1e` | Native/Ops | R5 citation | QA | reviewed | **GREEN** | R5 → ADDRESSED with proper citation per Risk Ledger update protocol. Surfaces R14 BOTH-gate split correctly (app.json leg done, Apple Dev Portal leg PENDING). |
 | `03b9139` + `a654a55` | Frontend | 1.F.1 (R9) | QA | reviewed | **GREEN** | Module-scope `refreshPromise` at api.ts:47 (verified outside function body); `.finally()` release on settle path at lines 67-69; 401 interceptor at line 115 calls `getOrStartRefresh()`. Jest 5/5 GREEN re-run by QA locally (0.447s). R9 → ADDRESSED. |
+| `966c66c` | Test | 1.T.1 amend | QA | reviewed | **GREEN** | Triage doc adds `HomeScreen.minDisplayFloor.test.ts` as 4th out-of-scope file. QA independently re-ran the 4 HomeScreen variant suites: **13 failed / 23 total** — 13-RED floor 100% concentrated in these 4 files (root cause `trackEvent` undefined at HomeScreen.tsx:207, Bundle B `21e7bc0` rewire). Zero net-new RED from `03b9139` confirmed. |
 
 **Risk Ledger progress:** 2 of 24 ADDRESSED (R5, R9). 22 PENDING.
 
