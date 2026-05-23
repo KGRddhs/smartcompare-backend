@@ -1748,13 +1748,19 @@ def _dim_reviews(products: list[dict]) -> dict:
     return result
 
 
-def _dim_value(products: list[dict]) -> dict:
+def _dim_value(products: list[dict], is_cross_tier: bool = False) -> dict:
     """Bundle C § 2g — kill the `rating or 4.0` fabricated default. When
     either rating OR price is missing on either side, the value ratio
     cannot be computed honestly; short-circuit to a neutral display
     score + low-confidence flag (mirrors the _dim_price / _dim_reviews
     pattern at lines 1411 / 1438). No phantom 4.0 stars, no phantom
-    0.1 ratio injection."""
+    0.1 ratio injection.
+
+    Bundle D A.6.3: when `is_cross_tier=True` (price tiers disagree e.g.
+    budget vs luxury), the delta_text gets a cross-tier prefix so the
+    user understands the value math is happening across different
+    market positions, not within the same tier.
+    """
     a, b = products[0], products[1]
     pa_raw = _get_price(a)
     pb_raw = _get_price(b)
@@ -1818,10 +1824,22 @@ def _dim_value(products: list[dict]) -> dict:
                 "Substantially stronger value ratio"
                 if winner_va else "Substantially stronger value on the other side"
             )
+    # Bundle D A.6.3 — cross-tier framing prefix. When the two products
+    # sit in different price tiers (budget vs mid vs premium vs luxury vs
+    # top_tier), the value-ratio comparison is happening across market
+    # positions, not within one tier. Prefix the delta so the user
+    # understands the framing.
+    if is_cross_tier and delta != "Comparable value":
+        delta = f"Across tiers — {delta.lower()[0]}{delta[1:]}" if delta else delta
     return {
         "key": "value", "label": "Value",
         "score_a": score_a, "score_b": score_b,
         "delta_text": delta, "confidence": "medium", "is_core": True,
+        # Bundle D A.6.3 — expose cross-tier flag on the dim so FE can
+        # render a different visual treatment if desired (caption, icon,
+        # etc.). is_cross_tier on the parent scoring_result is also still
+        # available; this is just a per-dim convenience flag.
+        "is_cross_tier": bool(is_cross_tier),
     }
 
 
@@ -1998,10 +2016,13 @@ def build_dimensions_v2(
     scoring_result["scores"] lookup. Electronics keeps the hand-coded
     _dim_dpi/_popularity/_build_quality builders for richer delta_text.
     """
+    # Bundle D A.6.3 — pass is_cross_tier so _dim_value can prefix its
+    # delta_text with cross-tier framing when products span price tiers.
+    is_cross_tier = bool(scoring_result.get("is_cross_tier", False))
     dims: list[dict] = [
         _dim_price(products_data),
         _dim_reviews(products_data),
-        _dim_value(products_data),
+        _dim_value(products_data, is_cross_tier=is_cross_tier),
     ]
     cat_a = products_data[0].get("category")
     cat_b = products_data[1].get("category")

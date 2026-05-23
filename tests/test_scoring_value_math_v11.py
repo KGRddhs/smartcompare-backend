@@ -75,3 +75,55 @@ class TestA62RicherDeltaText:
         assert dim["delta_text"] == "Limited value data"
         assert dim["caption_key"] == "limited_data"
         assert dim["confidence"] == "low"
+
+
+class TestA63CrossTierFraming:
+    """A.6.3 — when is_cross_tier=True, the delta_text gets a cross-tier
+    framing prefix and the dim exposes `is_cross_tier=True` for FE."""
+
+    def test_same_tier_no_cross_tier_prefix(self):
+        from app.services.scoring_service import _dim_value
+        dim = _dim_value([_mk(4.5, 50), _mk(4.5, 100)], is_cross_tier=False)
+        assert dim["is_cross_tier"] is False
+        assert "Across tiers" not in dim["delta_text"]
+
+    def test_cross_tier_adds_prefix(self):
+        from app.services.scoring_service import _dim_value
+        dim = _dim_value([_mk(4.5, 50), _mk(4.5, 100)], is_cross_tier=True)
+        assert dim["is_cross_tier"] is True
+        assert dim["delta_text"].startswith("Across tiers — ")
+
+    def test_cross_tier_with_comparable_value_no_prefix(self):
+        """Edge case: identical va==vb returns 'Comparable value' — the
+        cross-tier prefix would read awkwardly ('Across tiers —
+        comparable value'). Keep the bare phrase for the equal case."""
+        from app.services.scoring_service import _dim_value
+        dim = _dim_value([_mk(4.5, 100), _mk(4.5, 100)], is_cross_tier=True)
+        assert dim["delta_text"] == "Comparable value"
+        # But flag still exposed
+        assert dim["is_cross_tier"] is True
+
+    def test_dim_value_is_cross_tier_default_false(self):
+        """When called without is_cross_tier kwarg, default to False
+        (backwards compat with pre-Bundle-D callers)."""
+        from app.services.scoring_service import _dim_value
+        dim = _dim_value([_mk(4.5, 50), _mk(4.5, 100)])
+        assert dim["is_cross_tier"] is False
+
+    def test_build_dimensions_v2_propagates_is_cross_tier(self):
+        """build_dimensions_v2 reads scoring_result['is_cross_tier'] and
+        forwards it to _dim_value."""
+        from app.services.scoring_service import build_dimensions_v2
+
+        products = [
+            {"name": "A", "category": "electronics",
+             "rating": 4.5, "price": {"amount": 50}, "review_count": 1500},
+            {"name": "B", "category": "electronics",
+             "rating": 4.5, "price": {"amount": 100}, "review_count": 1200},
+        ]
+        dims = build_dimensions_v2(
+            products, scoring_result={"is_cross_tier": True}, category="electronics",
+        )
+        value_dim = next(d for d in dims if d["key"] == "value")
+        assert value_dim["is_cross_tier"] is True
+        assert "Across tiers" in value_dim["delta_text"]
