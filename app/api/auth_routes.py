@@ -485,8 +485,25 @@ async def login(request: Request, body: LoginRequest):
 @router.post("/refresh", response_model=AuthResponse)
 @limiter.limit("10/minute")
 async def refresh(request: Request, body: RefreshRequest):
-    """
-    Refresh an expired access token using refresh token.
+    """Refresh an expired access token using a refresh token.
+
+    Rotation behaviour (Bundle D Task 1.B.3, R9):
+
+    Supabase Auth rotates refresh tokens on every successful call to
+    `/refresh` — the old refresh token is invalidated and a new one is
+    returned in the `session.refresh_token` of the response. This means
+    each refresh token is **single-use**.
+
+    If two concurrent clients race to refresh with the same token, only
+    one wins; the loser gets a 401 (`invalid refresh token`). Deduping
+    is therefore a CLIENT-SIDE responsibility — the mobile app must hold
+    a module-scope singleton Promise around the refresh call so parallel
+    401 handlers cooperate on one network round-trip (see Frontend
+    commit `03b9139` for the React Native mutex).
+
+    The backend itself does NOT cache refresh attempts (no shared state
+    here, by design — we trust Supabase Auth as the source of truth and
+    avoid double-rotation issues that would come from caching).
     """
     result = await refresh_session(body.refresh_token)
     
