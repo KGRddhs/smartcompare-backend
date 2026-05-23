@@ -334,7 +334,7 @@ describe('Bundle D contract — ScanCameraScreen', () => {
 
 describe('Bundle D contract — post-redesign per-page placeholders', () => {
   it.todo('ResultsScreen redesign preserves the 3 entry shapes + 1.2s floor');
-  it.todo('HistoryScreen redesign keeps FlatList virtualization (perf contract)');
+  it.todo('HistoryScreen redesign keeps FlatList OR SectionList virtualization (perf contract)');
   it.todo('ProfileScreen redesign keeps the 5-toggle layout + cohort badge');
   it.todo('LoginScreen redesign keeps Apple Sign-In gating');
   it.todo('RegisterScreen redesign keeps invite-code field path');
