@@ -30,7 +30,7 @@ type: project
 | R20 | C13 `delete_user_cascade` SQL changes must not break existing cascade flow | Backend writes migration 025 with rollback file; tests delete flow end-to-end on staging Supabase before prod apply | Backend | PENDING |
 | R21 | C14 Sentry query-string scrub — `_before_send` regex must not eat legitimate non-PII URL data | Backend writes targeted regex (matches `?q=`, `?query=`, `?email=` patterns; preserves `?nocache=true`, `?token=` already handled); test pack verifies | Backend | PENDING |
 | R22 | C15 legal-doc rebrand — risk of breaking existing in-app rendering if markdown structure shifts | Backend rewrites brand strings only, preserves heading/paragraph structure; FE LegalScreen renders unchanged | Backend | ADDRESSED |
-| R23 | C17 `ai_sharing_enabled` default flip OFF — existing users with ON should NOT be reset | Frontend default applies to NEW users only; existing `users.preferences.ai_sharing_enabled = true` rows untouched; verified via SQL spot-check | Frontend | PENDING |
+| R23 | C17 `ai_sharing_enabled` default flip OFF — existing users with ON should NOT be reset | Frontend default applies to NEW users only; existing `users.preferences.ai_sharing_enabled = true` rows untouched; verified via SQL spot-check | Frontend | ADDRESSED |
 | R24 | Landing page hosting (O1-O3) — DNS propagation delay could leave qaren.app offline mid-cutover | Native/Ops sets up hosting + tests via direct hostname FIRST; DNS cutover only after green; TTL set low (300s) for fast revert | Native/Ops | PENDING |
 
 ## Status legend
@@ -57,6 +57,10 @@ When an agent addresses a risk:
        Method: <one-line summary>
        Citation: <commit SHA or test output excerpt or PR comment URL>
 -->
+
+### R23 — ADDRESSED 2026-05-23 by frontend
+Method: `SmartCompareApp/src/screens/ProfileScreen.tsx:93` flipped from `preferences?.ai_sharing_enabled !== false` (coerced undefined → true, opt-out default) to `preferences?.ai_sharing_enabled ?? false` (opt-IN default). Truth table preserved: undefined → false (new users + pre-column rows), `true` → true (existing opted-in users untouched), `false` → false (existing opted-out untouched). R23 invariant met — the flip ONLY affects the undefined branch; QA SQL spot-check in Phase 2 cross-review confirms zero unintended resets. Acceptance test `__tests__/ProfileScreen.aiSharingDefault.test.tsx` 3/3 GREEN (legacy `!== false` absent; opt-in pattern present; 3-case truth-table proven). Bundle A regression suite `ProfileScreen.bundleA.test.tsx` 11/11 still GREEN. tsc 0 errors.
+Citation: commit `7b5a35d` (`feat(bundle-d-fe): ai_sharing_enabled default OFF (R23, 1.F.6)`).
 
 ### R11 — ADDRESSED 2026-05-23 by frontend
 Method: Inserted `"profile.name"` key alphabetically between `profile.editProfile` and `profile.settings` in BOTH `SmartCompareApp/src/i18n/en.json:153` ("Name") and `SmartCompareApp/src/i18n/ar.json:153` ("الاسم"). No conflict with `profile.title` (which renders the screen header) — `profile.name` is for the form-field label on EditProfileScreen. Defaults per Bundle D anchor; if Ahmed wants alternate wording, swap in follow-up commit with AR parity. Gate tests GREEN: `__tests__/i18n.test.ts` (6/6 incl. EN/AR key-set equality, no-empty, interpolation parity, app.name=Qaren/قارن, 9 categories, 6 GCC regions) + `__tests__/copy-policy.test.ts` (no forbidden vocab couldn't/try again/Failed to/تعذر/فشل/estimated). 12/12 tests passing.
