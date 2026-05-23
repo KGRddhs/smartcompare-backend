@@ -35,6 +35,14 @@ server {
         try_files /support.html =404;
     }
 
+    # /ar/support → /ar/support.html clean URL (same rationale as /support above).
+    # /ar/{index,privacy,terms}.html paths are handled by the catch-all
+    # location / try_files chain below — only the extension-less /ar/support
+    # needs an explicit rule.
+    location = /ar/support {
+        try_files /ar/support.html =404;
+    }
+
     # Global security headers — matches vercel.json.alternative + iOS WKWebView
     # expectations.
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;

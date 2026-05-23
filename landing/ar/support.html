@@ -1,21 +1,21 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#10B981">
-  <meta name="description" content="Get help with Qaren — email us at support@qaren.app">
+  <meta name="description" content="احصل على الدعم من قارن — راسلنا على support@qaren.app">
   <meta name="robots" content="noindex, follow">
   <meta http-equiv="refresh" content="0; url=mailto:support@qaren.app">
   <link rel="icon" type="image/png" href="/favicon.png">
-  <link rel="canonical" href="https://qaren.app/support">
+  <link rel="canonical" href="https://qaren.app/ar/support">
   <link rel="alternate" hreflang="en" href="https://qaren.app/support">
   <link rel="alternate" hreflang="ar" href="https://qaren.app/ar/support">
   <link rel="alternate" hreflang="x-default" href="https://qaren.app/support">
-  <title>Support — Qaren</title>
+  <title>الدعم — قارن</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --emerald: #10B981;
@@ -32,17 +32,13 @@
     html, body {
       margin: 0;
       padding: 0;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       color: var(--ink);
       background: var(--bg);
-      line-height: 1.55;
+      line-height: 1.7;
       -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-
-    body:lang(ar) {
-      font-family: 'Cairo', sans-serif;
       direction: rtl;
+      text-align: right;
     }
 
     main {
@@ -53,7 +49,7 @@
       display: flex;
       flex-direction: column;
       justify-content: center;
-      align-items: flex-start;
+      align-items: flex-end;
     }
 
     .brand {
@@ -83,23 +79,21 @@
     }
 
     .brand-name {
-      font-size: 1.125rem;
-      font-weight: 600;
-      letter-spacing: -0.01em;
+      font-size: 1.2rem;
+      font-weight: 700;
     }
 
-    .brand-ar {
+    .brand-en {
       font-family: 'Cairo', sans-serif;
-      font-weight: 600;
+      font-weight: 500;
       color: var(--slate-500);
-      font-size: 1.05rem;
+      font-size: 0.95rem;
     }
 
     h1 {
       font-size: clamp(1.75rem, 5vw, 2.25rem);
       font-weight: 700;
-      line-height: 1.2;
-      letter-spacing: -0.02em;
+      line-height: 1.3;
       margin: 0 0 1rem;
     }
 
@@ -118,9 +112,8 @@
       color: white;
       border-radius: 12px;
       text-decoration: none;
-      font-weight: 600;
+      font-weight: 700;
       font-size: 1rem;
-      transition: background 0.15s ease, transform 0.1s ease;
     }
 
     .cta:hover { background: var(--emerald-dark); }
@@ -140,11 +133,17 @@
       color: var(--slate-500);
     }
 
-    .note code {
+    .note code, .cta code {
       background: var(--slate-200);
       padding: 0.125rem 0.375rem;
       border-radius: 4px;
       font-size: 0.875em;
+      direction: ltr;
+      display: inline-block;
+    }
+    .cta code {
+      background: rgba(255,255,255,0.18);
+      color: white;
     }
 
     footer {
@@ -167,7 +166,7 @@
     footer a:hover { color: var(--ink); }
 
     .lang-switch {
-      margin-left: auto;
+      margin-right: auto;
       font-weight: 500;
     }
 
@@ -183,34 +182,34 @@
 </head>
 <body>
   <main>
-    <a class="brand" href="/">
+    <a class="brand" href="/ar/">
       <div class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <circle cx="12" cy="12" r="9"></circle>
           <circle cx="12" cy="12" r="5"></circle>
         </svg>
       </div>
-      <span class="brand-name">Qaren <span class="brand-ar" lang="ar" dir="rtl">قارن</span></span>
+      <span class="brand-name">قارن <span class="brand-en" lang="en" dir="ltr">Qaren</span></span>
     </a>
 
-    <h1>Get in touch</h1>
-    <p class="lede">Your email client should be opening now. If not, use the button below.</p>
+    <h1>تواصل معنا</h1>
+    <p class="lede">من المفترض أن يفتح برنامج البريد الإلكتروني لديك الآن. إن لم يحدث ذلك، استخدم الزر أدناه.</p>
 
     <a class="cta" href="mailto:support@qaren.app">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <rect x="3" y="5" width="18" height="14" rx="2"></rect>
         <path d="m3 7 9 6 9-6"></path>
       </svg>
-      Email <code>support@qaren.app</code>
+      راسل <code>support@qaren.app</code>
     </a>
 
-    <p class="note">Or copy the address: <code>support@qaren.app</code></p>
+    <p class="note">أو انسخ العنوان: <code>support@qaren.app</code></p>
 
     <footer>
-      <a href="/">&larr; Home</a>
-      <a href="/privacy.html">Privacy</a>
-      <a href="/terms.html">Terms</a>
-      <a class="lang-switch" href="/ar/support" lang="ar" dir="rtl">العربية</a>
+      <a href="/ar/">&rarr; الرئيسية</a>
+      <a href="/ar/privacy.html">الخصوصية</a>
+      <a href="/ar/terms.html">الشروط</a>
+      <a class="lang-switch" href="/support" lang="en" dir="ltr">English</a>
     </footer>
   </main>
 </body>

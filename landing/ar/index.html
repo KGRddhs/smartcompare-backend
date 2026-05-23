@@ -1,25 +1,26 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#10B981">
-  <meta name="description" content="Qaren — Intelligent product comparison for the GCC. Compare electronics, supplements, fragrances, and more across Bahrain, Saudi Arabia, UAE, Kuwait, Qatar, and Oman.">
+  <meta name="description" content="قارن — منصة مقارنة المنتجات الذكية لدول الخليج. قارن بين الإلكترونيات والمكملات والعطور والمزيد عبر البحرين والسعودية والإمارات والكويت وقطر وعُمان.">
   <meta name="robots" content="index, follow">
-  <meta property="og:title" content="Qaren — Smart product comparison for the GCC">
-  <meta property="og:description" content="Coming soon to the App Store and Google Play.">
+  <meta property="og:title" content="قارن — مقارنة منتجات ذكية لدول الخليج">
+  <meta property="og:description" content="قريبًا على آب ستور وجوجل بلاي.">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://qaren.app/">
+  <meta property="og:url" content="https://qaren.app/ar/">
+  <meta property="og:locale" content="ar_BH">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/png" href="/favicon.png">
-  <link rel="canonical" href="https://qaren.app/">
+  <link rel="canonical" href="https://qaren.app/ar/">
   <link rel="alternate" hreflang="en" href="https://qaren.app/">
   <link rel="alternate" hreflang="ar" href="https://qaren.app/ar/">
   <link rel="alternate" hreflang="x-default" href="https://qaren.app/">
-  <title>Qaren — Smart product comparison for the GCC</title>
+  <title>قارن — مقارنة منتجات ذكية لدول الخليج</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --emerald: #10B981;
@@ -36,17 +37,14 @@
     html, body {
       margin: 0;
       padding: 0;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       color: var(--ink);
       background: var(--bg);
-      line-height: 1.55;
+      line-height: 1.7;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-    }
-
-    body:lang(ar) {
-      font-family: 'Cairo', sans-serif;
       direction: rtl;
+      text-align: right;
     }
 
     main {
@@ -85,38 +83,38 @@
       stroke-linejoin: round;
     }
 
-    .brand-name {
-      font-size: 1.25rem;
-      font-weight: 600;
-      letter-spacing: -0.01em;
-    }
-
-    .brand-ar {
-      font-family: 'Cairo', sans-serif;
-      font-weight: 600;
-      color: var(--slate-500);
-      font-size: 1.15rem;
-    }
-
     .brand-text {
       display: flex;
       flex-direction: column;
       gap: 0.125rem;
     }
 
+    .brand-name {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .brand-en {
+      font-family: 'Cairo', sans-serif;
+      font-weight: 500;
+      color: var(--slate-500);
+      font-size: 0.95rem;
+      letter-spacing: 0.01em;
+    }
+
     .brand-tagline {
       font-size: 0.8125rem;
       font-weight: 500;
       color: var(--slate-500);
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
+      letter-spacing: 0.01em;
     }
 
     h1 {
       font-size: clamp(2.25rem, 6vw, 3.5rem);
       font-weight: 700;
-      line-height: 1.1;
-      letter-spacing: -0.02em;
+      line-height: 1.25;
+      letter-spacing: -0.005em;
       margin: 0 0 1.5rem;
     }
 
@@ -126,7 +124,7 @@
       font-size: clamp(1.125rem, 2.4vw, 1.375rem);
       color: var(--slate-500);
       margin: 0 0 2.5rem;
-      max-width: 560px;
+      max-width: 600px;
     }
 
     .regions {
@@ -163,9 +161,8 @@
       border-radius: 12px;
       text-decoration: none;
       color: var(--ink);
-      font-weight: 500;
+      font-weight: 600;
       font-size: 0.9375rem;
-      transition: background 0.15s ease, color 0.15s ease;
       pointer-events: none;
       opacity: 0.6;
     }
@@ -173,11 +170,11 @@
     .store-badge .pill {
       background: var(--emerald);
       color: white;
-      padding: 0.125rem 0.5rem;
+      padding: 0.125rem 0.625rem;
       border-radius: 999px;
       font-size: 0.75rem;
       font-weight: 600;
-      margin-left: 0.5rem;
+      margin-right: 0.5rem;
     }
 
     .contact {
@@ -189,7 +186,7 @@
     .contact a {
       color: var(--emerald-dark);
       text-decoration: none;
-      font-weight: 500;
+      font-weight: 600;
     }
 
     .contact a:hover { text-decoration: underline; }
@@ -213,7 +210,7 @@
     footer a:hover { color: var(--ink); }
 
     .lang-switch {
-      margin-left: auto;
+      margin-right: auto;
       font-weight: 500;
     }
 
@@ -238,41 +235,41 @@
         </svg>
       </div>
       <span class="brand-text">
-        <span class="brand-name">Qaren <span class="brand-ar" lang="ar" dir="rtl">قارن</span></span>
-        <span class="brand-tagline">Compare Smart</span>
+        <span class="brand-name">قارن <span class="brand-en" lang="en" dir="ltr">Qaren</span></span>
+        <span class="brand-tagline">قارن بذكاء</span>
       </span>
     </div>
 
-    <h1>Smarter product decisions for the <span class="accent">GCC</span>.</h1>
+    <h1>قرارات منتجات أذكى <span class="accent">لدول الخليج</span>.</h1>
 
     <p class="lede">
-      Compare electronics, supplements, fragrances, fashion, and more — sourced from authorized retailers across the region. Coming soon to the App Store and Google Play.
+      قارن بين الإلكترونيات والمكملات الغذائية والعطور والأزياء والمزيد — من مصادر معتمدة في جميع أنحاء المنطقة. قريبًا على آب ستور وجوجل بلاي.
     </p>
 
-    <ul class="regions" aria-label="Available regions">
-      <li>Bahrain</li>
-      <li>Saudi Arabia</li>
-      <li>United Arab Emirates</li>
-      <li>Kuwait</li>
-      <li>Qatar</li>
-      <li>Oman</li>
+    <ul class="regions" aria-label="الدول المتاحة">
+      <li>البحرين</li>
+      <li>المملكة العربية السعودية</li>
+      <li>الإمارات العربية المتحدة</li>
+      <li>الكويت</li>
+      <li>قطر</li>
+      <li>سلطنة عُمان</li>
     </ul>
 
-    <div class="stores" aria-label="Coming soon">
-      <span class="store-badge">App Store<span class="pill">Soon</span></span>
-      <span class="store-badge">Google Play<span class="pill">Soon</span></span>
+    <div class="stores" aria-label="قريبًا">
+      <span class="store-badge">آب ستور<span class="pill">قريبًا</span></span>
+      <span class="store-badge">جوجل بلاي<span class="pill">قريبًا</span></span>
     </div>
 
     <p class="contact">
-      Questions? <a href="mailto:support@qaren.app">support@qaren.app</a>
+      هل لديك سؤال؟ <a href="mailto:support@qaren.app">support@qaren.app</a>
     </p>
 
     <footer>
-      <a href="/privacy.html">Privacy</a>
-      <a href="/terms.html">Terms</a>
-      <a href="mailto:support@qaren.app">Support</a>
+      <a href="/ar/privacy.html">الخصوصية</a>
+      <a href="/ar/terms.html">الشروط</a>
+      <a href="mailto:support@qaren.app">الدعم</a>
       <span>&copy; 2026 Qaren</span>
-      <a class="lang-switch" href="/ar/" lang="ar" dir="rtl">العربية</a>
+      <a class="lang-switch" href="/" lang="en" dir="ltr">English</a>
     </footer>
   </main>
 </body>

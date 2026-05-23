@@ -17,13 +17,18 @@ RUN rm /etc/nginx/conf.d/default.conf
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 # Copy static site files into nginx web root.
-# Exclude README.md, Dockerfile, railway.toml, vercel.json, nginx.conf.template
+# Exclude README.md, Dockerfile, railway.toml, nginx.conf.template
 # so they don't get served as web content.
 COPY index.html /usr/share/nginx/html/
 COPY privacy.html /usr/share/nginx/html/
 COPY terms.html /usr/share/nginx/html/
 COPY support.html /usr/share/nginx/html/
 COPY .well-known /usr/share/nginx/html/.well-known
+
+# Arabic locale mirror — served under /ar/* with RTL layout + Cairo-only fonts.
+# Per Bundle D Task 2.N.2-ar (option a) — sibling directory pattern over
+# Accept-Language sniffing for user-controlled, crawler-friendly URLs.
+COPY ar /usr/share/nginx/html/ar
 
 # Railway's HTTP edge sends traffic to $PORT; expose it dynamically.
 # Default 8080 for local testing (docker run -p 8080:8080 qaren-landing).
