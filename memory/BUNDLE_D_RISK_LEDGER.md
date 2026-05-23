@@ -16,7 +16,7 @@ type: project
 | R6 | Bundle ID conflict (`com.qaren.app` may be taken in ASC) | Native/Ops research bundle ID availability FIRST; fallback ladder `app.qaren` → `com.qaren.app` → `bh.qaren.app` ready; escalate to Ahmed before proceeding | Native/Ops | PENDING |
 | R7 | EAS production build signing — first build needs Apple Distribution cert + provisioning profile | Native/Ops sets up Apple Dev Portal provisioning profile FIRST; EAS auto-manages signing if `eas.json` ios.credentials configured | Native/Ops | PENDING |
 | R8 | App Store Connect 30-min upload+processing window | Phase 3 timing budgets this explicitly; tester invite waits until processing complete | Native/Ops | PENDING |
-| R9 | Refresh-token mutex must be module-scope singleton | Frontend PR comment includes code excerpt showing singleton `Promise` cached at module scope, not function scope | Frontend | PENDING |
+| R9 | Refresh-token mutex must be module-scope singleton | Frontend PR comment includes code excerpt showing singleton `Promise` cached at module scope, not function scope | Frontend | ADDRESSED |
 | R10 | HomeScreen Claude-Design output integration — token conflicts with existing `src/theme/index.ts` | Frontend extends theme, doesn't replace; tokens applied additively; cross-QA verifies no breaking theme change | Frontend | PENDING |
 | R11 | `profile.name` i18n naming — `profile.title`/`profile.editProfile` exist; new key conflicts? | Frontend agent picks "Name" / "الاسم" as default; if Ahmed wants different (e.g., "Display name"), agent asks before commit | Frontend | PENDING |
 | R12 | Reengagement flag flip ON during TestFlight may spam testers if cron has bug | Backend confirms cron stable + payload-safe BEFORE flipping; Phase 4 dispatcher action only after Ahmed acknowledges | Backend | PENDING |
@@ -57,6 +57,10 @@ When an agent addresses a risk:
        Method: <one-line summary>
        Citation: <commit SHA or test output excerpt or PR comment URL>
 -->
+
+### R9 — ADDRESSED 2026-05-23 by frontend
+Method: `SmartCompareApp/src/services/api.ts` lines 41-81 — module-scope `let refreshPromise: Promise<RefreshResult> | null = null;` cached at module top, accessor `getOrStartRefresh()` returns existing in-flight Promise OR creates new one, `.finally(() => { refreshPromise = null; })` releases mutex on settle. Test hooks `__resetRefreshMutex()` + `__testRefreshDedup()` exported for test (production never calls). Old `isRefreshing` boolean + `failedQueue` array deleted. 5/5 tests GREEN: `__tests__/api.refreshMutex.test.ts` proves (a) `p1 === p2 === p3` Promise identity, (b) `mockRefreshSession` called exactly 1× for 3 concurrent triggers, (c) mutex releases after settle, (d) mutex releases after reject, (e) `__resetRefreshMutex()` clears in-flight Promise. tsc 0 errors; api.demographics + api.settle pre-existing tests still GREEN.
+Citation: commit `03b9139` (`feat(bundle-d-fe): refresh-token mutex singleton Promise (R9, 1.F.1)`).
 
 ### R5 — ADDRESSED 2026-05-23 by native-ops
 Method: `expo-apple-authentication` plugin entry already at `SmartCompareApp/app.json:86` from pre-bundle-D state; `ios.usesAppleSignIn: true` already at line 19. Verified via direct read + JSON parse (10 plugins total post-commit `70a34b3`). Per Expo SDK 54 docs (via Context7 `/expo/expo`), the plugin auto-injects `com.apple.developer.applesignin: ["Default"]` entitlement during EAS prebuild — no manual `ios.entitlements` block needed in app.json. NOTE: R14's "BOTH" gate is split: (a) Apple Dev Portal App ID "Sign In with Apple" capability — still PENDING on Ahmed during ASC bundle claim Task 1.N.1; (b) app.json plugin block — ADDRESSED.
