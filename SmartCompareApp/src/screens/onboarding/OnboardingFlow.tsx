@@ -66,6 +66,12 @@ interface OnboardingFlowProps {
   initialStep?: OnboardingStep;
   /** Pre-populated data, e.g. when resuming or in tests. */
   initialData?: Partial<OnboardingFlowData>;
+  /**
+   * Bundle D 1.F.3: terminate the flow at this step rather than at
+   * `ONBOARDING_TOTAL_STEPS`. Used by NewOnboardingHost edit-mode to
+   * limit the user to the style-profile subset (steps 8-10).
+   */
+  lastStep?: OnboardingStep;
 }
 
 /**
@@ -107,7 +113,9 @@ export function OnboardingFlow({
   onComplete,
   initialStep = 1,
   initialData,
+  lastStep,
 }: OnboardingFlowProps) {
+  const terminalStep: OnboardingStep = lastStep ?? ONBOARDING_TOTAL_STEPS;
   const { t } = useTranslation();
   const { isRTL, language } = useLanguage();
   const [step, setStep] = useState<OnboardingStep>(initialStep);
@@ -182,13 +190,13 @@ export function OnboardingFlow({
     // step_number reflects the step the user just finished. fireEvent
     // closes over the current step value via the useCallback dep.
     fireEvent('onboarding_step_completed');
-    if (step >= ONBOARDING_TOTAL_STEPS) {
+    if (step >= terminalStep) {
       fireEvent('onboarding_completed');
       onComplete(data);
       return;
     }
     setStep((prev: OnboardingStep) => (prev + 1) as OnboardingStep);
-  }, [valid, step, data, onComplete, fireEvent]);
+  }, [valid, step, data, onComplete, fireEvent, terminalStep]);
 
   const handleBack = useCallback(() => {
     setStep((prev: OnboardingStep) => (prev > 1 ? ((prev - 1) as OnboardingStep) : prev));
@@ -244,7 +252,7 @@ export function OnboardingFlow({
         <Button
           testID="onboarding-next"
           title={
-            step === ONBOARDING_TOTAL_STEPS
+            step >= terminalStep
               ? t('onboarding.finish', { defaultValue: 'Finish' })
               : t('onboarding.next', { defaultValue: 'Continue' })
           }
