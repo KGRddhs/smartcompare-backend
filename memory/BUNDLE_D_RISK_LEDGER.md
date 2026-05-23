@@ -8,8 +8,8 @@ type: project
 
 | # | Risk | Preventive control | Owner | Status |
 |---|---|---|---|---|
-| R1 | `/admin/*` static auth gate (audit C2) regression — `app/main.py` middleware order load-bearing | Backend snapshots middleware → edit → diff → reject reorder; PR sub-commit isolates middleware changes | Backend | PENDING |
-| R2 | CSP scoping — admin pages allow `'unsafe-inline'` + `cdn.jsdelivr.net`, rest strict `default-src 'none'` | No inline scripts on non-admin pages; reject any diff that broadens CSP allow-list | Backend | PENDING |
+| R1 | `/admin/*` static auth gate (audit C2) regression — `app/main.py` middleware order load-bearing | Backend snapshots middleware → edit → diff → reject reorder; PR sub-commit isolates middleware changes | Backend | N/A |
+| R2 | CSP scoping — admin pages allow `'unsafe-inline'` + `cdn.jsdelivr.net`, rest strict `default-src 'none'` | No inline scripts on non-admin pages; reject any diff that broadens CSP allow-list | Backend | N/A |
 | R3 | `schema_version=2` filter excludes legacy v1 rows — History detail fail may be working-as-designed | Backend's FIRST action on history detail = query Supabase for failing comparison's `schema_version`; if v1 → backfill + relax filter, NOT new screen code | Backend | ADDRESSED |
 | R4 | Apple Sign-In three-leg dependency (Service ID → .p8 → Supabase provider → backend test) | Native/Ops posts "Apple 3-leg checkpoint" comment with all 4 green before Frontend wires the button | Native/Ops | ADDRESSED |
 | R5 | `expo-apple-authentication` is a config plugin — first EAS build fails if `app.json` plugin block missing | Native/Ops commits `app.json` plugin block FIRST in own commit BEFORE triggering any EAS build | Native/Ops | ADDRESSED |
@@ -137,4 +137,12 @@ Companion controls in the same chain (already addressed in other rows):
 - R5 ADDRESSED by native-ops `03cdc1e` — `expo-apple-authentication` plugin block in app.json.
 
 Citation: `SmartCompareApp/app.json:86` (plugin pre-existing) + `app.json:19` (`usesAppleSignIn: true`) + commit `03cdc1e` (R5 closure) + backend's `faead5e` (R4 closure cross-references the Apple Dev Portal artifacts) + Ahmed A3-A7 dispatcher session confirmation 2026-05-23 for Key ID `7S9CT35UX7` + Service ID `app.qaren.signin`.
+
+### R1 — N/A 2026-05-23 by QA (preventive control surface absent in Bundle D scope)
+Method: R1's preventive control is "snapshot middleware → edit → diff → reject reorder" — specifically to catch regression of the `/admin/*` static auth gate (audit C2) when the request_id → security → error → CORS → rate_limiter middleware chain in `app/main.py` is reordered. Verification: `git diff bca2ffe..HEAD -- app/main.py app/middleware/` returns **0 lines** across all 6 middleware files (`__init__.py`, `error_handler.py`, `logging_config.py`, `rate_limiter.py`, `request_id.py`, `security.py`) AND `app/main.py` itself. The preventive control surface is wholly absent in Bundle D scope — Backend's commit set is dominated by service-layer (`app/services/`), route-handler (`app/api/`), and migration changes. No middleware reorder occurred, so no R1 regression is possible.
+Citation: `git diff bca2ffe..HEAD -- app/main.py app/middleware/ | wc -l` = 0 (verified by QA 2026-05-23). Bundle D base commit `bca2ffe`.
+
+### R2 — N/A 2026-05-23 by QA (preventive control surface absent in Bundle D scope)
+Method: R2's preventive control is "reject any diff that broadens CSP allow-list" — specifically to prevent the strict `default-src 'none'` policy outside `/admin/*` from being weakened. CSP is implemented in `app/middleware/security.py`. Verification: same diff command as R1 above — `app/middleware/security.py` shows 0 lines changed since Bundle D base. No CSP modification occurred, so no R2 regression is possible.
+Citation: `git diff bca2ffe..HEAD -- app/middleware/security.py | wc -l` = 0 (verified by QA 2026-05-23). Bundle D base commit `bca2ffe`.
 

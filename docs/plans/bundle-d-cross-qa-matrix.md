@@ -125,7 +125,10 @@ GREEN / SEND-BACK
 
 **Net Backend RED floor: 3 → 1 deferred.** Phase 4 target met.
 
-**Risk Ledger progress:** 14 of 24 ADDRESSED (R3, R4, R5, R6, R9, R11, R14, R15, R17, R18, R20, R21, R22, R23). 10 PENDING (R1, R2, R7, R8, R10, R12, R13, R16, R19, R24).
+**Risk Ledger progress:** 14 ADDRESSED + 2 N/A = **16 of 24 closed.** 8 PENDING.
+- ADDRESSED (14): R3, R4, R5, R6, R9, R11, R14, R15, R17, R18, R20, R21, R22, R23
+- N/A (2): R1 + R2 (per dispatcher 2026-05-23 — `git diff bca2ffe..HEAD -- app/main.py app/middleware/` returned 0 lines; preventive control surfaces wholly absent in Bundle D scope)
+- PENDING (8): R7, R8, R10, R12, R13, R16, R19, R24
 
 **QA verification cmds re-run after this batch:**
 - `pytest <9-file backend pack>` → **239/239 GREEN in 93.14s**
