@@ -396,6 +396,14 @@ describe('Bundle B contract — critical testID preservation (R16)', () => {
   it('ResultsScreen exposes the `results-empty-state` testID', () => {
     expect(RESULTS_SRC).toMatch(/testID="results-empty-state"/);
   });
+
+  it('ResultsScreen preserves `winner-card-anim` testID (conditional on isWinner)', () => {
+    // Conditional mount per ResultsScreen.tsx:640 — only when isWinner=true.
+    // Pattern: `testID={isWinner ? 'winner-card-anim' : undefined}`.
+    // Pinning the literal string guards against rename during Claude-Design
+    // redesign of the §5a/§5b/§5c winner-reveal animation surface.
+    expect(RESULTS_SRC).toMatch(/testID=\{[^}]*['"]winner-card-anim['"]/);
+  });
 });
 
 // ---------------------------------------------------------------------
