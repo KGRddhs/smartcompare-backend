@@ -186,6 +186,15 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     setNotifsSaving(true);
 
     // FE plural keys (matches endpoint contract) ↔ DB singular keys.
+    // Policy note: re-engagement sub-toggles are opt-OUT by default
+    // (`!== false` coerces undefined → true). This is INTENTIONALLY
+    // different from `ai_sharing_enabled` (R23, line 97) which is
+    // opt-IN (`?? false`). Re-engagement notifications are part of the
+    // user's chosen onboarding-step-17 experience — defaulting them ON
+    // matches user intent. AI data sharing is App Store privacy-gated,
+    // hence opt-IN. Don't normalize these two patterns without
+    // re-reading the design intent in memory/BUNDLE_D_FRONTEND_ANCHOR.md
+    // § R23 + Backend 228ff63 commit msg.
     const nt = next.notification_types ?? {};
     const body = {
       decision_insights: nt.decision_insight !== false,
