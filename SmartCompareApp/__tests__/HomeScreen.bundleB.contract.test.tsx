@@ -318,7 +318,88 @@ describe('Bundle B contract — no forbidden vocab in HomeScreen source (R16)', 
 });
 
 // ---------------------------------------------------------------------
-// Section 11 — Post-redesign placeholders (.todo)
+// Section 11 — Critical testID preservation (per QA Ask 4)
+// Existing jest test suites depend on a set of stable testIDs as their
+// query anchors (fireEvent.press(getByTestId('X')), getByTestId('Y'), etc.).
+// Claude-Design could silently rename these during the visual refresh,
+// breaking the existing tests without obvious cause. This section pins
+// the testIDs that are load-bearing for the current test surface so a
+// rename lights up at the unit-test layer.
+//
+// Inventory verified via grep on current shipped code 2026-05-23.
+// ---------------------------------------------------------------------
+
+import * as _fs from 'fs';
+import * as _path from 'path';
+
+const TWOINPUT_SRC = _fs.readFileSync(
+  _path.resolve(__dirname, '../src/components/TwoInputShell.tsx'),
+  'utf8'
+);
+const IMAGESLOTROW_SRC = _fs.readFileSync(
+  _path.resolve(__dirname, '../src/components/ImageSlotRow.tsx'),
+  'utf8'
+);
+const SCANCAMERA_SRC = _fs.readFileSync(
+  _path.resolve(__dirname, '../src/screens/ScanCameraScreen.tsx'),
+  'utf8'
+);
+const ONBOARDING_FLOW_SRC = _fs.readFileSync(
+  _path.resolve(__dirname, '../src/screens/onboarding/OnboardingFlow.tsx'),
+  'utf8'
+);
+const RESULTS_SRC = _fs.readFileSync(
+  _path.resolve(__dirname, '../src/screens/ResultsScreen.tsx'),
+  'utf8'
+);
+
+describe('Bundle B contract — critical testID preservation (R16)', () => {
+  it('HomeScreen exposes the `home-center-area` testID (Bundle B 21e7bc0 rewire)', () => {
+    expect(HOME_SRC).toMatch(/testID="home-center-area"/);
+  });
+
+  it('TwoInputShell defaults its root testID to `two-input-shell`', () => {
+    // Children derive: `${testID}-vs-pill`, `${testID}-cta`,
+    // `${testID}-a`/-b, `${testID}-caption-paste-split`,
+    // `${testID}-caption-mode-switch`, `${testID}-a/-b-circle/-input/-clear`.
+    expect(TWOINPUT_SRC).toMatch(/testID\s*=\s*['"]two-input-shell['"]/);
+  });
+
+  it('ImageSlotRow uses `image-slot-${idx}` family (and -thumb / -remove suffixes)', () => {
+    expect(IMAGESLOTROW_SRC).toMatch(/testID=\{`image-slot-\$\{idx\}`\}/);
+    expect(IMAGESLOTROW_SRC).toMatch(/testID=\{`image-slot-\$\{idx\}-thumb`\}/);
+    expect(IMAGESLOTROW_SRC).toMatch(/testID=\{`image-slot-\$\{idx\}-remove`\}/);
+  });
+
+  it('ScanCameraScreen exposes `scan-camera-close`, `scan-camera-help`, `scan-celebration-overlay`', () => {
+    expect(SCANCAMERA_SRC).toMatch(/testID="scan-camera-close"/);
+    expect(SCANCAMERA_SRC).toMatch(/testID="scan-camera-help"/);
+    expect(SCANCAMERA_SRC).toMatch(/testID="scan-celebration-overlay"/);
+  });
+
+  it('CameraHelpOverlay exposes `camera-help-overlay` + `camera-help-overlay-close`', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const overlaySrc = _fs.readFileSync(
+      _path.resolve(__dirname, '../src/components/CameraHelpOverlay.tsx'),
+      'utf8'
+    );
+    expect(overlaySrc).toMatch(/testID="camera-help-overlay"/);
+    expect(overlaySrc).toMatch(/testID="camera-help-overlay-close"/);
+  });
+
+  it('OnboardingFlow exposes `onboarding-progress`, `onboarding-back`, `onboarding-next`', () => {
+    expect(ONBOARDING_FLOW_SRC).toMatch(/testID="onboarding-progress"/);
+    expect(ONBOARDING_FLOW_SRC).toMatch(/testID="onboarding-back"/);
+    expect(ONBOARDING_FLOW_SRC).toMatch(/testID="onboarding-next"/);
+  });
+
+  it('ResultsScreen exposes the `results-empty-state` testID', () => {
+    expect(RESULTS_SRC).toMatch(/testID="results-empty-state"/);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Section 12 — Post-redesign placeholders (.todo)
 // These contracts can only be verified once the Claude-Design prototype
 // lands. Flip from .todo → .test when the visual layer ships.
 // ---------------------------------------------------------------------

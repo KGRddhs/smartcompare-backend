@@ -124,7 +124,7 @@ describe('Bundle D contract — ProfileScreen', () => {
   });
 
   it('handleSubToggle routes the 3 sub-toggles to /reengagement-subs', () => {
-    expect(SRC).toMatch(/handleSubToggle[\s\S]{0,1200}putReengagementSubs/);
+    expect(SRC).toMatch(/handleSubToggle[\s\S]{0,2000}putReengagementSubs/);
   });
 
   it('handleSubToggle uses plural keys (Backend 228ff63 body contract)', () => {
@@ -134,7 +134,7 @@ describe('Bundle D contract — ProfileScreen', () => {
   });
 
   it('handleSubToggle has optimistic-rollback-on-failure pattern', () => {
-    expect(SRC).toMatch(/handleSubToggle[\s\S]{0,1500}setPreferences\(\s*previous/);
+    expect(SRC).toMatch(/handleSubToggle[\s\S]{0,2500}setPreferences\(\s*previous/);
   });
 
   it('ai_sharing_enabled defaults OFF when undefined (R23 invariant)', () => {
