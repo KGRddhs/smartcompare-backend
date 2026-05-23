@@ -1792,10 +1792,32 @@ def _dim_value(products: list[dict]) -> dict:
         }
     score_a = calibrate_score(50 + 35 * (va / hi))
     score_b = calibrate_score(50 + 35 * (vb / hi))
-    if va >= vb:
-        delta = "More features per dinar"
+    # Bundle D Task 2.B.5 (A.6.2) — richer delta_text. Vary copy by
+    # magnitude of value-ratio gap so the user sees more than 2 hardcoded
+    # strings. Magnitude buckets (relative): tiny (<5%), small (5-15%),
+    # moderate (15-35%), large (>35%).
+    if va == vb:
+        delta = "Comparable value"
     else:
-        delta = "Stronger value ratio"
+        winner_va = va > vb
+        gap_ratio = abs(va - vb) / hi  # 0..1
+        if gap_ratio < 0.05:
+            delta = "Nearly identical value"
+        elif gap_ratio < 0.15:
+            delta = (
+                "Slightly better value here"
+                if winner_va else "Slightly better value on the other side"
+            )
+        elif gap_ratio < 0.35:
+            delta = (
+                "Noticeably more per dinar here"
+                if winner_va else "Noticeably more per dinar on the other side"
+            )
+        else:
+            delta = (
+                "Substantially stronger value ratio"
+                if winner_va else "Substantially stronger value on the other side"
+            )
     return {
         "key": "value", "label": "Value",
         "score_a": score_a, "score_b": score_b,
