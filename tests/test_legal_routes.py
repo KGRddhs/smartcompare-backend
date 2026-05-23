@@ -100,3 +100,24 @@ class TestLegalRoutes:
             body = response.json()["content"]
             assert "SmartCompare" not in body
             assert "smartcompare.app" not in body
+
+    def test_terms_referral_section_matches_migration_023_policy(self):
+        """Bundle D — § 12 referral copy must match the actual cap (3 lifetime per
+        device per Migration 023 + Bundle B/C/D), NOT the legacy 3-per-week +
+        15-per-month + 30-day-expiry numbers from the pre-Bundle-A draft.
+        Catches Native/Ops-flagged drift between code (`referral_service.LIFETIME_CAP=3`,
+        `BONUS_EXPIRY_DAYS=7`) and legal docs.
+        """
+        from app.main import app
+        client = TestClient(app)
+        response = client.get("/api/v1/legal/terms_of_service")
+        assert response.status_code == 200
+        body = response.json()["content"]
+        # Forbidden stale numbers
+        assert "3 shares per week" not in body
+        assert "Maximum 15 referral" not in body
+        assert "15 referral comparisons per month" not in body
+        assert "expire 30 days" not in body
+        # Required current numbers
+        assert "3 successful invites per device" in body
+        assert "7 days" in body
