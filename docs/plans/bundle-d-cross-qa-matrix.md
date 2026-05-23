@@ -105,6 +105,8 @@ Each item below is a Phase 1 commit whose runtime cannot be exercised in CI and 
 | Source commit | Lane | What to smoke | Acceptance criterion |
 |---|---|---|---|
 | `7c677c9` | Frontend 1.F.3 | EditProfile → "Edit style profile" button → onboarding steps 8-10 progression → save returns to EditProfile screen | NewOnboardingHost mounted in edit-mode, `onEditDone` called on save, no silent no-op |
+| `6bd81a0` | Frontend 1.F.4 R17 | ScanCamera → tap ? button → CameraHelpOverlay visible → tap anywhere → closes | `helpVisible` toggles on/off; no haptic on open/close (Build Principle #4) |
+| `7b5a35d` | Frontend 1.F.6 R23 | Fresh signup with no preferences row → ProfileScreen → "Share AI data" toggle should be OFF by default | Toggle defaults OFF (opt-IN required for App Store); existing users with explicit `true` remain ON |
 | (more rows as commits land) | | | |
 
 ---
