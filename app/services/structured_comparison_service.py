@@ -65,26 +65,17 @@ def _product_category(p):
 
 
 def _fire_and_forget(coro, label: str) -> None:
-    """M6 (audit 2026-05-22): create a fire-and-forget asyncio task with an
-    exception-logging done callback. Without this, exceptions raised inside
-    the coroutine are silently swallowed — the audit trail (log_content_blocked,
-    _update_behavior_profile, etc.) just stops getting written and nothing
-    surfaces to Sentry or logs. Done callback logs a WARNING with the task
-    label so we can spot the failure pattern without crashing the request.
+    """Thin wrapper around `app.utils.async_utils.fire_and_forget`.
+
+    Originally introduced 2026-05-22 (M6 audit) for the
+    scoring/personalization writeback paths in this file. Bundle D 2.B.6
+    extracted the implementation to `app.utils.async_utils` so the 22
+    fire-and-forget sites in `app/api/*.py` can reuse the same pattern
+    without re-defining the helper per file. This name is preserved
+    locally so existing call sites in this module keep their import.
     """
-    task = asyncio.create_task(coro)
-
-    def _on_done(t: asyncio.Task) -> None:
-        if t.cancelled():
-            return
-        try:
-            exc = t.exception()
-        except Exception:  # noqa: BLE001 — callback must never raise
-            return
-        if exc is not None:
-            logger.warning("fire-and-forget %s failed: %r", label, exc)
-
-    task.add_done_callback(_on_done)
+    from app.utils.async_utils import fire_and_forget
+    fire_and_forget(coro, label)
 
 
 def _phase1_completely_failed(pd: Dict[str, Any]) -> bool:

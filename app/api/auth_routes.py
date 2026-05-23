@@ -1,7 +1,6 @@
 """
 Auth Routes - Authentication endpoints
 """
-import asyncio
 import hashlib
 import logging
 import re
@@ -44,6 +43,7 @@ from app.services.auth_service import (
 )
 from app.services.audit_service import log_audit_event
 from app.services.cohort_service import get_cohort_service
+from app.utils.async_utils import fire_and_forget
 from app.services.database_service import (
     save_user_demographics,
     get_user_demographics,
@@ -416,16 +416,20 @@ async def register(request: Request, body: RegisterRequest):
     # the user_id field handles identity, code + invite_id are sufficient
     # for forensic correlation.
     if body.invite_code and resolved_invite_id and new_user_id:
-        asyncio.create_task(log_audit_event(
-            event_type="invite_code_redeemed",
-            user_id=new_user_id,
-            ip_address=request.client.host if request.client else None,
-            endpoint="/api/v1/auth/register",
-            details={
-                "invite_code": body.invite_code,
-                "invite_id": resolved_invite_id,
-            },
-        ))
+        # Bundle D 2.B.6 WRAP: audit log is forensic-grade; silent fail = lost evidence.
+        fire_and_forget(
+            log_audit_event(
+                event_type="invite_code_redeemed",
+                user_id=new_user_id,
+                ip_address=request.client.host if request.client else None,
+                endpoint="/api/v1/auth/register",
+                details={
+                    "invite_code": body.invite_code,
+                    "invite_id": resolved_invite_id,
+                },
+            ),
+            label="audit.invite_code_redeemed",
+        )
 
     return result
 
@@ -441,12 +445,16 @@ async def login(request: Request, body: LoginRequest):
     # Check brute-force lockout BEFORE attempting login
     lockout = await check_account_locked(body.email)
     if lockout["locked"]:
-        asyncio.create_task(log_audit_event(
-            event_type="brute_force_lockout",
-            ip_address=request.client.host if request.client else None,
-            endpoint="/api/v1/auth/login",
-            details={"email_hash": hashlib.sha256(body.email.lower().encode()).hexdigest()[:16]}
-        ))
+        # Bundle D 2.B.6 WRAP: brute-force events are security-critical audit data.
+        fire_and_forget(
+            log_audit_event(
+                event_type="brute_force_lockout",
+                ip_address=request.client.host if request.client else None,
+                endpoint="/api/v1/auth/login",
+                details={"email_hash": hashlib.sha256(body.email.lower().encode()).hexdigest()[:16]},
+            ),
+            label="audit.brute_force_lockout",
+        )
         raise HTTPException(
             status_code=429,
             detail={
@@ -460,12 +468,16 @@ async def login(request: Request, body: LoginRequest):
 
     if not result["success"]:
         await track_failed_login(body.email)
-        asyncio.create_task(log_audit_event(
-            event_type="login_failed",
-            ip_address=request.client.host if request.client else None,
-            endpoint="/api/v1/auth/login",
-            details={"reason": result.get("error", "unknown")}
-        ))
+        # Bundle D 2.B.6 WRAP: failed-login audit feeds the brute-force detector.
+        fire_and_forget(
+            log_audit_event(
+                event_type="login_failed",
+                ip_address=request.client.host if request.client else None,
+                endpoint="/api/v1/auth/login",
+                details={"reason": result.get("error", "unknown")},
+            ),
+            label="audit.login_failed",
+        )
         raise HTTPException(
             status_code=401,
             detail=result.get("error", "Login failed")
@@ -473,12 +485,16 @@ async def login(request: Request, body: LoginRequest):
 
     # Success — clear lockout counter
     await clear_failed_logins(body.email)
-    asyncio.create_task(log_audit_event(
-        event_type="login_success",
-        user_id=result.get("user", {}).get("id"),
-        ip_address=request.client.host if request.client else None,
-        endpoint="/api/v1/auth/login",
-    ))
+    # Bundle D 2.B.6 WRAP: login-success audit feeds compliance reporting.
+    fire_and_forget(
+        log_audit_event(
+            event_type="login_success",
+            user_id=result.get("user", {}).get("id"),
+            ip_address=request.client.host if request.client else None,
+            endpoint="/api/v1/auth/login",
+        ),
+        label="audit.login_success",
+    )
     return result
 
 
