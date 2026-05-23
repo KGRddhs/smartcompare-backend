@@ -105,9 +105,9 @@ Per `docs/runbooks/bundle-d-dns-and-hosting.md` § "Phase 2 step-by-step." Brief
 
 ## Known content gaps (NOT blocking preview deploy)
 
-1. **Stale referral copy in `terms.html` § 12.** ToS references "3 shares per week" but per Migration 023 + CLAUDE.md the cap moved to **3 LIFETIME per device** in Bundle B/C/D. Backend's `eeaea11` rebrand only changed brand strings (SmartCompare → Qaren); did NOT update the policy math. Surfaced to dispatcher — fix is Backend's R22 territory.
+1. ~~Stale referral copy in `terms.html` § 12.~~ **RESOLVED 2026-05-23**: Backend landed `a23ed51 fix(legal): update referral cap to 3 lifetime per device per Migration 023` updating `app/legal/terms_of_service.md` § 12; `landing/terms.html` regenerated to match in the same commit as this README update.
 2. **Two new email addresses** the legal docs introduce: `privacy@qaren.app` (Privacy § 12) and `legal@qaren.app` (Terms § 14). Plus `support@qaren.app` from A7. Ahmed needs to set up forwarding for ALL THREE before launch — combine into single A7 ask.
-3. **Arabic mirror** of all 3 HTML pages — deferred. Body already has `body:lang(ar)` Cairo + RTL CSS hooks; building the AR pages is a Phase 2 polish item.
+3. **Arabic mirror** of all 4 HTML pages — deferred. Body already has `body:lang(ar)` Cairo + RTL CSS hooks; building the AR pages is a Phase 2 polish item.
 4. **Favicon** — Expo placeholder (no Qaren brand). Same A5 dependency as the asset audit.
 5. **Open Graph image** — not yet shipped. `<meta property="og:image">` missing in `index.html`. Quick win for Phase 2 polish.
 
