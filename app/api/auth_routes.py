@@ -805,6 +805,94 @@ async def update_push_token(
 
 
 # ============================================
+# F5.4 — Re-engagement notification sub-toggles (Bundle D Task 2.B.7, R18)
+# ============================================
+
+# Bundle D + design § 11 Default #6 — Profile screen exposes 3 friendlier
+# user-facing labels:
+#   - "Decision Insights"              → backend key `decision_insight`
+#   - "Peer decision updates"          → backend key `cohort_curiosity`
+#   - "14-day decision retrospectives" → backend key `decision_retrospective`
+#
+# The body shape uses the user-facing PLURAL key names (matches the design
+# doc and the Frontend toggle labels). Server-side we translate to the
+# existing SINGULAR keys in users.preferences.notification_types so the
+# `reengagement_service.py` short-circuit logic in `evaluate()` keeps
+# working unchanged.
+_REENG_KEY_MAP = {
+    "decision_insights": "decision_insight",
+    "peer_decision_updates": "cohort_curiosity",
+    "decision_retrospectives": "decision_retrospective",
+}
+
+
+class ReengagementSubsBody(BaseModel):
+    """Body for PUT /api/v1/auth/reengagement-subs. All 3 toggles required.
+
+    Maps to the 3 detectors in `reengagement_service.py`. Updates ONLY
+    the `users.preferences.notification_types` sub-dict — does NOT touch
+    other preference fields (priorities, budget, lifestyle, brand_attitude,
+    ai_sharing_enabled, notifications_enabled).
+    """
+
+    decision_insights: bool
+    peer_decision_updates: bool
+    decision_retrospectives: bool
+
+
+@router.put("/reengagement-subs")
+@limiter.limit("10/minute")
+async def update_reengagement_subs(
+    request: Request,
+    body: ReengagementSubsBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update the user's re-engagement notification sub-toggles.
+
+    Reads-modifies-writes `users.preferences.notification_types` so we
+    preserve other preference keys. Uses the user-scoped Supabase client
+    so RLS enforces row ownership.
+    """
+    access_token = current_user.get("access_token")
+    client = (
+        get_user_supabase_client(access_token) if access_token
+        else get_admin_supabase_client()
+    )
+    user_id = current_user["id"]
+
+    # Map FE-facing plural keys → reengagement_service singular keys
+    payload = body.model_dump()
+    new_types = {
+        backend_key: bool(payload[fe_key])
+        for fe_key, backend_key in _REENG_KEY_MAP.items()
+    }
+
+    try:
+        # Read-modify-write so we don't blast other preferences fields
+        row_resp = client.table("users").select("preferences").eq(
+            "id", user_id
+        ).single().execute()
+        current_prefs = (row_resp.data or {}).get("preferences") or {}
+        current_prefs["notification_types"] = new_types
+        client.table("users").update(
+            {"preferences": current_prefs}
+        ).eq("id", user_id).execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[AUTH] reengagement-subs update failed for %s: %s: %r",
+            user_id, type(exc).__name__, exc,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "INTERNAL_ERROR",
+                "error": "Failed to update notification preferences",
+            },
+        )
+    return {"success": True, "notification_types": new_types}
+
+
+# ============================================
 # Demographics + cohort profile (migration 013)
 # ============================================
 
