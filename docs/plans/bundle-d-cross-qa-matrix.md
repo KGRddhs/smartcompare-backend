@@ -115,6 +115,8 @@ GREEN / SEND-BACK
 | `f7732dd` | Native/Ops | 2.N.1c screenshot capture runbook | QA | reviewed | **GREEN** | Phase 3 prep runbook for Ahmed device-smoke session. Docs-only, no logic. |
 | `fff259a` | Native/Ops | landing/vercel.json removal cleanup | QA | reviewed | **GREEN** | Removes `landing/vercel.json` (the original, missed in `17b5a50` Railway refit). `vercel.json.alternative` in `docs/runbooks/` remains as the historical reference. Tidies up the worktree. |
 
+| `3095304` | Native/Ops | R14 BOTH-gate closure | QA | reviewed | **GREEN** | R14 → ADDRESSED. Both legs cited: (a) Apple Dev Portal — App ID `com.qaren.app` "Sign in with Apple" capability enabled + Service ID `app.qaren.signin` + Key ID `7S9CT35UX7` + .p8 (Ahmed A3-A7 dispatcher session); (b) build-time entitlement — `expo-apple-authentication` plugin at app.json:86 + `ios.usesAppleSignIn: true` at app.json:19 (Expo SDK 54 auto-injects `com.apple.developer.applesignin` at EAS prebuild; verifiable via `find ios -name *.entitlements` post-Task-2.N.1). Closes my prior R14 BOTH-gate follow-up note. |
+
 **Triage closure delta (verified via independent QA pytest re-run):**
 - `test_decision_insight_skipped_when_subtoggle_off`: RED → **GREEN** (closed by Backend `228ff63`)
 - `test_missing_preferences_treats_as_all_on`: RED → **GREEN** (closed by Backend `228ff63`)
@@ -123,7 +125,7 @@ GREEN / SEND-BACK
 
 **Net Backend RED floor: 3 → 1 deferred.** Phase 4 target met.
 
-**Risk Ledger progress:** 13 of 24 ADDRESSED (R3, R4, R5, R6, R9, R11, R15, R17, R18, R20, R21, R22, R23). 11 PENDING (R1, R2, R7, R8, R10, R12, R13, R14, R16, R19, R24).
+**Risk Ledger progress:** 14 of 24 ADDRESSED (R3, R4, R5, R6, R9, R11, R14, R15, R17, R18, R20, R21, R22, R23). 10 PENDING (R1, R2, R7, R8, R10, R12, R13, R16, R19, R24).
 
 **QA verification cmds re-run after this batch:**
 - `pytest <9-file backend pack>` → **239/239 GREEN in 93.14s**
