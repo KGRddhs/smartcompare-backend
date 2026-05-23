@@ -13,7 +13,14 @@ Three pre-existing RED tests live in `tests/` at the start of Bundle D. This doc
 2. Which Bundle D task — and therefore which agent — is expected to flip each test GREEN.
 3. The verification command to re-run after that task lands.
 
-Three additional RED frontend test files (`HomeScreen.redesign.test.tsx`, `HomeScreen.modeChipAnim.test.tsx`, `HomeScreen.scanCamera.test.tsx`) are explicitly **out of scope** for Bundle D per design § 12 — they require a mock refresh deferred to a later bundle.
+Four additional RED frontend test files are explicitly **out of scope** for Bundle D per design § 12 — they all stem from the Bundle B HomeScreen rewire at commit `21e7bc0` (SearchOverlay modal → TwoInputShell), and require a mock refresh (`react-i18next` `useTranslation`, new `trackEvent` helper, testID rename `home-camera-card` → `home-center-area`, source-string regex assertions) deferred to a later bundle:
+
+- `__tests__/HomeScreen.redesign.test.tsx`
+- `__tests__/HomeScreen.modeChipAnim.test.tsx`
+- `__tests__/HomeScreen.scanCamera.test.tsx`
+- `__tests__/HomeScreen.minDisplayFloor.test.ts` *(added 2026-05-23: 1 of 10 cases RED — asserts a literal source-text pattern broken by the rewire)*
+
+The frontend agent's post-`03b9139` jest run reports `1118/1131` cases — the 13-case RED delta is fully attributable to these 4 files. Treat that delta as the pre-existing floor; no Bundle D commit should widen it.
 
 ## Triage table
 
