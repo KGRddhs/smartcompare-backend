@@ -124,3 +124,85 @@ class TestQueryStringScrubbing:
         """[QUERY_REDACTED] is its own marker — easier to grep in Sentry UI."""
         from app.services import sentry_service
         assert "QUERY_REDACTED" not in sentry_service._SENSITIVE_KEY_FRAGMENTS  # not a key-frag, it's a replacement marker
+
+
+class TestRawQueryStringField:
+    """Bundle D R21 follow-up (Frontend cross-QA on c12a7c6) — modern
+    sentry-python populates `event.request.query_string` separately from
+    `event.request.url` as raw `key=val&key2=val2` (no leading `?`).
+
+    The lookbehind in _QUERY_STRING_SCRUB_PATTERN requires `?` or `&`
+    BEFORE the param name, so the very first param of a raw query_string
+    would slip through `_scrub_query_string` (which keeps the lookbehind
+    guard intact for URL safety).
+
+    `_scrub_raw_query_string` normalizes by prepending `?`, applies the
+    same regex, then strips the prepended char.
+    """
+
+    def test_raw_query_string_first_param_scrubbed(self):
+        from app.services.sentry_service import _scrub_raw_query_string
+        # First param is q= — would slip through _scrub_query_string
+        result = _scrub_raw_query_string("q=iPhone+16&limit=20")
+        assert result == "q=[QUERY_REDACTED]&limit=20"
+
+    def test_raw_query_string_mixed_params(self):
+        from app.services.sentry_service import _scrub_raw_query_string
+        result = _scrub_raw_query_string("limit=20&q=secret&offset=0")
+        # Only q is a PII param
+        assert "secret" not in result
+        assert "q=[QUERY_REDACTED]" in result
+        assert "limit=20" in result
+        assert "offset=0" in result
+
+    def test_raw_query_string_all_pii_params(self):
+        from app.services.sentry_service import _scrub_raw_query_string
+        for param in ("q", "query", "email", "search", "text"):
+            result = _scrub_raw_query_string(f"{param}=secret-value-123")
+            assert "secret-value-123" not in result
+            assert f"{param}=[QUERY_REDACTED]" in result
+
+    def test_raw_query_string_bookkeeping_preserved(self):
+        from app.services.sentry_service import _scrub_raw_query_string
+        result = _scrub_raw_query_string("nocache=true&limit=20&offset=0&sort=desc")
+        # None of these are PII — all preserved
+        assert result == "nocache=true&limit=20&offset=0&sort=desc"
+
+    def test_raw_query_string_empty_returns_empty(self):
+        from app.services.sentry_service import _scrub_raw_query_string
+        assert _scrub_raw_query_string("") == ""
+
+    def test_raw_query_string_none_returns_none(self):
+        from app.services.sentry_service import _scrub_raw_query_string
+        # None passthrough — caller may receive None from some sentry-sdk versions
+        assert _scrub_raw_query_string(None) is None
+
+    def test_raw_query_string_bytes_decoded(self):
+        """Some sentry-sdk versions populate query_string as bytes."""
+        from app.services.sentry_service import _scrub_raw_query_string
+        result = _scrub_raw_query_string(b"q=iPhone+16")
+        assert result == "q=[QUERY_REDACTED]"
+
+    def test_before_send_scrubs_request_query_string_field(self):
+        """End-to-end: _before_send must scrub event.request.query_string
+        the way it scrubs event.request.url."""
+        from app.services.sentry_service import _before_send
+        event = {
+            "request": {
+                "url": "https://example.com/api/v1/text/compare?q=outer",
+                "query_string": "q=inner&limit=20",
+            },
+        }
+        scrubbed = _before_send(event, hint={})
+        assert "outer" not in scrubbed["request"]["url"]
+        assert "inner" not in scrubbed["request"]["query_string"]
+        assert scrubbed["request"]["query_string"] == "q=[QUERY_REDACTED]&limit=20"
+
+    def test_before_send_query_string_field_missing_does_not_crash(self):
+        """Older sentry-sdk versions don't populate query_string — must be
+        a clean no-op, not a KeyError."""
+        from app.services.sentry_service import _before_send
+        event = {"request": {"url": "https://example.com/health"}}
+        scrubbed = _before_send(event, hint={})
+        assert scrubbed["request"]["url"] == "https://example.com/health"
+        assert "query_string" not in scrubbed["request"]
