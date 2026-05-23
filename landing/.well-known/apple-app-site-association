@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "8K562M549D.com.qaren.app",
+        "paths": ["/r/*", "/c/*", "/q/*"]
+      }
+    ]
+  }
+}
