@@ -103,12 +103,15 @@ GREEN / SEND-BACK
 | `10ff816` | Native/Ops | 1.N.7 privacyManifests (R13-adj) | QA | reviewed | **GREEN** | iOS 17+ submission blocker: `privacyManifests` block added to `app.json`. Substitutes for the Apple-side PrivacyInfo.xcprivacy requirement at runtime. Task 4.N.1 (R13 nutrition labels) is separate from this — R13 still PENDING for ASC label draft (Ahmed approval). |
 | `c2aec12` + `a23ed51` + `6bbe14d` + `a8110cb` + `148d735` | Native/Ops | landing/+ASC prep | QA | reviewed | **GREEN** | landing/support.html replaces broken mailto-redirect; legal terms.html § 12 regenerated to match 3-lifetime-per-device referral cap (Migration 023); 'Compare Smart' tagline; ASC metadata draft for 3.N.2. All docs-only; copy is policy-clean. No code or test paths touched. |
 
+| `0a06d01` + `f766e9f` | Frontend | 2.F.1 (R18 FE-side) reengagement subs UI | QA | reviewed | **GREEN** | New `putReengagementSubs(body)` in api.ts + `ReengagementSubsBody` interface (plural keys match Backend 228ff63 contract). `handleSubToggle(key, value)` at ProfileScreen.tsx:170-212 — optimistic update first (line 185), rollback `setPreferences(previous)` on BOTH `!result.success` (line 199) + catch (line 205), Alert.alert fires `errorTitle` + msg. Master `notifications_enabled` still routes through `savePreferences`/`/preferences` (correctly split). Plural→singular at FE call site verified line 191-193. QA re-ran `npx jest --testPathPattern="ProfileScreen\\.(optimistic\\|bundleA\\|aiSharingDefault)"` → **20/20 GREEN in 0.579s** (6 + 11 + 3). R18 → ADDRESSED (both backend + FE-side). |
+
 **Risk Ledger progress:** 13 of 24 ADDRESSED (R3, R4, R5, R6, R9, R11, R15, R17, R18, R20, R21, R22, R23). 11 PENDING (R1, R2, R7, R8, R10, R12, R13, R14, R16, R19, R24).
 
 **QA verification cmds re-run after this batch:**
 - `pytest <9-file backend pack>` → **239/239 GREEN in 93.14s**
 - `npx jest --testPathPattern="NewOnboardingHost\.editMode|CameraHelpOverlay\.render"` → 13/13 GREEN
-- `mcp__plugin_sentry_sentry__search_issues query=firstSeen:-2h sort=date` → **0 new issues** ✓ over Phase 0 baseline (3 known pre-existing types)
+- `npx jest --testPathPattern="ProfileScreen\.(optimistic|bundleA|aiSharingDefault)"` → 20/20 GREEN
+- `mcp__plugin_sentry_sentry__search_issues query=firstSeen:-1h sort=date` → **2 new Apple Sign-In test-driven probes** (PYTHON-FASTAPI-B + C at `social_login`, 6-7 min ago) — **EXPECTED from R4 gradient triangulation, NOT regressions.** Both prove Apple provider IS now reaching `sign_in_with_id_token()` and exception-handling correctly. 0 user impact, 4 events total. Documented for transparency.
 
 Append rows as commits land on the worktree. Statuses: `pending` → `in_review` → `GREEN` / `SEND-BACK` (→ re-review).
 
@@ -123,6 +126,7 @@ Each item below is a Phase 1 commit whose runtime cannot be exercised in CI and 
 | `7c677c9` | Frontend 1.F.3 | EditProfile → "Edit style profile" button → onboarding steps 8-10 progression → save returns to EditProfile screen | NewOnboardingHost mounted in edit-mode, `onEditDone` called on save, no silent no-op |
 | `6bd81a0` | Frontend 1.F.4 R17 | ScanCamera → tap ? button → CameraHelpOverlay visible → tap anywhere → closes | `helpVisible` toggles on/off; no haptic on open/close (Build Principle #4) |
 | `7b5a35d` | Frontend 1.F.6 R23 | Fresh signup with no preferences row → ProfileScreen → "Share AI data" toggle should be OFF by default | Toggle defaults OFF (opt-IN required for App Store); existing users with explicit `true` remain ON |
+| `0a06d01` | Frontend 2.F.1 R18 | Toggle each of 3 sub-toggles online → expect new server-side row in `users.preferences.notification_types` (singular keys server-side). Toggle while offline → expect Alert with `profile.notifs.errorTitle` + revert to previous state | (a) Online: PUT /reengagement-subs 200 + DB row updated, UI stays in target state. (b) Offline: optimistic UI flip, then Alert.alert fires, UI reverts. (c) Master toggle still hits /preferences. |
 | (more rows as commits land) | | | |
 
 ---
