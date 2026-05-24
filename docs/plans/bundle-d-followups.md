@@ -88,6 +88,86 @@ clinical-grade actives", not blank captions.
 
 ---
 
+## NATIVE-OPS: App Store production icon regeneration (post-TestFlight)
+
+**Pinned by:** Bundle D Task #32 close 2026-05-24 (Ahmed-approved
+concentric-circles visual design adopted; CLAUDE.md "🚨 APP STORE
+PRODUCTION SHIP-BLOCKERS" §1 captures the same finding).
+
+**Current state (Bundle D, Reading 1):** Bundle D shipped the
+Claude-Design concentric-circles icon design that Ahmed approved
+visually. The PNG bytes at `SmartCompareApp/assets/{icon,splash-icon,
+adaptive-icon}.png` are byte-identical (SHA-256-verified by native-ops
+during Task #32) to Expo's `npx create-expo-app` template scaffolding.
+Claude-Design's export bundler used the scaffold as base + applied
+design tokens at render time but exported the raw scaffold PNG.
+
+Files genuinely unique already:
+- `SmartCompareApp/assets/logo-wordmark.png` (SHA-256
+  `d99ce6bb5cfa05e8b4fa4fff307fd9db09c69db06897cabb302cabcd8172152c`,
+  5318 bytes) — Claude-Design wordmark, Frontend consumes via
+  QarenLogo. NOT subject to ICN-0001.
+
+Files affected (3, all visually approved by Ahmed):
+- `SmartCompareApp/assets/icon.png` — SHA-256 `74c64047eb557b13...`
+- `SmartCompareApp/assets/splash-icon.png` — SHA-256
+  `5f4c0a732b6325bf...`
+- `SmartCompareApp/assets/adaptive-icon.png` — SHA-256
+  `5f4c0a732b6325bf...` (byte-equal to splash-icon)
+
+**Why deferred:** TestFlight internal testing (≤100 invited testers,
+no Apple Review) accepts these icons fine. Apple's ICN-0001 ("App
+uses placeholder content") gate fires only on App Store production
+submission. Ahmed's Bundle D scope is "TestFlight ready" not "App
+Store live" — so the byte-identity is a Bundle E / v1.2 concern, not
+a Bundle D blocker.
+
+**Reading 2 ask (pre App Store production submission):** regenerate
+the 3 icons as bytes-different PNGs while preserving the
+Ahmed-approved concentric-circles visual. Two approaches:
+
+1. **Claude-Design re-export with bytes-different output** (preferred —
+   Ahmed gets to verify visual still matches his preference):
+   - Re-run the Claude-Design tool with a flag/setting that produces
+     unique bytes for the same visual output
+   - Effort: 5-10 min Ahmed-side, then native-ops re-runs the cp + commit
+
+2. **`scripts/regen-icons.py` via PIL** (fallback if Ahmed doesn't want
+   to re-engage Claude-Design):
+   - Load the current `assets/icon.png`
+   - Apply a near-imperceptible visual variation that breaks byte-identity:
+     emerald `#10B981` accent on the outer ring (3-5px), OR a tiny
+     wordmark watermark in a transparent corner pixel block (1-2%
+     opacity), OR a hidden steganographic byte pattern that doesn't
+     affect rendering
+   - Re-save → new SHA-256 + same visual
+   - Effort: ~30 lines of Pillow + 10-15 min author + Ahmed visual review
+
+**Unblockers checklist:**
+- [ ] Ahmed picks approach (1) Claude-Design re-export vs (2) PIL script
+- [ ] If (1): Ahmed re-runs Claude-Design tool → ships new PNGs to
+  `docs/claude-design-handoff/assets/` → native-ops cp + commit
+- [ ] If (2): native-ops authors `scripts/regen-icons.py` → runs once
+  → commits the 3 regenerated PNGs at the same dest paths
+
+**Cost estimate when unblocked:** ~10 min once approach (1) re-export
+or approach (2) script lands.
+
+**Acceptance once shipped:**
+- `sha256sum SmartCompareApp/assets/{icon,splash-icon,adaptive-icon}.png`
+  returns 3 different hashes from the current `74c64047...` / `5f4c0a73...`
+  / `5f4c0a73...` set
+- Visual diff against current icons: ZERO perceptible change (Ahmed
+  approves)
+- Apple App Store submission ICN-0001 gate passes during the next
+  `eas submit --profile production` attempt
+
+**NOT a TestFlight blocker.** Phase 3 Task 3.N.2 ASC TestFlight upload
+proceeds with the current byte-identical PNGs because Apple's
+TestFlight review doesn't run ICN-0001.
+
+---
+
 ## Notes on adding new entries
 
 When you defer a Bundle D scope item to v1.2:
