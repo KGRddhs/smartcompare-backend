@@ -110,3 +110,14 @@ export const shadows = {
     elevation: 2,
   },
 } as const;
+
+// Bundle D Claude-Design tokens (R10 invariant — additive, NOT replacement).
+// Pages migrate one-by-one; legacy exports above stay live. See bundleD.ts
+// for the drop-in workflow when Ahmed's tokens.json lands.
+export {
+  bundleDColors,
+  bundleDTypography,
+  bundleDSpacing,
+  bundleDRadii,
+  bundleDShadows,
+} from './bundleD';
