@@ -33,6 +33,12 @@ interface HistoryItem {
   query: string;
   input_type: string;
   product_names: string[];
+  // Bundle D 2.6.B.4 (Backend commit 0384de3): backend now emits
+  // winner_index on the list response so per-row VS cards can outline
+  // the winner without fetching the full payload.
+  //   0 → outline product_names[0]; 1 → outline product_names[1]; null →
+  //   no outline (legacy rows or rows where the pipeline didn't emit it).
+  winner_index?: 0 | 1 | null;
   created_at: string;
 }
 
@@ -175,6 +181,31 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     return t('history.row.untitled');
   };
 
+  // Bundle D 2.6.B.4 — render the title as 3 inline spans so the winning
+  // product name can be highlighted (emerald + bolder). When winner_index
+  // is null or names are unavailable, falls back to the plain formatTitle().
+  const renderTitle = (item: HistoryItem) => {
+    const names = (item.product_names ?? []).filter(Boolean);
+    if (names.length < 2 || (item.winner_index !== 0 && item.winner_index !== 1)) {
+      return (
+        <Text style={styles.cardQuery} numberOfLines={1}>
+          {formatTitle(item)}
+        </Text>
+      );
+    }
+    const winnerStyle = [styles.cardQuery, styles.cardQueryWinner];
+    const loserStyle = styles.cardQuery;
+    const aStyle = item.winner_index === 0 ? winnerStyle : loserStyle;
+    const bStyle = item.winner_index === 1 ? winnerStyle : loserStyle;
+    return (
+      <Text style={styles.cardQuery} numberOfLines={1}>
+        <Text style={aStyle}>{names[0]}</Text>
+        <Text style={styles.cardQueryVs}> {t('profile.recent.vs')} </Text>
+        <Text style={bStyle}>{names[1]}</Text>
+      </Text>
+    );
+  };
+
   const renderItem = ({ item, index }: { item: HistoryItem; index: number }) => {
     return (
       <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
@@ -185,9 +216,7 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
         >
           <View style={styles.cardContent}>
             <View style={styles.cardTop}>
-              <Text style={styles.cardQuery} numberOfLines={1}>
-                {formatTitle(item)}
-              </Text>
+              {renderTitle(item)}
               <Text style={styles.cardTime}>{formatTimeAgoLocalized(item.created_at)}</Text>
             </View>
           </View>
@@ -390,6 +419,17 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     flex: 1,
     marginEnd: spacing.sm,
+  },
+  // Bundle D 2.6.B.4 — emerald-accented bolder span for the winning product
+  // name within the "A vs B" title row. Color signals the pick at a glance
+  // without adding a separate badge.
+  cardQueryWinner: {
+    color: colors.accentDark,
+    fontWeight: '700',
+  },
+  cardQueryVs: {
+    color: colors.text.secondary,
+    fontWeight: '400',
   },
   cardTime: {
     ...typography.small,
