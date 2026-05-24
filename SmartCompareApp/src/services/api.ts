@@ -649,4 +649,72 @@ export async function saveAttribution(
   return response.data;
 }
 
+// ============================================================================
+// Bundle D 2.6 — ProfileScreen editorial sections.
+// Endpoints registered at app/api/profile_routes.py, all auth-required, 30/min.
+// Each endpoint returns `{ ...payload, empty_state: bool }` so callers can
+// hide the corresponding UI section silently when there's nothing meaningful
+// to render (consistent with /home/savings hide gate pattern).
+// ============================================================================
+
+export interface RecentDecisionItem {
+  comparison_id: string;
+  winner_name: string;
+  runner_up_name: string;
+  created_at: string;
+}
+
+export interface RecentDecisionsResponse {
+  recent: RecentDecisionItem[];
+  empty_state: boolean;
+  cta_text_key?: string;
+}
+
+export async function getProfileRecentDecisions(): Promise<RecentDecisionsResponse> {
+  try {
+    const response = await api.get('/api/v1/profile/recent-decisions');
+    return response.data;
+  } catch {
+    // Silent hide on any failure — UI must not surface a scary error here.
+    return { recent: [], empty_state: true };
+  }
+}
+
+export interface MonthlyStatsResponse {
+  month: string;
+  decisions_count: number;
+  savings_bhd: number;
+  bonus_credits_this_month: number;
+  threshold_met: boolean;
+}
+
+export async function getProfileMonthlyStats(): Promise<MonthlyStatsResponse | null> {
+  try {
+    const response = await api.get('/api/v1/profile/monthly-stats');
+    return response.data;
+  } catch {
+    return null;
+  }
+}
+
+export interface WeightedPriority {
+  key: string;
+  label_key: string;
+  weight: number;
+}
+
+export interface PrioritiesWeightedResponse {
+  priorities: WeightedPriority[];
+  empty_state: boolean;
+}
+
+export async function getProfilePrioritiesWeighted(): Promise<PrioritiesWeightedResponse> {
+  try {
+    const response = await api.get('/api/v1/profile/priorities-weighted');
+    return response.data;
+  } catch {
+    return { priorities: [], empty_state: true };
+  }
+}
+
 export default api;

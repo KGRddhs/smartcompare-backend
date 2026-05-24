@@ -47,6 +47,14 @@ import StyleProfileCard from '../components/StyleProfileCard';
 import ReferralStatusCard from '../components/ReferralStatusCard';
 import QarenLogo from '../components/QarenLogo';
 import ToggleRow from '../components/ToggleRow';
+// Bundle D 2.F.2 Screen 3 — editorial sections (recent decisions marquee,
+// priorities-inline bars, month-stat strip). Each section silently hides
+// on empty-state / threshold-miss / network failure.
+import {
+  RecentDecisionsRow,
+  PrioritiesInline,
+  MonthStrip,
+} from '../components/ProfileEditorialSections';
 
 interface ProfileScreenProps {
   navigation: any;
@@ -319,6 +327,17 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           <QarenLogo size={24} />
           <Text style={styles.screenTitle}>{t('profile.title')}</Text>
         </View>
+
+        {/* Bundle D 2.F.2 Screen 3 editorial sections — each hides silently
+            when its endpoint reports empty_state / threshold miss / failure */}
+        <RecentDecisionsRow
+          onItemPress={(comparisonId) =>
+            navigation.navigate('Results', { from_history: comparisonId })
+          }
+          onSeeAll={() => navigation.navigate('History' as never)}
+        />
+        <PrioritiesInline onTunePress={handleEditStyleProfile} />
+        <MonthStrip />
 
         {/* Cohort style profile (only renders when confidence >= medium) */}
         <StyleProfileCard display={cohortDisplay} onEditPress={handleEditStyleProfile} />
