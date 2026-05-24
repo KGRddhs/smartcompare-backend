@@ -1,11 +1,12 @@
-# Backend sign-off — refile v3, verified 2026-05-24
+# Backend sign-off — refile v4, verified 2026-05-24
 
-> Supersedes refile v2 at this path (commit `246ba97`).
-> Refile rationale: **Phase 2.6 reopen** shipped 3 new `/api/v1/profile/*`
-> endpoints (recent-decisions, monthly-stats, priorities-weighted) + 12
-> tests in commit `4cf0af0`. Bundle D test surface now **187/187 GREEN**
-> (was 175 pre-Phase-2.6). All other risk-status + v1.1 polish state
-> from refile v2 stands unchanged.
+> Supersedes refile v3 at this path (commit `dc1c70e`).
+> Refile rationale: **Task 2.6.B.4** added `winner_index` to the
+> `GET /api/v1/comparisons/history` list response in commit `0384de3`
+> (unblocks Frontend HistoryScreen per-row VS card emerald-outline).
+> 4 new tests added. Bundle D test surface now **191/191 GREEN**
+> (was 187 at v3 refile). All other risk-status + v1.1 polish state
+> from refile v3 stands unchanged.
 
 Per `BUNDLE_D_BACKEND_ANCHOR.md` checklist:
 - ✓ Phase 1 (1.B.1–1.B.7) — 7/7 commits
@@ -15,6 +16,7 @@ Per `BUNDLE_D_BACKEND_ANCHOR.md` checklist:
 - ✓ Migration 025 applied (R20) + Migration 026 applied (R3) — both via Supabase MCP
 - ✓ **Phase 2.5 reopen** (2.5.B.1–2.5.B.3) — 3 new `/api/v1/home/*` endpoints + 13 tests (savings + smart-pick + dim_sensitivity fallback + trending)
 - ✓ **Phase 2.6 reopen** (2.6.B.1–2.6.B.3) — 3 new `/api/v1/profile/*` endpoints + 12 tests (recent-decisions + monthly-stats + priorities-weighted)
+- ✓ **Task 2.6.B.4** — `winner_index` added to history list response + 4 tests (commit `0384de3`)
 - ✓ Phase 3+4 pre-stages (smoke pack + R12/R19 dispatcher checklists)
 
 **Cross-QA reviewers:**
@@ -76,6 +78,16 @@ Spec correction surfaced + dispatcher-acked: anchor said "`behavior_profile.prio
 
 Spec decision (surfaced to dispatcher): chose `referral_redemptions.loop2_comparisons_granted` over `user_usage` as the canonical bonus_credits source. `referral_service._grant_loop2_rewards()` is the authoritative writer of per-redemption credit counts; `user_usage` tracks remaining caps, not "credits granted this month" semantics.
 
+## Task 2.6.B.4 — winner_index on history list (commit `0384de3`)
+
+`GET /api/v1/comparisons/history` list response now exposes `winner_index: Optional[int]` per HistoryItem, unblocking Frontend HistoryScreen per-row VS card emerald-outline. Defensive extraction at `history_routes._extract_winner_index()`:
+
+1. `full_response.metadata.winner_index` (primary, post-Bundle-C)
+2. `full_response.comparison.winner_index` (legacy alias fallback)
+3. `None` when neither path present (or `full_response` is `None` / non-dict)
+
+Frontend uses null-safely: `None` → no outline; `0`/`1` → emerald-outline on that product index. 4 new tests cover all 4 shapes (metadata-present, comparison-fallback, both-absent, full_response-null). Existing `TestHistoryRouteHardening` 5/5 regression GREEN against `0384de3`.
+
 ## Phase 3+4 dispatcher pre-stages
 
 | Artifact | Commit | Notes |
@@ -86,9 +98,10 @@ Spec decision (surfaced to dispatcher): chose `referral_redemptions.loop2_compar
 
 ## Tests
 
-- **187/187 GREEN** across the Bundle D test surface:
+- **191/191 GREEN** across the Bundle D test surface:
   - 104 security_regression (baseline — unchanged from start of session)
   - 21 sentry_service (12 from `c12a7c6` + 9 from `6803eb3`)
+  - 21 history_routes (17 baseline + 4 added by `0384de3` winner_index extraction)
   - 13 home_routes (Phase 2.5 — 11 original + 2 added by `3ab8859` dim_sensitivity fallback)
   - 12 profile_routes (Phase 2.6 — recent + monthly-stats + priorities-weighted)
   - 13 delete_user_cascade (R20)
@@ -98,8 +111,8 @@ Spec decision (surfaced to dispatcher): chose `referral_redemptions.loop2_compar
   - 8 scoring_dimensions_v2 (A.8.1)
   - 37 scoring_value_math_v11 (A.6.2-A.6.5)
   - structured_comparison_service::test_comparison_quality_in_response_metadata_payload (B.0)
-- **Net new tests added by Bundle D: 94** across 6 new test files (`test_home_routes.py` Phase 2.5 + `test_profile_routes.py` Phase 2.6 + 4 from v1.1 polish chain).
-- **Baseline 104/104 security regression unchanged.**
+- **Net new tests added by Bundle D: 98** across 6 new test files + history_routes additions (`test_home_routes.py` Phase 2.5 + `test_profile_routes.py` Phase 2.6 + winner_index extraction + 4 from v1.1 polish chain).
+- **Baseline 104/104 security regression unchanged.** TestHistoryRouteHardening 5/5 verified GREEN against `0384de3`.
 
 ## Pending Backend work
 
@@ -117,4 +130,5 @@ Spec decision (surfaced to dispatcher): chose `referral_redemptions.loop2_compar
 ## Authored by
 
 Backend agent, Bundle D worktree `feature/bundle-d-testflight-readiness`, 2026-05-23.
-Refile v3 (2026-05-24) incorporates Phase 2.6 reopen on top of v2: 3 new `/api/v1/profile/*` endpoints (`recent-decisions` + `monthly-stats` + `priorities-weighted`) in commit `4cf0af0` with 12 new tests. Test total now 187/187 (was 175). All risk-status state from v2 stands unchanged — these are features, not new R# rows.
+Refile v3 (2026-05-24) incorporates Phase 2.6 reopen on top of v2: 3 new `/api/v1/profile/*` endpoints (`recent-decisions` + `monthly-stats` + `priorities-weighted`) in commit `4cf0af0` with 12 new tests. Test total 187/187 at v3.
+Refile v4 (2026-05-24) incorporates Task 2.6.B.4 on top of v3: `winner_index: Optional[int]` added to `GET /api/v1/comparisons/history` list HistoryItem in commit `0384de3` with 4 new tests covering both extraction paths + null safety. Test total now 191/191 (was 187). All risk-status state from v3 stands unchanged — Frontend HistoryScreen per-row VS card emerald-outline now unblocked.
