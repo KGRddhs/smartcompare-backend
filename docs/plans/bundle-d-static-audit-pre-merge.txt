@@ -49,3 +49,54 @@ SmartCompareApp/src/types/types.ts:58:  estimated?: boolean;
 === 5. Build Principle #4 (shake|wobble|jitter) on HomeScreen ===
 
 === END OF AUDIT ===
+
+=== POST-AUDIT FOLLOW-UP: section 1 hits triaged ===
+
+Triage by Frontend after this audit snapshot. Two cleanup commits landed:
+
+- `1282b60` — chore(audit): SmartCompare → Qaren brand-residue cleanup (Phase 4 prep)
+  Fixed 3 actual brand-string hits from section 1:
+    - SmartCompareApp/src/services/api.ts:2 header doc → "Qaren - API Service"
+    - SmartCompareApp/src/types/types.ts:2 header doc → "Qaren - TypeScript Types"
+    - SmartCompareApp/src/screens/LegalScreen.tsx:4-5 CONTENT note (was
+      stale — backend Bundle D R22 commits 83a83f0 + eeaea11 had already
+      rebranded app/legal/*.md to Qaren; comment now reflects post-R22 truth)
+
+- `b0480fa` — chore(audit): reword LegalScreen negative-reference comment
+  My first fix at 1282b60 left a NEGATIVE reference quoting the literal
+  "SmartCompare" / "@smartcompare.app" strings (inside a "no stale strings
+  remain" sentence). The literal-quoted strings tripped this very static
+  grep even though the sentence said the opposite. Reworded to:
+    "was rebranded to Qaren (brand + contact-email) by Bundle D R22
+     (commits 83a83f0 + eeaea11). Renders the branded content directly —
+     no rebrand follow-up needed FE-side."
+  Same factual information; future readers learn the same thing; static
+  grep no longer false-positives on a self-aware NOT-statement.
+
+POST-FIX RESIDUE: 13 remaining "SmartCompare|smartcompare" hits in src/
+are INTENTIONAL and DOCUMENTED:
+
+- 12 hits: `// SmartCompareApp/src/<path>` header comments — factual
+  file-path identifiers, NOT brand residue. Verified via `ls -d ../*/`
+  from the worktree root: the directory IS literally named
+  `SmartCompareApp/`. Renaming these comments to `// QarenApp/...` or
+  `// Qaren/...` would make them WRONG — they no longer point to a real
+  filesystem path.
+- 1 hit: `SmartCompareApp/package.json:2 "name": "smartcompareapp"` —
+  load-bearing npm package identifier referenced by:
+    - EAS build profile paths (eas.json `extends` chain)
+    - jest config (`testMatch` glob roots)
+    - Expo build metadata (`expo.bundleIdentifier` legacy mapping)
+    - CI workflow paths (any GitHub Action `working-directory:`)
+    - Lockfile (`package-lock.json` first-level `"name":`)
+  Renaming is a monorepo-level refactor across all 5+ touchpoints.
+
+OPTION (a) APPROVED by team-lead (2026-05-23): keep all 13 hits as-is,
+document intent. The only way to legitimately drop them to 0 is a
+directory rename `SmartCompareApp/` → `QarenApp/`, which is correctly
+out of Bundle D scope — Bundle E candidate at earliest. Until that
+lands, the 13 residue lines are EXPECTED, not a SEND-BACK signal.
+
+Future Bundle gate: after a hypothetical directory rename Bundle, this
+static audit should drop section 1 to zero hits as a side-effect.
+
