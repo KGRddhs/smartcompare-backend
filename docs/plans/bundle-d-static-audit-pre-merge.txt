@@ -1,0 +1,51 @@
+Bundle D — Static audit pre-merge snapshot
+Captured: 2026-05-24 by QA
+Worktree branch: feature/bundle-d-testflight-readiness
+Baseline: bca2ffe
+
+=== 1. SmartCompare residue (user-facing files) ===
+SmartCompareApp/src/components/BrandAttitudePicker.tsx:1:// SmartCompareApp/src/components/BrandAttitudePicker.tsx
+SmartCompareApp/src/components/BudgetPicker.tsx:1:// SmartCompareApp/src/components/BudgetPicker.tsx
+SmartCompareApp/src/components/LifestylePicker.tsx:1:// SmartCompareApp/src/components/LifestylePicker.tsx
+SmartCompareApp/src/components/PrioritiesPicker.tsx:1:// SmartCompareApp/src/components/PrioritiesPicker.tsx
+SmartCompareApp/src/components/ToggleRow.tsx:1:// SmartCompareApp/src/components/ToggleRow.tsx
+SmartCompareApp/src/components/__tests__/PaywallBanner.test.tsx:7: * Coverage target: 80% on `SmartCompareApp/src/components/PaywallBanner.tsx`.
+SmartCompareApp/src/components/__tests__/PaywallBanner.test.tsx:226:    // SmartCompareApp/__tests__/copy-policy.test.ts against the JSON
+SmartCompareApp/src/components/__tests__/TwoInputShell.test.tsx:8: * Coverage target: 80% on `SmartCompareApp/src/components/TwoInputShell.tsx`.
+SmartCompareApp/src/screens/ContactUsScreen.tsx:1:// SmartCompareApp/src/screens/ContactUsScreen.tsx
+SmartCompareApp/src/screens/EditPreferencesFlow.tsx:1:// SmartCompareApp/src/screens/EditPreferencesFlow.tsx
+SmartCompareApp/src/screens/EditProfileScreen.tsx:1:// SmartCompareApp/src/screens/EditProfileScreen.tsx
+SmartCompareApp/src/screens/LegalScreen.tsx:1:// SmartCompareApp/src/screens/LegalScreen.tsx
+SmartCompareApp/src/screens/LegalScreen.tsx:4:// CONTENT note: backend markdown at app/legal/*.md is stale ("SmartCompare"
+SmartCompareApp/src/screens/LegalScreen.tsx:5:// / @smartcompare.app per docs/plans/2026-05-06-tos-fact-base.md). Bundle A
+SmartCompareApp/src/services/api.ts:2: * SmartCompare - API Service
+SmartCompareApp/src/services/deviceFingerprint.ts:1:// SmartCompareApp/src/services/deviceFingerprint.ts
+SmartCompareApp/src/types/types.ts:2: * SmartCompare - TypeScript Types
+
+=== 2. Scary EN vocab (couldn't|try again|Failed to) ===
+
+=== 3. Scary AR vocab (تعذر|فشل) ===
+
+=== 4. 'estimated' in UI strings (excluding source_method enum) ===
+SmartCompareApp/src/components/CameraHelpOverlay.tsx:7: * `تعذر` / `فشل` / `estimated`.
+SmartCompareApp/src/components/results/ConfidencePills.tsx:18: *  - When `hidePricePill === true` (caller computes via `anyEstimated()`
+SmartCompareApp/src/components/results/ConfidencePills.tsx:20: *    is silent in the UI; no "estimated" copy anywhere).
+SmartCompareApp/src/screens/ResultsScreen.tsx:90:import { anyEstimated } from '../services/sourceMethod';
+SmartCompareApp/src/screens/ResultsScreen.tsx:675:                {/* Bundle C § 5c — legacy `(estimated)` caption removed.
+SmartCompareApp/src/screens/ResultsScreen.tsx:678:                    `hidePricePill={anyEstimated(products)}` on
+SmartCompareApp/src/screens/ResultsScreen.tsx:1091:                  pill hidden whenever ANY product fell to estimated. */}
+SmartCompareApp/src/screens/ResultsScreen.tsx:1095:                  hidePricePill={anyEstimated(products)}
+SmartCompareApp/src/services/sourceMethod.ts:4: * `parseSourceMethod` returns approved EN phrasing for non-estimated
+SmartCompareApp/src/services/sourceMethod.ts:5: * source methods. Returns `null` for `'estimated'` (and unknown values),
+SmartCompareApp/src/services/sourceMethod.ts:8: * `anyEstimated` is a small adapter for the Results screen layer: when
+SmartCompareApp/src/services/sourceMethod.ts:13: * Critical rule #3 — NO `estimated` / `reference price` / `indicative`
+SmartCompareApp/src/services/sourceMethod.ts:26:  // 'estimated' deliberately omitted — callers MUST suppress the UI
+SmartCompareApp/src/services/sourceMethod.ts:35:export function anyEstimated(products: Array<Pick<Product, 'price'>>): boolean {
+SmartCompareApp/src/types/types.ts:40:// `estimated` is kept in the enum (Tier 3 GPT fallback), but UI MUST
+SmartCompareApp/src/types/types.ts:42:// (spec § 5c, `feedback_no_estimated_word_in_ui.md`).
+SmartCompareApp/src/types/types.ts:50:  | 'estimated';
+SmartCompareApp/src/types/types.ts:58:  estimated?: boolean;
+
+=== 5. Build Principle #4 (shake|wobble|jitter) on HomeScreen ===
+
+=== END OF AUDIT ===
