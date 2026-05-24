@@ -309,6 +309,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg.primary,
   },
+  // Bundle D Claude-Design (option small, Task 2.F.2 screen 4): header
+  // alignment tweak — `alignItems: 'baseline'` so the QarenLogo glyph
+  // base-aligns with the display-type title (vs. center which had the
+  // glyph optically floating above the title cap-height).
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -346,19 +350,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing['3xl'],
   },
+  // Bundle D Claude-Design (option small, Task 2.F.2 screen 4): section
+  // header upgraded to eyebrow treatment per design system (smaller text,
+  // wider letterSpacing, uppercase, secondary color). Matches the eyebrow
+  // pattern Claude-Design uses on the HistoryScreen "Today / Yesterday /
+  // This Week / Older" section labels (history.html section anchors).
   sectionHeader: {
-    ...typography.caption,
-    fontWeight: '600',
+    ...typography.eyebrow,
     color: colors.text.secondary,
-    textTransform: 'uppercase',
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
+  // Bundle D Claude-Design: row card refresh — bg.secondary fill +
+  // border.light hairline outline matches Claude-Design `MarqueeCard`
+  // visual treatment. Single change is the hairline border — the
+  // existing fill + radius were already tokens-aligned.
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.bg.secondary,
     borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border.light,
     padding: spacing.base,
     marginBottom: spacing.sm,
   },
