@@ -255,7 +255,7 @@ async def health_check():
     """Basic health check"""
     return {
         "status": "healthy",
-        "message": "SmartCompare API is running"
+        "message": "Qaren API is running"
     }
 
 

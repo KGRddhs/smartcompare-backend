@@ -34,7 +34,13 @@ What's covered (per Bundle D anchor Task 3.B.1):
   ✓ /api/v1/text/compare GET              — cached path
   ✓ /api/v1/legal/privacy_policy          — R22 Qaren rebrand + new path
   ✓ /api/v1/legal/terms_of_service        — R22 Qaren rebrand + new path
-  ✓ /api/v1/comparisons GET               — history list
+  ✓ /api/v1/comparisons GET               — history list + winner_index per item (2.6.B.4)
+  ✓ /api/v1/home/trending                 — Phase 2.5 editorial, unauth-allowed
+  ✓ /api/v1/home/savings                  — Phase 2.5 editorial auth-gate (401 unauth)
+  ✓ /api/v1/home/smart-pick               — Phase 2.5 editorial auth-gate (401 unauth)
+  ✓ /api/v1/profile/recent-decisions      — Phase 2.6 editorial auth-gate (401 unauth)
+  ✓ /api/v1/profile/monthly-stats         — Phase 2.6 editorial auth-gate (401 unauth)
+  ✓ /api/v1/profile/priorities-weighted   — Phase 2.6 editorial auth-gate (401 unauth)
 """
 from __future__ import annotations
 
@@ -110,6 +116,35 @@ def _body_must_not_contain(body: Any, needle: str) -> tuple[bool, str]:
             (f"FORBIDDEN '{needle}' found in body.content" if needle in body.get("content", "") else ""),
         )
     return True, ""  # no content = passes by default
+
+
+def _health_body_qaren_branded(body: Any) -> tuple[bool, str]:
+    """Assert /health response body uses 'Qaren' brand not 'SmartCompare' (R22-tail)."""
+    if not isinstance(body, dict):
+        return False, f"expected JSON object, got {type(body).__name__}"
+    msg = body.get("message", "")
+    if "SmartCompare" in msg:
+        return False, f"FORBIDDEN 'SmartCompare' found in /health.message: {msg!r}"
+    if "Qaren" not in msg:
+        return False, f"expected 'Qaren' in /health.message, got: {msg!r}"
+    return True, ""
+
+
+def _history_item_has_winner_index_field(body: Any) -> tuple[bool, str]:
+    """Assert each item in body['comparisons'] carries a `winner_index` key
+    (value may be int 0/1 or None — both are valid per Task 2.6.B.4 contract).
+    Empty list passes by default (new test user has no history yet)."""
+    if not isinstance(body, dict) or "comparisons" not in body:
+        return False, "body missing 'comparisons' key"
+    items = body["comparisons"]
+    if not isinstance(items, list):
+        return False, f"'comparisons' is not a list: {type(items).__name__}"
+    if not items:
+        return True, ""  # new throwaway user — empty history is expected
+    missing = [i for i, it in enumerate(items) if "winner_index" not in it]
+    if missing:
+        return False, f"items missing winner_index field at indices: {missing[:5]}"
+    return True, ""
 
 
 # ============================================
@@ -192,8 +227,8 @@ def run_probes(
         # -----------------------------------------------------
         # 1. /health
         # -----------------------------------------------------
-        r = ProbeResult(name="health", method="GET", path="/health", expected_status=200)
-        _do(r, lambda: client.get(f"{base_url}/health"))
+        r = ProbeResult(name="health (Qaren-branded message R22-tail)", method="GET", path="/health", expected_status=200)
+        _do(r, lambda: client.get(f"{base_url}/health"), shape_check=_health_body_qaren_branded)
         results.append(r)
 
         # -----------------------------------------------------
@@ -434,11 +469,11 @@ def run_probes(
         results.append(r)
 
         # -----------------------------------------------------
-        # 13. /api/v1/comparisons GET — history list
+        # 13. /api/v1/comparisons GET — history list + winner_index (2.6.B.4)
         # -----------------------------------------------------
         if derived_token is not None:
             r = ProbeResult(
-                name="comparisons GET (history list)",
+                name="comparisons GET (history list + winner_index 2.6.B.4)",
                 method="GET", path="/api/v1/comparisons/history",
                 expected_status=200,
             )
@@ -448,8 +483,54 @@ def run_probes(
                     f"{base_url}/api/v1/comparisons/history?limit=10",
                     headers={"Authorization": f"Bearer {derived_token}"},
                 ),
-                shape_check=lambda b: _body_has_keys(b, "comparisons"),
+                shape_check=_history_item_has_winner_index_field,
             )
+            results.append(r)
+
+        # -----------------------------------------------------
+        # 14. /api/v1/home/trending — Phase 2.5, unauth-allowed, region=bahrain
+        # -----------------------------------------------------
+        r = ProbeResult(
+            name="home-trending bahrain (Phase 2.5)",
+            method="GET", path="/api/v1/home/trending",
+            expected_status=200,
+        )
+        _do(
+            r,
+            lambda: client.get(f"{base_url}/api/v1/home/trending?region=bahrain"),
+            shape_check=lambda b: _body_has_keys(b, "trending"),
+        )
+        results.append(r)
+
+        # -----------------------------------------------------
+        # 15-17. Phase 2.5 home editorial endpoints — auth-gate verification.
+        # We assert 401 unauth (proves router registered + auth wiring intact).
+        # Full happy-path is exercised by the unit tests; here we just guard
+        # against accidental route disappearance / wrong-prefix regressions.
+        # -----------------------------------------------------
+        for ep_name, ep_path in [
+            ("home-savings (Phase 2.5 auth-gate)", "/api/v1/home/savings"),
+            ("home-smart-pick (Phase 2.5 auth-gate)", "/api/v1/home/smart-pick"),
+        ]:
+            r = ProbeResult(
+                name=ep_name, method="GET", path=ep_path, expected_status=401,
+            )
+            _do(r, lambda p=ep_path: client.get(f"{base_url}{p}"))
+            results.append(r)
+
+        # -----------------------------------------------------
+        # 18-20. Phase 2.6 profile editorial endpoints — auth-gate verification.
+        # Same pattern: 401 unauth proves registered + auth wired correctly.
+        # -----------------------------------------------------
+        for ep_name, ep_path in [
+            ("profile-recent-decisions (Phase 2.6 auth-gate)", "/api/v1/profile/recent-decisions"),
+            ("profile-monthly-stats (Phase 2.6 auth-gate)", "/api/v1/profile/monthly-stats"),
+            ("profile-priorities-weighted (Phase 2.6 auth-gate)", "/api/v1/profile/priorities-weighted"),
+        ]:
+            r = ProbeResult(
+                name=ep_name, method="GET", path=ep_path, expected_status=401,
+            )
+            _do(r, lambda p=ep_path: client.get(f"{base_url}{p}"))
             results.append(r)
 
     return results
