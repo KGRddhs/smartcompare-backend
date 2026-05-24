@@ -261,8 +261,9 @@ export default function ScanCameraScreen({ navigation }: Props) {
           accessibilityRole="button"
           accessibilityLabel={t('home.camera.a11y.close')}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={styles.chromeCircle}
         >
-          <X color={colors.text.onInverse} size={28} />
+          <X color={colors.text.onInverse} size={20} />
         </TouchableOpacity>
         <TouchableOpacity
           testID="scan-camera-help"
@@ -270,8 +271,9 @@ export default function ScanCameraScreen({ navigation }: Props) {
           accessibilityRole="button"
           accessibilityLabel={t('home.camera.a11y.help')}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={styles.chromeCircle}
         >
-          <HelpCircle color={colors.text.onInverse} size={28} />
+          <HelpCircle color={colors.text.onInverse} size={20} />
         </TouchableOpacity>
       </View>
       <CameraHelpOverlay
@@ -317,11 +319,11 @@ export default function ScanCameraScreen({ navigation }: Props) {
             accessibilityLabel={t('home.camera.a11y.flash')}
             accessibilityState={{ checked: flash !== 'off' }}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            style={styles.sideButton}
+            style={styles.sideChromeCircle}
           >
             <Zap
               color={flash === 'off' ? colors.text.onInverse : colors.accent}
-              size={26}
+              size={22}
             />
           </TouchableOpacity>
           <Animated.View style={shutterAnimStyle}>
@@ -347,9 +349,9 @@ export default function ScanCameraScreen({ navigation }: Props) {
             accessibilityRole="button"
             accessibilityLabel={t('home.camera.a11y.gallery')}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            style={styles.sideButton}
+            style={styles.sideChromeCircle}
           >
-            <ImageIcon color={colors.text.onInverse} size={26} />
+            <ImageIcon color={colors.text.onInverse} size={22} />
           </TouchableOpacity>
         </View>
       </View>
@@ -401,6 +403,30 @@ const styles = StyleSheet.create({
   sideButton: {
     width: 48,
     height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Claude-Design CircleBtn primitive — semi-transparent blur-bg circular
+  // button used for top-bar close/help (44) + bottom-row flash/gallery (48).
+  // backdropFilter is no-op on RN but the 15%-white over the dark camera
+  // surface reads as a soft frosted pill.
+  chromeCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sideChromeCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
