@@ -112,12 +112,18 @@ export const shadows = {
 } as const;
 
 // Bundle D Claude-Design tokens (R10 invariant — additive, NOT replacement).
-// Pages migrate one-by-one; legacy exports above stay live. See bundleD.ts
-// for the drop-in workflow when Ahmed's tokens.json lands.
+// Pages migrate one-by-one; legacy exports above stay live. Tokens
+// populated 2026-05-24 from `docs/claude-design-handoff/tokens.json`
+// (Ahmed's Claude-Design package, commit 0b87415). Drop-in workflow +
+// per-token comment block at bundleD.ts header.
 export {
   bundleDColors,
   bundleDTypography,
+  bundleDArabicLineHeightMultiplier,
   bundleDSpacing,
   bundleDRadii,
   bundleDShadows,
+  bundleDMotion,
+  bundleDMinTouchTarget,
+  bundleDPolicy,
 } from './bundleD';
