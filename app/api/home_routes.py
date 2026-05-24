@@ -309,10 +309,17 @@ async def home_smart_pick(
     "Run your first comparison to unlock personalized picks" copy via
     the `cta_text_key`.
 
-    Priority source: `users.preferences.priorities` (authoritative;
-    Bundle D Phase 2.5 ack with dispatcher 2026-05-23). The `behavior_profile`
-    in Supabase doesn't carry a `priorities` field — that field lives on
-    `users.preferences.priorities` from onboarding step 9.
+    Priority source (3-tier resolution per dispatcher 2026-05-23 ack):
+      1. PRIMARY  — `users.preferences.priorities` (authoritative user-stated
+         3-item list from onboarding step 9)
+      2. FALLBACK — `users.behavior_profile.dimension_sensitivity` TOP entry
+         (computed inference from tab_switch dwell events; for users who
+         skipped step 9)
+      3. EMPTY STATE — neither set + zero comparisons → empty_state=True
+
+    The `behavior_profile.dimension_sensitivity` is a Dict[str, float]
+    keyed by tab name with dwell-time weights — see
+    `app/services/behavior_service.py:_compute_dimension_sensitivity`.
 
     Cache: 5min per-user Redis.
     """
@@ -332,23 +339,51 @@ async def home_smart_pick(
         else get_admin_supabase_client()
     )
 
-    # Step 1 — read user's priorities + most-recent 5 v2 comparisons in parallel
+    # Step 1 — read user's priorities + behavior_profile + recent v2 comparisons
     priorities: list[str] = []
     comparisons: list[dict] = []
 
     try:
+        # Pull both preferences AND behavior_profile in one users SELECT
+        # so we have the dimension_sensitivity fallback available without
+        # a second round-trip.
         user_resp = (
             client.table("users")
-            .select("preferences")
+            .select("preferences, behavior_profile")
             .eq("id", user_id)
             .single()
             .execute()
         )
-        prefs = (user_resp.data or {}).get("preferences") or {}
+        user_row = user_resp.data or {}
+        prefs = user_row.get("preferences") or {}
         if isinstance(prefs, dict):
             raw = prefs.get("priorities") or []
             if isinstance(raw, list):
                 priorities = [str(p) for p in raw[:3] if p]
+        # Tier 2 fallback per dispatcher 2026-05-23 ack: when
+        # preferences.priorities is empty (user skipped onboarding step 9),
+        # synthesize a single-element priorities list from the TOP entry
+        # of behavior_profile.dimension_sensitivity. Computed from
+        # tab_switch dwell events — see behavior_service.py:_compute_dimension_sensitivity.
+        if not priorities:
+            bp = user_row.get("behavior_profile") or {}
+            if isinstance(bp, dict):
+                dim_sens = bp.get("dimension_sensitivity") or {}
+                if isinstance(dim_sens, dict) and dim_sens:
+                    # TOP entry by weight (max float value)
+                    try:
+                        top_dim, _ = max(
+                            ((k, float(v)) for k, v in dim_sens.items() if v is not None),
+                            key=lambda kv: kv[1],
+                            default=(None, 0.0),
+                        )
+                        if top_dim:
+                            priorities = [str(top_dim)]
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "[home/smart_pick] dim_sensitivity fallback failed for %s: %r",
+                            user_id, exc,
+                        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("[home/smart_pick] users prefs read failed for %s: %r", user_id, exc)
 

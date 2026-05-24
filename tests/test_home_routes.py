@@ -345,6 +345,97 @@ class TestHomeSmartPick:
         # No priority param when there's no priority match
         assert body["smart_pick"]["reason_params"] == {}
 
+    def test_dimension_sensitivity_fallback_when_priorities_empty(self):
+        """Dispatcher 2026-05-23 ack: when preferences.priorities is empty
+        (user skipped onboarding step 9), the endpoint falls back to the
+        TOP entry of behavior_profile.dimension_sensitivity and uses that
+        as the synthesized priority for priority_match scoring.
+        """
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        # Comparison where the winner won the 'camera_quality_score' dim
+        rows = [_comparison_row(
+            winner_idx=0,
+            p0_brand="Apple", p0_name="iPhone 15",
+            p1_brand="Samsung", p1_name="Galaxy S24",
+            dim_winners={"camera_quality_score": "Apple iPhone 15"},
+        )]
+        supabase = MagicMock()
+        # NO priorities in preferences; HAS dimension_sensitivity with
+        # camera_quality as the TOP entry (weight 0.8)
+        user_resp = MagicMock()
+        user_resp.data = {
+            "preferences": {},
+            "behavior_profile": {
+                "dimension_sensitivity": {
+                    "camera_quality": 0.8,
+                    "battery": 0.3,
+                    "price": 0.1,
+                },
+            },
+        }
+        comp_resp = MagicMock(); comp_resp.data = rows
+
+        def _table_dispatch(name):
+            m = MagicMock()
+            if name == "users":
+                m.select.return_value.eq.return_value.single.return_value.execute.return_value = user_resp
+            else:
+                m.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+            return m
+        supabase.table.side_effect = _table_dispatch
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["empty_state"] is False
+        pick = body["smart_pick"]
+        # The fallback synthesized 'camera_quality' as the priority →
+        # priority_match should fire because the winner won the
+        # 'camera_quality_score' dim.
+        assert pick["reason_key"] == "home.smart_pick.reason.priority_match"
+        assert pick["reason_params"]["priority"] == "camera_quality"
+
+    def test_empty_priorities_and_empty_dim_sensitivity_falls_to_recent(self):
+        """When BOTH preferences.priorities AND behavior_profile.dimension_sensitivity
+        are empty/missing, the endpoint falls through to recent_winner (NOT
+        empty state, as long as there's at least one v2 comparison)."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        rows = [_comparison_row(winner_idx=0)]
+        supabase = MagicMock()
+        user_resp = MagicMock()
+        user_resp.data = {
+            "preferences": {},
+            "behavior_profile": {"dimension_sensitivity": {}},
+        }
+        comp_resp = MagicMock(); comp_resp.data = rows
+
+        def _table_dispatch(name):
+            m = MagicMock()
+            if name == "users":
+                m.select.return_value.eq.return_value.single.return_value.execute.return_value = user_resp
+            else:
+                m.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+            return m
+        supabase.table.side_effect = _table_dispatch
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["empty_state"] is False
+        assert body["smart_pick"]["reason_key"] == "home.smart_pick.reason.recent_winner"
+
     def test_all_v1_rows_hidden_returns_empty_state(self):
         """Per Migration 026 invariant — v1 rows are filtered out by the
         SELECT chain at .eq('schema_version', 2). If user's ONLY rows
