@@ -132,3 +132,16 @@ Frontend uses null-safely: `None` → no outline; `0`/`1` → emerald-outline on
 Backend agent, Bundle D worktree `feature/bundle-d-testflight-readiness`, 2026-05-23.
 Refile v3 (2026-05-24) incorporates Phase 2.6 reopen on top of v2: 3 new `/api/v1/profile/*` endpoints (`recent-decisions` + `monthly-stats` + `priorities-weighted`) in commit `4cf0af0` with 12 new tests. Test total 187/187 at v3.
 Refile v4 (2026-05-24) incorporates Task 2.6.B.4 on top of v3: `winner_index: Optional[int]` added to `GET /api/v1/comparisons/history` list HistoryItem in commit `0384de3` with 4 new tests covering both extraction paths + null safety. Test total now 191/191 (was 187). All risk-status state from v3 stands unchanged — Frontend HistoryScreen per-row VS card emerald-outline now unblocked.
+
+## Phase 3 prod smoke — 20/20 GREEN (commit `e5d524a` redeploy)
+
+Post-merge (`6ee3aa5`) + R22-tail rebrand (`e5d524a`, cherry-picked from `aa45ea5`) redeploy verified live on `web-production-58776.up.railway.app`:
+
+```
+Bundle D — Phase 3 prod smoke pack — 20 probes
+  Summary: 20 pass / 0 fail out of 20 probes
+```
+
+All 20 probes GREEN including the previously-FAILing `/health` Qaren-branded message check (now serves `"Qaren API is running"`). The 4 pre-merge expected-fails (legal-privacy + legal-terms + reengagement-subs + apple-parity) flipped to GREEN as predicted. Task 2.6.B.4 `winner_index` field confirmed live on `/api/v1/comparisons/history`. Phase 2.5 + 2.6 editorial endpoints (5 auth-gated + 1 unauth trending) all registered + behaving correctly.
+
+Backend lane fully closed. Next external action: Ahmed runs `eas build --profile preview --platform ios` for Phase 3 device-leg. Backend re-engages only for Phase 4 R12 (reengagement flag flip per `bundle-d-phase4-r12-flip-checklist.md`) or R19 (force-update env vars per `bundle-d-phase4-r19-force-update-checklist.md`) — both dispatcher-executed.
