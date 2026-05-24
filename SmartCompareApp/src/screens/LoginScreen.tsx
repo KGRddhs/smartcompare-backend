@@ -297,10 +297,17 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginBottom: spacing.sm,
   },
+  // Bundle D Claude-Design (option small, Task 2.F.2 screen 7): auth
+  // input field switched to bg.primary (white) fill to match
+  // AuthScreens.jsx AuthField pattern (cleaner edit surface, focus
+  // border thickens to 2px instead of color shift). Border.light
+  // hairline preserved at rest; explicit height: 48 matches the
+  // 36×36 button family proportional ratio across auth screens.
   input: {
-    backgroundColor: colors.bg.secondary,
+    backgroundColor: colors.bg.primary,
     borderRadius: radii.input,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    height: 48,
     ...typography.body,
     color: colors.text.primary,
     borderWidth: 1,
