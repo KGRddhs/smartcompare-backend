@@ -227,3 +227,57 @@ Claude-Design `HomeScreen.jsx` (commit `0b87415`, `docs/claude-design-handoff/ui
 - `SavingsBanner`: ~4 hours (backend aggregation + frontend wiring)
 - `TrendingNearYou`: ~8-10 hours (aggregation logic + region-aware ranking + privacy review)
 - Total: **~18-22 hours**, likely a Bundle F or v1.1 deliverable. Recommend bundling all 4 in one PR so the editorial-content surface lands as a coherent block.
+
+### Backend addendum 2026-05-23 — 3 of 4 endpoints ALREADY shipped
+
+Bundle D Phase 2.5 reopen (per dispatcher "no deferral" direction) shipped
+the 3 non-trivial backend endpoints. Tasks #71-#74. Frontend wiring of the
+4 sections remains as the Bundle E followup; the backend dependency
+is now unblocked for 3 of them:
+
+- **SmartPickCard:** `GET /api/v1/home/smart-pick` shipped (auth required, 5min Redis cache, empty-state + cta_text_key contract).
+- **SavingsBanner:** `GET /api/v1/home/savings` shipped (auth required, 5min Redis cache, `threshold_met` gate at count>=3).
+- **TrendingNearYou:** `GET /api/v1/home/trending` shipped via **Approach A** (curated JSON at `data/trending_curated.json`, zero PII surface, 1h Redis per-region cache, auth-optional with `?region=` query). Approach B (search_logs k-anonymity) deferred — see entry below.
+- **QuickCategories:** no backend dep — pure FE i18n work, can ship as soon as Frontend has bandwidth.
+
+---
+
+## BACKEND: `/home/trending` Approach B — k-anonymity search_logs aggregation
+
+**Pinned by:** Bundle D Phase 2.5 `/home/trending` shipping with Approach A (curated JSON) — commit `<incoming SHA from 2.5.B closeout>`.
+
+**Current state (Approach A, shipped Bundle D):** `data/trending_curated.json` is a hand-maintained per-region list. Admin updates weekly via PR. Zero PII surface. Frontend renders directly. ~6 trending pairs per region.
+
+**Approach B ask (Bundle E or later):** dynamically aggregate `search_logs` to surface real trending queries with a k-anonymity privacy gate:
+
+```sql
+SELECT query_text, COUNT(DISTINCT user_id) AS unique_users
+FROM search_logs
+WHERE created_at >= now() - interval '7 days'
+  AND region = $1
+GROUP BY query_text
+HAVING COUNT(DISTINCT user_id) >= 50  -- k-anonymity threshold
+ORDER BY unique_users DESC
+LIMIT 10
+```
+
+Plus a PII-regex pre-filter on `query_text` to reject any query containing email-shape, phone-shape, or free-text-personal-name patterns even if it clears the k≥50 gate.
+
+**Why deferred from Bundle D:**
+1. TestFlight scope = ≤100 testers (won't hit k=50 threshold per region for ~3 months post-launch). Approach B would return empty trending = worse UX than Approach A's curated list.
+2. PII regex pre-filter needs a privacy review with Ahmed (what patterns? email yes/no/case-by-case? phone? brand-name + personal-name combinations?).
+3. Approach A is genuinely sufficient for the editorial-section UX intent (give users 3-6 starter ideas) — k-anonymity adds operational complexity without proportional user-value gain in the TestFlight + soft-launch period.
+
+**Unblockers checklist (before Bundle E ship):**
+- [ ] Ahmed-approved PII regex set (suggest: email RFC pattern, phone E.164 international, free-text-name detector via spaCy NER or simple regex denylist).
+- [ ] DAU > 500 in a single region (k=50 unique-users threshold becomes meaningful at ~10x DAU).
+- [ ] Bundle E-or-later capacity for: aggregation SQL view, weekly cron to materialize results into a `trending_aggregated` table, fallback-to-curated when k-anonymity returns empty, admin dashboard to monitor PII-filter rejection rate.
+
+**Acceptance once shipped:**
+- New endpoint OR same `/home/trending` route with `?source=aggregated` flag.
+- Returns the curated list (Approach A) when aggregated returns fewer than 3 entries that pass k-anonymity + PII filter.
+- Per-day PII-filter rejection rate < 5% (if higher, the regex is too aggressive OR the upstream queries are too PII-heavy → product team intervention).
+- Privacy review sign-off from Ahmed before any aggregated endpoint goes live in prod.
+
+**Cost estimate when unblocked:** ~6-8 hours implementation + ~2-3 hours privacy review.
+

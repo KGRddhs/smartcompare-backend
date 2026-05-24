@@ -27,6 +27,7 @@ from app.api.legal_routes import router as legal_router  # Legal (privacy, terms
 from app.api.version_routes import router as version_router  # App version check
 from app.api.usage_routes import router as usage_router      # Usage tracking
 from app.api.referral_routes import router as referral_router  # Referral system
+from app.api.home_routes import router as home_router          # Phase 2.5 editorial HomeScreen sections
 
 # Import middleware
 from app.middleware.request_id import RequestIDMiddleware
@@ -128,6 +129,7 @@ app.include_router(legal_router)   # /api/v1/legal/*
 app.include_router(version_router) # /api/v1/app/*
 app.include_router(usage_router)   # /api/v1/usage/*
 app.include_router(referral_router)  # /api/v1/referrals/*
+app.include_router(home_router)      # /api/v1/home/* (savings, smart-pick, trending)
 
 # Static admin assets — serves cohort dashboard at /admin/cohort.html
 # (The admin endpoints these pages call are still under /api/v1/admin/*.)
