@@ -47,8 +47,15 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
     <View style={styles.container}>
       {/* Bundle B/C/D Task 2.10 — glyph + wordmark together. The wordmark
           now reads from i18n so EN testers see "Qaren" not "قارن". */}
-      <Animated.View style={[styles.brandRow, logoStyle]}>
-        <QarenLogo size={56} />
+      {/* Bundle D Claude-Design (option small, Task 2.F.2 screen 8):
+          hero-scale lens glyph (56→128) per SplashScreen.jsx QarenLensGlyph
+          — splash is the brand moment, so the logo gets the visual weight.
+          Wordmark fontSize 48→40 + tightened letterSpacing matches the
+          Claude-Design "Qaren" wordmark proportions (h1 700 40px/1
+          letter-spacing: -0.8px). Vertical stack instead of horizontal
+          row mirrors the JSX brand-moment composition. */}
+      <Animated.View style={[styles.brandStack, logoStyle]}>
+        <QarenLogo size={128} />
         <Animated.Text style={styles.logo}>{t('app.name')}</Animated.Text>
       </Animated.View>
       <Animated.Text style={[styles.tagline, taglineStyle]}>
@@ -64,20 +71,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: spacing.lg,
   },
-  brandRow: {
-    flexDirection: 'row',
+  // Stacked composition (logo above wordmark) per Claude-Design splash.
+  // RTL-safe: alignItems centers in both directions.
+  brandStack: {
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.base,
   },
   logo: {
-    fontSize: 48,
+    fontSize: 40,
     fontWeight: '700',
     color: colors.text.primary,
+    letterSpacing: -0.8,
   },
   tagline: {
     ...typography.body,
     color: colors.text.secondary,
-    marginTop: spacing.sm,
   },
 });

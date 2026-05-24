@@ -1,7 +1,6 @@
 """
 Feedback Routes - Comparison feedback and event tracking endpoints
 """
-import asyncio
 import json
 import logging
 from typing import List, Optional
@@ -12,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.api.auth_routes import get_optional_user
 from app.middleware.rate_limiter import limiter
 from app.services.feedback_service import save_feedback, track_events_batch
+from app.utils.async_utils import fire_and_forget
 
 logger = logging.getLogger(__name__)
 
@@ -94,14 +94,18 @@ async def submit_feedback(
     """
     user_id = user.get("id") if user else None
 
-    # Fire-and-forget
-    asyncio.create_task(save_feedback(
-        user_id=user_id,
-        comparison_id=body.comparison_id,
-        useful=body.useful,
-        mattered_most=body.mattered_most,
-        change_suggestion=body.change_suggestion,
-    ))
+    # Fire-and-forget — Bundle D 2.B.6 WRAP: feedback is an audit-grade
+    # write; silent failures must surface to Sentry via the done callback.
+    fire_and_forget(
+        save_feedback(
+            user_id=user_id,
+            comparison_id=body.comparison_id,
+            useful=body.useful,
+            mattered_most=body.mattered_most,
+            change_suggestion=body.change_suggestion,
+        ),
+        label="save_feedback",
+    )
 
     return {"success": True, "message": "Feedback received"}
 
@@ -129,7 +133,9 @@ async def track_events(
             "comparison_id": evt.comparison_id,
         })
 
-    # Fire-and-forget
-    asyncio.create_task(track_events_batch(events))
+    # Fire-and-forget — Bundle D 2.B.6 WRAP: event tracking failures
+    # were previously invisible; logger.warning on done callback surfaces
+    # them in Sentry without breaking the response.
+    fire_and_forget(track_events_batch(events), label="track_events_batch")
 
     return {"success": True, "message": f"{len(events)} events received"}

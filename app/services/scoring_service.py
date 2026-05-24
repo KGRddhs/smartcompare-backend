@@ -1748,13 +1748,19 @@ def _dim_reviews(products: list[dict]) -> dict:
     return result
 
 
-def _dim_value(products: list[dict]) -> dict:
+def _dim_value(products: list[dict], is_cross_tier: bool = False) -> dict:
     """Bundle C § 2g — kill the `rating or 4.0` fabricated default. When
     either rating OR price is missing on either side, the value ratio
     cannot be computed honestly; short-circuit to a neutral display
     score + low-confidence flag (mirrors the _dim_price / _dim_reviews
     pattern at lines 1411 / 1438). No phantom 4.0 stars, no phantom
-    0.1 ratio injection."""
+    0.1 ratio injection.
+
+    Bundle D A.6.3: when `is_cross_tier=True` (price tiers disagree e.g.
+    budget vs luxury), the delta_text gets a cross-tier prefix so the
+    user understands the value math is happening across different
+    market positions, not within the same tier.
+    """
     a, b = products[0], products[1]
     pa_raw = _get_price(a)
     pb_raw = _get_price(b)
@@ -1792,14 +1798,48 @@ def _dim_value(products: list[dict]) -> dict:
         }
     score_a = calibrate_score(50 + 35 * (va / hi))
     score_b = calibrate_score(50 + 35 * (vb / hi))
-    if va >= vb:
-        delta = "More features per dinar"
+    # Bundle D Task 2.B.5 (A.6.2) — richer delta_text. Vary copy by
+    # magnitude of value-ratio gap so the user sees more than 2 hardcoded
+    # strings. Magnitude buckets (relative): tiny (<5%), small (5-15%),
+    # moderate (15-35%), large (>35%).
+    if va == vb:
+        delta = "Comparable value"
     else:
-        delta = "Stronger value ratio"
+        winner_va = va > vb
+        gap_ratio = abs(va - vb) / hi  # 0..1
+        if gap_ratio < 0.05:
+            delta = "Nearly identical value"
+        elif gap_ratio < 0.15:
+            delta = (
+                "Slightly better value here"
+                if winner_va else "Slightly better value on the other side"
+            )
+        elif gap_ratio < 0.35:
+            delta = (
+                "Noticeably more per dinar here"
+                if winner_va else "Noticeably more per dinar on the other side"
+            )
+        else:
+            delta = (
+                "Substantially stronger value ratio"
+                if winner_va else "Substantially stronger value on the other side"
+            )
+    # Bundle D A.6.3 — cross-tier framing prefix. When the two products
+    # sit in different price tiers (budget vs mid vs premium vs luxury vs
+    # top_tier), the value-ratio comparison is happening across market
+    # positions, not within one tier. Prefix the delta so the user
+    # understands the framing.
+    if is_cross_tier and delta != "Comparable value":
+        delta = f"Across tiers — {delta.lower()[0]}{delta[1:]}" if delta else delta
     return {
         "key": "value", "label": "Value",
         "score_a": score_a, "score_b": score_b,
         "delta_text": delta, "confidence": "medium", "is_core": True,
+        # Bundle D A.6.3 — expose cross-tier flag on the dim so FE can
+        # render a different visual treatment if desired (caption, icon,
+        # etc.). is_cross_tier on the parent scoring_result is also still
+        # available; this is just a per-dim convenience flag.
+        "is_cross_tier": bool(is_cross_tier),
     }
 
 
@@ -1852,24 +1892,177 @@ def _dim_build_quality(products: list[dict]) -> dict | None:
     }
 
 
+# Bundle D Task 2.B.3 (A.8.1) — human-readable labels for the
+# category-specific dim keys in CATEGORY_DIMENSIONS. Skin/hair/fragrance/etc
+# categories don't have hand-coded _dim_X builders, so we project their
+# scores from `scoring_result["scores"]` using these labels.
+#
+# Reading 1 (minimal) of A.8.1: keep the 3 hand-coded electronics builders
+# (_dim_dpi/_popularity/_build_quality) because they compute fresh values
+# from raw specs (DPI, review_count, warranty_years) with category-specific
+# delta_text — that detail is hard to reproduce from the generic
+# CATEGORY_DIMENSIONS lookup. For all OTHER categories, fall back to a
+# generic adapter that pulls per-dim scores from scoring_result.
+#
+# Reading 2 (full replacement of the 3 electronics builders) is queued as
+# a v1.2 TODO — needs design input on per-dim delta_text generation across
+# the 9 categories × 6 dims grid (54 cells).
+_DIMENSION_LABELS = {
+    # electronics (also exposed for other paths that may render them)
+    "performance_score": "Performance",
+    "value_score": "Value",
+    "build_quality_score": "Build quality",
+    "feature_score": "Features",
+    "ecosystem_score": "Ecosystem",
+    "futureproof_score": "Future-proofing",
+    # grocery
+    "nutrition_score": "Nutrition",
+    "ingredient_score": "Ingredients",
+    "taste_score": "Taste",
+    "serving_value_score": "Serving value",
+    "dietary_score": "Dietary fit",
+    "availability_score": "Availability",
+    # supplements
+    "efficacy_score": "Efficacy",
+    "safety_score": "Safety",
+    "dosage_score": "Dosage",
+    "form_score": "Form",
+    "trust_score": "Trust",
+    # makeup
+    "shade_score": "Shade range",
+    "longevity_score": "Longevity",
+    "skin_compat_score": "Skin compatibility",
+    "finish_score": "Finish",
+    "ingredient_safety_score": "Ingredient safety",
+    "perf_value_score": "Performance vs value",
+    # skincare
+    "actives_score": "Active ingredients",
+    "evidence_score": "Evidence",
+    "formulation_score": "Formulation",
+    "sensory_score": "Sensory",
+    "results_value_score": "Results vs value",
+    # haircare
+    "hair_match_score": "Hair match",
+    "results_score": "Results",
+    "scent_score": "Scent",
+    "multi_value_score": "Multi-use value",
+    "scalp_score": "Scalp",
+    # fragrances
+    "character_score": "Character",
+    "projection_score": "Projection",
+    "versatility_score": "Versatility",
+    "wear_value_score": "Wear value",
+    "presentation_score": "Presentation",
+    # fashion
+    "craft_score": "Craftsmanship",
+    "fit_score": "Fit",
+    "style_score": "Style",
+    "durability_score": "Durability",
+    "heritage_score": "Heritage",
+    "cpw_score": "Cost per wear",
+    # other
+    "function_score": "Function",
+    "build_score": "Build",
+    "review_score": "Reviews",
+    "reliability_score": "Reliability",
+    "feature_match_score": "Feature match",
+}
+
+
+def _dim_from_category_lookup(
+    dim_key: str,
+    scoring_result: dict,
+) -> dict | None:
+    """Bundle D A.8.1 — generic dim builder for non-electronics categories.
+
+    Projects the per-dim score from `scoring_result["scores"]["product_i"][dim_key]`.
+    Returns None when both products have MISSING_SCORE — same silent-omission
+    contract as the hand-coded _dim_X builders.
+    """
+    scores_map = scoring_result.get("scores", {}) or {}
+    a_score_dict = scores_map.get("product_0", {}) or {}
+    b_score_dict = scores_map.get("product_1", {}) or {}
+    score_a = a_score_dict.get(dim_key)
+    score_b = b_score_dict.get(dim_key)
+
+    # Both missing → silent omission per § 2h
+    if score_a in (None, MISSING_SCORE) and score_b in (None, MISSING_SCORE):
+        return None
+
+    label = _DIMENSION_LABELS.get(dim_key, dim_key.replace("_score", "").replace("_", " ").title())
+    return {
+        "key": dim_key,
+        "label": label,
+        "score_a": score_a,
+        "score_b": score_b,
+        # delta_text intentionally minimal — v1.2 TODO is per-dim copy generation
+        # from spec data (would need design input across 9 categories x 6 dims).
+        "delta_text": "",
+        "confidence": "medium",
+        "is_core": False,
+    }
+
+
 def build_dimensions_v2(
     products_data: list[dict],
     scoring_result: dict,
     category: str,
 ) -> list[dict]:
+    """Build the v2 dimensions tab — 3 core dims (price/reviews/value) +
+    up to 3 category-specific dims.
+
+    Bundle D Task 2.B.3 (A.8.1): for non-electronics same-category pairs,
+    drive the 3 extra dims from CATEGORY_DIMENSIONS[category] +
+    scoring_result["scores"] lookup. Electronics keeps the hand-coded
+    _dim_dpi/_popularity/_build_quality builders for richer delta_text.
+    """
+    # Bundle D A.6.3 — pass is_cross_tier so _dim_value can prefix its
+    # delta_text with cross-tier framing when products span price tiers.
+    is_cross_tier = bool(scoring_result.get("is_cross_tier", False))
     dims: list[dict] = [
         _dim_price(products_data),
         _dim_reviews(products_data),
-        _dim_value(products_data),
+        _dim_value(products_data, is_cross_tier=is_cross_tier),
     ]
     cat_a = products_data[0].get("category")
     cat_b = products_data[1].get("category")
     same_category = cat_a == cat_b and cat_a is not None
     if same_category:
-        for builder in (_dim_build_quality, _dim_popularity, _dim_dpi):
-            dim = builder(products_data)
-            if dim is not None:
-                dims.append(dim)
+        # Bundle D A.8.1 — electronics keeps the 3 hand-coded builders
+        # (fresh values from raw specs with category-specific delta_text).
+        # Non-electronics categories use the generic CATEGORY_DIMENSIONS
+        # adapter that pulls scores from scoring_result.
+        if category == "electronics":
+            for builder in (_dim_build_quality, _dim_popularity, _dim_dpi):
+                dim = builder(products_data)
+                if dim is not None:
+                    dims.append(dim)
+        elif category in CATEGORY_DIMENSIONS:
+            # Use the per-category dim list, skip the 3 already covered by
+            # the core builders (price, reviews, value are bound to keys
+            # "price_score"/"value_score" implicit in core; per-category
+            # dims like "performance_score" etc are the 3 to add).
+            #
+            # CATEGORY_DIMENSIONS[category] is exactly 6 dim keys. The
+            # category-weighted score map keys MATCH those. We just need
+            # to add up to 3 dims that aren't already covered by the
+            # core 3 (price/reviews/value).
+            core_covered = {"price", "value", "reviews"}
+            cat_dims = CATEGORY_DIMENSIONS[category]
+            # Pick first 3 dims whose key isn't a core duplicate
+            added = 0
+            for dim_key in cat_dims:
+                if added >= 3:
+                    break
+                # Skip if this dim is the category-specific value/price proxy
+                # (e.g. "perf_value_score" in makeup, "serving_value_score" in
+                # grocery — already represented by the core _dim_value).
+                if any(c in dim_key for c in ("value_", "_value_")):
+                    continue
+                dim = _dim_from_category_lookup(dim_key, scoring_result)
+                if dim is not None:
+                    dims.append(dim)
+                    added += 1
     # Bundle C § 2h A.4.9 — silent dim omission. The individual _dim_X
     # builders mostly handle this already (returning None for genuinely
     # missing data + A.4.4 caption_key='limited_data' for the last-resort

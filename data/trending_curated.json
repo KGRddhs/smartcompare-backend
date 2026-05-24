@@ -1,0 +1,59 @@
+{
+  "_meta": {
+    "owner": "Bundle D backend + product team",
+    "update_cadence": "weekly via PR",
+    "privacy_note": "Approach A — curated list, zero PII surface. See app/api/home_routes.py docstring + docs/plans/bundle-d-followups.md for Bundle E Approach B (k-anonymity aggregation).",
+    "schema": {
+      "<region_key>": [
+        {"query": "<product A vs product B>", "view_count": "<int approx>"}
+      ]
+    },
+    "regions_allowed": ["bahrain", "saudi_arabia", "uae", "kuwait", "qatar", "oman"],
+    "last_updated": "2026-05-23"
+  },
+  "bahrain": [
+    {"query": "iPhone 15 vs Samsung Galaxy S24", "view_count": 1247},
+    {"query": "Nivea Soft vs Cetaphil Moisturizing Cream", "view_count": 893},
+    {"query": "Tom Ford Tobacco Vanille vs Creed Aventus", "view_count": 712},
+    {"query": "Bose QuietComfort Ultra vs Sony WH-1000XM5", "view_count": 658},
+    {"query": "HealthAid Vitamin D3 vs NOW Foods Vitamin D-3", "view_count": 521},
+    {"query": "L'Oreal Revitalift vs Olay Regenerist", "view_count": 487}
+  ],
+  "saudi_arabia": [
+    {"query": "iPhone 15 vs Samsung Galaxy S24", "view_count": 2104},
+    {"query": "Tom Ford Tobacco Vanille vs Creed Aventus", "view_count": 1582},
+    {"query": "Nivea Soft vs Cetaphil Moisturizing Cream", "view_count": 1247},
+    {"query": "Solgar Omega 3 vs Now Foods Omega-3", "view_count": 894},
+    {"query": "MacBook Air M3 vs Dell XPS 13", "view_count": 776},
+    {"query": "Garnier BB Cream vs Maybelline Fit Me Foundation", "view_count": 612}
+  ],
+  "uae": [
+    {"query": "iPhone 15 Pro vs Samsung Galaxy S24 Ultra", "view_count": 1893},
+    {"query": "Dyson V15 vs Shark Stratos Cordless", "view_count": 1024},
+    {"query": "Tom Ford Oud Wood vs Creed Royal Oud", "view_count": 967},
+    {"query": "La Mer Moisturizing Cream vs Estee Lauder Revitalizing Supreme+", "view_count": 743},
+    {"query": "Apple Watch Series 10 vs Garmin Venu 3", "view_count": 681},
+    {"query": "NOW Foods Magnesium vs Solgar Magnesium Citrate", "view_count": 528}
+  ],
+  "kuwait": [
+    {"query": "iPhone 15 vs Samsung Galaxy S24", "view_count": 891},
+    {"query": "Cetaphil vs CeraVe Moisturizing Cream", "view_count": 612},
+    {"query": "Tom Ford Tobacco Vanille vs Creed Aventus", "view_count": 547},
+    {"query": "Bose QuietComfort vs Sony WH-1000XM5", "view_count": 423},
+    {"query": "Lancome Genifique vs Estee Lauder Advanced Night Repair", "view_count": 358}
+  ],
+  "qatar": [
+    {"query": "iPhone 15 Pro vs Samsung Galaxy S24 Ultra", "view_count": 743},
+    {"query": "Tom Ford Oud Wood vs Creed Royal Oud", "view_count": 612},
+    {"query": "MacBook Pro M3 vs Dell XPS 15", "view_count": 487},
+    {"query": "Nivea Soft vs Cetaphil Moisturizing Cream", "view_count": 421},
+    {"query": "NOW Foods Vitamin D3 vs HealthAid Vitamin D-3", "view_count": 358}
+  ],
+  "oman": [
+    {"query": "iPhone 15 vs Samsung Galaxy S24", "view_count": 521},
+    {"query": "Nivea Soft vs Cetaphil Moisturizing Cream", "view_count": 412},
+    {"query": "Tom Ford Tobacco Vanille vs Creed Aventus", "view_count": 358},
+    {"query": "Solgar Vitamin D3 vs NOW Foods Vitamin D-3", "view_count": 287},
+    {"query": "Bose QuietComfort vs Sony WH-1000XM5", "view_count": 234}
+  ]
+}

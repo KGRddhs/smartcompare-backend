@@ -20,6 +20,68 @@ _SENSITIVE_PATTERNS = [
     (re.compile(r'Bearer\s+[A-Za-z0-9_.-]+'), 'Bearer [REDACTED]'),
 ]
 
+# Bundle D Task 1.B.6 (R21) — query-string scrubbing for free-text user input.
+# Targets the five param names that carry user-typed content in this API:
+#   q, query, email, search, text
+# Captures everything from `&<name>=` (or `?<name>=`) up to the next `&` or
+# end-of-URL, replacing the value with [QUERY_REDACTED]. Preserves bookkeeping
+# params (?nocache=, ?limit=, ?offset=, etc.) by NOT matching their names.
+# `?token=` is already covered by the `_scrub_dict` key-name denylist below,
+# but the wholesale `[a-f0-9]{32,}` token pattern also catches hex tokens that
+# leak into URLs.
+_QUERY_STRING_PII_PARAMS = ("q", "query", "email", "search", "text")
+_QUERY_STRING_SCRUB_PATTERN = re.compile(
+    r"(?<=[?&])(" + "|".join(_QUERY_STRING_PII_PARAMS) + r")=[^&#]*",
+    re.IGNORECASE,
+)
+
+
+def _scrub_query_string(url: str) -> str:
+    """Replace PII-carrying query-string values with [QUERY_REDACTED].
+
+    Bundle D R21: regex is targeted (matches `?q=`, `?query=`, `?email=`,
+    `?search=`, `?text=`) so legitimate non-PII params like `?nocache=true`
+    or `?limit=20` round-trip untouched. Existing `?token=` handling lives
+    in `_scrub_dict` (key-name denylist) and the wholesale hex pattern.
+    """
+    if not url:
+        return url
+    if "?" not in url and "=" not in url:
+        # Neither a full URL with query string NOR a raw query_string field —
+        # nothing to scrub.
+        return url
+    return _QUERY_STRING_SCRUB_PATTERN.sub(r"\1=[QUERY_REDACTED]", url)
+
+
+def _scrub_raw_query_string(qs: str) -> str:
+    """Scrub a RAW query-string fragment (no leading `?`).
+
+    Bundle D R21 follow-up (Frontend cross-QA `c12a7c6` review): modern
+    sentry-python populates `event.request.query_string` separately from
+    `event.request.url` — a string like `q=foo&search=bar` with no `?`
+    prefix. The lookbehind in `_QUERY_STRING_SCRUB_PATTERN` requires `?`
+    or `&` immediately before the param name, so the very first param
+    of a raw query_string would slip through `_scrub_query_string`.
+
+    Fix: normalize by prepending `?` before regex application, then
+    strip the prepended char back off when returning. Lookbehind now
+    matches uniformly across both shapes.
+    """
+    if not qs:
+        return qs
+    # Bytes from some sentry-sdk versions — decode defensively.
+    if isinstance(qs, (bytes, bytearray)):
+        try:
+            qs = qs.decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            return qs
+    if not isinstance(qs, str):
+        return qs
+    normalized = "?" + qs
+    scrubbed = _QUERY_STRING_SCRUB_PATTERN.sub(r"\1=[QUERY_REDACTED]", normalized)
+    # Strip the prepended `?` back off — caller stores raw query_string.
+    return scrubbed[1:] if scrubbed.startswith("?") else scrubbed
+
 # Key-name denylist (case-insensitive substring match). When _scrub_dict
 # encounters a string value under a key matching one of these, the whole
 # value is replaced — regardless of whether the value itself matches a
@@ -77,21 +139,39 @@ def _before_send(event, hint):
                 crumb["data"] = _scrub_dict(crumb["data"])
             if "message" in crumb and isinstance(crumb["message"], str):
                 crumb["message"] = _scrub_string(crumb["message"])
-    # Scrub request headers
-    if "request" in event and "headers" in event["request"]:
-        headers = event["request"]["headers"]
-        if isinstance(headers, dict):
-            for key in list(headers.keys()):
-                if key.lower() in ("authorization", "x-admin-key", "cookie"):
-                    headers[key] = "[REDACTED]"
+    # Scrub request headers + query-string
+    if "request" in event:
+        if "headers" in event["request"]:
+            headers = event["request"]["headers"]
+            if isinstance(headers, dict):
+                for key in list(headers.keys()):
+                    if key.lower() in ("authorization", "x-admin-key", "cookie"):
+                        headers[key] = "[REDACTED]"
+        # Bundle D Task 1.B.6 (R21) — scrub PII query-string values from request URL
+        if isinstance(event["request"].get("url"), str):
+            event["request"]["url"] = _scrub_query_string(event["request"]["url"])
+        # Bundle D R21 follow-up (Frontend cross-QA review on c12a7c6):
+        # modern sentry-python FastAPI/Starlette integrations populate
+        # `request.query_string` separately as raw `key=val&key2=val2`
+        # (no leading `?`). The lookbehind in _QUERY_STRING_SCRUB_PATTERN
+        # would miss the first param of a raw query_string, so route it
+        # through _scrub_raw_query_string which normalizes by prepending
+        # `?` before regex application.
+        raw_qs = event["request"].get("query_string")
+        if raw_qs is not None:
+            event["request"]["query_string"] = _scrub_raw_query_string(raw_qs)
     return event
 
 
 def _strip_tokens_from_breadcrumb(breadcrumb, hint):
-    """Redact tokens from Sentry breadcrumb URLs."""
+    """Redact tokens + PII query strings from Sentry breadcrumb URLs."""
     if breadcrumb.get("data") and isinstance(breadcrumb["data"], dict):
         url = breadcrumb["data"].get("url", "")
         if url:
+            # Bundle D R21: scrub PII query-string values BEFORE token-pattern
+            # scrub so a URL like `?q=eyJabc...` doesn't get masked by the JWT
+            # pattern but then leak the rest of the query value.
+            url = _scrub_query_string(url)
             breadcrumb["data"]["url"] = _scrub_string(url)
     return breadcrumb
 

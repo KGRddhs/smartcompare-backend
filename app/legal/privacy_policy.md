@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**SmartCompare — Product Comparison App**
+**Qaren — Product Comparison App**
 
 *Last Updated: March 26, 2026*
 
@@ -8,7 +8,7 @@
 
 ## 1. Introduction
 
-SmartCompare ("we", "our", "us") operates the SmartCompare mobile application (the "App"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App.
+Qaren ("we", "our", "us") operates the Qaren mobile application (the "App"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App.
 
 ## 2. Information We Collect
 
@@ -71,7 +71,7 @@ The App is not intended for children under 13. We do not knowingly collect perso
 
 ## 9. Regional Considerations
 
-SmartCompare operates primarily in the GCC region (Bahrain, Saudi Arabia, UAE, Kuwait, Qatar, Oman). We comply with applicable data protection laws in these jurisdictions.
+Qaren operates primarily in the GCC region (Bahrain, Saudi Arabia, UAE, Kuwait, Qatar, Oman). We comply with applicable data protection laws in these jurisdictions.
 
 ## 10. Changes to This Policy
 
@@ -90,6 +90,6 @@ To make Qaren's comparisons sharper over time, we participate in OpenAI's Data S
 ## 12. Contact Us
 
 For privacy-related inquiries, please contact us at:
-- Email: privacy@smartcompare.app
+- Email: privacy@qaren.app
 
 *This privacy policy is provided as a draft template and should be reviewed by legal counsel before publication.*

@@ -1,0 +1,320 @@
+/*
+ * Qaren — Colors & Type
+ *
+ * Source of truth: AI/smartcompare/SmartCompareApp/src/theme/index.ts
+ * + theme/fonts.ts + theme/motion.ts. All values mirrored 1:1; if the
+ * native theme changes, update this file and the preview cards together.
+ *
+ * Philosophy (from team docs + screen review):
+ *   - iOS-native, not Dribbble. Plain navigation, normal empty states.
+ *   - Monochrome black/white surface. Emerald earns its keep — only used
+ *     for state (winner reveal, success tick, toggle on, cohort accent).
+ *   - One drop of color per screen, not gradients everywhere.
+ *   - Geist (EN) + Cairo (AR). Geist replaced Inter in Phase 1.
+ *   - Type-weight hierarchy, not size hierarchy.
+ */
+
+/* ── 1 ▸ Fonts ─────────────────────────────────────────────────────── */
+
+@font-face {
+  font-family: "Geist";
+  src: url("./fonts/Geist-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist";
+  src: url("./fonts/Geist-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist";
+  src: url("./fonts/Geist-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Arabic voice — Cairo, loaded from Google Fonts at build time.
+   App ships @expo-google-fonts/cairo; web previews use the CDN. */
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap");
+
+:root {
+  /* ── 2 ▸ Color tokens — primitives ──────────────────────────────── */
+
+  /* Surfaces */
+  --qaren-bg-primary:    #FFFFFF;  /* every screen background */
+  --qaren-bg-secondary:  #F8F8FA;  /* cards, chip rest state, input fields */
+  --qaren-bg-inverse:    #0A0A0B;  /* primary CTA, active mode chip */
+
+  /* Text */
+  --qaren-text-primary:     #0A0A0B;
+  --qaren-text-secondary:   #6B7280;  /* body subtext, secondary labels */
+  --qaren-text-placeholder: #9CA3AF;
+  --qaren-text-on-inverse:  #FFFFFF;
+
+  /* Borders / hairlines */
+  --qaren-border-light:  #E5E7EB;  /* cards, input rest */
+  --qaren-border-medium: #D1D5DB;  /* switch off-track, divider on bg-secondary */
+
+  /* CTA */
+  --qaren-cta-primary:     #0A0A0B;
+  --qaren-cta-on-primary:  #FFFFFF;
+
+  /* The one drop — emerald, used sparingly */
+  --qaren-accent:        #10B981;  /* signal color: winner, success, toggle on */
+  --qaren-accent-dark:   #059669;  /* on light accent backgrounds, "vs" pill text */
+  --qaren-accent-light:  #ECFDF5;  /* "vs" pill fill, last-free pill, winner card */
+  --qaren-accent-glow:   rgba(16, 185, 129, 0.20);  /* CTA ready-state shadow */
+
+  /* Editorial dark — Bundle C top-tier/luxury picker cards only.
+     Never used as full fill or glow. Hairline border on bg-secondary. */
+  --qaren-editorial-dark: #1A1A1A;
+
+  /* States */
+  --qaren-destructive: #EF4444;  /* "Delete account", invalid input border */
+  --qaren-warning:     #F59E0B;
+
+  /* ── 3 ▸ Spacing scale (matches theme/index.ts exactly) ─────────── */
+  --qaren-space-xs:  4px;
+  --qaren-space-sm:  8px;
+  --qaren-space-md:  12px;
+  --qaren-space-base:16px;
+  --qaren-space-lg:  20px;
+  --qaren-space-xl:  24px;
+  --qaren-space-2xl: 32px;
+  --qaren-space-3xl: 48px;
+
+  /* ── 4 ▸ Radii ──────────────────────────────────────────────────── */
+  --qaren-radius-card:   16px;
+  --qaren-radius-button: 12px;
+  --qaren-radius-input:  12px;
+  --qaren-radius-hero:   24px;
+  --qaren-radius-chip:   999px;  /* full pill */
+
+  /* ── 5 ▸ Shadow / elevation ─────────────────────────────────────── */
+  /* Only one shadow exists in the system — a soft 8% lift on cards.
+     Avoid stacking shadows; if a card needs emphasis, use a border. */
+  --qaren-shadow-card:  0 1px 3px rgba(0, 0, 0, 0.08);
+  --qaren-shadow-ready: 0 0 12px rgba(16, 185, 129, 0.45);  /* CTA glow on ready */
+
+  /* ── 6 ▸ Motion ─────────────────────────────────────────────────── */
+  /* Screen transitions mirror RTL — Qaren ships AR + EN. */
+  --qaren-motion-screen-ms:    320ms;
+  --qaren-motion-screen-ease:  cubic-bezier(0.32, 0.72, 0, 1);
+  /* Chip / progress / tab springs are spring-based in the native app; on
+     web we approximate with these easings. */
+  --qaren-motion-snap:  cubic-bezier(0.55, 0, 0.1, 1);
+  --qaren-motion-fast:  cubic-bezier(0, 0.55, 0.45, 1);
+  --qaren-motion-slow:  cubic-bezier(0.4, 0, 0.6, 1);
+
+  /* ── 7 ▸ Type tokens — primitives ───────────────────────────────── */
+  --qaren-font-en: "Geist", -apple-system, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --qaren-font-ar: "Cairo", "Helvetica Neue", system-ui, sans-serif;
+
+  /* Arabic baseline runs taller; multiply line-height by 1.13× on AR. */
+  --qaren-ar-line-multiplier: calc(1.7 / 1.5);
+}
+
+/* ── 8 ▸ Semantic type scale ───────────────────────────────────────
+   Mirror of theme/index.ts → typography. Sizes are absolute (px) because
+   Qaren targets a fixed mobile viewport — no fluid scaling. */
+
+.qaren-hero {
+  font-family: var(--qaren-font-en);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.2;            /* 43.2px */
+  letter-spacing: -0.72px;      /* -0.02em */
+  color: var(--qaren-text-primary);
+}
+
+.qaren-display {
+  font-family: var(--qaren-font-en);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.3;            /* 36.4px */
+  letter-spacing: -0.28px;      /* -0.01em */
+  color: var(--qaren-text-primary);
+}
+
+.qaren-title {
+  font-family: var(--qaren-font-en);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--qaren-text-primary);
+}
+
+.qaren-body {
+  font-family: var(--qaren-font-en);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--qaren-text-primary);
+}
+
+.qaren-body-emphasis {
+  font-family: var(--qaren-font-en);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--qaren-text-primary);
+}
+
+.qaren-caption {
+  font-family: var(--qaren-font-en);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--qaren-text-secondary);
+}
+
+.qaren-eyebrow {
+  font-family: var(--qaren-font-en);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 1.1px;        /* +0.10em */
+  text-transform: uppercase;
+  color: var(--qaren-text-secondary);
+}
+
+.qaren-small {
+  font-family: var(--qaren-font-en);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--qaren-text-secondary);
+}
+
+/* RTL helper — apply on the root of an Arabic surface. */
+[dir="rtl"] .qaren-hero,
+[dir="rtl"] .qaren-display,
+[dir="rtl"] .qaren-title,
+[dir="rtl"] .qaren-body,
+[dir="rtl"] .qaren-body-emphasis,
+[dir="rtl"] .qaren-caption,
+[dir="rtl"] .qaren-eyebrow,
+[dir="rtl"] .qaren-small {
+  font-family: var(--qaren-font-ar);
+  /* AR letterforms have less internal counter-space — never uppercase. */
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: calc(1.5 * var(--qaren-ar-line-multiplier));
+}
+
+/* ── 9 ▸ Component primitives — short-hand classes ────────────────── */
+
+/* Primary CTA — black pill-rounded button. The default action. */
+.qaren-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px 24px;
+  border-radius: var(--qaren-radius-button);
+  background: var(--qaren-cta-primary);
+  color: var(--qaren-cta-on-primary);
+  font: 600 16px/1.5 var(--qaren-font-en);
+  border: none;
+  cursor: pointer;
+  transition: opacity 150ms var(--qaren-motion-fast);
+}
+.qaren-btn-primary:active { opacity: 0.7; }
+.qaren-btn-primary[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+/* Signature CTA — emerald. Reserved for the ONE invitee "Reveal" moment.
+   Do not reuse for generic CTAs; the emerald loses meaning. */
+.qaren-btn-signature {
+  composes: qaren-btn-primary;
+  background: var(--qaren-accent);
+}
+
+/* Secondary — outlined. "Skip", "Maybe later". */
+.qaren-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px 24px;
+  border-radius: var(--qaren-radius-button);
+  background: var(--qaren-bg-primary);
+  color: var(--qaren-text-primary);
+  font: 600 16px/1.5 var(--qaren-font-en);
+  border: 1px solid var(--qaren-text-primary);
+  cursor: pointer;
+}
+
+/* Chip — pill, 44pt min touch target, rest=light gray, selected=emerald. */
+.qaren-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: var(--qaren-radius-chip);
+  background: var(--qaren-bg-secondary);
+  border: 1px solid var(--qaren-border-light);
+  font: 500 13px/1.5 var(--qaren-font-en);
+  color: var(--qaren-text-primary);
+  cursor: pointer;
+}
+.qaren-chip[aria-selected="true"] {
+  background: var(--qaren-accent);
+  border-color: var(--qaren-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Mode chip — same as chip but the active state is BLACK, not emerald.
+   (The 3-equal-chip mode rail at the bottom of Home uses this.) */
+.qaren-mode-chip {
+  composes: qaren-chip;
+}
+.qaren-mode-chip[aria-selected="true"] {
+  background: var(--qaren-cta-primary);
+  border-color: var(--qaren-cta-primary);
+  color: var(--qaren-cta-on-primary);
+}
+
+/* Card — flat, hairline border, soft shadow. */
+.qaren-card {
+  background: var(--qaren-bg-secondary);
+  border: 1px solid var(--qaren-border-light);
+  border-radius: var(--qaren-radius-card);
+  padding: 16px;
+  box-shadow: var(--qaren-shadow-card);
+}
+.qaren-card--winner {
+  background: var(--qaren-accent-light);
+  border: 2px solid var(--qaren-accent);
+}
+
+/* Eyebrow section header — used on Profile, EditProfile. */
+.qaren-section-header {
+  font: 600 11px/1.4 var(--qaren-font-en);
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--qaren-text-secondary);
+  margin: 24px 16px 8px;
+}
+
+/* "vs" pill — emerald-light fill, accent-dark text. The signature
+   visual cue that connects two products. */
+.qaren-vs-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 12px;
+  border-radius: var(--qaren-radius-chip);
+  background: var(--qaren-accent-light);
+  color: var(--qaren-accent-dark);
+  font: 600 11px/1.4 var(--qaren-font-en);
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}

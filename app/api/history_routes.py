@@ -29,6 +29,19 @@ def _extract_token(authorization: Optional[str] = Header(None)) -> Optional[str]
     return None
 
 
+def _extract_winner_index(full_response) -> Optional[int]:
+    """Pull winner_index from full_response.metadata or .comparison; null-safe."""
+    if not isinstance(full_response, dict):
+        return None
+    metadata = full_response.get("metadata")
+    if isinstance(metadata, dict) and "winner_index" in metadata:
+        return metadata["winner_index"]
+    comparison = full_response.get("comparison")
+    if isinstance(comparison, dict) and "winner_index" in comparison:
+        return comparison["winner_index"]
+    return None
+
+
 @router.get("/history")
 @limiter.limit("30/minute")
 async def list_comparisons(
@@ -55,6 +68,7 @@ async def list_comparisons(
             "query": c.get("query"),
             "product_names": c.get("product_names", []),
             "input_type": c.get("input_type", "text"),
+            "winner_index": _extract_winner_index(c.get("full_response")),
             "created_at": c.get("created_at"),
         })
 

@@ -64,6 +64,63 @@ def _safe_detect_comparison_quality(product_data: List[Dict[str, Any]]):
         return None
 
 
+# Bundle D Task 2.B.5 (A.6.4 + A.6.5) — per-product value_match + bundle-
+# level budget_mismatch metadata. value_match indicates whether a product's
+# price tier matches the user's stated budget preference; budget_mismatch
+# flips True when the WINNER product's tier disagrees with the user's
+# budget. Both are pure-derivation helpers (no API calls, no side effects)
+# so they can be computed unconditionally from existing scoring_result
+# data + user_preferences.budget.
+
+# Tier alignment matrix — exact match scores 'match', adjacent tiers score
+# 'near', everything else scores 'mismatch'. The 5-tier ordering follows
+# Migration 024: budget < mid < premium < luxury < top_tier.
+_PRICE_TIER_ORDER = ["budget", "mid", "premium", "luxury", "top_tier"]
+
+
+def _compute_value_match(product_tier: str, budget_pref: Optional[str]) -> str:
+    """Bundle D A.6.4 — classify a product's value-vs-budget alignment.
+
+    Returns 'match' (exact tier hit), 'near' (one tier off either way),
+    'mismatch' (two+ tiers off), or 'unknown' (no budget preference, or
+    unrecognized tier).
+
+    Used by FE to render a per-product budget-fit indicator next to the
+    price chip on the overview card.
+    """
+    if not budget_pref or budget_pref not in _PRICE_TIER_ORDER:
+        return "unknown"
+    if not product_tier or product_tier not in _PRICE_TIER_ORDER:
+        return "unknown"
+    pref_idx = _PRICE_TIER_ORDER.index(budget_pref)
+    product_idx = _PRICE_TIER_ORDER.index(product_tier)
+    gap = abs(pref_idx - product_idx)
+    if gap == 0:
+        return "match"
+    if gap == 1:
+        return "near"
+    return "mismatch"
+
+
+def _compute_budget_mismatch(
+    winner_tier: Optional[str],
+    budget_pref: Optional[str],
+) -> bool:
+    """Bundle D A.6.5 — flag at metadata level when the chosen winner's
+    price tier doesn't align with the user's stated budget preference.
+
+    True iff the winner's tier is two or more tiers off from the user's
+    budget (i.e. _compute_value_match returns 'mismatch'). False when:
+      - user has no budget set ('unknown')
+      - winner tier is unknown
+      - winner is in-tier or one tier off
+
+    FE uses this to decide whether to render a 'this might stretch your
+    budget' caption beside the verdict.
+    """
+    return _compute_value_match(winner_tier, budget_pref) == "mismatch"
+
+
 def _safe_compute_applied_shifts(scoring_result: Dict[str, Any]) -> list:
     """Spec § 7a: chip hides itself when applied_shifts is empty list — so
     we ALWAYS return a list (never None). Reads weights_used from the
@@ -409,31 +466,63 @@ def _build_scoring_v2(
 
 def build_comparison_response(
     *,
-    product_data: List[Dict[str, Any]],
-    comparison: Dict[str, Any],
-    scoring_result: Dict[str, Any],
-    product_names: List[str],
-    tradeoffs: List[Dict],
-    confidence: Dict,
-    verdict_validation: Dict,
-    user_preferences: Optional[Dict[str, Any]],
-    from_cache: bool,
-    query: str,
-    region: str,
-    category_used: str,
-    category_switched: bool,
-    original_category: Optional[str],
-    total_cost: float,
-    api_calls: int,
-    gpt_calls: int,
-    serper_calls: int,
-    elapsed_seconds: float,
+    product_data: Optional[List[Dict[str, Any]]] = None,
+    products: Optional[List[Dict[str, Any]]] = None,
+    comparison: Optional[Dict[str, Any]] = None,
+    scoring_result: Optional[Dict[str, Any]] = None,
+    product_names: Optional[List[str]] = None,
+    tradeoffs: Optional[List[Dict]] = None,
+    confidence: Optional[Dict] = None,
+    verdict_validation: Optional[Dict] = None,
+    user_preferences: Optional[Dict[str, Any]] = None,
+    from_cache: bool = False,
+    query: str = "",
+    region: str = "bahrain",
+    category_used: str = "",
+    category_switched: bool = False,
+    original_category: Optional[str] = None,
+    total_cost: float = 0.0,
+    api_calls: int = 0,
+    gpt_calls: int = 0,
+    serper_calls: int = 0,
+    elapsed_seconds: float = 0.0,
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the full structured comparison response.
 
     This is used by both compare_from_text() and compare_from_text_streaming()
     to avoid duplicating ~100 lines of response assembly.
+
+    Bundle D Task 2.B.1 (B.0):
+    - `products` is accepted as an alias for `product_data` (FE-friendly
+      naming). Pass either; if both are passed `products` wins.
+    - `metadata` kwarg accepts a dict whose keys are merged onto the
+      auto-built `response["metadata"]` after assembly. Callers can use
+      it to inject overrides like `{"comparison_quality": "weird"}`
+      without unpicking the full positional spec.
+    - All other positional-style params now have defaults so a minimal
+      call (just `products` + `comparison`) works for unit tests and
+      lightweight callers. Production callers still pass everything.
     """
+    # Resolve product_data / products alias
+    if products is not None and product_data is None:
+        product_data = products
+    if product_data is None:
+        product_data = []
+
+    # Provide safe defaults for the dict-shape kwargs
+    if comparison is None:
+        comparison = {}
+    if scoring_result is None:
+        scoring_result = {}
+    if product_names is None:
+        product_names = [p.get("name", "") for p in product_data]
+    if tradeoffs is None:
+        tradeoffs = []
+    if confidence is None:
+        confidence = {}
+    if verdict_validation is None:
+        verdict_validation = {}
     # H1 fix: prefer the deterministic scoring winner over GPT's. GPT's
     # comparison["winner_index"] is prose-derived and can disagree with the
     # calibrated math, which previously caused a visible contradiction
@@ -478,6 +567,19 @@ def build_comparison_response(
             overall = scoring_result.get("scores", {}).get(key, {}).get("overall", MISSING_SCORE)
             pd_item["rating"] = derive_rating_from_scores(overall)
             pd_item["rating_derived"] = True
+
+    # Bundle D Task 2.B.2 (A.7.2) — defense-in-depth: strip the `note`
+    # field from price objects whose source_method is "estimated".
+    # Frontend already silences "Estimated from training data" copy per
+    # Bundle C `ca84eff`, but backend should not ship the string at all
+    # when the source is Tier 3 GPT fallback. Keeps the source_method
+    # enum value (consumed by analytics + admin dashboards) untouched —
+    # only the user-rendered `note` text is removed.
+    for pd_item in product_data:
+        _price = pd_item.get("price")
+        if isinstance(_price, dict) and _price.get("source_method") == "estimated":
+            if "note" in _price:
+                _price["note"] = None
 
     # Detect price method mismatch
     price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
@@ -526,6 +628,17 @@ def build_comparison_response(
                     "pros": pd.get("pros_cons", {}).get("pros", []),
                     "cons": pd.get("pros_cons", {}).get("cons", []),
                     "best_for": comparison.get("best_for", {}).get(f"product_{i}", ""),
+                    # Bundle D A.6.4 — per-product budget-fit indicator.
+                    # 'match' / 'near' / 'mismatch' / 'unknown'.
+                    # price_tiers map is keyed by "{brand} {name}".strip()
+                    # per scoring_service:price_tiers_map construction.
+                    "value_match": _compute_value_match(
+                        scoring_result.get("price_tiers", {}).get(
+                            f"{pd.get('brand', '')} {pd.get('name', '')}".strip(),
+                            "",
+                        ),
+                        (user_preferences or {}).get("budget"),
+                    ),
                 }
                 for i, pd in enumerate(product_data)
             ],
@@ -599,8 +712,8 @@ def build_comparison_response(
             "serper_calls": serper_calls,
             "cached": from_cache,
             "fact_check": {
-                "product_0": product_data[0].get("fact_check", {}),
-                "product_1": product_data[1].get("fact_check", {}),
+                "product_0": (product_data[0].get("fact_check", {}) if len(product_data) > 0 else {}),
+                "product_1": (product_data[1].get("fact_check", {}) if len(product_data) > 1 else {}),
             },
             "verdict_validation": verdict_validation,
             "timestamp": datetime.now().isoformat(),
@@ -608,8 +721,28 @@ def build_comparison_response(
             # the frontend can adapt verdict framing without a UI banner.
             # Returns 'normal' | 'weak' | 'weird' per spec § 2e triggers.
             "comparison_quality": _safe_detect_comparison_quality(product_data),
+            # Bundle D A.6.5 — bundle-level flag for FE caption rendering.
+            # True when the WINNER's price tier is two or more tiers off
+            # the user's stated budget preference. False when user has no
+            # budget set, winner tier unknown, or tiers align within ±1.
+            "budget_mismatch": _compute_budget_mismatch(
+                scoring_result.get("price_tiers", {}).get(
+                    f"{product_data[winner_index].get('brand', '')} {product_data[winner_index].get('name', '')}".strip(),
+                    "",
+                ) if product_data and 0 <= winner_index < len(product_data) else "",
+                (user_preferences or {}).get("budget"),
+            ),
         },
     }
+
+    # Bundle D Task 2.B.1 (B.0) — merge caller-supplied `metadata` overrides
+    # onto the auto-built metadata block. Caller wins on conflicting keys,
+    # so a test or future analytics-injecting caller can override values
+    # like `comparison_quality` directly without unpicking the full
+    # positional spec. Same merge pattern as Pydantic model_dump-style
+    # partial updates — keys not in the override are left untouched.
+    if metadata:
+        result["metadata"].update(metadata)
 
     # Backward compatibility aliases
     # Bundle C v1.1 § 1a defensive — the canonical v2 path

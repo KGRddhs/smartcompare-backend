@@ -423,7 +423,13 @@ async def get_user_preferences(user_id: str) -> Dict:
 
 
 async def save_user_preferences(user_id: str, preferences: Dict) -> Dict:
-    """Save user preferences and mark preferences_completed=true."""
+    """Save user preferences and mark preferences_completed=true.
+
+    Uses the service-role admin client by design — `users` has RLS, and
+    the same row UPDATE works under either admin or user-scoped clients,
+    but admin avoids token-refresh races during onboarding (Bundle D
+    Task 1.B.2 investigation 2026-05-23 — see commit message).
+    """
     try:
         admin = get_admin_client()
         admin.table("users").update({
@@ -432,7 +438,15 @@ async def save_user_preferences(user_id: str, preferences: Dict) -> Dict:
         }).eq("id", user_id).execute()
         return {"success": True, "message": "Preferences saved"}
     except Exception as e:
-        logger.error(f"[AUTH] save_user_preferences failed for user {user_id}: {e}")
+        # Bundle D Task 1.B.2 — log exception class + repr so Sentry shows
+        # the actual cause (DB CHECK rejection vs network vs RLS) instead
+        # of just str(e) which can collapse to a generic message.
+        logger.error(
+            "[AUTH] save_user_preferences failed for user %s: %s: %r",
+            user_id,
+            type(e).__name__,
+            e,
+        )
         return {"success": False, "error": "Failed to save preferences"}
 
 

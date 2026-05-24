@@ -210,7 +210,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
   },
-  headerBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  // Bundle D Claude-Design (option small, Task 2.F.2 screen 5): header
+  // back-button bumped 32→36 to match EditProfileScreen.jsx + the same
+  // pattern shipped on ResultsScreen.tsx:1385 (95691c2). Transparent
+  // background per JSX (back button has no fill on EditProfile — modal-
+  // style, quieter than the data screens' bg.secondary circular treatment).
+  headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   title: {
     ...typography.bodyEmphasis,
     color: colors.text.primary,
@@ -224,10 +229,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xl,
   },
+  // Bundle D Claude-Design (option small, Task 2.F.2 screen 5):
+  // avatar bumped 88→96 to match EditProfileScreen.jsx AvatarBlock
+  // (width 96, height 96, borderRadius 48). Same bg.secondary fill +
+  // hero typography. Larger circle leans into the avatar as the visual
+  // hero of the edit surface per the design intent.
   avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: colors.bg.secondary,
     alignItems: 'center',
     justifyContent: 'center',

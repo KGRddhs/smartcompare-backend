@@ -498,10 +498,14 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginBottom: spacing.sm,
   },
+  // Bundle D Claude-Design (option small, Task 2.F.2 screen 7): auth
+  // input refresh mirrors LoginScreen.tsx — bg.primary fill + explicit
+  // height: 48 matches AuthScreens.jsx AuthField pattern.
   input: {
-    backgroundColor: colors.bg.secondary,
+    backgroundColor: colors.bg.primary,
     borderRadius: radii.input,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    height: 48,
     ...typography.body,
     color: colors.text.primary,
     borderWidth: 1,

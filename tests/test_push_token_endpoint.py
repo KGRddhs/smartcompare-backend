@@ -245,7 +245,12 @@ class TestReengagementSubToggles:
             mock_retro.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_decision_insight_skipped_when_subtoggle_off(self):
+    @patch("app.services.reengagement_service._flag_on", return_value=True)
+    async def test_decision_insight_skipped_when_subtoggle_off(self, _mock_flag):
+        # Bundle D Task 2.B.7 — `_flag_on()` is the global kill-switch.
+        # It's fail-CLOSED (False unless `ENABLE_REENGAGEMENT_PUSHES`
+        # explicitly set in env). The 3 sub-toggle tests don't care
+        # about the flag; they care about per-detector gating.
         from app.services.reengagement_service import ReengagementService
 
         svc = ReengagementService()
@@ -293,9 +298,12 @@ class TestReengagementSubToggles:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_missing_preferences_treats_as_all_on(self):
+    @patch("app.services.reengagement_service._flag_on", return_value=True)
+    async def test_missing_preferences_treats_as_all_on(self, _mock_flag):
         """Backwards compat — users with no notification_types blob keep
-        the current behaviour (all detectors run)."""
+        the current behaviour (all detectors run). Bundle D Task 2.B.7
+        mocks `_flag_on=True` because the kill-switch is OFF in test env
+        (fail-CLOSED)."""
         from app.services.reengagement_service import ReengagementService
 
         svc = ReengagementService()
@@ -310,3 +318,227 @@ class TestReengagementSubToggles:
             assert result is not None
             assert result["event_type"] == "decision_insight"
             mock_insight.assert_called_once()
+
+
+# ============================================
+# PUT /api/v1/auth/reengagement-subs (Bundle D Task 2.B.7, R18)
+# ============================================
+
+
+class TestReengagementSubsEndpoint:
+    """Per anchor R18 — new endpoint exposes the 3 user-facing toggle labels
+    (plural keys: decision_insights / peer_decision_updates /
+    decision_retrospectives) and translates server-side to the existing
+    singular keys in users.preferences.notification_types.
+    """
+
+    def test_route_is_registered(self):
+        """PUT /api/v1/auth/reengagement-subs must exist (non-404 unauth)."""
+        resp = client.put(
+            "/api/v1/auth/reengagement-subs",
+            json={
+                "decision_insights": True,
+                "peer_decision_updates": True,
+                "decision_retrospectives": True,
+            },
+        )
+        assert resp.status_code != 404, (
+            f"PUT /api/v1/auth/reengagement-subs missing — got {resp.status_code}"
+        )
+
+    def test_unauthorized_request_rejected(self):
+        resp = client.put(
+            "/api/v1/auth/reengagement-subs",
+            json={
+                "decision_insights": True,
+                "peer_decision_updates": True,
+                "decision_retrospectives": True,
+            },
+        )
+        assert resp.status_code in (401, 403, 422)
+
+    def test_all_three_fields_required(self):
+        """Pydantic rejects partial bodies — every toggle must be specified."""
+        from app.api.auth_routes import get_current_user
+
+        async def fake_user():
+            return {"id": "u", "email": "u@t.com", "access_token": "tok"}
+
+        app.dependency_overrides[get_current_user] = fake_user
+        try:
+            resp = client.put(
+                "/api/v1/auth/reengagement-subs",
+                json={"decision_insights": True},  # missing 2 fields
+                headers={"Authorization": "Bearer tok"},
+            )
+            assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_authorized_translates_plural_keys_to_singular(self):
+        """Backend writes singular `decision_insight` / `cohort_curiosity` /
+        `decision_retrospective` keys so reengagement_service short-circuits
+        keep working unchanged."""
+        from app.api.auth_routes import get_current_user
+
+        async def fake_user():
+            return {"id": "user-1", "email": "u@t.com", "access_token": "tok"}
+
+        captured_updates = []
+
+        # The endpoint does read-modify-write: SELECT then UPDATE.
+        select_result = MagicMock(data={"preferences": {"budget": "mid"}})
+
+        def capture_update(payload):
+            captured_updates.append(payload)
+            inner = MagicMock()
+            inner.eq.return_value.execute.return_value = MagicMock(data=[{}])
+            return inner
+
+        user_client = MagicMock()
+        user_client.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = select_result
+        user_client.table.return_value.update.side_effect = capture_update
+
+        admin_client = MagicMock()  # should NOT be used
+
+        app.dependency_overrides[get_current_user] = fake_user
+        try:
+            with patch(
+                "app.api.auth_routes.get_user_supabase_client",
+                return_value=user_client,
+            ), patch(
+                "app.api.auth_routes.get_admin_supabase_client",
+                return_value=admin_client,
+            ):
+                resp = client.put(
+                    "/api/v1/auth/reengagement-subs",
+                    json={
+                        "decision_insights": True,
+                        "peer_decision_updates": False,
+                        "decision_retrospectives": True,
+                    },
+                    headers={"Authorization": "Bearer tok"},
+                )
+            assert resp.status_code == 200, resp.text
+            data = resp.json()
+            # Body returns the SINGULAR backend keys
+            assert data["notification_types"] == {
+                "decision_insight": True,
+                "cohort_curiosity": False,
+                "decision_retrospective": True,
+            }
+            # The UPDATE preserved other preference keys (budget)
+            assert len(captured_updates) == 1
+            written_prefs = captured_updates[0]["preferences"]
+            assert written_prefs["budget"] == "mid"
+            assert written_prefs["notification_types"] == {
+                "decision_insight": True,
+                "cohort_curiosity": False,
+                "decision_retrospective": True,
+            }
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_preserves_other_preferences_keys(self):
+        """Read-modify-write must NOT blast other preferences fields."""
+        from app.api.auth_routes import get_current_user
+
+        async def fake_user():
+            return {"id": "user-1", "email": "u@t.com", "access_token": "tok"}
+
+        existing_prefs = {
+            "budget": "premium",
+            "priorities": ["price", "quality"],
+            "lifestyle": ["gamer"],
+            "brand_attitude": "function_first",
+            "ai_sharing_enabled": True,
+            "notifications_enabled": True,
+        }
+        select_result = MagicMock(data={"preferences": existing_prefs})
+        captured_updates = []
+
+        def capture_update(payload):
+            captured_updates.append(payload)
+            inner = MagicMock()
+            inner.eq.return_value.execute.return_value = MagicMock(data=[{}])
+            return inner
+
+        user_client = MagicMock()
+        user_client.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = select_result
+        user_client.table.return_value.update.side_effect = capture_update
+
+        app.dependency_overrides[get_current_user] = fake_user
+        try:
+            with patch(
+                "app.api.auth_routes.get_user_supabase_client",
+                return_value=user_client,
+            ):
+                resp = client.put(
+                    "/api/v1/auth/reengagement-subs",
+                    json={
+                        "decision_insights": False,
+                        "peer_decision_updates": False,
+                        "decision_retrospectives": False,
+                    },
+                    headers={"Authorization": "Bearer tok"},
+                )
+            assert resp.status_code == 200
+            written = captured_updates[0]["preferences"]
+            # All pre-existing keys preserved
+            for k in ("budget", "priorities", "lifestyle", "brand_attitude",
+                      "ai_sharing_enabled", "notifications_enabled"):
+                assert k in written, f"key {k!r} dropped by read-modify-write"
+            assert written["budget"] == "premium"
+            assert written["priorities"] == ["price", "quality"]
+            # And our 3 toggles are now all False
+            assert written["notification_types"] == {
+                "decision_insight": False,
+                "cohort_curiosity": False,
+                "decision_retrospective": False,
+            }
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_non_bool_values_coerced(self):
+        """`decision_insights: 1` / `0` / `"true"` should validate (Pydantic
+        coerces) and end up as True/False in the written dict."""
+        from app.api.auth_routes import get_current_user
+
+        async def fake_user():
+            return {"id": "user-1", "email": "u@t.com", "access_token": "tok"}
+
+        select_result = MagicMock(data={"preferences": {}})
+        captured_updates = []
+
+        def capture_update(payload):
+            captured_updates.append(payload)
+            inner = MagicMock()
+            inner.eq.return_value.execute.return_value = MagicMock(data=[{}])
+            return inner
+
+        user_client = MagicMock()
+        user_client.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = select_result
+        user_client.table.return_value.update.side_effect = capture_update
+
+        app.dependency_overrides[get_current_user] = fake_user
+        try:
+            with patch(
+                "app.api.auth_routes.get_user_supabase_client",
+                return_value=user_client,
+            ):
+                resp = client.put(
+                    "/api/v1/auth/reengagement-subs",
+                    json={
+                        "decision_insights": 1,
+                        "peer_decision_updates": 0,
+                        "decision_retrospectives": True,
+                    },
+                    headers={"Authorization": "Bearer tok"},
+                )
+            assert resp.status_code == 200
+            written_types = captured_updates[0]["preferences"]["notification_types"]
+            assert written_types["decision_insight"] is True
+            assert written_types["cohort_curiosity"] is False
+            assert written_types["decision_retrospective"] is True
+        finally:
+            app.dependency_overrides.clear()

@@ -309,3 +309,130 @@ def test_get_comparison_returns_404_for_v1_row(mock_get):
         assert called_kwargs.get("include_legacy", False) is False
     finally:
         _cleanup_overrides()
+
+
+# ---------- Task 2.6.B.4 — winner_index on list response (frontend per-row VS card) ----------
+
+
+MOCK_LIST_WITH_WINNER_INDEX_SHAPES = [
+    # Row 1 — winner_index lives at full_response.metadata.winner_index
+    {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "query": "iPhone 15 vs Galaxy S24",
+        "product_names": ["Apple iPhone 15", "Samsung Galaxy S24"],
+        "input_type": "text",
+        "user_id": "user-123",
+        "full_response": {
+            "metadata": {"winner_index": 1},
+        },
+        "created_at": "2026-03-18T10:00:00Z",
+    },
+    # Row 2 — winner_index lives at full_response.comparison.winner_index
+    {
+        "id": "22222222-2222-2222-2222-222222222222",
+        "query": "Pixel 9 vs Galaxy S24",
+        "product_names": ["Google Pixel 9", "Samsung Galaxy S24"],
+        "input_type": "text",
+        "user_id": "user-123",
+        "full_response": {
+            "comparison": {"winner_index": 0},
+        },
+        "created_at": "2026-03-17T10:00:00Z",
+    },
+    # Row 3 — full_response present but neither path has winner_index → null
+    {
+        "id": "33333333-3333-3333-3333-333333333333",
+        "query": "Coffee A vs Coffee B",
+        "product_names": ["Coffee A", "Coffee B"],
+        "input_type": "text",
+        "user_id": "user-123",
+        "full_response": {"products": []},
+        "created_at": "2026-03-16T10:00:00Z",
+    },
+    # Row 4 — full_response missing entirely → null
+    {
+        "id": "44444444-4444-4444-4444-444444444444",
+        "query": "Pen X vs Pen Y",
+        "product_names": ["Pen X", "Pen Y"],
+        "input_type": "text",
+        "user_id": "user-123",
+        "full_response": None,
+        "created_at": "2026-03-15T10:00:00Z",
+    },
+]
+
+
+@patch("app.api.history_routes.get_user_comparison_count", new_callable=AsyncMock, return_value=4)
+@patch(
+    "app.api.history_routes.get_user_comparisons",
+    new_callable=AsyncMock,
+    return_value=MOCK_LIST_WITH_WINNER_INDEX_SHAPES,
+)
+def test_list_history_winner_index_from_metadata(mock_get, mock_count):
+    """Row with full_response.metadata.winner_index exposes that value."""
+    client = _get_client_with_user()
+    try:
+        resp = client.get("/api/v1/comparisons/history")
+        assert resp.status_code == 200
+        rows = resp.json()["comparisons"]
+        assert rows[0]["id"] == "11111111-1111-1111-1111-111111111111"
+        assert rows[0]["winner_index"] == 1
+    finally:
+        _cleanup_overrides()
+
+
+@patch("app.api.history_routes.get_user_comparison_count", new_callable=AsyncMock, return_value=4)
+@patch(
+    "app.api.history_routes.get_user_comparisons",
+    new_callable=AsyncMock,
+    return_value=MOCK_LIST_WITH_WINNER_INDEX_SHAPES,
+)
+def test_list_history_winner_index_fallback_to_comparison(mock_get, mock_count):
+    """Row missing metadata.winner_index falls back to full_response.comparison.winner_index."""
+    client = _get_client_with_user()
+    try:
+        resp = client.get("/api/v1/comparisons/history")
+        assert resp.status_code == 200
+        rows = resp.json()["comparisons"]
+        assert rows[1]["id"] == "22222222-2222-2222-2222-222222222222"
+        assert rows[1]["winner_index"] == 0
+    finally:
+        _cleanup_overrides()
+
+
+@patch("app.api.history_routes.get_user_comparison_count", new_callable=AsyncMock, return_value=4)
+@patch(
+    "app.api.history_routes.get_user_comparisons",
+    new_callable=AsyncMock,
+    return_value=MOCK_LIST_WITH_WINNER_INDEX_SHAPES,
+)
+def test_list_history_winner_index_null_when_neither_present(mock_get, mock_count):
+    """Row with full_response present but no winner_index in either path → null."""
+    client = _get_client_with_user()
+    try:
+        resp = client.get("/api/v1/comparisons/history")
+        assert resp.status_code == 200
+        rows = resp.json()["comparisons"]
+        assert rows[2]["id"] == "33333333-3333-3333-3333-333333333333"
+        assert rows[2]["winner_index"] is None
+    finally:
+        _cleanup_overrides()
+
+
+@patch("app.api.history_routes.get_user_comparison_count", new_callable=AsyncMock, return_value=4)
+@patch(
+    "app.api.history_routes.get_user_comparisons",
+    new_callable=AsyncMock,
+    return_value=MOCK_LIST_WITH_WINNER_INDEX_SHAPES,
+)
+def test_list_history_winner_index_null_when_full_response_missing(mock_get, mock_count):
+    """Row with full_response=None → winner_index null, never raises."""
+    client = _get_client_with_user()
+    try:
+        resp = client.get("/api/v1/comparisons/history")
+        assert resp.status_code == 200
+        rows = resp.json()["comparisons"]
+        assert rows[3]["id"] == "44444444-4444-4444-4444-444444444444"
+        assert rows[3]["winner_index"] is None
+    finally:
+        _cleanup_overrides()

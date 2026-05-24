@@ -345,6 +345,31 @@ function App() {
               component={EditPreferencesFlow}
               options={{ presentation: 'modal' }}
             />
+            {/* Bundle D 1.F.3: "Edit style profile" re-entry path. The same
+                Onboarding screen name as the needs-preferences branch above,
+                but here it's registered permanently in the authed stack so
+                `navigation.navigate('Onboarding', { mode: 'edit', source:
+                'styleProfile' })` from Profile + EditProfile resolves to a
+                visible modal instead of a silent no-op. */}
+            <Stack.Screen
+              name="Onboarding"
+              options={{ presentation: 'modal', headerShown: false }}
+            >
+              {(props) =>
+                features.ENABLE_NEW_ONBOARDING ? (
+                  <NewOnboardingHost
+                    mode={props.route.params?.mode ?? 'full'}
+                    onComplete={() => props.navigation.goBack()}
+                    onEditDone={() => props.navigation.goBack()}
+                  />
+                ) : (
+                  <OnboardingScreen
+                    {...props}
+                    onComplete={() => props.navigation.goBack()}
+                  />
+                )
+              }
+            </Stack.Screen>
             {/* Bundle B/C/D — Cal-AI-style fullscreen camera. See plan § Task 1.8. */}
             <Stack.Screen
               name="ScanCamera"

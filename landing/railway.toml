@@ -1,0 +1,19 @@
+# Railway service config for the Qaren landing page.
+# Differentiates this service from the existing FastAPI backend service
+# (web-production-58776.up.railway.app) which uses a different Dockerfile +
+# uvicorn entrypoint.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway passes the actual port via the $PORT env var; nginx.conf.template
+# binds to it via envsubst. No explicit startCommand needed (uses
+# Dockerfile CMD / ENTRYPOINT default).
+healthcheckPath = "/healthz"
+healthcheckTimeout = 30
+
+# Restart on crash. Static site shouldn't crash, but defense in depth.
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

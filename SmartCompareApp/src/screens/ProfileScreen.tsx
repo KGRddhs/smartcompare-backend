@@ -39,6 +39,7 @@ import {
   CohortDisplayProfile,
   getPreferences,
   savePreferences,
+  putReengagementSubs,
 } from '../services/api';
 import type { UserPreferences } from '../types';
 import { getSavedUser, logout } from '../services/authService';
@@ -46,6 +47,14 @@ import StyleProfileCard from '../components/StyleProfileCard';
 import ReferralStatusCard from '../components/ReferralStatusCard';
 import QarenLogo from '../components/QarenLogo';
 import ToggleRow from '../components/ToggleRow';
+// Bundle D 2.F.2 Screen 3 — editorial sections (recent decisions marquee,
+// priorities-inline bars, month-stat strip). Each section silently hides
+// on empty-state / threshold-miss / network failure.
+import {
+  RecentDecisionsRow,
+  PrioritiesInline,
+  MonthStrip,
+} from '../components/ProfileEditorialSections';
 
 interface ProfileScreenProps {
   navigation: any;
@@ -89,8 +98,12 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     setPreferences(p);
   };
 
-  // Default ON when undefined (matches backend semantics from B1.4)
-  const aiSharingEnabled = preferences?.ai_sharing_enabled !== false;
+  // Default OFF when undefined (Bundle D 1.F.6, R23). App-Store privacy
+  // requires AI data sharing to be opt-IN, not opt-out. Existing rows
+  // with explicit `true` are untouched — the flip only affects the
+  // `undefined` case (e.g. fresh signups + users whose preferences row
+  // pre-dates the column).
+  const aiSharingEnabled = preferences?.ai_sharing_enabled ?? false;
 
   // Build a complete UserPreferences shape from current state + an override.
   // PUT /preferences requires the 4 onboarding fields, so we backfill defaults
@@ -130,24 +143,17 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     }
   };
 
-  // F5.4 — re-engagement notifications. `override` is one of:
-  //   { notifications_enabled: bool } (master)
-  //   { notification_types: { decision_insight?: bool, ... } } (sub-toggle)
+  // F5.4 — re-engagement notifications master toggle ONLY.
+  // Sub-toggles (decision_insight / cohort_curiosity / decision_retrospective)
+  // route through `handleSubToggle` → PUT /reengagement-subs per Bundle D 2.F.1
+  // (Backend commit 228ff63). The master toggle stays on /preferences because
+  // it gates the entire notification surface, not just the 3 re-engagement
+  // categories.
   const handleNotificationsToggle = async (override: Partial<UserPreferences>) => {
     if (notifsSaving) return;
     setNotifsError('');
     const previous = preferences;
-    // For sub-toggle changes, merge into the existing notification_types
-    // rather than replacing — single-key override should preserve siblings.
-    const merged: Partial<UserPreferences> = override.notification_types
-      ? {
-          notification_types: {
-            ...(previous?.notification_types ?? {}),
-            ...override.notification_types,
-          },
-        }
-      : override;
-    const next = buildNextPrefs(merged);
+    const next = buildNextPrefs(override);
     setPreferences(next);
     setNotifsSaving(true);
     try {
@@ -159,6 +165,64 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     } catch (err: any) {
       setPreferences(previous);
       setNotifsError(parseApiError(err).message || t('profile.notifs.errorSave'));
+    } finally {
+      setNotifsSaving(false);
+    }
+  };
+
+  // Bundle D 2.F.1 (R18) — re-engagement sub-toggles use the dedicated
+  // PUT /api/v1/auth/reengagement-subs endpoint with FE-facing plural keys.
+  // Backend translates plural → DB singular keys server-side and preserves
+  // the rest of users.preferences. Optimistic update first; rollback +
+  // Alert on failure per design § 5 (toggle never appears stuck).
+  const handleSubToggle = async (
+    key: 'decision_insight' | 'cohort_curiosity' | 'decision_retrospective',
+    value: boolean
+  ) => {
+    if (notifsSaving) return;
+    setNotifsError('');
+    const previous = preferences;
+    // Optimistic merge into the LOCAL notification_types view; the response
+    // would echo back the canonical server state but we don't depend on it.
+    const next = buildNextPrefs({
+      notification_types: {
+        ...(previous?.notification_types ?? {}),
+        [key]: value,
+      },
+    });
+    setPreferences(next);
+    setNotifsSaving(true);
+
+    // FE plural keys (matches endpoint contract) ↔ DB singular keys.
+    // Policy note: re-engagement sub-toggles are opt-OUT by default
+    // (`!== false` coerces undefined → true). This is INTENTIONALLY
+    // different from `ai_sharing_enabled` (R23, line 97) which is
+    // opt-IN (`?? false`). Re-engagement notifications are part of the
+    // user's chosen onboarding-step-17 experience — defaulting them ON
+    // matches user intent. AI data sharing is App Store privacy-gated,
+    // hence opt-IN. Don't normalize these two patterns without
+    // re-reading the design intent in memory/BUNDLE_D_FRONTEND_ANCHOR.md
+    // § R23 + Backend 228ff63 commit msg.
+    const nt = next.notification_types ?? {};
+    const body = {
+      decision_insights: nt.decision_insight !== false,
+      peer_decision_updates: nt.cohort_curiosity !== false,
+      decision_retrospectives: nt.decision_retrospective !== false,
+    };
+
+    try {
+      const result = await putReengagementSubs(body);
+      if (!result.success) {
+        setPreferences(previous);
+        const msg = result.error || t('profile.notifs.errorSave');
+        setNotifsError(msg);
+        Alert.alert(t('profile.notifs.errorTitle'), msg);
+      }
+    } catch (err: any) {
+      setPreferences(previous);
+      const msg = parseApiError(err).message || t('profile.notifs.errorSave');
+      setNotifsError(msg);
+      Alert.alert(t('profile.notifs.errorTitle'), msg);
     } finally {
       setNotifsSaving(false);
     }
@@ -264,6 +328,17 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           <Text style={styles.screenTitle}>{t('profile.title')}</Text>
         </View>
 
+        {/* Bundle D 2.F.2 Screen 3 editorial sections — each hides silently
+            when its endpoint reports empty_state / threshold miss / failure */}
+        <RecentDecisionsRow
+          onItemPress={(comparisonId) =>
+            navigation.navigate('Results', { from_history: comparisonId })
+          }
+          onSeeAll={() => navigation.navigate('History' as never)}
+        />
+        <PrioritiesInline onTunePress={handleEditStyleProfile} />
+        <MonthStrip />
+
         {/* Cohort style profile (only renders when confidence >= medium) */}
         <StyleProfileCard display={cohortDisplay} onEditPress={handleEditStyleProfile} />
 
@@ -357,25 +432,19 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
               <ToggleRow
                 label={t('profile.notifs.insight')}
                 value={insightEnabled}
-                onValueChange={(v) =>
-                  handleNotificationsToggle({ notification_types: { decision_insight: v } })
-                }
+                onValueChange={(v) => handleSubToggle('decision_insight', v)}
                 disabled={notifsSaving}
               />
               <ToggleRow
                 label={t('profile.notifs.cohort')}
                 value={cohortEnabled}
-                onValueChange={(v) =>
-                  handleNotificationsToggle({ notification_types: { cohort_curiosity: v } })
-                }
+                onValueChange={(v) => handleSubToggle('cohort_curiosity', v)}
                 disabled={notifsSaving}
               />
               <ToggleRow
                 label={t('profile.notifs.retrospective')}
                 value={retroEnabled}
-                onValueChange={(v) =>
-                  handleNotificationsToggle({ notification_types: { decision_retrospective: v } })
-                }
+                onValueChange={(v) => handleSubToggle('decision_retrospective', v)}
                 disabled={notifsSaving}
               />
             </View>

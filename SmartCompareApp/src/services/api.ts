@@ -1,5 +1,5 @@
 /**
- * SmartCompare - API Service
+ * Qaren - API Service
  * Connects to the FastAPI backend (with iOS fixes)
  */
 
@@ -38,16 +38,47 @@ api.interceptors.request.use(
 );
 
 // Response interceptor — auto-refresh on 401
-let isRefreshing = false;
-let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: any) => void }> = [];
+// R9 (Bundle D Task 1.F.1): module-scope singleton Promise so that N concurrent
+// 401s share a single refreshSession() network call instead of stampeding the
+// refresh endpoint. Identity-stable across coalesced callers — Promise.all on
+// the cached value works.
+type RefreshResult = { success: boolean; token: string | null; error?: unknown };
 
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (token) prom.resolve(token);
-    else prom.reject(error);
+let refreshPromise: Promise<RefreshResult> | null = null;
+
+async function performRefresh(): Promise<RefreshResult> {
+  try {
+    const { refreshSession, getToken } = require('./authService');
+    await refreshSession();
+    const newToken = await getToken();
+    if (newToken) {
+      return { success: true, token: newToken };
+    }
+    return { success: false, token: null, error: new Error('No token after refresh') };
+  } catch (err) {
+    const { clearSession } = require('./authService');
+    await clearSession();
+    throw err;
+  }
+}
+
+function getOrStartRefresh(): Promise<RefreshResult> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = performRefresh().finally(() => {
+    refreshPromise = null;
   });
-  failedQueue = [];
-};
+  return refreshPromise;
+}
+
+/** Test-only: clear the in-flight refresh Promise. Do NOT call in production. */
+export function __resetRefreshMutex(): void {
+  refreshPromise = null;
+}
+
+/** Test-only: trigger the dedup path and return the cached Promise. */
+export function __testRefreshDedup(): Promise<RefreshResult> {
+  return getOrStartRefresh();
+}
 
 api.interceptors.response.use(
   (response) => response,
@@ -78,39 +109,17 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (isRefreshing) {
-      return new Promise((resolve, reject) => {
-        failedQueue.push({
-          resolve: (token: string) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            resolve(api(originalRequest));
-          },
-          reject,
-        });
-      });
-    }
-
     originalRequest._retry = true;
-    isRefreshing = true;
 
     try {
-      const { refreshSession, getToken } = require('./authService');
-      await refreshSession();
-      const newToken = await getToken();
-      if (newToken) {
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        processQueue(null, newToken);
+      const result = await getOrStartRefresh();
+      if (result.success && result.token) {
+        originalRequest.headers.Authorization = `Bearer ${result.token}`;
         return api(originalRequest);
       }
-      processQueue(new Error('No token after refresh'));
       return Promise.reject(error);
     } catch (refreshError) {
-      const { clearSession } = require('./authService');
-      await clearSession();
-      processQueue(refreshError);
       return Promise.reject(refreshError);
-    } finally {
-      isRefreshing = false;
     }
   }
 );
@@ -283,6 +292,35 @@ export async function getPreferences(): Promise<UserPreferences | null> {
  */
 export async function savePreferences(preferences: UserPreferences): Promise<{ success: boolean; error?: string }> {
   const response = await api.put('/api/v1/auth/preferences', preferences);
+  return response.data;
+}
+
+/**
+ * Bundle D 2.F.1 (R18) — wire the 3 re-engagement sub-toggles to a
+ * dedicated endpoint instead of rolling them through the full
+ * /preferences body. Backend (commit `228ff63`) translates the FE-facing
+ * plural keys into the DB-side singular keys (`decision_insight`,
+ * `cohort_curiosity`, `decision_retrospective`) and read-modify-writes
+ * `users.preferences.notification_types` while preserving every other
+ * preference field. 10/min rate limit; auth required.
+ *
+ * Body shape (all 3 fields REQUIRED — Pydantic 422 if missing):
+ *   {
+ *     decision_insights: boolean,
+ *     peer_decision_updates: boolean,
+ *     decision_retrospectives: boolean,
+ *   }
+ */
+export interface ReengagementSubsBody {
+  decision_insights: boolean;
+  peer_decision_updates: boolean;
+  decision_retrospectives: boolean;
+}
+
+export async function putReengagementSubs(
+  body: ReengagementSubsBody
+): Promise<{ success: boolean; notification_types?: Record<string, boolean>; error?: string }> {
+  const response = await api.put('/api/v1/auth/reengagement-subs', body);
   return response.data;
 }
 
@@ -609,6 +647,143 @@ export async function saveAttribution(
 ): Promise<{ success: boolean }> {
   const response = await api.post('/api/v1/auth/attribution', { source });
   return response.data;
+}
+
+// ============================================================================
+// Bundle D 2.5 — HomeScreen editorial sections.
+// Endpoints registered at app/api/home_routes.py, auth-required (savings,
+// smart-pick) / auth-optional (trending), 30-60/min.
+// Each endpoint returns `{ ...payload, empty_state | threshold_met }` so
+// callers can hide the corresponding UI section silently.
+// ============================================================================
+
+export interface HomeSavingsResponse {
+  savings_bhd: number;
+  decisions_count: number;
+  threshold_met: boolean;
+}
+
+export async function getHomeSavings(): Promise<HomeSavingsResponse | null> {
+  try {
+    const response = await api.get('/api/v1/home/savings');
+    return response.data;
+  } catch {
+    return null;
+  }
+}
+
+export interface HomeSmartPickItem {
+  comparison_id: string;
+  winner_name: string;
+  runner_up_name: string;
+  winner_price_bhd: number | null;
+  runner_up_price_bhd: number | null;
+  reason_key: string;
+  reason_params: Record<string, string>;
+}
+
+export interface HomeSmartPickResponse {
+  smart_pick: HomeSmartPickItem | null;
+  empty_state: boolean;
+  cta_text_key?: string;
+}
+
+export async function getHomeSmartPick(): Promise<HomeSmartPickResponse> {
+  try {
+    const response = await api.get('/api/v1/home/smart-pick');
+    return response.data;
+  } catch {
+    return { smart_pick: null, empty_state: true };
+  }
+}
+
+export interface HomeTrendingItem {
+  query: string;
+  view_count: number;
+  region: string;
+}
+
+export interface HomeTrendingResponse {
+  trending: HomeTrendingItem[];
+  region: string;
+}
+
+export async function getHomeTrending(region?: string): Promise<HomeTrendingResponse> {
+  try {
+    const params = region ? { region } : {};
+    const response = await api.get('/api/v1/home/trending', { params });
+    return response.data;
+  } catch {
+    return { trending: [], region: 'bahrain' };
+  }
+}
+
+// ============================================================================
+// Bundle D 2.6 — ProfileScreen editorial sections.
+// Endpoints registered at app/api/profile_routes.py, all auth-required, 30/min.
+// Each endpoint returns `{ ...payload, empty_state: bool }` so callers can
+// hide the corresponding UI section silently when there's nothing meaningful
+// to render (consistent with /home/savings hide gate pattern).
+// ============================================================================
+
+export interface RecentDecisionItem {
+  comparison_id: string;
+  winner_name: string;
+  runner_up_name: string;
+  created_at: string;
+}
+
+export interface RecentDecisionsResponse {
+  recent: RecentDecisionItem[];
+  empty_state: boolean;
+  cta_text_key?: string;
+}
+
+export async function getProfileRecentDecisions(): Promise<RecentDecisionsResponse> {
+  try {
+    const response = await api.get('/api/v1/profile/recent-decisions');
+    return response.data;
+  } catch {
+    // Silent hide on any failure — UI must not surface a scary error here.
+    return { recent: [], empty_state: true };
+  }
+}
+
+export interface MonthlyStatsResponse {
+  month: string;
+  decisions_count: number;
+  savings_bhd: number;
+  bonus_credits_this_month: number;
+  threshold_met: boolean;
+}
+
+export async function getProfileMonthlyStats(): Promise<MonthlyStatsResponse | null> {
+  try {
+    const response = await api.get('/api/v1/profile/monthly-stats');
+    return response.data;
+  } catch {
+    return null;
+  }
+}
+
+export interface WeightedPriority {
+  key: string;
+  label_key: string;
+  weight: number;
+}
+
+export interface PrioritiesWeightedResponse {
+  priorities: WeightedPriority[];
+  empty_state: boolean;
+}
+
+export async function getProfilePrioritiesWeighted(): Promise<PrioritiesWeightedResponse> {
+  try {
+    const response = await api.get('/api/v1/profile/priorities-weighted');
+    return response.data;
+  } catch {
+    return { priorities: [], empty_state: true };
+  }
 }
 
 export default api;

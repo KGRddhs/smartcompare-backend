@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Qaren — Mobile UI Kit</title>
+<link rel="stylesheet" href="../../colors_and_type.css" />
+<style>
+  html, body { margin: 0; min-height: 100vh; background: #EFEFF3; font-family: var(--qaren-font-en); }
+  #root { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  /* Floating screen-switcher — top-center, outside the device. */
+  .screen-switcher {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    display: inline-flex; gap: 4px;
+    padding: 4px; border-radius: 999px;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    z-index: 100;
+    font-family: var(--qaren-font-en);
+  }
+  .screen-switcher button {
+    appearance: none; border: none; cursor: pointer;
+    background: transparent;
+    padding: 7px 12px; border-radius: 999px;
+    font: 600 12px/1 var(--qaren-font-en); color: #6B7280;
+    transition: background 160ms ease, color 160ms ease;
+  }
+  .screen-switcher button[aria-pressed="true"] {
+    background: #0A0A0B; color: #FFFFFF;
+  }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    // Inline tokens — available synchronously before any component script runs.
+    window.qarenTokens = {
+      colors: {
+        bg: { primary: '#FFFFFF', secondary: '#F8F8FA', inverse: '#0A0A0B' },
+        text: { primary: '#0A0A0B', secondary: '#6B7280', placeholder: '#9CA3AF', onInverse: '#FFFFFF' },
+        cta: { primary: '#0A0A0B', onPrimary: '#FFFFFF' },
+        accent: '#10B981', accentDark: '#059669', accentLight: '#ECFDF5',
+        destructive: '#EF4444', warning: '#F59E0B',
+        border: { light: '#E5E7EB', medium: '#D1D5DB' }
+      },
+      spacing: { xs: 4, sm: 8, md: 12, base: 16, lg: 20, xl: 24, '2xl': 32, '3xl': 48 },
+      radii: { card: 16, button: 12, chip: 999, input: 12, hero: 24 },
+      typography: {}
+    };
+  </script>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="ios-frame.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="QarenLogo.jsx"></script>
+  <script type="text/babel" src="HomeScreen.jsx"></script>
+  <script type="text/babel" src="OnboardingWelcomeScreen.jsx"></script>
+  <script type="text/babel" src="OnboardingScreen.jsx"></script>
+  <script type="text/babel" src="OnboardingCohortScreen.jsx"></script>
+  <script type="text/babel" src="OnboardingReadyScreen.jsx"></script>
+  <script type="text/babel" src="OnboardingExtras.jsx"></script>
+  <script type="text/babel" src="AuthScreens.jsx"></script>
+  <script type="text/babel" src="ResultsScreen.jsx"></script>
+  <script type="text/babel" src="ProfileScreen.jsx"></script>
+  <script type="text/babel" src="EditProfileScreen.jsx"></script>
+  <script type="text/babel" src="HistoryScreen.jsx"></script>
+  <script type="text/babel" src="SplashScreen.jsx"></script>
+  <script type="text/babel" src="PaywallScreen.jsx"></script>
+  <script type="text/babel" src="ScanCameraScreen.jsx"></script>
+  <script type="text/babel" src="LoadingScreen.jsx"></script>
+  <script type="text/babel" src="ShareBottomSheet.jsx"></script>
+  <script type="text/babel" src="DemographicsBottomSheet.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    // Allow #onboarding / #results / #profile / #history in the URL to
+    // deep-link a specific screen. Read at module load so the initial
+    // render is correct (no flash).
+    const __screenKeys = ['home', 'onboarding-welcome', 'onboarding', 'onboarding-region', 'onboarding-privacy', 'onboarding-cohort', 'onboarding-build', 'onboarding-ready', 'onboarding-notifications', 'onboarding-loading', 'loading', 'results', 'profile', 'history', 'edit-profile', 'splash', 'paywall', 'scan', 'share', 'demographics', 'sign-in', 'save-advisor'];
+    const __initialScreen = (() => {
+      const hash = window.location.hash.replace('#', '');
+      return __screenKeys.includes(hash) ? hash : null;
+    })();
+
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "screen": "home",
+      "rowStyle": "icon-circle",
+      "wash": true
+    }/*EDITMODE-END*/;
+
+    function App() {
+      const [t, setTweak] = useTweaks({
+        ...TWEAK_DEFAULTS,
+        screen: __initialScreen || TWEAK_DEFAULTS.screen,
+      });
+
+      const screens = [
+        { key: 'splash',                 label: 'Splash',     render: () => <QarenSplashScreen /> },
+        { key: 'onboarding-welcome',     label: 'Welcome',    render: () => <QarenOnboardingWelcomeScreen /> },
+        { key: 'onboarding-region',      label: 'Region',     render: () => <QarenOnboardingRegionScreen /> },
+        { key: 'onboarding-privacy',     label: 'Privacy',    render: () => <QarenOnboardingPrivacyScreen /> },
+        { key: 'onboarding',             label: 'Priorities', render: () => <QarenOnboardingScreen rowStyle={t.rowStyle} wash={t.wash} /> },
+        { key: 'onboarding-cohort',      label: 'Cohort',     render: () => <QarenOnboardingCohortScreen /> },
+        { key: 'onboarding-build',       label: 'Build',      render: () => <QarenOnboardingBuildScreen /> },
+        { key: 'onboarding-loading',     label: 'Onb. load',  render: () => <QarenLoadingScreen mode="onboarding" /> },
+        { key: 'onboarding-ready',       label: 'Ready',      render: () => <QarenOnboardingReadyScreen /> },
+        { key: 'onboarding-notifications', label: 'Notif.',   render: () => <QarenOnboardingNotificationsScreen /> },
+        { key: 'save-advisor',           label: 'Save adv.',  render: () => <QarenSaveAdvisorScreen /> },
+        { key: 'sign-in',                label: 'Sign in',    render: () => <QarenSignInScreen /> },
+        { key: 'home',                   label: 'Home',       render: () => <QarenHomeScreen /> },
+        { key: 'scan',                   label: 'Scan',       render: () => <QarenScanCameraScreen /> },
+        { key: 'loading',                label: 'Loading',    render: () => <QarenLoadingScreen mode="comparison" /> },
+        { key: 'results',                label: 'Results',    render: () => <QarenResultsScreen /> },
+        { key: 'share',                  label: 'Share',      render: () => <QarenShareBottomSheet /> },
+        { key: 'demographics',           label: 'Demogr.',    render: () => <QarenDemographicsBottomSheet /> },
+        { key: 'history',                label: 'History',    render: () => <QarenHistoryScreen /> },
+        { key: 'profile',                label: 'Profile',    render: () => <QarenProfileScreen /> },
+        { key: 'edit-profile',           label: 'Edit',       render: () => <QarenEditProfileScreen /> },
+        { key: 'paywall',                label: 'Paywall',    render: () => <QarenPaywallScreen /> },
+      ];
+      const active = screens.find(s => s.key === t.screen) || screens[0];
+
+      return (
+        <>
+          <div className="screen-switcher" data-no-export>
+            {screens.map(s => (
+              <button
+                key={s.key}
+                aria-pressed={s.key === t.screen}
+                onClick={() => setTweak('screen', s.key)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          <IOSDevice width={390} height={844}>
+            {active.render()}
+          </IOSDevice>
+
+          <TweaksPanel title="Tweaks">
+            <TweakSection label="Screen">
+              <TweakRadio
+                label="Active"
+                value={t.screen}
+                options={[
+                  { value: 'splash', label: 'Splash' },
+                  { value: 'onboarding', label: 'Priorities' },
+                  { value: 'onboarding-cohort', label: 'Cohort' },
+                  { value: 'home', label: 'Home' },
+                  { value: 'scan', label: 'Scan' },
+                  { value: 'results', label: 'Results' },
+                  { value: 'share', label: 'Share' },
+                  { value: 'demographics', label: 'Demographics' },
+                  { value: 'history', label: 'History' },
+                  { value: 'profile', label: 'Profile' },
+                  { value: 'edit-profile', label: 'Edit profile' },
+                  { value: 'paywall', label: 'Paywall' },
+                ]}
+                onChange={(v) => setTweak('screen', v)}
+              />
+            </TweakSection>
+            <TweakSection label="Onboarding · Cal AI inspiration">
+              <TweakRadio
+                label="Option rows"
+                value={t.rowStyle}
+                options={[
+                  { value: 'icon-circle', label: 'Icon + circle' },
+                  { value: 'plain', label: 'Plain text' },
+                ]}
+                onChange={(v) => setTweak('rowStyle', v)}
+              />
+              <TweakToggle
+                label="Warm wash background"
+                value={t.wash}
+                onChange={(v) => setTweak('wash', v)}
+              />
+            </TweakSection>
+          </TweaksPanel>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#10B981">
+  <meta name="description" content="سياسة خصوصية قارن — كيف نجمع معلوماتك ونستخدمها ونحميها.">
+  <meta name="robots" content="index, follow">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="canonical" href="https://qaren.app/ar/privacy.html">
+  <link rel="alternate" hreflang="en" href="https://qaren.app/privacy.html">
+  <link rel="alternate" hreflang="ar" href="https://qaren.app/ar/privacy.html">
+  <link rel="alternate" hreflang="x-default" href="https://qaren.app/privacy.html">
+  <title>سياسة الخصوصية — قارن</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --emerald: #10B981;
+      --emerald-dark: #059669;
+      --ink: #0F172A;
+      --slate-500: #64748B;
+      --slate-200: #E2E8F0;
+      --bg: #FFFFFF;
+      --max-width: 760px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.8;
+      -webkit-font-smoothing: antialiased;
+      direction: rtl;
+      text-align: right;
+    }
+
+    main {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: clamp(2rem, 6vw, 4rem) clamp(1.5rem, 5vw, 3rem);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 3rem;
+      text-decoration: none;
+      color: var(--ink);
+    }
+
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, var(--emerald), var(--emerald-dark));
+      display: grid;
+      place-items: center;
+    }
+
+    .brand-mark svg {
+      width: 20px;
+      height: 20px;
+      stroke: white;
+      stroke-width: 2.5;
+      fill: none;
+    }
+
+    .brand-name {
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+
+    .brand-en {
+      font-family: 'Cairo', sans-serif;
+      font-weight: 500;
+      color: var(--slate-500);
+      font-size: 0.95rem;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 2.75rem);
+      font-weight: 700;
+      line-height: 1.3;
+      margin: 0 0 0.5rem;
+    }
+
+    .subtitle {
+      font-size: 1.0625rem;
+      color: var(--slate-500);
+      margin: 0 0 0.5rem;
+    }
+
+    .draft-notice {
+      display: block;
+      font-size: 0.8125rem;
+      color: var(--slate-500);
+      font-style: italic;
+      margin: 0 0 3rem;
+      padding: 0.75rem 1rem;
+      background: var(--slate-200);
+      border-radius: 8px;
+    }
+
+    h2 {
+      font-size: 1.375rem;
+      font-weight: 700;
+      margin: 2.5rem 0 1rem;
+    }
+
+    h3 {
+      font-size: 1.0625rem;
+      font-weight: 600;
+      margin: 1.5rem 0 0.5rem;
+    }
+
+    p, ul { margin: 0 0 1rem; }
+
+    ul {
+      padding-right: 1.5rem;
+      padding-left: 0;
+    }
+
+    li { margin-bottom: 0.5rem; }
+
+    strong { font-weight: 700; }
+
+    a {
+      color: var(--emerald-dark);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+    }
+
+    a:hover { border-bottom-color: var(--emerald-dark); }
+
+    footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--slate-200);
+      font-size: 0.8125rem;
+      color: var(--slate-500);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+    }
+
+    footer a {
+      color: var(--slate-500);
+      border-bottom: none;
+    }
+
+    footer a:hover { color: var(--ink); }
+
+    .lang-switch {
+      margin-right: auto;
+      font-weight: 500;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ink: #F1F5F9;
+        --slate-500: #94A3B8;
+        --slate-200: #1E293B;
+        --bg: #0F172A;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="brand" href="/ar/">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="9"></circle>
+          <circle cx="12" cy="12" r="5"></circle>
+        </svg>
+      </div>
+      <span class="brand-name">قارن <span class="brand-en" lang="en" dir="ltr">Qaren</span></span>
+    </a>
+
+    <h1>سياسة الخصوصية</h1>
+    <p class="subtitle"><strong>قارن — تطبيق مقارنة المنتجات</strong></p>
+    <p class="subtitle"><em>آخر تحديث: 26 مارس 2026</em></p>
+    <p class="draft-notice"><em>مسودة — هذه الوثيقة قالب مبدئي. يجب أن يراجعها فريق الأعمال والشؤون القانونية ويعتمدها قبل النشر.</em></p>
+
+    <h2>1. المقدمة</h2>
+    <p>تشغّل قارن ("نحن" أو "خاصتنا") تطبيق قارن للأجهزة المحمولة ("التطبيق"). توضح سياسة الخصوصية هذه كيف نجمع معلوماتك ونستخدمها ونفصح عنها ونحميها أثناء استخدامك للتطبيق.</p>
+
+    <h2>2. المعلومات التي نجمعها</h2>
+
+    <h3>2.1 المعلومات التي تقدّمها بنفسك</h3>
+    <ul>
+      <li><strong>معلومات الحساب:</strong> عنوان البريد الإلكتروني واسم العرض وكلمة المرور عند إنشاء حساب.</li>
+      <li><strong>التفضيلات:</strong> تفضيلات مقارنة المنتجات بما فيها الأولويات ومستوى الميزانية وعلامات نمط الحياة وموقفك من العلامات التجارية.</li>
+      <li><strong>التعليقات:</strong> تعليقاتك على المقارنات (إعجاب/عدم إعجاب، اقتراحات) التي تقدّمها طوعًا.</li>
+    </ul>
+
+    <h3>2.2 المعلومات التي تُجمع تلقائيًا</h3>
+    <ul>
+      <li><strong>بيانات الاستخدام:</strong> استعلامات مقارنة المنتجات وسجل البحث وتفاعلات الأحداث (التنقل بين التبويبات والنقر على المصادر ومدة العرض).</li>
+      <li><strong>معلومات الجهاز:</strong> نوع الجهاز ونظام التشغيل وإصدار التطبيق.</li>
+      <li><strong>بيانات الكاميرا:</strong> تتم معالجة الصور الملتقطة داخل التطبيق لتمييز المنتجات في الوقت الحقيقي ولا تُحفظ على خوادمنا.</li>
+    </ul>
+
+    <h3>2.3 المعلومات من أطراف خارجية</h3>
+    <ul>
+      <li><strong>تسجيل الدخول الاجتماعي:</strong> عند تسجيل الدخول عبر جوجل أو آبل، نتلقى عنوان بريدك الإلكتروني ومعلوماتك الأساسية من المزوّد المعني. لا نتلقى ولا نحفظ كلمات المرور الخاصة بحساباتك على وسائل التواصل.</li>
+    </ul>
+
+    <h2>3. كيف نستخدم معلوماتك</h2>
+    <p>نستخدم المعلومات المجمّعة لما يلي:</p>
+    <ul>
+      <li>تقديم مقارنات منتجات مخصّصة لك</li>
+      <li>الاحتفاظ بسجل مقارناتك</li>
+      <li>تحسين دقة مقارناتنا وجودة الخدمة</li>
+      <li>تحليل أنماط الاستخدام لتطوير التطبيق</li>
+      <li>إبلاغك بتحديثات الخدمة (بموافقتك)</li>
+      <li>اكتشاف ومنع سوء استخدام التطبيق</li>
+    </ul>
+
+    <h2>4. مشاركة البيانات</h2>
+    <p>نحن <strong>لا</strong> نبيع معلوماتك الشخصية. قد نشارك بياناتك مع:</p>
+    <ul>
+      <li><strong>مزوّدي الخدمة:</strong> الاستضافة السحابية (Railway)، قاعدة البيانات (Supabase)، معالجة الذكاء الاصطناعي (OpenAI)، البحث (Serper)، التخزين المؤقت (Upstash)، وتتبّع الأخطاء (Sentry) — فقط بالقدر اللازم لتشغيل التطبيق.</li>
+      <li><strong>المتطلبات القانونية:</strong> عندما يقتضي القانون أو اللوائح أو الإجراءات القضائية ذلك.</li>
+    </ul>
+
+    <h2>5. مدة الاحتفاظ بالبيانات</h2>
+    <ul>
+      <li><strong>بيانات الحساب:</strong> يُحتفظ بها طوال فترة نشاط الحساب. تُحذف عند طلب حذف الحساب.</li>
+      <li><strong>سجل المقارنات:</strong> يُحتفظ به طوال فترة نشاط الحساب.</li>
+      <li><strong>التحليلات المجهولة:</strong> قد تُحتفظ البيانات المجمّعة وغير القابلة للتعريف لأجل غير مسمّى لأغراض تحسين الخدمة.</li>
+      <li><strong>البيانات المخزّنة مؤقتًا:</strong> تُخزن أسعار المنتجات لمدة 24 ساعة، والمواصفات والتقييمات لمدة 7 أيام.</li>
+    </ul>
+
+    <h2>6. حقوقك</h2>
+    <p>لك الحق في:</p>
+    <ul>
+      <li><strong>الاطلاع:</strong> عرض بياناتك الشخصية من داخل التطبيق.</li>
+      <li><strong>التصحيح:</strong> تحديث ملفك الشخصي وتفضيلاتك في أي وقت.</li>
+      <li><strong>الحذف:</strong> حذف حسابك وجميع البيانات المرتبطة به من داخل التطبيق.</li>
+      <li><strong>التصدير:</strong> طلب نسخة من بياناتك بالتواصل معنا.</li>
+      <li><strong>سحب الموافقة:</strong> التوقف عن استخدام التطبيق في أي وقت.</li>
+    </ul>
+
+    <h2>7. أمان البيانات</h2>
+    <p>نطبّق إجراءات الأمان المعتمدة في الصناعة، ومنها:</p>
+    <ul>
+      <li>تشفير نقل البيانات (HTTPS/TLS)</li>
+      <li>المصادقة الآمنة بواسطة JWT</li>
+      <li>تحديد معدّل الطلبات لمنع إساءة الاستخدام</li>
+      <li>التحقق من المدخلات على جانب الخادم</li>
+    </ul>
+
+    <h2>8. خصوصية الأطفال</h2>
+    <p>التطبيق غير مخصّص للأطفال دون سن الثالثة عشرة. لا نجمع عن قصد معلومات شخصية من الأطفال دون سن الثالثة عشرة.</p>
+
+    <h2>9. الاعتبارات الإقليمية</h2>
+    <p>تعمل قارن بشكل أساسي في منطقة دول مجلس التعاون الخليجي (البحرين والمملكة العربية السعودية والإمارات العربية المتحدة والكويت وقطر وسلطنة عُمان). نلتزم بقوانين حماية البيانات المعمول بها في هذه الدول.</p>
+
+    <h2>10. تعديلات هذه السياسة</h2>
+    <p>قد نحدّث سياسة الخصوصية هذه من وقت لآخر. سنُعلمك بأي تغييرات جوهرية عبر التطبيق أو البريد الإلكتروني.</p>
+
+    <h2>11. برنامج تحسين جودة الذكاء الاصطناعي</h2>
+    <p>لجعل مقارنات قارن أكثر دقة بمرور الوقت، نشارك في برنامج مشاركة البيانات الخاص بـ OpenAI.</p>
+    <p><strong>ما نشاركه:</strong> استعلامات البحث الخاصة بك؛ دولتك ولغتك ومحافظتك؛ تفضيلاتك المعلنة (شريحة الميزانية والأولويات وموقفك من العلامات التجارية وعلامات نمط الحياة)؛ نتائج مجمّعة من مستخدمين مشابهين لك؛ استجابات المقارنات المُولّدة بالذكاء الاصطناعي.</p>
+    <p><strong>ما لا نشاركه أبدًا:</strong> اسمك أو بريدك الإلكتروني أو هاتفك أو معلومات الدفع أو معرّف الحساب أو عمرك ومثل-جنسك المحدّدَين، أو سجل مقارناتك الفردي أو بيانات سلوكك، أو أي شيء يربط البيانات بهويتك الشخصية.</p>
+    <p><strong>حقّك في الإلغاء:</strong> بموجب قانون حماية البيانات الشخصية في البحرين (PDPL) وقانون حماية البيانات الشخصية في السعودية (PDPL) واللوائح الخليجية المماثلة، يمكنك تعطيل مشاركة الذكاء الاصطناعي من <em>الإعدادات ← الخصوصية ← "ساعد في تحسين جودة الذكاء الاصطناعي."</em> عند إيقاف التشغيل، تتم معالجة استعلاماتك دون المساهمة في تقييم الذكاء الاصطناعي. تظل المقارنات تعمل — لكنها لا تساهم في تدريب النظام.</p>
+
+    <h2>12. التواصل معنا</h2>
+    <p>للاستفسارات المتعلقة بالخصوصية، يُرجى التواصل معنا على:</p>
+    <ul>
+      <li>البريد الإلكتروني: <a href="mailto:privacy@qaren.app">privacy@qaren.app</a></li>
+    </ul>
+
+    <p class="draft-notice"><em>سياسة الخصوصية هذه مقدَّمة كقالب أوّلي ويجب مراجعتها من قِبَل مستشار قانوني قبل النشر.</em></p>
+
+    <footer>
+      <a href="/ar/">&rarr; الرئيسية</a>
+      <a href="/ar/terms.html">شروط الاستخدام</a>
+      <a href="mailto:support@qaren.app">الدعم</a>
+      <a class="lang-switch" href="/privacy.html" lang="en" dir="ltr">English</a>
+    </footer>
+  </main>
+</body>
+</html>

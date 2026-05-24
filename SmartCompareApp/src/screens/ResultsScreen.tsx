@@ -1372,18 +1372,29 @@ const styles = StyleSheet.create({
     color: colors.cta.onPrimary,
     ...typography.bodyEmphasis,
   },
+  // Bundle D Claude-Design (option small, 2.F.2 screen 2): header
+  // refreshed to match docs/claude-design-handoff/ui_kits/mobile/
+  // ResultsScreen.jsx pattern — borderless top, with `bg.secondary`
+  // circular icon buttons (36×36) on both ends and the verdict title
+  // centered between. The previous bottom-border separator is removed
+  // so the eyebrow / top-match badge sits flush against the hero.
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingTop: 50,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
     paddingHorizontal: spacing.base,
     backgroundColor: colors.bg.primary,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
   },
+  // Circular icon-button — bg.secondary fill, 36×36 hit target.
+  // Matches Claude-Design `aria-label="Back"/"Share"` button shape.
   headerButton: {
-    padding: spacing.sm,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.bg.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     flex: 1,
@@ -1391,6 +1402,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text.primary,
     textAlign: 'center',
+    marginHorizontal: spacing.sm,
   },
   categorySwitchedBanner: {
     flexDirection: 'row',

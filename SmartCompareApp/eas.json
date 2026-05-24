@@ -13,11 +13,7 @@
     "preview": {
       "distribution": "internal",
       "channel": "preview",
-      "android": { "buildType": "apk" },
-      "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "SENTRY_ALLOW_FAILURE": "true"
-      }
+      "android": { "buildType": "apk" }
     },
     "production": {
       "autoIncrement": true,

@@ -38,7 +38,27 @@ interface Props {
   initialStep?: OnboardingStep;
   /** Test/resume hook. */
   initialData?: Partial<OnboardingFlowData>;
+  /**
+   * 'full' (default) — fresh-signup 17-step flow, calls `onComplete` to
+   * advance the root navigator past the needs-preferences gate.
+   * 'edit' — re-entry from Profile / EditProfile "Edit style profile";
+   * jumps the user directly to the style steps (priorities → budget →
+   * brand_attitude) and closes the modal via `onEditDone` instead of
+   * touching the auth/preferences gate. Existing data on the screens is
+   * still persisted via the same three buckets.
+   */
+  mode?: 'full' | 'edit';
+  /**
+   * Edit-mode close hook. Required when `mode === 'edit'`. App.tsx wires
+   * this to `navigation.goBack()` so the user returns to Profile.
+   */
+  onEditDone?: () => void;
 }
+
+/** Style-profile edit flow — minimal subset that mirrors the design.
+ *  Maps to priorities → budget → brand_attitude (steps 8/9/10). */
+const EDIT_MODE_FIRST_STEP: OnboardingStep = 8;
+const EDIT_MODE_LAST_STEP: OnboardingStep = 10;
 
 /**
  * Best-effort wrapper around an async API call. Logs in dev only and
@@ -55,7 +75,13 @@ function safeFire<T>(promise: Promise<T>, label: string): Promise<void> {
   );
 }
 
-export function NewOnboardingHost({ onComplete, initialStep, initialData }: Props) {
+export function NewOnboardingHost({
+  onComplete,
+  initialStep,
+  initialData,
+  mode = 'full',
+  onEditDone,
+}: Props) {
   const handleComplete = useCallback((data: OnboardingFlowData) => {
     // Demographics — only POST if the user supplied any values (skip-only
     // users, "Prefer not to say" everywhere, get an empty payload which
@@ -95,14 +121,26 @@ export function NewOnboardingHost({ onComplete, initialStep, initialData }: Prop
 
     // Always advance the user, even if the network is offline — the host
     // is presentation-glue; persistence is the network layer's problem.
-    onComplete(data);
-  }, [onComplete]);
+    // Edit-mode pops the modal back to Profile instead of running through
+    // the auth/preferences gate of the full flow.
+    if (mode === 'edit' && onEditDone) {
+      onEditDone();
+    } else {
+      onComplete(data);
+    }
+  }, [onComplete, mode, onEditDone]);
+
+  const effectiveInitialStep: OnboardingStep | undefined =
+    mode === 'edit' ? (initialStep ?? EDIT_MODE_FIRST_STEP) : initialStep;
+  const effectiveLastStep: OnboardingStep | undefined =
+    mode === 'edit' ? EDIT_MODE_LAST_STEP : undefined;
 
   return (
     <OnboardingFlow
       onComplete={handleComplete}
-      initialStep={initialStep}
+      initialStep={effectiveInitialStep}
       initialData={initialData}
+      lastStep={effectiveLastStep}
     />
   );
 }

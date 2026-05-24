@@ -1,7 +1,6 @@
 """
 Text Comparison Routes - API endpoints for text-based product comparisons
 """
-import asyncio
 import json
 import logging
 import time
@@ -21,6 +20,7 @@ from app.services.database_service import save_comparison, log_search
 from app.services.feedback_service import save_comparison_and_track_cohort
 from app.middleware.rate_limiter import limiter
 from app.services.usage_service import check_usage_allowed, record_comparison
+from app.utils.async_utils import fire_and_forget
 
 logger = logging.getLogger(__name__)
 
@@ -149,13 +149,17 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
     duration_ms = int((time.time() - start_time) * 1000)
 
     if not result.get("success"):
-        # Log failed search
-        asyncio.create_task(log_search(
-            query=body.query, input_type="text",
-            user_id=user.get("id") if user else None,
-            success=False, error_message=result.get("error"),
-            duration_ms=duration_ms,
-        ))
+        # Log failed search — Bundle D 2.B.6 WRAP: failure-path log; silent
+        # fail = no record of why a comparison crashed.
+        fire_and_forget(
+            log_search(
+                query=body.query, input_type="text",
+                user_id=user.get("id") if user else None,
+                success=False, error_message=result.get("error"),
+                duration_ms=duration_ms,
+            ),
+            label="log_search.text.post.failure",
+        )
         # Bundle B content-safety surface (spec sec 5.2): the service returns
         # a structured {success:false, code:"CONTENT_UNAVAILABLE", layer:...}
         # dict. Wrapping that in HTTPException would drop the structured body
@@ -175,19 +179,30 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
 
     user_id = user.get("id") if user else None
 
-    # Fire-and-forget: log search + save history
-    asyncio.create_task(log_search(
-        query=body.query, input_type="text", user_id=user_id,
-        products_found=product_names, success=True,
-        cost=result.get("metadata", {}).get("total_cost", 0),
-        duration_ms=duration_ms,
-    ))
+    # Fire-and-forget: log search + save history — Bundle D 2.B.6 WRAP
+    # (log_search fail = lost analytics; save_comparison fail = missing
+    # history row; record_comparison fail = wrong free-tier counter).
+    fire_and_forget(
+        log_search(
+            query=body.query, input_type="text", user_id=user_id,
+            products_found=product_names, success=True,
+            cost=result.get("metadata", {}).get("total_cost", 0),
+            duration_ms=duration_ms,
+        ),
+        label="log_search.text.post.success",
+    )
     if user_id:
-        asyncio.create_task(save_comparison_and_track_cohort(
-            full_response=result, query=body.query,
-            input_type="text", user_id=user_id,
-        ))
-        asyncio.create_task(record_comparison(user_id, user.get("access_token", "")))
+        fire_and_forget(
+            save_comparison_and_track_cohort(
+                full_response=result, query=body.query,
+                input_type="text", user_id=user_id,
+            ),
+            label="save_comparison.text.post",
+        )
+        fire_and_forget(
+            record_comparison(user_id, user.get("access_token", "")),
+            label="record_comparison.text.post",
+        )
 
     return result
 
@@ -251,12 +266,16 @@ async def text_compare_get(
     duration_ms = int((time.time() - start_time) * 1000)
 
     if not result.get("success"):
-        asyncio.create_task(log_search(
-            query=q, input_type="text",
-            user_id=user.get("id") if user else None,
-            success=False, error_message=result.get("error"),
-            duration_ms=duration_ms,
-        ))
+        # Bundle D 2.B.6 WRAP: GET-handler failure-path log.
+        fire_and_forget(
+            log_search(
+                query=q, input_type="text",
+                user_id=user.get("id") if user else None,
+                success=False, error_message=result.get("error"),
+                duration_ms=duration_ms,
+            ),
+            label="log_search.text.get.failure",
+        )
         # Bundle B: preserve structured CONTENT_UNAVAILABLE body — see POST
         # handler comment above. Conditional unwrap pattern.
         if result.get("code") == "CONTENT_UNAVAILABLE":
@@ -271,19 +290,28 @@ async def text_compare_get(
 
     user_id = user.get("id") if user else None
 
-    # Fire-and-forget: log search + save history
-    asyncio.create_task(log_search(
-        query=q, input_type="text", user_id=user_id,
-        products_found=product_names, success=True,
-        cost=result.get("metadata", {}).get("total_cost", 0),
-        duration_ms=duration_ms,
-    ))
+    # Fire-and-forget: log search + save history — Bundle D 2.B.6 WRAP.
+    fire_and_forget(
+        log_search(
+            query=q, input_type="text", user_id=user_id,
+            products_found=product_names, success=True,
+            cost=result.get("metadata", {}).get("total_cost", 0),
+            duration_ms=duration_ms,
+        ),
+        label="log_search.text.get.success",
+    )
     if user_id:
-        asyncio.create_task(save_comparison_and_track_cohort(
-            full_response=result, query=q,
-            input_type="text", user_id=user_id,
-        ))
-        asyncio.create_task(record_comparison(user_id, user.get("access_token", "")))
+        fire_and_forget(
+            save_comparison_and_track_cohort(
+                full_response=result, query=q,
+                input_type="text", user_id=user_id,
+            ),
+            label="save_comparison.text.get",
+        )
+        fire_and_forget(
+            record_comparison(user_id, user.get("access_token", "")),
+            label="record_comparison.text.get",
+        )
 
     return result
 
@@ -426,24 +454,39 @@ async def text_compare_stream(
                 f"{p.get('brand', '')} {p.get('name', '')}".strip()
                 for p in complete_response.get("products", [])
             ]
-            asyncio.create_task(log_search(
-                query=q, input_type="text_stream", user_id=user_id,
-                products_found=product_names, success=True,
-                cost=complete_response.get("metadata", {}).get("total_cost", 0),
-                duration_ms=duration_ms,
-            ))
+            # Bundle D 2.B.6 WRAP: post-stream analytics; silent fail = wrong
+            # KPI numbers + missing history rows.
+            fire_and_forget(
+                log_search(
+                    query=q, input_type="text_stream", user_id=user_id,
+                    products_found=product_names, success=True,
+                    cost=complete_response.get("metadata", {}).get("total_cost", 0),
+                    duration_ms=duration_ms,
+                ),
+                label="log_search.text_stream.success",
+            )
             if user_id:
-                asyncio.create_task(save_comparison_and_track_cohort(
-                    full_response=complete_response, query=q,
-                    input_type="text_stream", user_id=user_id,
-                ))
-                asyncio.create_task(record_comparison(user_id, user.get("access_token", "")))
+                fire_and_forget(
+                    save_comparison_and_track_cohort(
+                        full_response=complete_response, query=q,
+                        input_type="text_stream", user_id=user_id,
+                    ),
+                    label="save_comparison.text_stream",
+                )
+                fire_and_forget(
+                    record_comparison(user_id, user.get("access_token", "")),
+                    label="record_comparison.text_stream",
+                )
         elif had_error:
-            asyncio.create_task(log_search(
-                query=q, input_type="text_stream", user_id=user_id,
-                success=False, error_message="Streaming comparison failed",
-                duration_ms=duration_ms,
-            ))
+            # Bundle D 2.B.6 WRAP: failure-path log on streaming.
+            fire_and_forget(
+                log_search(
+                    query=q, input_type="text_stream", user_id=user_id,
+                    success=False, error_message="Streaming comparison failed",
+                    duration_ms=duration_ms,
+                ),
+                label="log_search.text_stream.failure",
+            )
 
     return StreamingResponse(
         event_generator(),

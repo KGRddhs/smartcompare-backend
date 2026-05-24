@@ -1,6 +1,6 @@
 # Terms of Service
 
-**SmartCompare — Product Comparison App**
+**Qaren — Product Comparison App**
 
 *Last Updated: March 26, 2026*
 
@@ -8,11 +8,11 @@
 
 ## 1. Acceptance of Terms
 
-By downloading, installing, or using the SmartCompare application ("App"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not use the App.
+By downloading, installing, or using the Qaren application ("App"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not use the App.
 
 ## 2. Description of Service
 
-SmartCompare is an AI-powered product comparison tool that helps users compare products across categories including electronics, groceries, supplements, cosmetics, fashion, and fragrances. The App provides:
+Qaren is an AI-powered product comparison tool that helps users compare products across categories including electronics, groceries, supplements, cosmetics, fashion, and fragrances. The App provides:
 - Product specification comparisons
 - Price information from publicly available sources
 - Review aggregation and sentiment analysis
@@ -38,7 +38,7 @@ You agree NOT to:
 
 ## 5. Intellectual Property
 
-- The App, including its design, code, AI models, and branding, is the property of SmartCompare.
+- The App, including its design, code, AI models, and branding, is the property of Qaren.
 - Product information, prices, reviews, and specifications displayed in the App are sourced from publicly available data and belong to their respective owners.
 - Your comparison history and preferences are your data, subject to our Privacy Policy.
 
@@ -53,7 +53,7 @@ THE APP IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND.
 
 ## 7. Limitation of Liability
 
-To the maximum extent permitted by law, SmartCompare shall not be liable for:
+To the maximum extent permitted by law, Qaren shall not be liable for:
 - Any purchasing decisions made based on information provided by the App
 - Inaccurate prices, specifications, or reviews
 - Service interruptions or downtime
@@ -82,9 +82,9 @@ Any disputes arising from these Terms or your use of the App shall first be atte
 
 When you share a Qaren comparison with a friend, you may earn rewards.
 
-**How rewards work:** sharing earns a Deep Review credit (limit 3 shares per week). When a friend you invited completes their first real comparison while signed in, you earn 5 additional comparisons added to that month's limit. Maximum 15 referral comparisons per month. Premium subscribers earn 10 per conversion instead of 5.
+**How rewards work:** sharing earns a Deep Review credit. You can be the source of up to **3 successful invites per device** for the lifetime of that device. When a friend you invited completes their first real comparison while signed in, you earn 5 additional comparisons added to your bonus balance. Premium subscribers earn 10 per conversion instead of 5.
 
-**Fair use:** rewards may be withheld for self-referral, automated signups, fake accounts, or coordinated rings. We use device fingerprints, email validation, and behavior signals to detect abuse. Rewards are not transferable, have no cash value, and expire 30 days after grant.
+**Fair use:** rewards may be withheld for self-referral, automated signups, fake accounts, or coordinated rings. We use device fingerprints, email validation, and behavior signals to detect abuse. Rewards are not transferable, have no cash value, and expire 7 days after grant.
 
 ## 13. Smart Decision Notifications
 
@@ -93,6 +93,6 @@ Qaren may send up to 1 re-engagement notification per week to help you make bett
 ## 14. Contact
 
 For questions about these Terms, please contact us at:
-- Email: legal@smartcompare.app
+- Email: legal@qaren.app
 
 *These terms of service are provided as a draft template and should be reviewed by legal counsel before publication.*

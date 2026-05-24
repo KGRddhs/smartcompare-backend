@@ -1,9 +1,9 @@
 // SmartCompareApp/src/screens/LegalScreen.tsx
 //
 // Renders /api/v1/legal/privacy_policy or /terms_of_service as markdown.
-// CONTENT note: backend markdown at app/legal/*.md is stale ("SmartCompare"
-// / @smartcompare.app per docs/plans/2026-05-06-tos-fact-base.md). Bundle A
-// wires the screen; content rewrite lives in that separate plan.
+// CONTENT note: backend markdown at app/legal/*.md was rebranded to Qaren
+// (brand + contact-email) by Bundle D R22 (commits 83a83f0 + eeaea11).
+// Renders the branded content directly — no rebrand follow-up needed FE-side.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {

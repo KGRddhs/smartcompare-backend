@@ -1,0 +1,102 @@
+Bundle D — Static audit pre-merge snapshot
+Captured: 2026-05-24 by QA
+Worktree branch: feature/bundle-d-testflight-readiness
+Baseline: bca2ffe
+
+=== 1. SmartCompare residue (user-facing files) ===
+SmartCompareApp/src/components/BrandAttitudePicker.tsx:1:// SmartCompareApp/src/components/BrandAttitudePicker.tsx
+SmartCompareApp/src/components/BudgetPicker.tsx:1:// SmartCompareApp/src/components/BudgetPicker.tsx
+SmartCompareApp/src/components/LifestylePicker.tsx:1:// SmartCompareApp/src/components/LifestylePicker.tsx
+SmartCompareApp/src/components/PrioritiesPicker.tsx:1:// SmartCompareApp/src/components/PrioritiesPicker.tsx
+SmartCompareApp/src/components/ToggleRow.tsx:1:// SmartCompareApp/src/components/ToggleRow.tsx
+SmartCompareApp/src/components/__tests__/PaywallBanner.test.tsx:7: * Coverage target: 80% on `SmartCompareApp/src/components/PaywallBanner.tsx`.
+SmartCompareApp/src/components/__tests__/PaywallBanner.test.tsx:226:    // SmartCompareApp/__tests__/copy-policy.test.ts against the JSON
+SmartCompareApp/src/components/__tests__/TwoInputShell.test.tsx:8: * Coverage target: 80% on `SmartCompareApp/src/components/TwoInputShell.tsx`.
+SmartCompareApp/src/screens/ContactUsScreen.tsx:1:// SmartCompareApp/src/screens/ContactUsScreen.tsx
+SmartCompareApp/src/screens/EditPreferencesFlow.tsx:1:// SmartCompareApp/src/screens/EditPreferencesFlow.tsx
+SmartCompareApp/src/screens/EditProfileScreen.tsx:1:// SmartCompareApp/src/screens/EditProfileScreen.tsx
+SmartCompareApp/src/screens/LegalScreen.tsx:1:// SmartCompareApp/src/screens/LegalScreen.tsx
+SmartCompareApp/src/screens/LegalScreen.tsx:4:// CONTENT note: backend markdown at app/legal/*.md is stale ("SmartCompare"
+SmartCompareApp/src/screens/LegalScreen.tsx:5:// / @smartcompare.app per docs/plans/2026-05-06-tos-fact-base.md). Bundle A
+SmartCompareApp/src/services/api.ts:2: * SmartCompare - API Service
+SmartCompareApp/src/services/deviceFingerprint.ts:1:// SmartCompareApp/src/services/deviceFingerprint.ts
+SmartCompareApp/src/types/types.ts:2: * SmartCompare - TypeScript Types
+
+=== 2. Scary EN vocab (couldn't|try again|Failed to) ===
+
+=== 3. Scary AR vocab (تعذر|فشل) ===
+
+=== 4. 'estimated' in UI strings (excluding source_method enum) ===
+SmartCompareApp/src/components/CameraHelpOverlay.tsx:7: * `تعذر` / `فشل` / `estimated`.
+SmartCompareApp/src/components/results/ConfidencePills.tsx:18: *  - When `hidePricePill === true` (caller computes via `anyEstimated()`
+SmartCompareApp/src/components/results/ConfidencePills.tsx:20: *    is silent in the UI; no "estimated" copy anywhere).
+SmartCompareApp/src/screens/ResultsScreen.tsx:90:import { anyEstimated } from '../services/sourceMethod';
+SmartCompareApp/src/screens/ResultsScreen.tsx:675:                {/* Bundle C § 5c — legacy `(estimated)` caption removed.
+SmartCompareApp/src/screens/ResultsScreen.tsx:678:                    `hidePricePill={anyEstimated(products)}` on
+SmartCompareApp/src/screens/ResultsScreen.tsx:1091:                  pill hidden whenever ANY product fell to estimated. */}
+SmartCompareApp/src/screens/ResultsScreen.tsx:1095:                  hidePricePill={anyEstimated(products)}
+SmartCompareApp/src/services/sourceMethod.ts:4: * `parseSourceMethod` returns approved EN phrasing for non-estimated
+SmartCompareApp/src/services/sourceMethod.ts:5: * source methods. Returns `null` for `'estimated'` (and unknown values),
+SmartCompareApp/src/services/sourceMethod.ts:8: * `anyEstimated` is a small adapter for the Results screen layer: when
+SmartCompareApp/src/services/sourceMethod.ts:13: * Critical rule #3 — NO `estimated` / `reference price` / `indicative`
+SmartCompareApp/src/services/sourceMethod.ts:26:  // 'estimated' deliberately omitted — callers MUST suppress the UI
+SmartCompareApp/src/services/sourceMethod.ts:35:export function anyEstimated(products: Array<Pick<Product, 'price'>>): boolean {
+SmartCompareApp/src/types/types.ts:40:// `estimated` is kept in the enum (Tier 3 GPT fallback), but UI MUST
+SmartCompareApp/src/types/types.ts:42:// (spec § 5c, `feedback_no_estimated_word_in_ui.md`).
+SmartCompareApp/src/types/types.ts:50:  | 'estimated';
+SmartCompareApp/src/types/types.ts:58:  estimated?: boolean;
+
+=== 5. Build Principle #4 (shake|wobble|jitter) on HomeScreen ===
+
+=== END OF AUDIT ===
+
+=== POST-AUDIT FOLLOW-UP: section 1 hits triaged ===
+
+Triage by Frontend after this audit snapshot. Two cleanup commits landed:
+
+- `1282b60` — chore(audit): SmartCompare → Qaren brand-residue cleanup (Phase 4 prep)
+  Fixed 3 actual brand-string hits from section 1:
+    - SmartCompareApp/src/services/api.ts:2 header doc → "Qaren - API Service"
+    - SmartCompareApp/src/types/types.ts:2 header doc → "Qaren - TypeScript Types"
+    - SmartCompareApp/src/screens/LegalScreen.tsx:4-5 CONTENT note (was
+      stale — backend Bundle D R22 commits 83a83f0 + eeaea11 had already
+      rebranded app/legal/*.md to Qaren; comment now reflects post-R22 truth)
+
+- `b0480fa` — chore(audit): reword LegalScreen negative-reference comment
+  My first fix at 1282b60 left a NEGATIVE reference quoting the literal
+  "SmartCompare" / "@smartcompare.app" strings (inside a "no stale strings
+  remain" sentence). The literal-quoted strings tripped this very static
+  grep even though the sentence said the opposite. Reworded to:
+    "was rebranded to Qaren (brand + contact-email) by Bundle D R22
+     (commits 83a83f0 + eeaea11). Renders the branded content directly —
+     no rebrand follow-up needed FE-side."
+  Same factual information; future readers learn the same thing; static
+  grep no longer false-positives on a self-aware NOT-statement.
+
+POST-FIX RESIDUE: 13 remaining "SmartCompare|smartcompare" hits in src/
+are INTENTIONAL and DOCUMENTED:
+
+- 12 hits: `// SmartCompareApp/src/<path>` header comments — factual
+  file-path identifiers, NOT brand residue. Verified via `ls -d ../*/`
+  from the worktree root: the directory IS literally named
+  `SmartCompareApp/`. Renaming these comments to `// QarenApp/...` or
+  `// Qaren/...` would make them WRONG — they no longer point to a real
+  filesystem path.
+- 1 hit: `SmartCompareApp/package.json:2 "name": "smartcompareapp"` —
+  load-bearing npm package identifier referenced by:
+    - EAS build profile paths (eas.json `extends` chain)
+    - jest config (`testMatch` glob roots)
+    - Expo build metadata (`expo.bundleIdentifier` legacy mapping)
+    - CI workflow paths (any GitHub Action `working-directory:`)
+    - Lockfile (`package-lock.json` first-level `"name":`)
+  Renaming is a monorepo-level refactor across all 5+ touchpoints.
+
+OPTION (a) APPROVED by team-lead (2026-05-23): keep all 13 hits as-is,
+document intent. The only way to legitimately drop them to 0 is a
+directory rename `SmartCompareApp/` → `QarenApp/`, which is correctly
+out of Bundle D scope — Bundle E candidate at earliest. Until that
+lands, the 13 residue lines are EXPECTED, not a SEND-BACK signal.
+
+Future Bundle gate: after a hypothetical directory rename Bundle, this
+static audit should drop section 1 to zero hits as a side-effect.
+

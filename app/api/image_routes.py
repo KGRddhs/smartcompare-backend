@@ -6,7 +6,6 @@ Endpoints:
     - 1 product found: returns product info, frontend asks for second
     - 2+ products found: auto-runs full comparison via structured_comparison_service
 """
-import asyncio
 import logging
 import time
 import uuid
@@ -21,6 +20,7 @@ from app.api.auth_routes import get_optional_user
 from app.services.database_service import log_search, save_comparison
 from app.services.feedback_service import save_comparison_and_track_cohort
 from app.middleware.rate_limiter import limiter
+from app.utils.async_utils import fire_and_forget
 
 logger = logging.getLogger(__name__)
 
@@ -137,10 +137,14 @@ async def identify_and_compare(
             f"{p.get('brand', '')} {p.get('name', '')}".strip()
             for p in vision_result.get("products", [])
         )
-        asyncio.create_task(log_content_blocked(
-            layer="vision_moderation",
-            query_hash=_hashlib.sha256(_hash_input.encode("utf-8")).hexdigest(),
-        ))
+        # Bundle D 2.B.6 WRAP: content-safety audit; silent fail = compliance gap.
+        fire_and_forget(
+            log_content_blocked(
+                layer="vision_moderation",
+                query_hash=_hashlib.sha256(_hash_input.encode("utf-8")).hexdigest(),
+            ),
+            label="audit.vision_moderation_blocked",
+        )
         return {
             "success": False,
             "action": "need_second_product",
@@ -215,18 +219,26 @@ async def identify_and_compare(
         duration_ms = int((time.time() - start_time) * 1000)
         user_id = user.get("id") if user else None
 
-        # Fire-and-forget: log search + save history
-        asyncio.create_task(log_search(
-            query=query, input_type="camera", user_id=user_id,
-            products_found=product_names, success=True,
-            cost=result.get("metadata", {}).get("total_cost", 0),
-            duration_ms=duration_ms,
-        ))
+        # Fire-and-forget: log search + save history — Bundle D 2.B.6 WRAP
+        # (search-log fail = lost analytics; save-comparison fail = missing
+        # history row for the user).
+        fire_and_forget(
+            log_search(
+                query=query, input_type="camera", user_id=user_id,
+                products_found=product_names, success=True,
+                cost=result.get("metadata", {}).get("total_cost", 0),
+                duration_ms=duration_ms,
+            ),
+            label="log_search.camera.success",
+        )
         if user_id:
-            asyncio.create_task(save_comparison_and_track_cohort(
-                full_response=result, query=query,
-                input_type="camera", user_id=user_id,
-            ))
+            fire_and_forget(
+                save_comparison_and_track_cohort(
+                    full_response=result, query=query,
+                    input_type="camera", user_id=user_id,
+                ),
+                label="save_comparison.camera",
+            )
 
         return result
 
@@ -234,12 +246,17 @@ async def identify_and_compare(
         logger.error(f"[IMAGE] Comparison failed after identification: {e}", exc_info=True)
 
         duration_ms = int((time.time() - start_time) * 1000)
-        asyncio.create_task(log_search(
-            query=query, input_type="camera",
-            user_id=user.get("id") if user else None,
-            products_found=product_names, success=False,
-            error_message=str(e), duration_ms=duration_ms,
-        ))
+        # Bundle D 2.B.6 WRAP: failure-path log is doubly important; silent
+        # fail here = no record of why the camera flow crashed.
+        fire_and_forget(
+            log_search(
+                query=query, input_type="camera",
+                user_id=user.get("id") if user else None,
+                products_found=product_names, success=False,
+                error_message=str(e), duration_ms=duration_ms,
+            ),
+            label="log_search.camera.failure",
+        )
 
         # Still return the identified products so frontend can fall back to text compare
         return {
