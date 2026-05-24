@@ -1,11 +1,11 @@
-# Backend sign-off — refile v2, verified 2026-05-23
+# Backend sign-off — refile v3, verified 2026-05-24
 
-> Supersedes the original sign-off at the same path (commit `903b0b5`).
-> Refile rationale: (a) Phase 2.5 reopen shipped 3 new `/api/v1/home/*`
-> endpoints + 11 tests + 1 curated JSON; (b) tail R21 follow-up
-> `6803eb3` (event.request.query_string scrub) landed via Frontend
-> cross-QA; (c) corrected Backend-touched ledger count from 13 → 11
-> per QA tally.
+> Supersedes refile v2 at this path (commit `246ba97`).
+> Refile rationale: **Phase 2.6 reopen** shipped 3 new `/api/v1/profile/*`
+> endpoints (recent-decisions, monthly-stats, priorities-weighted) + 12
+> tests in commit `4cf0af0`. Bundle D test surface now **187/187 GREEN**
+> (was 175 pre-Phase-2.6). All other risk-status + v1.1 polish state
+> from refile v2 stands unchanged.
 
 Per `BUNDLE_D_BACKEND_ANCHOR.md` checklist:
 - ✓ Phase 1 (1.B.1–1.B.7) — 7/7 commits
@@ -13,7 +13,8 @@ Per `BUNDLE_D_BACKEND_ANCHOR.md` checklist:
 - ✓ Phase 2 R15 audit (2.B.6) — 22/22 sites WRAPPED, 0 SKIP
 - ✓ Phase 2 R18 endpoint (2.B.7) — `PUT /api/v1/auth/reengagement-subs` live
 - ✓ Migration 025 applied (R20) + Migration 026 applied (R3) — both via Supabase MCP
-- ✓ **Phase 2.5 reopen** (2.5.B.1–2.5.B.3) — 3 new `/api/v1/home/*` endpoints + 11 tests
+- ✓ **Phase 2.5 reopen** (2.5.B.1–2.5.B.3) — 3 new `/api/v1/home/*` endpoints + 13 tests (savings + smart-pick + dim_sensitivity fallback + trending)
+- ✓ **Phase 2.6 reopen** (2.6.B.1–2.6.B.3) — 3 new `/api/v1/profile/*` endpoints + 12 tests (recent-decisions + monthly-stats + priorities-weighted)
 - ✓ Phase 3+4 pre-stages (smoke pack + R12/R19 dispatcher checklists)
 
 **Cross-QA reviewers:**
@@ -60,10 +61,20 @@ Per `BUNDLE_D_BACKEND_ANCHOR.md` checklist:
 | Endpoint | Commit | Notes |
 |---|---|---|
 | GET /api/v1/home/savings | `a9a0db0` | Aggregate winner-vs-loser BHD savings, `threshold_met` gate at count>=3, 5min Redis cache |
-| GET /api/v1/home/smart-pick | `a9a0db0` | Personalized winner story; priority match → `priority_match` reason / no match → `recent_winner`; empty-state + cta_text_key for new users; 5min Redis cache |
+| GET /api/v1/home/smart-pick | `a9a0db0` + `3ab8859` | Personalized winner story; priority match → `priority_match` reason / no match → `recent_winner`; 3-tier resolution (preferences.priorities → behavior_profile.dimension_sensitivity TOP entry → empty-state); 5min Redis cache |
 | GET /api/v1/home/trending | `a9a0db0` | Region-aware curated list (Approach A — zero PII surface); 1h Redis per-region cache; Approach B k-anonymity logged as Bundle E followup |
 
 Spec correction surfaced + dispatcher-acked: anchor said "`behavior_profile.priorities`" but priorities live in `users.preferences.priorities` (the `behavior_profile` field tracks `dimension_sensitivity` from events, NOT user-stated priorities). Default to `preferences.priorities` per `auth_routes.py:159 UserPreferencesRequest.priorities`.
+
+## Phase 2.6 reopen — editorial ProfileScreen endpoints (commit `4cf0af0`)
+
+| Endpoint | Notes |
+|---|---|
+| GET /api/v1/profile/recent-decisions | Last 3 user comparisons as mini vs cards; schema_version=2 filter; empty-state + cta_text_key for new users; 5min Redis cache |
+| GET /api/v1/profile/monthly-stats | Month-bounded count + BHD savings + bonus credits (from `referral_redemptions.loop2_comparisons_granted` SUM this month); `threshold_met=count>=3`; graceful zero on referral_redemptions read failure; 5min Redis cache |
+| GET /api/v1/profile/priorities-weighted | 3 weighted priorities for PrioritiesInline bars (0-100); 3-tier resolution (preferences.priorities → behavior_profile.dimension_sensitivity weights → empty-state); uniform-100 fallback when no sensitivity; 5min Redis cache |
+
+Spec decision (surfaced to dispatcher): chose `referral_redemptions.loop2_comparisons_granted` over `user_usage` as the canonical bonus_credits source. `referral_service._grant_loop2_rewards()` is the authoritative writer of per-redemption credit counts; `user_usage` tracks remaining caps, not "credits granted this month" semantics.
 
 ## Phase 3+4 dispatcher pre-stages
 
@@ -75,10 +86,11 @@ Spec correction surfaced + dispatcher-acked: anchor said "`behavior_profile.prio
 
 ## Tests
 
-- **175/175 GREEN** across the Bundle D test surface:
+- **187/187 GREEN** across the Bundle D test surface:
   - 104 security_regression (baseline — unchanged from start of session)
   - 21 sentry_service (12 from `c12a7c6` + 9 from `6803eb3`)
-  - 11 home_routes (Phase 2.5)
+  - 13 home_routes (Phase 2.5 — 11 original + 2 added by `3ab8859` dim_sensitivity fallback)
+  - 12 profile_routes (Phase 2.6 — recent + monthly-stats + priorities-weighted)
   - 13 delete_user_cascade (R20)
   - 10 legal_routes (R22 + R3 detector)
   - 12 tier3_synth (A.4.8)
@@ -86,7 +98,7 @@ Spec correction surfaced + dispatcher-acked: anchor said "`behavior_profile.prio
   - 8 scoring_dimensions_v2 (A.8.1)
   - 37 scoring_value_math_v11 (A.6.2-A.6.5)
   - structured_comparison_service::test_comparison_quality_in_response_metadata_payload (B.0)
-- **Net new tests added by Bundle D: 80** across 5 new test files (`test_home_routes.py` Phase 2.5 + 4 from v1.1 polish chain).
+- **Net new tests added by Bundle D: 94** across 6 new test files (`test_home_routes.py` Phase 2.5 + `test_profile_routes.py` Phase 2.6 + 4 from v1.1 polish chain).
 - **Baseline 104/104 security regression unchanged.**
 
 ## Pending Backend work
@@ -105,4 +117,4 @@ Spec correction surfaced + dispatcher-acked: anchor said "`behavior_profile.prio
 ## Authored by
 
 Backend agent, Bundle D worktree `feature/bundle-d-testflight-readiness`, 2026-05-23.
-Refile v2 incorporates: Phase 2.5 reopen, R21 follow-up `6803eb3`, R1/R2 N/A close `bbb0e0a`, corrected 11-slot tally per QA.
+Refile v3 (2026-05-24) incorporates Phase 2.6 reopen on top of v2: 3 new `/api/v1/profile/*` endpoints (`recent-decisions` + `monthly-stats` + `priorities-weighted`) in commit `4cf0af0` with 12 new tests. Test total now 187/187 (was 175). All risk-status state from v2 stands unchanged — these are features, not new R# rows.
