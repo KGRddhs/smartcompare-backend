@@ -650,6 +650,75 @@ export async function saveAttribution(
 }
 
 // ============================================================================
+// Bundle D 2.5 — HomeScreen editorial sections.
+// Endpoints registered at app/api/home_routes.py, auth-required (savings,
+// smart-pick) / auth-optional (trending), 30-60/min.
+// Each endpoint returns `{ ...payload, empty_state | threshold_met }` so
+// callers can hide the corresponding UI section silently.
+// ============================================================================
+
+export interface HomeSavingsResponse {
+  savings_bhd: number;
+  decisions_count: number;
+  threshold_met: boolean;
+}
+
+export async function getHomeSavings(): Promise<HomeSavingsResponse | null> {
+  try {
+    const response = await api.get('/api/v1/home/savings');
+    return response.data;
+  } catch {
+    return null;
+  }
+}
+
+export interface HomeSmartPickItem {
+  comparison_id: string;
+  winner_name: string;
+  runner_up_name: string;
+  winner_price_bhd: number | null;
+  runner_up_price_bhd: number | null;
+  reason_key: string;
+  reason_params: Record<string, string>;
+}
+
+export interface HomeSmartPickResponse {
+  smart_pick: HomeSmartPickItem | null;
+  empty_state: boolean;
+  cta_text_key?: string;
+}
+
+export async function getHomeSmartPick(): Promise<HomeSmartPickResponse> {
+  try {
+    const response = await api.get('/api/v1/home/smart-pick');
+    return response.data;
+  } catch {
+    return { smart_pick: null, empty_state: true };
+  }
+}
+
+export interface HomeTrendingItem {
+  query: string;
+  view_count: number;
+  region: string;
+}
+
+export interface HomeTrendingResponse {
+  trending: HomeTrendingItem[];
+  region: string;
+}
+
+export async function getHomeTrending(region?: string): Promise<HomeTrendingResponse> {
+  try {
+    const params = region ? { region } : {};
+    const response = await api.get('/api/v1/home/trending', { params });
+    return response.data;
+  } catch {
+    return { trending: [], region: 'bahrain' };
+  }
+}
+
+// ============================================================================
 // Bundle D 2.6 — ProfileScreen editorial sections.
 // Endpoints registered at app/api/profile_routes.py, all auth-required, 30/min.
 // Each endpoint returns `{ ...payload, empty_state: bool }` so callers can

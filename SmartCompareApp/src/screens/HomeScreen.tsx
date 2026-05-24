@@ -70,6 +70,10 @@ import CategorySelector from '../components/CategorySelector';
 import QarenLogo from '../components/QarenLogo';
 import TwoInputShell from '../components/TwoInputShell';
 import PaywallBanner from '../components/PaywallBanner';
+// Bundle D 2.F.2 Screen 1 — editorial sections un-deferred per Backend 2.5
+// ship. SmartPickCard, QuickCategories, SavingsBanner, TrendingNearYou.
+// Each section hides silently on empty_state / threshold-miss / failure.
+import HomeEditorialSections from '../components/HomeEditorialSections';
 // Bundle D FIX 1: ComparisonCounter + BonusCountdownCard no longer
 // rendered on HomeScreen — collapsed into the single HeaderCounter chip
 // in the header row. Components remain in src/components/ for other
@@ -628,12 +632,30 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
       </View>
 
-      {/* Bundle D defers 4 editorial sections (SmartPickCard / QuickCategories
-          / SavingsBanner / TrendingNearYou per Claude-Design HomeScreen.jsx
-          lines 438-651). See `docs/plans/bundle-d-followups.md` for the
-          un-deferral checklist + cost estimate. Stub anchor for future
-          maintainers: `grep home-editorial-stub` to find the render slot. */}
+      {/* Bundle D 2.F.2 Screen 1 — 4 editorial sections (un-deferred per
+          Ahmed's no-deferral pick + Backend 2.5 SHIPPED 2026-05-23).
+          Each section silently hides on empty_state / threshold-miss /
+          network failure (Build Principle #4). Stub anchor `home-editorial-stub`
+          retained as a 0-height marker for parent test-IDs that may grep it,
+          but the live sections render via HomeEditorialSections below. */}
       <View testID="home-editorial-stub" style={{ height: 0 }} />
+      {canCompare && (
+        <HomeEditorialSections
+          onPressVerdict={(comparisonId) =>
+            navigation.navigate('Results' as any, { from_history: comparisonId } as any)
+          }
+          onPickCategory={(cat) => {
+            setSelectedCategory(cat as any);
+            handleModeChange('type');
+          }}
+          onPressTrending={() => {
+            // Trending tap just primes the type-mode CompareCard; user re-types
+            // or pastes the query into TwoInputShell. We don't drill into
+            // TwoInputShell's internal A/B state from here.
+            handleModeChange('type');
+          }}
+        />
+      )}
 
       {loading && statusMessage ? (
         <View style={styles.loadingOverlay}>
