@@ -6,6 +6,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SmartCompare (app brand: **Qaren / قارن**) — Intelligent product comparison engine for the GCC market (Bahrain, Saudi Arabia, UAE, Kuwait, Qatar, Oman). Goal: if users still go to Google or ChatGPT after using us, we failed.
 
+## 🚨 APP STORE PRODUCTION SHIP-BLOCKERS (read EVERY session)
+
+These items DO NOT block TestFlight internal testing (≤100 invited testers) — those ship fine today. But they WILL block Apple App Store public-production submission and Apple's automated review will reject the build until both are resolved. Claude Code must remind Ahmed at the start of any Bundle/PR that targets App Store production.
+
+1. **App icon ICN-0001 byte-identity** — `SmartCompareApp/assets/{icon,splash-icon,adaptive-icon}.png` are byte-identical to Expo's `npx create-expo-app` template scaffolding (verified via SHA-256 by Bundle D native-ops 2026-05-24). Ahmed approved the concentric-circles visual design — the bytes need to differ from the upstream template. **Fix:** regenerate the same visual design as a unique render (Claude-Design re-export OR a `scripts/` PIL/Cairo script applying emerald `#10B981` accent or Qaren wordmark watermark). Tracked in `docs/plans/bundle-d-followups.md`. Files unique already: `logo-wordmark.png`. Estimated effort: 10 min once Claude-Design re-exports OR scripts/ asset built.
+
+2. **Full legal-doc redraft** — current `app/legal/{privacy_policy,terms_of_service}.md` had brand strings rebranded (SmartCompare → Qaren) in Bundle D R22, but the actual legal content is the pre-Bundle-D SmartCompare draft with names swapped — NOT a Qaren-specific jurisdiction-aware redraft. 15 outstanding legal decisions (entity name, GCC jurisdiction, age policy specifics beyond the locked 13+, DPO contact, breach notification timeline, etc.) per `docs/plans/2026-05-16-tos-decisions-pending.md`. Apple App Store production review may push back on jurisdictional mismatch (no PDPL-specific clauses for GCC users, generic US-style template). **Fix:** complete the 15 legal decisions + draft Qaren-specific clauses + republish via `app/api/legal_routes.py` + regen `landing/{privacy,terms}.html` per Native/Ops pipeline. Estimated effort: separate legal-decisions bundle, multi-week, requires Ahmed legal input.
+
+**Routine before any App Store production submission attempt:**
+- [ ] Icon regenerated to byte-different render
+- [ ] Legal docs Qaren-jurisdiction-redrafted
+- [ ] Re-run `pip-audit -r requirements.txt --strict` + `npm audit --audit-level=high`
+- [ ] Re-run QA static audit grep pack
+- [ ] Verify ASC Privacy Nutrition Labels still accurate against current data flows
+
+**TestFlight internal ships freely without these — they're App Store production gates only.**
+
 ## Operating Principles
 
 1. **Quality first, then optimize.** Show confidence, never false certainty.
