@@ -1,5 +1,5 @@
 /**
- * SmartCompare - API Service
+ * Qaren - API Service
  * Connects to the FastAPI backend (with iOS fixes)
  */
 

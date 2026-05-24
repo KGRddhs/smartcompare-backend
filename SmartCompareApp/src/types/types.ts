@@ -1,5 +1,5 @@
 /**
- * SmartCompare - TypeScript Types
+ * Qaren - TypeScript Types
  * Matches backend API response schema (verified Feb 14, 2026)
  */
 
