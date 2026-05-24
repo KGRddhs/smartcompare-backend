@@ -472,6 +472,8 @@
   "onboarding.s17.not_now": "Not now",
 
   "home.hero": "Compare anything.",
+  "home.headerCounter.free": "free",
+  "home.headerCounter.a11y": "{{free}} of {{total}} free comparisons, plus {{bonus}} bonus",
   "home.mode.scan": "Scan",
   "home.mode.link": "Link",
   "home.mode.type": "Type",

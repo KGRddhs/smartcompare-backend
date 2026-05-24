@@ -472,6 +472,8 @@
   "onboarding.s17.not_now": "لاحقاً",
 
   "home.hero": "قارن أي شيء.",
+  "home.headerCounter.free": "مجاناً",
+  "home.headerCounter.a11y": "{{free}} من {{total}} مقارنات مجانية، بالإضافة إلى {{bonus}} إضافية",
   "home.mode.scan": "مسح",
   "home.mode.link": "رابط",
   "home.mode.type": "كتابة",

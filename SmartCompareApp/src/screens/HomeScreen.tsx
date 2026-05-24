@@ -1,10 +1,29 @@
 /**
- * Qaren - Home Screen (Bundle B redesign).
+ * Qaren - Home Screen (Bundle B redesign + Bundle D Claude-Design integration).
  *
  * Renders the TwoInputShell for Text + URL modes and a Scan placeholder
  * for camera mode. When canCompare is false, takes over the middle of the
  * screen with the PaywallBanner per spec § 6.2 (hides hero, category strip,
- * BonusCountdownCard, ComparisonCounter; dims mode chips to 50%).
+ * header counter; dims mode chips to 50%).
+ *
+ * Bundle D integration (Claude-Design `docs/claude-design-handoff/ui_kits/mobile/
+ * HomeScreen.jsx`, commit 0b87415) applies 3 crowding fixes per the
+ * `mobile/README.md` table:
+ *   FIX 1 — Single HeaderCounter chip in the header row replaces the
+ *           simultaneous BonusCountdownCard + ComparisonCounter pair at
+ *           the bottom. Counter taps through to Paywall.
+ *   FIX 2 — Mode chips MOVED INSIDE the compare card as a top segmented
+ *           control (black-on-active iOS segmented vibe).
+ *   FIX 3 — Empty-state preview of the comparison structure (two outlined
+ *           numeral circles + emerald "vs" pill) — already implemented by
+ *           TwoInputShell in text/url mode; no-op here.
+ *
+ * Bundle D editorial sections (SmartPickCard / QuickCategories /
+ * SavingsBanner / TrendingNearYou from Claude-Design HomeScreen.jsx
+ * lines 438-651) are EXPLICITLY DEFERRED — would expand scope ~50%
+ * (new backend APIs, 30+ i18n keys, privacy review for trending). See
+ * `docs/plans/bundle-d-followups.md` "FRONTEND: HomeScreen 4 editorial
+ * sections" entry for un-deferral checklist + cost estimate.
  *
  * Spec: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md
  *   § 3 anatomy · § 4 interactions · § 6 freemium · § 8 analytics
@@ -51,8 +70,11 @@ import CategorySelector from '../components/CategorySelector';
 import QarenLogo from '../components/QarenLogo';
 import TwoInputShell from '../components/TwoInputShell';
 import PaywallBanner from '../components/PaywallBanner';
-import { ComparisonCounter } from '../components/ComparisonCounter';
-import { BonusCountdownCard } from '../components/BonusCountdownCard';
+// Bundle D FIX 1: ComparisonCounter + BonusCountdownCard no longer
+// rendered on HomeScreen — collapsed into the single HeaderCounter chip
+// in the header row. Components remain in src/components/ for other
+// surfaces (Profile, EditPreferences) that may consume them; remove
+// imports here to satisfy strict no-unused-locals.
 import { useComparisonCounter } from '../hooks/useComparisonCounter';
 import { getReferralStatus } from '../services/referralService';
 
@@ -472,11 +494,70 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // until a health-state UI lands. Kept for potential future use.
   void serverOnline;
 
+  // Bundle D FIX 1 — collapsed header counter. Replaces the previous
+  // simultaneous BonusCountdownCard + ComparisonCounter at the bottom.
+  // Bonus tail (`+N`) only renders when bonusRemaining > 0. Tap → Paywall.
+  const baseFreeRemaining = Math.max(0, total - used);
+  const isLastFree = baseFreeRemaining === 1;
+  const handleHeaderCounterPress = () => {
+    trackEvent('compare_entry_paywall_banner_tap', { mode: inputMode });
+    navigation.navigate('Paywall');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <QarenLogo size={28} />
-        <Text style={[styles.logo, styles.logoSpaced]}>{t('app.name')}</Text>
+        <View style={styles.headerLeft}>
+          <QarenLogo size={28} />
+          <Text style={[styles.logo, styles.logoSpaced]}>{t('app.name')}</Text>
+        </View>
+        {canCompare && (
+          <TouchableOpacity
+            testID="home-header-counter"
+            onPress={handleHeaderCounterPress}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.headerCounter.a11y', {
+              free: baseFreeRemaining,
+              total,
+              bonus: bonusInfo.bonusRemaining,
+            })}
+            style={[
+              styles.headerCounter,
+              isLastFree && styles.headerCounterLast,
+            ]}
+          >
+            <Text
+              style={[
+                styles.headerCounterText,
+                isLastFree && styles.headerCounterTextLast,
+              ]}
+            >
+              {baseFreeRemaining}/{total} {t('home.headerCounter.free')}
+            </Text>
+            {bonusInfo.bonusRemaining > 0 && (
+              <>
+                <Text
+                  style={[
+                    styles.headerCounterDot,
+                    isLastFree && styles.headerCounterTextLast,
+                  ]}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
+                >
+                  {' · '}
+                </Text>
+                <Text
+                  style={[
+                    styles.headerCounterText,
+                    isLastFree && styles.headerCounterTextLast,
+                  ]}
+                >
+                  +{bonusInfo.bonusRemaining}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
 
       {canCompare && <Text style={styles.hero}>{t('home.hero')}</Text>}
@@ -488,68 +569,71 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         />
       )}
 
-      <View style={styles.centerArea} testID="home-center-area">
-        {renderCenterArea()}
-      </View>
-
-      {/* 3-mode equal chip rail — dimmed to 50% during paywall takeover. */}
+      {/* Bundle D FIX 2 — segmented mode control INSIDE the compare card.
+          Dimmed to 50% during paywall takeover but still tappable so the
+          `compare_entry_paywall_banner_view` re-fires with the user's
+          intended mode (spec § 4.11 Q4). */}
       <View
         style={[
-          styles.modeChipRail,
-          !canCompare && { opacity: 0.5 },
+          styles.compareCard,
+          !canCompare && styles.compareCardPaywall,
         ]}
       >
-        <ModeChip
-          testID="home-mode-scan"
-          label={t('home.mode.scan')}
-          icon={
-            <ScanIcon
-              size={14}
-              color={inputMode === 'scan' ? colors.cta.onPrimary : colors.text.secondary}
-            />
-          }
-          active={inputMode === 'scan'}
-          onPress={() => handleModeChange('scan')}
-        />
-        <ModeChip
-          testID="home-mode-link"
-          label={t('home.mode.link')}
-          icon={
-            <LinkIcon
-              size={14}
-              color={inputMode === 'url' ? colors.cta.onPrimary : colors.text.secondary}
-            />
-          }
-          active={inputMode === 'url'}
-          onPress={() => handleModeChange('url')}
-        />
-        <ModeChip
-          testID="home-mode-type"
-          label={t('home.mode.type')}
-          icon={
-            <TypeIcon
-              size={14}
-              color={inputMode === 'type' ? colors.cta.onPrimary : colors.text.secondary}
-            />
-          }
-          active={inputMode === 'type'}
-          onPress={() => handleModeChange('type')}
-        />
+        <View
+          style={[
+            styles.modeChipRail,
+            !canCompare && { opacity: 0.5 },
+          ]}
+        >
+          <ModeChip
+            testID="home-mode-scan"
+            label={t('home.mode.scan')}
+            icon={
+              <ScanIcon
+                size={14}
+                color={inputMode === 'scan' ? colors.cta.onPrimary : colors.text.secondary}
+              />
+            }
+            active={inputMode === 'scan'}
+            onPress={() => handleModeChange('scan')}
+          />
+          <ModeChip
+            testID="home-mode-link"
+            label={t('home.mode.link')}
+            icon={
+              <LinkIcon
+                size={14}
+                color={inputMode === 'url' ? colors.cta.onPrimary : colors.text.secondary}
+              />
+            }
+            active={inputMode === 'url'}
+            onPress={() => handleModeChange('url')}
+          />
+          <ModeChip
+            testID="home-mode-type"
+            label={t('home.mode.type')}
+            icon={
+              <TypeIcon
+                size={14}
+                color={inputMode === 'type' ? colors.cta.onPrimary : colors.text.secondary}
+              />
+            }
+            active={inputMode === 'type'}
+            onPress={() => handleModeChange('type')}
+          />
+        </View>
+
+        <View style={styles.centerArea} testID="home-center-area">
+          {renderCenterArea()}
+        </View>
       </View>
 
-      {canCompare && (
-        <View style={styles.bottomBar}>
-          <BonusCountdownCard
-            baseFreeRemaining={Math.max(0, total - used)}
-            bonusRemaining={bonusInfo.bonusRemaining}
-            referrerName={bonusInfo.referrerName}
-            expiresAt={bonusInfo.expiresAt}
-          />
-          <View testID="home-counter-slot">
-            <ComparisonCounter used={used} total={total} />
-          </View>
-        </View>
-      )}
+      {/* Bundle D defers 4 editorial sections (SmartPickCard / QuickCategories
+          / SavingsBanner / TrendingNearYou per Claude-Design HomeScreen.jsx
+          lines 438-651). See `docs/plans/bundle-d-followups.md` for the
+          un-deferral checklist + cost estimate. Stub anchor for future
+          maintainers: `grep home-editorial-stub` to find the render slot. */}
+      <View testID="home-editorial-stub" style={{ height: 0 }} />
 
       {loading && statusMessage ? (
         <View style={styles.loadingOverlay}>
@@ -622,9 +706,14 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   logo: {
     ...typography.title,
@@ -633,6 +722,56 @@ const styles = StyleSheet.create({
   },
   logoSpaced: {
     marginStart: spacing.sm,
+  },
+  // Bundle D FIX 1 — HeaderCounter chip. Right-aligned in header row.
+  // accentLight bg + accent border + accentDark text when isLastFree=true
+  // (free === 1) per Claude-Design `HeaderCounter` (HomeScreen.jsx:324-349).
+  headerCounter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    height: 28,
+    borderRadius: radii.chip,
+    backgroundColor: colors.bg.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  headerCounterLast: {
+    backgroundColor: colors.accentLight,
+    borderColor: colors.accent,
+  },
+  headerCounterText: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.text.secondary,
+    // Tabular numerals so the counter doesn't jiggle as the digit changes.
+    fontVariant: ['tabular-nums'],
+  },
+  headerCounterTextLast: {
+    color: colors.accentDark,
+  },
+  headerCounterDot: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.text.secondary,
+    opacity: 0.5,
+  },
+  // Bundle D FIX 2 — compare card wraps mode-chips + center area.
+  compareCard: {
+    flex: 1,
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    overflow: 'hidden',
+  },
+  // During paywall takeover the card stays present (so the PaywallBanner
+  // renders inside it) but the border softens so the visual emphasis sits
+  // on the banner copy, not the container.
+  compareCardPaywall: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
   },
   hero: {
     ...typography.body,

@@ -184,3 +184,46 @@ out-of-scope, not for "we ran out of time" — Ahmed rule #1 means we
 ship 100%. If you're tempted to log something here mid-Bundle-D, ask
 the dispatcher first whether it's a real scope question or just a
 pacing issue.
+
+---
+
+## FRONTEND: HomeScreen 4 editorial sections (deferred from Bundle D)
+
+Pinning commit: `<incoming SHA from HomeScreen integration>` (option (a) approved by team-lead 2026-05-24).
+
+Claude-Design `HomeScreen.jsx` (commit `0b87415`, `docs/claude-design-handoff/ui_kits/mobile/HomeScreen.jsx`) ships 4 editorial sections below the compare card that Bundle D explicitly defers. Would expand scope ~50%, require new backend APIs + 30+ i18n keys + tests. Stubbed via `<View testID="home-editorial-stub" style={{ height: 0 }} />` in `src/screens/HomeScreen.tsx` at the render position where the sections would go — single React-tree-neutral marker so Bundle B preservation tests don't false-positive on "missing section" + future maintainer can grep `home-editorial-stub` to find the deferral point.
+
+### Deferred sections (in render order)
+
+1. **SmartPickCard** — Personalized winner story (Claude-Design source: HomeScreen.jsx:438-501).
+   - Backend dep: new endpoint e.g., `GET /api/v1/home/smart-pick?user_id=<uid>` returning `{winner, runner_up, prices, reasoning}`. Pulls from `users.behavior_profile` + comparison history.
+   - i18n: ~6 keys (`home.smartPick.title`, `.eyebrow`, `.updatedToday`, `.cta`, `.fallbackReasoning`, `.emptyState`).
+
+2. **QuickCategories** — 4-tile grid Electronics/Skincare/Supplements/Makeup (Claude-Design source: HomeScreen.jsx:534-570).
+   - Could ship cleanly with i18n only + existing `CategorySelector` route — **lowest Bundle E lift; consider promoting early.**
+   - i18n: 1 eyebrow + 4 category labels (already in `home.categories.*` namespace; only need the section eyebrow `home.quickCategories.eyebrow`).
+   - No backend dep.
+
+3. **SavingsBanner** — Aggregate "X BHD saved, Y decisions sorted" stat (Claude-Design source: HomeScreen.jsx:573-605).
+   - Backend dep: new endpoint aggregating user's comparisons + estimated price-savings deltas. Could be served from `users.preferences.savings_stat` cached server-side; nightly cron job.
+   - i18n: ~4 keys (`home.savings.eyebrow`, `.amount`, `.context`, `.emptyState`).
+
+4. **TrendingNearYou** — 3 trending product pairs by region (Claude-Design source: HomeScreen.jsx:608-651).
+   - Backend dep: needs anonymized aggregation across `search_logs` + region-aware ranking. **Heaviest lift** — privacy review required for cross-user trend exposure.
+   - i18n: ~3 keys (`home.trending.eyebrow`, `.viewCount`, `.emptyState`).
+
+### Acceptance criteria for un-deferral (any bundle that promotes these)
+
+- All 4 sections wired to real backend endpoints (no hardcoded data).
+- i18n keys added to EN + AR with copy-policy gate passing (no scary vocab, no "Best Pick"/"Winner"/"Best for" per `.copy-policy.json`).
+- Per-section preservation test added to `__tests__/HomeScreen.bundleB.contract.test.tsx`.
+- Cross-QA + R16 device-leg verification at next EAS preview build.
+- Bundle B contract still holds: `TwoInputShell` mounted, paste-split + mode-switch still fire, 8 analytics events (`compare_entry_view`, `paywall_banner_view`, `paywall_banner_tap`, `content_block`, `submit`, `paste_split`, `mode_autoswitch`, `ready`) still wired, paywall takeover on `!canCompare`, 1.2s min-display floor preserved, haptic vocabulary (chip:light / stage:light / winner:medium) intact.
+
+### Cost estimate
+
+- `QuickCategories`: ~2 hours (mostly i18n + reuse existing CategorySelector route)
+- `SmartPickCard`: ~4-6 hours (backend endpoint + frontend wiring + behavior_profile read)
+- `SavingsBanner`: ~4 hours (backend aggregation + frontend wiring)
+- `TrendingNearYou`: ~8-10 hours (aggregation logic + region-aware ranking + privacy review)
+- Total: **~18-22 hours**, likely a Bundle F or v1.1 deliverable. Recommend bundling all 4 in one PR so the editorial-content surface lands as a coherent block.
