@@ -18,14 +18,14 @@ These items DO NOT block TestFlight internal testing (≤100 invited testers) �
 
 ## Operating Principles
 
-1. **Quality first, then optimize.** Show confidence, never false certainty.
-2. **Don't fetch what you already have, don't call twice when once is enough, don't guess when you can verify.** Every API call costs money.
+1. **Quality first, then optimize.** Confidence not false certainty.
+2. **Don't fetch what you already have, don't call twice when once is enough, don't guess when you can verify.** API calls cost money.
 3. **Plan → Approve → Implement → Test.** Read `docs/CLAUDE_CODE_CONTEXT.md` before major changes.
-4. **Multi-file features (3+ files, FE+BE):** use parallel agent teams (TeamCreate with 4 Opus agents: backend, frontend, test, qa).
+4. **Multi-file features (3+ files, FE+BE):** use parallel 4-Opus TeamCreate (backend, frontend, test, qa).
 5. **After major features:** update CLAUDE.md, MEMORY.md, `docs/CONTEXT_SESSION_LOG.md`.
-6. **Path-restricted commits in team sessions:** `git commit -m "msg" -- <paths>` — NOT `git commit -- <paths> -m "msg"` (the `--` is a path separator; anything after it is treated as a path and `-m` errors).
-7. **Push before deleting branches.** `git push` before `git branch -d`. Local-only commits become orphaned (recoverable via `git cherry-pick <hash>` from reflog within ~30 days, but invisible to teammates and at risk of garbage collection).
-8. **Multi-agent silent stalls: escalate after 30 min.** 4-Opus teams (TeamCreate) work well for Phase 0–1 but tend to stop processing inbox messages mid-task while remaining in "available" idle state. If a team agent goes silent past 30 min with uncommitted state on disk despite explicit `SendMessage` nudges, escalate to dispatcher takeover immediately — agents do not self-rescue. Pattern surfaced in Session 47 (Bundle E); dispatcher absorbed Tasks 2.2-2.5, 3.1-3.8, and 4.4 directly.
+6. **Path-restricted commits in team sessions:** `git commit -m "msg" -- <paths>` — NOT `git commit -- <paths> -m "msg"` (the `--` is a path separator).
+7. **Push before deleting branches.** `git push` before `git branch -d`. Orphaned commits are recoverable via `git cherry-pick` from reflog within ~30 days but invisible to teammates.
+8. **Multi-agent stalls: escalate after 30 min.** 4-Opus teams stop processing inbox while staying "available". If silent >30 min with uncommitted state despite `SendMessage` nudges → dispatcher takeover. Pattern surfaced Session 47.
 
 ## Critical: Two app/ Directories
 
@@ -73,41 +73,41 @@ IDE/LSP TS diagnostics on Windows are unreliable (`typescript-lsp` plugin bug, s
 ### Migrations
 Supabase DDL (`migrations/*.sql`): preferred path is **Supabase MCP** (`mcp__plugin_supabase_supabase__apply_migration`) — tracks migration history table. Fallback: [SQL Editor](https://supabase.com/dashboard/project/qulajmyxdbdkchvecmvc/sql/new). **Gotcha:** SQL Editor wraps multi-statement scripts in one transaction, so a failing view rolls back the ALTER TABLE before it — always verify schema after apply (`information_schema.columns`). Before `CREATE TABLE IF NOT EXISTS`, check existing schema — stale tables with different columns cause silent index/policy failures.
 
-Applied 010–023 (all via MCP since 013). Migration files in `migrations/*.sql` with rollbacks at `migrations/rollback/*.sql`. Highlights: **018** bonus expiry columns + partial idx. **019** `users.attribution_source` + CHECK enum mirror. **020** `comparisons.schema_version` (v1=legacy/hidden, v2=renderable; default 2). **021** `users.device_fingerprint_hash` + partial idx (anti-farming). **022** `referral_invites.source` + relaxed `comparison_id` + CHECK `source∈{share_link,code_redeem}`. **023** (Bundle B/C/D, 2026-05-12 via MCP) drops `weekly_invites_used`; adds `lifetime_invites_consumed INT NOT NULL DEFAULT 0` + partial idx on `device_fingerprint_hash` — referral cap moved to 3 LIFETIME per device. **024** (Bundle C, pending via MCP) adds `'top_tier'` to `users.preferences.budget` CHECK enum; existing rows untouched, backwards-compat with 3-tier values; rollback at `migrations/rollback/024_top_tier_budget.sql`.
+Applied 010–026 (all via MCP since 013). Files in `migrations/*.sql`; rollbacks in `migrations/rollback/*.sql`. Load-bearing: **020** `comparisons.schema_version` (v1=legacy/hidden, v2=renderable; default 2 — gates history list/get filter). **021** `users.device_fingerprint_hash` + partial idx (anti-farming; matches `^[a-f0-9]{64}$`). **023** (Bundle B/C/D) drops `weekly_invites_used`, adds `lifetime_invites_consumed INT` — referral cap **3 LIFETIME per device**. **024** adds `'top_tier'` to `users.preferences.budget` CHECK enum (5-tier; backwards-compat).
 
 ## Architecture
 
 ### Backend (FastAPI + Python 3.12)
 
-**Entry:** `app/main.py` — env vars, middleware stack, registers 14 routers in `app/api/`:
-- `/api/v1/text/*` → `text_routes.py` → `structured_comparison_service.py` (primary flow + SSE, rate limited)
-- `/api/v1/image/*` → `image_routes.py` → GPT-4o-mini vision → auto-compare (rate limited, HEIC detection)
-- `/api/v1/url/*` → `url_routes.py` (single URL compare, SSRF-protected, 10/min)
-- `/api/v1/auth/*` → `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social, account deletion, demographics, cohort-profile). Rate limited per route.
-- `/api/v1/comparisons/*` → `history_routes.py` (auth required)
-- `/api/v1/share/*` → `share_routes.py` (POST auth, GET public — strips personalization)
-- `/api/v1/feedback`, `/api/v1/events` → `feedback_routes.py` (auth-optional, fire-and-forget). `FeedbackRequest` has 4 fields only — `useful, comparison_id, mattered_most, change_suggestion`. NO `feedback_type`. ContactUsScreen encodes category as `[Bug] Subject\n\nBody` prefix in `change_suggestion`; operators grep `change_suggestion LIKE '[Bug]%'`.
-- `/api/v1/referrals/*` → `referral_routes.py` (gated by `ENABLE_REFERRAL_SYSTEM`)
-- `/api/v1/admin/*` → `admin_routes.py` (X-Admin-Key, timing-safe `hmac.compare_digest`, 30/min)
-- `/api/v1/legal/*` → `legal_routes.py` (no auth, reads markdown files)
-- `/api/v1/app/*` → `version_routes.py` (force-update from env vars)
-- `/api/v1/usage/*` → `usage_routes.py` (freemium tier enforcement)
+**Entry:** `app/main.py` — env vars, middleware stack, 14 routers in `app/api/`:
+- `/text/*` → `text_routes.py` → `structured_comparison_service.py` (primary + SSE, rate-limited)
+- `/image/*` → `image_routes.py` → GPT-4o-mini vision → auto-compare (HEIC detection)
+- `/url/*` → `url_routes.py` (single URL, SSRF-protected, 10/min)
+- `/auth/*` → `auth_routes.py` → Supabase Auth (login, register, refresh, profile, email, password, social, deletion, demographics, cohort-profile). Per-route rate limits.
+- `/comparisons/*` → `history_routes.py` (auth required)
+- `/share/*` → `share_routes.py` (POST auth, GET public strips personalization)
+- `/feedback`, `/events` → `feedback_routes.py` (auth-optional, fire-and-forget). `FeedbackRequest`: 4 fields only (`useful, comparison_id, mattered_most, change_suggestion`); ContactUsScreen prefixes `[Bug] Subject\n\nBody` for grep.
+- `/referrals/*` → `referral_routes.py` (gated `ENABLE_REFERRAL_SYSTEM`)
+- `/admin/*` → `admin_routes.py` (X-Admin-Key, `hmac.compare_digest`, 30/min)
+- `/legal/*` → `legal_routes.py` (no auth, markdown files)
+- `/app/*` → `version_routes.py` (force-update from env vars)
+- `/usage/*` → `usage_routes.py` (freemium tier)
 
 **Middleware stack** (outermost → innermost): RequestID → SecurityHeaders (HSTS, CSP, X-Frame-Options) → ErrorHandler → CORS → slowapi rate limiter
 
 **Unified error format:** `{ success: false, error: "msg", code: "ERROR_CODE", request_id: "uuid" }`. Codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `RATE_LIMITED`, `VALIDATION_ERROR`, `INTERNAL_ERROR`. Frontend `parseApiError()` handles both `.error` (new) and `.detail` (legacy FastAPI).
 
-**Core service:** `app/services/structured_comparison_service.py` (~1,500 lines — orchestrator only)
-- `StructuredComparisonService` — **per-request instances** via `get_comparison_service()` (NOT singleton, for concurrency safety)
-- `compare_from_text(query, region, vision_products?, selected_category?, user_id?)` — main entry point
-- `compare_from_text_streaming(...)` — async generator yielding SSE events (specs→prices→reviews→scores→verdict→complete)
-- **Pre-fetch:** Unified web search (1 Serper call) shared by specs + reviews — gated by cache check
-- **Phase 1:** specs + price in parallel (specs reuses unified search)
-- **Phase 2:** reviews + rating in parallel (reviews reuses unified search; shopping data from Phase 1 feeds ratings)
-- **Scoring:** deterministic via `scoring_service.py` (zero API cost) — value badges, tradeoff pairs, confidence indicators
-- **Behavioral profile:** fetched before scoring, updated fire-and-forget after response
-- `_shopping_items_cache` populated during price search, cleared per-request
-- **Response keys:** `overview`, `specs`, `reviews`, `scoring`, `personalization`, `metadata`. Backward-compat aliases: `products`, `comparison`, `winner_index`, `recommendation`, `key_differences`.
+**Core service:** `app/services/structured_comparison_service.py` (~1,500 lines, orchestrator only)
+- `StructuredComparisonService` — **per-request instances** via `get_comparison_service()` (NOT singleton — concurrency safety).
+- `compare_from_text(query, region, vision_products?, selected_category?, user_id?)` — main entry.
+- `compare_from_text_streaming(...)` — async SSE: specs→prices→reviews→scores→verdict→complete.
+- **Pre-fetch:** Unified Serper search (1 call) shared by specs + reviews, cache-gated.
+- **Phase 1:** specs + price parallel (specs reuses unified search).
+- **Phase 2:** reviews + rating parallel (reviews reuses search; Phase 1 shopping feeds ratings).
+- **Scoring** deterministic (`scoring_service.py`, $0): value badges, tradeoff pairs, confidence.
+- **Behavioral profile:** fetched before scoring, updated fire-and-forget post-response.
+- `_shopping_items_cache` populated in price search, cleared per-request.
+- **Response keys:** `overview`, `specs`, `reviews`, `scoring`, `personalization`, `metadata`. BC aliases: `products`, `comparison`, `winner_index`, `recommendation`, `key_differences`.
 
 **Decomposed modules** (extracted from monolith):
 - `price_service.py` — pricing tiers, currency conversion, page scraping, iHerb, pharmacy JSON-LD
@@ -117,50 +117,48 @@ Applied 010–023 (all via MCP since 013). Migration files in `migrations/*.sql`
 - `response_builder.py` — `build_comparison_response()` for sync + streaming paths
 
 **Price pipeline (3 tiers + page scraping + pharmacy JSON-LD):**
-1. Serper Shopping API direct extraction (structured prices)
-2. GPT-4o-mini extraction from organic search results (with Tier 3 sanity check)
-3. GPT training data estimate (marked `estimated: true`)
+1. Serper Shopping (structured)
+2. GPT-4o-mini extraction from organic results (Tier 3 sanity-checked)
+3. GPT training-data estimate (`estimated: true`)
 
-- **Page scraping:** `_fetch_page_price()` → `_curl_fetch_html()` + `_extract_price_from_html()` extracts JSON-LD/OG/microdata. Used in Tier 1.5 cascade and supplement pipeline. Feature flag: `ENABLE_PAGE_SCRAPE`.
-- **Firecrawl Smart Wait** (Tier 1.5a): `firecrawl_service.scrape_page_with_status()` for SPA pages. `source_method: "firecrawl"`. **Timeout 30s** (luxury SPAs need >15s). Validated on LV, Gucci, Bloomingdales.
-- **Scrape.do fallback** (Tier 1.5d): residential proxies. Used only when curl_cffi fetched HTML but found no price (`failed_curl_urls`). `source_method: "scrapedo_rendered"`.
-- **API budget + circuit breakers** (`api_budget_service.py`): credits (Firecrawl 450/lifetime, Scrape.do 900/mo, Serper 2200/lifetime), 3 failures → 10min cooldown. Fail-open on Redis unavailability.
-- **Gate 0 validation:** `_validate_price_query()` rejects garbage queries; `_validate_scrape_url()` rejects search/category pages before burning scrape credits.
-- **Price philosophy:** "MOST AUTHORITATIVE" not "LOWEST reasonable". Source priority: official brand > authorized retailers > major marketplaces. Counterfeit sources filtered (DHgate, AliExpress, Temu, Wish). `OFFICIAL_BRAND_DOMAINS` (25+) sorted first.
-- Each price tagged `source_method`: `local_bhd`, `converted_usd`, `page_scrape`, `page_scrape_rendered`, `firecrawl`, `scrapedo_rendered`, `estimated`. `price_method_mismatch` flag set when products use different methods.
-- **Supplements:** iHerb direct scrape → Bahrain pharmacy JSON-LD → Serper organic + GPT → Tier 3.
+- **Page scrape** (`_fetch_page_price` → curl_cffi + JSON-LD/OG/microdata): Tier 1.5 cascade + supplements. Flag `ENABLE_PAGE_SCRAPE`.
+- **Firecrawl** (Tier 1.5a, SPA pages, **30s timeout** — luxury SPAs >15s). **Scrape.do** (Tier 1.5d, residential proxies, only when curl fetched HTML w/ no price).
+- **API budget** (`api_budget_service.py`): Firecrawl 450/lifetime, Scrape.do 900/mo, Serper 2200/lifetime. 3 failures → 10min cooldown. Fail-open on Redis down.
+- **Gate 0:** `_validate_price_query` + `_validate_scrape_url` reject garbage queries / search-category pages before burning credits.
+- **Philosophy:** "MOST AUTHORITATIVE" not "lowest". Priority: official brand > authorized retailers > marketplaces. Counterfeits filtered (DHgate/AliExpress/Temu/Wish). `OFFICIAL_BRAND_DOMAINS` (25+) sorted first.
+- `source_method` enum: `local_bhd | converted_usd | page_scrape | page_scrape_rendered | firecrawl | scrapedo_rendered | estimated`. `price_method_mismatch` flag set when products differ.
+- **Supplements:** iHerb scrape → Bahrain pharmacy JSON-LD → Serper+GPT → Tier 3.
 
 **Rating pipeline:** Tier 1 (Serper Shopping, trusted retailers) → Tier 2 (known retailers incl. luxury/fashion) → Tier 3 (eBay if review_count > 1000) → Fallback (GPT, unverified). Consensus: 3+ identical → Google product aggregate. iHerb ratings extracted during price scrape (zero extra calls). All ratings displayed without verified/unverified badges.
 
 **URL sourcing:** Serper Shopping `link` primary, `_build_retailer_url()` fallback. Frontend `openRatingSource()` uses `rating_source.url` first.
 
 **Supplement-specific:**
-- Serper Shopping returns ZERO results for supplements — iHerb direct scrape via `curl_cffi` instead.
-- Non-iHerb brands (HealthAid, Vitabiotics): `_fetch_pharmacy_price()` → `site:bn.boots.com` search → JSON-LD parsing. Brand matching is space-insensitive.
-- bolo.bh NOT indexed by Google (Vue.js SPA); bn.boots.com IS indexed with JSON-LD prices.
-- **Bahrain Drug Database**: 655 products in `bahrain_approved_drugs`. `find_matching_drugs()` via full-text search, injected into spec prompt for supplements only.
-- **Supabase gotcha:** `text_search()` needs `options={"type": "plain", "config": "english"}` (NOT keyword args); `.limit()` BEFORE `.text_search()` in chain.
+- Serper Shopping returns ZERO for supplements — iHerb direct scrape via `curl_cffi` instead.
+- Non-iHerb brands (HealthAid, Vitabiotics): `_fetch_pharmacy_price()` → `site:bn.boots.com` → JSON-LD. Brand match space-insensitive. bolo.bh NOT indexed by Google (Vue SPA); bn.boots.com IS.
+- **Bahrain Drug Database:** 655 products in `bahrain_approved_drugs`. `find_matching_drugs()` full-text search injected into spec prompt (supplements only).
+- **Supabase gotcha:** `text_search()` needs `options={"type": "plain", "config": "english"}` (NOT kwargs); `.limit()` BEFORE `.text_search()` in chain.
 
 **Key services** (in `app/services/`):
-- `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (9 categories), structured verdict + review_summary. Injects prompt personality + trust rules.
-- `scoring_service.py` — Deterministic scoring ($0). Category-specific 6 dimensions via `CATEGORY_DIMENSIONS`. Personalization caps: ±30% / ±10% / ±5%.
-- `prompt_personalities.py` — Per-category comparison "language". `build_personality_prompt(category)`.
-- `trust_validation_service.py` — Cross-checks GPT claims against deterministic scores.
-- `behavior_service.py` — Decay-weighted profiles (30-day half-life). Category affinity, price range, dimension sensitivity.
-- `cache_service.py` — Use `_redis_get/_set/_incr/_expire` helpers for general use. `api_budget_service` uses `redis_client.incrby()` / `incrbyfloat()` directly for atomic operations.
-- `api_budget_service.py` — Credit tracking + circuit breakers (Firecrawl, Scrape.do, Serper).
-- `exchange_rate_service.py` — Daily rates from frankfurter.app, Redis-cached 24h, hardcoded GCC fallbacks. `get_rate(from_currency, to_currency="BHD")`.
+- `extraction_service.py` — GPT prompts, `CATEGORY_SPEC_SCHEMAS` (9 categories), structured verdict + review_summary. Injects personality + trust rules.
+- `scoring_service.py` — Deterministic scoring ($0). 6 dims via `CATEGORY_DIMENSIONS`. Personalization caps ±30/10/5%.
+- `prompt_personalities.py` — Per-category "language" via `build_personality_prompt(category)`.
+- `trust_validation_service.py` — Cross-checks GPT claims vs deterministic scores.
+- `behavior_service.py` — Decay-weighted profiles (30-day half-life): affinity, price range, dim sensitivity.
+- `cache_service.py` — `_redis_get/_set/_incr/_expire` helpers. `api_budget_service` uses `redis_client.incrby/incrbyfloat` directly for atomicity.
+- `api_budget_service.py` — Credit tracking + circuit breakers (Firecrawl/Scrape.do/Serper).
+- `exchange_rate_service.py` — Daily rates from frankfurter.app, Redis-cached 24h, GCC fallbacks. `get_rate(from, to="BHD")`.
 - `firecrawl_service.py` / `scrapedo_service.py` — JS rendering wrappers.
-- `database_service.py` — **Dual Supabase client**: `get_user_supabase_client(token)` (anon key + JWT, RLS enforced) vs `get_admin_supabase_client()` (service-role, admin-only). User-facing DB functions accept `access_token`. Old `get_supabase_client()` is deprecated alias for admin.
-- `usage_service.py` — Freemium tier. Free: 3 lifetime + 10/month + 3/day. Premium: 70/month + 10/day. Redis counters + Supabase persistence. **Device-bound (Migration 021, Bundle A):** registration accepts `X-Device-Fingerprint` header → SHA-256 stored at `users.device_fingerprint_hash`. Free-tier counters inherit on re-signup from the same device. Prevents log-out + re-signup freebie farming.
-- `audit_service.py` — Fire-and-forget security event logging (`admin_audit_log`). Events: login, lockout, usage_limit, injection_attempt.
-- `product_data_service.py` — L2 DB cache: specs (30d), prices (24h, append-history), reviews (14d). Redis miss → DB check → API call.
-- `cohort_service.py` — Survey-driven cohort matching. Singleton loads `data/cohort_priors.json` once at startup. Hierarchical fallback (exact → broadened_governorate → broadened_language → broadened_age → population). Built by `scripts/build_cohorts.py` from gitignored CSVs in `data/surveys/`; only `data/cohort_priors.json` is committed.
-- `model_router_service.py` — Hybrid model routing. `get_model(priority="high")` returns `gpt-4o` below 80% of `DAILY_4O_CAP`, else `gpt-4o-mini`. Atomic `INCRBY` per UTC date. 429 retries to mini once. Fail-open on Redis. Used by verdict generation; specs/prices/reviews stay on mini.
-- `referral_service.py` — Smart Decision Referrals. `link_invite_to_user`, `try_trigger_loop2`, code generation.
-- `abuse_detection_service.py` — `evaluate_invite()` priority: SAME_DEVICE > DISPOSABLE_EMAIL > BELOW_REAL_ACTION_THRESHOLD (`elapsed_seconds` proxy from `metadata.elapsed_seconds`, `REAL_ACTION_MIN_SECONDS` env, default 5s).
-- `push_service.py` — Expo Push (deep-link `qaren://profile/referrals`).
-- `reengagement_service.py` — Daily cron `scripts/cron_reengagement.py`. 3 detectors: `decision_insight`, `cohort_curiosity`, `decision_retrospective`. 7-day per-user cap. Gated by `ENABLE_REENGAGEMENT_PUSHES` + `REENGAGEMENT_CANARY_PERCENT` (via `app/utils/feature_bucket.py::hash_bucket()`).
+- `database_service.py` — **Dual Supabase client**: `get_user_supabase_client(token)` (anon+JWT, RLS) vs `get_admin_supabase_client()` (service-role). User-facing DB fns accept `access_token`. `get_supabase_client()` is deprecated alias for admin.
+- `usage_service.py` — Freemium tier. Free 3 lifetime + 10/mo + 3/day; Premium 70/mo + 10/day. Redis + Supabase. **Device-bound (Migration 021):** `X-Device-Fingerprint` → SHA-256 at `users.device_fingerprint_hash`; free counters inherit on re-signup (anti-farming).
+- `audit_service.py` — Fire-and-forget security events to `admin_audit_log` (login/lockout/usage_limit/injection_attempt).
+- `product_data_service.py` — L2 DB cache: specs 30d, prices 24h (append-history), reviews 14d. Redis miss → DB → API.
+- `cohort_service.py` — Singleton over `data/cohort_priors.json` (built from gitignored `data/surveys/` CSVs via `scripts/build_cohorts.py`). Hierarchical fallback exact → governorate → language → age → population.
+- `model_router_service.py` — `get_model(priority="high")` returns `gpt-4o` below 80% of `DAILY_4O_CAP`, else mini. Atomic INCRBY per UTC date. 429 retries to mini once. Used by verdict; specs/prices/reviews stay on mini.
+- `referral_service.py` — Smart Decision Referrals: `link_invite_to_user`, `try_trigger_loop2`, code gen.
+- `abuse_detection_service.py` — `evaluate_invite()` priority SAME_DEVICE > DISPOSABLE_EMAIL > BELOW_REAL_ACTION_THRESHOLD (`elapsed_seconds` proxy, `REAL_ACTION_MIN_SECONDS` env default 5s).
+- `push_service.py` — Expo Push (`qaren://profile/referrals`).
+- `reengagement_service.py` — Daily cron `scripts/cron_reengagement.py`. 3 detectors (decision_insight/cohort_curiosity/decision_retrospective), 7-day per-user cap. Gated by `ENABLE_REENGAGEMENT_PUSHES` + `REENGAGEMENT_CANARY_PERCENT` via `feature_bucket.hash_bucket`.
 - Other: `serper_service`, `feedback_service`, `drug_database_service`, `openai_service`, `sentry_service`, `analytics_service`, `auth_service`, `url_extraction_service`.
 
 **Security** (`app/utils/`): `url_validator.py` — SSRF: resolves hostnames, blocks private/loopback/link-local IPs, allows only http/https.
@@ -169,19 +167,17 @@ Applied 010–023 (all via MCP since 013). Migration files in `migrations/*.sql`
 
 ### Frontend (React Native + Expo)
 
-**Location:** `SmartCompareApp/`. **App name:** Qaren (قارن). Bilingual EN/AR with full RTL support.
+**Location:** `SmartCompareApp/`. **App name:** Qaren (قارن). Bilingual EN/AR + full RTL.
 
-**Navigation:** Bottom tabs (Home/History/Profile) via `@react-navigation/bottom-tabs`. Results as modal. Auth stack (Login/Register/ForgotPassword). Splash → Onboarding → Auth → Main flow in `App.tsx`.
+**Navigation:** Bottom tabs (Home/History/Profile) via `@react-navigation/bottom-tabs`. Results as modal. Auth stack (Login/Register/ForgotPassword). Splash → Onboarding → Auth → Main in `App.tsx`. Paywall registered as `Stack.Screen` with `presentation: 'transparentModal'` (audit 2026-05-22 — was Modal-only; `navigation.navigate('Paywall')` was silent no-op).
 
-**Screens (10):** Splash, Onboarding (6-step wizard), Login, Register, ForgotPassword, Home (camera-first + search overlay + categories), Results (single-scroll + skeleton + winner reveal), History (date-grouped FlatList), Profile (settings/language/account), Paywall (bottom-sheet placeholder). Paywall is registered as a `Stack.Screen` with `presentation: 'transparentModal'` (audit 2026-05-22 — was Modal-only before, `navigation.navigate('Paywall')` was a silent no-op at 6 call sites).
-
-**Design system:** `src/theme/index.ts` (emerald #10B981, Inter+Cairo). Components: Button, Card, Chip, SkeletonLoader, ProgressBar, IconButton, ComparisonCounter, SearchOverlay. i18n: `src/i18n/` (180+ keys EN/AR).
+**Design system:** `src/theme/index.ts` (emerald #10B981, Geist+Cairo). Components: Button, Card, Chip, SkeletonLoader, ProgressBar, IconButton, ComparisonCounter. i18n: `src/i18n/` (180+ keys EN/AR).
 
 **Services:**
-- `api.ts` — Axios to Railway (120s timeout). SSE via `streamComparison()` (fetch+ReadableStream, fallback to non-streaming). JPEG transcoding before upload.
-- `authService.ts` — Supabase auth + social login. **`verifyAuth()` returns `User | null` (NOT boolean).** Tokens in `expo-secure-store` (NOT AsyncStorage). OAuth nonces via `expo-crypto`. All `console.log` wrapped in `__DEV__`.
-- `certificatePinning.ts` — SSL pinning for Railway backend (LE intermediate SPKI). Initialized once from `api.ts`. Requires EAS dev build (no-op in Expo Go). SPKI hashes + rotation in `docs/SECURITY_HARDENING_CONTEXT.md`.
-- `sentry.ts` — Mobile crash + breadcrumb reporting via `@sentry/react-native@8.11.1`. Mirrors backend `before_send` scrub patterns (JWT/OpenAI/Firecrawl/Bearer/sensitive headers). DSN → `qaren-rr/react-native` project. Sourcemap upload deferred (needs `SENTRY_AUTH_TOKEN` in EAS env + plugin config object form).
+- `api.ts` — Axios → Railway (120s timeout). SSE via `streamComparison()` (fetch+ReadableStream, fallback to non-streaming). JPEG transcoding pre-upload.
+- `authService.ts` — Supabase + social. **`verifyAuth()` returns `User | null`** (NOT boolean). Tokens in `expo-secure-store` (NOT AsyncStorage). OAuth nonces via `expo-crypto`. All `console.log` wrapped in `__DEV__`.
+- `certificatePinning.ts` — Railway SSL pinning (LE intermediate SPKI). Init once from `api.ts`. EAS dev build only (no-op in Expo Go). Rotation in `docs/SECURITY_HARDENING_CONTEXT.md`.
+- `sentry.ts` — `@sentry/react-native@8.11.1`. Mirrors backend `before_send` scrub (JWT/OpenAI/Firecrawl/Bearer/headers). DSN → `qaren-rr/react-native`. Sourcemap upload deferred (`SENTRY_AUTH_TOKEN` + plugin config).
 
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls.
@@ -192,33 +188,32 @@ Applied 010–023 (all via MCP since 013). Migration files in `migrations/*.sql`
 ## Important Patterns
 
 ### Fact-checking (zero-cost cross-validation)
-Every product has a `fact_check` object (`overall_confidence`: high/medium/low). Spec citations verified against snippets, review sentiment vs. Serper (0.8 tolerance), price vs. Shopping median (30%). Zero extra API calls. **Ratings are NEVER AI-generated** — GPT prompt explicitly forbids generating `source_ratings`.
+Every product has `fact_check` (`overall_confidence`: high/medium/low). Spec citations verified vs snippets; review sentiment vs Serper (0.8 tol); price vs Shopping median (30%). Zero extra API calls. **Ratings are NEVER AI-generated** — GPT prompt forbids generating `source_ratings`.
 
 ### `product.price` is an object, not a number
-Backend returns `{ amount, currency, retailer, url, estimated }`. Frontend code must access `product.price.amount`.
+Backend returns `{ amount, currency, retailer, url, estimated }`. Frontend must access `product.price.amount`.
 
 ### GCC_REGIONS keys (extraction_service.py)
-Keys are: `bahrain`, `saudi_arabia`, `uae`, `kuwait`, `qatar`, `oman`. Note: `saudi_arabia` NOT `saudi`.
+`bahrain`, `saudi_arabia` (NOT `saudi`), `uae`, `kuwait`, `qatar`, `oman`.
 
 ### Per-request service instances
-`get_comparison_service()` returns a **new instance per call** (not singleton). Each request gets fresh `total_cost`, `api_calls`, `_shopping_items_cache`. No manual reset needed.
+`get_comparison_service()` returns a NEW instance per call (not singleton). Fresh `total_cost`, `api_calls`, `_shopping_items_cache` — no manual reset.
 
 ### Cost budget + caching
-Target: **$0.01/comparison**. Achieved via unified search (1 Serper call shared by specs + reviews in `_fetch_product_data()`). Track with `self.total_cost` and `self._track_cost()`. **Two-layer cache:** L1 Redis (specs/reviews 7d, prices 24h) → L2 DB via `product_data_service.py` (specs 30d, prices 24h, reviews 14d) → API call. `?nocache=true` bypasses both. Camera input passes `vision_products` directly, skipping `parse_product_query()`.
+Target **$0.01/comparison** via unified search (1 Serper call shared by specs+reviews in `_fetch_product_data`). Track with `self.total_cost` / `_track_cost`. **Two-layer cache:** L1 Redis (specs/reviews 7d, prices 24h) → L2 DB via `product_data_service.py` (specs 30d, prices 24h, reviews 14d) → API. `?nocache=true` bypasses both. Camera passes `vision_products` directly, skipping `parse_product_query()`.
 
 ### Deterministic scoring + Prompt personalities + Personalization
 See skill: `qaren-scoring` (auto-loads when `scoring_service.py`, dimension scores, value badges, personalization caps ±30/10/5%, behavior_service, or `scoring_v2` contract are mentioned). Key recall: 9 categories × 6 dimensions via `CATEGORY_DIMENSIONS`; price tiers budget/mid/premium/luxury; three-layer personalization (explicit ±30% → behavioral ±10% → session ±5%); `scoring_method` enum: `category_weighted` / `personalized` / `behavioral` / `invitee_quiz`. Rollback V1: `docs/ROLLBACK_SCORING_V1.md`.
 
 ### Auth + security hardening
-- **Dual Supabase client** (see `database_service.py` above).
-- **RLS active** on all user-data tables (migration 010). Cascade delete via `delete_user_cascade()` SECURITY DEFINER → `.rpc()`.
-- **Token security:** `expo-secure-store` (Keychain/Keystore), revocation on logout via Redis blacklist (`revoked:{sha256(token)}`, 1hr TTL). `verify_token()` checks blacklist before Supabase validation.
-- **`verify_token` (audit 2026-05-22) returns `{id, email, access_token}`** — endpoints needing the user-scoped Supabase client (push_token, behavior_profile) pass `current_user["access_token"]` to `get_user_supabase_client()`. **Do NOT log `current_user` dict** — only `current_user["id"]`. Audit confirmed no existing log site dumps the whole dict.
-- **`X-Device-Fingerprint` header** must match `^[a-f0-9]{64}$` (SHA-256 hex). Invalid values dropped silently at `auth_routes.py`; same regex on `referral_routes.py` Pydantic field. Prevents fingerprint forging that defeats the Migration 021 anti-farming gate.
-- **`/admin/*` static** (cohort/costs/referrals dashboards) gated by `_AdminAuthenticatedStaticFiles` in `main.py` — requires `X-Admin-Key` header OR HTTP Basic auth password. Browsers see the native `WWW-Authenticate: Basic` prompt.
-- **Account deletion** cascades atomically (App Store requirement, 1/min). **Password:** 10+ chars, 1 upper/lower/digit. **Email change** requires current password.
-- **Admin endpoints** rate limited 30/min. **History routes** use `hmac.compare_digest` + merged 404/403. **Swagger** disabled in prod. **SQL LIKE wildcards** escaped. **Sentry `before_send`** scrubs JWT/API keys.
-- **CSP scoping** (`app/middleware/security.py`): strict `default-src 'none'` everywhere EXCEPT `/admin/*` static dashboards (which get `'unsafe-inline'` + `cdn.jsdelivr.net` for inline scripts/styles + Chart.js). Admin pages sit behind `X-Admin-Key`.
+- **RLS active** on all user-data tables (Migration 010). Cascade delete via `delete_user_cascade()` SECURITY DEFINER → `.rpc()`.
+- **Tokens:** `expo-secure-store` (Keychain/Keystore). Logout revokes via Redis blacklist `revoked:{sha256(token)}` 1h TTL. `verify_token()` checks blacklist before Supabase.
+- **`verify_token` returns `{id, email, access_token}`** — pass `current_user["access_token"]` to `get_user_supabase_client()` for user-scoped queries. **Never log `current_user` dict** — only `current_user["id"]`.
+- **`X-Device-Fingerprint`** must match `^[a-f0-9]{64}$` (SHA-256 hex). Invalid silently dropped at `auth_routes.py`; same regex on `referral_routes.py` Pydantic field.
+- **`/admin/*` static** dashboards gated by `_AdminAuthenticatedStaticFiles` in `main.py` — `X-Admin-Key` header OR HTTP Basic auth password.
+- **Account deletion** cascades atomically (App Store req, 1/min). **Password:** 10+ chars, 1 upper/lower/digit. **Email change** requires current password.
+- **Admin** 30/min. **History** uses `hmac.compare_digest` + merged 404/403. **Swagger** disabled in prod. **SQL LIKE** escaped. **Sentry `before_send`** scrubs JWT/API keys/query strings.
+- **CSP** (`middleware/security.py`): strict `default-src 'none'` except `/admin/*` static (gets `'unsafe-inline'` + cdn.jsdelivr.net for Chart.js).
 - **Login response:** `POST /auth/login` returns `{success, user, session, ...}` — access token at `session.access_token`, NOT top-level.
 - **Regression tests:** `tests/test_security_regression.py` (~98 tests) — DO NOT delete or skip.
 
@@ -238,17 +233,17 @@ See skill: `qaren-cohort` (auto-loads when `/api/v1/auth/demographics`, `cohort_
 22-char URL-safe token (`token_urlsafe(16)`) in `comparisons.share_token` (TEXT post-migration 017). Public access strips personalization. History: paginated, searchable, ownership-checked. On 401, clears session + redirects to auth. `create_share_token` raises `ShareTokenError` on persistence failure (loud-fail). **schema_version gate (Migration 020):** `save_comparison` only writes when `_validate_renderable(payload)` passes; sets `schema_version=2` + denormalized `product_names`. History list/count/get filter on `schema_version=2` — v1 rows invisible (use `include_legacy=True` for DELETE cleanup only).
 
 ### Qaren UX Redesign (merged 2026-05-07 — PR #2 ee91a87)
-Cal-AI-Lite 17-step onboarding + black/emerald hybrid identity (emerald = signal color reserved for winner reveal, success ticks, cohort accents — NOT primary CTA). `CANARY_NEW_ONBOARDING_PERCENT` in `SmartCompareApp/src/config/features.ts`; **currently 100**. Drop to 10 via EAS Update before App Store soft-launch, ramp 10→50→100 (NOT a Railway env var). Plan/spec: `docs/plans/2026-05-06-qaren-ux-redesign{,.design}.md`.
-- **Bucketing (`featureBucket.ts` + App.tsx):** djb2 hash on stable id (device-id pre-signup via `expo-secure-store`, user.id post-signup). `hashBucket(id, percent)` is pure — same `(id, percent)` → same boolean every call. Monotonic ramp invariant tested.
-- **Theme + motion** live in `SmartCompareApp/src/theme/{index.ts,motion.ts}`. Geist (EN, SIL OFL v1.1) + Cairo (AR). `arabicLineHeightMultiplier = 1.7/1.5`. haptic vocabulary {chip:light, stage:light, winner:medium} — explicitly NO error/warning/heavy intensities (Build Principle #4: never frame the app as scary).
-- **17-step onboarding (`src/screens/onboarding/`):** OnboardingFlow orchestrator + 17 steps. Cohort-key types use exact-case strings ('Capital', '25-34', 'Male'/'Female') matching `cohort_priors.json`. Step 14 theatrical loading enforces 3.2s minimum. Step 16 "Save your advisor" has NO skip link — forced sign-in (verified by negative-assertion test).
-- **Hero illustrations** (hand-coded SVG + Reanimated, ZERO Lottie): PhoneMockup, CohortBarChart, ConcentricMotif, LoadingRings, RevealBurst. Stage-gated SSE on StreamingProductCard (init→title→specs→prices→reviews→verdict). StageChecklist haptic fires ONLY on transition INTO done state, never on initial mount.
-- **Results redesign:** section titles per design § 4g — "Why we picked this" / "Where the runner-up wins" / "What's next?". CohortBadge inline below verdict.
-- **Bonus expiry (Migration 018):** 3-day window default. `cron_expire_bonuses.py` gated by `ENABLE_BONUS_EXPIRY_PUSHES`, 1000-row LIMIT, 24h-before push. `usage_service.get_user_active_bonus_count()` filters live rows — entitlement computed from rows, NOT from a stale INT counter (analytics/display only, MUST NOT drive entitlement). **Bundle B/C/D extends this to 7 days for new redemptions; existing rows untouched.**
-- **Attribution endpoint (Migration 019):** `POST /api/v1/auth/attribution` (auth, 30/min). Pydantic Literal['friend','instagram','tiktok','app_store','google','other'] + DB CHECK mirror.
-- **Min-display floor 1.2s** on HomeScreen→Results per design § 3 (cached responses still show loading 1.2s so brand moment lands). Tracked via `loadingStartedAtRef` + `navigateToResultsWithFloor` in `HomeScreen.tsx`.
-- **Onboarding analytics (`OnboardingFlow.tsx`):** `onboarding_started` on mount, `onboarding_step_completed` BEFORE setStep so payload reflects FINISHED step, `onboarding_completed` on Step 17.
-- **Copy contract:** ZERO scary copy in user-facing i18n. Forbidden: `couldn't`, `try again`, `Failed to`, `تعذر`, `فشل`. Approved vocabulary in design doc §6.
+Cal-AI-Lite 17-step onboarding + black/emerald hybrid identity (emerald = signal color: winner reveal, success ticks, cohort accents — NOT primary CTA). `CANARY_NEW_ONBOARDING_PERCENT` in `SmartCompareApp/src/config/features.ts`; **currently 100**. Drop to 10 via EAS Update before App Store soft-launch, ramp 10→50→100 (NOT a Railway env var). Plan: `docs/plans/2026-05-06-qaren-ux-redesign{,.design}.md`.
+- **Bucketing** (`featureBucket.ts`): djb2 over stable id (device-id pre-signup, user.id post). `hashBucket(id, percent)` pure — monotonic ramp invariant tested.
+- **Theme + motion** in `SmartCompareApp/src/theme/{index.ts,motion.ts}`. Geist (EN) + Cairo (AR). `arabicLineHeightMultiplier = 1.7/1.5`. Haptic vocab {chip:light, stage:light, winner:medium} — **NO error/warning/heavy** (Build Principle #4: never scary).
+- **17-step onboarding** (`src/screens/onboarding/`): OnboardingFlow + 17 steps. Cohort-key strings **exact-case** ('Capital', '25-34', 'Male'/'Female') matching `cohort_priors.json`. Step 14 theatrical loading 3.2s min. Step 16 NO skip — forced sign-in.
+- **Hero illustrations** (SVG + Reanimated, **ZERO Lottie**): PhoneMockup, CohortBarChart, ConcentricMotif, LoadingRings, RevealBurst. Stage-gated SSE on StreamingProductCard (init→title→specs→prices→reviews→verdict). StageChecklist haptic ONLY on transition INTO done.
+- **Results redesign:** section titles "Why we picked this" / "Where the runner-up wins" / "What's next?". CohortBadge inline below verdict.
+- **Bonus expiry (Migration 018):** 3-day default. `cron_expire_bonuses.py` gated by `ENABLE_BONUS_EXPIRY_PUSHES`, 1000-row LIMIT, 24h-before push. **Entitlement computed from `get_user_active_bonus_count()` live rows, NEVER from stale INT counter** (counter is analytics/display only). Bundle B/C/D extends to 7d for new redemptions.
+- **Attribution endpoint (Migration 019):** `POST /auth/attribution` (auth, 30/min). Pydantic Literal['friend','instagram','tiktok','app_store','google','other'] + DB CHECK mirror.
+- **Min-display floor 1.2s** on Home→Results (cached responses still loading 1.2s so brand moment lands). Tracked via `loadingStartedAtRef` + `navigateToResultsWithFloor`.
+- **Onboarding analytics:** `onboarding_started` on mount; `onboarding_step_completed` BEFORE setStep (payload reflects FINISHED step); `onboarding_completed` on Step 17.
+- **Copy contract:** ZERO scary copy. Forbidden EN: `couldn't`, `try again`, `Failed to`. Forbidden AR: `تعذر`, `فشل`. Approved vocab in design doc §6.
 
 ### Smart Decision Referrals
 See skill: `qaren-referrals` (auto-loads when `/api/v1/referrals/*` routes, invite codes (QR-XXXXXX), Loop 1/Loop 2, redemption chain, or `referral_invites`/`referral_redemptions` tables are mentioned). Critical inline: gated by `ENABLE_REFERRAL_SYSTEM` (default OFF in code, flipped in Railway). Bundle B/C/D moved cap to **3 LIFETIME per device** with fail-OPEN on DB error. Code redemption is **register-only** — `RegisterRequest.invite_code` accepts `^QR-[A-HJ-NP-Z2-9]{6}$`. Re-engagement gated by `ENABLE_REENGAGEMENT_PUSHES`.
@@ -256,11 +251,11 @@ See skill: `qaren-referrals` (auto-loads when `/api/v1/referrals/*` routes, invi
 ### Bundle history (sessions 44-54)
 Full bundle narrative (Session 44 onwards, including Bundle B/C/D ships + hot-fix sweeps + Path A) lives in `docs/SESSION_BUNDLES.md`. CLAUDE.md keeps only the load-bearing prod-state callouts below.
 
-**[STATUS 2026-05-22 — Bundle C calibration in prod]** `ENABLE_BUNDLE_C_SCORING=false` in Railway; code default at `scoring_service.py:303` also `false`. The flag gates ONE site (`scoring_service.py:944`) — the `None vs MISSING_SCORE=50` swap for missing signals. In prod, missing signals get `MISSING_SCORE=50`, so the A.4.9 silent dim omission filter never fires. The other ~95% of Bundle C (A.3.x, A.4.5/A.4.7, A.5.x, A.6.x, A.7.x, A.9.x, A.10.x, frontend Section B) are unconditional and ARE live. Canonical state with row-by-row table + flip checklist: **`docs/BUNDLE_C_PROD_STATE.md`**. Verification discipline before trusting any "shipped/always-on" doc claim: `memory/feedback_docs_vs_railway_env_drift.md`.
+**[STATUS 2026-05-22 — Bundle C in prod]** `ENABLE_BUNDLE_C_SCORING=false` in Railway; code default also `false`. Flag gates ONE site (`scoring_service.py:944`) — `None vs MISSING_SCORE=50` swap. In prod, missing signals get `MISSING_SCORE=50`, so A.4.9 silent dim omission never fires. The other ~95% of Bundle C (A.3.x/A.4.5/A.4.7/A.5.x/A.6.x/A.7.x/A.9.x/A.10.x, frontend §B) is unconditional and live. Canonical: **`docs/BUNDLE_C_PROD_STATE.md`**. Discipline before trusting "shipped/always-on" claims: `memory/feedback_docs_vs_railway_env_drift.md`.
 
-**Active runtime state:** Bundle D TestFlight Readiness merged 2026-05-25 (`6ee3aa5`) + Path A R1/R2 hotfix sweep on main (`c0678d3`+`4aa9cff`). Latest `eas update` is Path A R2 on `preview` channel (Session 54, 2026-05-25). `STREAM_HARD_CAP_SECONDS=25.0` locks streaming p95 ≤25s. `SCRAPING_MODE=soft` URL gate wired at Firecrawl + Scrape.do. Cold-cache wall floor: fragrances 15.4s / electronics 14.7s / supplements 10.4s; iPhone+Galaxy worst case 24.8s approaches the cap. Bundle E (visual fidelity pass) brainstorm in fresh session — preflight `docs/plans/bundle-e-preflight.md`.
+**Active runtime:** Bundle D TestFlight Readiness merged 2026-05-25 (`6ee3aa5`) + Path A R1/R2 (`c0678d3`+`4aa9cff`). Latest `eas update` = Path A R2 on `preview` (Session 54). `STREAM_HARD_CAP_SECONDS=25.0`. `SCRAPING_MODE=soft` URL gate wired. Cold-cache wall: fragrances 15.4s / electronics 14.7s / supplements 10.4s; iPhone+Galaxy worst case 24.8s. Bundle E (visual fidelity) brainstorm fresh session — preflight `docs/plans/bundle-e-preflight.md`.
 
-**Workflows:** worktree-team (`git worktree add -b feature/<name> ../smartcompare-<name> main` → 4-Opus TeamCreate, `mode: "bypassPermissions"` REQUIRED — sandbox blocks Bash otherwise → cross-QA → merge `--no-ff`); subagent-driven (`Agent(isolation: "worktree")` x2 in parallel for backend-only ~6-8-task scope, validated Session 50); plan-writing-via-4-Opus — pre-create plan skeleton with `<!-- OWNED BY: name -->` section anchors so 4 parallel agents can Edit one document without conflicts. **Arabic-as-default DROPPED** (Session 44).
+**Workflows:** worktree-team (`git worktree add -b feature/<name> ../smartcompare-<name> main` → 4-Opus TeamCreate, **`mode: "bypassPermissions"` REQUIRED** else sandbox blocks Bash → cross-QA → merge `--no-ff`); subagent-driven (`Agent(isolation: "worktree")` x2 parallel for backend-only ~6-8 tasks, validated Session 50); plan-writing-via-4-Opus uses skeleton with `<!-- OWNED BY: name -->` anchors so 4 agents Edit one doc concurrently. **Arabic-as-default DROPPED** (Session 44).
 
 ### Audit conventions (2026-05-22)
 - **`_fire_and_forget(coro, label)`** in `structured_comparison_service.py` — use for new fire-and-forget tasks; adds done-callback that logs WARNING on exception. Plain `asyncio.create_task()` swallows exceptions and drops audit/personalization writes.
@@ -278,10 +273,10 @@ Reviews: `_clean_review_content()` strips garbage (min 8 words), fixes sentiment
 
 ## Environment Variables (Railway)
 **Required:** `OPENAI_API_KEY`, `SERPER_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `ADMIN_API_KEY`
-**Optional:** `SENTRY_DSN` (backend + mobile share org `qaren-rr`, different DSNs), `LOG_LEVEL` (default INFO), `CORS_ORIGINS`, `STREAM_HARD_CAP_SECONDS` (default 25.0 — outermost `asyncio.wait_for` on `compare_from_text_streaming`), `SCRAPING_MODE` (`hard` default / `soft` skips Firecrawl+Scrape.do for non-luxury URLs via `firecrawl_service.should_fan_out`), `DEBUG_STAGE_TIMINGS` (default false — opt-in per-stage `metadata.stage_timings_ms` from `_fetch_product_data` + `compare_from_text`; cached at process init, zero prod overhead with flag off; disable after capture via Railway CLI)
-**Price Scraping:** `FIRECRAWL_API_KEY`, `SCRAPEDO_API_TOKEN` (timing out on GCC sites), `ENABLE_FIRECRAWL` (default true), `ENABLE_SCRAPEDO` (default true), `ENABLE_PAGE_SCRAPE` (curl_cffi).
+**Optional:** `SENTRY_DSN` (backend + mobile share org `qaren-rr`, different DSNs), `LOG_LEVEL` (INFO), `CORS_ORIGINS`, `STREAM_HARD_CAP_SECONDS` (25.0 — outermost `asyncio.wait_for` on streaming), `SCRAPING_MODE` (`hard`/`soft` — `soft` skips Firecrawl+Scrape.do for non-luxury URLs), `DEBUG_STAGE_TIMINGS` (false — opt-in `metadata.stage_timings_ms`; zero prod overhead when off)
+**Price Scraping:** `FIRECRAWL_API_KEY`, `SCRAPEDO_API_TOKEN`, `ENABLE_FIRECRAWL` (true), `ENABLE_SCRAPEDO` (true), `ENABLE_PAGE_SCRAPE` (curl_cffi).
 **Version Check:** `APP_MIN_VERSION`, `APP_LATEST_VERSION`, `APP_FORCE_UPDATE`.
-**Feature Flags:** `ENABLE_COHORT_PERSONALIZATION` (ON in Railway since 2026-05-05), `ENABLE_REFERRAL_SYSTEM`, `ENABLE_HYBRID_MODEL_ROUTING` (documented but NOT WIRED — `grep -r` returns zero matches in `app/`; env value is cosmetic; see `docs/BUNDLE_C_PROD_STATE.md` § Related drift), `ENABLE_REENGAGEMENT_PUSHES` (gates both `evaluate_user()` + cron — fail-CLOSED), `REENGAGEMENT_CANARY_PERCENT` (default 100; uses `app/utils/feature_bucket.py::hash_bucket()` djb2 mirror of `featureBucket.ts`). All flags default OFF in code; flip in Railway during canary. `REAL_ACTION_MIN_SECONDS` (default 5).
+**Feature Flags:** `ENABLE_COHORT_PERSONALIZATION` (ON since 2026-05-05), `ENABLE_REFERRAL_SYSTEM`, `ENABLE_HYBRID_MODEL_ROUTING` (**phantom** — env value cosmetic, zero code refs; see `docs/BUNDLE_C_PROD_STATE.md`), `ENABLE_REENGAGEMENT_PUSHES` (gates `evaluate_user` + cron, fail-CLOSED), `REENGAGEMENT_CANARY_PERCENT` (100; djb2 via `feature_bucket.hash_bucket`). All flags default OFF in code; flip in Railway during canary. `REAL_ACTION_MIN_SECONDS` (5).
 
 Operational rollout sequence + canary monitoring guidance: see `docs/CONTEXT_SESSION_LOG.md`.
 
