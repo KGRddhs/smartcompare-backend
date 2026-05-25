@@ -304,6 +304,19 @@ async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -
     try:
         auth_client = get_auth_client()
 
+        # TEMP trace (Bundle D Phase 3 device-leg): confirms token shape at
+        # backend ingress so we can distinguish frontend-bug (1-segment opaque
+        # token) vs Supabase-config-issue (3-segment proper JWT). Token head
+        # (first 20 chars) is the unsigned header section — safe to log; full
+        # token + signature never reach this line.
+        logger.info(
+            f"[SOCIAL_LOGIN_TRACE] provider={provider} "
+            f"token_len={len(id_token)} "
+            f"token_segs={id_token.count('.') + 1} "
+            f"token_head={id_token[:20]} "
+            f"nonce_present={nonce is not None}"
+        )
+
         credentials = {"provider": provider, "token": id_token}
         if nonce:
             credentials["nonce"] = nonce
