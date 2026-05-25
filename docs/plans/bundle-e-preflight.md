@@ -45,19 +45,24 @@ The triage doc D1-D7 list is your accurate starting point.
 
 ## Confirmed pending items going into Bundle E
 
-### Carry-over from Bundle D Path A (will be tied off BEFORE Bundle E kicks off, in the wrap-up of this session or a short follow-up)
+### Carry-over from Bundle D Path A
+
+**Ahmed's call (2026-05-25 end of session):** Path A R2 fixes are in main but the Scan chip behavior + History detail are FOLDED INTO Bundle E rather than chased as further hotfixes. The reason: Bundle E will redesign the whole app's composition layer to match Claude-Design — patching Scan or History in isolation now means re-doing them again in Bundle E. Fix them once, in the right place.
 
 | ID | Status | Action |
 |----|--------|--------|
-| B4 — Google sign-in still fails | Blocked on Ahmed | Need `[GOOGLE-DIAG]` Xcode console line + Railway `SOCIAL_LOGIN_TRACE provider=google token_segs=N` log to disambiguate iosClientId / Bundle-ID / token-shape failure mode |
-| B5 — v1 history filter | Blocked on Ahmed | Need failing `comparison_id` (the 1 row that didn't backfill from R3 Migration 026); 3-LOC fix to add `.eq('schema_version', 2)` defensive check or surgical row repair |
-| HomeScreen overlap | Partial | Path A R1 + R2 dropped scan z-index + chip auto-jump; Ahmed reports "still some issues" — needs visual diff against Claude-Design `HomeScreen.jsx` |
+| B4 — Google sign-in still fails | Blocked on Ahmed | Need `[GOOGLE-DIAG]` Xcode console line + Railway `SOCIAL_LOGIN_TRACE provider=google token_segs=N` log to disambiguate iosClientId / Bundle-ID / token-shape failure mode. **Bundle E should NOT proceed past brainstorm without this resolved** — sign-in is the gate to the whole app for testers. |
+| B5 — History comparisons not loading (only errors) | **DEFERRED to Bundle E** per Ahmed | Path A R2 unwrap fix (`api.ts getComparison` → `response.data.comparison.full_response`) is in main `4aa9cff`. EAS update NOT yet fired — phone is on Path A R1 state. Bundle E will redesign HistoryDetailScreen layout against Claude-Design `HistoryScreen.jsx` reference; verify the unwrap fix landed there. |
+| Scan chip → camera auto-jump | **DEFERRED to Bundle E** per Ahmed | Path A R2 `HomeScreen.tsx::handleModeChange` removed the auto-navigate (Scan chip now just switches inputMode → in-card placeholder renders → user taps placeholder for camera). EAS update NOT yet fired — phone still shows auto-jump. Bundle E will redesign the entire camera + scan experience (shutter ring, framing guide, capture animation) against Claude-Design references; verify the chip-mode behavior holds there.
 
-### Bundle E scope (visual fidelity)
+### Bundle E scope (visual fidelity + folded-in Path A holdovers)
 
-D1-D7 from triage doc, plus whatever the next session's brainstorm uncovers from a fresh side-by-side Claude-Design vs current-code review.
+D1-D7 from triage doc, **plus** holistic redesign of:
+- **Camera + Scan experience** (Path A holdover). Current placeholder is bare "Snap to compare" + camera icon on black. Bundle E target: full Cal-AI-style scan UI per Claude-Design references (shutter ring, framing guide, two-slot capture indicator, slot-thumbnail strip, success haptic).
+- **History list + detail** (Path A holdover). Current list is text-rows-with-chevron + brand-dedupe; detail loads via `comparison_id` → unwrap → ResultsScreen. Bundle E target: per-row mini-VS cards with winner highlight (`winner_index` already in HistoryItem payload), detail view consistent with Bundle E Results redesign.
+- Plus whatever the next session's brainstorm uncovers from a fresh side-by-side Claude-Design vs current-code review.
 
-Ahmed's framing: *"the new design from claude design is entirely different. […] we want the app design to be identical as the claude design, in terms of design, motion and flow."*
+Ahmed's framing: *"the new design from claude design is entirely different. […] we want the app design to be identical as the claude design, in terms of design, motion and flow."* And: *"the camera tab should be fix after bundle e brainstorm and implementation and the entire design system made in the app."*
 
 ---
 
@@ -160,3 +165,50 @@ acceptance contract that let Bundle D ship with 7 visual gaps.
 ---
 
 **End of preflight.** Open Bundle E brainstorm in a fresh session. Do NOT carry Path A debugging state into it.
+
+---
+
+## Ready-to-paste prompt for next session
+
+Copy the block below into the first message of the new Claude Code session:
+
+```
+I'm opening Bundle E — Qaren visual fidelity pass to match the Claude-Design handoff.
+
+Pre-read (in this order, please):
+1. docs/plans/bundle-e-preflight.md — full handoff context, scope, and what's folded into this bundle
+2. docs/plans/bundle-d-phase3-fidelity-triage.md § D-series — the 7 known visual gaps
+3. docs/claude-design-handoff/CLAUDE_DESIGN_HANDOFF_README.md
+4. docs/claude-design-handoff/SKILL.md
+5. docs/claude-design-handoff/ui_kits/mobile/*.jsx — the 14 reference React snapshots (HomeScreen, OnboardingScreen, ResultsScreen, HistoryScreen, AuthScreens, EditProfileScreen, ScanCameraScreen if present, etc.)
+6. SmartCompareApp/src/theme/bundleD.ts — current token + spacing layer
+7. CLAUDE.md — guardrails (no scary copy, no info banners, no "estimated" in UI, no backend internals in reveals, Build Principle #4 etc.)
+
+Status going in:
+- Bundle D TestFlight Readiness is on main @ 56c8320. Path A R1+R2 hot-fixes landed. 90+ tasks GREEN per audit. Sign-in: Apple ✓, email/password ✓, Google ✗ (pending diagnostic).
+- Path A R2 (4aa9cff) is in main but EAS update NOT YET FIRED — my phone still shows Path A R1 state (Scan auto-jumps to camera; History detail shows error). Per my decision: don't chase those as further hotfixes — fold them into Bundle E redesign.
+- Bundle E scope: D1-D7 visual fidelity gaps + holistic camera/Scan redesign + History list+detail redesign. ~150 testers waiting on TestFlight invite; Bundle E ships before the invite goes out.
+
+Goal for this session: brainstorm Bundle E and produce docs/plans/bundle-e-visual-fidelity{,-design}.md plan + design docs with section anchors so a 4-Opus team can execute (backend, frontend, test, qa).
+
+Constraints:
+- 4-Opus team (per Bundle D pattern)
+- 3-5 days estimated
+- No new backend endpoints unless Claude-Design demands one we don't have
+- Each task must include the Claude-Design source .jsx file + 2-4 visual checkpoints (per `feedback_agent_signoff_vs_device_walkthrough.md` — agent sign-off ≠ device walkthrough; tighten the acceptance gate)
+- Hero illustrations (D1) are SVG + Reanimated, ZERO Lottie per CLAUDE.md
+- Camera/Scan + History redesigns are first-class scope items, not afterthoughts
+
+Sub-goals:
+1. Walk each Claude-Design `.jsx` vs current `SmartCompareApp/src/screens/*.tsx`, list visual + motion gaps per screen
+2. Group gaps by effort tier (S/M/L)
+3. Identify the 3-5 hero illustrations that need authoring (PhoneMockup, CohortBarChart, ConcentricMotif, LoadingRings, RevealBurst per triage D1)
+4. Identify motion + transition gaps (RTL-mirrored slides, ring animations, RevealBurst, haptic vocabulary)
+5. Camera/Scan UI redesign — shutter ring, framing guide, capture haptic, slot-thumbnail strip (currently bare)
+6. History list redesign — per-row mini-VS cards with winner highlight; detail view consistent with new Results
+7. Output: docs/plans/bundle-e-visual-fidelity.md (plan) + docs/plans/bundle-e-visual-fidelity-design.md (design contract) with `<!-- OWNED BY: backend|frontend|test|qa -->` section anchors so 4 agents can Edit concurrently
+
+Also: please flag if Google Sign-In (B4) is unresolved at session start — we need that diagnostic before Bundle E goes to a team, since sign-in is the gate.
+```
+
+End of prompt block. Paste into next session.
