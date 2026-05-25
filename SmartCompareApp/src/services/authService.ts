@@ -401,6 +401,15 @@ export function configureGoogleSignIn() {
   if (!gs) return;
   gs.configure({
     webClientId: '21336192767-i9prqks93nrdmb9rg7ho2v1md9bgqgsv.apps.googleusercontent.com',
+    // iOS client ID is REQUIRED when GoogleService-Info.plist is absent from
+    // the EAS preview build (post-merge device-leg, 2026-05-25). Derived from
+    // `expo.ios.googleServicesFile`-equivalent iosUrlScheme in app.json by
+    // reversing the dot order:
+    //   iosUrlScheme:  com.googleusercontent.apps.<suffix>
+    //   iosClientId:   <suffix>.apps.googleusercontent.com
+    // Without this, @react-native-google-signin throws "failed to determine
+    // clientID" on the first Google button tap (Sentry REACT-NATIVE-2).
+    iosClientId: '21336192767-38hi4t1ac23089iau7jdog1f43oc7rdm.apps.googleusercontent.com',
     offlineAccess: true,
   });
 }
