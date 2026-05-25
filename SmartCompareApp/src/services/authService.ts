@@ -420,21 +420,20 @@ export function configureGoogleSignIn() {
 export async function signInWithGoogle(): Promise<AuthResponse> {
   try {
     const gs = getGoogleSignin();
-    const crypto = getCrypto();
     if (!gs) return { success: false, error: 'Google Sign-In not available (requires development build)' };
 
     await gs.hasPlayServices();
 
-    // Generate cryptographic nonce for replay protection
-    let nonce: string | undefined;
-    if (crypto) {
-      const randomBytes = await crypto.getRandomBytesAsync(32);
-      const rawNonce = Array.from(new Uint8Array(randomBytes))
-        .map((b: number) => b.toString(16).padStart(2, '0'))
-        .join('');
-      nonce = rawNonce;
-    }
-
+    // Bundle D Phase 3 device-leg fix (2026-05-25): Google's native iOS SDK
+    // does NOT accept a `nonce` param on `signIn()`. The previous code
+    // generated a FE-side nonce and sent it to backend, but the Google-
+    // issued idToken had no matching `nonce` claim — Supabase then failed
+    // the nonce check ("Nonces mismatch"). Apple uses hashed-nonce because
+    // expo-apple-authentication.signInAsync({ nonce }) binds the nonce into
+    // the token's `nonce` claim; Google's SDK has no equivalent on iOS.
+    // Drop the nonce entirely for Google. Replay protection on Google
+    // tokens comes from the short token TTL + Supabase's audience/issuer
+    // checks against `iosClientId` baked into the configure() call.
     const signInResult = await gs.signIn();
     const idToken = signInResult.data?.idToken;
 
@@ -442,8 +441,16 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
       return { success: false, error: 'Failed to get Google ID token' };
     }
 
+    if (__DEV__) {
+      const parts = idToken.split('.');
+      console.log(
+        '[GOOGLE-DIAG] token length:', idToken.length,
+        'parts:', parts.length,
+        'head:', idToken.substring(0, 30)
+      );
+    }
+
     const body: Record<string, string> = { provider: 'google', id_token: idToken };
-    if (nonce) body.nonce = nonce;
 
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
       method: 'POST',

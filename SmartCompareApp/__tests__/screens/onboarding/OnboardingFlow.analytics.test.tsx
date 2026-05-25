@@ -22,6 +22,15 @@ jest.mock('../../../src/services/api', () => ({
   ) => trackEventsMock(events),
 }));
 
+// Bundle D Phase 3 device-leg fix: OnboardingFlow now transitively imports
+// Step17Notifications → expo-notifications (ESM). Mirror OnboardingFlow.test
+// mock so both orchestrator-level suites stay GREEN.
+jest.mock('expo-notifications', () => ({
+  getPermissionsAsync: jest.fn().mockResolvedValue({ status: 'undetermined' }),
+  requestPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
+  setNotificationHandler: jest.fn(),
+}));
+
 let mockLanguage: 'en' | 'ar' = 'en';
 let mockIsRTL = false;
 jest.mock('../../../src/hooks/useLanguage', () => ({
@@ -135,7 +144,7 @@ describe('OnboardingFlow analytics — Task #53', () => {
       <OnboardingFlow onComplete={jest.fn()} initialStep={4} />
     );
     trackEventsMock.mockClear();
-    fireEvent.press(getByTestId('country-bahrain'));
+    fireEvent.press(getByTestId('country-BH'));
     fireEvent.press(getByTestId('onboarding-next'));
     const events = trackEventsMock.mock.calls.flatMap((c) => c[0] ?? []);
     const completed = events.find(

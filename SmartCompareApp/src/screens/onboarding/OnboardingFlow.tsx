@@ -34,6 +34,30 @@ import {
   ONBOARDING_TOTAL_STEPS,
 } from './types';
 
+// Bundle D Phase 3 device-leg fix (2026-05-25): wire the 17 Step components
+// into StepContent. They were built in Sessions 36+37 but the orchestrator
+// only rendered step 4 inline content. On Ahmed's iPhone every other step
+// showed an empty body. Each Step* has its own prop shape — see the adapter
+// inside StepContent below for the per-step mapping.
+import { Step01Welcome } from './Step01Welcome';
+import { Step02Language } from './Step02Language';
+import { Step03ValueProp } from './Step03ValueProp';
+import { Step04Country } from './Step04Country';
+import { Step05Trust } from './Step05Trust';
+import { Step06Age } from './Step06Age';
+import { Step07Gender } from './Step07Gender';
+import { Step08Priorities } from './Step08Priorities';
+import { Step09Budget } from './Step09Budget';
+import { Step10BrandAttitude } from './Step10BrandAttitude';
+import { Step11Attribution } from './Step11Attribution';
+import { Step12CohortProof } from './Step12CohortProof';
+import { Step13Anticipation } from './Step13Anticipation';
+import { Step14Loading } from './Step14Loading';
+import { Step15Reveal } from './Step15Reveal';
+import { Step16Account } from './Step16Account';
+import { Step17Notifications } from './Step17Notifications';
+import { Platform } from 'react-native';
+
 /**
  * Stable English step names for analytics. The locale-resolved label
  * lives in i18n; these stay fixed so canary dashboards can group
@@ -229,7 +253,26 @@ export function OnboardingFlow({
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}
         >
-          <StepContent step={step} data={data} setField={setField} t={t} />
+          <StepContent
+            step={step}
+            data={data}
+            setField={setField}
+            t={t}
+            onNext={handleNext}
+            onLoadingComplete={handleNext}
+            onSelectAuthMethod={() => {
+              // Bundle D Phase 3: Step 16 ("Save your advisor") hands off to
+              // the AuthScreen stack. The orchestrator advances to step 17 so
+              // the next mount lands on the notifications screen. Actual
+              // auth is performed via App.tsx Stack.Navigator routes that
+              // App.tsx swaps to once `onComplete` fires after step 17.
+              handleNext();
+            }}
+            onNotificationsDone={(granted) => {
+              setField('notifications_enabled', granted);
+              handleNext();
+            }}
+          />
         </ScrollView>
       </View>
 
@@ -272,67 +315,139 @@ interface StepContentProps {
     key: K,
     value: OnboardingFlowData[K]
   ) => void;
-  t: (key: string, opts?: { defaultValue?: string }) => string;
+  // Bundle D Phase 3: widened from `{ defaultValue?: string }` to accept
+  // arbitrary interpolation params (e.g. `{ current, total, defaultValue }`).
+  // i18next's TFunction signature is variadic — the narrow type was a stub
+  // from Phase 2 when only defaultValue was passed.
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}
+
+interface StepContentExtraProps {
+  /** Advance to the next step (Step01/03/05/12/13 own internal CTA buttons). */
+  onNext: () => void;
+  /** Step 14 onComplete handler — fires after the 3.2s minimum loading floor. */
+  onLoadingComplete: () => void;
+  /** Step 16 onSelectMethod handler — hands off to the AuthScreen stack. */
+  onSelectAuthMethod: (method: 'apple' | 'google' | 'email' | 'sign_in') => void;
+  /** Step 17 onDone — persists notifications_enabled then finishes the flow. */
+  onNotificationsDone: (granted: boolean) => void;
 }
 
 /**
  * Step body — one host node per step, tagged with `onboarding-step-N`.
- * Step 4 also exposes a country chip (`country-bahrain`) so the orchestrator's
- * validation-gate behavior is testable in isolation. Every other step renders
- * a minimal placeholder; Tasks 13-23 build the rich screens.
+ *
+ * Bundle D Phase 3 device-leg fix (2026-05-25): renders the matching
+ * Step* component built in Sessions 36+37. Each Step* has its own prop
+ * shape; the adapter below maps onto the orchestrator's setField + data.
+ *
+ * Country chip (`country-bahrain`) test contract preserved — Step04Country
+ * exposes the same testIDs internally.
  */
-function StepContent({ step, data, setField, t }: StepContentProps) {
+function StepContent({
+  step,
+  data,
+  setField,
+  t,
+  onNext,
+  onLoadingComplete,
+  onSelectAuthMethod,
+  onNotificationsDone,
+}: StepContentProps & StepContentExtraProps) {
   return (
     <View testID={`onboarding-step-${step}`} style={styles.stepBody}>
       <Text style={styles.stepEyebrow}>
-        {t('onboarding.step_label', { defaultValue: `Step ${step} of ${ONBOARDING_TOTAL_STEPS}` })}
+        {t('onboarding.step_label', {
+          current: step,
+          total: ONBOARDING_TOTAL_STEPS,
+          defaultValue: `Step ${step} of ${ONBOARDING_TOTAL_STEPS}`,
+        })}
       </Text>
 
-      {step === 4 && (
-        <View>
-          <Text style={styles.stepTitle}>
-            {t('onboarding.country.title', { defaultValue: 'Where are you shopping from?' })}
-          </Text>
-          <View style={styles.countryRow}>
-            <CountryChip
-              testID="country-bahrain"
-              label="🇧🇭 Bahrain"
-              selected={data.country === 'BH'}
-              onPress={() => setField('country', 'BH')}
-            />
-            <CountryChip
-              testID="country-saudi_arabia"
-              label="🇸🇦 Saudi Arabia"
-              selected={data.country === 'SA'}
-              onPress={() => setField('country', 'SA')}
-            />
-          </View>
-        </View>
+      {step === 1 && <Step01Welcome onNext={onNext} />}
+      {step === 2 && (
+        <Step02Language
+          value={data.language}
+          onChange={(lang) => setField('language', lang)}
+        />
       )}
+      {step === 3 && <Step03ValueProp onNext={onNext} />}
+      {step === 4 && (
+        <Step04Country
+          country={data.country}
+          governorate={data.governorate}
+          onChangeCountry={(c) => setField('country', c)}
+          onChangeGovernorate={(g) => setField('governorate', g)}
+        />
+      )}
+      {step === 5 && <Step05Trust onNext={onNext} />}
+      {step === 6 && (
+        <Step06Age
+          value={data.age_group}
+          onChange={(age) => setField('age_group', age)}
+          onSkip={onNext}
+        />
+      )}
+      {step === 7 && (
+        <Step07Gender
+          value={data.gender}
+          onChange={(g) => setField('gender', g)}
+          onSkip={onNext}
+        />
+      )}
+      {step === 8 && (
+        <Step08Priorities
+          value={data.priorities ?? []}
+          onChange={(p) => setField('priorities', p)}
+        />
+      )}
+      {step === 9 && (
+        <Step09Budget
+          value={data.budget}
+          onChange={(b) => setField('budget', b)}
+        />
+      )}
+      {step === 10 && (
+        <Step10BrandAttitude
+          value={data.brand_attitude}
+          onChange={(b) => setField('brand_attitude', b)}
+        />
+      )}
+      {step === 11 && (
+        <Step11Attribution
+          value={data.attribution_source}
+          onChange={(s) => setField('attribution_source', s)}
+        />
+      )}
+      {step === 12 && <Step12CohortProof onNext={onNext} />}
+      {step === 13 && <Step13Anticipation onNext={onNext} />}
+      {step === 14 && (
+        <Step14Loading
+          cohortPeerCount={47}
+          onComplete={onLoadingComplete}
+        />
+      )}
+      {step === 15 && (
+        <Step15Reveal
+          onNext={onNext}
+          profile={{
+            priorities: data.priorities ?? [],
+            budget: data.budget,
+            brand_attitude: data.brand_attitude,
+            age_group: data.age_group,
+            gender: data.gender,
+            country: data.country,
+            governorate: data.governorate,
+          } as any}
+        />
+      )}
+      {step === 16 && (
+        <Step16Account
+          onSelectMethod={onSelectAuthMethod}
+          appleAvailable={Platform.OS === 'ios'}
+        />
+      )}
+      {step === 17 && <Step17Notifications onDone={onNotificationsDone} />}
     </View>
-  );
-}
-
-interface CountryChipProps {
-  testID: string;
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}
-
-function CountryChip({ testID, label, selected, onPress }: CountryChipProps) {
-  return (
-    <TouchableOpacity
-      testID={testID}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={[styles.countryChip, selected && styles.countryChipSelected]}
-    >
-      <Text style={[styles.countryChipText, selected && styles.countryChipTextSelected]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 }
 

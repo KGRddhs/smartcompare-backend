@@ -22,6 +22,15 @@ jest.mock('../../../src/services/api', () => ({
   trackEvents: jest.fn().mockResolvedValue(undefined),
 }));
 
+// Bundle D Phase 3 device-leg fix: OnboardingFlow now transitively imports
+// Step17Notifications → expo-notifications (ESM). Mock at the orchestrator
+// test level so the transitive chain transforms cleanly under ts-jest.
+jest.mock('expo-notifications', () => ({
+  getPermissionsAsync: jest.fn().mockResolvedValue({ status: 'undetermined' }),
+  requestPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
+  setNotificationHandler: jest.fn(),
+}));
+
 let mockLanguage: 'en' | 'ar' = 'en';
 let mockIsRTL = false;
 jest.mock('../../../src/hooks/useLanguage', () => ({
@@ -89,7 +98,7 @@ describe('OnboardingFlow orchestrator', () => {
     const { getByTestId } = render(
       <OnboardingFlow onComplete={noop} initialStep={4} />
     );
-    fireEvent.press(getByTestId('country-bahrain'));
+    fireEvent.press(getByTestId('country-BH'));
     expect(getByTestId('onboarding-next').props.disabled).toBe(false);
   });
 
