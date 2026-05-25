@@ -183,6 +183,22 @@ export function PrioritiesInline({ onTunePress }: PrioritiesInlineProps) {
 
   if (!loaded || !priorities || priorities.length === 0) return null;
 
+  // B3 (Path A): humanize fallback for any backend label_key not in i18n
+  // (cohort-derived priorities like `trust_known_brands` may not have a
+  // dedicated translation). Default: "snake_case" → "Snake case".
+  const humanize = (raw: string): string => {
+    if (!raw) return raw;
+    return raw
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+  const resolveLabel = (label_key: string, key: string): string => {
+    const resolved = t(label_key);
+    // i18next returns the key string verbatim when no translation found.
+    if (resolved && resolved !== label_key) return resolved;
+    return humanize(key);
+  };
+
   return (
     <View testID="profile-priorities-inline" style={styles.prioritiesCard}>
       <Text style={styles.prioritiesTitle}>
@@ -192,7 +208,7 @@ export function PrioritiesInline({ onTunePress }: PrioritiesInlineProps) {
         {priorities.map((p) => (
           <View key={p.key} style={styles.prioritiesRow}>
             <Text style={styles.prioritiesLabel} numberOfLines={1}>
-              {t(p.label_key, p.key)}
+              {resolveLabel(p.label_key, p.key)}
             </Text>
             <View style={styles.prioritiesBarTrack}>
               <View

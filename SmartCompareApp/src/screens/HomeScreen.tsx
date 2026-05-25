@@ -805,25 +805,32 @@ const styles = StyleSheet.create({
   centerArea: {
     flex: 1,
   },
+  // B1 (Path A): mode chip rail sits at the top of compareCard. zIndex
+  // ensures the chips paint above any flex sibling whose intrinsic height
+  // would otherwise cause layout overlap on iOS Safari-Area + ScrollView
+  // nesting. Position relative anchors the stacking context.
   modeChipRail: {
     flexDirection: 'row',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
+    position: 'relative',
+    zIndex: 2,
   },
   bottomBar: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     alignItems: 'center',
   },
+  // B1 (Path A): scanPlaceholder no longer paints its own bg + margin
+  // (already inside compareCard with bg.secondary). The previous nested-
+  // card setup pushed the camera icon visually under the mode chip rail.
+  // Transparent bg + no horizontal margin = clean inline layout.
   scanPlaceholder: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing['2xl'],
-    marginHorizontal: spacing.base,
-    backgroundColor: colors.bg.secondary,
-    borderRadius: radii.card,
   },
   scanPlaceholderTitle: {
     ...typography.title,

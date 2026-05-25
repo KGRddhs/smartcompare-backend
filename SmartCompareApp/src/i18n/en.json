@@ -3,6 +3,16 @@
   "app.tagline": "Compare smarter",
   "common.or": "or",
 
+  "priorities.price": "Price",
+  "priorities.quality": "Quality",
+  "priorities.brand_reputation": "Brand",
+  "priorities.durability": "Durability",
+  "priorities.latest_features": "Features",
+  "priorities.ease_of_use": "Ease of use",
+  "priorities.eco_friendly": "Eco-friendly",
+  "priorities.health_safety": "Health & safety",
+
+
   "home.smart_pick.title": "Today's tailored pick",
   "home.smart_pick.todayChip": "Updated today",
   "home.smart_pick.bhd": "BHD",
@@ -172,6 +182,7 @@
   "history.ago": "{{time}} ago",
 
   "profile.title": "Profile",
+  "profile.upgrade": "Unlock unlimited comparisons",
   "profile.recent.title": "Recent decisions",
   "profile.recent.seeAll": "See all",
   "profile.recent.vs": "vs",

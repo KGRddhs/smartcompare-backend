@@ -345,7 +345,7 @@ class TestPrioritiesWeighted:
 
     def test_priorities_with_sensitivity_weights(self):
         """Priorities populated AND dim_sensitivity has matching weights →
-        weights are normalized 0-100 with the max=100."""
+        weights are normalized as relative shares summing to ~100 (B3 Path A)."""
         from app.api.auth_routes import get_current_user
         app.dependency_overrides[get_current_user] = _fake_user()
 
@@ -372,12 +372,14 @@ class TestPrioritiesWeighted:
         assert len(body["priorities"]) == 3
         keys = [p["key"] for p in body["priorities"]]
         assert keys == ["camera_quality", "battery_life", "build_quality"]
-        # Max weight (0.95) → 100; the other two scaled proportionally
+        # Sum-to-100 normalization (B3 Path A): total = 0.95+0.78+0.62 = 2.35
         weights = {p["key"]: p["weight"] for p in body["priorities"]}
-        assert weights["camera_quality"] == 100  # max
-        assert weights["battery_life"] == 82      # round(0.78/0.95 * 100) = 82
-        assert weights["build_quality"] == 65     # round(0.62/0.95 * 100) = 65
-        # All weights in 0..100 inclusive
+        assert weights["camera_quality"] == 40   # round(0.95/2.35 * 100) = 40
+        assert weights["battery_life"] == 33     # round(0.78/2.35 * 100) = 33
+        assert weights["build_quality"] == 26    # round(0.62/2.35 * 100) = 26
+        # Rounding drift tolerance: sum ∈ [97, 103] for a 3-bar display
+        total_weight = sum(weights.values())
+        assert 97 <= total_weight <= 103
         for p in body["priorities"]:
             assert 0 <= p["weight"] <= 100
             assert p["label_key"] == f"priorities.{p['key']}"
@@ -402,8 +404,10 @@ class TestPrioritiesWeighted:
         body = resp.json()
         assert body["empty_state"] is False
         assert len(body["priorities"]) == 3
-        # All same weight = 100 (uniform 1.0 → max=1.0 → 100 each)
-        assert all(p["weight"] == 100 for p in body["priorities"])
+        # Sum-to-100 (B3 Path A): 3 equal weights → ~33 each
+        weights = [p["weight"] for p in body["priorities"]]
+        assert all(30 <= w <= 36 for w in weights)
+        assert 97 <= sum(weights) <= 103
 
     def test_bad_dim_sensitivity_data_tolerated(self):
         """Garbage in dimension_sensitivity (None values, non-numeric strings)
@@ -429,7 +433,9 @@ class TestPrioritiesWeighted:
 
         assert resp.status_code == 200, resp.text
         body = resp.json()
-        # All weights filtered → falls through to uniform 1.0 → 100 each
+        # All weights filtered → falls through to uniform 1.0 each, sum-to-100 → ~50 each
         assert body["empty_state"] is False
         assert len(body["priorities"]) == 2
-        assert all(p["weight"] == 100 for p in body["priorities"])
+        weights = [p["weight"] for p in body["priorities"]]
+        assert all(45 <= w <= 55 for w in weights)
+        assert 97 <= sum(weights) <= 103

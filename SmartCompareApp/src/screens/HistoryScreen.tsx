@@ -166,12 +166,32 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     );
   };
 
+  // B2 (Path A): defensive de-dupe of consecutive duplicate word(s) at the
+  // start of a product name. Older comparison rows were saved with shapes
+  // where the brand prefix got concatenated twice (e.g. "Apple Apple
+  // iPhone 14", "Louis Vuitton Louis Vuitton Mesh Cap", "HealthAid
+  // HealthAid Vit D"). Backend doesn't rewrite stored rows; FE collapses
+  // visually so the history reads cleanly.
+  const dedupeBrandPrefix = (name: string): string => {
+    const trimmed = name.trim();
+    if (!trimmed) return trimmed;
+    // 2-word brand dedupe: "Louis Vuitton Louis Vuitton Mesh Cap" → "Louis Vuitton Mesh Cap"
+    const m2 = trimmed.match(/^(\S+\s+\S+)\s+\1\b/i);
+    if (m2) return trimmed.slice(m2[1].length + 1).trimStart();
+    // 1-word brand dedupe: "Apple Apple iPhone 14" → "Apple iPhone 14"
+    const m1 = trimmed.match(/^(\S+)\s+\1\b/i);
+    if (m1) return trimmed.slice(m1[1].length + 1).trimStart();
+    return trimmed;
+  };
+
   const formatTitle = (item: HistoryItem): string => {
     // Bundle A §5.3 — list endpoint returns `product_names` (summary fields
     // only; full_response is not in the list payload). The legacy
     // `item.full_response?.products` lookup never worked because the list
     // route doesn't hydrate full_response.
-    const names = (item.product_names ?? []).filter(Boolean);
+    const names = (item.product_names ?? [])
+      .filter(Boolean)
+      .map(dedupeBrandPrefix);
     if (names.length >= 2) {
       const combined = `${names[0]} vs ${names[1]}`;
       return combined.length > 40 ? combined.slice(0, 39) + '…' : combined;
@@ -185,7 +205,9 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
   // product name can be highlighted (emerald + bolder). When winner_index
   // is null or names are unavailable, falls back to the plain formatTitle().
   const renderTitle = (item: HistoryItem) => {
-    const names = (item.product_names ?? []).filter(Boolean);
+    const names = (item.product_names ?? [])
+      .filter(Boolean)
+      .map(dedupeBrandPrefix);
     if (names.length < 2 || (item.winner_index !== 0 && item.winner_index !== 1)) {
       return (
         <Text style={styles.cardQuery} numberOfLines={1}>

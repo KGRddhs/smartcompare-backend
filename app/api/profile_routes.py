@@ -338,21 +338,27 @@ async def profile_monthly_stats(
 
 
 def _normalize_weights_to_100(raw_weights: dict[str, float]) -> dict[str, int]:
-    """Scale a dict of float weights so the max is 100 (rest scaled proportionally).
+    """Scale a dict of float weights so the SUM is 100 (relative shares).
 
-    Returns int-rounded values per dispatcher spec ("0-100 bar values").
-    Empty input → empty dict.
+    B3 (Path A): previously scaled the MAX to 100 which made every bar
+    read 100% in the uniform-fallback case. The "What shapes your matches"
+    bars show RELATIVE share of priority weight — they should sum to ~100,
+    not each read 100%. Rounding may produce small drift (sum 99-101);
+    that's acceptable for a 3-bar display. Empty input → empty dict.
     """
     if not raw_weights:
         return {}
-    max_w = max((v for v in raw_weights.values() if v is not None), default=0.0)
-    if max_w <= 0:
-        # All zero/None — return uniform 100 for all keys (no signal to differentiate)
-        return {k: 100 for k in raw_weights}
+    non_null = {k: v for k, v in raw_weights.items() if v is not None}
+    total = sum(non_null.values())
+    if total <= 0:
+        # All zero — uniform split across remaining keys
+        if not non_null:
+            return {}
+        share = max(1, int(round(100 / len(non_null))))
+        return {k: share for k in non_null}
     return {
-        k: max(0, min(100, int(round((v / max_w) * 100))))
-        for k, v in raw_weights.items()
-        if v is not None
+        k: max(0, min(100, int(round((v / total) * 100))))
+        for k, v in non_null.items()
     }
 
 

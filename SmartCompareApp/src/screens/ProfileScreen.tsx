@@ -29,6 +29,7 @@ import {
   ChevronRight,
   Lock,
   Shield,
+  Sparkles,
 } from 'lucide-react-native';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { useLanguage } from '../hooks/useLanguage';
@@ -362,6 +363,18 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
             <Text style={styles.editLink}>{t('profile.editProfile')}</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* B6 (Path A) — Upgrade entry. Always visible regardless of tier
+            so testers/users can reach Paywall without hitting the cap. */}
+        <View style={styles.card}>
+          {renderRow(
+            <Sparkles size={18} color={colors.accent} />,
+            t('profile.upgrade'),
+            <ChevronRight size={16} color={colors.text.placeholder} />,
+            () => navigation.navigate('Paywall'),
+            true
+          )}
         </View>
 
         {/* Settings Card */}

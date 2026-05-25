@@ -1,4 +1,13 @@
 {
+  "priorities.price": "السعر",
+  "priorities.quality": "الجودة",
+  "priorities.brand_reputation": "العلامة",
+  "priorities.durability": "المتانة",
+  "priorities.latest_features": "المزايا",
+  "priorities.ease_of_use": "سهولة الاستخدام",
+  "priorities.eco_friendly": "صديق للبيئة",
+  "priorities.health_safety": "الصحة والسلامة",
+
   "home.smart_pick.title": "اختيار اليوم الذكي",
   "home.smart_pick.todayChip": "اليوم",
   "home.smart_pick.bhd": "د.ب",
@@ -170,6 +179,7 @@
   "history.ago": "منذ {{time}}",
 
   "profile.title": "الملف الشخصي",
+  "profile.upgrade": "افتح مقارنات بلا حدود",
   "profile.recent.title": "آخر القرارات",
   "profile.recent.seeAll": "عرض الكل",
   "profile.recent.vs": "ضد",
