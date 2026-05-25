@@ -38,6 +38,9 @@
             "NSPrivacyAccessedAPITypeReasons": ["E174.1"]
           }
         ]
+      },
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
