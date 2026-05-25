@@ -383,10 +383,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       navigation.navigate('Paywall');
       return;
     }
-    if (mode === 'scan') {
-      navigation.navigate('ScanCamera');
-      return;
-    }
+    // Path A R2: tapping Scan chip switches inputMode so the in-card
+    // placeholder ("Tap to scan") renders first. User then taps the
+    // placeholder to open ScanCameraScreen. Prevents the jarring jump
+    // straight from chip-tap into a fullscreen camera modal.
     setInputMode(mode);
   };
 

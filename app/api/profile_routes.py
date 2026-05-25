@@ -338,28 +338,51 @@ async def profile_monthly_stats(
 
 
 def _normalize_weights_to_100(raw_weights: dict[str, float]) -> dict[str, int]:
-    """Scale a dict of float weights so the SUM is 100 (relative shares).
+    """Scale a dict of float weights so the SUM is exactly 100.
 
-    B3 (Path A): previously scaled the MAX to 100 which made every bar
-    read 100% in the uniform-fallback case. The "What shapes your matches"
-    bars show RELATIVE share of priority weight — they should sum to ~100,
-    not each read 100%. Rounding may produce small drift (sum 99-101);
-    that's acceptable for a 3-bar display. Empty input → empty dict.
+    Uses largest-remainder (Hamilton) rounding so the integers always sum
+    to 100 — not 99 or 101. Floor every share, then distribute the leftover
+    (100 - sum_of_floors) one point at a time to the keys with the largest
+    fractional parts. Tie-break is insertion order (Python dict preserves
+    it since 3.7), which matches the display order in PrioritiesInline.
+
+    Path A R2 (Bundle D follow-up): the previous `int(round(...))` per-key
+    produced sum=99 in the uniform 3-bar case (33+33+33=99). Ahmed flagged
+    this on the device, "Bar sums to 99 but the math behind it is not working".
+
+    Empty input → empty dict.
     """
     if not raw_weights:
         return {}
     non_null = {k: v for k, v in raw_weights.items() if v is not None}
+    if not non_null:
+        return {}
     total = sum(non_null.values())
     if total <= 0:
-        # All zero — uniform split across remaining keys
-        if not non_null:
-            return {}
-        share = max(1, int(round(100 / len(non_null))))
-        return {k: share for k in non_null}
-    return {
-        k: max(0, min(100, int(round((v / total) * 100))))
-        for k, v in non_null.items()
-    }
+        # All zero — uniform split using the same largest-remainder logic
+        # so the floors sum to 100 cleanly.
+        n = len(non_null)
+        floor_share = 100 // n
+        remainder = 100 - (floor_share * n)
+        result = {k: floor_share for k in non_null}
+        for k in list(non_null.keys())[:remainder]:
+            result[k] += 1
+        return result
+
+    # Weighted: compute the exact share for each key, floor it, then
+    # distribute the leftover to the largest fractional parts.
+    exact = {k: (v / total) * 100 for k, v in non_null.items()}
+    floors = {k: int(x) for k, x in exact.items()}
+    leftover = 100 - sum(floors.values())
+    if leftover > 0:
+        # Sort by fractional part desc, tie-break by insertion order
+        keys_by_remainder = sorted(
+            non_null.keys(),
+            key=lambda k: (-(exact[k] - floors[k]), list(non_null.keys()).index(k)),
+        )
+        for k in keys_by_remainder[:leftover]:
+            floors[k] += 1
+    return {k: max(0, min(100, v)) for k, v in floors.items()}
 
 
 @router.get("/priorities-weighted")

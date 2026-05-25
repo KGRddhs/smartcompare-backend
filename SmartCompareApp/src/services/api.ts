@@ -233,10 +233,25 @@ export async function deleteComparison(comparisonId: string) {
  * Used by ResultsScreen when navigated from History with only an ID
  * (history list endpoint returns summary only — full_response is
  * fetched lazily on tap).
+ *
+ * Backend wraps in `{success, comparison: {id, query, full_response, ...}}`;
+ * unwrap to the inner `full_response` so callers get the same shape as
+ * a fresh /text/compare result. Path A R2: prior code returned the
+ * wrapper as-is, leaving ResultsScreen with `result.products === undefined`
+ * → empty-state branch even though the row loaded fine. Ahmed flagged
+ * "History still doesn't show comparison content".
  */
 export async function getComparison(comparisonId: string) {
   const response = await api.get(`/api/v1/comparisons/${comparisonId}`);
-  return response.data;
+  const wrapper = response.data;
+  const comparison = wrapper?.comparison ?? null;
+  const full = comparison?.full_response ?? null;
+  if (!full) {
+    throw Object.assign(new Error('Comparison payload missing'), {
+      response: { status: 404, data: wrapper },
+    });
+  }
+  return full;
 }
 
 /**
