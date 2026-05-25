@@ -520,6 +520,22 @@ export async function signInWithApple(): Promise<AuthResponse> {
       return { success: false, error: 'Failed to get Apple identity token' };
     }
 
+    // Bundle D Phase 3 device-leg diagnostic (2026-05-25): Supabase reports
+    // "Unable to detect issuer" + "malformed jwt, expected 3 parts got 1"
+    // on Ahmed's iPhone. Surface the actual token shape so Xcode device log
+    // can confirm whether `credential.identityToken` is the expected 3-part
+    // JWT or something else (accessToken? undefined-as-string?). Remove
+    // once Apple sign-in is verified GREEN.
+    if (__DEV__) {
+      const parts = idToken.split('.');
+      console.log(
+        '[APPLE-DIAG] token length:', idToken.length,
+        'parts:', parts.length,
+        'head:', idToken.substring(0, 30),
+        'nonce-hash-len:', hashedNonce.length
+      );
+    }
+
     // Send to our backend
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
       method: 'POST',
