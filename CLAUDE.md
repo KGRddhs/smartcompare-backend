@@ -10,18 +10,11 @@ SmartCompare (app brand: **Qaren / قارن**) — Intelligent product compariso
 
 These items DO NOT block TestFlight internal testing (≤100 invited testers) — those ship fine today. But they WILL block Apple App Store public-production submission and Apple's automated review will reject the build until both are resolved. Claude Code must remind Ahmed at the start of any Bundle/PR that targets App Store production.
 
-1. **App icon ICN-0001 byte-identity** — `SmartCompareApp/assets/{icon,splash-icon,adaptive-icon}.png` are byte-identical to Expo's `npx create-expo-app` template scaffolding (verified via SHA-256 by Bundle D native-ops 2026-05-24). Ahmed approved the concentric-circles visual design — the bytes need to differ from the upstream template. **Fix:** regenerate the same visual design as a unique render (Claude-Design re-export OR a `scripts/` PIL/Cairo script applying emerald `#10B981` accent or Qaren wordmark watermark). Tracked in `docs/plans/bundle-d-followups.md`. Files unique already: `logo-wordmark.png`. Estimated effort: 10 min once Claude-Design re-exports OR scripts/ asset built.
+1. **App icon ICN-0001 byte-identity** — `SmartCompareApp/assets/{icon,splash-icon,adaptive-icon}.png` are byte-identical to Expo's `npx create-expo-app` template scaffolding (SHA-256-verified by Bundle D native-ops 2026-05-24). Ahmed approved the concentric-circles design — the bytes need to differ. **Fix:** regenerate same visual as a unique render (Claude-Design re-export OR `scripts/` PIL/Cairo script with emerald `#10B981` accent / Qaren wordmark). Tracked in `docs/plans/bundle-d-followups.md`.
 
-2. **Full legal-doc redraft** — current `app/legal/{privacy_policy,terms_of_service}.md` had brand strings rebranded (SmartCompare → Qaren) in Bundle D R22, but the actual legal content is the pre-Bundle-D SmartCompare draft with names swapped — NOT a Qaren-specific jurisdiction-aware redraft. 15 outstanding legal decisions (entity name, GCC jurisdiction, age policy specifics beyond the locked 13+, DPO contact, breach notification timeline, etc.) per `docs/plans/2026-05-16-tos-decisions-pending.md`. Apple App Store production review may push back on jurisdictional mismatch (no PDPL-specific clauses for GCC users, generic US-style template). **Fix:** complete the 15 legal decisions + draft Qaren-specific clauses + republish via `app/api/legal_routes.py` + regen `landing/{privacy,terms}.html` per Native/Ops pipeline. Estimated effort: separate legal-decisions bundle, multi-week, requires Ahmed legal input.
+2. **Full legal-doc redraft** — current `app/legal/{privacy_policy,terms_of_service}.md` had brand strings rebranded (Bundle D R22) but the content is the pre-Bundle-D draft with names swapped — NOT a Qaren-jurisdiction redraft. 15 legal decisions still pending per `docs/plans/2026-05-16-tos-decisions-pending.md` (entity name, GCC jurisdiction, DPO contact, PDPL clauses, breach timeline, etc.). Apple may push back on jurisdictional mismatch (generic US-style template, no PDPL specifics). **Fix:** complete the 15 decisions + draft Qaren-specific clauses + republish via `legal_routes.py` + regen `landing/{privacy,terms}.html`.
 
-**Routine before any App Store production submission attempt:**
-- [ ] Icon regenerated to byte-different render
-- [ ] Legal docs Qaren-jurisdiction-redrafted
-- [ ] Re-run `pip-audit -r requirements.txt --strict` + `npm audit --audit-level=high`
-- [ ] Re-run QA static audit grep pack
-- [ ] Verify ASC Privacy Nutrition Labels still accurate against current data flows
-
-**TestFlight internal ships freely without these — they're App Store production gates only.**
+**Routine before App Store production submission:** icon byte-different ✓, legal docs Qaren-jurisdiction-redrafted ✓, `pip-audit --strict` + `npm audit --audit-level=high` clean ✓, QA static audit grep pack re-run ✓, ASC Privacy Nutrition Labels verified against current data flows ✓. **TestFlight internal ships freely without these — they're App Store production gates only.**
 
 ## Operating Principles
 
@@ -193,7 +186,7 @@ Applied 010–023 (all via MCP since 013). Migration files in `migrations/*.sql`
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls.
 - **Serper** — Google Search + Shopping API ($0.001/call). Don't search for what you already have. ~2,500 credits remaining (rotated 2026-02-28); cached = free, only `nocache=true` burns credits. Rotate via new free account at serper.dev.
-- **Supabase** — PostgreSQL + Auth. Tables: users, comparisons, search_logs, product_* (specs/prices/reviews), comparison_feedback, user_events, user_usage, admin_audit_log, referral_invites/redemptions, bahrain_approved_drugs. Full schema in `migrations/010-022`.
+- **Supabase** — PostgreSQL + Auth. Tables: users, comparisons, search_logs, product_* (specs/prices/reviews), comparison_feedback, user_events, user_usage, admin_audit_log, referral_invites/redemptions, bahrain_approved_drugs. Full schema in `migrations/010-026`.
 - **Upstash Redis** — Response caching (prices 24h, specs/reviews 7d).
 
 ## Important Patterns
@@ -226,7 +219,7 @@ See skill: `qaren-scoring` (auto-loads when `scoring_service.py`, dimension scor
 - **Account deletion** cascades atomically (App Store requirement, 1/min). **Password:** 10+ chars, 1 upper/lower/digit. **Email change** requires current password.
 - **Admin endpoints** rate limited 30/min. **History routes** use `hmac.compare_digest` + merged 404/403. **Swagger** disabled in prod. **SQL LIKE wildcards** escaped. **Sentry `before_send`** scrubs JWT/API keys.
 - **CSP scoping** (`app/middleware/security.py`): strict `default-src 'none'` everywhere EXCEPT `/admin/*` static dashboards (which get `'unsafe-inline'` + `cdn.jsdelivr.net` for inline scripts/styles + Chart.js). Admin pages sit behind `X-Admin-Key`.
-- **Login response shape:** `POST /api/v1/auth/login` returns `{success, user, session, message, error}` — access token at `session.access_token` (NOT top-level).
+- **Login response:** `POST /auth/login` returns `{success, user, session, ...}` — access token at `session.access_token`, NOT top-level.
 - **Regression tests:** `tests/test_security_regression.py` (~98 tests) — DO NOT delete or skip.
 
 ### SSE streaming
@@ -245,7 +238,7 @@ See skill: `qaren-cohort` (auto-loads when `/api/v1/auth/demographics`, `cohort_
 22-char URL-safe token (`token_urlsafe(16)`) in `comparisons.share_token` (TEXT post-migration 017). Public access strips personalization. History: paginated, searchable, ownership-checked. On 401, clears session + redirects to auth. `create_share_token` raises `ShareTokenError` on persistence failure (loud-fail). **schema_version gate (Migration 020):** `save_comparison` only writes when `_validate_renderable(payload)` passes; sets `schema_version=2` + denormalized `product_names`. History list/count/get filter on `schema_version=2` — v1 rows invisible (use `include_legacy=True` for DELETE cleanup only).
 
 ### Qaren UX Redesign (merged 2026-05-07 — PR #2 ee91a87)
-Cal-AI-Lite 17-step onboarding + black/emerald hybrid identity (emerald = signal color reserved for winner reveal, success ticks, cohort accents — NOT primary CTA). `CANARY_NEW_ONBOARDING_PERCENT` in `SmartCompareApp/src/config/features.ts`; **currently 100 for build/test (commit 462b399)**. Drop to 10 via EAS Update before App Store soft-launch, ramp 10→50→100 (NOT a Railway env var). Plan/spec: `docs/plans/2026-05-06-qaren-ux-redesign{,.design}.md`.
+Cal-AI-Lite 17-step onboarding + black/emerald hybrid identity (emerald = signal color reserved for winner reveal, success ticks, cohort accents — NOT primary CTA). `CANARY_NEW_ONBOARDING_PERCENT` in `SmartCompareApp/src/config/features.ts`; **currently 100**. Drop to 10 via EAS Update before App Store soft-launch, ramp 10→50→100 (NOT a Railway env var). Plan/spec: `docs/plans/2026-05-06-qaren-ux-redesign{,.design}.md`.
 - **Bucketing (`featureBucket.ts` + App.tsx):** djb2 hash on stable id (device-id pre-signup via `expo-secure-store`, user.id post-signup). `hashBucket(id, percent)` is pure — same `(id, percent)` → same boolean every call. Monotonic ramp invariant tested.
 - **Theme + motion** live in `SmartCompareApp/src/theme/{index.ts,motion.ts}`. Geist (EN, SIL OFL v1.1) + Cairo (AR). `arabicLineHeightMultiplier = 1.7/1.5`. haptic vocabulary {chip:light, stage:light, winner:medium} — explicitly NO error/warning/heavy intensities (Build Principle #4: never frame the app as scary).
 - **17-step onboarding (`src/screens/onboarding/`):** OnboardingFlow orchestrator + 17 steps. Cohort-key types use exact-case strings ('Capital', '25-34', 'Male'/'Female') matching `cohort_priors.json`. Step 14 theatrical loading enforces 3.2s minimum. Step 16 "Save your advisor" has NO skip link — forced sign-in (verified by negative-assertion test).
@@ -253,26 +246,26 @@ Cal-AI-Lite 17-step onboarding + black/emerald hybrid identity (emerald = signal
 - **Results redesign:** section titles per design § 4g — "Why we picked this" / "Where the runner-up wins" / "What's next?". CohortBadge inline below verdict.
 - **Bonus expiry (Migration 018):** 3-day window default. `cron_expire_bonuses.py` gated by `ENABLE_BONUS_EXPIRY_PUSHES`, 1000-row LIMIT, 24h-before push. `usage_service.get_user_active_bonus_count()` filters live rows — entitlement computed from rows, NOT from a stale INT counter (analytics/display only, MUST NOT drive entitlement). **Bundle B/C/D extends this to 7 days for new redemptions; existing rows untouched.**
 - **Attribution endpoint (Migration 019):** `POST /api/v1/auth/attribution` (auth, 30/min). Pydantic Literal['friend','instagram','tiktok','app_store','google','other'] + DB CHECK mirror.
-- **Min-display floor 1.2s** on HomeScreen→Results per design § 3 (cached responses still show loading 1.2s so brand moment lands). Pattern at `HomeScreen.tsx` lines 206/267/320.
+- **Min-display floor 1.2s** on HomeScreen→Results per design § 3 (cached responses still show loading 1.2s so brand moment lands). Tracked via `loadingStartedAtRef` + `navigateToResultsWithFloor` in `HomeScreen.tsx`.
 - **Onboarding analytics (`OnboardingFlow.tsx`):** `onboarding_started` on mount, `onboarding_step_completed` BEFORE setStep so payload reflects FINISHED step, `onboarding_completed` on Step 17.
 - **Copy contract:** ZERO scary copy in user-facing i18n. Forbidden: `couldn't`, `try again`, `Failed to`, `تعذر`, `فشل`. Approved vocabulary in design doc §6.
 
 ### Smart Decision Referrals
 See skill: `qaren-referrals` (auto-loads when `/api/v1/referrals/*` routes, invite codes (QR-XXXXXX), Loop 1/Loop 2, redemption chain, or `referral_invites`/`referral_redemptions` tables are mentioned). Critical inline: gated by `ENABLE_REFERRAL_SYSTEM` (default OFF in code, flipped in Railway). Bundle B/C/D moved cap to **3 LIFETIME per device** with fail-OPEN on DB error. Code redemption is **register-only** — `RegisterRequest.invite_code` accepts `^QR-[A-HJ-NP-Z2-9]{6}$`. Re-engagement gated by `ENABLE_REENGAGEMENT_PUSHES`.
 
-### Bundle history (sessions 44-52)
-Full bundle history (sessions 44–52, including the Session 51 brainstorm + Session 52 Bundle B/C ship + 7-commit hot-fix sweep + retraction) lives in `docs/SESSION_BUNDLES.md`. CLAUDE.md keeps only the load-bearing prod-state callouts below; everything else is narrative.
+### Bundle history (sessions 44-54)
+Full bundle narrative (Session 44 onwards, including Bundle B/C/D ships + hot-fix sweeps + Path A) lives in `docs/SESSION_BUNDLES.md`. CLAUDE.md keeps only the load-bearing prod-state callouts below.
 
 **[STATUS 2026-05-22 — Bundle C calibration in prod]** `ENABLE_BUNDLE_C_SCORING=false` in Railway; code default at `scoring_service.py:303` also `false`. The flag gates ONE site (`scoring_service.py:944`) — the `None vs MISSING_SCORE=50` swap for missing signals. In prod, missing signals get `MISSING_SCORE=50`, so the A.4.9 silent dim omission filter never fires. The other ~95% of Bundle C (A.3.x, A.4.5/A.4.7, A.5.x, A.6.x, A.7.x, A.9.x, A.10.x, frontend Section B) are unconditional and ARE live. Canonical state with row-by-row table + flip checklist: **`docs/BUNDLE_C_PROD_STATE.md`**. Verification discipline before trusting any "shipped/always-on" doc claim: `memory/feedback_docs_vs_railway_env_drift.md`.
 
-**Active runtime state:** Bundle E + Session 49 EAS group on `preview` is the latest `eas update`. `STREAM_HARD_CAP_SECONDS=25.0` locks streaming p95 ≤25s. `SCRAPING_MODE=soft` URL gate wired at Firecrawl + Scrape.do call sites. Cold-cache wall floor (Session 52): fragrances 15.4s / electronics 14.7s / supplements 10.4s. iPhone+Galaxy worst case 24.8s — approaches the 25s cap (v1.1 watch). Pending v1.1 polish (NOT ship-blockers): B.0 response_builder kwarg refactor, A.8.1 build_dimensions_v2 adapter, A.4.8 Tier 3 GPT-4o batched synthesis, A.6.2-A.6.5 value-math richer copy, A.7.2 `price.note` defense-in-depth, wall-budget watch, 4 edge-case probes.
+**Active runtime state:** Bundle D TestFlight Readiness merged 2026-05-25 (`6ee3aa5`) + Path A R1/R2 hotfix sweep on main (`c0678d3`+`4aa9cff`). Latest `eas update` is Path A R2 on `preview` channel (Session 54, 2026-05-25). `STREAM_HARD_CAP_SECONDS=25.0` locks streaming p95 ≤25s. `SCRAPING_MODE=soft` URL gate wired at Firecrawl + Scrape.do. Cold-cache wall floor: fragrances 15.4s / electronics 14.7s / supplements 10.4s; iPhone+Galaxy worst case 24.8s approaches the cap. Bundle E (visual fidelity pass) brainstorm in fresh session — preflight `docs/plans/bundle-e-preflight.md`.
 
 **Workflows:** worktree-team (`git worktree add -b feature/<name> ../smartcompare-<name> main` → 4-Opus TeamCreate, `mode: "bypassPermissions"` REQUIRED — sandbox blocks Bash otherwise → cross-QA → merge `--no-ff`); subagent-driven (`Agent(isolation: "worktree")` x2 in parallel for backend-only ~6-8-task scope, validated Session 50); plan-writing-via-4-Opus — pre-create plan skeleton with `<!-- OWNED BY: name -->` section anchors so 4 parallel agents can Edit one document without conflicts. **Arabic-as-default DROPPED** (Session 44).
 
 ### Audit conventions (2026-05-22)
-- **`_fire_and_forget(coro, label)`** in `structured_comparison_service.py` — use this helper for any new fire-and-forget asyncio task in that file. Adds done-callback that logs WARNING on exception. Plain `asyncio.create_task()` swallows exceptions silently and drops audit/personalization writes.
-- **`INSUFFICIENT_DATA` error code** — `compare_from_text` + streaming return early when both products' Phase 1 fetches return `None` for specs+price. Prevents fake product_0 winner from all-MISSING_SCORE tie-break. Frontend should i18n-substitute the user-facing message (backend `error` field is debug fallback).
-- **`WINNER_INDEX_MISMATCH` WARNING log** in `response_builder.py` — fires when GPT-emitted `comparison["winner_index"]` disagrees with deterministic `scoring_result["winner_index"]`. Deterministic wins; the log only audits frequency.
+- **`_fire_and_forget(coro, label)`** in `structured_comparison_service.py` — use for new fire-and-forget tasks; adds done-callback that logs WARNING on exception. Plain `asyncio.create_task()` swallows exceptions and drops audit/personalization writes.
+- **`INSUFFICIENT_DATA` error code** — `compare_from_text` + streaming return early when both products' Phase 1 specs+price are `None`. Prevents fake product_0 winner from all-MISSING_SCORE tie-break. Frontend i18n-substitutes the user-facing message.
+- **`WINNER_INDEX_MISMATCH` WARNING log** in `response_builder.py` — fires when GPT-emitted `comparison["winner_index"]` disagrees with deterministic scoring. Deterministic wins; log audits frequency only.
 
 ### EAS Update infrastructure
 See skill: `qaren-eas-deploy` (auto-loads when `eas update`, `eas build`, channel names, `runtimeVersion.policy`, or `expo.version` bumps are mentioned). Quick recall: OTA via `cd SmartCompareApp && eas update --branch <channel> --message "..."` — free, lands on next app open. Rebuild required for native module / app.json plugin changes. `appVersionSource: "remote"`. Interactive Expo commands (`eas login`, `eas build`) need a real terminal — Ahmed runs these directly.
@@ -330,8 +323,8 @@ ToS/Privacy fact base, code-side blockers (delete cascade, expo-notifications pl
 **Canary phasing:** With <10 testers pre-launch, set new-feature canary % to 100 — lower % statistically hash-buckets a small tester set out of the feature being tested. Drop to 10 only at App Store soft-launch, then ramp 10→50→100 per `docs/runbooks/qaren-canary-onboarding.md`.
 
 ## Known Remaining Bugs (deferred)
-- **Scrape.do timing out** on GCC luxury retailers (Ounass, Bloomingdales). Firecrawl is primary — Scrape.do is Tier 1.5d fallback only. Investigation `docs/investigations/2026-05-16-scrapedo-timeout-analysis.md` — recommendation: **accept current behavior** (graceful Tier 2 fallback).
-- **Apple Sign-In:** deferred — requires Apple Developer subscription ($99/year); code is ready.
+- **Scrape.do timing out** on GCC luxury retailers (Ounass, Bloomingdales). Firecrawl is primary; Scrape.do is Tier 1.5d fallback only. Investigation `docs/investigations/2026-05-16-scrapedo-timeout-analysis.md` — recommendation: **accept current behavior** (graceful Tier 2 fallback).
+- **Google Sign-In** — currently failing on EAS preview (Session 54). Apple + email/password GREEN. Awaiting Ahmed's `[GOOGLE-DIAG]` Xcode log + Railway `SOCIAL_LOGIN_TRACE` line to disambiguate iosClientId / Bundle-ID / token-shape failure mode. Backend diagnostic instrumentation kept in `auth_service.py` until resolved.
 
 ## Detailed Context
 Index: `docs/CLAUDE_CODE_CONTEXT.md`. Key files: `CONTEXT_ARCHITECTURE.md`, `CONTEXT_SESSION_LOG.md`, `CONTEXT_REFERENCE.md`.
