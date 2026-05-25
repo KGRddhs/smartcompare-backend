@@ -120,3 +120,54 @@ Both items DO NOT block TestFlight internal (Bundle D's scope). App Store produc
 **Native-ops lane substantively COMPLETE for all Bundle D code/ops work.** Standing by for Ahmed-triggered Phase 3 sequence (items 1, 4, 5, 7, 9 above are Ahmed actions; items 2, 3, 6, 8, 10 are my reactive follow-ups).
 
 — Native-ops (filed by dispatcher under OP #8 absorption discipline)
+
+---
+
+## Post-merge addendum (2026-05-25)
+
+Filed by Native-ops directly after dispatcher recommended refile v2 to tighten audit trail. Covers events between the `7ad71b6` initial-filing and the post-Bundle-D-merge state.
+
+### Bundle merge timeline
+
+- `70ad9fd` — QA Final GREEN sign-off, Bundle D ready for Phase 3 EAS build trigger.
+- `6ee3aa5` — Bundle D merged to main (132 commits, 5-Opus team).
+- `aa45ea5` / `e5d524a` — post-merge prod smoke 19/20 GREEN.
+- `82657f2` / `c1b01d3` — post-merge prod smoke 20/20 GREEN — Phase 3 fully clean.
+- Task #87 (Phase 3 Task 3.Q.2 30-min Sentry watch post-merge) is owned by QA, remains pending until Ahmed runs the first `eas build`.
+
+### Native-ops post-merge contributions (4 items)
+
+1. **`90ba385` fix(ios): add `ITSAppUsesNonExemptEncryption=false` to app.json (Apple export-compliance gate).**
+   First `eas build --profile preview --platform ios --non-interactive` attempt surfaced `app.json is missing ios.infoPlist.ITSAppUsesNonExemptEncryption boolean`. Apple's iOS export-compliance flag. Qaren uses only standard HTTPS + JWT (no custom encryption beyond what iOS provides), so value=false per Apple's documented exemption list.
+
+   Correction to a dispatcher assumption: `ios.infoPlist` did NOT pre-exist in `app.json`. The C16 commit (`70a34b3` expo-notifications plugin) added expo-notifications as a config plugin with `color: "#10B981"` only — the `NSUserNotificationUsageDescription` Info.plist key gets generated at EAS prebuild from the plugin, not declared in `app.json`. So `90ba385` CREATES the `ios.infoPlist` block fresh, doesn't append to it.
+
+   Validation gates (4/4 pass): `python -m json.tool` parses cleanly; `ios.bundleIdentifier` still `com.qaren.app`; `ios.privacyManifests` still present (4 reason codes intact); `ios.usesAppleSignIn` still `true` (R5/R14 chain unaffected); 10 plugins preserved.
+
+2. **`67ec30a` — dispatcher cherry-picked `90ba385` to main, pushed to origin.** Ahmed cleared for the interactive first-time `eas build --profile preview --platform ios` (Apple ID / 2FA / cert creation prompts are real-terminal-only — that's a true Ahmed gate, not a code-side blocker).
+
+3. **Phase 3 prod smoke 20/20 GREEN** — `82657f2` recorded all 20 prod-side check items passing post-merge. The 1 item that was previously RED at 19/20 (`aa45ea5`) closed without native-ops code action — it was a backend-side smoke pack adjustment that landed via the regular Phase 3 dispatcher sweep, not a native-ops surface.
+
+4. **QA Final GREEN gate met before merge** (`70ad9fd`). All Native-ops-touched risks (R5, R6, R14) cited ADDRESSED in the QA close-out batch. Native-ops-owned PENDING risks (R7, R8, R13, R24) remain Phase-3-trigger-deferred per the original sign-off, all gated on Ahmed terminal actions (EAS preview/prod builds + ASC upload + D1-D11 sign-off + Railway DNS cutover).
+
+### Updated commit total
+
+Pre-`90ba385`: 28 native-ops commits cited in the original sign-off.
+With `90ba385`: **29 native-ops commits total on the merged branch.**
+
+### Verification (re-run post-merge)
+
+- `python -m json.tool < SmartCompareApp/app.json` parses cleanly — `ios.infoPlist.ITSAppUsesNonExemptEncryption: false` present alongside the 4-reason-code `privacyManifests` block at app.json:21-45.
+- `grep -in "ITSAppUsesNonExemptEncryption" SmartCompareApp/app.json` → single hit at expected position inside `expo.ios.infoPlist`.
+- `git log --oneline main -1` → main is past `6ee3aa5` Bundle D merge + `67ec30a` ITS cherry-pick.
+- Apple's export-compliance prompt will not block the next `eas submit` attempt.
+
+### Phase 3 trigger sequence (Ahmed-action, unchanged from original sign-off)
+
+The 10 items in the original "Pending for Phase 3" section stand verbatim. Ahmed's first action is item 1: `eas build --profile preview --platform ios` interactively. Native-ops resumes at items 2, 3, 6, 8, 10 (reactive follow-ups) when each Ahmed-trigger fires.
+
+### Lane state (post-merge)
+
+**Native-ops lane fully COMPLETE for all Bundle D code/ops work** — including the post-merge ITS export-compliance patch. Disassembling now per dispatcher direction. Future native-ops sessions pick up at the Phase 3 reactive follow-ups (items 2/3/6/8/10) when Ahmed-trigger fires.
+
+— Native-ops (refile v2 addendum, 2026-05-25)
