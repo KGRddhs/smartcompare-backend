@@ -1,0 +1,24 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`deriveTone util BRAND_TONES table snapshot matches the locked snapshot — alarms on silent key drift 1`] = `
+{
+  "airpods": "#E8E9ED",
+  "apple": "#E8E9ED",
+  "centrum": "#FBE6E6",
+  "cerave": "#E6EEF9",
+  "galaxy": "#1B1C1F",
+  "galaxy s": "#1B1C1F",
+  "healthaid": "#FFEAD4",
+  "ipad": "#E8E9ED",
+  "iphone": "#E8E9ED",
+  "la roche": "#FFF1DA",
+  "la roche-posay": "#FFF1DA",
+  "mac": "#1B1C1F",
+  "mac studio": "#1B1C1F",
+  "maybelline": "#FCD9D2",
+  "one a day": "#FFEAD4",
+  "pixel": "#1B1C1F",
+  "samsung": "#1B1C1F",
+  "vitabiotics": "#FFEAD4",
+}
+`;
