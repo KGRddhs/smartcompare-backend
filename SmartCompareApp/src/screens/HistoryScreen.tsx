@@ -16,14 +16,31 @@ import {
   Alert,
   TextInput,
   SectionList,
+  ScrollView,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useFocusEffect } from '@react-navigation/native';
-import { Search, Trash2, RotateCcw, ChevronRight, Camera, Check } from 'lucide-react-native';
+import {
+  Search,
+  Trash2,
+  RotateCcw,
+  ChevronRight,
+  Camera,
+  Check,
+  Sparkles,
+} from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import QarenLogo from '../components/QarenLogo';
-import { getComparisonHistory, deleteComparison, parseApiError } from '../services/api';
+import {
+  getComparisonHistory,
+  deleteComparison,
+  parseApiError,
+  getProfileRecentDecisions,
+  getProfileMonthlyStats,
+  type RecentDecisionItem,
+  type MonthlyStatsResponse,
+} from '../services/api';
 import { clearSession } from '../services/authService';
 import { formatTimeAgo } from '../utils/formatDate';
 import { deriveTone } from '../utils/deriveTone';
@@ -54,6 +71,236 @@ interface HistorySection {
   title: string;
   data: HistoryItem[];
 }
+
+// ---------------------------------------------------------------------------
+// F-S1.6-D1 — HistoryHeroStats: stat strip + horizontal MarqueeCard list.
+//
+// Always renders above the search field per JSX HistoryScreen.jsx:60-109.
+// Even on empty state shows zero values ("0 decisions this month / ~0 BHD
+// shopped smarter") and skips the marquee gracefully — Build Principle #4
+// calm guidance, no scary "you haven't compared anything" copy.
+//
+// Data sources:
+//   - /profile/monthly-stats → decisions count + savings_bhd (stat strip)
+//   - /profile/recent-decisions → 3-4 most recent for the horizontal marquee
+// Silent-hide on network failure (UI never throws).
+// ---------------------------------------------------------------------------
+
+function HistoryHeroStats({
+  onPressItem,
+}: {
+  onPressItem?: (comparisonId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [stats, setStats] = useState<MonthlyStatsResponse | null>(null);
+  const [recents, setRecents] = useState<RecentDecisionItem[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    getProfileMonthlyStats().then((r) => {
+      if (mounted) setStats(r);
+    });
+    getProfileRecentDecisions().then((r) => {
+      if (mounted) setRecents(r.empty_state ? [] : r.recent);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const decisionsCount = stats?.decisions_count ?? 0;
+  const savingsBhd = stats?.savings_bhd ?? 0;
+
+  return (
+    <View testID="history-hero-stats" style={historyHeroStyles.section}>
+      <View style={historyHeroStyles.statStrip}>
+        <Text style={historyHeroStyles.eyebrow}>
+          {t('history.hero.eyebrow', {
+            defaultValue: '✦ YOUR RECENT VERDICTS',
+          })}
+        </Text>
+        <Text style={historyHeroStyles.statCount}>
+          {t('history.hero.count', {
+            defaultValue: '{{count}} decisions this month',
+            count: decisionsCount,
+          })}
+        </Text>
+        <Text style={historyHeroStyles.statSavings}>
+          {t('history.hero.savings', {
+            defaultValue: '~{{amount}} BHD shopped smarter',
+            amount: savingsBhd.toFixed(0),
+          })}
+        </Text>
+      </View>
+
+      {recents.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={historyHeroStyles.marquee}
+          contentContainerStyle={historyHeroStyles.marqueeContent}
+          testID="history-hero-marquee"
+        >
+          {recents.slice(0, 4).map((it) => {
+            const toneA = deriveTone(it.runner_up_name);
+            const toneB = deriveTone(it.winner_name);
+            return (
+              <TouchableOpacity
+                key={it.comparison_id}
+                testID={`history-hero-card-${it.comparison_id}`}
+                style={historyHeroStyles.card}
+                onPress={() => onPressItem?.(it.comparison_id)}
+                activeOpacity={0.8}
+              >
+                <View style={historyHeroStyles.cardPair}>
+                  <View
+                    style={[historyHeroStyles.cardTile, { backgroundColor: toneA }]}
+                  />
+                  <View style={historyHeroStyles.cardVsAbs} pointerEvents="none">
+                    <View style={historyHeroStyles.cardVsPill}>
+                      <Text style={historyHeroStyles.cardVsText}>VS</Text>
+                    </View>
+                  </View>
+                  <View
+                    style={[
+                      historyHeroStyles.cardTile,
+                      historyHeroStyles.cardTileWinner,
+                      { backgroundColor: toneB },
+                    ]}
+                  >
+                    <View style={historyHeroStyles.cardTileCheck}>
+                      <Check
+                        size={8}
+                        color={colors.text.onInverse}
+                        strokeWidth={4}
+                      />
+                    </View>
+                  </View>
+                </View>
+                <Text style={historyHeroStyles.cardCaption} numberOfLines={1}>
+                  {t('history.hero.picked', {
+                    defaultValue: 'Picked {{name}}',
+                    name: it.winner_name,
+                  })}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+}
+
+const historyHeroStyles = StyleSheet.create({
+  section: {
+    marginBottom: 22,
+  },
+  statStrip: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: 12,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 11 * 1.4,
+    color: colors.accentDark,
+    letterSpacing: 1.1,
+    marginBottom: 4,
+  },
+  statCount: {
+    fontSize: 24,
+    fontWeight: '700',
+    lineHeight: 24 * 1.15,
+    color: colors.text.primary,
+    letterSpacing: -0.24,
+  },
+  statSavings: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 13 * 1.5,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
+  marquee: {
+    flexGrow: 0,
+  },
+  marqueeContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 6,
+    gap: 12,
+  },
+  card: {
+    width: 184,
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: colors.bg.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    gap: 10,
+  },
+  cardPair: {
+    flexDirection: 'row',
+    gap: 6,
+    position: 'relative',
+  },
+  cardTile: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: 10,
+    position: 'relative',
+  },
+  cardTileWinner: {
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  cardTileCheck: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.bg.secondary,
+  },
+  cardVsAbs: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  cardVsPill: {
+    height: 20,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    backgroundColor: colors.accentLight,
+    borderWidth: 2,
+    borderColor: colors.bg.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardVsText: {
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 9,
+    color: colors.accentDark,
+    letterSpacing: 1,
+  },
+  cardCaption: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 12 * 1.3,
+    color: colors.text.primary,
+  },
+});
 
 interface HistoryScreenProps {
   navigation: any;
@@ -436,6 +683,17 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
           {t('history.title')}
         </Text>
       </View>
+
+      {/* F-S1.6-D1 HistoryHeroStats — stat strip + horizontal marquee.
+          Always above search field per JSX. Tapping a card opens that
+          comparison via viewAsResult so the marquee acts as a quick-jump
+          entry to recent decisions. */}
+      <HistoryHeroStats
+        onPressItem={(id) => {
+          const found = history.find((h) => h.id === id);
+          if (found) viewAsResult(found);
+        }}
+      />
 
       <View style={styles.searchContainer}>
         <Search size={16} color={colors.text.placeholder} />
