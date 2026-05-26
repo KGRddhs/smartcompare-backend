@@ -8,13 +8,16 @@
  *   - Chevron rotates 0deg → 180deg over 220ms ease (motion.accordionChevron)
  */
 import React from 'react';
+import { Text } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
 import { DetailsAccordion } from '../../src/components/primitives/DetailsAccordion';
 
+// RNTL getByText only matches strings inside <Text> nodes — raw strings
+// inside React Fragments don't register. Wrap each body in <Text>.
 const sections = [
-  { key: 'reviews', label: 'Reviews', sub: '4.6 · 1.2k', icon: 'star', body: <>{'Reviews body'}</> },
-  { key: 'pros_cons', label: 'Pros & Cons', sub: '6 reasons', icon: 'list', body: <>{'PC body'}</> },
-  { key: 'specs', label: 'Specs', sub: '12 fields', icon: 'chip', body: <>{'Specs body'}</> },
+  { key: 'reviews', label: 'Reviews', sub: '4.6 · 1.2k', icon: 'star', body: <Text>Reviews body</Text> },
+  { key: 'pros_cons', label: 'Pros & Cons', sub: '6 reasons', icon: 'list', body: <Text>PC body</Text> },
+  { key: 'specs', label: 'Specs', sub: '12 fields', icon: 'chip', body: <Text>Specs body</Text> },
 ];
 
 describe('DetailsAccordion primitive', () => {
