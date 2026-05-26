@@ -316,8 +316,13 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
   // (left) + "{a} vs {b}" with INLINE emerald-colored "vs" text (center) +
   // tabular count + trending arrow (right). The "vs" here is the inline
   // text variant, NOT the center-positioned pill (dual-VS-pattern rule).
-  // Press still funnels through onPressTrending(query) so consumers can
-  // open the comparison; query is preferred when present, else `{a} vs {b}`.
+  //
+  // F-S1.4-B1 fix: Ahmed's device walkthrough showed rows rendering
+  // "vs 1247" with the product-name strings MISSING. Root cause: the
+  // pre-split fields `a` and `b` arrive as undefined on legacy curated
+  // rows or when the backend split-by-" vs " can't determine the parts.
+  // Defensive splitting from `query` when either name is missing keeps
+  // the row legible — never render bare " vs " without anchors.
   return (
     <View testID="home-trending" style={styles.section}>
       <Text style={styles.eyebrow}>
@@ -325,7 +330,25 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
       </Text>
       <View style={styles.trendingList}>
         {items.slice(0, 5).map((it, i) => {
-          const composedQuery = it.query || `${it.a} vs ${it.b}`;
+          // Resolve product names: prefer pre-split a/b from the new
+          // backend shape (dca8067). Fall back to query-split if either
+          // pre-split field is missing OR empty. Final fallback: render
+          // the raw query alone (no "vs" anchor) so we never ship a
+          // bare " vs " row.
+          let nameA = (it.a || '').trim();
+          let nameB = (it.b || '').trim();
+          if (!nameA || !nameB) {
+            const raw = (it.query || '').trim();
+            // Case-insensitive split on " vs " (the curated-query convention).
+            const split = raw.split(/\s+vs\s+/i);
+            if (split.length >= 2) {
+              nameA = nameA || split[0].trim();
+              nameB = nameB || split.slice(1).join(' vs ').trim();
+            }
+          }
+          const hasBothNames = Boolean(nameA && nameB);
+          const composedQuery =
+            it.query || (hasBothNames ? `${nameA} vs ${nameB}` : (nameA || nameB || ''));
           const count = typeof it.count === 'number' ? it.count : it.view_count;
           return (
             <TouchableOpacity
@@ -343,9 +366,18 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
                 </View>
               ) : null}
               <Text style={styles.trendingPair} numberOfLines={1}>
-                {it.a}
-                <Text style={styles.trendingPairVs}> vs </Text>
-                {it.b}
+                {hasBothNames ? (
+                  <>
+                    {nameA}
+                    <Text style={styles.trendingPairVs}> vs </Text>
+                    {nameB}
+                  </>
+                ) : (
+                  /* Defensive — if even the split fallback can't yield
+                     two names, show whatever single string we have so
+                     the row never collapses to bare " vs ". */
+                  composedQuery
+                )}
               </Text>
               <View style={styles.trendingCount}>
                 <Text style={styles.trendingCountText}>{count}</Text>
