@@ -425,20 +425,20 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
 
     await gs.hasPlayServices();
 
-    // Bundle D Phase 3 device-leg fix (2026-05-25): Google's native iOS SDK
-    // does NOT accept a `nonce` param on `signIn()`. The previous code
-    // generated a FE-side nonce and sent it to backend, but the Google-
-    // issued idToken had no matching `nonce` claim — Supabase then failed
-    // the nonce check ("Nonces mismatch"). Apple uses hashed-nonce because
-    // expo-apple-authentication.signInAsync({ nonce }) binds the nonce into
-    // the token's `nonce` claim; Google's SDK has no equivalent on iOS.
-    // Drop the nonce entirely for Google. Replay protection on Google
-    // tokens comes from the short token TTL + Supabase's audience/issuer
-    // checks against `iosClientId` baked into the configure() call.
-    // Bundle E B4 diagnostic capture (2026-05-26): __DEV__ gate REMOVED for
-    // Ahmed's Windows + EAS-preview (release build) capture. Diagnostic info is
-    // surfaced into the on-screen error string so it's readable without Xcode.
-    // REMOVE THIS BLOCK after B4 is resolved + a clean working state ships.
+    // Bundle E B4 fix (2026-05-26, Ahmed device repro on EAS preview):
+    // Google's iOS native SDK auto-generates a `nonce` and embeds it as a claim
+    // in the issued idToken. Path A R1 (Bundle D Phase 3) stopped FE from
+    // sending the nonce on the assumption Google's SDK doesn't bind one — that
+    // was wrong. Supabase verifies parity: "Passed nonce and nonce in id_token
+    // should either both exist or not." Since the idToken has a nonce claim,
+    // we must read it from the token payload + echo it back so Supabase's
+    // hash(raw_nonce) === idToken.nonce check holds.
+    //
+    // Real replay protection still comes from: Supabase audience check (aud =
+    // iosClientId), Google's RS256 signature, and the short token TTL.
+    //
+    // Diagnostic Sentry captures remain in place until a clean B4 ships green
+    // — they auto-no-op when sign-in succeeds.
     const signInResult = await gs.signIn();
     const idToken = signInResult.data?.idToken;
     const sdkResultKeys = Object.keys(signInResult?.data || {}).join(',') || '(empty)';
@@ -457,7 +457,31 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
     console.log('[GOOGLE-DIAG]', diagHead);
     Sentry.addBreadcrumb({ category: 'b4_diag', level: 'info', message: '[GOOGLE-DIAG] ' + diagHead });
 
+    // Decode the idToken payload to extract the nonce claim Google embedded.
+    // base64url-decode payload (middle segment), parse JSON, read .nonce.
+    // Safe failure mode: if decode fails or no nonce present, send without —
+    // the backend's `if nonce:` guard will skip the Supabase nonce param.
+    let tokenNonce: string | undefined;
+    try {
+      const payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = payloadB64 + '='.repeat((4 - (payloadB64.length % 4)) % 4);
+      // atob is available in Hermes/iOS RN; falls back to global if not.
+      const decoded = typeof atob === 'function' ? atob(padded) : '';
+      if (decoded) {
+        const claims = JSON.parse(decoded);
+        if (typeof claims.nonce === 'string' && claims.nonce.length > 0) {
+          tokenNonce = claims.nonce;
+        }
+      }
+    } catch (decodeErr: any) {
+      Sentry.addBreadcrumb({ category: 'b4_diag', level: 'warning', message: 'nonce decode failed: ' + (decodeErr?.message || 'unknown') });
+    }
+
     const body: Record<string, string> = { provider: 'google', id_token: idToken };
+    if (tokenNonce) {
+      body.nonce = tokenNonce;
+      Sentry.addBreadcrumb({ category: 'b4_diag', level: 'info', message: `nonce echoed from id_token claim (len=${tokenNonce.length})` });
+    }
 
     let response: Response;
     try {
