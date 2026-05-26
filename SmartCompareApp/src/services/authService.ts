@@ -434,29 +434,40 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
     // Drop the nonce entirely for Google. Replay protection on Google
     // tokens comes from the short token TTL + Supabase's audience/issuer
     // checks against `iosClientId` baked into the configure() call.
+    // Bundle E B4 diagnostic capture (2026-05-26): __DEV__ gate REMOVED for
+    // Ahmed's Windows + EAS-preview (release build) capture. Diagnostic info is
+    // surfaced into the on-screen error string so it's readable without Xcode.
+    // REMOVE THIS BLOCK after B4 is resolved + a clean working state ships.
     const signInResult = await gs.signIn();
     const idToken = signInResult.data?.idToken;
+    const sdkResultKeys = Object.keys(signInResult?.data || {}).join(',') || '(empty)';
 
     if (!idToken) {
-      return { success: false, error: 'Failed to get Google ID token' };
+      return {
+        success: false,
+        error: `[B4-DIAG] no idToken from native SDK. signInResult.data keys: [${sdkResultKeys}]. Likely: Supabase iOS Client ID mismatch in app.json plugin config OR Google Cloud OAuth iOS bundle ID (com.qaren.app) not registered. Send this whole message to dispatcher.`,
+      };
     }
 
-    if (__DEV__) {
-      const parts = idToken.split('.');
-      console.log(
-        '[GOOGLE-DIAG] token length:', idToken.length,
-        'parts:', parts.length,
-        'head:', idToken.substring(0, 30)
-      );
-    }
+    const parts = idToken.split('.');
+    const diagHead = `len=${idToken.length} parts=${parts.length} head=${idToken.substring(0, 24)}`;
+    console.log('[GOOGLE-DIAG]', diagHead);
 
     const body: Record<string, string> = { provider: 'google', id_token: idToken };
 
-    const response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (netErr: any) {
+      return {
+        success: false,
+        error: `[B4-DIAG] network/cert-pin failure before backend reached. token ${diagHead}. err=${netErr?.message || 'unknown'}. Likely: certificatePinning.ts SPKI pin stale OR API_BASE_URL unreachable from device. Send this whole message.`,
+      };
+    }
 
     const data = await response.json();
 
@@ -466,19 +477,28 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
         await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, data.session.refresh_token);
       }
       if (data.user) await saveUser(data.user);
+      return {
+        success: true,
+        user: data.user,
+        token: data.session.access_token,
+      };
     }
 
+    // Backend rejected the token — surface Supabase/server reason so we can
+    // disambiguate aud-mismatch vs nonce-mismatch vs other.
     return {
-      success: data.success,
-      user: data.user,
-      token: data.session?.access_token,
-      error: data.error,
+      success: false,
+      error: `[B4-DIAG] backend rejected token. status=${response.status} code=${data?.code || '?'} server_error=${data?.error || data?.detail || '?'}. token ${diagHead}. Send this whole message.`,
     };
   } catch (error: any) {
     if (error.code === 'SIGN_IN_CANCELLED') {
       return { success: false, error: 'Sign-in cancelled' };
     }
-    return { success: false, error: error.message || 'Google sign-in failed' };
+    // Diagnostic-rich error for B4 capture — REMOVE after B4 resolved.
+    return {
+      success: false,
+      error: `[B4-DIAG] threw before fetch. code=${error?.code || '(no-code)'} msg=${error?.message || '(no-message)'} domain=${error?.domain || '(no-domain)'}. Likely: hasPlayServices/signIn() native SDK reject. Send this whole message.`,
+    };
   }
 }
 
