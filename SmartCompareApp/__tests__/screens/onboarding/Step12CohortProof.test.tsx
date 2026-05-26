@@ -1,9 +1,14 @@
 /**
- * Step12CohortProof tests — Phase 2 Task 19.
+ * Step12CohortProof tests — Phase 2 Task 19 + Bundle E QA § 6 audit.
  *
- * "388 GCC shoppers helped train this." Hero illustration #2 +
- * 3 bullet stats animating one-by-one. Sunk-cost + trust + "I'm not
- * alone." See design spec § 2 row 12.
+ * "388 GCC shoppers helped train this." PeerLattice hero (per QA audit
+ * 2026-05-26, replaced CohortBarChart) + 3 bullet stats animating
+ * one-by-one. Sunk-cost + trust + "I'm not alone." See
+ * docs/claude-design-handoff/ui_kits/mobile/OnboardingCohortScreen.jsx.
+ *
+ * NOTE: testID "s12-bar-chart" retained for backward-compat with this
+ * test + downstream call sites. Full S2 Step12 rebuild will rename to
+ * "s12-peer-lattice" alongside the CohortBullet primitive swap.
  */
 
 import React from 'react';
@@ -15,7 +20,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 describe('Step12CohortProof', () => {
-  it('renders the CohortBarChart hero illustration', () => {
+  it('renders the PeerLattice hero illustration', () => {
     const { getByTestId } = render(<Step12CohortProof onNext={jest.fn()} />);
     expect(getByTestId('s12-bar-chart')).toBeTruthy();
   });
@@ -39,9 +44,14 @@ describe('Step12CohortProof', () => {
     expect(onNext).toHaveBeenCalledTimes(1);
   });
 
-  it('passes total + userCohortSize props to the chart when supplied', () => {
+  // Step12 Props retains totalShoppers + userCohortSize for backward compat
+  // with current callers, but the hero (PeerLattice) is self-contained and
+  // ignores them. The full S2 rewire will surface them via PeerLattice props
+  // once that API extends. Test asserts the props are accepted without
+  // crash + the hero still renders.
+  it('accepts total + userCohortSize props without crash (back-compat)', () => {
     const { getByTestId } = render(
-      <Step12CohortProof onNext={jest.fn()} totalShoppers={420} userCohortSize={47} />
+      <Step12CohortProof onNext={jest.fn()} totalShoppers={420} userCohortSize={47} />,
     );
     expect(getByTestId('s12-bar-chart')).toBeTruthy();
   });

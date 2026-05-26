@@ -21,7 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/Button';
-import { CohortBarChart } from '../../components/hero/CohortBarChart';
+import { PeerLattice } from '../../components/hero/PeerLattice';
 import { colors, spacing, typography } from '../../theme';
 
 interface Props {
@@ -74,19 +74,20 @@ function StaggeredBullet({
 
 export function Step12CohortProof({
   onNext,
-  totalShoppers = 388,
-  userCohortSize = 12,
+  // totalShoppers + userCohortSize are kept in Props for backward compat
+  // (callers pass them today) but the JSX-spec PeerLattice hero is
+  // self-contained (cohort position derived from its 12×7 lattice + center
+  // YOU-dot), so they are unused here. S2 will rewire Step12 fully to
+  // consume them via PeerLattice props once that API extends.
+  totalShoppers: _totalShoppers,
+  userCohortSize: _userCohortSize,
 }: Props) {
   const { t } = useTranslation();
 
   return (
     <View style={styles.container}>
       <View style={styles.heroBlock}>
-        <CohortBarChart
-          total={totalShoppers}
-          userCohortSize={userCohortSize}
-          testID="s12-bar-chart"
-        />
+        <PeerLattice testID="s12-bar-chart" />
 
         <Text style={styles.title}>{t('onboarding.s12.title')}</Text>
 
