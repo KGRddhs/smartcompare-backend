@@ -712,6 +712,15 @@ export interface HomeSmartPickItem {
   runner_up_sub: string | null;
   /** Short verdict sentence (≤160 chars, no scary vocab). Nullable. */
   verdict_short: string | null;
+  /**
+   * Optional precomputed tone/sub conveniences. Backend MAY populate;
+   * frontend falls back to deriveTone(winner_name) for tone + the
+   * winner_sub / runner_up_sub fields for spec lines when these are
+   * absent. Exists at the type level so the Bundle E contract test
+   * (HomeScreen.bundleE.contract.test.tsx § 4) recognizes the new shape.
+   */
+  tone?: string;
+  sub?: string;
 }
 
 export interface HomeSmartPickResponse {

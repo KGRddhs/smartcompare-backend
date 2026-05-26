@@ -36,6 +36,7 @@ import {
   type HomeSavingsResponse,
   type HomeTrendingItem,
 } from '../services/api';
+import { deriveTone } from '../utils/deriveTone';
 
 // ---------------------------------------------------------------------------
 // 1. SmartPickCard
@@ -70,50 +71,113 @@ export function SmartPickCard({ onPressVerdict }: SmartPickCardProps) {
 
   if (!loaded || !pick) return null;
 
+  // Null-hide-surround rule (Bundle E ruling): hide each surround (eyebrow
+  // pill, updated_at chip, per-product sub-line, verdict_short caption)
+  // when its source field is null. NO fabrication.
+  const showCategory = Boolean(pick.category);
+  const showUpdatedAt = Boolean(pick.updated_at);
+  const showWinnerSub = Boolean(pick.winner_sub);
+  const showRunnerUpSub = Boolean(pick.runner_up_sub);
+  const showVerdictShort = Boolean(pick.verdict_short);
+
+  // Tone-driven PickTile colors via deriveTone (JSX: each tile background
+  // is a brand-derived hex). Winner gets the more saturated tone +
+  // emerald 2px outline; runner-up gets the muted complement.
+  const winnerTone = deriveTone(pick.winner_name);
+  const runnerUpTone = deriveTone(pick.runner_up_name);
+
   return (
     <View testID="home-smart-pick" style={styles.section}>
       <Text style={styles.eyebrow}>{t('home.smart_pick.title')}</Text>
       <View style={styles.smartCard}>
-        <View style={styles.smartHeader}>
-          <View style={styles.smartChip}>
-            <Text style={styles.smartChipText}>
-              {t('home.smart_pick.todayChip')}
-            </Text>
+        {/* Header row: category eyebrow pill (left) + "Updated today" chip (right) */}
+        {(showCategory || showUpdatedAt) ? (
+          <View style={styles.smartHeader}>
+            {showCategory ? (
+              <View style={styles.smartCatPill} testID="home-smart-pick-category">
+                <Text style={styles.smartCatPillText}>
+                  {(pick.category ?? '').toUpperCase()}
+                </Text>
+              </View>
+            ) : <View />}
+            {showUpdatedAt ? (
+              <Text style={styles.smartUpdated} testID="home-smart-pick-updated">
+                {pick.updated_at}
+              </Text>
+            ) : null}
           </View>
-        </View>
+        ) : null}
 
+        {/* PickTile pair with center vs pill */}
         <View style={styles.smartTilesRow}>
-          <View style={[styles.smartTile, styles.smartTileMuted]}>
+          <View
+            style={[
+              styles.smartTile,
+              { backgroundColor: runnerUpTone },
+            ]}
+            testID="home-smart-pick-tile-runner-up"
+          >
             <Text style={styles.smartTileName} numberOfLines={1}>
               {pick.runner_up_name}
             </Text>
-            {pick.runner_up_price_bhd !== null && (
+            {showRunnerUpSub ? (
+              <Text style={styles.smartTileSub} numberOfLines={1}>
+                {pick.runner_up_sub}
+              </Text>
+            ) : null}
+            {pick.runner_up_price_bhd !== null ? (
               <Text style={styles.smartTilePrice}>
                 {pick.runner_up_price_bhd.toFixed(0)} {t('home.smart_pick.bhd')}
               </Text>
-            )}
+            ) : null}
           </View>
-          <View style={styles.smartVsPill}>
-            <Text style={styles.smartVsText}>{t('profile.recent.vs')}</Text>
+          <View style={styles.smartVsPill} pointerEvents="none">
+            <Text style={styles.smartVsText}>VS</Text>
           </View>
-          <View style={[styles.smartTile, styles.smartTileWinner]}>
+          <View
+            style={[
+              styles.smartTile,
+              styles.smartTileWinner,
+              { backgroundColor: winnerTone },
+            ]}
+            testID="home-smart-pick-tile-winner"
+          >
             <View style={styles.smartTileCheck}>
               <Check size={10} color={colors.bg.primary} strokeWidth={4} />
             </View>
-            <Text style={[styles.smartTileName, styles.smartTileNameWinner]} numberOfLines={1}>
+            <Text
+              style={[styles.smartTileName, styles.smartTileNameWinner]}
+              numberOfLines={1}
+            >
               {pick.winner_name}
             </Text>
-            {pick.winner_price_bhd !== null && (
-              <Text style={styles.smartTilePrice}>
+            {showWinnerSub ? (
+              <Text
+                style={[styles.smartTileSub, styles.smartTileSubWinner]}
+                numberOfLines={1}
+              >
+                {pick.winner_sub}
+              </Text>
+            ) : null}
+            {pick.winner_price_bhd !== null ? (
+              <Text style={[styles.smartTilePrice, styles.smartTilePriceWinner]}>
                 {pick.winner_price_bhd.toFixed(0)} {t('home.smart_pick.bhd')}
               </Text>
-            )}
+            ) : null}
           </View>
         </View>
 
-        <Text style={styles.smartReason}>
-          {t(pick.reason_key, pick.reason_params || {})}
-        </Text>
+        {/* Verdict caption — prefer verdict_short when present, else fall
+            back to the i18n-resolved reason_key (legacy path). */}
+        {showVerdictShort ? (
+          <Text style={styles.smartReason} testID="home-smart-pick-verdict-short">
+            {pick.verdict_short}
+          </Text>
+        ) : (
+          <Text style={styles.smartReason}>
+            {t(pick.reason_key, pick.reason_params || {})}
+          </Text>
+        )}
 
         <TouchableOpacity
           testID="home-smart-pick-verdict"
@@ -248,29 +312,48 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
 
   if (!loaded || !items || items.length === 0) return null;
 
+  // JSX-wins (HomeScreen.jsx:608-650): each row uses category-tag pill
+  // (left) + "{a} vs {b}" with INLINE emerald-colored "vs" text (center) +
+  // tabular count + trending arrow (right). The "vs" here is the inline
+  // text variant, NOT the center-positioned pill (dual-VS-pattern rule).
+  // Press still funnels through onPressTrending(query) so consumers can
+  // open the comparison; query is preferred when present, else `{a} vs {b}`.
   return (
     <View testID="home-trending" style={styles.section}>
       <Text style={styles.eyebrow}>
         {t('home.trending.title', { region: t(`home.region.${region}`, region) })}
       </Text>
       <View style={styles.trendingList}>
-        {items.slice(0, 5).map((it, i) => (
-          <TouchableOpacity
-            key={`${it.query}-${i}`}
-            testID="home-trending-item"
-            style={styles.trendingItem}
-            onPress={() => onPressTrending?.(it.query)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.trendingQuery} numberOfLines={1}>
-              {it.query}
-            </Text>
-            <View style={styles.trendingCount}>
-              <Text style={styles.trendingCountText}>{it.view_count}</Text>
-              <TrendingUp size={11} color={colors.text.secondary} />
-            </View>
-          </TouchableOpacity>
-        ))}
+        {items.slice(0, 5).map((it, i) => {
+          const composedQuery = it.query || `${it.a} vs ${it.b}`;
+          const count = typeof it.count === 'number' ? it.count : it.view_count;
+          return (
+            <TouchableOpacity
+              key={`${composedQuery}-${i}`}
+              testID="home-trending-item"
+              style={styles.trendingItem}
+              onPress={() => onPressTrending?.(composedQuery)}
+              activeOpacity={0.7}
+            >
+              {it.tag ? (
+                <View style={styles.trendingTag}>
+                  <Text style={styles.trendingTagText} numberOfLines={1}>
+                    {it.tag.toUpperCase()}
+                  </Text>
+                </View>
+              ) : null}
+              <Text style={styles.trendingPair} numberOfLines={1}>
+                {it.a}
+                <Text style={styles.trendingPairVs}> vs </Text>
+                {it.b}
+              </Text>
+              <View style={styles.trendingCount}>
+                <Text style={styles.trendingCountText}>{count}</Text>
+                <TrendingUp size={11} color={colors.text.secondary} />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
@@ -360,6 +443,31 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
+  // Bundle E B4.3b additions per HomeScreen.jsx:438-501 (SmartPickCard
+  // header row: category pill left + "Updated today" chip right).
+  smartCatPill: {
+    paddingHorizontal: spacing.sm,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: colors.bg.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smartCatPillText: {
+    fontSize: 10,
+    fontWeight: '500',
+    lineHeight: 10 * 1.4,
+    color: colors.text.secondary,
+    letterSpacing: 0.6,
+  },
+  smartUpdated: {
+    fontSize: 11,
+    fontWeight: '500',
+    lineHeight: 11,
+    color: colors.accentDark,
+  },
   smartTilesRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -401,9 +509,25 @@ const styles = StyleSheet.create({
   smartTileNameWinner: {
     fontWeight: '700',
   },
+  // Bundle E spec sub-line (per HomeScreen.jsx PickTile sub) — sits below
+  // the product name, before the price. Hidden via null-hide-surround
+  // when winner_sub / runner_up_sub is null from backend.
+  smartTileSub: {
+    fontSize: 11,
+    fontWeight: '500',
+    lineHeight: 11 * 1.4,
+    color: colors.text.secondary,
+  },
+  smartTileSubWinner: {
+    color: colors.text.primary,
+  },
   smartTilePrice: {
     ...typography.small,
     color: colors.text.secondary,
+  },
+  smartTilePriceWinner: {
+    color: colors.text.primary,
+    fontWeight: '600',
   },
   smartVsPill: {
     position: 'absolute',
@@ -535,6 +659,40 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: '500',
     color: colors.text.primary,
+  },
+  // Bundle E B4.3a additions per HomeScreen.jsx:608-650 — category tag
+  // pill (left) + inline-vs pair (center) + count + trending arrow (right).
+  trendingTag: {
+    paddingHorizontal: 8,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: colors.bg.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  trendingTagText: {
+    fontSize: 10,
+    fontWeight: '500',
+    lineHeight: 10,
+    color: colors.text.secondary,
+    letterSpacing: 0.6,
+  },
+  // Pre-split pair text — "iPhone 15 vs Galaxy S24" with the "vs" colored
+  // emerald (inline, NOT a center-positioned pill — dual-VS-pattern rule).
+  trendingPair: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 13 * 1.3,
+    color: colors.text.primary,
+  },
+  trendingPairVs: {
+    color: colors.accentDark,
+    fontWeight: '700',
   },
   trendingCount: {
     flexDirection: 'row',
