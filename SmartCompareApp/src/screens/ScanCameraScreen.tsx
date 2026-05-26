@@ -265,6 +265,20 @@ export default function ScanCameraScreen({ navigation }: Props) {
         >
           <X color={colors.text.onInverse} size={20} />
         </TouchableOpacity>
+        {/* Bundle E F-S1.7: "N of 2" glass-blur slot indicator pill, centered
+            between close + help. Shows the current capture slot — pre-empty
+            reads "1 of 2", after first capture reads "2 of 2". Per
+            ScanCameraScreen.jsx:131-133 CamPill. */}
+        <View
+          style={styles.slotIndicatorPill}
+          testID="scan-camera-slot-indicator"
+        >
+          <Text style={styles.slotIndicatorText}>
+            {t('home.camera.slotIndicator', {
+              defaultValue: `${(nextEmptyIndex(slots) ?? 1) + 1} of 2`,
+            })}
+          </Text>
+        </View>
         <TouchableOpacity
           testID="scan-camera-help"
           onPress={() => setHelpVisible(true)}
@@ -275,6 +289,18 @@ export default function ScanCameraScreen({ navigation }: Props) {
         >
           <HelpCircle color={colors.text.onInverse} size={20} />
         </TouchableOpacity>
+      </View>
+      {/* Bundle E F-S1.7: hint text per ScanCameraScreen.jsx:140-149. Sits
+          at ~24% from top, centered. Build Principle #4: calm, not scary. */}
+      <View style={styles.hintBlock} pointerEvents="none">
+        <Text style={styles.hintTitle}>
+          {t('home.camera.hint.title', { defaultValue: 'Center the product' })}
+        </Text>
+        <Text style={styles.hintSub}>
+          {t('home.camera.hint.sub', {
+            defaultValue: 'Fit the whole product in the brackets',
+          })}
+        </Text>
       </View>
       <CameraHelpOverlay
         visible={helpVisible}
@@ -297,7 +323,7 @@ export default function ScanCameraScreen({ navigation }: Props) {
             </Animated.View>
           </Animated.View>
         )}
-        {bothFilled && (
+        {bothFilled ? (
           <Animated.View style={ctaAnimStyle}>
             <TouchableOpacity
               testID="compare-cta"
@@ -310,6 +336,18 @@ export default function ScanCameraScreen({ navigation }: Props) {
               </Text>
             </TouchableOpacity>
           </Animated.View>
+        ) : (
+          /* Bundle E F-S1.7: disabled glass-blur CTA per
+              ScanCameraScreen.jsx:177-188. Visible from first mount
+              until both slots filled — Build Principle #4 calm guidance
+              ("Snap one more to compare"), NOT a scary "you must" string. */
+          <View style={styles.compareCtaDisabled} testID="compare-cta-disabled">
+            <Text style={styles.compareCtaDisabledText}>
+              {t('home.camera.snapOneMore', {
+                defaultValue: 'Snap one more to compare',
+              })}
+            </Text>
+          </View>
         )}
         <View style={styles.shutterRow}>
           <TouchableOpacity
@@ -367,8 +405,49 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: spacing.base,
     paddingVertical: spacing.md,
+  },
+  // Bundle E F-S1.7 — "N of 2" slot indicator pill per ScanCameraScreen.jsx CamPill
+  slotIndicatorPill: {
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slotIndicatorText: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 13,
+    color: colors.text.onInverse,
+  },
+  // Bundle E F-S1.7 — hint block per ScanCameraScreen.jsx:140-149
+  hintBlock: {
+    position: 'absolute',
+    top: '24%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  hintTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 16 * 1.4,
+    color: colors.text.onInverse,
+    textAlign: 'center',
+  },
+  hintSub: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 13 * 1.5,
+    color: 'rgba(255,255,255,0.65)',
+    textAlign: 'center',
+    marginTop: 4,
   },
   bottomArea: {
     position: 'absolute',
@@ -441,6 +520,28 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text.onInverse,
     fontWeight: '700',
+  },
+  // Bundle E F-S1.7 — disabled "Snap one more to compare" CTA per
+  // ScanCameraScreen.jsx:177-188. Glass-blur background, full-width,
+  // 52px tall pill. Visible before bothFilled; the active emerald CTA
+  // (compareCta above) takes over once both slots are populated.
+  compareCtaDisabled: {
+    width: '90%',
+    height: 52,
+    borderRadius: radii.chip,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.base,
+    opacity: 0.6,
+  },
+  compareCtaDisabledText: {
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 16,
+    color: colors.text.onInverse,
   },
   permissionPad: {
     flex: 1,
