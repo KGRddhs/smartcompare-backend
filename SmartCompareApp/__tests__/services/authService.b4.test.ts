@@ -1,65 +1,60 @@
 /**
- * B4 regression test — Google sign-in nonce ECHO from id_token claim.
+ * B4 regression test — Google sign-in body shape (FINAL post-resolution).
  *
- * REAL fix (main commit 8d1444e, "fix(auth/google): echo nonce from id_token
- * claim for Supabase parity"). ROOT CAUSE captured at Sentry PYTHON-FASTAPI-F
- * on 2026-05-26 14:03Z:
+ * PRE-CLEANUP-STATE: tests RED against `main` until B4 cleanup commit
+ * lands (revert of 8d1444e). On the `feature/bundle-e-visual-fidelity`
+ * worktree branch this test ships on, the simple body shape is already in
+ * place (no decode block) — tests are GREEN here today and will STAY
+ * GREEN once main rebases / merges to include the revert.
  *
- *   "Auth error in social_login: Passed nonce and nonce in id_token should
- *    either both exist or not."
+ * RESOLUTION
+ * B4 was the "Nonces mismatch" Supabase error that fired every Google
+ * sign-in. Three iterations chased this bug:
  *
- * Path A R1 (Bundle D Phase 3, commit bb78b6b) assumed Google's iOS native SDK
- * does NOT embed a nonce in the issued idToken — and dropped the FE-side
- * nonce. That assumption was wrong: @react-native-google-signin auto-generates
- * a nonce claim. With FE NOT passing nonce but the idToken carrying one,
- * Supabase's parity check fails (it requires both or neither).
+ *   1. PRE-Path-A   — FE generated random nonce + sent to Supabase, but
+ *                     Google iOS SDK did NOT bind it into id_token.nonce.
+ *                     Parity failed.
+ *   2. Path A R1    — Drop the FE nonce entirely. Failed because
+ *                     @react-native-google-signin auto-embeds its own
+ *                     internal nonce claim into the id_token. Parity
+ *                     failed the other direction.
+ *   3. ECHO (8d1444e)— Decode id_token payload, read .nonce claim, echo
+ *                     to backend. Failed because Supabase computes
+ *                     SHA-256(echoed_value) and compares to the claim
+ *                     (which IS already the hash) — hash-of-hash mismatch.
  *
- * Bundle E `8d1444e` REVERSES Path A R1's drop and instead:
- *   1. base64url-decode the idToken's middle segment (payload)
- *   2. JSON.parse, read `nonce` claim
- *   3. If present, set body.nonce = tokenNonce alongside id_token
- *   4. Backend conditionally forwards nonce to Supabase; parity holds
+ * RESOLUTION (2026-05-26): Ahmed toggled "Skip nonce checks" in
+ * Supabase dashboard → Auth → Providers → Google. Verified by device
+ * walkthrough: sign-in works + Step 17 Finish lands in Home tab.
  *
- * Replay protection unchanged — comes from Supabase audience check on the
- * `aud` claim (vs iosClientId), Google's RS256 signature, and short token TTL.
- * The echoed nonce satisfies Supabase parity; the FE doesn't independently
- * "know" the nonce (it's Google-generated), so it doesn't add new replay
- * protection beyond what the signature + audience already give.
+ * With nonce checks skipped server-side, the FE has no nonce work to do.
+ * The decode block in commit 8d1444e becomes dead code — team-lead will
+ * revert that commit. The final FE state is:
  *
- * INVARIANT THIS TEST PINS (B4 regression-guard):
- *   When the Google id_token's payload contains a non-empty `nonce` claim,
- *   signInWithGoogle MUST set `body.nonce` to that claim value before POSTing
- *   to /auth/social-login. When no claim is present, `body.nonce` MUST be
- *   absent. A malformed token MUST NOT crash — it falls through to no-nonce
- *   + a Sentry breadcrumb so we can audit decode failures.
+ *     const body = { provider: 'google', id_token: idToken };
  *
- * Why this matters: a future engineer reading Path A R1's old comment block
- * could re-drop the decode + reintroduce the parity break that fired B4. This
- * test fails loudly on any commit that removes the decode block.
+ * INVARIANT THIS TEST PINS
+ * `body.nonce` MUST NEVER be present in the POST to /auth/social-login for
+ * `provider='google'`, regardless of what's in the id_token payload. The
+ * FE can't bind a known raw value (Google iOS SDK has no nonce param), and
+ * Supabase is configured to skip the check — sending any nonce risks
+ * future regression if the toggle is ever flipped back.
  *
- * NOTE on worktree state: `8d1444e` lives on `main`. The
- * `feature/bundle-e-visual-fidelity` worktree branch this test ships on does
- * not yet contain the decode block — so the test will be RED here until main
- * lands on the branch (rebase, merge, or cherry-pick). That's the expected
- * RED-pending-merge state.
+ * Why this matters: if a future engineer re-introduces FE-side nonce
+ * generation OR re-adds the decode-and-echo block under the mistaken
+ * belief that "more parity is safer", and Supabase's Skip-Nonce toggle
+ * is later removed, every Google sign-in fails again. This test fails
+ * loudly on any commit that adds a nonce key to the body.
+ *
+ * LESSON RECORDED (post-bundle memory):
+ * Tests pin OBSERVABLE BEHAVIOR, not intended design. The journey from
+ * ECHO-pinning at 7e3bb5a to no-nonce-pinning here demonstrates that
+ * when the team intentionally pivots, the test follows. The pre-pivot
+ * test was correct for its moment — it would have RED'd if someone
+ * accidentally reverted the decode block before the team intended.
  */
 import * as SecureStore from 'expo-secure-store';
 
-// Mock Sentry — the decode-block fires addBreadcrumb on both success and
-// decode-failure paths. Mock surfaces capture for assertion.
-const mockAddBreadcrumb = jest.fn();
-jest.mock(
-  '@sentry/react-native',
-  () => ({
-    addBreadcrumb: (...args: unknown[]) => mockAddBreadcrumb(...args),
-    captureException: jest.fn(),
-    init: jest.fn(),
-  }),
-  { virtual: true },
-);
-
-// Mock Google sign-in module — authService uses lazy require() inside
-// getGoogleSignin() so the mock must be registered before service import.
 const mockSignIn = jest.fn();
 const mockHasPlayServices = jest.fn().mockResolvedValue(true);
 jest.mock(
@@ -74,22 +69,31 @@ jest.mock(
   { virtual: true },
 );
 
+// Sentry mock left in place even though authService no longer calls it on
+// the no-nonce path — defensive against future re-adds firing breadcrumbs
+// we'd want to assert on.
+const mockAddBreadcrumb = jest.fn();
+jest.mock(
+  '@sentry/react-native',
+  () => ({
+    addBreadcrumb: (...args: unknown[]) => mockAddBreadcrumb(...args),
+    captureException: jest.fn(),
+    init: jest.fn(),
+  }),
+  { virtual: true },
+);
+
 const saveTokenSpy = jest.spyOn(SecureStore, 'setItemAsync');
 
 const mockFetch = jest.fn();
 (global as any).fetch = mockFetch;
 
-// atob is available in modern Node (16+) globally. RN Hermes also has it.
-// The code uses `typeof atob === 'function'` so the test env mirrors prod.
-if (typeof (global as any).atob !== 'function') {
-  (global as any).atob = (s: string) => Buffer.from(s, 'base64').toString('binary');
-}
-
 import { signInWithGoogle } from '../../src/services/authService';
 
 /**
- * Minimal JWT helper — header + base64url(payload) + dummy sig. Padding (=)
- * stripped to match real JWTs.
+ * Minimal JWT helper for cases that DO want a parseable token shape, even
+ * though the no-nonce invariant means the FE never reads it. Keeps the
+ * test cases ergonomic.
  */
 function makeJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'RS256' })).toString('base64')
@@ -103,7 +107,7 @@ function sentBodyFor(call: number = 0): Record<string, unknown> {
   return JSON.parse(mockFetch.mock.calls[call][1].body);
 }
 
-describe('signInWithGoogle — B4 nonce ECHO regression (commit 8d1444e)', () => {
+describe('signInWithGoogle — B4 final no-nonce invariant (Supabase Skip-Nonce toggle)', () => {
   beforeEach(() => {
     mockSignIn.mockReset();
     mockHasPlayServices.mockClear();
@@ -112,8 +116,11 @@ describe('signInWithGoogle — B4 nonce ECHO regression (commit 8d1444e)', () =>
     saveTokenSpy.mockClear();
   });
 
-  it('echoes nonce from idToken payload claim to body.nonce', async () => {
-    const idToken = makeJwt({ aud: 'iosClientId', sub: 'u1', nonce: 'abc-123-xyz' });
+  it('NEVER posts a nonce key — even when id_token payload HAS a nonce claim', async () => {
+    // This is the regression-net's load-bearing case. A future engineer
+    // who re-adds the decode-and-echo block (commit 8d1444e shape) will
+    // RED this test loudly.
+    const idToken = makeJwt({ aud: 'iosClientId', sub: 'u1', nonce: 'google-embedded-hash' });
     mockSignIn.mockResolvedValue({ data: { idToken } });
     mockFetch.mockResolvedValue({
       ok: true,
@@ -126,11 +133,10 @@ describe('signInWithGoogle — B4 nonce ECHO regression (commit 8d1444e)', () =>
     const body = sentBodyFor();
     expect(body.provider).toBe('google');
     expect(body.id_token).toBe(idToken);
-    // The single-line B4 regression invariant.
-    expect(body.nonce).toBe('abc-123-xyz');
+    expect('nonce' in body).toBe(false);
   });
 
-  it('omits nonce key when idToken payload has no nonce claim', async () => {
+  it('NEVER posts a nonce key — when id_token payload has no nonce claim', async () => {
     const idToken = makeJwt({ aud: 'iosClientId', sub: 'u2' });
     mockSignIn.mockResolvedValue({ data: { idToken } });
     mockFetch.mockResolvedValue({
@@ -140,17 +146,11 @@ describe('signInWithGoogle — B4 nonce ECHO regression (commit 8d1444e)', () =>
     });
 
     await signInWithGoogle();
-
-    const body = sentBodyFor();
-    expect(body.id_token).toBe(idToken);
-    // No nonce in payload → no body.nonce — backend `if nonce:` guard skips
-    // the Supabase nonce param and parity holds (both empty).
-    expect(body.nonce).toBeUndefined();
+    expect('nonce' in sentBodyFor()).toBe(false);
   });
 
-  it('omits nonce + fires Sentry breadcrumb when token decode fails (malformed)', async () => {
-    // 'opaque' has no dots → parts[1] is undefined → decode throws → catch fires
-    mockSignIn.mockResolvedValue({ data: { idToken: 'not-a-jwt-just-opaque' } });
+  it('NEVER posts a nonce key — when id_token is malformed (not a JWT)', async () => {
+    mockSignIn.mockResolvedValue({ data: { idToken: 'opaque-not-a-jwt' } });
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
@@ -158,21 +158,15 @@ describe('signInWithGoogle — B4 nonce ECHO regression (commit 8d1444e)', () =>
     });
 
     await signInWithGoogle();
-
     const body = sentBodyFor();
-    expect(body.id_token).toBe('not-a-jwt-just-opaque');
-    expect(body.nonce).toBeUndefined();
-    // A b4_diag warning breadcrumb fires per authService.ts:467
-    const warningBreadcrumbs = mockAddBreadcrumb.mock.calls.filter((c) =>
-      c[0]?.level === 'warning' && c[0]?.category === 'b4_diag',
-    );
-    expect(warningBreadcrumbs.length).toBeGreaterThanOrEqual(1);
+    expect(body.id_token).toBe('opaque-not-a-jwt');
+    expect('nonce' in body).toBe(false);
   });
 
-  it('omits nonce when payload claim is an empty string (treated as absent)', async () => {
-    // Defensive: the source guard requires `typeof claims.nonce === 'string'
-    // && claims.nonce.length > 0`. Empty string must NOT echo.
-    const idToken = makeJwt({ aud: 'iosClientId', sub: 'u4', nonce: '' });
+  it('body keys are EXACTLY { provider, id_token } — no leaked extras', async () => {
+    // Pins the body keyset tightly so any new field (nonce, code, scope,
+    // PKCE verifier, etc.) trips a RED first time it's added.
+    const idToken = makeJwt({ aud: 'iosClientId', sub: 'u4' });
     mockSignIn.mockResolvedValue({ data: { idToken } });
     mockFetch.mockResolvedValue({
       ok: true,
@@ -181,47 +175,11 @@ describe('signInWithGoogle — B4 nonce ECHO regression (commit 8d1444e)', () =>
     });
 
     await signInWithGoogle();
-
-    expect(sentBodyFor().nonce).toBeUndefined();
-  });
-
-  it('omits nonce when payload claim is not a string (e.g. number)', async () => {
-    // Defensive: typeof guard rejects non-string nonce values.
-    const idToken = makeJwt({ aud: 'iosClientId', sub: 'u5', nonce: 12345 });
-    mockSignIn.mockResolvedValue({ data: { idToken } });
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ success: true, user: { id: 'u5' }, session: { access_token: 't' } }),
-    });
-
-    await signInWithGoogle();
-
-    expect(sentBodyFor().nonce).toBeUndefined();
-  });
-
-  it('fires success breadcrumb when nonce is echoed', async () => {
-    const idToken = makeJwt({ aud: 'iosClientId', sub: 'u6', nonce: 'real-nonce' });
-    mockSignIn.mockResolvedValue({ data: { idToken } });
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ success: true, user: { id: 'u6' }, session: { access_token: 't' } }),
-    });
-
-    await signInWithGoogle();
-
-    // A b4_diag info breadcrumb at level='info' fires per authService.ts
-    // when nonce is echoed. Message references the nonce length.
-    const successBreadcrumbs = mockAddBreadcrumb.mock.calls.filter((c) =>
-      c[0]?.level === 'info' && c[0]?.category === 'b4_diag' &&
-      typeof c[0]?.message === 'string' && c[0].message.includes('nonce echoed'),
-    );
-    expect(successBreadcrumbs.length).toBeGreaterThanOrEqual(1);
+    expect(Object.keys(sentBodyFor()).sort()).toEqual(['id_token', 'provider']);
   });
 });
 
-describe('signInWithGoogle — happy path + session persistence (unchanged)', () => {
+describe('signInWithGoogle — session persistence + error paths', () => {
   beforeEach(() => {
     mockSignIn.mockReset();
     mockHasPlayServices.mockClear();
@@ -230,15 +188,15 @@ describe('signInWithGoogle — happy path + session persistence (unchanged)', ()
     saveTokenSpy.mockClear();
   });
 
-  it('returns success + saves token + refresh_token + user on 200', async () => {
-    const idToken = makeJwt({ aud: 'iosClientId', sub: 'u7', nonce: 'n' });
+  it('returns success + saves access_token + refresh_token + user on 200', async () => {
+    const idToken = makeJwt({ aud: 'iosClientId', sub: 'u5' });
     mockSignIn.mockResolvedValue({ data: { idToken } });
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
         success: true,
-        user: { id: 'u7', email: 'u7@gmail.com' },
+        user: { id: 'u5', email: 'u5@gmail.com' },
         session: {
           access_token: 'supabase-access',
           refresh_token: 'supabase-refresh',
@@ -250,11 +208,28 @@ describe('signInWithGoogle — happy path + session persistence (unchanged)', ()
     const result = await signInWithGoogle();
 
     expect(result.success).toBe(true);
-    expect(result.user?.id).toBe('u7');
+    expect(result.user?.id).toBe('u5');
     expect(result.token).toBe('supabase-access');
 
     const setKeys = saveTokenSpy.mock.calls.map((c) => c[0]);
     expect(setKeys).toEqual(expect.arrayContaining(['qaren_token', 'qaren_refresh_token']));
+  });
+
+  it('returns success=false + does NOT save token on backend error response', async () => {
+    const idToken = makeJwt({ aud: 'iosClientId', sub: 'u6' });
+    mockSignIn.mockResolvedValue({ data: { idToken } });
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ success: false, error: 'Authentication failed' }),
+    });
+
+    const result = await signInWithGoogle();
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Authentication failed');
+    // No SecureStore write attempted when success=false.
+    expect(saveTokenSpy).not.toHaveBeenCalled();
   });
 
   it('returns success=false when no idToken is returned by Google SDK', async () => {
@@ -264,6 +239,7 @@ describe('signInWithGoogle — happy path + session persistence (unchanged)', ()
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Failed to get Google ID token');
+    // No POST attempted when token absent.
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
