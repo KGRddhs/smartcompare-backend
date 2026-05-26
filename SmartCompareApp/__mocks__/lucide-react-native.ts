@@ -58,6 +58,9 @@ export const ExternalLink = createIcon('ExternalLink');
 export const Trophy = createIcon('Trophy');
 export const HelpCircle = createIcon('HelpCircle');
 export const Image = createIcon('Image');
+// Bundle E S1.2 — LoginScreen + S1.3 SaveAdvisor additions.
+export const ChevronLeft = createIcon('ChevronLeft');
+export const Mail = createIcon('Mail');
 // Bundle B/C/D Task 2.9 — CategorySelector lucide swap (per-icon imports).
 export const Smartphone = createIcon('Smartphone');
 export const ShoppingCart = createIcon('ShoppingCart');
