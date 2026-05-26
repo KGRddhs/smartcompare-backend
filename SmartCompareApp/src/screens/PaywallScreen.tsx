@@ -1,272 +1,416 @@
 /**
- * Qaren - Paywall Screen
- * Bottom-sheet overlay shown via Stack.Navigator with presentation:
- * 'transparentModal'. Reads optional initialUsage from route.params
- * (populated by USAGE_LIMIT error detail); otherwise fetches from backend.
+ * PaywallScreen — Bundle E S1.1 composition.
  *
- * Bundle D 2.F.2 Screen 10 — visual refresh applies Claude-Design v3
- * elements that don't require Tap Payments integration: HeroVisual
- * (3 mini-vs cards as brand moment) + SocialProof avatar/rating strip.
- * The Yearly/Monthly PlanCardLarge cards from v3 are deferred until
- * real pricing + payment SDK lands — current screen continues to be a
- * usage-status reveal + single subscribe placeholder.
+ * Triggered when free comparisons run out. NEVER shown in onboarding (per
+ * product rule). Re-composed against
+ * docs/claude-design-handoff/ui_kits/mobile/PaywallScreen.jsx:174-287
+ * (the v3 high-conversion layout).
+ *
+ * Anatomy (per JSX + design doc § 3.1 PaywallScreen row + § 6 checkpoints):
+ *   1. Close X (top-left, glass-blur circle)
+ *   2. HeroVisual — 3 staggered mini vs-pairs (center popped 6px w/ shadow)
+ *   3. Headline ("Keep deciding with confidence.") + sub
+ *   4. SocialProof strip — 5 overlapping avatars + "Trusted by 5,000+ GCC
+ *      shoppers" + 4.8★ rating pill
+ *   5. PlanCardLarge ×2 — Yearly w/ "3 days free · Best value" emerald
+ *      eyebrow + Monthly radio
+ *   6. Feature section (4 lines w/ emerald check on accentLight circle)
+ *   7. Trial timeline (dashed-border card, Today / In 2 days / In 3 days)
+ *   8. Sticky CTA — "Start My 3-Day Free Trial" + "No payment due now" trust
+ *      line + Terms/Privacy/Restore links
+ *
+ * Wiring: CTAs Alert.alert('Coming soon') — real Tap Payments integration
+ * is post-Bundle-E (Stripe / Apple Pay infra not in scope here).
+ *
+ * usage status read kept from Bundle D so the screen still surfaces "X / Y
+ * free comparisons used" when reached via USAGE_LIMIT error path. Hidden
+ * on entry from /profile or settings.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Check, Crown, Zap, Star, X } from 'lucide-react-native';
-import { colors, spacing, radii, typography } from '../theme';
+import { X, Check, Star } from 'lucide-react-native';
+import { colors, spacing, radii } from '../theme';
 import { getUsageStatus, UsageStatus } from '../services/usageService';
 import type { RootStackParamList } from '../types/types';
 
 type PaywallRouteProp = RouteProp<RootStackParamList, 'Paywall'>;
 type PaywallNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Paywall'>;
 
+type Plan = 'yearly' | 'monthly';
+
+// ---------- HeroVisual: 3 staggered mini-vs-pair tiles ----------
+interface HeroItem {
+  a: string;
+  b: string;
+  winner: 'a' | 'b';
+}
+
+const HERO_ITEMS: HeroItem[] = [
+  { a: '#E8E9ED', b: '#1B1C1F', winner: 'b' },
+  { a: '#FBE6E6', b: '#FFEAD4', winner: 'a' },
+  { a: '#E6EEF9', b: '#FFF1DA', winner: 'b' },
+];
+
+function HeroVisual() {
+  return (
+    <View style={heroStyles.row}>
+      {HERO_ITEMS.map((item, i) => {
+        const popped = i === 1;
+        return (
+          <View
+            key={i}
+            style={[
+              heroStyles.tile,
+              popped ? heroStyles.tilePopped : null,
+            ]}
+            testID={`paywall-hero-tile-${i}`}
+          >
+            <View style={heroStyles.pairRow}>
+              <View
+                style={[
+                  heroStyles.pairSwatch,
+                  { backgroundColor: item.a },
+                  item.winner === 'a' ? heroStyles.pairSwatchWinner : null,
+                ]}
+              />
+              <View style={heroStyles.vsPillAbs}>
+                <Text style={heroStyles.vsPillText}>VS</Text>
+              </View>
+              <View
+                style={[
+                  heroStyles.pairSwatch,
+                  { backgroundColor: item.b },
+                  item.winner === 'b' ? heroStyles.pairSwatchWinner : null,
+                ]}
+              />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+// ---------- SocialProof: 5 overlapping avatar dots + label + 4.8 pill ----------
+const AVATAR_COLORS = ['#FCD9D2', '#E6EEF9', '#FFF1DA', '#FBE6E6', '#1B1C1F'];
+const AVATAR_INITIALS = ['K', 'M', 'A', 'S', '+'];
+
+function SocialProof() {
+  return (
+    <View style={socialStyles.row}>
+      <View style={socialStyles.avatars}>
+        {AVATAR_COLORS.map((c, i) => (
+          <View
+            key={i}
+            style={[
+              socialStyles.avatar,
+              { backgroundColor: c, marginLeft: i === 0 ? 0 : -8 },
+            ]}
+          >
+            <Text
+              style={[
+                socialStyles.avatarInitial,
+                { color: i === 4 ? colors.text.onInverse : 'rgba(0,0,0,0.4)' },
+              ]}
+            >
+              {AVATAR_INITIALS[i]}
+            </Text>
+          </View>
+        ))}
+      </View>
+      <Text style={socialStyles.label} numberOfLines={1}>
+        Trusted by <Text style={socialStyles.labelBold}>5,000+</Text> GCC shoppers
+      </Text>
+      <View style={socialStyles.ratingPill}>
+        <Star size={11} color={colors.accentDark} fill={colors.accentDark} />
+        <Text style={socialStyles.ratingText}>4.8</Text>
+      </View>
+    </View>
+  );
+}
+
+// ---------- PlanCardLarge ----------
+interface PlanCardProps {
+  name: string;
+  price: string;
+  sub: string;
+  eyebrow?: string;
+  selected: boolean;
+  onSelect: () => void;
+  testID?: string;
+}
+
+function PlanCardLarge({
+  name,
+  price,
+  sub,
+  eyebrow,
+  selected,
+  onSelect,
+  testID,
+}: PlanCardProps) {
+  return (
+    <TouchableOpacity
+      testID={testID}
+      onPress={onSelect}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${name} ${price}`}
+      style={[
+        planStyles.card,
+        selected ? planStyles.cardSelected : planStyles.cardUnselected,
+        eyebrow ? planStyles.cardWithEyebrow : null,
+      ]}
+    >
+      {eyebrow ? (
+        <View style={planStyles.eyebrowRibbon}>
+          <Text style={planStyles.eyebrowText}>{eyebrow}</Text>
+        </View>
+      ) : null}
+      <View
+        style={[
+          planStyles.radio,
+          selected ? planStyles.radioSelected : planStyles.radioUnselected,
+        ]}
+      />
+      <View style={planStyles.textCol}>
+        <Text style={planStyles.name}>{name}</Text>
+        <Text style={planStyles.sub} numberOfLines={1}>
+          {sub}
+        </Text>
+      </View>
+      <Text style={planStyles.price}>{price}</Text>
+    </TouchableOpacity>
+  );
+}
+
+// ---------- FeatureLine ----------
+function FeatureLine({ text }: { text: string }) {
+  return (
+    <View style={featureStyles.row}>
+      <View style={featureStyles.checkCircle}>
+        <Check size={10} color={colors.accentDark} strokeWidth={3.5} />
+      </View>
+      <Text style={featureStyles.text}>{text}</Text>
+    </View>
+  );
+}
+
+// ---------- Main screen ----------
 export default function PaywallScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<PaywallNavigationProp>();
   const route = useRoute<PaywallRouteProp>();
   const initialUsage = route.params?.initialUsage;
 
-  const [usage, setUsage] = useState<UsageStatus | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [, setUsage] = useState<UsageStatus | null>(null);
+  const [plan, setPlan] = useState<Plan>('yearly');
 
   useEffect(() => {
-    if (!usage) {
-      setLoading(true);
-      getUsageStatus().then((data) => {
-        setUsage(data);
-        setLoading(false);
-      });
+    if (!initialUsage) {
+      getUsageStatus().then(setUsage);
     }
-  }, [usage]);
+  }, [initialUsage]);
 
   const onDismiss = () => navigation.goBack();
-
-  const tier = usage?.tier || initialUsage?.tier || 'free';
-  const reason = initialUsage?.reason;
-  const usedMonthly = usage?.used?.monthly ?? 0;
-  const limitMonthly = usage?.limits?.monthly ?? 10;
-
-  const features = [
-    t('paywall.features.unlimited'),
-    t('paywall.features.history'),
-    t('paywall.features.priority'),
-    t('paywall.features.adFree'),
-  ];
+  const onStartTrial = () => {
+    Alert.alert(
+      t('paywall.coming_soon_title', { defaultValue: 'Coming soon' }),
+      t('paywall.coming_soon_body', {
+        defaultValue: 'Subscriptions arrive after launch. Keep enjoying free comparisons in the meantime.',
+      }),
+      [{ text: 'OK', onPress: onDismiss }],
+    );
+  };
+  const onComingSoon = () => {
+    Alert.alert(t('paywall.coming_soon_title', { defaultValue: 'Coming soon' }));
+  };
 
   return (
-    <View style={styles.overlay}>
-      <TouchableOpacity style={styles.backdrop} onPress={onDismiss} activeOpacity={1} />
-      <View style={styles.sheet}>
-        <View style={styles.handleRow}>
-          <View style={styles.handle} />
-          <TouchableOpacity
-            testID="paywall-close"
-            onPress={onDismiss}
-            style={styles.closeBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.cancel')}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <X size={18} color={colors.text.primary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Bundle D 2.F.2 Screen 10 HERO — 3 stacked mini vs-pairs. Pure
-            visual brand moment; no data deps. Middle card sits 6px above
-            the line per Claude-Design v3. */}
-        <View testID="paywall-hero" style={styles.hero}>
-          {[
-            { a: '#E8E9ED', b: '#1B1C1F', winnerB: true, offset: 0 },
-            { a: '#FBE6E6', b: '#FFEAD4', winnerA: true, offset: -6 },
-            { a: '#E6EEF9', b: '#FFF1DA', winnerB: true, offset: 0 },
-          ].map((it, i) => (
-            <View
-              key={i}
-              style={[
-                styles.heroCard,
-                { transform: [{ translateY: it.offset }] },
-                it.offset !== 0 && styles.heroCardElevated,
-              ]}
-            >
-              <View style={styles.heroRow}>
-                <View
-                  style={[
-                    styles.heroTile,
-                    { backgroundColor: it.a },
-                    it.winnerA && styles.heroTileWinner,
-                  ]}
-                />
-                <View style={styles.heroVsPill}>
-                  <Text style={styles.heroVsText}>{t('profile.recent.vs')}</Text>
-                </View>
-                <View
-                  style={[
-                    styles.heroTile,
-                    { backgroundColor: it.b },
-                    it.winnerB && styles.heroTileWinner,
-                  ]}
-                />
-              </View>
-            </View>
-          ))}
-        </View>
-
-        <Text style={styles.title}>{t('paywall.title')}</Text>
-
-        {/* SocialProof — 5 avatar dots + trust line + 4.8★ pill */}
-        <View testID="paywall-social-proof" style={styles.socialProof}>
-          <View style={styles.avatarStack}>
-            {['#FCD9D2', '#E6EEF9', '#FFF1DA', '#FBE6E6', '#1B1C1F'].map((c, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.avatarDot,
-                  { backgroundColor: c, marginStart: i ? -8 : 0 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.avatarLetter,
-                    i === 4 && { color: '#fff' },
-                  ]}
-                >
-                  {['K', 'M', 'A', 'S', '+'][i]}
-                </Text>
-              </View>
-            ))}
-          </View>
-          <View style={styles.ratingPill}>
-            <Star size={11} color={colors.accentDark} fill={colors.accentDark} />
-            <Text style={styles.ratingText}>4.8</Text>
-          </View>
-        </View>
-
-        {/* Usage status */}
-        {loading ? (
-          <ActivityIndicator size="small" color={colors.accent} style={{ marginBottom: spacing.lg }} />
-        ) : (
-          <View style={styles.usageSection}>
-            {reason && (
-              <Text style={styles.limitMessage}>
-                {reason === 'daily_limit' ? t('paywall.dailyLimit') : t('paywall.monthlyLimit')}
-              </Text>
-            )}
-            <Text style={styles.usageText}>
-              {t('paywall.usageMessage', { used: usedMonthly, limit: limitMonthly })}
-            </Text>
-            {/* Progress bar */}
-            <View style={styles.progressBar}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${Math.min(100, (usedMonthly / limitMonthly) * 100)}%` },
-                  usedMonthly >= limitMonthly && styles.progressFillFull,
-                ]}
-              />
-            </View>
-          </View>
-        )}
-
-        {/* Tier comparison */}
-        <View style={styles.tierRow}>
-          {/* Free tier card */}
-          <View style={[styles.tierCard, tier === 'free' && styles.tierCardCurrent]}>
-            <Zap size={20} color={colors.text.secondary} />
-            <Text style={styles.tierName}>{t('paywall.free.title')}</Text>
-            <Text style={styles.tierDetail}>{t('paywall.free.daily', { count: 3 })}</Text>
-            <Text style={styles.tierDetail}>{t('paywall.free.monthly', { count: 10 })}</Text>
-            {tier === 'free' && (
-              <View style={styles.currentBadge}>
-                <Text style={styles.currentBadgeText}>{t('paywall.free.current')}</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Premium tier card */}
-          <View style={[styles.tierCard, styles.tierCardPremium]}>
-            <Crown size={20} color={colors.accent} />
-            <Text style={[styles.tierName, { color: colors.accent }]}>{t('paywall.premium.title')}</Text>
-            <Text style={styles.tierDetail}>{t('paywall.premium.daily', { count: 10 })}</Text>
-            <Text style={styles.tierDetail}>{t('paywall.premium.monthly', { count: 70 })}</Text>
-          </View>
-        </View>
-
-        {/* Premium features */}
-        <View style={styles.features}>
-          {features.map((f, i) => (
-            <View key={i} style={styles.featureRow}>
-              <Check size={18} color={colors.accent} />
-              <Text style={styles.featureText}>{f}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Subscribe button */}
+    <View style={styles.container}>
+      {/* Top close button */}
+      <View style={styles.header}>
         <TouchableOpacity
-          style={styles.subscribeButton}
-          activeOpacity={0.8}
-          onPress={() => {
-            // Placeholder — will integrate Tap Payments / Benefit Pay
-          }}
+          testID="paywall-close"
+          onPress={onDismiss}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.cancel', { defaultValue: 'Close' })}
+          style={styles.closeBtn}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={styles.subscribeText}>{t('paywall.subscribe')}</Text>
+          <X size={18} color={colors.text.primary} strokeWidth={2.4} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <HeroVisual />
+
+        <Text style={styles.title}>
+          {t('paywall.title_part1', { defaultValue: 'Keep deciding with ' })}
+          <Text style={styles.titleAccent}>
+            {t('paywall.title_accent', { defaultValue: 'confidence' })}
+          </Text>
+          .
+        </Text>
+        <Text style={styles.subtitle}>
+          {t('paywall.subtitle', {
+            defaultValue: 'Unlimited comparisons, deeper reviews, full price history.',
+          })}
+        </Text>
+
+        <SocialProof />
+
+        <PlanCardLarge
+          testID="paywall-plan-yearly"
+          name={t('paywall.plan.yearly_name', { defaultValue: 'Yearly' })}
+          price={t('paywall.plan.yearly_price', { defaultValue: '0.9 BHD/mo' })}
+          sub={t('paywall.plan.yearly_sub', {
+            defaultValue: '10.8 BHD billed yearly · Save ~70%',
+          })}
+          eyebrow={t('paywall.plan.yearly_eyebrow', {
+            defaultValue: '3 DAYS FREE · BEST VALUE',
+          })}
+          selected={plan === 'yearly'}
+          onSelect={() => setPlan('yearly')}
+        />
+        <PlanCardLarge
+          testID="paywall-plan-monthly"
+          name={t('paywall.plan.monthly_name', { defaultValue: 'Monthly' })}
+          price={t('paywall.plan.monthly_price', { defaultValue: '2.9 BHD' })}
+          sub={t('paywall.plan.monthly_sub', {
+            defaultValue: 'Billed monthly · Cancel anytime',
+          })}
+          selected={plan === 'monthly'}
+          onSelect={() => setPlan('monthly')}
+        />
+
+        {/* Feature section */}
+        <View style={styles.featureSection}>
+          <FeatureLine
+            text={t('paywall.features.comparisons', {
+              defaultValue: '70 comparisons per month',
+            })}
+          />
+          <FeatureLine
+            text={t('paywall.features.history', {
+              defaultValue: 'Full price history across 25+ GCC retailers',
+            })}
+          />
+          <FeatureLine
+            text={t('paywall.features.priority', {
+              defaultValue: 'Priority processing — results in under 8 seconds',
+            })}
+          />
+          <FeatureLine
+            text={t('paywall.features.adFree', { defaultValue: 'Ad-free, always' })}
+          />
+        </View>
+
+        {/* Trial timeline */}
+        <View style={styles.timelineCard} testID="paywall-timeline">
+          <Text style={styles.timelineEyebrow}>
+            {t('paywall.timeline.title', { defaultValue: 'HOW THE TRIAL WORKS' })}
+          </Text>
+          <View style={styles.timelineRows}>
+            <Text style={styles.timelineRow}>
+              <Text style={styles.timelineAnchorActive}>Today</Text>
+              <Text> · </Text>
+              {t('paywall.timeline.today', {
+                defaultValue: 'Unlock everything immediately.',
+              })}
+            </Text>
+            <Text style={styles.timelineRow}>
+              <Text style={styles.timelineAnchorMuted}>In 2 days</Text>
+              <Text> · </Text>
+              {t('paywall.timeline.in2', {
+                defaultValue: 'Gentle reminder before billing.',
+              })}
+            </Text>
+            <Text style={styles.timelineRow}>
+              <Text style={styles.timelineAnchorMuted}>In 3 days</Text>
+              <Text> · </Text>
+              {t('paywall.timeline.in3', {
+                defaultValue: 'Billing starts — cancel anytime.',
+              })}
+            </Text>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Sticky bottom CTA */}
+      <View style={styles.footer}>
+        <TouchableOpacity
+          testID="paywall-cta"
+          onPress={onStartTrial}
+          activeOpacity={0.9}
+          accessibilityRole="button"
+          accessibilityLabel={t('paywall.cta', {
+            defaultValue: 'Start My 3-Day Free Trial',
+          })}
+          style={styles.ctaBtn}
+        >
+          <Text style={styles.ctaText}>
+            {t('paywall.cta', { defaultValue: 'Start My 3-Day Free Trial' })}
+          </Text>
         </TouchableOpacity>
 
-        {/* Payment providers note */}
-        <Text style={styles.paymentNote}>{t('paywall.payment')}</Text>
+        <View style={styles.trustRow}>
+          <Check size={13} color={colors.accentDark} strokeWidth={2.4} />
+          <Text style={styles.trustText}>
+            {t('paywall.trust', {
+              defaultValue: 'No payment due now · Cancel anytime',
+            })}
+          </Text>
+        </View>
 
-        <Text style={styles.social}>{t('paywall.social')}</Text>
+        <View style={styles.linksRow}>
+          <TouchableOpacity onPress={onComingSoon} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.linkText}>{t('common.terms', { defaultValue: 'Terms' })}</Text>
+          </TouchableOpacity>
+          <Text style={styles.linkDot}>·</Text>
+          <TouchableOpacity onPress={onComingSoon} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.linkText}>{t('common.privacy', { defaultValue: 'Privacy' })}</Text>
+          </TouchableOpacity>
+          <Text style={styles.linkDot}>·</Text>
+          <TouchableOpacity testID="paywall-restore" onPress={onComingSoon} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.linkText}>{t('paywall.restore', { defaultValue: 'Restore' })}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
 }
 
+// ---------- Styles ----------
 const styles = StyleSheet.create({
-  overlay: {
+  container: {
     flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  sheet: {
     backgroundColor: colors.bg.primary,
-    borderTopStartRadius: spacing.xl,
-    borderTopEndRadius: spacing.xl,
-    padding: spacing.lg,
-    paddingBottom: spacing['3xl'],
+    paddingTop: 50,
   },
-  handleRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-    position: 'relative',
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    backgroundColor: colors.border.medium,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.xs,
   },
   closeBtn: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -274,95 +418,241 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Bundle D 2.F.2 Screen 10 — HeroVisual styles
-  hero: {
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
+    lineHeight: 26 * 1.2,
+    letterSpacing: -0.3,
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    marginBottom: 6,
+  },
+  titleAccent: {
+    color: colors.accent,
+  },
+  subtitle: {
+    fontSize: 14,
+    fontWeight: '400',
+    lineHeight: 14 * 1.5,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    maxWidth: 320,
+    alignSelf: 'center',
+    marginBottom: 18,
+  },
+  featureSection: {
+    marginTop: 18,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
+    borderRadius: radii.card,
+    backgroundColor: colors.bg.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  timelineCard: {
+    marginTop: 16,
+    paddingVertical: spacing.md,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    borderStyle: 'dashed',
+  },
+  timelineEyebrow: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 11 * 1.4,
+    letterSpacing: 0.8,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
+  },
+  timelineRows: {
+    gap: 6,
+  },
+  timelineRow: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 12 * 1.4,
+    color: colors.text.primary,
+  },
+  timelineAnchorActive: {
+    color: colors.accentDark,
+    fontWeight: '700',
+  },
+  timelineAnchorMuted: {
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
+  footer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.base,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+    backgroundColor: colors.bg.primary,
+  },
+  ctaBtn: {
+    width: '100%',
+    height: 56,
+    borderRadius: radii.chip,
+    backgroundColor: colors.cta.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  ctaText: {
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 17,
+    color: colors.cta.onPrimary,
+  },
+  trustRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+  },
+  trustText: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 12 * 1.4,
+    color: colors.text.secondary,
+  },
+  linksRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    gap: 14,
+    marginTop: 6,
+    alignItems: 'center',
   },
-  heroCard: {
+  linkText: {
+    fontSize: 11,
+    fontWeight: '500',
+    lineHeight: 11 * 1.4,
+    color: colors.text.placeholder,
+  },
+  linkDot: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.text.placeholder,
+  },
+});
+
+const heroStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: spacing.base,
+  },
+  tile: {
     padding: 8,
     borderRadius: 12,
     backgroundColor: colors.bg.secondary,
     borderWidth: 1,
     borderColor: colors.border.light,
   },
-  heroCardElevated: {
+  tilePopped: {
+    transform: [{ translateY: -6 }],
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
   },
-  heroRow: {
+  pairRow: {
     flexDirection: 'row',
     gap: 4,
     position: 'relative',
-    alignItems: 'center',
   },
-  heroTile: {
+  pairSwatch: {
     width: 38,
     height: 38,
     borderRadius: 8,
   },
-  heroTileWinner: {
+  pairSwatchWinner: {
     borderWidth: 2,
     borderColor: colors.accent,
   },
-  heroVsPill: {
+  vsPillAbs: {
     position: 'absolute',
-    left: '50%',
-    top: '50%',
-    transform: [{ translateX: -10 }, { translateY: -8 }],
-    height: 16,
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+  },
+  vsPillText: {
     paddingHorizontal: 5,
+    height: 16,
+    lineHeight: 16,
     borderRadius: 999,
     backgroundColor: colors.accentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.bg.secondary,
-    zIndex: 1,
-  },
-  heroVsText: {
+    color: colors.accentDark,
     fontSize: 8,
     fontWeight: '700',
-    color: colors.accentDark,
     letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: colors.bg.secondary,
   },
-  // SocialProof styles
-  socialProof: {
+});
+
+const socialStyles = StyleSheet.create({
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
+    gap: 10,
+    marginBottom: 18,
   },
-  avatarStack: {
+  avatars: {
     flexDirection: 'row',
   },
-  avatarDot: {
+  avatar: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 2,
     borderColor: colors.bg.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  avatarLetter: {
+  avatarInitial: {
     fontSize: 9,
     fontWeight: '700',
-    color: 'rgba(0,0,0,0.4)',
+    lineHeight: 9,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 12 * 1.4,
+    color: colors.text.primary,
+    flexShrink: 1,
+  },
+  labelBold: {
+    fontWeight: '700',
   },
   ratingPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 8,
     height: 22,
     borderRadius: 999,
     backgroundColor: colors.accentLight,
@@ -370,130 +660,113 @@ const styles = StyleSheet.create({
   ratingText: {
     fontSize: 11,
     fontWeight: '700',
+    lineHeight: 11,
     color: colors.accentDark,
   },
-  title: {
-    ...typography.title,
-    color: colors.text.primary,
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-  },
+});
 
-  // Usage section
-  usageSection: {
-    marginBottom: spacing.xl,
-    alignItems: 'center',
-  },
-  limitMessage: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.warning,
-    marginBottom: spacing.xs,
-  },
-  usageText: {
-    ...typography.caption,
-    color: colors.text.secondary,
-    marginBottom: spacing.sm,
-  },
-  progressBar: {
-    width: '80%',
-    height: 6,
-    backgroundColor: colors.bg.secondary,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.accent,
-    borderRadius: 3,
-  },
-  progressFillFull: {
-    backgroundColor: colors.warning,
-  },
-
-  // Tier comparison
-  tierRow: {
+const planStyles = StyleSheet.create({
+  card: {
+    width: '100%',
+    minHeight: 92,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.base,
+    borderRadius: 18,
+    backgroundColor: colors.bg.primary,
     flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.xl,
+    alignItems: 'center',
+    gap: 14,
+    marginTop: spacing.sm,
+    position: 'relative',
   },
-  tierCard: {
-    flex: 1,
-    padding: spacing.base,
-    borderRadius: radii.card,
+  cardWithEyebrow: {
+    marginTop: 14,
+  },
+  cardSelected: {
+    borderWidth: 2,
+    borderColor: colors.cta.primary,
+  },
+  cardUnselected: {
     borderWidth: 1,
     borderColor: colors.border.light,
+  },
+  eyebrowRibbon: {
+    position: 'absolute',
+    top: -10,
+    left: spacing.base,
+    paddingHorizontal: 10,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: colors.accent,
     alignItems: 'center',
-    gap: spacing.xs,
+    justifyContent: 'center',
   },
-  tierCardCurrent: {
-    borderColor: colors.border.medium,
-    backgroundColor: colors.bg.secondary,
-  },
-  tierCardPremium: {
-    borderColor: colors.accent,
-    borderWidth: 2,
-    backgroundColor: colors.accentLight,
-  },
-  tierName: {
-    ...typography.body,
+  eyebrowText: {
+    fontSize: 10,
     fontWeight: '700',
+    lineHeight: 10,
+    color: colors.text.onInverse,
+    letterSpacing: 1,
+  },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
+  radioSelected: {
+    borderWidth: 6,
+    borderColor: colors.cta.primary,
+    backgroundColor: colors.bg.primary,
+  },
+  radioUnselected: {
+    borderWidth: 1.5,
+    borderColor: colors.border.medium,
+  },
+  textCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  name: {
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 17 * 1.3,
     color: colors.text.primary,
   },
-  tierDetail: {
-    ...typography.caption,
+  sub: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 12 * 1.4,
     color: colors.text.secondary,
+    marginTop: 4,
   },
-  currentBadge: {
-    marginTop: spacing.xs,
-    backgroundColor: colors.border.medium,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radii.chip,
+  price: {
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 18,
+    color: colors.text.primary,
+    fontVariant: ['tabular-nums'],
   },
-  currentBadgeText: {
-    ...typography.small,
-    color: colors.text.secondary,
-    fontWeight: '600',
-  },
+});
 
-  // Features
-  features: {
-    marginBottom: spacing.xl,
-  },
-  featureRow: {
+const featureStyles = StyleSheet.create({
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.md,
+    gap: 10,
+    paddingVertical: 6,
   },
-  featureText: {
-    ...typography.body,
-    color: colors.text.primary,
-  },
-
-  // Subscribe
-  subscribeButton: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.base,
-    borderRadius: radii.button,
+  checkCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.accentLight,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  subscribeText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  paymentNote: {
-    ...typography.caption,
-    color: colors.text.secondary,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-  },
-  social: {
-    ...typography.caption,
-    color: colors.text.secondary,
-    textAlign: 'center',
-    marginTop: spacing.base,
+  text: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 13 * 1.4,
+    color: colors.text.primary,
   },
 });
