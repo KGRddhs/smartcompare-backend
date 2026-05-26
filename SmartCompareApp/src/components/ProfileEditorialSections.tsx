@@ -25,6 +25,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { Check } from 'lucide-react-native';
 import { colors, spacing, radii, typography } from '../theme';
 import {
   getProfileRecentDecisions,
@@ -34,6 +35,7 @@ import {
   type MonthlyStatsResponse,
   type WeightedPriority,
 } from '../services/api';
+import { deriveTone } from '../utils/deriveTone';
 
 // ---------------------------------------------------------------------------
 // 1. RecentDecisionsRow
@@ -70,6 +72,13 @@ function MiniVsCard({
   onPress?: () => void;
   t: (k: string) => string;
 }) {
+  // Per JSX (ProfileScreen.jsx:122-130): each MiniProduct tile uses a
+  // brand-derived tone background. Backend ships winner_name + runner_up_name;
+  // deriveTone() maps each to its canonical hex per the JSX inline literals.
+  // Winner gets a 2px emerald outline + check overlay (top-right).
+  const winnerTone = deriveTone(item.winner_name);
+  const runnerUpTone = deriveTone(item.runner_up_name);
+
   return (
     <TouchableOpacity
       testID="profile-recent-card"
@@ -78,14 +87,20 @@ function MiniVsCard({
       activeOpacity={0.7}
     >
       <View style={styles.miniRow}>
-        <View style={[styles.miniTile, styles.miniTileMuted]}>
-          <Text style={styles.miniTileGlyph}>•</Text>
-        </View>
+        <View style={[styles.miniTile, { backgroundColor: runnerUpTone }]} />
         <View style={styles.miniVsPill}>
           <Text style={styles.miniVsText}>{t('profile.recent.vs')}</Text>
         </View>
-        <View style={[styles.miniTile, styles.miniTileWinner]}>
-          <Text style={styles.miniTileGlyph}>•</Text>
+        <View
+          style={[
+            styles.miniTile,
+            styles.miniTileWinner,
+            { backgroundColor: winnerTone },
+          ]}
+        >
+          <View style={styles.miniTileCheck}>
+            <Check size={7} color={colors.text.onInverse} strokeWidth={4} />
+          </View>
         </View>
       </View>
       <Text style={styles.miniMeta} numberOfLines={1}>
@@ -346,18 +361,36 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   miniTileMuted: {
     backgroundColor: '#E8E9ED',
   },
   miniTileWinner: {
-    backgroundColor: '#1B1C1F',
+    // backgroundColor overridden inline via deriveTone() — keep the
+    // border-only spec here so winner gets the emerald outline + check
+    // overlay no matter which brand-tone is applied.
     borderWidth: 2,
     borderColor: colors.accent,
   },
   miniTileGlyph: {
     color: 'rgba(0,0,0,0.18)',
     fontSize: 14,
+  },
+  // Bundle E winner check overlay (per ProfileScreen.jsx:105-117 MiniProduct
+  // winner adornment — 12px emerald circle with white check, top-right of tile).
+  miniTileCheck: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.bg.secondary,
   },
   miniVsPill: {
     position: 'absolute',
