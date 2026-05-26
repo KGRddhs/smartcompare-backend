@@ -1,11 +1,17 @@
 /**
  * Hero SVG snapshot — RevealBurst.
  *
- * Contract (design doc § 3.2 + plan S0.1):
+ * Scope (per QA § 6 audit patch 7676875, 2026-05-26):
+ *   ResultsScreen winner-card first appearance ONLY. NOT used by Step15Reveal
+ *   anymore — Step15 uses the MatchBadge primitive (92% emerald circle).
+ *
+ * Contract (design doc § 3.2):
  *   - 6–8 emerald particles emit from center on parabolic fall
  *   - Center holds scale-bounce badge (0→1.1→1.0 with withSpring damping 8 stiffness 100)
- *   - `fireOnce` prop ensures it only animates on first mount per `key`
- *   - Re-rendering with the SAME key → particles do NOT re-emit
+ *   - `fireOnce` prop ensures it only animates on first mount per React `key`
+ *   - Re-rendering with the SAME key → particles do NOT re-emit (load-bearing
+ *     because ResultsScreen re-renders frequently as personalization /
+ *     analytics fetches resolve; the celebration must not retrigger)
  */
 import React from 'react';
 import { render } from '@testing-library/react-native';

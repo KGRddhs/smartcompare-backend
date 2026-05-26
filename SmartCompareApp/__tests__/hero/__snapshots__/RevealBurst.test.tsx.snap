@@ -1,0 +1,429 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`RevealBurst hero renders default snapshot 1`] = `
+<View
+  style={
+    [
+      {
+        "alignItems": "center",
+        "alignSelf": "center",
+        "justifyContent": "center",
+        "padding": 16,
+      },
+      {
+        "height": 320,
+        "width": 320,
+      },
+    ]
+  }
+>
+  <Svg
+    height={320}
+    viewBox="0 0 320 320"
+    width={320}
+  >
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-0"
+      x1={240}
+      x2={272}
+      y1={160}
+      y2={160}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-1"
+      x1={216.5685424949238}
+      x2={239.19595949289334}
+      y1={216.5685424949238}
+      y2={239.1959594928933}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-2"
+      x1={160}
+      x2={160}
+      y1={240}
+      y2={272}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-3"
+      x1={103.4314575050762}
+      x2={80.80404050710669}
+      y1={216.5685424949238}
+      y2={239.19595949289334}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-4"
+      x1={80}
+      x2={48}
+      y1={160}
+      y2={160}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-5"
+      x1={103.43145750507618}
+      x2={80.80404050710666}
+      y1={103.4314575050762}
+      y2={80.80404050710669}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-6"
+      x1={159.99999999999997}
+      x2={159.99999999999997}
+      y1={80}
+      y2={48}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-7"
+      x1={216.5685424949238}
+      x2={239.1959594928933}
+      y1={103.43145750507618}
+      y2={80.80404050710666}
+    />
+  </Svg>
+  <View
+    pointerEvents="none"
+    style={
+      {
+        "alignItems": "center",
+        "bottom": 0,
+        "justifyContent": "center",
+        "left": 0,
+        "position": "absolute",
+        "right": 0,
+        "top": 0,
+      }
+    }
+  >
+    <View
+      style={
+        [
+          {
+            "alignItems": "center",
+            "backgroundColor": "#FFFFFF",
+            "elevation": 2,
+            "justifyContent": "center",
+            "shadowColor": "#000",
+            "shadowOffset": {
+              "height": 1,
+              "width": 0,
+            },
+            "shadowOpacity": 0.08,
+            "shadowRadius": 3,
+          },
+          {
+            "borderRadius": 56,
+            "height": 112,
+            "width": 112,
+          },
+        ]
+      }
+      testID="reveal-burst-badge"
+    >
+      <Svg
+        fill="none"
+        height={67}
+        viewBox="0 0 24 24"
+        width={67}
+      >
+        <Circle
+          cx="10"
+          cy="10"
+          fill="none"
+          r="6"
+          stroke="#0A0A0B"
+          strokeWidth={6.979166666666667}
+        />
+        <Line
+          stroke="#0A0A0B"
+          strokeLinecap="round"
+          strokeWidth={6.979166666666667}
+          x1="14.2"
+          x2="20"
+          y1="14.2"
+          y2="20"
+        />
+        <Circle
+          cx="20"
+          cy="20"
+          fill="#0A0A0B"
+          r={4.1875}
+        />
+      </Svg>
+    </View>
+  </View>
+  <View
+    pointerEvents="none"
+    style={
+      [
+        {
+          "alignItems": "center",
+          "left": 0,
+          "position": "absolute",
+          "right": 0,
+          "top": "50%",
+        },
+        {
+          "transform": [
+            {
+              "translateY": -84,
+            },
+          ],
+        },
+      ]
+    }
+  >
+    <Svg
+      height={32}
+      viewBox="0 0 24 24"
+      width={32}
+    >
+      <Path
+        d="M5 12.5l4 4 10-10"
+        fill="none"
+        stroke="#10B981"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={3}
+        testID="reveal-burst-check"
+      />
+    </Svg>
+  </View>
+</View>
+`;
+
+exports[`RevealBurst hero renders with custom particle count 1`] = `
+<View
+  style={
+    [
+      {
+        "alignItems": "center",
+        "alignSelf": "center",
+        "justifyContent": "center",
+        "padding": 16,
+      },
+      {
+        "height": 320,
+        "width": 320,
+      },
+    ]
+  }
+>
+  <Svg
+    height={320}
+    viewBox="0 0 320 320"
+    width={320}
+  >
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-0"
+      x1={240}
+      x2={272}
+      y1={160}
+      y2={160}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-1"
+      x1={216.5685424949238}
+      x2={239.19595949289334}
+      y1={216.5685424949238}
+      y2={239.1959594928933}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-2"
+      x1={160}
+      x2={160}
+      y1={240}
+      y2={272}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-3"
+      x1={103.4314575050762}
+      x2={80.80404050710669}
+      y1={216.5685424949238}
+      y2={239.19595949289334}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-4"
+      x1={80}
+      x2={48}
+      y1={160}
+      y2={160}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-5"
+      x1={103.43145750507618}
+      x2={80.80404050710666}
+      y1={103.4314575050762}
+      y2={80.80404050710669}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-6"
+      x1={159.99999999999997}
+      x2={159.99999999999997}
+      y1={80}
+      y2={48}
+    />
+    <Line
+      stroke="#10B981"
+      strokeLinecap="round"
+      strokeWidth={3}
+      testID="reveal-burst-line-7"
+      x1={216.5685424949238}
+      x2={239.1959594928933}
+      y1={103.43145750507618}
+      y2={80.80404050710666}
+    />
+  </Svg>
+  <View
+    pointerEvents="none"
+    style={
+      {
+        "alignItems": "center",
+        "bottom": 0,
+        "justifyContent": "center",
+        "left": 0,
+        "position": "absolute",
+        "right": 0,
+        "top": 0,
+      }
+    }
+  >
+    <View
+      style={
+        [
+          {
+            "alignItems": "center",
+            "backgroundColor": "#FFFFFF",
+            "elevation": 2,
+            "justifyContent": "center",
+            "shadowColor": "#000",
+            "shadowOffset": {
+              "height": 1,
+              "width": 0,
+            },
+            "shadowOpacity": 0.08,
+            "shadowRadius": 3,
+          },
+          {
+            "borderRadius": 56,
+            "height": 112,
+            "width": 112,
+          },
+        ]
+      }
+      testID="reveal-burst-badge"
+    >
+      <Svg
+        fill="none"
+        height={67}
+        viewBox="0 0 24 24"
+        width={67}
+      >
+        <Circle
+          cx="10"
+          cy="10"
+          fill="none"
+          r="6"
+          stroke="#0A0A0B"
+          strokeWidth={6.979166666666667}
+        />
+        <Line
+          stroke="#0A0A0B"
+          strokeLinecap="round"
+          strokeWidth={6.979166666666667}
+          x1="14.2"
+          x2="20"
+          y1="14.2"
+          y2="20"
+        />
+        <Circle
+          cx="20"
+          cy="20"
+          fill="#0A0A0B"
+          r={4.1875}
+        />
+      </Svg>
+    </View>
+  </View>
+  <View
+    pointerEvents="none"
+    style={
+      [
+        {
+          "alignItems": "center",
+          "left": 0,
+          "position": "absolute",
+          "right": 0,
+          "top": "50%",
+        },
+        {
+          "transform": [
+            {
+              "translateY": -84,
+            },
+          ],
+        },
+      ]
+    }
+  >
+    <Svg
+      height={32}
+      viewBox="0 0 24 24"
+      width={32}
+    >
+      <Path
+        d="M5 12.5l4 4 10-10"
+        fill="none"
+        stroke="#10B981"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={3}
+        testID="reveal-burst-check"
+      />
+    </Svg>
+  </View>
+</View>
+`;
