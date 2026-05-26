@@ -85,27 +85,49 @@ def _comparison_row(
     *,
     id_: str = "comp-1",
     dim_winners: dict | None = None,
+    category: str | None = None,
+    winner_declaration: str | None = None,
+    p0_specs: dict | None = None,
+    p1_specs: dict | None = None,
+    created_at: str = "2026-05-23T00:00:00Z",
 ):
-    """Shape a comparison row matching `comparisons.full_response` v2 contract."""
+    """Shape a comparison row matching `comparisons.full_response` v2 contract.
+
+    Bundle E B4.3b: category / winner_declaration / per-product specs / created_at
+    are optional fixture knobs so smart-pick extension tests can drive the
+    `category` / `verdict_short` / `sub` / `updated_at` extraction paths.
+    """
+    full = {
+        "winner_index": winner_idx,
+        "products": [
+            {
+                "brand": p0_brand,
+                "name": p0_name,
+                "price": {"amount": p0_price, "currency": "BHD"},
+            },
+            {
+                "brand": p1_brand,
+                "name": p1_name,
+                "price": {"amount": p1_price, "currency": "BHD"},
+            },
+        ],
+        "scoring": {"dimension_winners": dim_winners or {}},
+    }
+    if category is not None:
+        full["category"] = category
+    if winner_declaration is not None:
+        full["overview"] = {"winner": {"declaration": winner_declaration}}
+    if p0_specs is not None or p1_specs is not None:
+        full["specs"] = {
+            "products": [
+                {"brand": p0_brand, "name": p0_name, "specs": p0_specs or {}},
+                {"brand": p1_brand, "name": p1_name, "specs": p1_specs or {}},
+            ],
+        }
     return {
         "id": id_,
-        "created_at": "2026-05-23T00:00:00Z",
-        "full_response": {
-            "winner_index": winner_idx,
-            "products": [
-                {
-                    "brand": p0_brand,
-                    "name": p0_name,
-                    "price": {"amount": p0_price, "currency": "BHD"},
-                },
-                {
-                    "brand": p1_brand,
-                    "name": p1_name,
-                    "price": {"amount": p1_price, "currency": "BHD"},
-                },
-            ],
-            "scoring": {"dimension_winners": dim_winners or {}},
-        },
+        "created_at": created_at,
+        "full_response": full,
     }
 
 
@@ -465,6 +487,163 @@ class TestHomeSmartPick:
         body = resp.json()
         assert body["empty_state"] is True
         assert body["smart_pick"] is None
+
+    # -------------------------------------------------------------------------
+    # Bundle E B4.3b — JSX-wins extension fields
+    # -------------------------------------------------------------------------
+    def test_extension_fields_present_when_data_available(self):
+        """Per JSX HomeScreen.jsx:438-501, SmartPickCard renders a category
+        eyebrow pill, an 'Updated today' chip, per-product `sub` (e.g. '128GB'),
+        and a short verdict sentence. Bundle E B4.3b extends the response with
+        `category`, `updated_at`, `products[*].sub`, and `verdict_short` —
+        populated from the underlying comparison row when present.
+        """
+        from app.api.auth_routes import get_current_user
+        from datetime import datetime, timezone
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        # created_at 30 minutes ago — should yield rel string like "Updated 30m ago"
+        # or similar based on the server-side helper.
+        now = datetime.now(timezone.utc)
+        recent_iso = now.isoformat()
+
+        rows = [_comparison_row(
+            winner_idx=0,
+            p0_brand="Apple", p0_name="iPhone 15", p0_price=329.0,
+            p1_brand="Samsung", p1_name="Galaxy S24", p1_price=299.0,
+            category="electronics",
+            winner_declaration=(
+                "iPhone 15 takes this round — sharper photo pipeline and a faster A17 "
+                "chip beat the Galaxy S24 on every benchmark we cared about."
+            ),
+            p0_specs={"storage": "128GB", "color": "Black"},
+            p1_specs={"storage": "256GB", "color": "Phantom Black"},
+            created_at=recent_iso,
+        )]
+        user_resp = MagicMock(); user_resp.data = {"preferences": {"priorities": ["price"]}}
+        comp_resp = MagicMock(); comp_resp.data = rows
+
+        def _table_dispatch(name):
+            m = MagicMock()
+            if name == "users":
+                m.select.return_value.eq.return_value.single.return_value.execute.return_value = user_resp
+            else:
+                m.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+            return m
+        supabase = MagicMock()
+        supabase.table.side_effect = _table_dispatch
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        assert resp.status_code == 200, resp.text
+        pick = resp.json()["smart_pick"]
+        assert pick is not None
+
+        # category — top-level on smart_pick
+        assert pick["category"] == "electronics"
+
+        # updated_at — server-computed rel string (short form)
+        assert isinstance(pick["updated_at"], str)
+        assert len(pick["updated_at"]) > 0
+        # Should reflect "just now" / "Xm ago" / "Today" — never raw ISO
+        assert "T" not in pick["updated_at"], (
+            f"updated_at should be a rel string, not raw ISO: {pick['updated_at']!r}"
+        )
+
+        # per-product sub — storage spec when available
+        assert "winner_sub" in pick
+        assert "runner_up_sub" in pick
+        assert pick["winner_sub"] == "128GB"
+        assert pick["runner_up_sub"] == "256GB"
+
+        # verdict_short — truncated winner_declaration (no banned scary vocab)
+        vs = pick["verdict_short"]
+        assert isinstance(vs, str) and len(vs) > 0
+        assert len(vs) <= 160, f"verdict_short too long: {len(vs)} chars: {vs!r}"
+        # First few words must match the source declaration prefix
+        assert vs.lower().startswith("iphone 15 takes")
+
+    def test_extension_fields_null_when_data_absent(self):
+        """When the underlying full_response lacks category / verdict /
+        product specs, the extension fields are NULL — frontend hides the
+        surround. Per dispatcher rule: 'don't fabricate.'
+        """
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        # Minimal row — no category, no winner_declaration, no specs
+        rows = [_comparison_row(winner_idx=0)]
+        user_resp = MagicMock(); user_resp.data = {"preferences": {}}
+        comp_resp = MagicMock(); comp_resp.data = rows
+
+        def _table_dispatch(name):
+            m = MagicMock()
+            if name == "users":
+                m.select.return_value.eq.return_value.single.return_value.execute.return_value = user_resp
+            else:
+                m.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+            return m
+        supabase = MagicMock()
+        supabase.table.side_effect = _table_dispatch
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        assert resp.status_code == 200, resp.text
+        pick = resp.json()["smart_pick"]
+        assert pick is not None
+        # Fields must be PRESENT but NULL — frontend then skips render lines
+        assert pick["category"] is None
+        assert pick["winner_sub"] is None
+        assert pick["runner_up_sub"] is None
+        assert pick["verdict_short"] is None
+        # updated_at always computed from comparisons.created_at (always present
+        # in DB-shaped row) → never null even when other fields are.
+        assert isinstance(pick["updated_at"], str)
+
+    def test_legacy_fields_survive_one_release_cycle(self):
+        """Bundle E backwards-compat: the legacy {winner_name, runner_up_name,
+        winner_price_bhd, runner_up_price_bhd, reason_key, reason_params} fields
+        survive alongside the new {category, updated_at, winner_sub,
+        runner_up_sub, verdict_short} — one release cycle (same pattern as
+        scoring_v2)."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        rows = [_comparison_row(winner_idx=0, category="skincare")]
+        user_resp = MagicMock(); user_resp.data = {"preferences": {}}
+        comp_resp = MagicMock(); comp_resp.data = rows
+
+        def _table_dispatch(name):
+            m = MagicMock()
+            if name == "users":
+                m.select.return_value.eq.return_value.single.return_value.execute.return_value = user_resp
+            else:
+                m.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+            return m
+        supabase = MagicMock()
+        supabase.table.side_effect = _table_dispatch
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        pick = resp.json()["smart_pick"]
+        # Legacy fields still emitted
+        for legacy_key in (
+            "winner_name", "runner_up_name", "winner_price_bhd",
+            "runner_up_price_bhd", "reason_key", "reason_params",
+        ):
+            assert legacy_key in pick, (
+                f"legacy field {legacy_key!r} must survive one release cycle; "
+                f"pick keys: {sorted(pick.keys())}"
+            )
 
 
 # =============================================================================
