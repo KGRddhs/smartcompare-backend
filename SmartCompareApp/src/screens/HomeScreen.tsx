@@ -440,22 +440,78 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         );
       }
+      // F-S1.4-B2: Replace placeholder camera with JSX-aligned ScanBody
+      // preview pattern per HomeScreen.jsx:222-265. Two PreviewRow items
+      // ((1) + dashed "Tap to snap product A" / (2) + dashed "Tap to snap
+      // product B") flanking a hairline + center emerald "vs" pill. Both
+      // rows route to ScanCamera since slot routing is handled there;
+      // the home preview is purely a visual entry point.
+      const goToScan = () => navigation.navigate('ScanCamera');
       return (
-        <TouchableOpacity
-          testID="home-scan-placeholder"
-          style={styles.scanPlaceholder}
-          onPress={() => navigation.navigate('ScanCamera')}
-          accessibilityRole="button"
-          accessibilityLabel={t('home.camera.tap_to_scan')}
-        >
-          <Camera size={48} color={colors.text.secondary} />
-          <Text style={styles.scanPlaceholderTitle}>
-            {t('home.camera.tap_to_scan')}
+        <View testID="home-scan-preview" style={styles.scanPreview}>
+          <TouchableOpacity
+            testID="home-scan-preview-row-a"
+            style={styles.scanPreviewRow}
+            onPress={goToScan}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.scan.preview.row_a', {
+              defaultValue: 'Tap to snap product A',
+            })}
+            activeOpacity={0.7}
+          >
+            <View style={styles.scanPreviewNumeral}>
+              <Text style={styles.scanPreviewNumeralText}>1</Text>
+            </View>
+            <View style={styles.scanPreviewPlaceholder}>
+              <Camera size={18} color={colors.text.placeholder} strokeWidth={2} />
+              <Text style={styles.scanPreviewPlaceholderText} numberOfLines={1}>
+                {t('home.scan.preview.row_a', {
+                  defaultValue: 'Tap to snap product A',
+                })}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Hairline + center emerald "vs" pill (matches the
+              TwoInputShell divider exactly so the visual rhythm carries
+              across text / url / scan modes). */}
+          <View style={styles.scanPreviewDivider} pointerEvents="none">
+            <View style={styles.scanPreviewHairline} />
+            <View style={styles.scanPreviewVsPill}>
+              <Text style={styles.scanPreviewVsText}>VS</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            testID="home-scan-preview-row-b"
+            style={styles.scanPreviewRow}
+            onPress={goToScan}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.scan.preview.row_b', {
+              defaultValue: 'Tap to snap product B',
+            })}
+            activeOpacity={0.7}
+          >
+            <View style={styles.scanPreviewNumeral}>
+              <Text style={styles.scanPreviewNumeralText}>2</Text>
+            </View>
+            <View style={styles.scanPreviewPlaceholder}>
+              <Camera size={18} color={colors.text.placeholder} strokeWidth={2} />
+              <Text style={styles.scanPreviewPlaceholderText} numberOfLines={1}>
+                {t('home.scan.preview.row_b', {
+                  defaultValue: 'Tap to snap product B',
+                })}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <Text style={styles.scanPreviewHint}>
+            {t('home.scan.preview.hint', {
+              defaultValue:
+                'Center each product in the brackets — sharper match every time.',
+            })}
           </Text>
-          <Text style={styles.scanPlaceholderHint}>
-            {t('home.camera.slot', { current: 1, total: MAX_IMAGES })}
-          </Text>
-        </TouchableOpacity>
+        </View>
       );
     }
 
@@ -843,6 +899,97 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text.secondary,
     textAlign: 'center',
+  },
+  // F-S1.4-B2 — JSX-aligned scan preview pattern (HomeScreen.jsx:222-265).
+  // Two PreviewRow items + center emerald "vs" pill divider + footer hint.
+  scanPreview: {
+    flexDirection: 'column',
+    gap: 12,
+    paddingVertical: spacing.sm,
+  },
+  scanPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  scanPreviewNumeral: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.bg.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.medium,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanPreviewNumeralText: {
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 12,
+    color: colors.text.secondary,
+  },
+  scanPreviewPlaceholder: {
+    flex: 1,
+    height: 48,
+    borderRadius: radii.card,
+    backgroundColor: colors.bg.primary,
+    borderWidth: 1,
+    borderColor: colors.border.medium,
+    borderStyle: 'dashed',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  scanPreviewPlaceholderText: {
+    fontSize: 15,
+    fontWeight: '400',
+    lineHeight: 15 * 1.5,
+    color: colors.text.placeholder,
+    flex: 1,
+  },
+  // Hairline + emerald "vs" pill divider (mirrors TwoInputShell so the
+  // visual rhythm carries across text / url / scan modes). The hairline
+  // runs along the numeral-circle column (insetInlineStart 11px); the
+  // pill is centered on the row gap (margin top/bottom keep the 22px
+  // numeral circles from overlapping the pill).
+  scanPreviewDivider: {
+    height: 6,
+    position: 'relative',
+  },
+  scanPreviewHairline: {
+    position: 'absolute',
+    left: 11,
+    top: -6,
+    bottom: -6,
+    width: 1,
+    backgroundColor: colors.border.light,
+  },
+  scanPreviewVsPill: {
+    position: 'absolute',
+    left: 20,
+    top: -8,
+    height: 22,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: colors.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanPreviewVsText: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 11 * 1.4,
+    color: colors.accentDark,
+    letterSpacing: 1.1,
+  },
+  scanPreviewHint: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 12 * 1.5,
+    color: colors.text.secondary,
+    marginLeft: 36,
+    marginTop: 4,
   },
   permissionCard: {
     flex: 1,
