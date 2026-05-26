@@ -377,8 +377,12 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           )}
         </View>
 
-        {/* Settings Card */}
-        <Text style={styles.sectionLabel}>{t('profile.settings')}</Text>
+        {/* F-S1.5-D2 FlatSettings eyebrow groups per JSX
+            ProfileScreen.jsx:239-275. Each eyebrow renders the JSX
+            SettingsEyebrow recipe: 10/600 placeholder uppercase 1.1 ls
+            on bg.primary with hairline borders top + bottom. Groups:
+            ACCOUNT / PRIVACY & NOTIFICATIONS / HELP / DANGER ZONE. */}
+        <Text style={styles.sectionLabel} testID="profile-eyebrow-account">{t('profile.section.account', { defaultValue: 'ACCOUNT' })}</Text>
         <View style={styles.card}>
           {renderRow(
             <Globe size={18} color={colors.text.secondary} />,
@@ -413,8 +417,12 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           )}
         </View>
 
-        {/* Privacy Card */}
-        <Text style={styles.sectionLabel}>{t('profile.section.privacy')}</Text>
+        {/* Privacy & Notifications */}
+        <Text style={styles.sectionLabel} testID="profile-eyebrow-privacy">
+          {t('profile.section.privacy_notifications', {
+            defaultValue: 'PRIVACY & NOTIFICATIONS',
+          })}
+        </Text>
         <View style={styles.card}>
           <ToggleRow
             icon={<Shield size={18} color={colors.text.secondary} />}
@@ -427,9 +435,9 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
         </View>
 
-        {/* F5.4 — Notifications Card: master + 3 sub-toggles for re-engagement pushes */}
-        <Text style={styles.sectionLabel}>{t('profile.notifications')}</Text>
-        <View style={styles.card}>
+        {/* F5.4 — Notifications: master + 3 sub-toggles for re-engagement pushes.
+            Logical sub-group of PRIVACY & NOTIFICATIONS; no separate eyebrow. */}
+        <View style={[styles.card, { marginTop: spacing.sm }]}>
           <ToggleRow
             icon={<Bell size={18} color={colors.text.secondary} />}
             label={t('profile.notifs.master.title')}
@@ -466,8 +474,10 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           {notifsError ? <Text style={styles.errorText}>{notifsError}</Text> : null}
         </View>
 
-        {/* Support Card */}
-        <Text style={styles.sectionLabel}>{t('profile.support')}</Text>
+        {/* Help — JSX SettingsEyebrow:266 */}
+        <Text style={styles.sectionLabel} testID="profile-eyebrow-help">
+          {t('profile.section.help', { defaultValue: 'HELP' })}
+        </Text>
         <View style={styles.card}>
           {renderRow(
             <FileText size={18} color={colors.text.secondary} />,
@@ -490,9 +500,15 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           )}
         </View>
 
-        {/* Danger Card — Bundle A §3 relocates Delete account to EditProfile.
-            Only Logout remains here. */}
-        <View style={[styles.card, { marginTop: spacing.xl }]}>
+        {/* Danger Zone — JSX SettingsEyebrow:271. Bundle A §3 keeps the
+            Delete account flow inside EditProfile so users have a single
+            destructive entry-point gate; only Logout lives here on the
+            Profile root. The eyebrow still calls the group "DANGER ZONE"
+            per JSX so the visual rhythm holds. */}
+        <Text style={styles.sectionLabel} testID="profile-eyebrow-danger">
+          {t('profile.section.danger', { defaultValue: 'DANGER ZONE' })}
+        </Text>
+        <View style={[styles.card, { marginTop: spacing.xs }]}>
           {renderRow(
             <LogOut size={18} color={colors.text.secondary} />,
             t('profile.logout'),
@@ -594,14 +610,21 @@ const styles = StyleSheet.create({
     padding: spacing.base,
     marginBottom: spacing.sm,
   },
+  // F-S1.5-D2 — tightened to match JSX SettingsEyebrow recipe
+  // (ProfileScreen.jsx:239-250): 10/600 lineHeight 1.4 letterSpacing
+  // 1.1 placeholder color uppercase. Eyebrow spacing tightened so the
+  // groups read as one FlatSettings card with sub-headers rather than
+  // 4 floating section labels.
   sectionLabel: {
-    ...typography.caption,
+    fontSize: 10,
     fontWeight: '600',
-    color: colors.text.secondary,
+    lineHeight: 10 * 1.4,
+    color: colors.text.placeholder,
     textTransform: 'uppercase',
+    letterSpacing: 1.1,
     marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-    marginStart: spacing.xs,
+    marginBottom: spacing.xs,
+    marginHorizontal: spacing.base,
   },
   // Profile account
   profileRow: {
