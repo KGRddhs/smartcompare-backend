@@ -49,6 +49,18 @@ def _categorize_auth_error(e: Exception, context: str = "operation") -> Dict:
         return {"success": False, "error": "Connection failed. Please try again."}
     else:
         logger.error(f"Auth error in {context}: {e}")
+        # Bundle E B4 diagnostic (2026-05-26, Ahmed Sentry-sampling issue):
+        # When Sentry sample rate drops the event, we have no way to see the
+        # underlying Supabase rejection. Surface the raw exception text in the
+        # response for `social_login` context only, prefixed [B4-BE-DIAG] for
+        # grep. The FE's [B4-DIAG] wrapper surfaces this directly on-screen so
+        # Ahmed (or any tester) can read the actual failure mode without log
+        # forensics. REMOVE this branch after B4 ships green + clean.
+        if context == "social_login":
+            return {
+                "success": False,
+                "error": f"[B4-BE-DIAG] supabase_error={str(e)[:300]} exc_type={type(e).__name__}",
+            }
         return {"success": False, "error": "Something went wrong. Please try again later."}
 
 
