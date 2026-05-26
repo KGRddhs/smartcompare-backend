@@ -18,6 +18,7 @@
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
 import { OnboardingFlow } from '../src/screens/onboarding/OnboardingFlow';
+import type { OnboardingFlowData } from '../src/screens/onboarding/types';
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, opts?: any) => opts?.defaultValue ?? k }),
@@ -34,7 +35,12 @@ jest.mock('../src/services/api', () => ({
 
 // All seeded data needed to make every isStepValid case return true so the
 // traversal can run to completion without stopping at invalid Continue.
-const seededData = {
+// Discriminated-union fields (language, country, age_group, gender, budget,
+// brand_attitude, attribution_source) need per-field literal narrowing.
+// priorities stays string[] (mutable). The outer object is asserted as
+// Partial<OnboardingFlowData> rather than `as const` (which would freeze
+// the priorities array readonly and break the field's mutable type).
+const seededData: Partial<OnboardingFlowData> = {
   language: 'en',
   country: 'BH',
   age_group: '25-34',

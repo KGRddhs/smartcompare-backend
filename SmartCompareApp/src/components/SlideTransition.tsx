@@ -62,9 +62,10 @@ export function SlideTransition({ step, children, testID }: Props) {
     <Animated.View
       style={[{ flex: 1 }, animatedStyle]}
       testID={testID}
-      // @ts-expect-error — data-* props are not strictly typed on
-      // Animated.View but RN forwards them to the underlying host node.
-      data-direction={direction}
+      // data-* prop forwards through to the host node so the test scaffold
+      // can target it via `node.props['data-direction']`. RN doesn't strip
+      // unknown View props.
+      {...({ 'data-direction': direction } as Record<string, string>)}
     >
       {children}
     </Animated.View>

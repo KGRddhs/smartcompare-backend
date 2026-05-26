@@ -44,7 +44,7 @@ describe('RevealBurst hero', () => {
     );
     // Count emitted particle nodes via testID prefix on the first render.
     const initialParticles = UNSAFE_root.findAll(
-      (n) => typeof n.props?.testID === 'string' &&
+      (n: any) => typeof n.props?.testID === 'string' &&
         n.props.testID.startsWith('reveal-burst-particle-'),
     );
     const initialCount = initialParticles.length;
@@ -52,7 +52,7 @@ describe('RevealBurst hero', () => {
     // Re-render without changing the React key.
     rerender(<RevealBurst fireOnce particleCount={6} />);
     const afterRerender = UNSAFE_root.findAll(
-      (n) => typeof n.props?.testID === 'string' &&
+      (n: any) => typeof n.props?.testID === 'string' &&
         n.props.testID.startsWith('reveal-burst-particle-'),
     );
 
