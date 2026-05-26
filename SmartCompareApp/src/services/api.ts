@@ -695,6 +695,23 @@ export interface HomeSmartPickItem {
   runner_up_price_bhd: number | null;
   reason_key: string;
   reason_params: Record<string, string>;
+  // --- Bundle E B4.3b extensions (per HomeScreen.jsx:438-501) ---
+  // ALL nullable — render-site MUST hide-the-surround when null per the
+  // null-hide-surround rule (don't fabricate, don't render the eyebrow /
+  // chip / sub-line / verdict caption when its source field is null).
+  /** Category eyebrow pill (e.g. "Electronics", "Skincare"). Nullable. */
+  category: string | null;
+  /** Server-computed relative-time string (e.g. "Updated 30m ago",
+   *  "Today"). NEVER raw ISO — clock-skew avoided. Always non-null when
+   *  smart_pick itself is non-null (backend derives it from
+   *  comparisons.created_at). */
+  updated_at: string;
+  /** Winning product's spec sub-line (e.g. "128GB"). Nullable. */
+  winner_sub: string | null;
+  /** Runner-up product's spec sub-line (e.g. "256GB"). Nullable. */
+  runner_up_sub: string | null;
+  /** Short verdict sentence (≤160 chars, no scary vocab). Nullable. */
+  verdict_short: string | null;
 }
 
 export interface HomeSmartPickResponse {
@@ -713,8 +730,22 @@ export async function getHomeSmartPick(): Promise<HomeSmartPickResponse> {
 }
 
 export interface HomeTrendingItem {
+  // --- Bundle E B4.3a — JSX-wins pre-split shape (per HomeScreen.jsx:609-615) ---
+  /** Category tag eyebrow (e.g. "Electronics", "Skincare", "Supplements"). */
+  tag: string;
+  /** Pre-split product A name. Backend splits the curated query by " vs " so
+   *  frontend never does fragile string parsing. */
+  a: string;
+  /** Pre-split product B name. */
+  b: string;
+  /** Comparison view count (tabular-nums "142 ↗" rendered by consumer). */
+  count: number;
+  // --- Legacy fields surviving one release cycle for backwards-compat ---
+  /** @deprecated Use `a`/`b` split. Will be removed after Bundle F. */
   query: string;
+  /** @deprecated Use `count` (same value). Will be removed after Bundle F. */
   view_count: number;
+  /** Region tag carried through for upstream filtering. */
   region: string;
 }
 
