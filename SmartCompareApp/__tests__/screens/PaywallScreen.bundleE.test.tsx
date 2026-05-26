@@ -138,15 +138,19 @@ describe('PaywallScreen — Bundle E composition (F-S1.1)', () => {
 
   it('renders without crashing when route.params.initialUsage is absent', () => {
     // Cover the useEffect fallback path: getUsageStatus() is called when
-    // initialUsage missing. Override useRoute for this case.
-    jest.resetModules();
-    jest.doMock('@react-navigation/native', () => ({
-      useNavigation: () => ({ goBack, navigate: jest.fn() }),
-      useRoute: () => ({ params: {} }),
-    }));
-    // Re-require to pick up the new mock.
-    const { default: FreshPaywall } = require('../../src/screens/PaywallScreen');
-    expect(() => render(<FreshPaywall />)).not.toThrow();
+    // initialUsage missing. Override useRoute IN-PLACE for this test only
+    // — DO NOT use jest.resetModules + require, which creates a dual-React
+    // instance (FreshPaywall gets a different react module than the test's
+    // own React, breaking the hooks dispatcher → useState returns null).
+    // Caught by frontend cross-QA 2026-05-26.
+    const navMod = require('@react-navigation/native');
+    const originalUseRoute = navMod.useRoute;
+    navMod.useRoute = () => ({ params: {} });
+    try {
+      expect(() => render(<PaywallScreen />)).not.toThrow();
+    } finally {
+      navMod.useRoute = originalUseRoute;
+    }
   });
 });
 
