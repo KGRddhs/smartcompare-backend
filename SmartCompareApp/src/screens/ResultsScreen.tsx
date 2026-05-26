@@ -83,6 +83,7 @@ import { LoadingRings } from '../components/hero/LoadingRings';
 import { HeroRings } from '../components/results/HeroRings';
 import { DimensionBars } from '../components/results/DimensionBars';
 import { TopMatchBadge } from '../components/results/TopMatchBadge';
+import { RevealBurst } from '../components/hero/RevealBurst';
 import { FactualVerdict } from '../components/results/FactualVerdict';
 import { ConfidencePills } from '../components/results/ConfidencePills';
 import { ConfidenceDetailsSheet } from '../components/results/ConfidenceDetailsSheet';
@@ -1086,7 +1087,31 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           ) ? 0 : 1;
           return (
             <Animated.View entering={FadeInDown.delay(750).duration(400)} style={styles.section} testID="results-scoring-v2">
-              {!isWeird && <TopMatchBadge testID="results-v2-top-match" />}
+              {!isWeird && (
+                <View style={styles.topMatchSlot}>
+                  <TopMatchBadge testID="results-v2-top-match" />
+                  {/* Bundle E F-S1.8 — RevealBurst on winner-card first
+                      appearance per § 3.2 (this is RevealBurst's only
+                      consumer; Step15 dropped per QA § 6 audit). Keyed
+                      on the React `key` prop with comparison_id so
+                      fireOnce stays idempotent across re-renders driven
+                      by personalization fetches + analytics resolves.
+                      Renders behind the TopMatchBadge via zIndex layering;
+                      pointerEvents=none so it doesn't intercept taps. */}
+                  <View
+                    style={styles.revealBurstSlot}
+                    pointerEvents="none"
+                    testID="results-v2-reveal-burst-slot"
+                  >
+                    <RevealBurst
+                      key={comparisonId || 'no-comparison-id'}
+                      fireOnce
+                      particleCount={6}
+                      size={220}
+                    />
+                  </View>
+                </View>
+              )}
               {/* Bundle C § 5b — 3-pill row above the hero. § 5c — Price
                   pill hidden whenever ANY product fell to estimated. */}
               {scoring_v2.confidence_legs && (
@@ -1559,6 +1584,26 @@ const styles = StyleSheet.create({
     padding: spacing.base,
     borderWidth: 1,
     borderColor: colors.border.light,
+  },
+  // Bundle E F-S1.8 — RevealBurst slot wraps the TopMatchBadge so the
+  // particle emit + badge scale-bounce visually anchor on the winner
+  // header. RevealBurst is absolute-positioned behind the badge via
+  // zIndex; pointerEvents=none on the slot to keep all taps reaching
+  // the badge itself.
+  topMatchSlot: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  revealBurstSlot: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: -1,
   },
   sectionHeader: {
     flexDirection: 'row',
