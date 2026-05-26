@@ -642,10 +642,19 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 style={cardWrapperStyle}
               >
               <Card
-                variant={isWinner && winnerRevealed ? 'winner' : 'default'}
+                // F-S1.8-D3: winner card uses emerald accentLight bg +
+                // 2px accent border IMMEDIATELY per JSX ResultsScreen.jsx:39-66
+                // (was previously gated on winnerRevealed 800ms delay; Ahmed's
+                // device walkthrough showed the winner card visually
+                // identical to runner-up before the timer fired). The
+                // scale-spring animation still gates on winnerRevealed
+                // for the theatrical moment, but the visual hierarchy
+                // is established from first render.
+                variant={isWinner ? 'winner' : 'default'}
                 style={styles.productCard}
               >
-                {/* Best Pick badge */}
+                {/* Best Pick badge — still gated on winnerRevealed so the
+                    badge slide-in keeps its theatrical moment. */}
                 {isWinner && winnerRevealed && (
                   <View style={styles.bestPickBadge}>
                     <Trophy size={12} color="#FFF" />
