@@ -475,7 +475,12 @@ class TestHomeSmartPick:
 class TestHomeTrending:
 
     def test_curated_list_seeds_correctly_for_bahrain(self):
-        """Default region (bahrain) returns the curated list with non-empty entries."""
+        """Default region (bahrain) returns the curated list with non-empty entries.
+
+        Bundle E B4.3a reshape per JSX-wins doctrine (HomeScreen.jsx:608-651):
+        response ships {tag, a, b, count} plus legacy {query, view_count} for
+        one release cycle (backwards-compat — same pattern as scoring_v2).
+        """
         with patch("app.api.home_routes._redis_get", return_value=None), \
              patch("app.api.home_routes._redis_set", return_value=True):
             resp = client.get("/api/v1/home/trending?region=bahrain")
@@ -483,12 +488,61 @@ class TestHomeTrending:
         body = resp.json()
         assert body["region"] == "bahrain"
         assert len(body["trending"]) > 0
-        # Validate response shape per entry
         first = body["trending"][0]
-        assert set(first.keys()) == {"query", "view_count", "region"}
+        # Bundle E JSX-wins shape — required fields
+        assert "tag" in first, f"missing 'tag' (category) per JSX. keys: {list(first.keys())}"
+        assert "a" in first, f"missing 'a' (product A) per JSX. keys: {list(first.keys())}"
+        assert "b" in first, f"missing 'b' (product B) per JSX. keys: {list(first.keys())}"
+        assert "count" in first, f"missing 'count' per JSX. keys: {list(first.keys())}"
+        assert isinstance(first["tag"], str) and first["tag"]
+        assert isinstance(first["a"], str) and first["a"]
+        assert isinstance(first["b"], str) and first["b"]
+        assert isinstance(first["count"], int)
+        # Legacy backwards-compat (one release cycle)
+        assert "query" in first, "legacy 'query' must survive one release cycle"
+        assert "view_count" in first, "legacy 'view_count' must survive one release cycle"
+        assert first["view_count"] == first["count"]
         assert first["region"] == "bahrain"
-        assert isinstance(first["view_count"], int)
-        assert isinstance(first["query"], str)
+
+    def test_pre_split_a_and_b_match_query(self):
+        """The new 'a' and 'b' fields are pre-split from the curated query.
+
+        For a curated entry `"iPhone 15 vs Samsung Galaxy S24"`, the response
+        must ship `a="iPhone 15"` + `b="Samsung Galaxy S24"`. Split is by
+        " vs " (case-insensitive) so frontend never does this fragile parsing.
+        """
+        with patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/trending?region=bahrain")
+        assert resp.status_code == 200
+        body = resp.json()
+        for entry in body["trending"]:
+            recombined = f"{entry['a']} vs {entry['b']}".lower()
+            assert entry["query"].lower() == recombined, (
+                f"a/b reconstruction mismatch: a={entry['a']!r} b={entry['b']!r} "
+                f"query={entry['query']!r}"
+            )
+
+    def test_tag_is_a_known_category(self):
+        """The 'tag' field is one of the 9 known Qaren categories.
+
+        Matches CATEGORY_SPEC_SCHEMAS keys (electronics/skincare/supplements/
+        makeup/haircare/fragrances/fashion/grocery/other), displayed
+        title-cased per JSX HomeScreen.jsx:609.
+        """
+        known_tags = {
+            "Electronics", "Skincare", "Supplements", "Makeup", "Haircare",
+            "Fragrances", "Fashion", "Grocery", "Other",
+        }
+        with patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/trending?region=bahrain")
+        body = resp.json()
+        for entry in body["trending"]:
+            assert entry["tag"] in known_tags, (
+                f"unknown tag {entry['tag']!r} for query {entry['query']!r}; "
+                f"expected one of {sorted(known_tags)}"
+            )
 
     def test_region_fallback_when_missing(self):
         """No `?region=` → fall back to default (bahrain) when user is

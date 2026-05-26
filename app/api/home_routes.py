@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -428,11 +429,35 @@ async def home_smart_pick(
 # =============================================================================
 
 
+_VS_SPLIT_RE = re.compile(r"\s+vs\.?\s+", flags=re.IGNORECASE)
+
+
+def _split_query_into_a_b(query: str) -> tuple[Optional[str], Optional[str]]:
+    """Split a legacy `"X vs Y"` curated string into (a, b).
+
+    Returns (None, None) when the query is malformed (no " vs " separator,
+    splits into !=2 non-empty parts). Matches both `vs` and `vs.` case-insensitively.
+    """
+    if not isinstance(query, str) or not query.strip():
+        return (None, None)
+    parts = _VS_SPLIT_RE.split(query.strip(), maxsplit=1)
+    if len(parts) != 2:
+        return (None, None)
+    a, b = parts[0].strip(), parts[1].strip()
+    if not a or not b:
+        return (None, None)
+    return (a, b)
+
+
 def _load_curated_trending() -> dict[str, list[dict]]:
     """Read the curated JSON file. Returns a region → list[entry] map.
 
-    Each entry is `{query: str, view_count: int}`. The region key gates
-    response shape — see /trending endpoint for the merge logic.
+    Bundle E B4.3a — entries are pre-split {tag, a, b, view_count} per
+    JSX `HomeScreen.jsx:608-651`. For backwards-compat with any pre-Bundle-E
+    curated rows that still ship the legacy `{query, view_count}` shape,
+    this loader derives {a, b} from the query string and defaults `tag`
+    to "Other" when missing. The endpoint then re-assembles a legacy
+    `query` + `count` alias so consumers on either shape work.
 
     Returns an empty dict if the file is missing or malformed — fail-safe
     so a missing file degrades to "no trending items" rather than 500.
@@ -448,7 +473,6 @@ def _load_curated_trending() -> dict[str, list[dict]]:
             raw = json.load(fh)
         if not isinstance(raw, dict):
             return {}
-        # Validate per-region entries
         cleaned: dict[str, list[dict]] = {}
         for region, entries in raw.items():
             if not isinstance(entries, list):
@@ -457,11 +481,34 @@ def _load_curated_trending() -> dict[str, list[dict]]:
             for e in entries:
                 if not isinstance(e, dict):
                     continue
-                q = e.get("query")
                 vc = e.get("view_count")
-                if not isinstance(q, str) or not isinstance(vc, int):
+                if not isinstance(vc, int):
                     continue
-                valid_entries.append({"query": q, "view_count": vc})
+                tag = e.get("tag")
+                a = e.get("a")
+                b = e.get("b")
+                if isinstance(tag, str) and isinstance(a, str) and isinstance(b, str):
+                    # Bundle E shape — already pre-split.
+                    valid_entries.append({
+                        "tag": tag.strip(),
+                        "a": a.strip(),
+                        "b": b.strip(),
+                        "view_count": vc,
+                    })
+                    continue
+                # Legacy shape — derive {a, b} from query string.
+                q = e.get("query")
+                if not isinstance(q, str):
+                    continue
+                derived_a, derived_b = _split_query_into_a_b(q)
+                if derived_a is None or derived_b is None:
+                    continue
+                valid_entries.append({
+                    "tag": (tag.strip() if isinstance(tag, str) and tag.strip() else "Other"),
+                    "a": derived_a,
+                    "b": derived_b,
+                    "view_count": vc,
+                })
             cleaned[region] = valid_entries
         return cleaned
     except Exception as exc:  # noqa: BLE001
@@ -541,9 +588,20 @@ async def home_trending(
 
     curated = _load_curated_trending()
     raw_entries = curated.get(resolved_region) or []
-    # Final shape: attach `region` to each entry for FE clarity
+    # Bundle E B4.3a — JSX-wins shape (tag/a/b/count) + legacy compat fields.
+    # Frontend HomeScreen.jsx:608-651 reads tag/a/b/count; the legacy query +
+    # view_count survive one release cycle for OTA consumers on the pre-Bundle-E
+    # shape (matches the scoring_v2 legacy-key pattern).
     entries = [
-        {"query": e["query"], "view_count": e["view_count"], "region": resolved_region}
+        {
+            "tag": e["tag"],
+            "a": e["a"],
+            "b": e["b"],
+            "count": e["view_count"],
+            "query": f"{e['a']} vs {e['b']}",
+            "view_count": e["view_count"],
+            "region": resolved_region,
+        }
         for e in raw_entries
     ]
 
