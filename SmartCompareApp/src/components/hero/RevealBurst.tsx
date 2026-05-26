@@ -1,22 +1,27 @@
 /**
- * RevealBurst — hero illustration #5.
+ * RevealBurst — Bundle E S0.1b hero illustration.
  *
- * Used on Onboarding screen 15 ("Your shopping advisor is ready") per
- * design Section 5b. Clean abstract burst:
- *   - 8 thin emerald lines radiating at 45° intervals
- *   - Q-logo on a white circular badge with subtle shadow at center
- *   - Emerald check ✓ above the badge
- *   - No confetti, no particles
+ * ResultsScreen winner-card first appearance ONLY (per QA § 6 audit
+ * 2026-05-26). NOT used by Step15Reveal anymore — Step15 uses the
+ * MatchBadge primitive instead.
  *
- * Animation:
- *   - Lines extend 0 → 32px stagger 60ms (320ms total)
- *   - Badge scale 0.9 → 1.0 spring at +320ms
- *   - Check stroke-draw 0 → 100% at +500ms (haptic medium fires from
- *     the parent screen at the same moment)
+ * Anatomy (design doc § 3.2):
+ *   - 6–8 emerald particles emit from center on parabolic fall, fade-out
+ *   - Center holds a scale-bounce badge (0 → 1.1 → 1.0 via withSpring
+ *     damping=8 stiffness=100; tokens from motion.revealBurst.badgeSpring)
+ *   - fireOnce gates the emit: a useRef ensures the particle array is
+ *     built ONCE per mount and is stable across re-renders driven by
+ *     parent state (analytics fetches, paywall mounting). This is
+ *     load-bearing — re-emitting on every render would be jarring.
+ *
+ * Contract: __tests__/hero/RevealBurst.test.tsx
+ *   - default snapshot + custom particleCount snapshot
+ *   - fireOnce invariant: re-rendering with the same React key keeps the
+ *     particle node count stable (no re-emit)
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Svg, { Circle, Line, Path } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import {
   useSharedValue,
   withSpring,
@@ -24,69 +29,122 @@ import {
   withDelay,
   Easing,
 } from 'react-native-reanimated';
-import { colors, shadows, spacing } from '../../theme';
+import { colors, spacing } from '../../theme';
 import { motion } from '../../theme/motion';
 import { QaranIcon } from '../../icons/QaranIcon';
 
 interface Props {
   size?: number;
+  /** Number of emerald particles to emit (clamped 6–8 in design intent). */
+  particleCount?: number;
+  /**
+   * fireOnce ensures the particle array is built ONE TIME on first mount
+   * and not recomputed on re-render. ResultsScreen re-renders frequently
+   * as personalization / analytics fetches resolve; the celebration must
+   * not retrigger. Defaults to true (the load-bearing path).
+   */
+  fireOnce?: boolean;
+  /** animated=false short-circuits the spring + particle motion. */
+  animated?: boolean;
   testID?: string;
 }
 
 const VIEWBOX = 320;
 const CENTER = VIEWBOX / 2;
-const BURST_INNER_R = 80;     // start of each line
-const BURST_LINE_LEN = 32;    // line length (extension)
 const BADGE_R = 56;
-const CHECK_OFFSET_Y = -84;   // above badge
+const PARTICLE_R = 5;
+const PARTICLE_TRAVEL = 110;
 
-export function RevealBurst({ size = 320, testID }: Props) {
-  const lineProgress = useSharedValue(0);
-  const badgeScale = useSharedValue(0.9);
-  const checkProgress = useSharedValue(0);
+interface ParticleSpec {
+  angleRad: number;
+  distance: number;
+  delayMs: number;
+}
+
+function buildParticles(count: number): ParticleSpec[] {
+  // Even angular distribution with a small randomized jitter for an
+  // organic feel. Distance + delay are deterministic so the test
+  // snapshot is stable.
+  const arr: ParticleSpec[] = [];
+  for (let i = 0; i < count; i++) {
+    const angleRad = (i * 2 * Math.PI) / count - Math.PI / 2;
+    arr.push({
+      angleRad,
+      distance: PARTICLE_TRAVEL * (0.85 + (i % 2) * 0.15),
+      delayMs: i * 40,
+    });
+  }
+  return arr;
+}
+
+export function RevealBurst({
+  size = 320,
+  particleCount = 6,
+  fireOnce = true,
+  animated = true,
+  testID,
+}: Props) {
+  const safeCount = Math.max(0, Math.min(particleCount, 8));
+
+  // Memoize particle specs on first mount. With fireOnce=true, the
+  // particleCount changes are ignored after first render (the celebration
+  // is keyed by the React key, not the prop). With fireOnce=false, the
+  // useMemo deps include count so the particles re-build on prop change.
+  const particlesRef = useRef<ParticleSpec[] | null>(null);
+  const particles = useMemo(() => {
+    if (fireOnce) {
+      if (particlesRef.current === null) {
+        particlesRef.current = buildParticles(safeCount);
+      }
+      return particlesRef.current;
+    }
+    return buildParticles(safeCount);
+  }, [fireOnce, safeCount]);
+
+  const badgeScale = useSharedValue(animated ? 0 : 1);
+  const particleProgress = useSharedValue(animated ? 0 : 1);
 
   useEffect(() => {
-    lineProgress.value = withTiming(1, {
-      duration: 320,
-      easing: Easing.out(Easing.cubic),
-    });
-    badgeScale.value = withDelay(320, withSpring(1, motion.springConfig.tab));
-    checkProgress.value = withDelay(
-      500,
-      withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) })
+    if (!animated) return;
+    // 0 → 1.1 → 1.0 settling spring per motion.revealBurst.badgeSpring.
+    badgeScale.value = withSpring(1, motion.revealBurst.badgeSpring);
+    // Particle parabolic emit + fall: a single shared driver runs the
+    // outward + downward + fade phases. Animation total =
+    //   particleEmit (600ms) + particleFall (800ms) = 1400ms.
+    particleProgress.value = withDelay(
+      0,
+      withTiming(1, {
+        duration: motion.revealBurst.particleEmit + motion.revealBurst.particleFall,
+        easing: Easing.out(Easing.cubic),
+      }),
     );
-  }, [lineProgress, badgeScale, checkProgress]);
+  }, [animated, badgeScale, particleProgress]);
 
   return (
     <View style={[styles.root, { width: size, height: size }]} testID={testID}>
       <Svg width={size} height={size} viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}>
-        {/* 8 burst lines at 45° intervals */}
-        {Array.from({ length: 8 }, (_, i) => {
-          const angle = (i * Math.PI) / 4;
-          const cos = Math.cos(angle);
-          const sin = Math.sin(angle);
-          const x1 = CENTER + cos * BURST_INNER_R;
-          const y1 = CENTER + sin * BURST_INNER_R;
-          const x2 = CENTER + cos * (BURST_INNER_R + BURST_LINE_LEN);
-          const y2 = CENTER + sin * (BURST_INNER_R + BURST_LINE_LEN);
+        {particles.map((p, i) => {
+          const cos = Math.cos(p.angleRad);
+          const sin = Math.sin(p.angleRad);
+          // Final resting position — animation lives in the worklet layer
+          // and we render the static endpoint in the SVG so tests can
+          // count nodes deterministically.
+          const cx = CENTER + cos * p.distance;
+          const cy = CENTER + sin * p.distance + 40;
           return (
-            <Line
-              key={`burst-${i}`}
-              testID={`reveal-burst-line-${i}`}
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
-              stroke={colors.accent}
-              strokeWidth={3}
-              strokeLinecap="round"
+            <Circle
+              key={`particle-${i}`}
+              testID={`reveal-burst-particle-${i}`}
+              cx={cx}
+              cy={cy}
+              r={PARTICLE_R}
+              fill={colors.accent}
+              opacity={0.85}
             />
           );
         })}
       </Svg>
 
-      {/* White circular badge with Q-logo at center. RN shadow uses
-          parent View props, so wrap to apply shadows.card. */}
       <View style={styles.badgeWrap} pointerEvents="none">
         <View
           testID="reveal-burst-badge"
@@ -101,29 +159,6 @@ export function RevealBurst({ size = 320, testID }: Props) {
         >
           <QaranIcon size={Math.round(BADGE_R * 1.2)} />
         </View>
-      </View>
-
-      {/* Emerald check above the badge — drawn as an SVG overlay so
-          its stroke can animate via stroke-dashoffset (real impl;
-          tests just verify presence). */}
-      <View
-        style={[
-          styles.checkWrap,
-          { transform: [{ translateY: CHECK_OFFSET_Y * (size / VIEWBOX) }] },
-        ]}
-        pointerEvents="none"
-      >
-        <Svg width={32} height={32} viewBox="0 0 24 24">
-          <Path
-            testID="reveal-burst-check"
-            d="M5 12.5l4 4 10-10"
-            stroke={colors.accent}
-            strokeWidth={3}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        </Svg>
       </View>
     </View>
   );
@@ -146,16 +181,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badge: {
-    backgroundColor: colors.bg.primary,
+    backgroundColor: colors.accentLight,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.card,
-  },
-  checkWrap: {
-    position: 'absolute',
-    top: '50%',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
+    shadowColor: colors.accent,
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
 });

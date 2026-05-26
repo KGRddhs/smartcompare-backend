@@ -38,6 +38,12 @@ import { colors, spacing } from '../../theme';
 
 interface Props {
   size?: number;
+  /**
+   * Bundle E test contract — animated=false short-circuits the glow pulse
+   * loop. Production callers (Step03ValueProp) omit the prop so it defaults
+   * to true; useReducedMotion paths and Jest set it explicitly.
+   */
+  animated?: boolean;
   testID?: string;
 }
 
@@ -79,19 +85,20 @@ const GLOW_W = CARD_W + GLOW_INSET * 2;
 const GLOW_H = CARD_H + GLOW_INSET * 2;
 const GLOW_R = 16 + GLOW_INSET;
 
-export function PhoneMockup({ size = 320, testID }: Props) {
+export function PhoneMockup({ size = 320, animated = true, testID }: Props) {
   // Glow pulse driver (mock returns identity in tests).
-  const glowOpacity = useSharedValue(0.4);
+  const glowOpacity = useSharedValue(animated ? 0.4 : 0.7);
   useEffect(() => {
+    if (!animated) return;
     glowOpacity.value = withRepeat(
       withSequence(
         withTiming(0.7, { duration: 700, easing: Easing.inOut(Easing.cubic) }),
-        withTiming(0.4, { duration: 700, easing: Easing.inOut(Easing.cubic) })
+        withTiming(0.4, { duration: 700, easing: Easing.inOut(Easing.cubic) }),
       ),
       -1,
-      false
+      false,
     );
-  }, [glowOpacity]);
+  }, [animated, glowOpacity]);
 
   const ratio = size / VIEWBOX_W;
   const renderHeight = VIEWBOX_H * ratio;

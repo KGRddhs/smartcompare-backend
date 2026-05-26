@@ -1,25 +1,29 @@
 /**
- * ConcentricMotif — hero illustration #3.
+ * ConcentricMotif — Bundle E S0.1b hero illustration.
  *
- * Used on Onboarding screen 13 ("Time to build your shopping advisor")
- * per design Section 5b.
+ * 3 emerald rings expanding outward from a Q logo center, staggered 700ms,
+ * looping 2.1s. Used by Step03ValueProp, Step05Trust, Step13Anticipation,
+ * and LoadingScreen's ConcentricVariant. Bundle D shipped a 5-ring rotating
+ * motif; Bundle E swaps to the design-doc § 3.2 spec (3-ring expanding) to
+ * match the JSX reference + share visual language with LoadingRings.
  *
- * 5 concentric ring circles, rotating at different speeds (8s, 6s, 5s,
- * 4s, 3s) with alternating directions (counter-rotating siblings).
- * Center holds the Q-magnifier brand mark. Innermost ring is emerald;
- * outer 4 are neutral border-medium gray.
+ * Animation:
+ *   - each ring loops withTiming({ scale: 0.8→2.5, opacity: 0.9→0 }, 2100ms)
+ *   - staggered 0ms / 700ms / 1400ms via withDelay
+ *   - Easing.out(Easing.cubic) gives the "ripple outward" feel
  *
- * The rotation is decorative only — accessibility-reduced-motion
- * collapses to a static layout because the Reanimated mock returns
- * identity during tests.
+ * Contract: __tests__/hero/ConcentricMotif.test.tsx
+ *   - default + custom-size snapshots
+ *   - animated={false} renders without throwing
  */
 import React, { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Svg, { Circle, G } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import {
   useSharedValue,
   withRepeat,
   withTiming,
+  withDelay,
   Easing,
 } from 'react-native-reanimated';
 import { colors, spacing } from '../../theme';
@@ -27,42 +31,52 @@ import { QaranIcon } from '../../icons/QaranIcon';
 
 interface Props {
   size?: number;
+  animated?: boolean;
   testID?: string;
 }
 
-const VIEWBOX = 320;
+const VIEWBOX = 220;
 const CENTER = VIEWBOX / 2;
-const RING_RADII = [40, 70, 100, 130, 160] as const; // innermost → outermost
-const RING_DURATIONS = [3000, 4000, 5000, 6000, 8000] as const;
+const RING_BASE_R = 36;
+const RING_TARGET_R = VIEWBOX * 0.45;
+const RING_DURATION_MS = 2100;
+const RING_STAGGER_MS = 700;
+const RING_COUNT = 3;
 
-export function ConcentricMotif({ size = 320, testID }: Props) {
-  // One rotation driver per ring. Mock returns identity in tests.
-  const r0 = useSharedValue(0);
-  const r1 = useSharedValue(0);
-  const r2 = useSharedValue(0);
-  const r3 = useSharedValue(0);
-  const r4 = useSharedValue(0);
+export function ConcentricMotif({ size = 220, animated = true, testID }: Props) {
+  // One radius driver per ring; each repeats forever.
+  const ring0 = useSharedValue(RING_BASE_R);
+  const ring1 = useSharedValue(RING_BASE_R);
+  const ring2 = useSharedValue(RING_BASE_R);
 
   useEffect(() => {
-    const start = (sv: { value: number }, ms: number) => {
-      sv.value = withRepeat(
-        withTiming(360, { duration: ms, easing: Easing.linear ?? Easing.ease }),
-        -1,
-        false
+    if (!animated) return;
+    const drive = (sv: { value: number }, delayMs: number) => {
+      sv.value = withDelay(
+        delayMs,
+        withRepeat(
+          withTiming(RING_TARGET_R, {
+            duration: RING_DURATION_MS,
+            easing: Easing.out(Easing.cubic),
+          }),
+          -1,
+          false,
+        ),
       );
     };
-    start(r0, RING_DURATIONS[0]);
-    start(r1, RING_DURATIONS[1]);
-    start(r2, RING_DURATIONS[2]);
-    start(r3, RING_DURATIONS[3]);
-    start(r4, RING_DURATIONS[4]);
-  }, [r0, r1, r2, r3, r4]);
+    drive(ring0, 0);
+    drive(ring1, RING_STAGGER_MS);
+    drive(ring2, RING_STAGGER_MS * 2);
+  }, [animated, ring0, ring1, ring2]);
 
   return (
     <View style={[styles.root, { width: size, height: size }]} testID={testID}>
       <Svg width={size} height={size} viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}>
-        <G>
-          {RING_RADII.map((r, i) => (
+        {[ring0, ring1, ring2].map((sv, i) => {
+          const r = sv.value;
+          const progress = (r - RING_BASE_R) / (RING_TARGET_R - RING_BASE_R);
+          const opacity = Math.max(0, 0.9 - progress);
+          return (
             <Circle
               key={`ring-${i}`}
               testID={`concentric-ring-${i}`}
@@ -70,15 +84,15 @@ export function ConcentricMotif({ size = 320, testID }: Props) {
               cy={CENTER}
               r={r}
               fill="none"
-              stroke={i === 0 ? colors.accent : colors.border.medium}
-              strokeWidth={i === 0 ? 2.5 : 1.5}
-              opacity={i === 0 ? 1 : 0.6 - i * 0.08}
+              stroke={colors.accent}
+              strokeWidth={2}
+              opacity={opacity}
             />
-          ))}
-        </G>
+          );
+        })}
       </Svg>
       <View style={styles.center} pointerEvents="none">
-        <QaranIcon size={Math.round(size * 0.16)} />
+        <QaranIcon size={Math.round(size * 0.22)} />
       </View>
     </View>
   );

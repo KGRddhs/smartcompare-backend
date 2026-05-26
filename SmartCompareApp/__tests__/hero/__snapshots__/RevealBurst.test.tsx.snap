@@ -22,85 +22,53 @@ exports[`RevealBurst hero renders default snapshot 1`] = `
     viewBox="0 0 320 320"
     width={320}
   >
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-0"
-      x1={240}
-      x2={272}
-      y1={160}
-      y2={160}
+    <Circle
+      cx={160}
+      cy={106.5}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-0"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-1"
-      x1={216.5685424949238}
-      x2={239.19595949289334}
-      y1={216.5685424949238}
-      y2={239.1959594928933}
+    <Circle
+      cx={255.26279441628824}
+      cy={145}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-1"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-2"
-      x1={160}
-      x2={160}
-      y1={240}
-      y2={272}
+    <Circle
+      cx={240.973375253845}
+      cy={246.75}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-2"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-3"
-      x1={103.4314575050762}
-      x2={80.80404050710669}
-      y1={216.5685424949238}
-      y2={239.19595949289334}
+    <Circle
+      cx={160}
+      cy={310}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-3"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-4"
-      x1={80}
-      x2={48}
-      y1={160}
-      y2={160}
+    <Circle
+      cx={79.02662474615501}
+      cy={246.75000000000003}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-4"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-5"
-      x1={103.43145750507618}
-      x2={80.80404050710666}
-      y1={103.4314575050762}
-      y2={80.80404050710669}
-    />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-6"
-      x1={159.99999999999997}
-      x2={159.99999999999997}
-      y1={80}
-      y2={48}
-    />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-7"
-      x1={216.5685424949238}
-      x2={239.1959594928933}
-      y1={103.43145750507618}
-      y2={80.80404050710666}
+    <Circle
+      cx={64.73720558371176}
+      cy={145}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-5"
     />
   </Svg>
   <View
@@ -122,16 +90,15 @@ exports[`RevealBurst hero renders default snapshot 1`] = `
         [
           {
             "alignItems": "center",
-            "backgroundColor": "#FFFFFF",
-            "elevation": 2,
+            "backgroundColor": "#ECFDF5",
             "justifyContent": "center",
-            "shadowColor": "#000",
+            "shadowColor": "#10B981",
             "shadowOffset": {
-              "height": 1,
+              "height": 4,
               "width": 0,
             },
-            "shadowOpacity": 0.08,
-            "shadowRadius": 3,
+            "shadowOpacity": 0.18,
+            "shadowRadius": 12,
           },
           {
             "borderRadius": 56,
@@ -173,43 +140,6 @@ exports[`RevealBurst hero renders default snapshot 1`] = `
         />
       </Svg>
     </View>
-  </View>
-  <View
-    pointerEvents="none"
-    style={
-      [
-        {
-          "alignItems": "center",
-          "left": 0,
-          "position": "absolute",
-          "right": 0,
-          "top": "50%",
-        },
-        {
-          "transform": [
-            {
-              "translateY": -84,
-            },
-          ],
-        },
-      ]
-    }
-  >
-    <Svg
-      height={32}
-      viewBox="0 0 24 24"
-      width={32}
-    >
-      <Path
-        d="M5 12.5l4 4 10-10"
-        fill="none"
-        stroke="#10B981"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={3}
-        testID="reveal-burst-check"
-      />
-    </Svg>
   </View>
 </View>
 `;
@@ -236,85 +166,69 @@ exports[`RevealBurst hero renders with custom particle count 1`] = `
     viewBox="0 0 320 320"
     width={320}
   >
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-0"
-      x1={240}
-      x2={272}
-      y1={160}
-      y2={160}
+    <Circle
+      cx={160}
+      cy={106.5}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-0"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-1"
-      x1={216.5685424949238}
-      x2={239.19595949289334}
-      y1={216.5685424949238}
-      y2={239.1959594928933}
+    <Circle
+      cx={237.78174593052023}
+      cy={122.21825406947978}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-1"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-2"
-      x1={160}
-      x2={160}
-      y1={240}
-      y2={272}
+    <Circle
+      cx={253.5}
+      cy={200}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-2"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-3"
-      x1={103.4314575050762}
-      x2={80.80404050710669}
-      y1={216.5685424949238}
-      y2={239.19595949289334}
+    <Circle
+      cx={237.78174593052023}
+      cy={277.78174593052023}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-3"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-4"
-      x1={80}
-      x2={48}
-      y1={160}
-      y2={160}
+    <Circle
+      cx={160}
+      cy={293.5}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-4"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-5"
-      x1={103.43145750507618}
-      x2={80.80404050710666}
-      y1={103.4314575050762}
-      y2={80.80404050710669}
+    <Circle
+      cx={82.21825406947978}
+      cy={277.78174593052023}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-5"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-6"
-      x1={159.99999999999997}
-      x2={159.99999999999997}
-      y1={80}
-      y2={48}
+    <Circle
+      cx={66.5}
+      cy={200}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-6"
     />
-    <Line
-      stroke="#10B981"
-      strokeLinecap="round"
-      strokeWidth={3}
-      testID="reveal-burst-line-7"
-      x1={216.5685424949238}
-      x2={239.1959594928933}
-      y1={103.43145750507618}
-      y2={80.80404050710666}
+    <Circle
+      cx={82.21825406947976}
+      cy={122.21825406947978}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-7"
     />
   </Svg>
   <View
@@ -336,16 +250,15 @@ exports[`RevealBurst hero renders with custom particle count 1`] = `
         [
           {
             "alignItems": "center",
-            "backgroundColor": "#FFFFFF",
-            "elevation": 2,
+            "backgroundColor": "#ECFDF5",
             "justifyContent": "center",
-            "shadowColor": "#000",
+            "shadowColor": "#10B981",
             "shadowOffset": {
-              "height": 1,
+              "height": 4,
               "width": 0,
             },
-            "shadowOpacity": 0.08,
-            "shadowRadius": 3,
+            "shadowOpacity": 0.18,
+            "shadowRadius": 12,
           },
           {
             "borderRadius": 56,
@@ -387,43 +300,6 @@ exports[`RevealBurst hero renders with custom particle count 1`] = `
         />
       </Svg>
     </View>
-  </View>
-  <View
-    pointerEvents="none"
-    style={
-      [
-        {
-          "alignItems": "center",
-          "left": 0,
-          "position": "absolute",
-          "right": 0,
-          "top": "50%",
-        },
-        {
-          "transform": [
-            {
-              "translateY": -84,
-            },
-          ],
-        },
-      ]
-    }
-  >
-    <Svg
-      height={32}
-      viewBox="0 0 24 24"
-      width={32}
-    >
-      <Path
-        d="M5 12.5l4 4 10-10"
-        fill="none"
-        stroke="#10B981"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={3}
-        testID="reveal-burst-check"
-      />
-    </Svg>
   </View>
 </View>
 `;

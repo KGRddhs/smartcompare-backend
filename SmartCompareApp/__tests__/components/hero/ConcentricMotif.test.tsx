@@ -1,6 +1,11 @@
 /**
- * ConcentricMotif test — Phase 2 Task 17 (illustration #3).
- * Onboarding screen 13 ("Time to build your shopping advisor").
+ * ConcentricMotif structural test — Bundle D legacy + Bundle E spec refresh.
+ *
+ * Bundle E (2026-05-26) swapped the visual from "5 neutral rotating rings"
+ * to "3 emerald rings expanding outward" per design doc § 3.2 and the JSX
+ * reference shared with LoadingRings. The structural assertions below are
+ * the post-Bundle-E contract; the snapshot in __tests__/hero/ confirms the
+ * visual output.
  */
 import React from 'react';
 import { render } from '@testing-library/react-native';
@@ -12,33 +17,26 @@ describe('ConcentricMotif', () => {
     expect(UNSAFE_root.findAllByType('Svg' as any).length).toBeGreaterThan(0);
   });
 
-  it('renders 5 concentric ring circles + 1 center brand mark', () => {
+  it('renders 3 concentric expanding rings (Bundle E spec)', () => {
     const { UNSAFE_root } = render(<ConcentricMotif />);
     const rings = UNSAFE_root.findAll(
       (n: any) =>
         typeof n.type === 'string' &&
         typeof n.props?.testID === 'string' &&
-        n.props.testID.startsWith('concentric-ring-')
+        n.props.testID.startsWith('concentric-ring-'),
     );
-    expect(rings.length).toBe(5);
+    expect(rings.length).toBe(3);
   });
 
-  it('innermost ring uses emerald accent', () => {
+  it('all 3 rings use the emerald accent stroke', () => {
     const { UNSAFE_root } = render(<ConcentricMotif />);
-    const innermost = UNSAFE_root.findAll(
-      (n: any) =>
-        typeof n.type === 'string' && n.props?.testID === 'concentric-ring-0'
-    );
-    expect(innermost[0].props.stroke).toBe('#10B981');
-  });
-
-  it('outer rings use neutral border color', () => {
-    const { UNSAFE_root } = render(<ConcentricMotif />);
-    const outer = UNSAFE_root.findAll(
-      (n: any) =>
-        typeof n.type === 'string' && n.props?.testID === 'concentric-ring-4'
-    );
-    expect(outer[0].props.stroke).not.toBe('#10B981');
+    for (let i = 0; i < 3; i++) {
+      const ring = UNSAFE_root.findAll(
+        (n: any) =>
+          typeof n.type === 'string' && n.props?.testID === `concentric-ring-${i}`,
+      );
+      expect(ring[0].props.stroke).toBe('#10B981');
+    }
   });
 
   it('respects size prop', () => {
