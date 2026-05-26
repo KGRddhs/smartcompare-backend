@@ -345,14 +345,17 @@ function App() {
               component={EditPreferencesFlow}
               options={{ presentation: 'modal' }}
             />
-            {/* Bundle D 1.F.3: "Edit style profile" re-entry path. The same
-                Onboarding screen name as the needs-preferences branch above,
-                but here it's registered permanently in the authed stack so
-                `navigation.navigate('Onboarding', { mode: 'edit', source:
-                'styleProfile' })` from Profile + EditProfile resolves to a
-                visible modal instead of a silent no-op. */}
+            {/* Bundle D 1.F.3: "Edit style profile" re-entry path.
+                Bundle E B4 hotfix 2026-05-26: renamed from "Onboarding" to
+                "OnboardingEdit" because the duplicate-name with the
+                pre-preferences `<Stack.Screen name="Onboarding">` above made
+                React Navigation v7 keep the same route active when
+                `needsPreferences` flipped false on Step 17 Finish — user
+                got stuck on Step 17 instead of advancing to MainTabs.
+                Call sites in EditProfileScreen + ProfileScreen updated to
+                navigate('OnboardingEdit') in the same commit. */}
             <Stack.Screen
-              name="Onboarding"
+              name="OnboardingEdit"
               options={{ presentation: 'modal', headerShown: false }}
             >
               {(props) =>

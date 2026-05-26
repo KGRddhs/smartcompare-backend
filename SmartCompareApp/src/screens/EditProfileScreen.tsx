@@ -75,7 +75,9 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
 
   const handleEditStyleProfile = () => {
     // Cohort modal lives in the existing Onboarding flow in edit mode.
-    navigation.navigate('Onboarding', { mode: 'edit', source: 'styleProfile' });
+    // Bundle E B4 hotfix: post-auth edit route renamed Onboarding → OnboardingEdit
+    // to fix RN-Navigation-v7 duplicate-name stuck-on-Step-17 bug.
+    navigation.navigate('OnboardingEdit', { mode: 'edit', source: 'styleProfile' });
   };
 
   const handleDeleteAccount = () => {

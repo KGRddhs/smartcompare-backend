@@ -57,9 +57,12 @@ const LIFESTYLE_OPTIONS = [
 
 const BRAND_OPTIONS = ['brand_loyal', 'function_first', 'best_of_both'] as const;
 
+// Bundle E B4 hotfix: route name widened to accept either 'Onboarding'
+// (pre-preferences full flow) OR 'OnboardingEdit' (post-auth edit modal,
+// renamed to fix RN-Navigation-v7 duplicate-name stuck-on-Step-17 bug).
 type Props = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
-  route?: NativeStackScreenProps<RootStackParamList, 'Onboarding'>['route'];
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Onboarding' | 'OnboardingEdit'>;
+  route?: NativeStackScreenProps<RootStackParamList, 'Onboarding' | 'OnboardingEdit'>['route'];
   onComplete?: () => void;
 };
 

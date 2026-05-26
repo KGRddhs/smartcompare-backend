@@ -462,6 +462,12 @@ export type RootStackParamList = {
   // mode='edit' opens preferences in edit mode (e.g. from Profile screen).
   // source='styleProfile' signals an "inferred preferences" banner is appropriate.
   Onboarding: { mode?: 'edit'; source?: 'styleProfile' } | undefined;
+  // Bundle E B4 hotfix (2026-05-26): the post-auth "edit" entry point was
+  // previously also named "Onboarding", colliding with the pre-preferences
+  // full-flow Stack.Screen and causing React Navigation v7 to keep the
+  // route active when `needsPreferences` flipped false. Renamed to
+  // `OnboardingEdit` so the navigator cleanly swaps to MainTabs on Finish.
+  OnboardingEdit: { mode?: 'edit'; source?: 'styleProfile' } | undefined;
   Main: undefined;
   // Bucket A bugs 1 + 2: Results accepts three entry shapes —
   //   result            → pre-loaded comparison (Home text/SSE flow)

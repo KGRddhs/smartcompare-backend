@@ -258,7 +258,9 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     // Reuses the existing onboarding flow in edit mode. The seeded
     // preferences come pre-filled; saving any field flips its source
     // from "inferred" to "user_stated" via PUT /preferences (B.6).
-    navigation.navigate('Onboarding', { mode: 'edit', source: 'styleProfile' });
+    // Bundle E B4 hotfix: post-auth edit route renamed Onboarding → OnboardingEdit
+    // to fix RN-Navigation-v7 duplicate-name stuck-on-Step-17 bug.
+    navigation.navigate('OnboardingEdit', { mode: 'edit', source: 'styleProfile' });
   };
 
   const handleChangePassword = async () => {
