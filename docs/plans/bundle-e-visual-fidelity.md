@@ -1,10 +1,20 @@
-# Bundle E — Visual Fidelity Pass: Executable Plan
+# Bundle E — Visual Fidelity Pass Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` for task-by-task execution, OR `superpowers:subagent-driven-development` if dispatching fresh subagents per task. This bundle uses a parallel 4-Opus team coordinated via TeamCreate (see § Team Protocol) — each lane's owned section below is the slice that lane executes serially with TDD cycle.
+
+**Goal:** Take Qaren from tokens-only fidelity (Bundle D) to tokens + composition + motion + hero illustrations fidelity matching `docs/claude-design-handoff/ui_kits/mobile/*.jsx` side-by-side, ready to ship before TestFlight invite to ~150 testers.
+
+**Architecture:** One PR with 4 staged device-walkthrough gates (S0 foundation → S1 tab surfaces → S2 onboarding polish → S3 polish + ship). 4-Opus parallel team with mandatory cross-QA. Zero new backend endpoints — all editorial surfaces (`/home/{savings,smart-pick,trending}`, `/profile/{recent-decisions,monthly-stats,priorities-weighted}`) already live. B3 priorities-weighted normalize bug + B4 Google sign-in fix folded in.
+
+**Tech Stack:** React Native + Expo (SmartCompareApp/) · react-native-svg · react-native-reanimated · FastAPI + Python 3.12 (app/) · Supabase Auth · EAS Build / Update · Sentry · Playwright (for reference rendering only).
 
 **Design doc:** `docs/plans/2026-05-26-bundle-e-visual-fidelity-design.md`
 **Reference:** `docs/claude-design-handoff/ui_kits/mobile/*.jsx` (15 files) + `docs/claude-design-handoff/screenshots/*.png` (22 Playwright-rendered references)
-**Branch:** `feature/bundle-e-visual-fidelity` (created via `git worktree add -b feature/bundle-e-visual-fidelity ../smartcompare-bundle-e main`)
+**Branch:** `feature/bundle-e-visual-fidelity` (worktree at `../smartcompare-bundle-e-vf`)
 **Ship vehicle:** One PR with staged device-walkthrough gates → OTA via `eas update --branch preview`
 **Team:** 4-Opus (backend, frontend, test, qa) with mandatory cross-QA and rework cycle.
+
+---
 
 ---
 
@@ -65,16 +75,110 @@ Idle backend writes R/G tests for `home_routes.py` + `profile_routes.py` editori
 
 ### S1 — B3 + B4 + endpoint audit
 
-#### B3.1 — Priorities-weighted normalize fix (verification)
+#### B3.1 — Priorities-weighted normalize fix (verification) — **canonical TDD pattern example**
 
-Path A R2 (commit `4aa9cff`) already shipped the sum=100 backend normalize. Verify it lives in `app/api/profile_routes.py` and produces correct response shape for Ahmed's profile.
+Path A R2 (commit `4aa9cff`) already shipped the sum=100 backend normalize. Verify it lives in `app/api/profile_routes.py` and produces correct response shape. Use this task as the TDD-cycle pattern reference for all other lane tasks.
 
-- [ ] `Grep` `_normalize_weights_to_100` in `app/api/profile_routes.py`. Confirm the implementation divides by SUM (not by MAX).
-- [ ] Add regression test `tests/test_profile_priorities_normalize.py`:
-  - Three equal weights `{quality:1, price:1, durable:1}` → output `{quality:34, price:33, durable:33}` (largest-remainder).
-  - Skewed `{quality:5, price:2, durable:1}` → output sums to 100.
-  - Single non-zero `{quality:5, price:0, durable:0}` → `{quality:100, ...}`.
-- [ ] Run `pytest tests/test_profile_priorities_normalize.py -v`. All PASS.
+**Files:**
+- Modify (verify): `app/api/profile_routes.py` (the `_normalize_weights_to_100` helper)
+- Create: `tests/test_profile_priorities_normalize.py`
+
+**Step 1: Write the failing tests**
+
+```python
+# tests/test_profile_priorities_normalize.py
+import pytest
+from app.api.profile_routes import _normalize_weights_to_100
+
+def test_equal_weights_sum_to_100_largest_remainder():
+    result = _normalize_weights_to_100({"quality": 1.0, "price": 1.0, "durable": 1.0})
+    assert sum(result.values()) == 100
+    # largest-remainder: one bucket gets 34, the others 33
+    counts = sorted(result.values(), reverse=True)
+    assert counts == [34, 33, 33]
+
+def test_skewed_weights_sum_to_100():
+    result = _normalize_weights_to_100({"quality": 5.0, "price": 2.0, "durable": 1.0})
+    assert sum(result.values()) == 100
+    assert result["quality"] > result["price"] > result["durable"]
+
+def test_single_nonzero_weight_pegs_to_100():
+    result = _normalize_weights_to_100({"quality": 5.0, "price": 0.0, "durable": 0.0})
+    assert result["quality"] == 100
+    assert result["price"] == 0
+    assert result["durable"] == 0
+
+def test_all_zero_weights_falls_back_uniform():
+    result = _normalize_weights_to_100({"quality": 0.0, "price": 0.0, "durable": 0.0})
+    assert sum(result.values()) == 100  # divide-by-zero guard
+```
+
+**Step 2: Run the tests — they should fail if normalize is wrong**
+
+```bash
+cd /c/Users/SynAckITPC/Documents/ai/smartcompare-bundle-e-vf
+python -m pytest tests/test_profile_priorities_normalize.py -v
+```
+
+Expected if normalize divides by MAX (old bug): `test_skewed_weights_sum_to_100` FAILS with `sum=200` or similar; `test_equal_weights_sum_to_100_largest_remainder` FAILS with `[100, 100, 100]`.
+Expected if normalize already divides by SUM (Path A R2): all PASS.
+
+**Step 3: If tests fail, fix `_normalize_weights_to_100`**
+
+```python
+# app/api/profile_routes.py — sketch
+def _normalize_weights_to_100(weights: dict[str, float]) -> dict[str, int]:
+    total = sum(weights.values())
+    if total <= 0:
+        # divide-by-zero guard: uniform split
+        n = len(weights)
+        base = 100 // n
+        result = {k: base for k in weights}
+        # distribute remainder to first n keys
+        for k in list(weights.keys())[:100 - base * n]:
+            result[k] += 1
+        return result
+    # largest-remainder method
+    scaled = {k: (v / total) * 100 for k, v in weights.items()}
+    floors = {k: int(v) for k, v in scaled.items()}
+    remainder = 100 - sum(floors.values())
+    remainders = sorted(scaled.items(), key=lambda kv: kv[1] - floors[kv[0]], reverse=True)
+    for i in range(remainder):
+        floors[remainders[i][0]] += 1
+    return floors
+```
+
+**Step 4: Run tests — they should PASS**
+
+```bash
+python -m pytest tests/test_profile_priorities_normalize.py -v
+```
+
+Expected: 4 passed.
+
+**Step 5: Commit** (path-restricted)
+
+```bash
+git add tests/test_profile_priorities_normalize.py app/api/profile_routes.py
+git commit -m "fix(profile): priorities-weighted normalize uses largest-remainder sum=100
+
+Replaces divide-by-MAX bug surfaced in Bundle D Phase 3 device walkthrough
+(B3 in fidelity triage). Adds 4 regression tests covering equal-weight
+largest-remainder, skewed weights, single non-zero, and divide-by-zero
+guard.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+" -- tests/test_profile_priorities_normalize.py app/api/profile_routes.py
+```
+
+(Use `-- <paths>` AFTER the message to stay path-restricted per team protocol.)
+
+**Pattern recap (use this shape for every TDD task in this plan):**
+1. Write failing test
+2. Run → verify FAIL
+3. Implement minimal code
+4. Run → verify PASS
+5. Commit (path-restricted)
 
 #### B4.1 — Google sign-in diagnostic capture
 
