@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import * as Sentry from '@sentry/react-native';
 // Native modules loaded lazily — crashes Expo Go if imported at top level
 let GoogleSignin: any = null;
 let AppleAuthentication: any = null;
@@ -443,15 +444,18 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
     const sdkResultKeys = Object.keys(signInResult?.data || {}).join(',') || '(empty)';
 
     if (!idToken) {
+      const msg = `[B4-DIAG] no idToken from native SDK. signInResult.data keys: [${sdkResultKeys}].`;
+      Sentry.captureMessage(msg, { level: 'error', tags: { b4_diag: 'no_idtoken' }, extra: { sdkResultKeys, signInResultShape: Object.keys(signInResult || {}).join(',') } });
       return {
         success: false,
-        error: `[B4-DIAG] no idToken from native SDK. signInResult.data keys: [${sdkResultKeys}]. Likely: Supabase iOS Client ID mismatch in app.json plugin config OR Google Cloud OAuth iOS bundle ID (com.qaren.app) not registered. Send this whole message to dispatcher.`,
+        error: `${msg} Likely: Supabase iOS Client ID mismatch in app.json plugin config OR Google Cloud OAuth iOS bundle ID (com.qaren.app) not registered. Send this whole message to dispatcher.`,
       };
     }
 
     const parts = idToken.split('.');
     const diagHead = `len=${idToken.length} parts=${parts.length} head=${idToken.substring(0, 24)}`;
     console.log('[GOOGLE-DIAG]', diagHead);
+    Sentry.addBreadcrumb({ category: 'b4_diag', level: 'info', message: '[GOOGLE-DIAG] ' + diagHead });
 
     const body: Record<string, string> = { provider: 'google', id_token: idToken };
 
@@ -463,9 +467,11 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
         body: JSON.stringify(body),
       });
     } catch (netErr: any) {
+      const msg = `[B4-DIAG] network/cert-pin failure before backend. ${diagHead} err=${netErr?.message || 'unknown'}`;
+      Sentry.captureMessage(msg, { level: 'error', tags: { b4_diag: 'network' }, extra: { errMessage: netErr?.message, errCode: netErr?.code } });
       return {
         success: false,
-        error: `[B4-DIAG] network/cert-pin failure before backend reached. token ${diagHead}. err=${netErr?.message || 'unknown'}. Likely: certificatePinning.ts SPKI pin stale OR API_BASE_URL unreachable from device. Send this whole message.`,
+        error: `${msg}. Likely: certificatePinning.ts SPKI pin stale OR API_BASE_URL unreachable from device. Send this whole message.`,
       };
     }
 
@@ -486,18 +492,22 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
 
     // Backend rejected the token — surface Supabase/server reason so we can
     // disambiguate aud-mismatch vs nonce-mismatch vs other.
+    const rejMsg = `[B4-DIAG] backend rejected token. status=${response.status} code=${data?.code || '?'} server_error=${data?.error || data?.detail || '?'}`;
+    Sentry.captureMessage(rejMsg, { level: 'error', tags: { b4_diag: 'backend_reject' }, extra: { status: response.status, code: data?.code, server_error: data?.error || data?.detail, diagHead } });
     return {
       success: false,
-      error: `[B4-DIAG] backend rejected token. status=${response.status} code=${data?.code || '?'} server_error=${data?.error || data?.detail || '?'}. token ${diagHead}. Send this whole message.`,
+      error: `${rejMsg}. token ${diagHead}. Send this whole message.`,
     };
   } catch (error: any) {
     if (error.code === 'SIGN_IN_CANCELLED') {
       return { success: false, error: 'Sign-in cancelled' };
     }
     // Diagnostic-rich error for B4 capture — REMOVE after B4 resolved.
+    const thrownMsg = `[B4-DIAG] threw before fetch. code=${error?.code || '(no-code)'} msg=${error?.message || '(no-message)'} domain=${error?.domain || '(no-domain)'}`;
+    Sentry.captureMessage(thrownMsg, { level: 'error', tags: { b4_diag: 'threw_before_fetch' }, extra: { errCode: error?.code, errMessage: error?.message, errDomain: error?.domain, errStack: error?.stack } });
     return {
       success: false,
-      error: `[B4-DIAG] threw before fetch. code=${error?.code || '(no-code)'} msg=${error?.message || '(no-message)'} domain=${error?.domain || '(no-domain)'}. Likely: hasPlayServices/signIn() native SDK reject. Send this whole message.`,
+      error: `${thrownMsg}. Likely: hasPlayServices/signIn() native SDK reject. Send this whole message.`,
     };
   }
 }
