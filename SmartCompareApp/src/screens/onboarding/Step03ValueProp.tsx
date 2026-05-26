@@ -10,7 +10,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/Button';
-import { PhoneMockup } from '../../components/illustrations/PhoneMockup';
+import { PhoneMockup } from '../../components/hero/PhoneMockup';
 import { colors, spacing, typography } from '../../theme';
 
 interface Props {

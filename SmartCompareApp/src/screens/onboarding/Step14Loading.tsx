@@ -23,7 +23,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { LoadingRings } from '../../components/illustrations/LoadingRings';
+import { LoadingRings } from '../../components/hero/LoadingRings';
 import { ProgressBar } from '../../components/ProgressBar';
 import { CounterTicker } from '../../components/CounterTicker';
 import { colors, spacing, typography } from '../../theme';

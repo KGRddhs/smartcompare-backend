@@ -21,7 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/Button';
-import { CohortBarChart } from '../../components/illustrations/CohortBarChart';
+import { CohortBarChart } from '../../components/hero/CohortBarChart';
 import { colors, spacing, typography } from '../../theme';
 
 interface Props {

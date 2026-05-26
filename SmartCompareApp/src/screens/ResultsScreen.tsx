@@ -79,7 +79,7 @@ import {
   parseApiError,
   DemographicsPayload,
 } from '../services/api';
-import { LoadingRings } from '../components/illustrations/LoadingRings';
+import { LoadingRings } from '../components/hero/LoadingRings';
 import { HeroRings } from '../components/results/HeroRings';
 import { DimensionBars } from '../components/results/DimensionBars';
 import { TopMatchBadge } from '../components/results/TopMatchBadge';

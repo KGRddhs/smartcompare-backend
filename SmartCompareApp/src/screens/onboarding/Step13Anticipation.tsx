@@ -10,7 +10,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/Button';
-import { ConcentricMotif } from '../../components/illustrations/ConcentricMotif';
+import { ConcentricMotif } from '../../components/hero/ConcentricMotif';
 import { colors, spacing, typography } from '../../theme';
 
 interface Props {
