@@ -3,7 +3,33 @@
 **Filed:** 2026-05-26 (end of Bundle E day-1 session, ~9 hours team execution)
 **Status:** S0 SEALED + S1 fully complete (all 5 RED items + 2 bugs from Ahmed walkthrough resolved by EOD) + S2 not started.
 
-**UPDATE 2026-05-26 (after initial filing):** Frontend lane processed the rework directive before fully shutting down and shipped ALL 5 S1 follow-ups (B1 `85afd0e` + B2 `80448ed` + D1 `6d47b3f` + D2 `3ad84b1` + D3 `b10e945`). Branch now at 25 commits ahead of main. Latest EAS update: `019e6814-...` (S1 rework). Ahmed re-walkthrough pending. If GREEN, S1 truly closes and S2 KICKOFF is the only remaining major chunk.
+**UPDATE 2026-05-26 (after initial filing):** Frontend lane processed the rework directive before fully shutting down and shipped 5 follow-up commits (B1 `85afd0e` + B2 `80448ed` + D1 `6d47b3f` + D2 `3ad84b1` + D3 `b10e945`). Branch now at 25 commits ahead of main. Latest EAS update: `019e6814-...` (S1 rework).
+
+**Ahmed re-walkthrough RESULT (2026-05-26 late):**
+- ✅ **B1 TrendingNearYou** — FULLY FIXED. Names render correctly: `iPhone 15 vs Samsung Galaxy S24 / 1247 ↗`.
+- ⚠️ **B2 ScanBody** — JSX pattern shipped (① ② dashed buttons + emerald vs pill + footer hint) BUT visually reads as text-input rows, not snap targets. Per-spec correct, UX confusing. Tomorrow's call: keep JSX-correct OR redesign with stronger snap-target affordance (camera icon larger, button styling more obviously "tap to capture").
+- ✅ **D1 HistoryScreen stat strip** — WORKING. "✦ YOUR RECENT VERDICTS / 0 decisions this month / ~0 BHD shopped smarter" renders on empty state.
+- ❌ **D2 ProfileScreen — STRUCTURALLY WRONG.** Frontend interpreted "compose against JSX" as "add eyebrow grouping to existing FlatSettings." Real intent was **rewrite ProfileScreen.tsx top-down to match `ProfileScreen.jsx` structure**:
+  - **MISSING:** ProfileHeaderRow at TOP (Q logo + user name + region subtitle + settings icon) — user info is currently at the BOTTOM
+  - **MISSING:** RecentDecisions marquee (horizontal mini-VS cards) — not rendered
+  - **MISSING:** MonthStrip 3-tile (decisions / BHD saved / bonus credits)
+  - **BROKEN:** "What shapes your matches" shows only Durability 100% — should be 3 bars summing to 100%
+  - **STALE:** Bundle D "MATCH STRENGTH / Strong match / Quality-first buyer" editorial card lingers, not in JSX
+  - **STALE:** Gifts/referral card + "Unlock unlimited comparisons" link not in JSX structure
+  - FlatSettings eyebrow groups DO render at very bottom, but order is wrong relative to JSX
+- ❓ **D3 ResultsScreen winner-card** — not verified in walkthrough screenshots; tomorrow's session must spot-check.
+- ❌ **LoadingScreen variants** — confirmed NOT INTEGRATED (S2 work; `LoadingScreenVariants.tsx` is still a stub from S0).
+
+**Root cause of partial rework:** Frontend treated each follow-up as a surgical patch within the existing Bundle D component rather than a full JSX-aligned rewrite. This is the **same agent-self-signoff failure mode** at a finer grain — the agent ships "complete" against their own interpretation of "compose," not against the JSX structure. Tomorrow's brief must specify **"REWRITE <Screen>.tsx from scratch against <Screen>.jsx structure"** with explicit top-to-bottom element order, not "compose against JSX."
+
+**S1 is NOT done.** Status:
+- HomeScreen: B1 + B2 shipped, B2 may need stronger snap-target affordance — open question for Ahmed tomorrow
+- HistoryScreen: D1 stat strip works ✅
+- ProfileScreen: NEEDS FULL REWRITE — F-S1.5c task on tomorrow's queue
+- ResultsScreen: D3 needs device verification
+- LoadingScreen variants: S2 territory, not started
+
+Tomorrow's first task before S2 KICKOFF: **F-S1.5c ProfileScreen full rewrite** against `ProfileScreen.jsx` top-down. Then S2 KICKOFF.
 **Purpose:** Resume Bundle E in a fresh session with full context. Do NOT carry today's compaction state; it includes ~9 hours of agent coordination + B4 debugging.
 
 ---
