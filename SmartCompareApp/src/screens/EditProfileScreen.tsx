@@ -74,8 +74,12 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
   };
 
   const handleEditStyleProfile = () => {
-    // Cohort modal lives in the existing Onboarding flow in edit mode.
-    navigation.navigate('Onboarding', { mode: 'edit', source: 'styleProfile' });
+    // Bundle E F-S1.5c: JSX EditProfileScreen.jsx:189-190 "Edit style profile"
+    // subtitle "Update priorities, budget, and brand stance" maps to the
+    // lighter EditPreferencesFlow (priorities + budget + brand_attitude),
+    // not the full 17-step Onboarding re-run. Both this gateway AND Profile's
+    // PrioritiesInline "Tune" CTA converge on EditPreferences for parity.
+    navigation.navigate('EditPreferences');
   };
 
   const handleDeleteAccount = () => {

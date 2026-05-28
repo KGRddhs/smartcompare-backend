@@ -1,9 +1,36 @@
 /**
- * Qaren - Profile Screen
- * Settings, language, account management in grouped cards
+ * Qaren — ProfileScreen (Bundle E F-S1.5c REWRITE)
+ *
+ * Top-down per JSX docs/claude-design-handoff/ui_kits/mobile/ProfileScreen.jsx:36-322.
+ * Element order inside ScrollView:
+ *   1. ProfileHeaderRow  — Q logo + name + dynamic "Capital · GCC" subtitle
+ *                          + 36px circular Settings icon (→ EditProfile)
+ *   2. RecentDecisionsRow — marquee of last 3 mini-vs cards (silently hides
+ *                           on empty / threshold-miss / network)
+ *   3. PrioritiesInline   — 3 weighted priority bars + "Tune" CTA (sum=100
+ *                           per Path A R2 backend fix 4aa9cff)
+ *   4. MonthStrip         — 3-tile (decisions / BHD saved / bonus credits)
+ *   5. FlatSettings       — ONE unified card with 4 eyebrow groups per
+ *                           JSX:251-275: ACCOUNT / PRIVACY & NOTIFICATIONS
+ *                           / HELP / DANGER ZONE
+ *
+ * Deleted from Bundle D editorial composition (3ad84b1):
+ *   - brandTitleRow + screenTitle (no "Profile" h1 — header IS the brand
+ *     moment per JSX)
+ *   - StyleProfileCard (user info moves into ProfileHeaderRow)
+ *   - ReferralStatusCard (not in JSX)
+ *   - Standalone Account-card with avatar block (data moved into header)
+ *   - B6 Upgrade card with Sparkles icon (replaced by discreet row inside
+ *     FlatSettings ACCOUNT group)
+ *   - 4 standalone sectionLabel + Card blocks (replaced by SettingsEyebrow
+ *     + FlatSettings inline subcomponents)
+ *
+ * Preferences row removed from ACCOUNT group per JSX:259-261; the
+ * EditPreferences route is now reached via EditProfile → "Edit style
+ * profile" linkRow per JSX EditProfileScreen.jsx:189-190.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, ReactNode } from 'react';
 import {
   View,
   Text,
@@ -19,19 +46,12 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
-  Globe,
-  Sliders,
   Bell,
-  FileText,
-  ScrollText,
-  MessageCircle,
-  LogOut,
   ChevronRight,
-  Lock,
+  Settings,
   Shield,
-  Sparkles,
 } from 'lucide-react-native';
-import { colors, spacing, radii, typography, shadows } from '../theme';
+import { colors, spacing, radii, typography } from '../theme';
 import { useLanguage } from '../hooks/useLanguage';
 import {
   changePassword,
@@ -44,13 +64,8 @@ import {
 } from '../services/api';
 import type { UserPreferences } from '../types';
 import { getSavedUser, logout } from '../services/authService';
-import StyleProfileCard from '../components/StyleProfileCard';
-import ReferralStatusCard from '../components/ReferralStatusCard';
 import QarenLogo from '../components/QarenLogo';
 import ToggleRow from '../components/ToggleRow';
-// Bundle D 2.F.2 Screen 3 — editorial sections (recent decisions marquee,
-// priorities-inline bars, month-stat strip). Each section silently hides
-// on empty-state / threshold-miss / network failure.
 import {
   RecentDecisionsRow,
   PrioritiesInline,
@@ -78,10 +93,14 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
 
-  // Cohort display profile (null when confidence < medium or not yet collected)
+  // Cohort display — kept loaded for downstream consumers (PrioritiesInline
+  // reads its own /api/v1/profile/priorities-weighted source; this state
+  // remains live for the next demographics-aware subtitle render once
+  // CohortDisplayProfile exposes a governorate field).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [cohortDisplay, setCohortDisplay] = useState<CohortDisplayProfile | null>(null);
 
-  // Preferences (kept in state so toggling AI sharing round-trips through PUT /preferences)
+  // Preferences (round-trips through PUT /preferences)
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
   const [aiSharingSaving, setAiSharingSaving] = useState(false);
   const [aiSharingError, setAiSharingError] = useState('');
@@ -100,15 +119,9 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   };
 
   // Default OFF when undefined (Bundle D 1.F.6, R23). App-Store privacy
-  // requires AI data sharing to be opt-IN, not opt-out. Existing rows
-  // with explicit `true` are untouched — the flip only affects the
-  // `undefined` case (e.g. fresh signups + users whose preferences row
-  // pre-dates the column).
+  // requires AI data sharing to be opt-IN.
   const aiSharingEnabled = preferences?.ai_sharing_enabled ?? false;
 
-  // Build a complete UserPreferences shape from current state + an override.
-  // PUT /preferences requires the 4 onboarding fields, so we backfill defaults
-  // when the user hasn't completed onboarding yet.
   const buildNextPrefs = (override: Partial<UserPreferences>): UserPreferences => {
     const previous = preferences;
     return {
@@ -144,12 +157,8 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     }
   };
 
-  // F5.4 — re-engagement notifications master toggle ONLY.
-  // Sub-toggles (decision_insight / cohort_curiosity / decision_retrospective)
-  // route through `handleSubToggle` → PUT /reengagement-subs per Bundle D 2.F.1
-  // (Backend commit 228ff63). The master toggle stays on /preferences because
-  // it gates the entire notification surface, not just the 3 re-engagement
-  // categories.
+  // F5.4 — notifications master toggle ONLY. Sub-toggles route through
+  // handleSubToggle → PUT /reengagement-subs.
   const handleNotificationsToggle = async (override: Partial<UserPreferences>) => {
     if (notifsSaving) return;
     setNotifsError('');
@@ -171,11 +180,9 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     }
   };
 
-  // Bundle D 2.F.1 (R18) — re-engagement sub-toggles use the dedicated
-  // PUT /api/v1/auth/reengagement-subs endpoint with FE-facing plural keys.
-  // Backend translates plural → DB singular keys server-side and preserves
-  // the rest of users.preferences. Optimistic update first; rollback +
-  // Alert on failure per design § 5 (toggle never appears stuck).
+  // Bundle D 2.F.1 (R18) — re-engagement sub-toggles via PUT
+  // /api/v1/auth/reengagement-subs (FE plural keys ↔ DB singular keys).
+  // Opt-OUT default by design (re-engagement chosen at onboarding step 17).
   const handleSubToggle = async (
     key: 'decision_insight' | 'cohort_curiosity' | 'decision_retrospective',
     value: boolean
@@ -183,8 +190,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     if (notifsSaving) return;
     setNotifsError('');
     const previous = preferences;
-    // Optimistic merge into the LOCAL notification_types view; the response
-    // would echo back the canonical server state but we don't depend on it.
     const next = buildNextPrefs({
       notification_types: {
         ...(previous?.notification_types ?? {}),
@@ -194,16 +199,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     setPreferences(next);
     setNotifsSaving(true);
 
-    // FE plural keys (matches endpoint contract) ↔ DB singular keys.
-    // Policy note: re-engagement sub-toggles are opt-OUT by default
-    // (`!== false` coerces undefined → true). This is INTENTIONALLY
-    // different from `ai_sharing_enabled` (R23, line 97) which is
-    // opt-IN (`?? false`). Re-engagement notifications are part of the
-    // user's chosen onboarding-step-17 experience — defaulting them ON
-    // matches user intent. AI data sharing is App Store privacy-gated,
-    // hence opt-IN. Don't normalize these two patterns without
-    // re-reading the design intent in memory/BUNDLE_D_FRONTEND_ANCHOR.md
-    // § R23 + Backend 228ff63 commit msg.
     const nt = next.notification_types ?? {};
     const body = {
       decision_insights: nt.decision_insight !== false,
@@ -229,7 +224,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     }
   };
 
-  // Default ON when undefined for all 4 toggles (matches backend semantics).
   const notificationsEnabled = preferences?.notifications_enabled !== false;
   const notifTypes = preferences?.notification_types ?? {};
   const insightEnabled = notifTypes.decision_insight !== false;
@@ -254,11 +248,14 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     }
   };
 
+  // Bundle E F-S1.5c (c.2.i ruling): Both Profile→Tune AND EditProfile→
+  // "Edit style profile" converge on EditPreferences. JSX EditProfileScreen
+  // .jsx:189-190 subtitle "Update priorities, budget, and brand stance"
+  // describes the lighter EditPreferencesFlow, not the 17-step Onboarding
+  // re-run. Onboarding(mode='edit') remains in code for full re-onboarding
+  // but no longer has a user-facing entry-point.
   const handleEditStyleProfile = () => {
-    // Reuses the existing onboarding flow in edit mode. The seeded
-    // preferences come pre-filled; saving any field flips its source
-    // from "inferred" to "user_stated" via PUT /preferences (B.6).
-    navigation.navigate('Onboarding', { mode: 'edit', source: 'styleProfile' });
+    navigation.navigate('EditPreferences');
   };
 
   const handleChangePassword = async () => {
@@ -299,223 +296,233 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     ]);
   };
 
-  const renderRow = (
-    icon: React.ReactNode,
-    label: string,
-    right: React.ReactNode,
-    onPress?: () => void,
-    isLast = false
-  ) => (
+  // -------------------------------------------------------------------------
+  // Inline subcomponents (kept colocated — they're file-local recipes that
+  // don't make sense outside the FlatSettings layout)
+  // -------------------------------------------------------------------------
+
+  // JSX:40 subtitle reads "Capital · GCC". The CohortDisplayProfile shape
+  // (api.ts:611-622) intentionally hides demographics — persona_label/
+  // confidence/modal-factors only, no raw governorate (privacy invariant
+  // from qaren-cohort skill). Until a dedicated demographics getter ships,
+  // we render the GCC-only fallback. ProfileHeaderRow consumer is the only
+  // place this matters today.
+  const regionSubtitle = 'GCC';
+
+  const ProfileHeaderRow = () => (
+    <View style={styles.headerRow}>
+      <QarenLogo size={28} />
+      <View style={styles.headerText}>
+        <Text style={styles.headerName} numberOfLines={1}>
+          {displayName || email?.split('@')[0] || ''}
+        </Text>
+        <Text style={styles.headerSubtitle} numberOfLines={1}>
+          {regionSubtitle}
+        </Text>
+      </View>
+      <TouchableOpacity
+        style={styles.headerSettingsBtn}
+        onPress={() => navigation.navigate('EditProfile')}
+        accessibilityRole="button"
+        accessibilityLabel={t('profile.settings', { defaultValue: 'Settings' })}
+        testID="profile-header-settings"
+      >
+        <Settings size={18} color={colors.text.primary} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const SettingsEyebrow = ({ children }: { children: ReactNode }) => (
+    <View style={styles.eyebrow}>
+      <Text style={styles.eyebrowText}>{children}</Text>
+    </View>
+  );
+
+  interface SettingsRowProps {
+    label: string;
+    onPress?: () => void;
+    right?: ReactNode;
+    destructive?: boolean;
+    last?: boolean;
+    testID?: string;
+  }
+
+  const SettingsRow = ({
+    label,
+    onPress,
+    right,
+    destructive,
+    last,
+    testID,
+  }: SettingsRowProps) => (
     <TouchableOpacity
-      style={[styles.row, !isLast && styles.rowBorder]}
+      style={[styles.flatRow, !last && styles.flatRowBorder]}
       onPress={onPress}
       disabled={!onPress}
       activeOpacity={onPress ? 0.6 : 1}
+      accessibilityRole="button"
+      testID={testID}
     >
-      <View style={styles.rowStart}>
-        {icon}
-        <Text style={styles.rowLabel}>{label}</Text>
-      </View>
-      {right}
+      <Text
+        style={[
+          styles.flatRowLabel,
+          destructive && { color: colors.destructive },
+        ]}
+      >
+        {label}
+      </Text>
+      {right
+        ? right
+        : !destructive && (
+            <ChevronRight size={16} color={colors.text.placeholder} />
+          )}
     </TouchableOpacity>
   );
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Bundle B/C/D Task 2.10 — brand glyph leading the screen title. */}
-        <View style={styles.brandTitleRow}>
-          <QarenLogo size={24} />
-          <Text style={styles.screenTitle}>{t('profile.title')}</Text>
-        </View>
+        {/* 1. Header — Q logo + name + region + settings icon */}
+        <ProfileHeaderRow />
 
-        {/* Bundle D 2.F.2 Screen 3 editorial sections — each hides silently
-            when its endpoint reports empty_state / threshold miss / failure */}
+        {/* 2. Recent decisions marquee (silent-hide on empty/threshold/network) */}
         <RecentDecisionsRow
           onItemPress={(comparisonId) =>
             navigation.navigate('Results', { from_history: comparisonId })
           }
           onSeeAll={() => navigation.navigate('History' as never)}
         />
+
+        {/* 3. Priorities — 3 weighted bars + "Tune" CTA (sum=100 per Path A R2) */}
         <PrioritiesInline onTunePress={handleEditStyleProfile} />
+
+        {/* 4. Month strip — decisions / BHD saved / bonus credits */}
         <MonthStrip />
 
-        {/* Cohort style profile (only renders when confidence >= medium) */}
-        <StyleProfileCard display={cohortDisplay} onEditPress={handleEditStyleProfile} />
+        {/* 5. FlatSettings — ONE unified card per JSX:251-275 */}
+        <View style={styles.flatCard}>
+          {/* ACCOUNT */}
+          <SettingsEyebrow>
+            {t('profile.section.account', { defaultValue: 'Account' })}
+          </SettingsEyebrow>
+          <SettingsRow
+            label={t('profile.editProfile')}
+            onPress={() => navigation.navigate('EditProfile')}
+            testID="profile-row-edit"
+          />
+          <SettingsRow
+            label={t('profile.upgrade', { defaultValue: 'Upgrade to Premium' })}
+            onPress={() => navigation.navigate('Paywall')}
+            testID="profile-row-upgrade"
+          />
+          <SettingsRow
+            label={t('profile.changePassword')}
+            onPress={() => setPasswordModalVisible(true)}
+            testID="profile-row-password"
+          />
+          <SettingsRow
+            label={t('profile.language')}
+            testID="profile-row-language"
+            right={
+              <View style={styles.langToggle}>
+                <TouchableOpacity
+                  style={[styles.langOption, language === 'en' && styles.langOptionActive]}
+                  onPress={() => switchLanguage('en')}
+                >
+                  <Text style={[styles.langText, language === 'en' && styles.langTextActive]}>EN</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.langOption, language === 'ar' && styles.langOptionActive]}
+                  onPress={() => switchLanguage('ar')}
+                >
+                  <Text style={[styles.langText, language === 'ar' && styles.langTextActive]}>عر</Text>
+                </TouchableOpacity>
+              </View>
+            }
+          />
 
-        {/* Referral status card (F4.5) — silently hides when feature flag is off, anon, or network down */}
-        <ReferralStatusCard />
-
-        {/* Account Card — Bundle A §3.2 relocates inline rename + delete to
-            the dedicated EditProfile screen. The display here is read-only. */}
-        <View style={styles.card}>
-          <View style={styles.profileRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {(displayName || email || '?')[0].toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>{displayName}</Text>
-              <Text style={styles.profileEmail}>{email}</Text>
-            </View>
+          {/* PRIVACY & NOTIFICATIONS */}
+          <SettingsEyebrow>
+            {t('profile.section.privacy_notifications', {
+              defaultValue: 'Privacy & notifications',
+            })}
+          </SettingsEyebrow>
+          <View style={styles.flatRowToggleHost}>
+            <ToggleRow
+              icon={<Shield size={18} color={colors.text.secondary} />}
+              label={t('profile.aiSharing.title')}
+              subtitle={t('profile.aiSharing.subtitle')}
+              value={aiSharingEnabled}
+              onValueChange={handleAiSharingToggle}
+              disabled={aiSharingSaving || preferences === null}
+            />
+            {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
           </View>
-          <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
-            <Text style={styles.editLink}>{t('profile.editProfile')}</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={[styles.flatRowToggleHost, styles.flatRowToggleHostLast]}>
+            <ToggleRow
+              icon={<Bell size={18} color={colors.text.secondary} />}
+              label={t('profile.notifs.master.title')}
+              subtitle={t('profile.notifs.master.subtitle')}
+              value={notificationsEnabled}
+              onValueChange={(v) => handleNotificationsToggle({ notifications_enabled: v })}
+              disabled={notifsSaving || preferences === null}
+            />
+            {notificationsEnabled ? (
+              <View style={styles.subToggles}>
+                <ToggleRow
+                  label={t('profile.notifs.insight')}
+                  value={insightEnabled}
+                  onValueChange={(v) => handleSubToggle('decision_insight', v)}
+                  disabled={notifsSaving}
+                />
+                <ToggleRow
+                  label={t('profile.notifs.cohort')}
+                  value={cohortEnabled}
+                  onValueChange={(v) => handleSubToggle('cohort_curiosity', v)}
+                  disabled={notifsSaving}
+                />
+                <ToggleRow
+                  label={t('profile.notifs.retrospective')}
+                  value={retroEnabled}
+                  onValueChange={(v) => handleSubToggle('decision_retrospective', v)}
+                  disabled={notifsSaving}
+                />
+              </View>
+            ) : null}
+            {notifsError ? <Text style={styles.errorText}>{notifsError}</Text> : null}
+          </View>
 
-        {/* B6 (Path A) — Upgrade entry. Always visible regardless of tier
-            so testers/users can reach Paywall without hitting the cap. */}
-        <View style={styles.card}>
-          {renderRow(
-            <Sparkles size={18} color={colors.accent} />,
-            t('profile.upgrade'),
-            <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => navigation.navigate('Paywall'),
-            true
-          )}
-        </View>
-
-        {/* F-S1.5-D2 FlatSettings eyebrow groups per JSX
-            ProfileScreen.jsx:239-275. Each eyebrow renders the JSX
-            SettingsEyebrow recipe: 10/600 placeholder uppercase 1.1 ls
-            on bg.primary with hairline borders top + bottom. Groups:
-            ACCOUNT / PRIVACY & NOTIFICATIONS / HELP / DANGER ZONE. */}
-        <Text style={styles.sectionLabel} testID="profile-eyebrow-account">{t('profile.section.account', { defaultValue: 'ACCOUNT' })}</Text>
-        <View style={styles.card}>
-          {renderRow(
-            <Globe size={18} color={colors.text.secondary} />,
-            t('profile.language'),
-            <View style={styles.langToggle}>
-              <TouchableOpacity
-                style={[styles.langOption, language === 'en' && styles.langOptionActive]}
-                onPress={() => switchLanguage('en')}
-              >
-                <Text style={[styles.langText, language === 'en' && styles.langTextActive]}>EN</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.langOption, language === 'ar' && styles.langOptionActive]}
-                onPress={() => switchLanguage('ar')}
-              >
-                <Text style={[styles.langText, language === 'ar' && styles.langTextActive]}>عر</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          {renderRow(
-            <Sliders size={18} color={colors.text.secondary} />,
-            t('profile.preferences'),
-            <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => navigation.navigate('EditPreferences')
-          )}
-          {renderRow(
-            <Lock size={18} color={colors.text.secondary} />,
-            t('profile.changePassword'),
-            <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => setPasswordModalVisible(true),
-            true
-          )}
-        </View>
-
-        {/* Privacy & Notifications */}
-        <Text style={styles.sectionLabel} testID="profile-eyebrow-privacy">
-          {t('profile.section.privacy_notifications', {
-            defaultValue: 'PRIVACY & NOTIFICATIONS',
-          })}
-        </Text>
-        <View style={styles.card}>
-          <ToggleRow
-            icon={<Shield size={18} color={colors.text.secondary} />}
-            label={t('profile.aiSharing.title')}
-            subtitle={t('profile.aiSharing.subtitle')}
-            value={aiSharingEnabled}
-            onValueChange={handleAiSharingToggle}
-            disabled={aiSharingSaving || preferences === null}
+          {/* HELP */}
+          <SettingsEyebrow>
+            {t('profile.section.help', { defaultValue: 'Help' })}
+          </SettingsEyebrow>
+          <SettingsRow
+            label={t('profile.privacy')}
+            onPress={() => navigation.navigate('Legal', { doc: 'privacy' })}
+            testID="profile-row-privacy"
           />
-          {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
-        </View>
-
-        {/* F5.4 — Notifications: master + 3 sub-toggles for re-engagement pushes.
-            Logical sub-group of PRIVACY & NOTIFICATIONS; no separate eyebrow. */}
-        <View style={[styles.card, { marginTop: spacing.sm }]}>
-          <ToggleRow
-            icon={<Bell size={18} color={colors.text.secondary} />}
-            label={t('profile.notifs.master.title')}
-            subtitle={t('profile.notifs.master.subtitle')}
-            value={notificationsEnabled}
-            onValueChange={(v) => handleNotificationsToggle({ notifications_enabled: v })}
-            disabled={notifsSaving || preferences === null}
+          <SettingsRow
+            label={t('profile.terms')}
+            onPress={() => navigation.navigate('Legal', { doc: 'terms' })}
+            testID="profile-row-terms"
+          />
+          <SettingsRow
+            label={t('profile.contact')}
+            onPress={() => navigation.navigate('ContactUs')}
+            testID="profile-row-contact"
           />
 
-          {/* Sub-toggles — only visible + interactive when master ON */}
-          {notificationsEnabled ? (
-            <View style={styles.subToggles}>
-              <ToggleRow
-                label={t('profile.notifs.insight')}
-                value={insightEnabled}
-                onValueChange={(v) => handleSubToggle('decision_insight', v)}
-                disabled={notifsSaving}
-              />
-              <ToggleRow
-                label={t('profile.notifs.cohort')}
-                value={cohortEnabled}
-                onValueChange={(v) => handleSubToggle('cohort_curiosity', v)}
-                disabled={notifsSaving}
-              />
-              <ToggleRow
-                label={t('profile.notifs.retrospective')}
-                value={retroEnabled}
-                onValueChange={(v) => handleSubToggle('decision_retrospective', v)}
-                disabled={notifsSaving}
-              />
-            </View>
-          ) : null}
-
-          {notifsError ? <Text style={styles.errorText}>{notifsError}</Text> : null}
-        </View>
-
-        {/* Help — JSX SettingsEyebrow:266 */}
-        <Text style={styles.sectionLabel} testID="profile-eyebrow-help">
-          {t('profile.section.help', { defaultValue: 'HELP' })}
-        </Text>
-        <View style={styles.card}>
-          {renderRow(
-            <FileText size={18} color={colors.text.secondary} />,
-            t('profile.privacy'),
-            <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => navigation.navigate('Legal', { doc: 'privacy' })
-          )}
-          {renderRow(
-            <ScrollText size={18} color={colors.text.secondary} />,
-            t('profile.terms'),
-            <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => navigation.navigate('Legal', { doc: 'terms' })
-          )}
-          {renderRow(
-            <MessageCircle size={18} color={colors.text.secondary} />,
-            t('profile.contact'),
-            <ChevronRight size={16} color={colors.text.placeholder} />,
-            () => navigation.navigate('ContactUs'),
-            true
-          )}
-        </View>
-
-        {/* Danger Zone — JSX SettingsEyebrow:271. Bundle A §3 keeps the
-            Delete account flow inside EditProfile so users have a single
-            destructive entry-point gate; only Logout lives here on the
-            Profile root. The eyebrow still calls the group "DANGER ZONE"
-            per JSX so the visual rhythm holds. */}
-        <Text style={styles.sectionLabel} testID="profile-eyebrow-danger">
-          {t('profile.section.danger', { defaultValue: 'DANGER ZONE' })}
-        </Text>
-        <View style={[styles.card, { marginTop: spacing.xs }]}>
-          {renderRow(
-            <LogOut size={18} color={colors.text.secondary} />,
-            t('profile.logout'),
-            null,
-            handleLogout,
-            true
-          )}
+          {/* DANGER ZONE */}
+          <SettingsEyebrow>
+            {t('profile.section.danger', { defaultValue: 'Danger zone' })}
+          </SettingsEyebrow>
+          <SettingsRow
+            label={t('profile.logout')}
+            onPress={handleLogout}
+            destructive
+            last
+            testID="profile-row-logout"
+          />
         </View>
 
         <View style={{ height: spacing['3xl'] }} />
@@ -590,164 +597,116 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg.primary,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.base,
+    paddingTop: spacing.sm,
   },
-  // Bundle B/C/D Task 2.10 — brand glyph leading the screen title.
-  brandTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  screenTitle: {
-    ...typography.display,
-    color: colors.text.primary,
-  },
-  card: {
-    backgroundColor: colors.bg.secondary,
-    borderRadius: radii.card,
-    padding: spacing.base,
-    marginBottom: spacing.sm,
-  },
-  // F-S1.5-D2 — tightened to match JSX SettingsEyebrow recipe
-  // (ProfileScreen.jsx:239-250): 10/600 lineHeight 1.4 letterSpacing
-  // 1.1 placeholder color uppercase. Eyebrow spacing tightened so the
-  // groups read as one FlatSettings card with sub-headers rather than
-  // 4 floating section labels.
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    lineHeight: 10 * 1.4,
-    color: colors.text.placeholder,
-    textTransform: 'uppercase',
-    letterSpacing: 1.1,
-    marginTop: spacing.lg,
-    marginBottom: spacing.xs,
-    marginHorizontal: spacing.base,
-  },
-  // Profile account
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginEnd: spacing.md,
-  },
-  avatarText: {
-    ...typography.title,
-    color: colors.bg.primary,
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  profileName: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.text.primary,
-  },
-  profileEmail: {
-    ...typography.caption,
-    color: colors.text.secondary,
-    marginTop: 2,
-  },
-  editLink: {
-    ...typography.caption,
-    color: colors.accent,
-    fontWeight: '600',
-  },
-  editNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  nameInput: {
-    flex: 1,
-    ...typography.body,
-    color: colors.text.primary,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.accent,
-    paddingVertical: 2,
-  },
-  saveName: {
-    ...typography.caption,
-    color: colors.accent,
-    fontWeight: '600',
-  },
-  errorText: {
-    ...typography.small,
-    color: colors.destructive,
-    marginTop: spacing.xs,
-  },
-  // Privacy card
-  privacyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  privacyHeader: {
+  // 1. ProfileHeaderRow — JSX:36-51
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    flexShrink: 1,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: 18,
   },
-  privacyTitle: {
-    ...typography.body,
+  headerText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  headerName: {
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 18 * 1.2,
     color: colors.text.primary,
-    flexShrink: 1,
   },
-  privacySubtitle: {
-    ...typography.caption,
+  headerSubtitle: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 12 * 1.4,
     color: colors.text.secondary,
-    marginTop: spacing.sm,
+    marginTop: 2,
   },
-  // F5.4 — sub-toggles for Notifications card (decision_insight / cohort_curiosity / decision_retrospective)
+  headerSettingsBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.bg.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // 5. FlatSettings card — JSX:251-275
+  flatCard: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    borderRadius: 18,
+    backgroundColor: colors.bg.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    overflow: 'hidden',
+  },
+  // SettingsEyebrow — JSX:239-250
+  eyebrow: {
+    paddingVertical: 10,
+    paddingHorizontal: spacing.base,
+    backgroundColor: colors.bg.primary,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.light,
+  },
+  eyebrowText: {
+    fontSize: 10,
+    fontWeight: '600',
+    lineHeight: 14,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    color: colors.text.placeholder,
+  },
+  // SettingsRow — JSX:224-237
+  flatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 52,
+    paddingVertical: 13,
+    paddingHorizontal: spacing.base,
+    backgroundColor: 'transparent',
+  },
+  flatRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.light,
+  },
+  flatRowLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 14 * 1.3,
+    color: colors.text.primary,
+  },
+  // Hosts the existing ToggleRow component inside the flat card. The
+  // toggle row brings its own 56px min-height + 12px padding; the host
+  // just supplies the hairline border + error caption slot so the
+  // flat-card rhythm holds.
+  flatRowToggleHost: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.light,
+  },
+  flatRowToggleHostLast: {
+    borderBottomWidth: 0,
+  },
+  // F5.4 — sub-toggles inside the notifications master row
   subToggles: {
-    marginTop: spacing.base,
     paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border.light,
     gap: spacing.xs,
   },
-  subToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
+  errorText: {
+    ...typography.small,
+    color: colors.destructive,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.sm,
   },
-  subToggleLabel: {
-    ...typography.caption,
-    color: colors.text.primary,
-    flexShrink: 1,
-  },
-  // Rows
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-  },
-  rowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border.light,
-  },
-  rowStart: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  rowLabel: {
-    ...typography.body,
-    color: colors.text.primary,
-  },
-  // Language toggle
+  // ACCOUNT row 4 — Language EN/عر toggle (right-slot content)
   langToggle: {
     flexDirection: 'row',
     borderWidth: 1,
@@ -770,7 +729,7 @@ const styles = StyleSheet.create({
   langTextActive: {
     color: colors.bg.primary,
   },
-  // Modal
+  // Modal (password change) — unchanged from pre-rewrite
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
