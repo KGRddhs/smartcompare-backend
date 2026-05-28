@@ -392,7 +392,7 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
           onItemPress={(comparisonId) =>
             navigation.navigate('Results', { from_history: comparisonId })
           }
-          onSeeAll={() => navigation.navigate('History' as never)}
+          onSeeAll={() => navigation.navigate('HistoryTab' as never)}
           onEmptyCompareTap={() => navigation.navigate('HomeTab' as never)}
         />
 
