@@ -631,7 +631,7 @@
   "preferences.brand.title": "How do you feel about brands?",
   "preferences.flow.continue": "Continue",
   "preferences.flow.save": "Save",
-  "preferences.error.saveFailed": "Hold on — saving didn't go through. Tap to retry.",
+  "preferences.error.saveFailed": "Save didn't land. Tap to send it again.",
   "preferences.lifestyle.fitness": "Fitness-focused",
   "preferences.lifestyle.budget_conscious": "Budget-conscious",
   "preferences.lifestyle.tech_enthusiast": "Tech enthusiast",

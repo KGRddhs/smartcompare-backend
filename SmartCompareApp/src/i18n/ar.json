@@ -628,7 +628,7 @@
   "preferences.brand.title": "ما رأيك في العلامات التجارية؟",
   "preferences.flow.continue": "متابعة",
   "preferences.flow.save": "حفظ",
-  "preferences.error.saveFailed": "لحظة — لم يكتمل الحفظ. اضغط لإعادة المحاولة.",
+  "preferences.error.saveFailed": "لم يُحفظ بعد. اضغط لإعادة الإرسال.",
   "preferences.lifestyle.fitness": "مهتم باللياقة",
   "preferences.lifestyle.budget_conscious": "حريص على الميزانية",
   "preferences.lifestyle.tech_enthusiast": "محب للتقنية",
