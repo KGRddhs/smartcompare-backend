@@ -632,6 +632,8 @@
   "preferences.flow.continue": "Continue",
   "preferences.flow.save": "Save",
   "preferences.error.saveFailed": "Save didn't land. Tap to send it again.",
+  "editprefs.continue.disabled": "Pick at least one priority to continue",
+  "profile.toggle.disabledReason": "Pick your priorities first",
   "preferences.lifestyle.fitness": "Fitness-focused",
   "preferences.lifestyle.budget_conscious": "Budget-conscious",
   "preferences.lifestyle.tech_enthusiast": "Tech enthusiast",

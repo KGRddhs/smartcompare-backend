@@ -296,7 +296,17 @@ export async function changePassword(currentPassword: string, newPassword: strin
 export async function getPreferences(): Promise<UserPreferences | null> {
   try {
     const response = await api.get('/api/v1/auth/preferences');
-    return response.data.preferences || null;
+    const prefs = response.data?.preferences;
+    // F-S1.5i: Backend returns `{ preferences: {} }` for users with no
+    // prefs row (e.g. fresh signups who skipped onboarding step 08).
+    // `{}` is truthy in JS so the prior `|| null` shipped through →
+    // EditPreferencesFlow loaded empty state then PUT 422'd because
+    // backend Pydantic requires priorities + budget + brand_attitude.
+    // Treat both null AND empty object as "no preferences row".
+    if (!prefs || typeof prefs !== 'object' || Object.keys(prefs).length === 0) {
+      return null;
+    }
+    return prefs;
   } catch {
     return null;
   }

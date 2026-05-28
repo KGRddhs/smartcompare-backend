@@ -106,6 +106,14 @@ export default function EditPreferencesFlow({ navigation }: Props) {
 
   const update = (patch: Partial<UserPreferences>) => setPrefs({ ...prefs, ...patch });
 
+  // F-S1.5i: Step 1 (priorities) requires at least 1 pick before Continue
+  // is enabled. Backend Pydantic `priorities: min_length=1` rejected
+  // empty-array submits as 422; gating the FE button at the source
+  // prevents the round-trip and the scary error bar.
+  const isContinueDisabled =
+    saving ||
+    (pageKey === 'priorities' && (prefs.priorities?.length ?? 0) === 0);
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -156,12 +164,23 @@ export default function EditPreferencesFlow({ navigation }: Props) {
 
       {errorKey ? <Text style={styles.errorText}>{t(errorKey)}</Text> : null}
 
+      {/* F-S1.5i: Step 1 hint when no priority picked yet — keeps the
+          flow invitational instead of red-erroring after a 422. */}
+      {pageKey === 'priorities' && (prefs.priorities?.length ?? 0) === 0 ? (
+        <Text style={styles.continueHint}>
+          {t('editprefs.continue.disabled', {
+            defaultValue: 'Pick at least one priority to continue',
+          })}
+        </Text>
+      ) : null}
+
       <View style={styles.footer}>
         <TouchableOpacity
           onPress={isLast ? save : next}
-          disabled={saving}
-          style={[styles.btn, saving && styles.btnDisabled]}
+          disabled={isContinueDisabled}
+          style={[styles.btn, isContinueDisabled && styles.btnDisabled]}
           accessibilityRole="button"
+          accessibilityState={{ disabled: isContinueDisabled }}
         >
           {saving ? (
             <ActivityIndicator color={colors.cta.onPrimary} />
@@ -233,6 +252,16 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.destructive,
     padding: spacing.md,
+    textAlign: 'center',
+  },
+  // F-S1.5i: gentle hint shown above the disabled Continue button when
+  // user is on the priorities step with nothing picked. Placeholder
+  // color keeps it quiet next to the dark button.
+  continueHint: {
+    ...typography.small,
+    color: colors.text.placeholder,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
     textAlign: 'center',
   },
 });

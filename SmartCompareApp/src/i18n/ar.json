@@ -629,6 +629,8 @@
   "preferences.flow.continue": "متابعة",
   "preferences.flow.save": "حفظ",
   "preferences.error.saveFailed": "لم يُحفظ بعد. اضغط لإعادة الإرسال.",
+  "editprefs.continue.disabled": "اختر أولوية واحدة على الأقل للمتابعة",
+  "profile.toggle.disabledReason": "اختر أولوياتك أولاً",
   "preferences.lifestyle.fitness": "مهتم باللياقة",
   "preferences.lifestyle.budget_conscious": "حريص على الميزانية",
   "preferences.lifestyle.tech_enthusiast": "محب للتقنية",

@@ -228,6 +228,19 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   const cohortEnabled = notifTypes.cohort_curiosity !== false;
   const retroEnabled = notifTypes.decision_retrospective !== false;
 
+  // F-S1.5i: Backend Pydantic `priorities: min_length=1` rejects every
+  // /preferences PUT that ships with an empty priorities array. The
+  // five toggles below (AI sharing master + notifications master + 3
+  // re-engagement sub-toggles) all flow through savePreferences /
+  // putReengagementSubs, so when the user has no priorities yet, those
+  // toggles would silently 422 every flip. Gate them visually (muted
+  // row, disabled flip) and route a tap on the row to EditPreferences
+  // so the user can pick a priority first. Once `preferences` itself
+  // is null (fresh load / network blip), treat the same way — saver
+  // path can't succeed either way.
+  const hasPriorities = (preferences?.priorities?.length ?? 0) > 0;
+  const togglesGated = preferences === null || !hasPriorities;
+
   const loadUser = async () => {
     const savedUser = await getSavedUser();
     if (savedUser) {
@@ -450,27 +463,61 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
               defaultValue: 'Privacy & notifications',
             })}
           </SettingsEyebrow>
-          <View style={styles.flatRowToggleHost}>
+          {/* F-S1.5i: when togglesGated, wrap each host in a TouchableOpacity
+              that routes to EditPreferences. Mute the row visually so the
+              user sees the toggle is dormant without a red error or
+              modal interrupting them. */}
+          <TouchableOpacity
+            style={[styles.flatRowToggleHost, togglesGated && styles.flatRowToggleHostMuted]}
+            onPress={togglesGated ? handleEditStyleProfile : undefined}
+            activeOpacity={togglesGated ? 0.6 : 1}
+            disabled={!togglesGated}
+            accessibilityRole={togglesGated ? 'button' : undefined}
+            accessibilityLabel={
+              togglesGated
+                ? t('profile.toggle.disabledReason', {
+                    defaultValue: 'Pick your priorities first',
+                  })
+                : undefined
+            }
+          >
             <ToggleRow
               icon={<Shield size={18} color={colors.text.secondary} />}
               label={t('profile.aiSharing.title')}
               subtitle={t('profile.aiSharing.subtitle')}
               value={aiSharingEnabled}
               onValueChange={handleAiSharingToggle}
-              disabled={aiSharingSaving || preferences === null}
+              disabled={aiSharingSaving || togglesGated}
             />
             {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
-          </View>
-          <View style={[styles.flatRowToggleHost, styles.flatRowToggleHostLast]}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.flatRowToggleHost,
+              styles.flatRowToggleHostLast,
+              togglesGated && styles.flatRowToggleHostMuted,
+            ]}
+            onPress={togglesGated ? handleEditStyleProfile : undefined}
+            activeOpacity={togglesGated ? 0.6 : 1}
+            disabled={!togglesGated}
+            accessibilityRole={togglesGated ? 'button' : undefined}
+            accessibilityLabel={
+              togglesGated
+                ? t('profile.toggle.disabledReason', {
+                    defaultValue: 'Pick your priorities first',
+                  })
+                : undefined
+            }
+          >
             <ToggleRow
               icon={<Bell size={18} color={colors.text.secondary} />}
               label={t('profile.notifs.master.title')}
               subtitle={t('profile.notifs.master.subtitle')}
               value={notificationsEnabled}
               onValueChange={(v) => handleNotificationsToggle({ notifications_enabled: v })}
-              disabled={notifsSaving || preferences === null}
+              disabled={notifsSaving || togglesGated}
             />
-            {notificationsEnabled ? (
+            {notificationsEnabled && !togglesGated ? (
               <View style={styles.subToggles}>
                 <ToggleRow
                   label={t('profile.notifs.insight')}
@@ -493,7 +540,14 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
               </View>
             ) : null}
             {notifsError ? <Text style={styles.errorText}>{notifsError}</Text> : null}
-          </View>
+          </TouchableOpacity>
+          {togglesGated ? (
+            <Text style={styles.toggleGatedCaption}>
+              {t('profile.toggle.disabledReason', {
+                defaultValue: 'Pick your priorities first',
+              })}
+            </Text>
+          ) : null}
 
           {/* HELP */}
           <SettingsEyebrow>
@@ -694,6 +748,18 @@ const styles = StyleSheet.create({
   },
   flatRowToggleHostLast: {
     borderBottomWidth: 0,
+  },
+  // F-S1.5i: muted state when toggles are gated on priorities pickup.
+  // Whole row tap routes to EditPreferences; 0.55 opacity makes the
+  // dormant intent legible without scary red.
+  flatRowToggleHostMuted: {
+    opacity: 0.55,
+  },
+  toggleGatedCaption: {
+    ...typography.small,
+    color: colors.text.placeholder,
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.sm,
   },
   // F5.4 — sub-toggles inside the notifications master row
   subToggles: {
