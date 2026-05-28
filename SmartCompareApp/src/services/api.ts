@@ -619,6 +619,12 @@ export interface CohortDisplayProfile {
     preferred_assistance_style?: string;
     [key: string]: any;
   };
+  // Bundle E F-S1.5d / B-S1.YELLOW (backend 135d923) — echoed from
+  // users.demographics so the owner can see their own region in the
+  // ProfileHeaderRow subtitle ("{governorate} · GCC"). Null when the
+  // user skipped Step 04 or selected the "Prefer not to say" sentinel
+  // (backend null-resolves both EN + AR forms).
+  governorate?: string | null;
 }
 
 /**

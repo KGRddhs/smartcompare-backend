@@ -93,11 +93,9 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
 
-  // Cohort display — kept loaded for downstream consumers (PrioritiesInline
-  // reads its own /api/v1/profile/priorities-weighted source; this state
-  // remains live for the next demographics-aware subtitle render once
-  // CohortDisplayProfile exposes a governorate field).
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // Cohort display feeds ProfileHeaderRow subtitle (governorate · GCC) via
+  // loadCohortProfile → /auth/cohort-profile (B-S1.YELLOW 135d923 echoes
+  // demographics.governorate through display.governorate).
   const [cohortDisplay, setCohortDisplay] = useState<CohortDisplayProfile | null>(null);
 
   // Preferences (round-trips through PUT /preferences)
@@ -301,13 +299,14 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   // don't make sense outside the FlatSettings layout)
   // -------------------------------------------------------------------------
 
-  // JSX:40 subtitle reads "Capital · GCC". The CohortDisplayProfile shape
-  // (api.ts:611-622) intentionally hides demographics — persona_label/
-  // confidence/modal-factors only, no raw governorate (privacy invariant
-  // from qaren-cohort skill). Until a dedicated demographics getter ships,
-  // we render the GCC-only fallback. ProfileHeaderRow consumer is the only
-  // place this matters today.
-  const regionSubtitle = 'GCC';
+  // JSX:40 subtitle reads "{governorate} · GCC". Backend B-S1.YELLOW
+  // (135d923) extended /auth/cohort-profile to echo demographics
+  // governorate. Null/undefined when the user skipped onboarding Step 04
+  // OR selected the "Prefer not to say" sentinel — backend null-resolves
+  // both EN and AR forms, so any truthy string is safe to render.
+  const regionSubtitle = cohortDisplay?.governorate
+    ? `${cohortDisplay.governorate} · GCC`
+    : 'GCC';
 
   const ProfileHeaderRow = () => (
     <View style={styles.headerRow}>
