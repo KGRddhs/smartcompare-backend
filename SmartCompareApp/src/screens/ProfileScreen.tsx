@@ -384,12 +384,16 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
         {/* 1. Header — Q logo + name + region + settings icon */}
         <ProfileHeaderRow />
 
-        {/* 2. Recent decisions marquee (silent-hide on empty/threshold/network) */}
+        {/* 2. Recent decisions marquee — F-S1.5f always-render with
+            invitational empty-state card that routes to the Home tab so
+            the user's first decision flows directly into the compare
+            surface. */}
         <RecentDecisionsRow
           onItemPress={(comparisonId) =>
             navigation.navigate('Results', { from_history: comparisonId })
           }
           onSeeAll={() => navigation.navigate('History' as never)}
+          onEmptyCompareTap={() => navigation.navigate('HomeTab' as never)}
         />
 
         {/* 3. Priorities — 3 weighted bars + "Tune" CTA (sum=100 per Path A R2) */}
