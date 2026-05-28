@@ -463,11 +463,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               <Text style={styles.scanPreviewNumeralText}>1</Text>
             </View>
             <View style={styles.scanPreviewPlaceholder}>
-              <Camera size={18} color={colors.text.placeholder} strokeWidth={2} />
-              <Text style={styles.scanPreviewPlaceholderText} numberOfLines={1}>
-                {t('home.scan.preview.row_a', {
-                  defaultValue: 'Tap to snap product A',
-                })}
+              <Camera size={28} color={colors.text.secondary} strokeWidth={2} />
+              <Text style={styles.scanPreviewPlaceholderTitle} numberOfLines={1}>
+                {t('home.scan.preview.tap', { defaultValue: 'Tap to snap' })}
+              </Text>
+              <Text style={styles.scanPreviewPlaceholderSub} numberOfLines={1}>
+                {t('home.scan.preview.product_a', { defaultValue: 'Product A' })}
               </Text>
             </View>
           </TouchableOpacity>
@@ -496,11 +497,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               <Text style={styles.scanPreviewNumeralText}>2</Text>
             </View>
             <View style={styles.scanPreviewPlaceholder}>
-              <Camera size={18} color={colors.text.placeholder} strokeWidth={2} />
-              <Text style={styles.scanPreviewPlaceholderText} numberOfLines={1}>
-                {t('home.scan.preview.row_b', {
-                  defaultValue: 'Tap to snap product B',
-                })}
+              <Camera size={28} color={colors.text.secondary} strokeWidth={2} />
+              <Text style={styles.scanPreviewPlaceholderTitle} numberOfLines={1}>
+                {t('home.scan.preview.tap', { defaultValue: 'Tap to snap' })}
+              </Text>
+              <Text style={styles.scanPreviewPlaceholderSub} numberOfLines={1}>
+                {t('home.scan.preview.product_b', { defaultValue: 'Product B' })}
               </Text>
             </View>
           </TouchableOpacity>
@@ -928,25 +930,38 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     color: colors.text.secondary,
   },
+  // F-S1.4d redesign: dashed box reads as a snap target (camera-centric)
+  // rather than a text-input row. Column layout puts the camera glyph
+  // ABOVE the stacked "Tap to snap" / "Product A|B" labels. minHeight 76
+  // keeps the dashed border tall enough to feel like a capture surface;
+  // numeral circle + dashed border + vs pill + footer hint untouched
+  // (still spec-correct per HomeScreen.jsx:222-265).
   scanPreviewPlaceholder: {
     flex: 1,
-    height: 48,
+    minHeight: 76,
     borderRadius: radii.card,
     backgroundColor: colors.bg.primary,
     borderWidth: 1,
     borderColor: colors.border.medium,
     borderStyle: 'dashed',
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 4,
     paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  scanPreviewPlaceholderText: {
-    fontSize: 15,
+  scanPreviewPlaceholderTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 14 * 1.3,
+    color: colors.text.primary,
+  },
+  scanPreviewPlaceholderSub: {
+    fontSize: 12,
     fontWeight: '400',
-    lineHeight: 15 * 1.5,
-    color: colors.text.placeholder,
-    flex: 1,
+    lineHeight: 12 * 1.4,
+    color: colors.text.secondary,
   },
   // Hairline + emerald "vs" pill divider (mirrors TwoInputShell so the
   // visual rhythm carries across text / url / scan modes). The hairline
