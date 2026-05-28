@@ -19,6 +19,7 @@ These items surfaced in Ahmed's day-1 device walkthrough on 2026-05-26 and have 
 ## Day-2 product decisions (NOT in JSX, supersede prior rubric language)
 
 - **Discreet Upgrade row in Profile FlatSettings ACCOUNT group** — JSX:259 does NOT include Upgrade. Day-2 decision: add a single Upgrade SettingsRow under the ACCOUNT eyebrow (between Edit profile and Change password) routing to Paywall. No Sparkles icon, no callout banner, no card variant — same SettingsRow primitive as Edit profile / Change password. Rationale: Ahmed wants paywall reachable from Profile without restoring the dedicated Bundle D Upgrade card (which read too pushy).
+- **Preferences row dropped from FlatSettings** — Bundle D had a `Preferences` SettingsRow surfacing a preference modal. Day-2 ruling (c): drop it entirely. EditProfile is the single gateway to all preference editing; the Preferences row was a duplicate entry point. Frontend ships removal + Jest assertion edit in the SAME commit. Verify on device: Edit profile row routes correctly + no `Preferences` row anywhere in ACCOUNT group.
 
 ## How to use
 
@@ -88,7 +89,7 @@ Current code: `SmartCompareApp/src/screens/ProfileScreen.tsx`
 
 **Element order MUST match JSX top-down (jsx:308-318):** ProfileHeaderRow → RecentDecisions → PrioritiesInline → MonthStrip → FlatSettings. NO "Profile" screen title above header. NO standalone Account-card with avatar + email between header and RecentDecisions. NO B6 Bundle D Upgrade card with Sparkles icon anywhere.
 
-- [ ] **ProfileHeaderRow (jsx:34-50)** AT TOP — QarenLogo 28px + name (display_name fallback) 18px 700 + region "{governorate} · GCC" or fallback "GCC" 12px 400 secondary + Settings icon button (36×36 circle, `bg.secondary`, Lucide Settings 18px, onPress → EditProfile). Header row paddingInline 20, paddingTop 8, paddingBottom 18, gap 12.
+- [ ] **ProfileHeaderRow (jsx:34-50)** AT TOP — QarenLogo 28px + name (display_name fallback) 18px 700 + region subtitle 12px 400 secondary + Settings icon button (36×36 circle, `bg.secondary`, Lucide Settings 18px, onPress → EditProfile). Header row paddingInline 20, paddingTop 8, paddingBottom 18, gap 12. **Subtitle string:** `${cohortDisplay.governorate} · GCC` when `cohortDisplay.governorate` is populated (e.g. `Capital · GCC`), plain `'GCC'` fallback otherwise. Never render `· GCC` with a missing governorate prefix (must be either both halves or just `GCC`).
 - [ ] **RecentDecisions (jsx:122-161)** IMMEDIATELY BELOW header — eyebrow "Recent decisions" uppercase 11px 600 letterSpacing 1.1px + "See all" link (`accentDark`) at right. Horizontally-scrollable row of MiniVsCard (jsx:58-91, 168px wide). Section marginBottom 24.
 - [ ] **MiniVsCard** — two MiniProduct (jsx:93-120) side-by-side + **center absolute-positioned emerald vs pill** (jsx:71-83, 18px tall, paddingInline 6, 2px `bg.secondary` border). Winner MiniProduct has 2px emerald border + emerald check overlay top-right. Sub line "{a/b winner} · 2 hrs ago".
 - [ ] **PrioritiesInline (jsx:163-199)** — `bg.secondary` card, radius 20. Title "What shapes your matches" 16px 600. 3 bars: label (76px wide), bar (flex 1, height 6, accent fill on `border.light` track), percentage (32px right-aligned tabular-nums). **Backend serves sum=100 normalized integers (Path A R2)** — bars render proportional, sum to 100%. JSX 235% sum was the bug Bundle E fixes. CTA "Tune my priorities" black, 44px tall, radius 22.
@@ -99,7 +100,7 @@ Current code: `SmartCompareApp/src/screens/ProfileScreen.tsx`
   - **HELP** eyebrow → Privacy Policy → Terms of Service → Contact us
   - **DANGER ZONE** eyebrow → Log out (destructive=true, red label, `last=true` — NO bottom border)
 - [ ] **SettingsEyebrow recipe (jsx:239-250)** — 10px font, weight 600, lineHeight 1.4 (~14), letterSpacing 1.1px, uppercase, placeholder color, `bg.primary` background, hairline `border.light` borders TOP AND BOTTOM, paddingBlock 10 paddingInline 16. Verify ALL 4 eyebrows render with this recipe — NOT as plain `styles.sectionLabel` text floating above a card.
-- [ ] **DELETIONS verified** (Bundle D pieces gone): no "Profile" screen title above header, no `brandTitleRow`, no `StyleProfileCard`, no `ReferralStatusCard`, no standalone Account card with avatar+displayName+email, no B6 Bundle D Upgrade card with Sparkles icon, no `styles.sectionLabel` for 4 floating eyebrows.
+- [ ] **DELETIONS verified** (Bundle D pieces gone): no "Profile" screen title above header, no `brandTitleRow`, no `StyleProfileCard` import/render, no `ReferralStatusCard` import/render, no standalone Account card with avatar+displayName+email, no B6 Bundle D Upgrade card with Sparkles icon (Sparkles import removed if no other use), no `styles.sectionLabel` for 4 floating eyebrows, **NO `Preferences` SettingsRow** (Bundle A § 3.2 explicit drop — EditProfile route is the gateway to all preference editing; Preferences row was a Bundle D duplicate entry point that's now dead code). Frontend MUST also update any Jest assertion that previously asserted a `'Preferences'` row exists, in the SAME commit as the row removal — otherwise tests will RED on the rewrite.
 
 ---
 
