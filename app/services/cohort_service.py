@@ -208,6 +208,13 @@ class CohortService:
 
         Per design Section 3.6: card only when confidence >= medium AND
         match_quality is not population.
+
+        `governorate` (Optional[str]) echoes the user's own typed value from
+        onboarding Step 04 so ProfileHeaderRow can render "{governorate} · GCC"
+        on their own profile. None when the user skipped Step 04 or chose
+        "Prefer not to say". Owner-only display: redaction invariant from the
+        cohort skill restricts governorate from GPT prompts, not from the
+        user's own profile UI.
         """
         match = self.match(demographics)
         if not match:
@@ -216,12 +223,14 @@ class CohortService:
             return None
         if match.confidence not in ("high", "medium"):
             return None
+        gov_part = self._key_part((demographics or {}).get("governorate"))
         return {
             "persona_label": match.persona_label,
             "n": match.n,
             "modal": match.modal,
             "match_quality": match.match_quality,
             "confidence": match.confidence,
+            "governorate": gov_part or None,
         }
 
     # ------- should_seed() — preference-seeding decision -------
