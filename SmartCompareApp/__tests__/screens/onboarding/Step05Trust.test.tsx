@@ -1,9 +1,15 @@
 /**
- * Step05Trust tests — Phase 2 Task 14.
+ * Step05Trust tests — Bundle E S2.W1 rewrite contract.
  *
- * Trust bridge — pure typography + small filled lock icon, hero "Your data
- * stays yours. We just compare." + 3 thin bullets. Pre-empts the "why do
- * you need this?" objection. See design spec § 2 row 5.
+ * The Phase 2 lock-badge hero + 3 bullets layout was replaced with the
+ * JSX OnboardingExtras.jsx s5 recipe: 3 PrivacyRow primitives + "I'm in"
+ * CTA + emerald-accentWord headline. Lock-rotation contract dropped per
+ * JSX-wins doctrine — JSX has no hero on this surface.
+ *
+ * Pin the new contract:
+ *   - 3 PrivacyRow rows render with testIDs trust-row-{use,anon,never}
+ *   - Each row exposes head + body strings via i18n keys
+ *   - "I'm in" CTA fires onNext
  */
 
 import React from 'react';
@@ -14,54 +20,59 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-describe('Step05Trust', () => {
-  it('renders the lock icon and hero copy', () => {
-    const { getByTestId, getByText } = render(<Step05Trust onNext={jest.fn()} />);
-    expect(getByTestId('trust-lock-icon')).toBeTruthy();
-    expect(getByText('onboarding.s5.title')).toBeTruthy();
+describe('Step05Trust — Bundle E S2.W1 rewrite', () => {
+  it('renders the 3 PrivacyRow hosts with new testIDs', () => {
+    const { getByTestId } = render(<Step05Trust onNext={jest.fn()} />);
+    expect(getByTestId('trust-row-use')).toBeTruthy();
+    expect(getByTestId('trust-row-anon')).toBeTruthy();
+    expect(getByTestId('trust-row-never')).toBeTruthy();
   });
 
-  it('renders all 3 trust bullets', () => {
+  it('renders the 3 PrivacyRow head + body i18n keys', () => {
     const { getByText } = render(<Step05Trust onNext={jest.fn()} />);
-    expect(getByText('onboarding.s5.bullet_1')).toBeTruthy();
-    expect(getByText('onboarding.s5.bullet_2')).toBeTruthy();
-    expect(getByText('onboarding.s5.bullet_3')).toBeTruthy();
+    expect(getByText('onboarding.s5.privacy_use_head')).toBeTruthy();
+    expect(getByText('onboarding.s5.privacy_use_body')).toBeTruthy();
+    expect(getByText('onboarding.s5.privacy_anon_head')).toBeTruthy();
+    expect(getByText('onboarding.s5.privacy_anon_body')).toBeTruthy();
+    expect(getByText('onboarding.s5.privacy_never_head')).toBeTruthy();
+    expect(getByText('onboarding.s5.privacy_never_body')).toBeTruthy();
   });
 
-  it('fires onNext when continue is pressed', () => {
+  it('renders the emerald-accentWord headline parts', () => {
+    // Nested <Text> elements (before / accent / after) get
+    // concatenated into the parent's accessible text by
+    // testing-library, so we match against the joined string with a
+    // regex that asserts all three key fragments are present.
+    const { getByText } = render(<Step05Trust onNext={jest.fn()} />);
+    expect(
+      getByText(/onboarding\.s5\.title_before/),
+    ).toBeTruthy();
+    expect(
+      getByText(/onboarding\.s5\.title_accent/),
+    ).toBeTruthy();
+  });
+
+  it('CTA label is the new "I\'m in" i18n key (not "Continue")', () => {
+    const { getByText, queryByText } = render(<Step05Trust onNext={jest.fn()} />);
+    expect(getByText('onboarding.s5.cta')).toBeTruthy();
+    // Legacy "continue" key should no longer drive the CTA on this
+    // surface (the key still exists in i18n for backward-compat but
+    // Step05 no longer reads it).
+    expect(queryByText('onboarding.s5.continue')).toBeNull();
+  });
+
+  it('fires onNext when the CTA is pressed', () => {
     const onNext = jest.fn();
     const { getByText } = render(<Step05Trust onNext={onNext} />);
-    fireEvent.press(getByText('onboarding.s5.continue'));
+    fireEvent.press(getByText('onboarding.s5.cta'));
     expect(onNext).toHaveBeenCalledTimes(1);
   });
 
-  // Phase 5 polish — design § 2 row 5 calls for a 5° rotation animation
-  // on mount. The Reanimated mock captures useAnimatedStyle output ONCE
-  // at first render (before the useEffect's withTiming has applied), so
-  // the snapshot transform shows the initial 0deg. We assert the
-  // STRUCTURE of the rotation transform — it MUST be wired up — and
-  // confirm the import chain pulls Animated + withTiming.
-  it('lock icon mounts with a rotate transform driven by Reanimated', () => {
-    const { getByTestId } = render(<Step05Trust onNext={jest.fn()} />);
-    const lock = getByTestId('trust-lock-icon');
-    const styleArr = Array.isArray(lock.props.style)
-      ? lock.props.style
-      : [lock.props.style];
-    const flat: Record<string, unknown> = styleArr
-      .filter(Boolean)
-      .reduce(
-        (acc: Record<string, unknown>, s: Record<string, unknown>) =>
-          Object.assign(acc, s),
-        {} as Record<string, unknown>,
-      );
-    const transforms = (flat.transform ?? []) as Array<Record<string, unknown>>;
-    const rot = transforms.find((t) => 'rotate' in t);
-    expect(rot).toBeDefined();
-    // Either initial "0deg" (pre-effect) or target "5deg" (post-effect)
-    // is acceptable — what we're locking down is the rotation contract
-    // on this surface. The actual 5° landing happens on-device per the
-    // Reanimated runtime (mock is identity). Forbidding non-rotation
-    // fallbacks keeps the design § 2 row 5 cue from regressing silently.
-    expect(['0deg', '5deg']).toContain(rot?.rotate);
+  it('does NOT render the Phase 2 lock-badge hero', () => {
+    // JSX-wins: the lock-icon hero was dropped per JSX OnboardingExtras
+    // s5. The testID is gone, and the prior 5° rotation Reanimated
+    // contract no longer applies.
+    const { queryByTestId } = render(<Step05Trust onNext={jest.fn()} />);
+    expect(queryByTestId('trust-lock-icon')).toBeNull();
   });
 });
