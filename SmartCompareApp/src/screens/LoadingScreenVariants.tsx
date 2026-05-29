@@ -24,15 +24,23 @@
  * perceived continuity holds across the build-out → theatrical-load
  * transition.
  */
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 import { LoadingRings } from '../components/hero/LoadingRings';
 import { StageChecklist, Stage } from '../components/StageChecklist';
 import { LoadingTipsCarousel } from '../components/LoadingTipsCarousel';
 // CounterTicker import dropped per F-S2.W3.hotfix — LoadingRings hosts
 // the single counter chip now. The external duplicate chip + its
 // CounterTicker invocation are gone.
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, radii } from '../theme';
+import { motion } from '../theme/motion';
 
 interface Props {
   variant?: 'concentric' | 'streaming';
@@ -188,10 +196,163 @@ export function LoadingScreenVariants({
           ) : null}
         </View>
       ) : (
-        // StreamingCardsVariant stub kept lean until F-S2.X2 (#32) ships
-        // the field-by-field reveal + shimmer. Mode="onboarding" never
-        // reaches this branch per the useMemo override above.
-        <View testID="loading-streaming" style={styles.streamingStub} />
+        // F-S2.X2 (task #32) — StreamingCardsVariant fleshed out.
+        // Two product-shape ghost cards side-by-side with field-by-
+        // field reveal (photo → name → price → stars → top-match
+        // badge), shimmer overlay on PENDING fields, and an emerald
+        // accentLight winner indicator on the right card at final
+        // stage. Mode="onboarding" never reaches this branch per
+        // the useMemo override above (forced concentric for the
+        // Step14 theatrical moment).
+        <StreamingCardsVariant testID="loading-streaming" />
+      )}
+    </View>
+  );
+}
+
+// F-S2.X2: 5 reveal stages, staggered ~400ms per dispatcher kickoff
+// spec. The index drives BOTH cards in lockstep; the right (winner)
+// card flips its accent at the final stage so the "Top match" beat
+// lands as a finishing flourish.
+const REVEAL_STAGES = ['photo', 'name', 'price', 'stars', 'badge'] as const;
+type RevealStage = (typeof REVEAL_STAGES)[number];
+const REVEAL_STAGE_MS = 400;
+
+// Shimmer travels left → right across the pending field. 60px sweep
+// inside the field width gives a clean "glint" effect at the 1.4s
+// motion.shimmer cadence without bleeding past the field edges.
+const SHIMMER_TRANSLATE_PX = 60;
+
+interface StreamingCardsVariantProps {
+  testID?: string;
+}
+
+function StreamingCardsVariant({ testID }: StreamingCardsVariantProps) {
+  // revealIndex advances 0 → REVEAL_STAGES.length, holding at the
+  // top so the final state stays mounted while the loader awaits
+  // onDone (which is owned by the outer LoadingScreenVariants).
+  const [revealIndex, setRevealIndex] = useState(0);
+
+  useEffect(() => {
+    if (revealIndex >= REVEAL_STAGES.length) return;
+    const id = setTimeout(
+      () => setRevealIndex((prev) => prev + 1),
+      REVEAL_STAGE_MS,
+    );
+    return () => clearTimeout(id);
+  }, [revealIndex]);
+
+  return (
+    <View style={streamingStyles.row} testID={testID}>
+      <StreamingCard
+        revealIndex={revealIndex}
+        isWinner={false}
+        testID="loading-streaming-card-a"
+      />
+      <StreamingCard
+        revealIndex={revealIndex}
+        isWinner
+        testID="loading-streaming-card-b"
+      />
+    </View>
+  );
+}
+
+interface StreamingCardProps {
+  revealIndex: number;
+  isWinner: boolean;
+  testID?: string;
+}
+
+function StreamingCard({ revealIndex, isWinner, testID }: StreamingCardProps) {
+  const revealedThrough = (stage: RevealStage): boolean =>
+    revealIndex > REVEAL_STAGES.indexOf(stage);
+
+  const cardRevealed = revealedThrough('badge');
+  // Winner accent flips on at the final stage so the result moment
+  // stays "earned" rather than handed-out at mount.
+  const accentActive = isWinner && cardRevealed;
+
+  return (
+    <View
+      style={[
+        streamingStyles.card,
+        accentActive ? streamingStyles.cardWinner : null,
+      ]}
+      testID={testID}
+    >
+      <GhostField
+        revealed={revealedThrough('photo')}
+        style={streamingStyles.photo}
+        testID={`${testID}-photo`}
+      />
+      <GhostField
+        revealed={revealedThrough('name')}
+        style={streamingStyles.name}
+        testID={`${testID}-name`}
+      />
+      <GhostField
+        revealed={revealedThrough('price')}
+        style={streamingStyles.price}
+        testID={`${testID}-price`}
+      />
+      <GhostField
+        revealed={revealedThrough('stars')}
+        style={streamingStyles.stars}
+        testID={`${testID}-stars`}
+      />
+      {isWinner && revealedThrough('stars') ? (
+        <View
+          style={streamingStyles.badge}
+          testID={`${testID}-badge`}
+        >
+          <Text style={streamingStyles.badgeText}>Top match</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+interface GhostFieldProps {
+  revealed: boolean;
+  style: any;
+  testID: string;
+}
+
+// Each ghost field is either a shimmering placeholder (pending) or
+// a solid tinted block (revealed). The placeholder hosts an
+// Animated.View that sweeps a soft highlight via translateX driven
+// by motion.shimmer (1.4s linear loop).
+function GhostField({ revealed, style, testID }: GhostFieldProps) {
+  const sweep = useSharedValue(-SHIMMER_TRANSLATE_PX);
+
+  useEffect(() => {
+    if (revealed) return;
+    sweep.value = withRepeat(
+      withTiming(SHIMMER_TRANSLATE_PX, {
+        duration: motion.shimmer.duration,
+        easing: Easing.linear,
+      }),
+      // motion.shimmer.repeat = -1 → infinite per token spec.
+      motion.shimmer.repeat,
+      false,
+    );
+  }, [revealed, sweep]);
+
+  const sweepStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: sweep.value }],
+  }));
+
+  return (
+    <View
+      style={[style, revealed ? streamingStyles.fieldRevealed : streamingStyles.fieldPending]}
+      testID={revealed ? `${testID}-revealed` : `${testID}-pending`}
+    >
+      {revealed ? null : (
+        <Animated.View
+          style={[streamingStyles.shimmer, sweepStyle]}
+          testID={`${testID}-shimmer`}
+        />
       )}
     </View>
   );
@@ -245,10 +406,96 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  streamingStub: {
-    width: 280,
-    height: 200,
+});
+
+// F-S2.X2: StreamingCardsVariant styles isolated below so the
+// concentric path stays the source of truth at the top of the
+// styles block. Layout-collapse rubric (Step12 W1.hotfix lesson):
+// the parent `row` uses flexDirection:'row' + gap, each card uses
+// flex:1 + minWidth:0 so cards share width equally without
+// shrinking children to content.
+const PHOTO_HEIGHT = 96;
+const NAME_HEIGHT = 14;
+const PRICE_HEIGHT = 12;
+const STARS_HEIGHT = 12;
+
+const streamingStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    width: '100%',
+    paddingHorizontal: spacing.xl,
+    alignItems: 'flex-start',
+  },
+  card: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: colors.bg.primary,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  // Winner card flips to the accentLight bg + accent border at the
+  // final reveal stage. Matches ResultsScreen winner-card chrome so
+  // the brand cue is consistent between loading + reveal.
+  cardWinner: {
+    backgroundColor: colors.accentLight,
+    borderColor: colors.accent,
+  },
+  // GhostField pending state: muted bg + overflow:'hidden' so the
+  // shimmer translateX doesn't bleed past the field edge.
+  fieldPending: {
     backgroundColor: colors.bg.secondary,
-    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  // GhostField revealed state: slightly stronger tint to signal the
+  // field is "done." Real product data isn't loaded here — this is
+  // a comparison-loading placeholder, not a streaming result card.
+  fieldRevealed: {
+    backgroundColor: colors.border.light,
+  },
+  shimmer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: SHIMMER_TRANSLATE_PX,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  photo: {
+    width: '100%',
+    height: PHOTO_HEIGHT,
+    borderRadius: 12,
+  },
+  name: {
+    width: '85%',
+    height: NAME_HEIGHT,
+    borderRadius: 6,
+  },
+  price: {
+    width: '55%',
+    height: PRICE_HEIGHT,
+    borderRadius: 6,
+  },
+  stars: {
+    width: '70%',
+    height: STARS_HEIGHT,
+    borderRadius: 6,
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.chip,
+    backgroundColor: colors.accent,
+    marginTop: spacing.xs,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.cta.onPrimary,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
 });
