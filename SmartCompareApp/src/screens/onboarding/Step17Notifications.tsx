@@ -63,6 +63,14 @@ export function Step17Notifications({ onDone }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.heroBlock}>
+        <Text style={styles.title}>{t('onboarding.s17.title')}</Text>
+        <Text style={styles.subtitle}>{t('onboarding.s17.subtitle')}</Text>
+
+        {/* F-S2.hotfix4 #44.2 — push card moved BELOW headline+subtitle
+            so the page reads as: hook (title) → context (subtitle) →
+            sample (push card) → categories (Tag rows) → CTAs. Previously
+            the push card rendered first which competed with the headline
+            for the user's first read. */}
         <View testID="s17-preview" style={styles.previewCard}>
           <Text style={styles.previewBrand}>Qaren</Text>
           <Text style={styles.previewBody}>
@@ -72,9 +80,6 @@ export function Step17Notifications({ onDone }: Props) {
             {t('onboarding.s17.preview_meta')}
           </Text>
         </View>
-
-        <Text style={styles.title}>{t('onboarding.s17.title')}</Text>
-        <Text style={styles.subtitle}>{t('onboarding.s17.subtitle')}</Text>
 
         {/* S2.W4 — 3 Tag rows per JSX OnboardingExtras.jsx:319-323 +
             Tag function (349-365). Decision insights / Cohort echoes /
