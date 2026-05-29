@@ -8,6 +8,7 @@
  *   - Active state inverts background (black on select, Cal AI pattern)
  */
 import React from 'react';
+import { View } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
 import { OptionRow } from '../../src/components/primitives/OptionRow';
 
@@ -137,6 +138,52 @@ describe('OptionRow primitive', () => {
       );
       expect(getByTestId('option-row-icon-circle')).toBeTruthy();
       expect(queryByTestId('option-row-icon-glyph')).toBeNull();
+    });
+  });
+
+  // F-S2.W2 extension — icon accepts ReactNode for lucide SVG glyphs.
+  // Symmetric with PrivacyRow's ReactNode icon. Used by Step08Priorities.
+  describe('F-S2.W2 extension (ReactNode icon for lucide glyphs)', () => {
+    it('renders a ReactNode icon inside the circle via testID="option-row-icon-node"', () => {
+      const optionWithNode = {
+        key: 'price',
+        label: 'Best price',
+        // Inline View stands in for a lucide-react-native <DollarSign />
+        // ForwardRefExoticComponent — tests the ReactNode rendering path
+        // without pulling lucide into the test bundle.
+        icon: <View testID="custom-svg-icon" />,
+      };
+      const { getByTestId, queryByTestId } = render(
+        <OptionRow
+          option={optionWithNode}
+          active={false}
+          onToggle={() => {}}
+          style="icon-circle"
+        />,
+      );
+      // ReactNode path renders inside option-row-icon-node, NOT the
+      // string-only option-row-icon-glyph host.
+      expect(getByTestId('option-row-icon-node')).toBeTruthy();
+      expect(queryByTestId('option-row-icon-glyph')).toBeNull();
+      // The nested ReactNode itself is preserved verbatim.
+      expect(getByTestId('custom-svg-icon')).toBeTruthy();
+    });
+
+    it('string icon still renders via the string-glyph path (back-compat)', () => {
+      // Step04Country continues to pass flag emoji as a string — that
+      // path MUST keep working identically to the F-S2.W1 contract,
+      // i.e. no breaking change for existing callers.
+      const optionWithString = { key: 'bh', label: 'Bahrain', icon: '🇧🇭' };
+      const { getByTestId, queryByTestId } = render(
+        <OptionRow
+          option={optionWithString}
+          active={false}
+          onToggle={() => {}}
+          style="icon-circle"
+        />,
+      );
+      expect(getByTestId('option-row-icon-glyph')).toBeTruthy();
+      expect(queryByTestId('option-row-icon-node')).toBeNull();
     });
   });
 });
