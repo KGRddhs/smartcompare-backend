@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../hooks/useLanguage';
 import { Button } from '../../components/Button';
 import { ProgressBar } from '../../components/ProgressBar';
+import { SlideTransition } from '../../components/SlideTransition';
 import { BackIcon, flipForRTL } from '../../icons';
 import { trackEvents } from '../../services/api';
 import { colors, spacing, typography } from '../../theme';
@@ -253,26 +254,38 @@ export function OnboardingFlow({
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}
         >
-          <StepContent
-            step={step}
-            data={data}
-            setField={setField}
-            t={t}
-            onNext={handleNext}
-            onLoadingComplete={handleNext}
-            onSelectAuthMethod={() => {
-              // Bundle D Phase 3: Step 16 ("Save your advisor") hands off to
-              // the AuthScreen stack. The orchestrator advances to step 17 so
-              // the next mount lands on the notifications screen. Actual
-              // auth is performed via App.tsx Stack.Navigator routes that
-              // App.tsx swaps to once `onComplete` fires after step 17.
-              handleNext();
-            }}
-            onNotificationsDone={(granted) => {
-              setField('notifications_enabled', granted);
-              handleNext();
-            }}
-          />
+          {/* F-S2.X1 — SlideTransition chrome wrap. Keyed on `step` so a
+              step transition retriggers the slide-in animation; same-step
+              re-renders (data field updates, validation flips, etc.) do
+              NOT replay the slide per the primitive contract. Direction
+              mirrors I18nManager.isRTL via the primitive itself — LTR
+              slides in from right (+width), RTL from left (-width).
+              motion.screenTransition timing (320ms cubic-bezier 0.32,
+              0.72, 0, 1) is owned by the primitive. Single wrap at the
+              chrome layer means we get the rhythm across all 17 steps
+              without touching individual step files. */}
+          <SlideTransition step={step} testID="onboarding-step-slide">
+            <StepContent
+              step={step}
+              data={data}
+              setField={setField}
+              t={t}
+              onNext={handleNext}
+              onLoadingComplete={handleNext}
+              onSelectAuthMethod={() => {
+                // Bundle D Phase 3: Step 16 ("Save your advisor") hands off to
+                // the AuthScreen stack. The orchestrator advances to step 17 so
+                // the next mount lands on the notifications screen. Actual
+                // auth is performed via App.tsx Stack.Navigator routes that
+                // App.tsx swaps to once `onComplete` fires after step 17.
+                handleNext();
+              }}
+              onNotificationsDone={(granted) => {
+                setField('notifications_enabled', granted);
+                handleNext();
+              }}
+            />
+          </SlideTransition>
         </ScrollView>
       </View>
 

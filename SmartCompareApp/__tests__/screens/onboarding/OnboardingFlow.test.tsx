@@ -9,6 +9,7 @@
  */
 
 import React from 'react';
+import { I18nManager } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
 import { OnboardingFlow } from '../../../src/screens/onboarding/OnboardingFlow';
 
@@ -85,6 +86,55 @@ describe('OnboardingFlow orchestrator', () => {
     fireEvent.press(getByTestId('onboarding-back'));
     expect(getByTestId('onboarding-step-1')).toBeTruthy();
     expect(queryByTestId('onboarding-step-0')).toBeNull();
+  });
+
+  // F-S2.X1 — SlideTransition chrome wrap. Verify the orchestrator
+  // wraps StepContent in a single SlideTransition at the chrome layer
+  // (not per-step). The primitive's data-direction prop mirrors
+  // I18nManager.isRTL; LTR keeps 'ltr', RTL flips to 'rtl'. Same-step
+  // re-renders do not retrigger the slide per the primitive contract.
+  describe('F-S2.X1 SlideTransition chrome wrap', () => {
+    it('wraps StepContent in <SlideTransition> at the chrome layer (testID onboarding-step-slide)', () => {
+      const { getByTestId } = render(<OnboardingFlow onComplete={noop} />);
+      expect(getByTestId('onboarding-step-slide')).toBeTruthy();
+    });
+
+    // SlideTransition reads I18nManager.isRTL directly (not from the
+    // useLanguage hook), so the chrome-wrap direction prop is gated on
+    // the RN I18nManager mock — flip + restore in each test so state
+    // doesn't leak across cases. Same discipline as the primitive's
+    // own RTL test suite (SlideTransition.rtl.test.tsx).
+    afterEach(() => {
+      (I18nManager as any).isRTL = false;
+    });
+
+    it('LTR mode: chrome-wrap data-direction = "ltr"', () => {
+      (I18nManager as any).isRTL = false;
+      mockIsRTL = false;
+      const { getByTestId } = render(<OnboardingFlow onComplete={noop} />);
+      expect(
+        getByTestId('onboarding-step-slide').props['data-direction'],
+      ).toBe('ltr');
+    });
+
+    it('RTL mode: chrome-wrap data-direction = "rtl" (mirror)', () => {
+      (I18nManager as any).isRTL = true;
+      mockIsRTL = true;
+      const { getByTestId } = render(<OnboardingFlow onComplete={noop} />);
+      expect(
+        getByTestId('onboarding-step-slide').props['data-direction'],
+      ).toBe('rtl');
+    });
+
+    it('chrome-wrap persists across step advance (same SlideTransition keyed by `step`)', () => {
+      const { getByTestId } = render(<OnboardingFlow onComplete={noop} />);
+      expect(getByTestId('onboarding-step-slide')).toBeTruthy();
+      fireEvent.press(getByTestId('onboarding-next'));
+      // The wrap stays mounted across step advance — only its internal
+      // step prop changes, which retriggers the slide animation per
+      // SlideTransition's contract.
+      expect(getByTestId('onboarding-step-slide')).toBeTruthy();
+    });
   });
 
   it('disables Next when current step validation fails', () => {
