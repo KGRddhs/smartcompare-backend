@@ -429,6 +429,7 @@ function StepContent({
         <Step14Loading
           cohortPeerCount={47}
           onComplete={onLoadingComplete}
+          governorate={data.governorate}
         />
       )}
       {step === 15 && (

@@ -1,23 +1,59 @@
 /**
- * Step14Loading tests — Phase 2 Task 21.
+ * Step14Loading tests — Bundle E S2.W3 REWRITE contract.
  *
- * Theatrical loading centerpiece. LoadingRings #4 + stage copy cycler +
- * progress bar 0→100% over 3.2s minimum + CounterTicker "0 → 47 cohort
- * peers". onComplete fires after the 3.2s floor (even if API was faster).
- * See design spec § 2 row 14 — "perceived effort = perceived value."
+ * The Phase 2 LoadingRings + stage-copy ticker + ProgressBar layout
+ * was replaced with the ConcentricVariant composition delegated via
+ * LoadingScreenVariants. Step14 is now a thin wrapper that feeds the
+ * 4 region/priorities/peers/calibrate stages + 4 factoid tips + cohort
+ * footer into the shared loader surface.
+ *
+ * The 3.2s minimum-display floor moves to LoadingScreenVariants
+ * (mode="onboarding" + minDisplayMs); Step14 inherits it via prop
+ * pass-through. The minDurationMs Step14 prop is honored as the
+ * floor override.
+ *
+ * Contract pinned:
+ *   - testID="s14-loading-root" forwarded to LoadingScreenVariants
+ *   - LoadingRings hero rendered via testID="loading-rings" inside the
+ *     ConcentricVariant
+ *   - StageChecklist 4-stage card rendered via testID="loading-stage-card"
+ *     containing stage-{region,priorities,peers,calibrate}-icon
+ *   - LoadingTipsCarousel rendered via testID="loading-tips" — 4 tips
+ *   - cohort footer via testID="loading-cohort-footer" shows the count
+ *   - onComplete fires exactly once after minDurationMs floor
+ *   - Floor honored even if backend resolves "instantly"
  */
 
 import React from 'react';
 import { render, act } from '@testing-library/react-native';
+
+const impactAsyncMock = jest.fn().mockResolvedValue(undefined);
+jest.mock('expo-haptics', () => ({
+  impactAsync: (style: string) => impactAsyncMock(style),
+  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
+  __esModule: true,
+}));
+
 import { Step14Loading } from '../../../src/screens/onboarding/Step14Loading';
 
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, opts?: Record<string, unknown>) => {
+      const dv = opts?.defaultValue as string | undefined;
+      if (dv && opts && (opts.governorate || opts.count != null)) {
+        return dv
+          .replace(/{{governorate}}/g, String(opts.governorate ?? ''))
+          .replace(/{{count}}/g, String(opts.count ?? ''));
+      }
+      return key;
+    },
+  }),
 }));
 
 const MIN_FLOOR_MS = 3200;
 
 beforeEach(() => {
+  impactAsyncMock.mockClear();
   jest.useFakeTimers();
 });
 
@@ -28,26 +64,41 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe('Step14Loading', () => {
-  it('renders the LoadingRings illustration', () => {
+describe('Step14Loading (S2.W3 REWRITE)', () => {
+  it('renders the loading root + inner ConcentricVariant scaffolding', () => {
     const { getByTestId } = render(
-      <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />
+      <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />,
     );
-    expect(getByTestId('s14-rings')).toBeTruthy();
+    expect(getByTestId('s14-loading-root')).toBeTruthy();
+    expect(getByTestId('loading-concentric')).toBeTruthy();
+    expect(getByTestId('loading-rings')).toBeTruthy();
   });
 
-  it('renders the progress bar at 0% on mount', () => {
+  it('renders the cohort footer line with the supplied peer count', () => {
     const { getByTestId } = render(
-      <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />
+      <Step14Loading onComplete={jest.fn()} cohortPeerCount={123} />,
     );
-    expect(getByTestId('s14-progress-track')).toBeTruthy();
+    const footer = getByTestId('loading-cohort-footer');
+    const text = footer.props.children as string;
+    expect(text).toContain('123');
   });
 
-  it('renders the cohort peer counter', () => {
+  it('renders the StageChecklist card with the 4 expected stage rows', () => {
     const { getByTestId } = render(
-      <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />
+      <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />,
     );
-    expect(getByTestId('s14-peer-counter')).toBeTruthy();
+    expect(getByTestId('loading-stage-card')).toBeTruthy();
+    expect(getByTestId('stage-region-icon')).toBeTruthy();
+    expect(getByTestId('stage-priorities-icon')).toBeTruthy();
+    expect(getByTestId('stage-peers-icon')).toBeTruthy();
+    expect(getByTestId('stage-calibrate-icon')).toBeTruthy();
+  });
+
+  it('renders the LoadingTipsCarousel host', () => {
+    const { getByTestId } = render(
+      <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />,
+    );
+    expect(getByTestId('loading-tips')).toBeTruthy();
   });
 
   it('does NOT call onComplete before the 3.2s floor elapses', () => {
@@ -68,14 +119,14 @@ describe('Step14Loading', () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
-  it('respects an explicit minDurationMs override', () => {
+  it('respects an explicit minDurationMs override (override flows to LoadingScreenVariants)', () => {
     const onComplete = jest.fn();
     render(
       <Step14Loading
         onComplete={onComplete}
         cohortPeerCount={47}
         minDurationMs={1000}
-      />
+      />,
     );
     act(() => {
       jest.advanceTimersByTime(999);
@@ -87,19 +138,7 @@ describe('Step14Loading', () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
-  it('cycles through 4 stage copy strings during the floor', () => {
-    const { getByTestId } = render(
-      <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />
-    );
-    const initial = getByTestId('s14-stage-copy').props.children;
-    act(() => {
-      jest.advanceTimersByTime(900); // past the first 800ms cycle
-    });
-    const second = getByTestId('s14-stage-copy').props.children;
-    expect(second).not.toBe(initial);
-  });
-
-  it('only fires onComplete once even if timers re-trigger', () => {
+  it('fires onComplete exactly once even if timers continue past the floor', () => {
     const onComplete = jest.fn();
     render(<Step14Loading onComplete={onComplete} cohortPeerCount={47} />);
     act(() => {

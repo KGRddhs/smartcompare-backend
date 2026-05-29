@@ -525,6 +525,11 @@
   "onboarding.s14.stage_3": "نضبط حسب أولوياتك",
   "onboarding.s14.stage_4": "نصنع مستشار التسوّق الخاص بك",
   "onboarding.s14.peer_label": "من أمثالك",
+  "onboarding.s14.tip_1": "٧٣٪ من المتسوقين بعمرك في {{governorate}} يضعون الجودة أولاً.",
+  "onboarding.s14.tip_2": "مُعاير بـ ٢٬٠٧٤ عملية شراء خليجية حقيقية.",
+  "onboarding.s14.tip_3": "نُعاير حسب أولوياتك.",
+  "onboarding.s14.tip_4": "اقتربنا — ننهي إعداد مستشارك.",
+  "onboarding.s14.cohort_footer": "{{count}} من أمثالك ساعدوا في تدريب هذا",
 
   "onboarding.s15.title": "مستشار التسوّق جاهز",
   "onboarding.s15.match_quality": "التطابق",

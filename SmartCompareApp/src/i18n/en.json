@@ -528,6 +528,11 @@
   "onboarding.s14.stage_3": "Tuning to your priorities",
   "onboarding.s14.stage_4": "Crafting your shopping advisor",
   "onboarding.s14.peer_label": "cohort peers",
+  "onboarding.s14.tip_1": "73% of {{governorate}} shoppers your age prioritize Quality first.",
+  "onboarding.s14.tip_2": "Tuned by 2,074 real GCC purchases.",
+  "onboarding.s14.tip_3": "Calibrating across your priorities.",
+  "onboarding.s14.tip_4": "Almost there — finalizing your advisor.",
+  "onboarding.s14.cohort_footer": "{{count}} cohort peers helped train this",
 
   "onboarding.s15.title": "Your shopping advisor is ready",
   "onboarding.s15.match_quality": "Match",
