@@ -66,16 +66,20 @@ describe('OnboardingFlow orchestrator', () => {
     expect(bar.props['data-current-step']).toBe(1);
   });
 
+  // F-S2.W4.hotfix: Step01Welcome has its own Continue button, so the
+  // orchestrator's chrome Next is gated off on Step 1 (was showing as a
+  // duplicate). Tests now drive the advance via the per-step CTA
+  // (welcome-continue) — same end-to-end path as the device user.
   it('advances when handleNext fires on a valid step', () => {
     const { getByTestId, queryByTestId } = render(<OnboardingFlow onComplete={noop} />);
-    fireEvent.press(getByTestId('onboarding-next'));
+    fireEvent.press(getByTestId('welcome-continue'));
     expect(queryByTestId('onboarding-step-1')).toBeNull();
     expect(getByTestId('onboarding-step-2')).toBeTruthy();
   });
 
   it('decrements when handleBack fires', () => {
     const { getByTestId } = render(<OnboardingFlow onComplete={noop} />);
-    fireEvent.press(getByTestId('onboarding-next'));
+    fireEvent.press(getByTestId('welcome-continue'));
     expect(getByTestId('onboarding-step-2')).toBeTruthy();
     fireEvent.press(getByTestId('onboarding-back'));
     expect(getByTestId('onboarding-step-1')).toBeTruthy();
@@ -129,11 +133,58 @@ describe('OnboardingFlow orchestrator', () => {
     it('chrome-wrap persists across step advance (same SlideTransition keyed by `step`)', () => {
       const { getByTestId } = render(<OnboardingFlow onComplete={noop} />);
       expect(getByTestId('onboarding-step-slide')).toBeTruthy();
-      fireEvent.press(getByTestId('onboarding-next'));
+      // Step 1 has its own Continue (welcome-continue) per
+      // STEPS_WITH_OWN_CTA — orchestrator Next is gated off.
+      fireEvent.press(getByTestId('welcome-continue'));
       // The wrap stays mounted across step advance — only its internal
       // step prop changes, which retriggers the slide animation per
       // SlideTransition's contract.
       expect(getByTestId('onboarding-step-slide')).toBeTruthy();
+    });
+  });
+
+  // F-S2.W4.hotfix — gate the orchestrator's Next button on steps that
+  // own a primary CTA (1/3/5/12/13/14/15/16/17). The back chevron
+  // stays available on every step. Ahmed's W4 device walk reported
+  // "stray magnifier + Next" on Step15 — the magnifier was the
+  // BackIcon chevron (acceptable; backwards nav useful) but the Next
+  // button stacked under "Compare your first product" was a duplicate.
+  describe('F-S2.W4.hotfix orchestrator Next gating', () => {
+    it('Step 1 (Welcome): orchestrator Next is GONE (Step01 owns its Continue)', () => {
+      const { queryByTestId, getByTestId } = render(
+        <OnboardingFlow onComplete={noop} />,
+      );
+      expect(queryByTestId('onboarding-next')).toBeNull();
+      // Per-step CTA stays available + back chevron still renders.
+      expect(getByTestId('welcome-continue')).toBeTruthy();
+      expect(getByTestId('onboarding-back')).toBeTruthy();
+    });
+
+    it('Step 15 (Reveal): orchestrator Next is GONE (Step15 owns "Compare your first product")', () => {
+      const { queryByTestId, getByTestId } = render(
+        <OnboardingFlow onComplete={noop} initialStep={15} />,
+      );
+      expect(queryByTestId('onboarding-next')).toBeNull();
+      expect(getByTestId('s15-cta')).toBeTruthy();
+      expect(getByTestId('onboarding-back')).toBeTruthy();
+    });
+
+    it('Step 17 (Notifications): orchestrator Next is GONE (Step17 owns Allow / Maybe later)', () => {
+      const { queryByTestId, getByTestId } = render(
+        <OnboardingFlow onComplete={noop} initialStep={17} />,
+      );
+      expect(queryByTestId('onboarding-next')).toBeNull();
+      expect(getByTestId('s17-allow')).toBeTruthy();
+      expect(getByTestId('s17-not-now')).toBeTruthy();
+    });
+
+    it('Step 4 (Country, no own CTA): orchestrator Next IS rendered', () => {
+      const { getByTestId } = render(
+        <OnboardingFlow onComplete={noop} initialStep={4} />,
+      );
+      // Step 4 has no inline primary CTA — the orchestrator Next
+      // carries the advance. Still renders for the user.
+      expect(getByTestId('onboarding-next')).toBeTruthy();
     });
   });
 
@@ -166,12 +217,16 @@ describe('OnboardingFlow orchestrator', () => {
     expect(wrapper.props['data-direction']).toBe('ltr');
   });
 
+  // F-S2.W4.hotfix: Step17Notifications has its own Allow / Maybe-later
+  // CTAs, so the orchestrator's chrome Next is gated off on Step 17.
+  // Pressing s17-not-now triggers onNotificationsDone(false) →
+  // setField + handleNext → onComplete (since step 17 === terminalStep).
   it('calls onComplete when step 17 finishes', () => {
     const onComplete = jest.fn();
     const { getByTestId } = render(
       <OnboardingFlow onComplete={onComplete} initialStep={17} />
     );
-    fireEvent.press(getByTestId('onboarding-next'));
+    fireEvent.press(getByTestId('s17-not-now'));
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
@@ -191,7 +246,7 @@ describe('OnboardingFlow orchestrator', () => {
         }}
       />
     );
-    fireEvent.press(getByTestId('onboarding-next'));
+    fireEvent.press(getByTestId('s17-not-now'));
     expect(onComplete).toHaveBeenCalledWith(
       expect.objectContaining({
         language: 'en',

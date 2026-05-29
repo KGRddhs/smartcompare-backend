@@ -100,6 +100,33 @@ interface OnboardingFlowProps {
 }
 
 /**
+ * Steps that render their own CTA inline (no orchestrator footer needed).
+ * The orchestrator's back+Next footer would otherwise stack a duplicate
+ * "Continue" / "Next" button below the step's own primary action — which
+ * Ahmed flagged in F-S2.W4.hotfix as the "stray magnifier + Next" symptom
+ * on Step15 (the BackIcon read as a magnifier glyph on his device + the
+ * orchestrator's Next button rendered alongside Step15's own "Compare
+ * your first product" CTA).
+ *
+ * The list below covers every step that owns its primary action:
+ *   - 1  Step01Welcome:        Continue + Sign-in link
+ *   - 3  Step03ValueProp:      Continue (own Button)
+ *   - 5  Step05Trust:          "I'm in"
+ *   - 12 Step12CohortProof:    Continue
+ *   - 13 Step13Anticipation:   "Almost there…" / Continue (dynamic CTA)
+ *   - 14 Step14Loading:        no CTA, auto-completes after 3.2s floor
+ *   - 15 Step15Reveal:         "Compare your first product"
+ *   - 16 Step16Account:        Apple / Google / email CTAs
+ *   - 17 Step17Notifications:  Allow / Maybe later
+ *
+ * Multi-input steps (2/4/6/7/8/9/10/11) keep the orchestrator footer
+ * because they don't render their own primary action.
+ */
+const STEPS_WITH_OWN_CTA: ReadonlySet<OnboardingStep> = new Set([
+  1, 3, 5, 12, 13, 14, 15, 16, 17,
+]);
+
+/**
  * Returns true when the current step's required fields are filled.
  *
  * Steps with no required input (1 Welcome, 3 Value prop, 5 Trust, 12 Cohort
@@ -289,7 +316,18 @@ export function OnboardingFlow({
         </ScrollView>
       </View>
 
-      <View style={styles.footer}>
+      {/* F-S2.W4.hotfix: orchestrator footer back chevron stays on
+          every step (useful for backtracking from any surface), but
+          the orchestrator's Next/Continue button is gated to steps
+          WITHOUT their own primary CTA inline. Per Ahmed's W4 device
+          walk on Step15 ("stray magnifier + Next" — the BackIcon
+          chevron reads as a magnifier glyph at small sizes on iOS +
+          the orchestrator's Next button stacked under Step15's own
+          "Compare your first product" CTA), gating the Next button
+          alone removes the duplicate without breaking the back-chevron
+          back-compat that 6 existing OnboardingFlow tests pin
+          (onboarding-back/onboarding-next interactions). */}
+      <View style={styles.footer} testID="onboarding-footer">
         <TouchableOpacity
           testID="onboarding-back"
           onPress={handleBack}
@@ -305,17 +343,19 @@ export function OnboardingFlow({
           </View>
         </TouchableOpacity>
 
-        <Button
-          testID="onboarding-next"
-          title={
-            step >= terminalStep
-              ? t('onboarding.finish', { defaultValue: 'Finish' })
-              : t('onboarding.next', { defaultValue: 'Continue' })
-          }
-          variant="primary"
-          disabled={!valid}
-          onPress={handleNext}
-        />
+        {STEPS_WITH_OWN_CTA.has(step) ? null : (
+          <Button
+            testID="onboarding-next"
+            title={
+              step >= terminalStep
+                ? t('onboarding.finish', { defaultValue: 'Finish' })
+                : t('onboarding.next', { defaultValue: 'Continue' })
+            }
+            variant="primary"
+            disabled={!valid}
+            onPress={handleNext}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
