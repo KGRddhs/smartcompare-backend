@@ -76,3 +76,9 @@ export const Hammer = createIcon('Hammer');
 export const MousePointerClick = createIcon('MousePointerClick');
 export const Leaf = createIcon('Leaf');
 export const HeartPulse = createIcon('HeartPulse');
+// Bundle E F-S2.W2.hotfix (task #38) — Step10 + Step11 per-option glyphs.
+// Camera + Search + ShoppingBag + ShieldCheck + Zap + Sparkles already
+// declared above; add Users + Music + MoreHorizontal.
+export const Users = createIcon('Users');
+export const Music = createIcon('Music');
+export const MoreHorizontal = createIcon('MoreHorizontal');

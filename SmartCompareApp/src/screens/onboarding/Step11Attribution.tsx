@@ -25,6 +25,14 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import {
+  Users,
+  Camera,
+  Music,
+  ShoppingBag,
+  Search,
+  MoreHorizontal,
+} from 'lucide-react-native';
 import { OptionRow } from '../../components/primitives/OptionRow';
 import { colors, spacing, typography } from '../../theme';
 import { OnboardingAttributionSource } from './types';
@@ -32,6 +40,39 @@ import { OnboardingAttributionSource } from './types';
 interface Props {
   value?: OnboardingAttributionSource;
   onChange: (source: OnboardingAttributionSource) => void;
+}
+
+// F-S2.W2.hotfix (task #38): per-source lucide-react-native icons.
+// Ahmed's W2 device walk caught empty circles on Step11 — W2 shipped
+// label-only OptionRow rows. Icon mapping:
+//   - friend    → Users (group of two)
+//   - instagram → Camera (Instagram brand glyph removed from
+//                 lucide-react-native v1.x; Camera is the semantic
+//                 stand-in for a photo-sharing source)
+//   - tiktok    → Music (TikTok is a music-video platform; lucide
+//                 dropped brand glyphs in v1.x)
+//   - app_store → ShoppingBag (app marketplace)
+//   - google    → Search (search-driven discovery)
+//   - other     → MoreHorizontal (3-dot fallback)
+// All 6 verified as lucide-react-native@1.14.0 exports (or aliases:
+// MoreHorizontal → Ellipsis).
+const ICON_SIZE = 20;
+const ICON_STROKE = 2;
+function sourceIcon(key: OnboardingAttributionSource, color: string): React.ReactNode {
+  switch (key) {
+    case 'friend':
+      return <Users size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'instagram':
+      return <Camera size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'tiktok':
+      return <Music size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'app_store':
+      return <ShoppingBag size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'google':
+      return <Search size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'other':
+      return <MoreHorizontal size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+  }
 }
 
 const SOURCES: { value: OnboardingAttributionSource; labelKey: string }[] = [
@@ -51,16 +92,24 @@ export function Step11Attribution({ value, onChange }: Props) {
       <Text style={styles.title}>{t('onboarding.s11.title')}</Text>
 
       <View style={styles.list}>
-        {SOURCES.map((s) => (
-          <OptionRow
-            key={s.value}
-            testID={`attr-${s.value}`}
-            option={{ key: s.value, label: t(s.labelKey) }}
-            active={value === s.value}
-            onToggle={() => onChange(s.value)}
-            style="icon-circle"
-          />
-        ))}
+        {SOURCES.map((s) => {
+          const active = value === s.value;
+          const iconColor = active ? colors.accentDark : colors.text.primary;
+          return (
+            <OptionRow
+              key={s.value}
+              testID={`attr-${s.value}`}
+              option={{
+                key: s.value,
+                label: t(s.labelKey),
+                icon: sourceIcon(s.value, iconColor),
+              }}
+              active={active}
+              onToggle={() => onChange(s.value)}
+              style="icon-circle"
+            />
+          );
+        })}
       </View>
     </View>
   );

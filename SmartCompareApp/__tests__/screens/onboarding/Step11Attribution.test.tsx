@@ -46,4 +46,18 @@ describe('Step11Attribution', () => {
     expect(getByTestId('attr-tiktok').props.accessibilityState?.selected).toBe(true);
     expect(getByTestId('attr-friend').props.accessibilityState?.selected).toBe(false);
   });
+
+  // F-S2.W2.hotfix (task #38): per-source lucide icons inside the
+  // OptionRow icon-circle. Ahmed's W2 device walk caught empty
+  // circles on Step11 — W2 shipped label-only rows. Regression-guard
+  // each row has a ReactNode icon mounted via the lucide mock.
+  it('renders a per-source icon inside each OptionRow icon-circle', () => {
+    const { getAllByTestId } = render(
+      <Step11Attribution onChange={jest.fn()} />
+    );
+    // OptionRow exposes testID="option-row-icon-node" for the
+    // ReactNode-icon render path (vs "option-row-icon-glyph" for
+    // string icons). One node per row → 6 total.
+    expect(getAllByTestId('option-row-icon-node').length).toBe(6);
+  });
 });

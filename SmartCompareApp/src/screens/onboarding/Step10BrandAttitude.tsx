@@ -27,6 +27,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { ShieldCheck, Zap, Sparkles } from 'lucide-react-native';
 import { OptionRow } from '../../components/primitives/OptionRow';
 import { colors, spacing, typography } from '../../theme';
 import { OnboardingBrandAttitude } from './types';
@@ -34,6 +35,35 @@ import { OnboardingBrandAttitude } from './types';
 interface Props {
   value?: OnboardingBrandAttitude;
   onChange: (b: OnboardingBrandAttitude) => void;
+}
+
+// F-S2.W2.hotfix (task #38): per-attitude lucide-react-native icons
+// inside the icon-circle slot. Ahmed's W2 device walk caught the
+// empty circles on Step10 — my W2 ship shipped OptionRow icon-circle
+// rows with NO `icon` field (label+sub only). The icon mapping
+// matches the brand-attitude semantics:
+//   - brand_loyal    → ShieldCheck (trust + name protection)
+//   - function_first → Zap (function-first power)
+//   - best_of_both   → Sparkles (balance / nuanced pick)
+// All 3 verified as lucide-react-native@1.14.0 exports.
+const ICON_SIZE = 20;
+const ICON_STROKE = 2;
+function attitudeIcon(key: OnboardingBrandAttitude, color: string): React.ReactNode {
+  switch (key) {
+    case 'brand_loyal':
+      return <ShieldCheck size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'function_first':
+      return <Zap size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'best_of_both':
+      return <Sparkles size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    // trust_known_brands is cohort-derived (NOT user-pickable here)
+    // per qaren-cohort skill rule — fall through to empty so the
+    // type-narrowed switch stays exhaustive without rendering a
+    // glyph if the value somehow leaks in.
+    case 'trust_known_brands':
+    default:
+      return null;
+  }
 }
 
 const ATTITUDES: {
@@ -54,16 +84,28 @@ export function Step10BrandAttitude({ value, onChange }: Props) {
       <Text style={styles.title}>{t('onboarding.s10.title')}</Text>
 
       <View style={styles.list}>
-        {ATTITUDES.map((a) => (
-          <OptionRow
-            key={a.value}
-            testID={`brand-${a.value}`}
-            option={{ key: a.value, label: t(a.labelKey), sub: t(a.subKey) }}
-            active={value === a.value}
-            onToggle={() => onChange(a.value)}
-            style="icon-circle"
-          />
-        ))}
+        {ATTITUDES.map((a) => {
+          const active = value === a.value;
+          // Active row's circle bg flips to accentLight; icon glyph
+          // adopts accentDark to maintain stroke contrast — same
+          // contract as Step08Priorities lucide glyphs.
+          const iconColor = active ? colors.accentDark : colors.text.primary;
+          return (
+            <OptionRow
+              key={a.value}
+              testID={`brand-${a.value}`}
+              option={{
+                key: a.value,
+                label: t(a.labelKey),
+                sub: t(a.subKey),
+                icon: attitudeIcon(a.value, iconColor),
+              }}
+              active={active}
+              onToggle={() => onChange(a.value)}
+              style="icon-circle"
+            />
+          );
+        })}
       </View>
     </View>
   );

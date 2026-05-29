@@ -34,4 +34,18 @@ describe('Step10BrandAttitude', () => {
     );
     expect(getByTestId('brand-brand_loyal').props.accessibilityState?.selected).toBe(true);
   });
+
+  // F-S2.W2.hotfix (task #38): per-attitude lucide icons inside the
+  // OptionRow icon-circle. Ahmed's W2 device walk caught empty
+  // circles on Step10 — W2 shipped label+sub only. Regression-guard
+  // each row has a ReactNode icon mounted via the lucide mock.
+  it('renders a per-attitude icon inside each OptionRow icon-circle', () => {
+    const { getAllByTestId } = render(
+      <Step10BrandAttitude onChange={jest.fn()} />
+    );
+    // OptionRow exposes testID="option-row-icon-node" for the
+    // ReactNode-icon render path (vs "option-row-icon-glyph" for
+    // string icons). One node per row → 3 total.
+    expect(getAllByTestId('option-row-icon-node').length).toBe(3);
+  });
 });
