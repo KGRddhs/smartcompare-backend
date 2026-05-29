@@ -22,6 +22,7 @@ import Animated, {
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/Button';
 import { PeerLattice } from '../../components/hero/PeerLattice';
+import { CohortBullet } from '../../components/primitives/CohortBullet';
 import { colors, spacing, typography } from '../../theme';
 
 interface Props {
@@ -37,6 +38,12 @@ const FADE_MS = 320;
 // land as a sequenced reveal rather than a simultaneous overlay.
 const BULLET_START_DELAY_MS = 1000;
 
+// F-S2.W1: Inner content swapped from <Animated.Text> to the S0.3
+// <CohortBullet> primitive (emerald-tint 24px circle + check glyph +
+// bullet text per JSX OnboardingCohortScreen.jsx:22-39). The stagger
+// fade+slide animation now wraps CohortBullet in an <Animated.View>
+// per prep doc § Step12 — same choreography contract, primitive owns
+// the visual recipe.
 function StaggeredBullet({
   text,
   delayMs,
@@ -65,10 +72,15 @@ function StaggeredBullet({
     transform: [{ translateY: translateY.value }],
   }));
 
+  // testID stays on the Animated.View wrapper (the staggered host) so
+  // the existing test contract (s12-bullet-N has opacity + transform on
+  // its style) survives the primitive swap. The inner CohortBullet is
+  // visually rendered with its standard testID="cohort-bullet" pattern;
+  // tests targeting specific bullets target the wrapper.
   return (
-    <Animated.Text style={[styles.bullet, animatedStyle]} testID={testID}>
-      {text}
-    </Animated.Text>
+    <Animated.View style={animatedStyle} testID={testID}>
+      <CohortBullet icon="check" text={text} />
+    </Animated.View>
   );
 }
 
@@ -142,16 +154,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     paddingHorizontal: spacing.lg,
   },
+  // F-S2.W1: CohortBullet primitive owns the per-row layout (24px circle
+  // + 15/500 left-aligned text), so the outer container only sets the
+  // vertical gap + horizontal padding. Removed the bullet text style
+  // and the alignItems:'center' centering (CohortBullet left-aligns by
+  // design per JSX OnboardingCohortScreen.jsx).
   bullets: {
     gap: spacing.md,
     paddingHorizontal: spacing.md,
     marginTop: spacing.md,
-    alignItems: 'center',
-  },
-  bullet: {
-    ...typography.body,
-    color: colors.text.secondary,
-    textAlign: 'center',
   },
   footer: {
     paddingTop: spacing.lg,
