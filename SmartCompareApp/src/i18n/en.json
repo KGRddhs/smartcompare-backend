@@ -537,9 +537,15 @@
   "loading.cohort.caption": "cohort peers refining your match",
 
   "onboarding.s15.title": "Your shopping advisor is ready",
+  "onboarding.s15.subtitle": "Tuned to your priorities. Trained by your peers.",
+  "onboarding.s15.match_strong": "Strong match",
   "onboarding.s15.match_quality": "Match",
   "onboarding.s15.top_priority": "Top priority",
   "onboarding.s15.budget_tier": "Budget tier",
+  "onboarding.s15.peers_in": "Peers in {{governorate}}",
+  "onboarding.s15.gcc_cohort": "GCC cohort",
+  "onboarding.s15.empty_priority": "—",
+  "onboarding.s15.empty_budget": "—",
   "onboarding.s15.peer_count": "Peers in your region",
   "onboarding.s15.cta": "Compare your first product",
 

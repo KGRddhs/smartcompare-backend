@@ -534,9 +534,15 @@
   "loading.cohort.caption": "متسوقًا في مجموعتك يحسّنون نتيجتك",
 
   "onboarding.s15.title": "مستشار التسوّق جاهز",
+  "onboarding.s15.subtitle": "مُعاير لأولوياتك. مُدرَّب بأمثالك.",
+  "onboarding.s15.match_strong": "تطابق قوي",
   "onboarding.s15.match_quality": "التطابق",
   "onboarding.s15.top_priority": "أولويتك الأولى",
   "onboarding.s15.budget_tier": "فئة الميزانية",
+  "onboarding.s15.peers_in": "أمثالك في {{governorate}}",
+  "onboarding.s15.gcc_cohort": "مجموعة الخليج",
+  "onboarding.s15.empty_priority": "—",
+  "onboarding.s15.empty_budget": "—",
   "onboarding.s15.peer_count": "أمثالك في منطقتك",
   "onboarding.s15.cta": "قارن أول منتج لك",
 
