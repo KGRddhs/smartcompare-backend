@@ -52,15 +52,7 @@ import {
   Settings,
   Shield,
 } from 'lucide-react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  interpolateColor,
-} from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 import { colors, spacing, radii, typography } from '../theme';
-import { motion } from '../theme/motion';
 import { useLanguage } from '../hooks/useLanguage';
 import {
   changePassword,
@@ -84,111 +76,6 @@ import {
 interface ProfileScreenProps {
   navigation: any;
   onLogout: () => void;
-}
-
-// F-S1.5n: animated EN/عر language segment for the ACCOUNT row right slot.
-// Replaces the prior two-TouchableOpacity instant-snap toggle with a single
-// pill that slides under the selected option using motion.modeSegment
-// (180ms, cubic-bezier 0.32 0.72 0 1 — same curve as screenTransition).
-// Text colors interpolate with the pill position. Light haptic on flip.
-// LTR positions the pill 0% → 50%; RTL is handled at the JSX layer by
-// passing index 1 for the 'ar' option since the picker already
-// auto-mirrors the layout via flexDirection.
-const LANG_SEGMENT_WIDTH = 64; // 2 × 32 — matches existing langOption rhythm
-const LANG_SEGMENT_HEIGHT = 28;
-
-interface LanguageSegmentProps {
-  value: 'en' | 'ar';
-  onChange: (next: 'en' | 'ar') => void;
-}
-
-function LanguageSegment({ value, onChange }: LanguageSegmentProps) {
-  // 0 → EN (left), 1 → AR (right). The pill translates by half the
-  // container width and the text colors interpolate against this same
-  // progress value.
-  const progress = useSharedValue(value === 'ar' ? 1 : 0);
-
-  React.useEffect(() => {
-    progress.value = withTiming(value === 'ar' ? 1 : 0, motion.modeSegment);
-  }, [value, progress]);
-
-  const pillStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * (LANG_SEGMENT_WIDTH / 2) }],
-  }));
-
-  const enTextStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      progress.value,
-      [0, 1],
-      [colors.bg.primary, colors.text.secondary],
-    ),
-  }));
-
-  const arTextStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      progress.value,
-      [0, 1],
-      [colors.text.secondary, colors.bg.primary],
-    ),
-  }));
-
-  const fireHaptic = () => {
-    // motion.haptic.chip = 'light' — confidence-only feedback per
-    // Build Principle #4 (no warning / error / heavy intensities).
-    try {
-      const maybe = Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      if (maybe && typeof (maybe as Promise<unknown>).catch === 'function') {
-        (maybe as Promise<unknown>).catch(() => {});
-      }
-    } catch {
-      /* no-op — haptic is best-effort */
-    }
-  };
-
-  const pickEn = () => {
-    if (value === 'en') return;
-    fireHaptic();
-    onChange('en');
-  };
-  const pickAr = () => {
-    if (value === 'ar') return;
-    fireHaptic();
-    onChange('ar');
-  };
-
-  return (
-    <View
-      testID="profile-language-segment"
-      style={styles.langSegmentTrack}
-      accessibilityRole="radiogroup"
-    >
-      <Animated.View style={[styles.langSegmentPill, pillStyle]} />
-      <TouchableOpacity
-        testID="profile-language-en"
-        style={styles.langSegmentSlot}
-        onPress={pickEn}
-        accessibilityRole="radio"
-        accessibilityState={{ selected: value === 'en' }}
-        accessibilityLabel="English"
-      >
-        <Animated.Text style={[styles.langSegmentText, enTextStyle]}>
-          EN
-        </Animated.Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        testID="profile-language-ar"
-        style={styles.langSegmentSlot}
-        onPress={pickAr}
-        accessibilityRole="radio"
-        accessibilityState={{ selected: value === 'ar' }}
-        accessibilityLabel="العربية"
-      >
-        <Animated.Text style={[styles.langSegmentText, arTextStyle]}>
-          عر
-        </Animated.Text>
-      </TouchableOpacity>
-    </View>
-  );
 }
 
 export default function ProfileScreen({ navigation, onLogout }: ProfileScreenProps) {
@@ -560,10 +447,20 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
             label={t('profile.language')}
             testID="profile-row-language"
             right={
-              <LanguageSegment
-                value={language === 'ar' ? 'ar' : 'en'}
-                onChange={switchLanguage}
-              />
+              <View style={styles.langToggle}>
+                <TouchableOpacity
+                  style={[styles.langOption, language === 'en' && styles.langOptionActive]}
+                  onPress={() => switchLanguage('en')}
+                >
+                  <Text style={[styles.langText, language === 'en' && styles.langTextActive]}>EN</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.langOption, language === 'ar' && styles.langOptionActive]}
+                  onPress={() => switchLanguage('ar')}
+                >
+                  <Text style={[styles.langText, language === 'ar' && styles.langTextActive]}>عر</Text>
+                </TouchableOpacity>
+              </View>
             }
           />
 
@@ -885,43 +782,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base,
     paddingBottom: spacing.sm,
   },
-  // ACCOUNT row 4 — F-S1.5n animated EN/عر LanguageSegment (right-slot
-  // content). Track is the outer rounded pill; the inner pill (absolute)
-  // slides under the selected slot via motion.modeSegment. Two slots
-  // sit on top with their text colors interpolating against the slide.
-  langSegmentTrack: {
-    width: LANG_SEGMENT_WIDTH,
-    height: LANG_SEGMENT_HEIGHT,
+  // ACCOUNT row 4 — Language EN/عر toggle (right-slot content)
+  langToggle: {
     flexDirection: 'row',
     borderWidth: 1,
     borderColor: colors.border.light,
     borderRadius: radii.chip,
     overflow: 'hidden',
-    position: 'relative',
-    alignItems: 'stretch',
   },
-  langSegmentPill: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: LANG_SEGMENT_WIDTH / 2,
+  langOption: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  langOptionActive: {
     backgroundColor: colors.accent,
-    // Inner borderRadius matches the track (minus the 1px border) so the
-    // pill sits flush at either end without a visible halo.
-    borderRadius: radii.chip,
   },
-  langSegmentSlot: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  langSegmentText: {
+  langText: {
     ...typography.caption,
     fontWeight: '600',
-    // Color is interpolated per-slot in the inline component via
-    // useAnimatedStyle + interpolateColor, so the base style only
-    // carries weight + sizing.
+    color: colors.text.secondary,
+  },
+  langTextActive: {
+    color: colors.bg.primary,
   },
   // Modal (password change) — unchanged from pre-rewrite
   modalOverlay: {
