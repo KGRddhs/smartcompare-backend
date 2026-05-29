@@ -44,6 +44,20 @@ const BULLET_START_DELAY_MS = 1000;
 // fade+slide animation now wraps CohortBullet in an <Animated.View>
 // per prep doc § Step12 — same choreography contract, primitive owns
 // the visual recipe.
+//
+// F-S2.W1.hotfix (task #35): On device the bullets rendered invisible
+// because the outer Animated.View had no width style + the parent
+// bullets container uses alignItems:'center'. With alignItems:center
+// children that don't set width OR alignSelf:'stretch' collapse to
+// their content's intrinsic size, but CohortBullet's row uses
+// `flex: 1` on the text label which distributes 0 extra space when
+// the row itself has no width constraint — net result: row collapses
+// horizontally and the text becomes 0-width / invisible. Fix: stretch
+// the Animated.View to its parent's width via `alignSelf: 'stretch'`
+// so the inner row has room to lay out the text label. Jest didn't
+// catch this because RN's test renderer doesn't enforce layout
+// constraints (text always reports its full string), only the device
+// runtime collapses the row.
 function StaggeredBullet({
   text,
   delayMs,
@@ -72,13 +86,11 @@ function StaggeredBullet({
     transform: [{ translateY: translateY.value }],
   }));
 
-  // testID stays on the Animated.View wrapper (the staggered host) so
-  // the existing test contract (s12-bullet-N has opacity + transform on
-  // its style) survives the primitive swap. The inner CohortBullet is
-  // visually rendered with its standard testID="cohort-bullet" pattern;
-  // tests targeting specific bullets target the wrapper.
   return (
-    <Animated.View style={animatedStyle} testID={testID}>
+    <Animated.View
+      style={[styles.bulletStretch, animatedStyle]}
+      testID={testID}
+    >
       <CohortBullet icon="check" text={text} />
     </Animated.View>
   );
@@ -159,10 +171,26 @@ const styles = StyleSheet.create({
   // vertical gap + horizontal padding. Removed the bullet text style
   // and the alignItems:'center' centering (CohortBullet left-aligns by
   // design per JSX OnboardingCohortScreen.jsx).
+  //
+  // F-S2.W1.hotfix (task #35): bullets container sits inside heroBlock
+  // which uses alignItems:'center'. Without alignSelf:'stretch' on the
+  // bullets container, the column shrinks to the widest child's
+  // intrinsic width — which on device became the circle+gap only,
+  // hiding the bullet text. Stretch the container + each Animated.View
+  // child so the inner CohortBullet row has horizontal room to lay
+  // out its label.
   bullets: {
     gap: spacing.md,
     paddingHorizontal: spacing.md,
     marginTop: spacing.md,
+    alignSelf: 'stretch',
+  },
+  // F-S2.W1.hotfix: stretch each animated bullet wrapper to the
+  // bullets container width so the inner CohortBullet row's flex:1
+  // text has horizontal space to render. Without this, the inner row
+  // collapses to 24px (circle width) on device.
+  bulletStretch: {
+    alignSelf: 'stretch',
   },
   footer: {
     paddingTop: spacing.lg,
