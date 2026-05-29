@@ -126,6 +126,14 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
 
   const avatarLetter = (user?.display_name || user?.email || '?')[0]?.toUpperCase() ?? '?';
 
+  // F-S1.5l: Apple "Hide My Email" wraps the user's real address behind a
+  // `@privaterelay.appleid.com` alias the user never typed. Surfacing that
+  // relay address in the email row feels like leakage; the JSX spec masks
+  // it with an "Apple ID" label and a "kept private by Apple" caption.
+  // Suffix check is sufficient — Apple guarantees the relay TLD.
+  const isAppleRelay =
+    !!user?.email && user.email.toLowerCase().endsWith('@privaterelay.appleid.com');
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -166,8 +174,28 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
             maxLength={100}
             editable={!saving}
           />
-          <Text style={styles.fieldLabel}>{t('auth.email')}</Text>
-          <Text style={styles.readonly}>{user?.email ?? '—'}</Text>
+          {/* F-S1.5l: mask Apple Hide-My-Email relay address. The user
+              never typed the @privaterelay.appleid.com alias, so showing
+              it here reads like leakage. Swap to "Apple ID" label +
+              "Email kept private by Apple" caption when the suffix
+              matches. */}
+          {isAppleRelay ? (
+            <>
+              <Text style={styles.fieldLabel}>
+                {t('editprofile.email.appleLabel', { defaultValue: 'Apple ID' })}
+              </Text>
+              <Text style={styles.readonly}>
+                {t('editprofile.email.applePrivate', {
+                  defaultValue: 'Email kept private by Apple',
+                })}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.fieldLabel}>{t('auth.email')}</Text>
+              <Text style={styles.readonly}>{user?.email ?? '—'}</Text>
+            </>
+          )}
         </View>
 
         {/* Style profile entry */}

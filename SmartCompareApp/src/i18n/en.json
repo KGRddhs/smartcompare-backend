@@ -653,6 +653,8 @@
   "editProfile.dangerZone": "Account actions",
   "editProfile.deleteAccount": "Delete account",
   "editProfile.error.deleteTitle": "Something didn't go through",
+  "editprofile.email.appleLabel": "Apple ID",
+  "editprofile.email.applePrivate": "Email kept private by Apple",
 
   "common.error.generic": "Hold on — something didn't go through.",
 
