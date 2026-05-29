@@ -419,7 +419,12 @@ function StepContent({
         />
       )}
       {step === 12 && <Step12CohortProof onNext={onNext} />}
-      {step === 13 && <Step13Anticipation onNext={onNext} />}
+      {step === 13 && (
+        <Step13Anticipation
+          onNext={onNext}
+          governorate={data.governorate}
+        />
+      )}
       {step === 14 && (
         <Step14Loading
           cohortPeerCount={47}
