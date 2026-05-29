@@ -371,7 +371,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
-    gap: spacing.xl,
+    // F-S2.hotfix4 #44.1: gap reduced from xl → md so the trailing
+    // LoadingTipsCarousel stays visible inside the safe-area on
+    // shorter iPhones. With xl gap the cumulative LoadingRings + caption
+    // + StageChecklist + tips overflowed center-aligned and the tip
+    // factoid clipped mid-sentence (Ahmed's screenshot showed "73% of
+    // the GCC shoppers your age prioritize" with the rest cut off).
+    gap: spacing.md,
+    paddingBottom: spacing.sm,
   },
   cohortFooter: {
     ...typography.body,

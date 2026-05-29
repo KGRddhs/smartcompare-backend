@@ -155,14 +155,14 @@ const styles = StyleSheet.create({
   heroBlock: {
     flex: 1,
     alignItems: 'center',
-    paddingTop: spacing.xl,
+    paddingTop: spacing.md,
   },
   previewCard: {
     width: '100%',
     backgroundColor: colors.bg.secondary,
     borderRadius: radii.card,
-    padding: spacing.lg,
-    marginBottom: spacing['2xl'],
+    padding: spacing.md,
+    marginTop: spacing.lg,
   },
   previewBrand: {
     ...typography.eyebrow,
@@ -226,14 +226,14 @@ const styles = StyleSheet.create({
   // Tag function (349-365).
   tags: {
     width: '100%',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: spacing.xs,
+    marginTop: spacing.md,
   },
   tag: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.base,
     borderRadius: radii.card,
     backgroundColor: colors.bg.secondary,
