@@ -230,6 +230,107 @@ describe('OnboardingFlow orchestrator', () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
+  // -----------------------------------------------------------------
+  // F-S2.step16-skip (task #42) — skip Step 16 Save Advisor when the
+  // user is pre-authenticated. App.tsx already gates the Onboarding
+  // stack on `isAuthenticated === true`, so the production wiring
+  // hard-codes `isAuthenticated={true}` at NewOnboardingHost. The
+  // OnboardingFlow prop defaults `false` so the original 17-step
+  // sequence is preserved for any future call site.
+  // -----------------------------------------------------------------
+  describe('F-S2.step16-skip — Step 16 omission when isAuthenticated', () => {
+    it('default (anonymous): renders 17-step sequence + denominator 17', () => {
+      const { getByTestId } = render(<OnboardingFlow onComplete={noop} />);
+      const bar = getByTestId('onboarding-progress');
+      expect(bar.props['data-total-steps']).toBe(17);
+      expect(bar.props['data-current-step']).toBe(1);
+      expect(bar.props['data-current-step-index']).toBe(1);
+    });
+
+    it('authenticated: renders 16-step sequence + denominator 16 (Step 16 skipped)', () => {
+      const { getByTestId } = render(
+        <OnboardingFlow onComplete={noop} isAuthenticated />
+      );
+      const bar = getByTestId('onboarding-progress');
+      expect(bar.props['data-total-steps']).toBe(16);
+      expect(bar.props['data-current-step']).toBe(1);
+      expect(bar.props['data-current-step-index']).toBe(1);
+    });
+
+    it('authenticated: Step 15 next-press advances directly to Step 17 (skips Step 16)', () => {
+      const { getByTestId, queryByTestId } = render(
+        <OnboardingFlow onComplete={noop} initialStep={15} isAuthenticated />
+      );
+      expect(getByTestId('onboarding-step-15')).toBeTruthy();
+      // Step 15 owns its own CTA — press it to advance.
+      fireEvent.press(getByTestId('s15-cta'));
+      // Lands on Step 17, NOT Step 16. Step 16 is filtered out of
+      // the auth'd traversal sequence.
+      expect(getByTestId('onboarding-step-17')).toBeTruthy();
+      expect(queryByTestId('onboarding-step-16')).toBeNull();
+    });
+
+    it('anonymous: Step 15 next-press lands on Step 16 (sequence preserved)', () => {
+      const { getByTestId, queryByTestId } = render(
+        // No isAuthenticated prop — defaults to false, original 17-step path.
+        <OnboardingFlow onComplete={noop} initialStep={15} />
+      );
+      fireEvent.press(getByTestId('s15-cta'));
+      // Lands on Step 16, NOT Step 17. Original anonymous flow.
+      expect(getByTestId('onboarding-step-16')).toBeTruthy();
+      expect(queryByTestId('onboarding-step-17')).toBeNull();
+    });
+
+    it('authenticated: back from Step 17 lands on Step 15 (skips Step 16)', () => {
+      const { getByTestId, queryByTestId } = render(
+        <OnboardingFlow onComplete={noop} initialStep={17} isAuthenticated />
+      );
+      expect(getByTestId('onboarding-step-17')).toBeTruthy();
+      fireEvent.press(getByTestId('onboarding-back'));
+      // Retreats to Step 15, NOT Step 16. Sequence-aware.
+      expect(getByTestId('onboarding-step-15')).toBeTruthy();
+      expect(queryByTestId('onboarding-step-16')).toBeNull();
+    });
+
+    it('anonymous: back from Step 17 lands on Step 16 (sequence preserved)', () => {
+      const { getByTestId, queryByTestId } = render(
+        <OnboardingFlow onComplete={noop} initialStep={17} />
+      );
+      fireEvent.press(getByTestId('onboarding-back'));
+      // Retreats to Step 16 (original anonymous flow).
+      expect(getByTestId('onboarding-step-16')).toBeTruthy();
+      expect(queryByTestId('onboarding-step-17')).toBeNull();
+    });
+
+    it('authenticated: Step 17 is terminal — pressing s17-not-now calls onComplete (not Step 16 advance)', () => {
+      const onComplete = jest.fn();
+      const { getByTestId } = render(
+        <OnboardingFlow
+          onComplete={onComplete}
+          initialStep={17}
+          isAuthenticated
+        />
+      );
+      fireEvent.press(getByTestId('s17-not-now'));
+      // Step 17 is the last entry of AUTHED_STEP_SEQUENCE, so
+      // handleNext detects terminal and fires onComplete.
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it('authenticated: orchestrator Next chrome stays gated off on Step 17 (no duplicate button)', () => {
+      const { queryByTestId, getByTestId } = render(
+        <OnboardingFlow onComplete={noop} initialStep={17} isAuthenticated />
+      );
+      // F-S2.W4.hotfix invariant must hold in the auth'd flow too:
+      // Step 17 owns its own CTA, the orchestrator's Next is gated.
+      // Regression check that the dynamic sequence didn't accidentally
+      // re-introduce the chrome footer's Next button.
+      expect(queryByTestId('onboarding-next')).toBeNull();
+      expect(getByTestId('s17-allow')).toBeTruthy();
+      expect(getByTestId('s17-not-now')).toBeTruthy();
+    });
+  });
+
   it('passes accumulated data through onComplete', () => {
     const onComplete = jest.fn();
     const { getByTestId } = render(
