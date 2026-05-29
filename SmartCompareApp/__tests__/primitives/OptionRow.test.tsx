@@ -60,4 +60,83 @@ describe('OptionRow primitive', () => {
     );
     expect(getByTestId('row').props.accessibilityState?.selected).toBe(true);
   });
+
+  // F-S2.W1 extension — icon-in-circle + sub-line rendering.
+  describe('F-S2.W1 extension (icon glyph + sub line)', () => {
+    it('renders option.icon inside the circle when style="icon-circle"', () => {
+      const optionWithIcon = { key: 'bh', label: 'Bahrain', icon: '🇧🇭' };
+      const { getByTestId, getByText } = render(
+        <OptionRow
+          option={optionWithIcon}
+          active={false}
+          onToggle={() => {}}
+          style="icon-circle"
+        />,
+      );
+      expect(getByTestId('option-row-icon-glyph')).toBeTruthy();
+      expect(getByText('🇧🇭')).toBeTruthy();
+    });
+
+    it('does NOT render the icon glyph when style="plain" even if icon is set', () => {
+      const optionWithIcon = { key: 'bh', label: 'Bahrain', icon: '🇧🇭' };
+      const { queryByTestId } = render(
+        <OptionRow
+          option={optionWithIcon}
+          active={false}
+          onToggle={() => {}}
+          style="plain"
+        />,
+      );
+      expect(queryByTestId('option-row-icon-glyph')).toBeNull();
+    });
+
+    it('renders option.sub as a secondary line when provided', () => {
+      const optionWithSub = {
+        key: 'bh',
+        label: 'Bahrain',
+        sub: 'Capital, Muharraq, Northern, Southern',
+      };
+      const { getByText, getByTestId } = render(
+        <OptionRow
+          option={optionWithSub}
+          active={false}
+          onToggle={() => {}}
+          style="icon-circle"
+        />,
+      );
+      expect(getByText('Bahrain')).toBeTruthy();
+      expect(getByText('Capital, Muharraq, Northern, Southern')).toBeTruthy();
+      expect(getByTestId('option-row-sub')).toBeTruthy();
+    });
+
+    it('does NOT render the sub slot when option.sub is absent (backward-compat)', () => {
+      const { queryByTestId } = render(
+        <OptionRow
+          option={sample}
+          active={false}
+          onToggle={() => {}}
+          style="icon-circle"
+        />,
+      );
+      expect(queryByTestId('option-row-sub')).toBeNull();
+    });
+
+    it('backward-compat: empty icon circle still renders when icon is unset', () => {
+      // Pre-S2 callers may pass only {key, label}. Circle must still render
+      // (as an empty 36px slot) — the only change is no glyph inside. The
+      // `sample` constant above ships an `icon: 'star'` so this test
+      // explicitly omits it.
+      const optionNoIcon = { key: 'quality', label: 'Quality' };
+      const { getByTestId, queryByTestId } = render(
+        <OptionRow
+          option={optionNoIcon}
+          active={false}
+          onToggle={() => {}}
+          style="icon-circle"
+        />,
+      );
+      expect(getByTestId('option-row-icon-circle')).toBeTruthy();
+      expect(queryByTestId('option-row-icon-glyph')).toBeNull();
+    });
+  });
 });
