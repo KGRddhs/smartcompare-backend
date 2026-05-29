@@ -413,6 +413,11 @@
   "onboarding.s3.continue": "متابعة",
 
   "onboarding.s4.title": "من أين تتسوق؟",
+  "onboarding.s4.title_before": "من أين ",
+  "onboarding.s4.title_accent": "تتسوق",
+  "onboarding.s4.title_after": "؟",
+  "onboarding.s4.subtitle": "العملة والمتاجر ومجتمع المتسوقين تتكيّف مع منطقتك.",
+  "onboarding.s4.bh_sub": "العاصمة، المحرّق، الشمالية، الجنوبية",
   "onboarding.s4.bahrain": "البحرين",
   "onboarding.s4.saudi_arabia": "السعودية",
   "onboarding.s4.uae": "الإمارات",

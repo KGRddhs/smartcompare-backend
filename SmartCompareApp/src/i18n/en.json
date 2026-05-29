@@ -416,6 +416,11 @@
   "onboarding.s3.continue": "Continue",
 
   "onboarding.s4.title": "Where are you shopping from?",
+  "onboarding.s4.title_before": "Where do you ",
+  "onboarding.s4.title_accent": "shop",
+  "onboarding.s4.title_after": "?",
+  "onboarding.s4.subtitle": "Currency, retailers, and peer cohort all calibrate to your region.",
+  "onboarding.s4.bh_sub": "Capital, Muharraq, Northern, Southern",
   "onboarding.s4.bahrain": "Bahrain",
   "onboarding.s4.saudi_arabia": "Saudi Arabia",
   "onboarding.s4.uae": "United Arab Emirates",
