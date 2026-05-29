@@ -22,6 +22,28 @@ interface Props {
   onDone: (granted: boolean) => void;
 }
 
+// JSX OnboardingExtras.jsx Tag function (349-365) — head + body pair
+// with emerald dot + bg.secondary card. Restrained per JSX, no SVG.
+function NotificationTag({
+  head,
+  body,
+  testID,
+}: {
+  head: string;
+  body: string;
+  testID?: string;
+}) {
+  return (
+    <View style={styles.tag} testID={testID}>
+      <View style={styles.tagDot} testID={`${testID}-dot`} />
+      <View style={styles.tagText}>
+        <Text style={styles.tagHead}>{head}</Text>
+        <Text style={styles.tagBody}>{body}</Text>
+      </View>
+    </View>
+  );
+}
+
 export function Step17Notifications({ onDone }: Props) {
   const { t } = useTranslation();
 
@@ -53,6 +75,44 @@ export function Step17Notifications({ onDone }: Props) {
 
         <Text style={styles.title}>{t('onboarding.s17.title')}</Text>
         <Text style={styles.subtitle}>{t('onboarding.s17.subtitle')}</Text>
+
+        {/* S2.W4 — 3 Tag rows per JSX OnboardingExtras.jsx:319-323 +
+            Tag function (349-365). Decision insights / Cohort echoes /
+            Smart shortcuts — head + body pair with emerald dot + bg.
+            secondary card. Restrained text-only (no SVG glyphs) per
+            JSX spec. */}
+        <View style={styles.tags} testID="s17-tags">
+          <NotificationTag
+            testID="s17-tag-insights"
+            head={t('onboarding.s17.tag_insights_head', {
+              defaultValue: 'Decision insights',
+            })}
+            body={t('onboarding.s17.tag_insights_body', {
+              defaultValue:
+                'When a peer match strengthens your last verdict.',
+            })}
+          />
+          <NotificationTag
+            testID="s17-tag-echoes"
+            head={t('onboarding.s17.tag_echoes_head', {
+              defaultValue: 'Cohort echoes',
+            })}
+            body={t('onboarding.s17.tag_echoes_body', {
+              defaultValue:
+                'When 5+ peers your age just compared the same pair.',
+            })}
+          />
+          <NotificationTag
+            testID="s17-tag-shortcuts"
+            head={t('onboarding.s17.tag_shortcuts_head', {
+              defaultValue: 'Smart shortcuts',
+            })}
+            body={t('onboarding.s17.tag_shortcuts_body', {
+              defaultValue:
+                'A heads-up when an item you scanned drops sharply.',
+            })}
+          />
+        </View>
       </View>
 
       <View style={styles.choices}>
@@ -155,5 +215,49 @@ const styles = StyleSheet.create({
   notNowLabel: {
     ...typography.body,
     color: colors.text.secondary,
+  },
+  // S2.W4 tag rows below the subtitle — restrained bg.secondary cards
+  // with an emerald dot + head/body pair per JSX OnboardingExtras.jsx
+  // Tag function (349-365).
+  tags: {
+    width: '100%',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
+    borderRadius: radii.card,
+    backgroundColor: colors.bg.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  tagDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+    marginTop: 6,
+    flexShrink: 0,
+  },
+  tagText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tagHead: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 13 * 1.3,
+    color: colors.text.primary,
+  },
+  tagBody: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 12 * 1.4,
+    color: colors.text.secondary,
+    marginTop: 2,
   },
 });

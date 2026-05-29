@@ -558,6 +558,12 @@
   "onboarding.s17.preview_meta": "الآن",
   "onboarding.s17.allow": "السماح بالإشعارات",
   "onboarding.s17.not_now": "لاحقاً",
+  "onboarding.s17.tag_insights_head": "نظرات حول قراراتك",
+  "onboarding.s17.tag_insights_body": "حين يعزّز تطابق من مجموعتك قرارك الأخير.",
+  "onboarding.s17.tag_echoes_head": "أصداء المجموعة",
+  "onboarding.s17.tag_echoes_body": "حين يقارن ٥+ من أمثالك نفس المنتجين.",
+  "onboarding.s17.tag_shortcuts_head": "اختصارات ذكية",
+  "onboarding.s17.tag_shortcuts_body": "تنبيه عند انخفاض حاد لسعر منتج مسحته.",
 
   "home.hero": "قارن أي شيء.",
   "home.headerCounter.free": "مجاناً",

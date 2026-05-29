@@ -33,10 +33,26 @@ describe('Step17Notifications', () => {
     expect(getByTestId('s17-preview')).toBeTruthy();
   });
 
-  it('renders both Allow and "Not now" CTAs', () => {
+  it('renders both Allow and "Maybe later" CTAs', () => {
     const { getByTestId } = render(<Step17Notifications onDone={jest.fn()} />);
     expect(getByTestId('s17-allow')).toBeTruthy();
     expect(getByTestId('s17-not-now')).toBeTruthy();
+  });
+
+  // S2.W4 — 3 Tag rows per JSX OnboardingExtras.jsx:319-323 below the
+  // headline anchor the value props before the permission prompt.
+  it('renders the 3 Tag rows below the headline (insights / echoes / shortcuts)', () => {
+    const { getByTestId, getByText } = render(
+      <Step17Notifications onDone={jest.fn()} />,
+    );
+    expect(getByTestId('s17-tags')).toBeTruthy();
+    expect(getByTestId('s17-tag-insights')).toBeTruthy();
+    expect(getByTestId('s17-tag-echoes')).toBeTruthy();
+    expect(getByTestId('s17-tag-shortcuts')).toBeTruthy();
+    // i18n key resolution under the mock pass-through t().
+    expect(getByText('onboarding.s17.tag_insights_head')).toBeTruthy();
+    expect(getByText('onboarding.s17.tag_echoes_head')).toBeTruthy();
+    expect(getByText('onboarding.s17.tag_shortcuts_head')).toBeTruthy();
   });
 
   it('calls expo-notifications.requestPermissionsAsync on Allow', async () => {
