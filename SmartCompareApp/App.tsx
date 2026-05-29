@@ -291,12 +291,6 @@ function App() {
             <Stack.Screen name="Auth">
               {(props) => <AuthNavigator {...props} onLoginSuccess={handleLoginSuccess} />}
             </Stack.Screen>
-            {/* Referral landing is reachable PRE-auth (no signup gate per design 3.5). */}
-            <Stack.Screen
-              name="ReferralLanding"
-              component={ReferralLandingScreen}
-            />
-            <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
           </>
         ) : needsPreferences ? (
           <Stack.Screen name="Onboarding">
@@ -396,14 +390,25 @@ function App() {
                 headerShown: false,
               }}
             />
-            {/* Authed users tapping a referral link still get the landing page. */}
-            <Stack.Screen
-              name="ReferralLanding"
-              component={ReferralLandingScreen}
-            />
-            <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
           </>
         )}
+
+        {/* Bundle E F-S1.5m (2026-05-29): hoisted out of both auth branches.
+            ReferralLanding + InviteeQuiz were previously hand-copied into
+            pre-auth and post-auth branches under the same `name` props,
+            which collapsed in React Navigation v7 as the same logical
+            route (same shape as F-S1.5j Onboarding fix). Both screens
+            handle their own auth-state branching internally, so they
+            don't need to live inside the conditional. Registering them
+            once at the Navigator-level keeps the linking config (L258:
+            `c/:share_token` → ReferralLanding, `q/:share_token` →
+            InviteeQuiz) unchanged and avoids the duplicate-name pattern
+            from memory feedback_react_navigation_duplicate_route_name.md. */}
+        <Stack.Screen
+          name="ReferralLanding"
+          component={ReferralLandingScreen}
+        />
+        <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -1,24 +1,23 @@
 /**
- * F-S1.5j regression — App.tsx must not register two Stack.Screens with the
- * name "Onboarding" across conditional branches.
+ * F-S1.5j + F-S1.5m regression — App.tsx must not register any two
+ * Stack.Screens with the same name across conditional branches.
  *
- * React Navigation v7 collapses conditional `<Stack.Screen>` with identical
- * `name` props into the same logical route, so when the parent's conditional
- * flips (e.g. `needsPreferences: true → false`), the navigator refuses to
- * swap routes and the user stays stuck on the first instance. This bit us
- * on Step 17 Finish (Bundle E F-S1.5j) and earlier on the same Onboarding
- * shape (main-lane hotfix 2e1ceb7 — never merged into the bundle-e
- * worktree until this fix).
+ * React Navigation v7 collapses conditional `<Stack.Screen>` with
+ * identical `name` props into the same logical route, so when the
+ * parent's conditional flips (e.g. `needsPreferences: true → false`),
+ * the navigator refuses to swap routes and the user stays stuck on
+ * the first instance.
  *
- * The matching memory file is `feedback_react_navigation_duplicate_route_name.md`.
+ * F-S1.5j (Onboarding) and F-S1.5m (ReferralLanding + InviteeQuiz)
+ * both shipped fixes for this pattern; this test enforces the global
+ * invariant so any future duplicate is caught before merge.
  *
- * This test pins the Onboarding split specifically because that is the
- * regression we shipped to fix. A separate audit of the wider App.tsx
- * Stack.Screen registry (ReferralLanding ×2, InviteeQuiz ×2 across Auth
- * + Main branches) is a known latent risk — those tracks haven't reproduced
- * a user-visible stuck-route bug yet, so they're documented as a follow-up
- * rather than a hard fail here. If they DO reproduce, extend this test to
- * cover the full name table.
+ * Matching memory file: `feedback_react_navigation_duplicate_route_name.md`.
+ *
+ * Implementation: static source scan. Counts every `<Stack.Screen name="X"`
+ * occurrence (handles both single-line and multi-line attribute forms)
+ * and asserts each name appears exactly once. Failure surfaces the full
+ * list of duplicate names so the offender is unambiguous.
  */
 
 import * as fs from 'fs';
@@ -37,15 +36,30 @@ function collectStackScreenNames(): string[] {
   return names;
 }
 
-describe('F-S1.5j — App.tsx Onboarding Stack.Screen names are distinct', () => {
-  it('exactly one Stack.Screen registers name="Onboarding"', () => {
+describe('F-S1.5j + F-S1.5m — App.tsx Stack.Screen names are globally unique', () => {
+  it('every Stack.Screen registers a distinct name', () => {
     const names = collectStackScreenNames();
-    const onboardingCount = names.filter((n) => n === 'Onboarding').length;
-    expect(onboardingCount).toBe(1);
+    expect(names.length).toBeGreaterThan(0);
+
+    const counts = new Map<string, number>();
+    for (const n of names) counts.set(n, (counts.get(n) ?? 0) + 1);
+
+    const duplicates = Array.from(counts.entries())
+      .filter(([, c]) => c > 1)
+      .map(([n, c]) => `${n} (×${c})`);
+
+    expect(duplicates).toEqual([]);
   });
 
-  it('the post-auth modal re-entry uses name="OnboardingEdit"', () => {
+  it('the post-auth Onboarding modal uses name="OnboardingEdit" (F-S1.5j)', () => {
     const names = collectStackScreenNames();
     expect(names).toContain('OnboardingEdit');
+    expect(names.filter((n) => n === 'Onboarding').length).toBe(1);
+  });
+
+  it('ReferralLanding + InviteeQuiz are registered exactly once each (F-S1.5m)', () => {
+    const names = collectStackScreenNames();
+    expect(names.filter((n) => n === 'ReferralLanding').length).toBe(1);
+    expect(names.filter((n) => n === 'InviteeQuiz').length).toBe(1);
   });
 });
