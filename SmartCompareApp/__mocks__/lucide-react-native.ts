@@ -82,3 +82,15 @@ export const HeartPulse = createIcon('HeartPulse');
 export const Users = createIcon('Users');
 export const Music = createIcon('Music');
 export const MoreHorizontal = createIcon('MoreHorizontal');
+// Bundle E F-S2.X3 — EditPreferencesFlow LifestylePicker per-tag glyphs.
+// HeartPulse + Leaf already declared above; add 9 new tag icons.
+// All verified as lucide-react-native@1.14.0 exports.
+export const Coins = createIcon('Coins');
+export const Cpu = createIcon('Cpu');
+export const Gem = createIcon('Gem');
+export const Minus = createIcon('Minus');
+export const Heart = createIcon('Heart');
+export const Plane = createIcon('Plane');
+export const ChefHat = createIcon('ChefHat');
+export const Mountain = createIcon('Mountain');
+export const Palette = createIcon('Palette');
