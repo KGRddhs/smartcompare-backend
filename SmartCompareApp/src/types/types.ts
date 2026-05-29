@@ -462,6 +462,14 @@ export type RootStackParamList = {
   // mode='edit' opens preferences in edit mode (e.g. from Profile screen).
   // source='styleProfile' signals an "inferred preferences" banner is appropriate.
   Onboarding: { mode?: 'edit'; source?: 'styleProfile' } | undefined;
+  // Bundle E F-S1.5j (2026-05-28): renamed from the second Stack.Screen that
+  // previously also carried name="Onboarding". RN-Navigation v7 treats two
+  // conditional Stack.Screen with the same name as the same route, so the
+  // fresh-flow → Main transition got stuck on Step 17 after onComplete. Same
+  // param shape as Onboarding for any future re-entry caller (none today
+  // post-F-S1.5c/d consolidation). See memory:
+  // feedback_react_navigation_duplicate_route_name.md
+  OnboardingEdit: { mode?: 'edit'; source?: 'styleProfile' } | undefined;
   Main: undefined;
   // Bucket A bugs 1 + 2: Results accepts three entry shapes —
   //   result            → pre-loaded comparison (Home text/SSE flow)

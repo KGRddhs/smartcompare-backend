@@ -57,9 +57,15 @@ const LIFESTYLE_OPTIONS = [
 
 const BRAND_OPTIONS = ['brand_loyal', 'function_first', 'best_of_both'] as const;
 
+// Bundle E F-S1.5j: this legacy screen is mounted under TWO route names —
+// "Onboarding" (fresh-flow at App.tsx:302) and "OnboardingEdit" (post-auth
+// modal at App.tsx:354 after the duplicate-name rename). Both share the
+// same param shape, so the navigation/route generics are widened to accept
+// either route key.
+type OnboardingRouteName = 'Onboarding' | 'OnboardingEdit';
 type Props = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
-  route?: NativeStackScreenProps<RootStackParamList, 'Onboarding'>['route'];
+  navigation: NativeStackNavigationProp<RootStackParamList, OnboardingRouteName>;
+  route?: NativeStackScreenProps<RootStackParamList, OnboardingRouteName>['route'];
   onComplete?: () => void;
 };
 

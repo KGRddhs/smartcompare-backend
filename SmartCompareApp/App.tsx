@@ -345,14 +345,22 @@ function App() {
               component={EditPreferencesFlow}
               options={{ presentation: 'modal' }}
             />
-            {/* Bundle D 1.F.3: "Edit style profile" re-entry path. The same
-                Onboarding screen name as the needs-preferences branch above,
-                but here it's registered permanently in the authed stack so
-                `navigation.navigate('Onboarding', { mode: 'edit', source:
-                'styleProfile' })` from Profile + EditProfile resolves to a
-                visible modal instead of a silent no-op. */}
+            {/* Bundle E F-S1.5j (2026-05-28): renamed from "Onboarding" to
+                "OnboardingEdit" to resolve the RN-Navigation v7 duplicate-
+                route-name pattern. The fresh-flow Stack.Screen at L302 also
+                used name="Onboarding"; React Navigation treated the two as
+                the same route, so when `needsPreferences` flipped false
+                after Step 17 fired onComplete, the navigator refused to
+                swap routes and the user stayed stuck on Step 17. Mirrors
+                the main-lane hotfix at 2e1ceb7 + memory feedback file
+                `feedback_react_navigation_duplicate_route_name.md`.
+                F-S1.5c/d consolidation already repointed every
+                "edit style profile" caller to EditPreferences, so this
+                modal entry has zero direct navigators today; the route
+                stays registered with a distinct name so future bundles
+                can reuse it without re-triggering the collision. */}
             <Stack.Screen
-              name="Onboarding"
+              name="OnboardingEdit"
               options={{ presentation: 'modal', headerShown: false }}
             >
               {(props) =>
