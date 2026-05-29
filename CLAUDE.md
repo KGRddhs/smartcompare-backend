@@ -25,7 +25,7 @@ These items DO NOT block TestFlight internal testing (≤100 invited testers) �
 5. **After major features:** update CLAUDE.md, MEMORY.md, `docs/CONTEXT_SESSION_LOG.md`.
 6. **Path-restricted commits in team sessions:** `git commit -m "msg" -- <paths>` — NOT `git commit -- <paths> -m "msg"` (the `--` is a path separator).
 7. **Push before deleting branches.** `git push` before `git branch -d`. Orphaned commits are recoverable via `git cherry-pick` from reflog within ~30 days but invisible to teammates.
-8. **Multi-agent stalls: escalate after 30 min.** 4-Opus teams stop processing inbox while staying "available". If silent >30 min with uncommitted state despite `SendMessage` nudges → dispatcher takeover. Pattern surfaced Session 47.
+8. **Multi-agent stalls: escalate after 30 min OR 3 silent nudges.** 4-Opus teams stop processing inbox while staying "available". If silent >30 min with uncommitted state despite `SendMessage` nudges → dispatcher takeover. Earlier trigger: if 3+ consecutive nudges produce zero tool-call evidence (no commit, grep, file read), spawn replacement OR take over directly via dispatcher session. Direct takeover is faster when user explicitly authorizes. Pattern surfaced Session 47 + reinforced Bundle E S2 2026-05-30 (frontend-v2 stalled across #40/#42/#43/#44; direct dispatcher edit+commit+OTA closed multiple rounds).
 
 ## Critical: Two app/ Directories
 
@@ -253,7 +253,7 @@ Full bundle narrative (Session 44 onwards, including Bundle B/C/D ships + hot-fi
 
 **[STATUS 2026-05-22 — Bundle C in prod]** `ENABLE_BUNDLE_C_SCORING=false` in Railway; code default also `false`. Flag gates ONE site (`scoring_service.py:944`) — `None vs MISSING_SCORE=50` swap. In prod, missing signals get `MISSING_SCORE=50`, so A.4.9 silent dim omission never fires. The other ~95% of Bundle C (A.3.x/A.4.5/A.4.7/A.5.x/A.6.x/A.7.x/A.9.x/A.10.x, frontend §B) is unconditional and live. Canonical: **`docs/BUNDLE_C_PROD_STATE.md`**. Discipline before trusting "shipped/always-on" claims: `memory/feedback_docs_vs_railway_env_drift.md`.
 
-**Active runtime:** Bundle D TestFlight Readiness merged 2026-05-25 (`6ee3aa5`) + Path A R1/R2 (`c0678d3`+`4aa9cff`). Latest `eas update` = Path A R2 on `preview` (Session 54). `STREAM_HARD_CAP_SECONDS=25.0`. `SCRAPING_MODE=soft` URL gate wired. Cold-cache wall: fragrances 15.4s / electronics 14.7s / supplements 10.4s; iPhone+Galaxy worst case 24.8s. Bundle E (visual fidelity) brainstorm fresh session — preflight `docs/plans/bundle-e-preflight.md`.
+**Active runtime:** Bundle D TestFlight Readiness merged 2026-05-25 (`6ee3aa5`) + Path A R1/R2. **Bundle E S2 visual-fidelity in flight on `feature/bundle-e-visual-fidelity` (~70 commits ahead of main, HEAD `d73ed8c` 2026-05-30)**; all 17 onboarding steps REWRITTEN per JSX kit + Profile/EditPrefs OptionRow + SlideTransition wrap + LoadingScreenVariants concentric+streaming + 6 hotfix rounds. Latest `eas update` group `e2c68c37-...` on `preview`. **NOT merged to main yet** — awaits Ahmed final device walk + S3 ship gate (pre-deploy smoke + Sentry watch + commit-to-main + TestFlight invite). `STREAM_HARD_CAP_SECONDS=25.0`. `SCRAPING_MODE=soft` URL gate wired. Cold-cache wall: fragrances 15.4s / electronics 14.7s / supplements 10.4s.
 
 **Workflows:** worktree-team (`git worktree add -b feature/<name> ../smartcompare-<name> main` → 4-Opus TeamCreate, **`mode: "bypassPermissions"` REQUIRED** else sandbox blocks Bash → cross-QA → merge `--no-ff`); subagent-driven (`Agent(isolation: "worktree")` x2 parallel for backend-only ~6-8 tasks, validated Session 50); plan-writing-via-4-Opus uses skeleton with `<!-- OWNED BY: name -->` anchors so 4 agents Edit one doc concurrently. **Arabic-as-default DROPPED** (Session 44).
 
@@ -264,6 +264,14 @@ Full bundle narrative (Session 44 onwards, including Bundle B/C/D ships + hot-fi
 
 ### EAS Update infrastructure
 See skill: `qaren-eas-deploy` (auto-loads when `eas update`, `eas build`, channel names, `runtimeVersion.policy`, or `expo.version` bumps are mentioned). Quick recall: OTA via `cd SmartCompareApp && eas update --branch <channel> --message "..."` — free, lands on next app open. Rebuild required for native module / app.json plugin changes. `appVersionSource: "remote"`. Interactive Expo commands (`eas login`, `eas build`) need a real terminal — Ahmed runs these directly.
+
+**Expo Updates two-launch propagation** — first relaunch downloads the new bundle in background while running the cached one; SECOND relaunch actually runs the new bundle. When the user says "fix didn't work" on a freshly-OTA'd bundle, ALWAYS suspect propagation first: force-close → wait 30s → reopen → see Home → force-close → reopen. ALSO: when `eas update` output shows `<sha>*` (trailing asterisk), the worktree had uncommitted changes past the message-claimed commit — `git log` before claiming OTA fired the named SHA. Bundle E S2 hit this ~4 times across rounds; root cause is always one of two-launch-propagation, asterisk-SHA-drift, OR cache.
+
+### Conditional step skip in multi-step flows
+Use a `stepSequence` array + `indexOf+1` traversal pattern rather than `step++` arithmetic when some steps are conditionally skipped. Preserves canonical step numbers for testIDs/analytics while letting iteration hop. Example: Step 16 skip when `isAuthenticated` in OnboardingFlow.tsx — `FULL_STEP_SEQUENCE=[1..17]` vs `AUTHED_STEP_SEQUENCE=[1..15,17]`; `handleNext = setStep(seq[seq.indexOf(step)+1])`. Pin both branches in tests.
+
+### "Needs organization" device feedback
+When the user says a screen "needs organization" without specifics, swap-the-render-order is usually the first fix to try (Bundle E Step 17 push card moved BELOW headline+subtitle vs above — single JSX-tree reorder, zero style churn, resolved the complaint). Spacing reductions on shared paddings/gaps are the second lever for "doesn't fit on screen" reports.
 
 ### Luxury brand detection
 `_is_luxury_brand()` + `COUNTERFEIT_KEYWORDS` filter across ALL categories. Tier 1.5 cascade: official brand → authorized retailers → GCC retailers (9 domains).
