@@ -141,19 +141,6 @@ export function NewOnboardingHost({
       initialStep={effectiveInitialStep}
       initialData={initialData}
       lastStep={effectiveLastStep}
-      // F-S2.step16-skip (task #42): NewOnboardingHost is only mounted
-      // by App.tsx's `isAuthenticated && needsPreferences` branch — by
-      // construction, any user reaching this host is already
-      // authenticated. Hard-code `isAuthenticated={true}` here so the
-      // orchestrator skips Step 16 ("Save your advisor — Sign in so
-      // X") which is redundant in current production.
-      //
-      // If a future flow ever needs to mount NewOnboardingHost for an
-      // anonymous user (e.g. anonymous-trial marketing surface),
-      // promote this to a prop on NewOnboardingHostProps + thread it
-      // through App.tsx. The OnboardingFlow prop already accepts
-      // `false` as the original-17-step default.
-      isAuthenticated={true}
     />
   );
 }

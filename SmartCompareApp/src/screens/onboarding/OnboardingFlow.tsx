@@ -97,39 +97,7 @@ interface OnboardingFlowProps {
    * limit the user to the style-profile subset (steps 8-10).
    */
   lastStep?: OnboardingStep;
-  /**
-   * F-S2.step16-skip (task #42): when true, Step16Account ("Save your
-   * advisor — Sign in so X") is omitted from the traversal. Step 15
-   * next-press advances directly to Step 17; back from Step 17 goes
-   * to Step 15; the progress denominator drops to 16; Step 16 is
-   * never mounted.
-   *
-   * Production wiring (App.tsx → NewOnboardingHost): the Onboarding
-   * stack is gated on `isAuthenticated === true` at the navigator
-   * level, so any user reaching this orchestrator is already
-   * authenticated. Asking them to "Save your advisor — Sign in so X"
-   * at Step 16 is redundant (Ahmed walk 2026-05-29, task #42).
-   *
-   * Defaults `false` so the original 17-step sequence is preserved
-   * for any future call site (e.g. an anonymous-trial flow) + for
-   * existing tests that don't pass the prop.
-   */
-  isAuthenticated?: boolean;
 }
-
-/**
- * Canonical step traversal orders. The authenticated variant filters
- * out Step 16 (Save Advisor — Sign in). Step state remains the canonical
- * numeric step (1..17) the rest of the codebase pivots on; the orchestrator
- * just navigates BY-SEQUENCE rather than by raw step++/-- so a 15 → 17
- * hop is a single index advance.
- */
-const FULL_STEP_SEQUENCE: ReadonlyArray<OnboardingStep> = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-];
-const AUTHED_STEP_SEQUENCE: ReadonlyArray<OnboardingStep> = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17,
-];
 
 /**
  * Steps that render their own CTA inline (no orchestrator footer needed).
@@ -198,27 +166,12 @@ export function OnboardingFlow({
   initialStep = 1,
   initialData,
   lastStep,
-  isAuthenticated = false,
 }: OnboardingFlowProps) {
+  const terminalStep: OnboardingStep = lastStep ?? ONBOARDING_TOTAL_STEPS;
   const { t } = useTranslation();
   const { isRTL, language } = useLanguage();
   const [step, setStep] = useState<OnboardingStep>(initialStep);
   const [data, setData] = useState<OnboardingFlowData>({ ...(initialData ?? {}) });
-
-  // F-S2.step16-skip (task #42): pick the traversal sequence at mount.
-  // `useMemo` so the array reference is stable across re-renders — the
-  // shape is fixed (no state-bearing fields), so this is cheap.
-  const stepSequence = useMemo<ReadonlyArray<OnboardingStep>>(() => {
-    const base = isAuthenticated ? AUTHED_STEP_SEQUENCE : FULL_STEP_SEQUENCE;
-    // `lastStep` (Bundle D edit-mode subset) trims the tail. We honor
-    // both inputs so the auth-skip composes with the edit-mode subset
-    // (Step 16 isn't in the edit subset 8-10 anyway, but the
-    // composition is contract-correct).
-    if (lastStep == null) return base;
-    return base.filter((s) => s <= lastStep);
-  }, [isAuthenticated, lastStep]);
-
-  const terminalStep: OnboardingStep = stepSequence[stepSequence.length - 1];
 
   /**
    * Canary-monitoring analytics (Task #53 + #58 follow-up).
@@ -289,61 +242,27 @@ export function OnboardingFlow({
     // step_number reflects the step the user just finished. fireEvent
     // closes over the current step value via the useCallback dep.
     fireEvent('onboarding_step_completed');
-    // F-S2.step16-skip: advance by sequence index, not by raw step++.
-    // In the auth'd sequence, advancing from 15 lands on 17 (not 16)
-    // because Step 16 isn't in the sequence array. terminalStep is
-    // already sequence-aware (the last entry).
-    const currentIndex = stepSequence.indexOf(step);
-    const isAtTerminal = currentIndex < 0 || currentIndex >= stepSequence.length - 1;
-    if (isAtTerminal) {
+    if (step >= terminalStep) {
       fireEvent('onboarding_completed');
       onComplete(data);
       return;
     }
-    setStep(stepSequence[currentIndex + 1]);
-  }, [valid, step, data, onComplete, fireEvent, stepSequence]);
+    setStep((prev: OnboardingStep) => (prev + 1) as OnboardingStep);
+  }, [valid, step, data, onComplete, fireEvent, terminalStep]);
 
   const handleBack = useCallback(() => {
-    setStep((prev: OnboardingStep) => {
-      // F-S2.step16-skip: retreat by sequence index. In the auth'd
-      // sequence, back from 17 lands on 15 (not 16). If the current
-      // step somehow isn't in the sequence (defensive — shouldn't
-      // happen under the prop contract), fall through to the
-      // pre-skip linear retreat so the user is never trapped.
-      const currentIndex = stepSequence.indexOf(prev);
-      if (currentIndex > 0) return stepSequence[currentIndex - 1];
-      if (currentIndex === 0) return prev; // at the first step
-      // Fallback: not in sequence. Linear retreat with a 1 floor.
-      return (prev > 1 ? ((prev - 1) as OnboardingStep) : prev);
-    });
-  }, [stepSequence]);
+    setStep((prev: OnboardingStep) => (prev > 1 ? ((prev - 1) as OnboardingStep) : prev));
+  }, []);
 
-  // F-S2.step16-skip: progress denominator reflects the actual
-  // sequence length. Auth'd flow = 16 steps; anonymous flow = 17.
-  // Current-index is 1-based so "Step 5 of 17" reads naturally.
-  const currentIndex = stepSequence.indexOf(step);
-  const totalSteps = stepSequence.length;
-  const currentStepDisplay = currentIndex >= 0 ? currentIndex + 1 : 1;
-  const progress = currentStepDisplay / totalSteps;
+  const progress = step / ONBOARDING_TOTAL_STEPS;
 
   return (
     <SafeAreaView style={styles.safe}>
       <View
         testID="onboarding-progress"
-        // Expose step totals on the host node for test assertions + a11y.
-        // ProgressBar itself owns the visual fill animation. The
-        // data-total-steps attribute reflects the ACTUAL traversal
-        // length: 16 in the auth'd flow (Step 16 skipped) and 17 in
-        // the anonymous flow. data-current-step exposes the canonical
-        // step number for assertion (still 17 even though 16 was
-        // skipped in the auth'd flow). data-current-step-index is the
-        // 1-based position within the active sequence, useful for
-        // "Step N of M" display assertions.
-        {...{
-          'data-total-steps': totalSteps,
-          'data-current-step': step,
-          'data-current-step-index': currentStepDisplay,
-        }}
+        // Expose step totals on the host node for test assertions and a11y.
+        // ProgressBar itself owns the visual fill animation.
+        {...{ 'data-total-steps': ONBOARDING_TOTAL_STEPS, 'data-current-step': step }}
         accessibilityRole="progressbar"
         accessibilityValue={{ now: Math.round(progress * 100), min: 0, max: 100 }}
         style={styles.progressWrap}
@@ -378,8 +297,6 @@ export function OnboardingFlow({
               data={data}
               setField={setField}
               t={t}
-              currentStepIndex={currentStepDisplay}
-              totalSteps={totalSteps}
               onNext={handleNext}
               onLoadingComplete={handleNext}
               onSelectAuthMethod={() => {
@@ -456,14 +373,6 @@ interface StepContentProps {
   // i18next's TFunction signature is variadic — the narrow type was a stub
   // from Phase 2 when only defaultValue was passed.
   t: (key: string, opts?: Record<string, unknown>) => string;
-  /**
-   * F-S2.step16-skip (task #42): the user-facing "Step X of Y" eyebrow
-   * should reflect the active traversal length — 16 in the auth'd flow,
-   * 17 in the anonymous flow. Passed through from the orchestrator so
-   * the eyebrow stays consistent with the progress-bar denominator.
-   */
-  currentStepIndex: number;
-  totalSteps: number;
 }
 
 interface StepContentExtraProps {
@@ -492,8 +401,6 @@ function StepContent({
   data,
   setField,
   t,
-  currentStepIndex,
-  totalSteps,
   onNext,
   onLoadingComplete,
   onSelectAuthMethod,
@@ -503,12 +410,9 @@ function StepContent({
     <View testID={`onboarding-step-${step}`} style={styles.stepBody}>
       <Text style={styles.stepEyebrow}>
         {t('onboarding.step_label', {
-          // F-S2.step16-skip: eyebrow shows position-in-sequence
-          // (1..totalSteps) not the canonical step number. Auth'd flow
-          // at Step 17 displays "Step 16 of 16" not "Step 17 of 16".
-          current: currentStepIndex,
-          total: totalSteps,
-          defaultValue: `Step ${currentStepIndex} of ${totalSteps}`,
+          current: step,
+          total: ONBOARDING_TOTAL_STEPS,
+          defaultValue: `Step ${step} of ${ONBOARDING_TOTAL_STEPS}`,
         })}
       </Text>
 
