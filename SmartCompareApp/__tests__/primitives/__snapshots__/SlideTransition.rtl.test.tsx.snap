@@ -11,7 +11,7 @@ exports[`SlideTransition — RTL/LTR snapshot mirror LTR snapshot — step=2 inc
       {
         "transform": [
           {
-            "translateX": 390,
+            "translateX": 0,
           },
         ],
       },
@@ -36,7 +36,7 @@ exports[`SlideTransition — RTL/LTR snapshot mirror RTL snapshot — step=2 inc
       {
         "transform": [
           {
-            "translateX": -390,
+            "translateX": 0,
           },
         ],
       },
