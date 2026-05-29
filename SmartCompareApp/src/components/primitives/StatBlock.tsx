@@ -34,7 +34,19 @@ function formatValue(value: string | number): string {
 export function StatBlock({ label, value, accent, testID }: Props) {
   return (
     <View style={styles.tile} testID={testID}>
-      <Text style={styles.label} numberOfLines={1}>
+      {/* F-S2.hotfix2 (task #39): allow the eyebrow label to wrap to 2
+          lines + adjustsFontSizeToFit so long Step15 labels like
+          "PEERS IN MUHARRAQ" / "PEERS IN NORTHERN" / "PEERS IN SOUTHERN"
+          don't truncate to "PEERS IN MUHARR…". Ahmed's W4 device walk
+          caught the clip on Bahrain governorate substitutions. The
+          0.85 minimumFontScale gives ~9.4px floor — still legible at
+          11px nominal, never drops below caption tier. */}
+      <Text
+        style={styles.label}
+        numberOfLines={2}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
+      >
         {label}
       </Text>
       <Text style={[styles.value, accent ? styles.valueAccent : null]} numberOfLines={1}>
