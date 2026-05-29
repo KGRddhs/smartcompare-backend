@@ -30,7 +30,13 @@ import {
   Easing,
 } from 'react-native-reanimated';
 import { colors, spacing, radii } from '../../theme';
-import { QaranIcon } from '../../icons/QaranIcon';
+// F-S2.W3.hotfix (task #37): swap center from QaranIcon (magnifier
+// mark, reads as "heavy black blob" at 96px with strokeWidth 10) to
+// QarenLogo (brand Q-ring with emerald accent dot). The brand mark is
+// the intended center per design doc § 3.2 LoadingRings — the
+// magnifier is the app-flow glyph for product comparison, NOT the
+// loading hero. Reduces visual weight + ships the actual brand cue.
+import QarenLogo from '../QarenLogo';
 import { motion } from '../../theme/motion';
 
 interface Props {
@@ -144,7 +150,12 @@ export function LoadingRings({
           })}
         </Svg>
         <View style={styles.center} pointerEvents="none" testID="loading-rings-logo">
-          <QaranIcon size={Math.round(size * 0.4)} />
+          {/* QarenLogo at 0.22 of the rings size — visually centered
+              against the 3-ring stack without bleeding into the inner
+              ring's r=60 footprint. Was QaranIcon at 0.4 (96px stroke
+              ~10px) which read as a heavy magnifier blob. The
+              QarenLogo Q-ring stays light + ships the brand mark. */}
+          <QarenLogo size={Math.round(size * 0.22)} />
         </View>
       </View>
       <View style={styles.chip} testID="loading-rings-counter-chip">

@@ -29,7 +29,9 @@ import { View, StyleSheet, Text } from 'react-native';
 import { LoadingRings } from '../components/hero/LoadingRings';
 import { StageChecklist, Stage } from '../components/StageChecklist';
 import { LoadingTipsCarousel } from '../components/LoadingTipsCarousel';
-import { CounterTicker } from '../components/CounterTicker';
+// CounterTicker import dropped per F-S2.W3.hotfix — LoadingRings hosts
+// the single counter chip now. The external duplicate chip + its
+// CounterTicker invocation are gone.
 import { colors, spacing, typography } from '../theme';
 
 interface Props {
@@ -53,14 +55,20 @@ interface Props {
   /** Cohort-peer copy under the rings (e.g. "47 peers in Capital"). */
   cohortFooter?: string;
   /**
-   * Y.B Bundle D rhythm preservation: numeric counter chip below the
-   * LoadingRings hero ("0 → 2,074" type beat) — the animation Ahmed
-   * explicitly liked on the Bundle D loading screen. Omit to skip the
-   * chip entirely. CounterTicker animates 0 → target over 2.4s per the
-   * Bundle D motion language.
+   * Y.B Bundle D rhythm preservation: target value for the counter chip
+   * inside the LoadingRings hero (ticks 0 → target over motion
+   * .counterTick = 2400ms). Per F-S2.W3.hotfix (#37) the external
+   * counter chip was de-duplicated — the count now renders inside the
+   * LoadingRings hero's built-in chip. LoadingRings defaults to 2074
+   * when this prop is omitted.
    */
   counterTarget?: number;
-  /** CounterTicker duration override (default 2,400ms per Bundle D feel). */
+  /**
+   * @deprecated F-S2.W3.hotfix — duration is owned by LoadingRings
+   * (motion.counterTick = 2400ms) now that the external chip is gone.
+   * Kept on the prop interface for back-compat with Step14 wiring
+   * but no longer consumed. Will be removed in a follow-up.
+   */
   counterDurationMs?: number;
   /**
    * Y.B Bundle D rhythm preservation: caption below the counter chip
@@ -87,7 +95,10 @@ export function LoadingScreenVariants({
   tipIntervalMs = DEFAULT_TIP_INTERVAL_MS,
   cohortFooter,
   counterTarget,
-  counterDurationMs = DEFAULT_COUNTER_DURATION_MS,
+  // counterDurationMs intentionally accepted-and-unused per
+  // F-S2.W3.hotfix deprecation note above; LoadingRings owns the
+  // tick duration via motion.counterTick.
+  counterDurationMs: _counterDurationMs = DEFAULT_COUNTER_DURATION_MS,
   caption,
   testID,
 }: Props) {
@@ -132,22 +143,19 @@ export function LoadingScreenVariants({
     <View style={styles.root} testID={testID}>
       {resolvedVariant === 'concentric' ? (
         <View style={styles.concentric} testID="loading-concentric">
-          <LoadingRings size={240} testID="loading-rings" />
-
-          {/* Y.B Bundle D rhythm: counter chip "0 → target" below the
-              rings — the animation Ahmed explicitly liked. Pill-styled
-              emerald chip with the ticking integer at typography.title
-              weight. Renders only when counterTarget is supplied. */}
-          {counterTarget != null ? (
-            <View style={styles.counterChip} testID="loading-counter-chip">
-              <CounterTicker
-                target={counterTarget}
-                duration={counterDurationMs}
-                style={styles.counterValue}
-                testID="loading-counter"
-              />
-            </View>
-          ) : null}
+          {/* F-S2.W3.hotfix (task #37): pipe counterTarget THROUGH to
+              LoadingRings's built-in chip instead of rendering a second
+              external chip below it. The hero hosts the single counter
+              now — drops the duplicate stack Ahmed flagged ("big
+              emerald 2,038 ticking above a separate neutral 46 chip").
+              LoadingRings handles tabular-nums + thousands-separator +
+              2.4s rAF tick. Default counterTarget = 2074 stays inside
+              LoadingRings if Step14 doesn't override. */}
+          <LoadingRings
+            size={240}
+            counterTarget={counterTarget}
+            testID="loading-rings"
+          />
 
           {/* Y.B Bundle D rhythm: caption below the counter chip
               ("Loading your comparison" / "Building your shopping
@@ -209,31 +217,13 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
   },
-  // Y.B Bundle D rhythm — neutral pill chip wrapping the CounterTicker
-  // per design doc § 3.2 LoadingRings spec (bg.secondary + border.light
-  // hairline). Restrained chrome lets the counter beat anchor the
-  // moment without competing with the emerald rings above it.
-  counterChip: {
-    backgroundColor: colors.bg.secondary,
-    borderRadius: 999,
-    paddingVertical: spacing.xs + 2,
-    paddingHorizontal: spacing.base,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-    alignSelf: 'center',
-  },
-  // Tabular-nums keeps the integer width stable as the ticker counts
-  // up — without it the digit shift jitters horizontally on most
-  // device fonts. typography.title weight + text.primary.
-  counterValue: {
-    ...typography.title,
-    color: colors.text.primary,
-    fontWeight: '700',
-    textAlign: 'center',
-    fontVariant: ['tabular-nums'],
-  },
-  // Y.B Bundle D rhythm — caption below counter chip in restrained
-  // 13 / text.secondary weight per design doc § 3.2.
+  // F-S2.W3.hotfix: counter chip styles (counterChip + counterValue)
+  // removed — LoadingRings hosts the single counter chip with its own
+  // styling. The external chip + duplicate CounterTicker invocation
+  // are gone per Ahmed's "double counter" report.
+  //
+  // Y.B Bundle D rhythm — caption below the LoadingRings hero in
+  // restrained 13 / text.secondary weight per design doc § 3.2.
   caption: {
     fontSize: 13,
     color: colors.text.secondary,
