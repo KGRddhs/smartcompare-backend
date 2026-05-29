@@ -101,6 +101,35 @@ describe('Step14Loading (S2.W3 REWRITE)', () => {
     expect(getByTestId('loading-tips')).toBeTruthy();
   });
 
+  // Y.B Bundle D rhythm preservation (dispatcher Step14 aesthetic note,
+  // 2026-05-29): Ahmed explicitly liked the Bundle D loading animation
+  // = emerald rings + green counter chip + "Loading your comparison"
+  // caption. Step14 now passes counterTarget + caption through to
+  // LoadingScreenVariants alongside the StageChecklist + TipCard
+  // additions so the rhythm Ahmed validated rides the W3 OTA cleanly.
+  it('renders the counter chip with the COUNTER_TARGET ticking integer (Y.B Bundle D rhythm)', () => {
+    const { getByTestId } = render(
+      <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />,
+    );
+    expect(getByTestId('loading-counter-chip')).toBeTruthy();
+    expect(getByTestId('loading-counter')).toBeTruthy();
+    // CounterTicker commits the final integer on mount (safety floor)
+    // for jest envs that no-op reanimated's useAnimatedReaction.
+    expect(getByTestId('loading-counter').props.children).toBe('2074');
+  });
+
+  it('renders the caption below the counter chip (Y.B Bundle D rhythm)', () => {
+    const { getByTestId } = render(
+      <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />,
+    );
+    expect(getByTestId('loading-caption')).toBeTruthy();
+    // The mock t() interpolates {{governorate}}/{{count}} but pass-through
+    // for plain keys. The s14.caption key has no token, so the mock
+    // returns the literal key string.
+    const text = getByTestId('loading-caption').props.children as string;
+    expect(text).toBe('onboarding.s14.caption');
+  });
+
   it('does NOT call onComplete before the 3.2s floor elapses', () => {
     const onComplete = jest.fn();
     render(<Step14Loading onComplete={onComplete} cohortPeerCount={47} />);

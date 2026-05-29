@@ -29,6 +29,7 @@ import { View, StyleSheet, Text } from 'react-native';
 import { LoadingRings } from '../components/hero/LoadingRings';
 import { StageChecklist, Stage } from '../components/StageChecklist';
 import { LoadingTipsCarousel } from '../components/LoadingTipsCarousel';
+import { CounterTicker } from '../components/CounterTicker';
 import { colors, spacing, typography } from '../theme';
 
 interface Props {
@@ -51,11 +52,29 @@ interface Props {
   tipIntervalMs?: number;
   /** Cohort-peer copy under the rings (e.g. "47 peers in Capital"). */
   cohortFooter?: string;
+  /**
+   * Y.B Bundle D rhythm preservation: numeric counter chip below the
+   * LoadingRings hero ("0 → 2,074" type beat) — the animation Ahmed
+   * explicitly liked on the Bundle D loading screen. Omit to skip the
+   * chip entirely. CounterTicker animates 0 → target over 2.4s per the
+   * Bundle D motion language.
+   */
+  counterTarget?: number;
+  /** CounterTicker duration override (default 2,400ms per Bundle D feel). */
+  counterDurationMs?: number;
+  /**
+   * Y.B Bundle D rhythm preservation: caption below the counter chip
+   * (e.g. "Loading your comparison" for comparison-mode, "Building
+   * your shopping advisor" for onboarding-mode). Renders only when
+   * supplied — null/undefined → caption block omitted.
+   */
+  caption?: string;
   testID?: string;
 }
 
 const DEFAULT_MIN_DISPLAY_MS = 3200;
 const DEFAULT_TIP_INTERVAL_MS = 3200;
+const DEFAULT_COUNTER_DURATION_MS = 2400;
 
 export function LoadingScreenVariants({
   variant,
@@ -67,6 +86,9 @@ export function LoadingScreenVariants({
   tips = [],
   tipIntervalMs = DEFAULT_TIP_INTERVAL_MS,
   cohortFooter,
+  counterTarget,
+  counterDurationMs = DEFAULT_COUNTER_DURATION_MS,
+  caption,
   testID,
 }: Props) {
   // Mode "onboarding" always concentric (Step14). Mode "comparison"
@@ -111,6 +133,30 @@ export function LoadingScreenVariants({
       {resolvedVariant === 'concentric' ? (
         <View style={styles.concentric} testID="loading-concentric">
           <LoadingRings size={240} testID="loading-rings" />
+
+          {/* Y.B Bundle D rhythm: counter chip "0 → target" below the
+              rings — the animation Ahmed explicitly liked. Pill-styled
+              emerald chip with the ticking integer at typography.title
+              weight. Renders only when counterTarget is supplied. */}
+          {counterTarget != null ? (
+            <View style={styles.counterChip} testID="loading-counter-chip">
+              <CounterTicker
+                target={counterTarget}
+                duration={counterDurationMs}
+                style={styles.counterValue}
+                testID="loading-counter"
+              />
+            </View>
+          ) : null}
+
+          {/* Y.B Bundle D rhythm: caption below the counter chip
+              ("Loading your comparison" / "Building your shopping
+              advisor"). Renders only when caption is supplied. */}
+          {caption ? (
+            <Text style={styles.caption} testID="loading-caption">
+              {caption}
+            </Text>
+          ) : null}
 
           {cohortFooter ? (
             <Text style={styles.cohortFooter} testID="loading-cohort-footer">
@@ -161,6 +207,29 @@ const styles = StyleSheet.create({
   cohortFooter: {
     ...typography.body,
     color: colors.text.secondary,
+    textAlign: 'center',
+  },
+  // Y.B Bundle D rhythm — emerald pill chip wrapping the CounterTicker.
+  // Matches the Bundle D loading screen counter pill Ahmed liked.
+  counterChip: {
+    backgroundColor: colors.accentLight,
+    borderRadius: 999,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    alignSelf: 'center',
+  },
+  counterValue: {
+    ...typography.title,
+    color: colors.accentDark,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  // Y.B Bundle D rhythm — caption below counter chip in the same
+  // restrained secondary-text weight as the cohort footer.
+  caption: {
+    ...typography.body,
+    color: colors.text.primary,
+    fontWeight: '600',
     textAlign: 'center',
   },
   // StageChecklist card matches the Step13 stage card chrome for

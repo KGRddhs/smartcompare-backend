@@ -41,6 +41,12 @@ import { OnboardingGovernorate } from './types';
 const DEFAULT_MIN_DURATION_MS = 3200;
 const STAGE_TICK_MS = 800;
 const TIP_INTERVAL_MS = 3200;
+// Y.B Bundle D rhythm: counter chip ticks 0 → 2,074 over 2.4s to
+// match the Bundle D loading animation Ahmed liked. 2074 = nominal
+// "trained on N comparisons" figure; carries the same brand beat
+// across onboarding + comparison-mode loading.
+const COUNTER_TARGET = 2074;
+const COUNTER_DURATION_MS = 2400;
 
 const STAGE_IDS = ['region', 'priorities', 'peers', 'calibrate'] as const;
 
@@ -131,6 +137,17 @@ export function Step14Loading({
     defaultValue: `${cohortPeerCount} cohort peers helped train this`,
   });
 
+  // Y.B Bundle D rhythm preservation (per dispatcher Step14 aesthetic
+  // note 2026-05-29): Ahmed explicitly liked the Bundle D loading
+  // animation = emerald rings + green "2,074" counter chip +
+  // "Loading your comparison" caption. Forward those visuals as
+  // additive props to LoadingScreenVariants so the StageChecklist +
+  // LoadingTipsCarousel additions ride alongside the rhythm Ahmed
+  // already validated, rather than replacing it.
+  const counterCaption = t('onboarding.s14.caption', {
+    defaultValue: 'Building your shopping advisor',
+  });
+
   return (
     <LoadingScreenVariants
       mode="onboarding"
@@ -139,6 +156,9 @@ export function Step14Loading({
       tips={tips}
       tipIntervalMs={TIP_INTERVAL_MS}
       cohortFooter={cohortFooter}
+      counterTarget={COUNTER_TARGET}
+      counterDurationMs={COUNTER_DURATION_MS}
+      caption={counterCaption}
       minDisplayMs={minDurationMs}
       onDone={onComplete}
       ready
