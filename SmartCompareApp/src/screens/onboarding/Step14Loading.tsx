@@ -41,11 +41,12 @@ import { OnboardingGovernorate } from './types';
 const DEFAULT_MIN_DURATION_MS = 3200;
 const STAGE_TICK_MS = 800;
 const TIP_INTERVAL_MS = 3200;
-// Y.B Bundle D rhythm: counter chip ticks 0 → 2,074 over 2.4s to
-// match the Bundle D loading animation Ahmed liked. 2074 = nominal
-// "trained on N comparisons" figure; carries the same brand beat
-// across onboarding + comparison-mode loading.
-const COUNTER_TARGET = 2074;
+// Y.B Bundle D rhythm: counter chip ticks 0 → target over 2.4s per
+// design doc § 3.2 LoadingRings spec + § 3.3 motion.counterTick.
+// COUNTER_FALLBACK_TARGET kicks in when cohortPeerCount is null or 0
+// (e.g. cold-start with no cohort match yet) so the brand beat still
+// lands. 2074 = nominal "trained on N comparisons" figure.
+const COUNTER_FALLBACK_TARGET = 2074;
 const COUNTER_DURATION_MS = 2400;
 
 const STAGE_IDS = ['region', 'priorities', 'peers', 'calibrate'] as const;
@@ -132,21 +133,19 @@ export function Step14Loading({
     [t, governorateDisplay],
   );
 
-  const cohortFooter = t('onboarding.s14.cohort_footer', {
-    count: cohortPeerCount,
-    defaultValue: `${cohortPeerCount} cohort peers helped train this`,
+  // Y.B Bundle D rhythm per design doc § 3.2 LoadingRings spec: counter
+  // chip "N cohort peers refining your match" with 0 → cohortPeerCount
+  // tick over 2.4s. The caption sits below the chip in restrained
+  // 13/secondary weight. Both anchor the rhythm Ahmed explicitly
+  // bookmarked while the StageChecklist + LoadingTipsCarousel additions
+  // ride above as the staged readout.
+  const cohortCaption = t('loading.cohort.caption', {
+    defaultValue: 'cohort peers refining your match',
   });
-
-  // Y.B Bundle D rhythm preservation (per dispatcher Step14 aesthetic
-  // note 2026-05-29): Ahmed explicitly liked the Bundle D loading
-  // animation = emerald rings + green "2,074" counter chip +
-  // "Loading your comparison" caption. Forward those visuals as
-  // additive props to LoadingScreenVariants so the StageChecklist +
-  // LoadingTipsCarousel additions ride alongside the rhythm Ahmed
-  // already validated, rather than replacing it.
-  const counterCaption = t('onboarding.s14.caption', {
-    defaultValue: 'Building your shopping advisor',
-  });
+  // Counter target falls back to a nominal 2,074 when cohortPeerCount
+  // is missing or zero so the brand beat still lands during cold-start.
+  const counterTarget =
+    cohortPeerCount > 0 ? cohortPeerCount : COUNTER_FALLBACK_TARGET;
 
   return (
     <LoadingScreenVariants
@@ -155,10 +154,14 @@ export function Step14Loading({
       stages={stages}
       tips={tips}
       tipIntervalMs={TIP_INTERVAL_MS}
-      cohortFooter={cohortFooter}
-      counterTarget={COUNTER_TARGET}
+      // cohortFooter intentionally omitted in Step14 onboarding mode —
+      // the counter chip + caption ("cohort peers refining your match")
+      // already convey the cohort beat per design doc § 3.2 spec, so
+      // duplicating "N cohort peers helped train this" right below
+      // would be redundant.
+      counterTarget={counterTarget}
       counterDurationMs={COUNTER_DURATION_MS}
-      caption={counterCaption}
+      caption={cohortCaption}
       minDisplayMs={minDurationMs}
       onDone={onComplete}
       ready

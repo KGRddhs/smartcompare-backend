@@ -74,13 +74,17 @@ describe('Step14Loading (S2.W3 REWRITE)', () => {
     expect(getByTestId('loading-rings')).toBeTruthy();
   });
 
-  it('renders the cohort footer line with the supplied peer count', () => {
-    const { getByTestId } = render(
+  // Step14 onboarding mode intentionally omits the cohort footer line.
+  // The counter chip + "cohort peers refining your match" caption per
+  // design doc § 3.2 already convey the cohort beat — duplicating
+  // "N cohort peers helped train this" right below would be redundant.
+  // The cohortFooter prop on LoadingScreenVariants stays available for
+  // other callers (comparison-mode results loading).
+  it('omits the legacy cohort footer line (cohort beat carried by counter + caption)', () => {
+    const { queryByTestId } = render(
       <Step14Loading onComplete={jest.fn()} cohortPeerCount={123} />,
     );
-    const footer = getByTestId('loading-cohort-footer');
-    const text = footer.props.children as string;
-    expect(text).toContain('123');
+    expect(queryByTestId('loading-cohort-footer')).toBeNull();
   });
 
   it('renders the StageChecklist card with the 4 expected stage rows', () => {
@@ -101,33 +105,43 @@ describe('Step14Loading (S2.W3 REWRITE)', () => {
     expect(getByTestId('loading-tips')).toBeTruthy();
   });
 
-  // Y.B Bundle D rhythm preservation (dispatcher Step14 aesthetic note,
-  // 2026-05-29): Ahmed explicitly liked the Bundle D loading animation
-  // = emerald rings + green counter chip + "Loading your comparison"
-  // caption. Step14 now passes counterTarget + caption through to
-  // LoadingScreenVariants alongside the StageChecklist + TipCard
-  // additions so the rhythm Ahmed validated rides the W3 OTA cleanly.
-  it('renders the counter chip with the COUNTER_TARGET ticking integer (Y.B Bundle D rhythm)', () => {
+  // Y.B Bundle D rhythm preservation (design doc § 3.2 LoadingRings spec
+  // + dispatcher Step14 aesthetic note 2026-05-29): counter chip ticks
+  // 0 → cohortPeerCount over 2.4s with the i18n caption
+  // "cohort peers refining your match" rendered below. Step14 wires
+  // counterTarget to the supplied cohortPeerCount + falls back to
+  // 2,074 when cohortPeerCount is missing/zero so the brand beat lands
+  // even on cold-start.
+  it('renders the counter chip with the cohort peer count as the ticking target (Y.B)', () => {
     const { getByTestId } = render(
       <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />,
     );
     expect(getByTestId('loading-counter-chip')).toBeTruthy();
     expect(getByTestId('loading-counter')).toBeTruthy();
     // CounterTicker commits the final integer on mount (safety floor)
-    // for jest envs that no-op reanimated's useAnimatedReaction.
+    // for jest envs that no-op reanimated's useAnimatedReaction. The
+    // supplied cohortPeerCount becomes the counter target verbatim.
+    expect(getByTestId('loading-counter').props.children).toBe('47');
+  });
+
+  it('falls back to 2,074 counter target when cohortPeerCount is zero', () => {
+    const { getByTestId } = render(
+      <Step14Loading onComplete={jest.fn()} cohortPeerCount={0} />,
+    );
+    // COUNTER_FALLBACK_TARGET kicks in so the brand beat still lands
+    // even when the cohort match comes back empty (cold-start).
     expect(getByTestId('loading-counter').props.children).toBe('2074');
   });
 
-  it('renders the caption below the counter chip (Y.B Bundle D rhythm)', () => {
+  it('renders the caption with the loading.cohort.caption i18n key (Y.B)', () => {
     const { getByTestId } = render(
       <Step14Loading onComplete={jest.fn()} cohortPeerCount={47} />,
     );
     expect(getByTestId('loading-caption')).toBeTruthy();
-    // The mock t() interpolates {{governorate}}/{{count}} but pass-through
-    // for plain keys. The s14.caption key has no token, so the mock
-    // returns the literal key string.
+    // Mock t() pass-through for keys without interpolation tokens
+    // returns the literal key string — design doc § 3.2 caption key.
     const text = getByTestId('loading-caption').props.children as string;
-    expect(text).toBe('onboarding.s14.caption');
+    expect(text).toBe('loading.cohort.caption');
   });
 
   it('does NOT call onComplete before the 3.2s floor elapses', () => {

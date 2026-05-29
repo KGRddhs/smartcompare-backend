@@ -209,28 +209,36 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
   },
-  // Y.B Bundle D rhythm — emerald pill chip wrapping the CounterTicker.
-  // Matches the Bundle D loading screen counter pill Ahmed liked.
+  // Y.B Bundle D rhythm — neutral pill chip wrapping the CounterTicker
+  // per design doc § 3.2 LoadingRings spec (bg.secondary + border.light
+  // hairline). Restrained chrome lets the counter beat anchor the
+  // moment without competing with the emerald rings above it.
   counterChip: {
-    backgroundColor: colors.accentLight,
+    backgroundColor: colors.bg.secondary,
     borderRadius: 999,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.base,
+    borderWidth: 1,
+    borderColor: colors.border.light,
     alignSelf: 'center',
   },
+  // Tabular-nums keeps the integer width stable as the ticker counts
+  // up — without it the digit shift jitters horizontally on most
+  // device fonts. typography.title weight + text.primary.
   counterValue: {
     ...typography.title,
-    color: colors.accentDark,
+    color: colors.text.primary,
     fontWeight: '700',
     textAlign: 'center',
+    fontVariant: ['tabular-nums'],
   },
-  // Y.B Bundle D rhythm — caption below counter chip in the same
-  // restrained secondary-text weight as the cohort footer.
+  // Y.B Bundle D rhythm — caption below counter chip in restrained
+  // 13 / text.secondary weight per design doc § 3.2.
   caption: {
-    ...typography.body,
-    color: colors.text.primary,
-    fontWeight: '600',
+    fontSize: 13,
+    color: colors.text.secondary,
     textAlign: 'center',
+    marginTop: -spacing.md,
   },
   // StageChecklist card matches the Step13 stage card chrome for
   // visual continuity across the Step13 → Step14 transition.
