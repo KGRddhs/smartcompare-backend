@@ -70,3 +70,9 @@ export const Scissors = createIcon('Scissors');
 export const Flower = createIcon('Flower');
 export const ShoppingBag = createIcon('ShoppingBag');
 export const Package = createIcon('Package');
+// Bundle E S2.W2 — Step08Priorities per-priority glyphs.
+export const ShieldCheck = createIcon('ShieldCheck');
+export const Hammer = createIcon('Hammer');
+export const MousePointerClick = createIcon('MousePointerClick');
+export const Leaf = createIcon('Leaf');
+export const HeartPulse = createIcon('HeartPulse');
