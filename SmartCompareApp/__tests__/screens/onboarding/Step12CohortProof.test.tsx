@@ -78,4 +78,31 @@ describe('Step12CohortProof', () => {
       expect(flat.transform).toBeDefined();
     });
   });
+
+  // F-S2.W1.hotfix (task #35): on device the bullet rows collapsed to
+  // 24px because the staggered Animated.View wrapper had no width style
+  // and the parent's alignItems:'center' shrank children to content
+  // width — making the inner row's flex:1 text take 0 horizontal space.
+  // Pin the layout contract so the regression can't return silently:
+  // each staggered wrapper MUST stretch to its parent's width.
+  it('staggered bullet wrappers stretch to parent width (regression guard for W1 hotfix)', () => {
+    const { getByTestId } = render(<Step12CohortProof onNext={jest.fn()} />);
+    [0, 1, 2].forEach((i) => {
+      const wrapper = getByTestId(`s12-bullet-${i}`);
+      const styleArr = Array.isArray(wrapper.props.style)
+        ? wrapper.props.style
+        : [wrapper.props.style];
+      const flat: Record<string, unknown> = styleArr
+        .filter(Boolean)
+        .reduce(
+          (acc: Record<string, unknown>, s: Record<string, unknown>) =>
+            Object.assign(acc, s),
+          {} as Record<string, unknown>,
+        );
+      // alignSelf:'stretch' is the load-bearing fix — without it the
+      // inner CohortBullet row collapses on device per the W1 hotfix
+      // root cause.
+      expect(flat.alignSelf).toBe('stretch');
+    });
+  });
 });
