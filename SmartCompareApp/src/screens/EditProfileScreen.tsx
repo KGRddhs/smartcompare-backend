@@ -4,7 +4,8 @@
 // consolidating account edits (Bundle A §3). Avatar upload is stubbed
 // pending S3 + image picker work in a later bundle.
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -21,7 +22,12 @@ import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radii, typography } from '../theme';
 import api, { parseApiError, updateProfile } from '../services/api';
-import { getSavedUser, clearSession, type User } from '../services/authService';
+import {
+  getSavedUser,
+  clearSession,
+  updateSavedUserDisplayName,
+  type User,
+} from '../services/authService';
 import type { RootStackParamList } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditProfile'> & {
@@ -37,15 +43,21 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const u = await getSavedUser();
-      setUser(u);
-      const n = u?.display_name ?? '';
-      setDisplayName(n);
-      setInitialName(n);
-    })();
-  }, []);
+  // F-S1.5k: refetch on focus so the displayed name reflects any update
+  // that happened elsewhere (e.g. a future flow that updates the cached
+  // user via updateSavedUserDisplayName). The initial mount also triggers
+  // this — useFocusEffect fires on mount AND every subsequent focus.
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        const u = await getSavedUser();
+        setUser(u);
+        const n = u?.display_name ?? '';
+        setDisplayName(n);
+        setInitialName(n);
+      })();
+    }, []),
+  );
 
   const dirty = displayName.trim() !== initialName.trim();
   const canSave = dirty && displayName.trim().length >= 2 && !saving;
@@ -62,6 +74,11 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
       const result = await updateProfile(trimmed);
       if (result.success) {
         setInitialName(trimmed);
+        // F-S1.5k: write through to the cached user record so
+        // ProfileScreen's focus-refetch picks up the new name on the
+        // very next render. Without this the user only sees the new
+        // name after a full session refresh.
+        await updateSavedUserDisplayName(trimmed);
         navigation.goBack();
       } else {
         setErrorKey('editProfile.error.saveFailed');

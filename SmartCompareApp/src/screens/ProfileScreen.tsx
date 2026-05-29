@@ -30,7 +30,8 @@
  * profile" linkRow per JSX EditProfileScreen.jsx:189-190.
  */
 
-import React, { useState, useEffect, ReactNode } from 'react';
+import React, { useState, useCallback, ReactNode } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -105,11 +106,17 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   const [notifsSaving, setNotifsSaving] = useState(false);
   const [notifsError, setNotifsError] = useState('');
 
-  useEffect(() => {
-    loadUser();
-    loadCohortProfile();
-    loadPreferences();
-  }, []);
+  // F-S1.5k: useFocusEffect fires on mount AND every subsequent focus.
+  // Replaces the previous mount-only useEffect so saves in EditProfile or
+  // EditPreferences land on Profile immediately when the user navigates
+  // back, instead of waiting for a full screen unmount/remount.
+  useFocusEffect(
+    useCallback(() => {
+      loadUser();
+      loadCohortProfile();
+      loadPreferences();
+    }, []),
+  );
 
   const loadPreferences = async () => {
     const p = await getPreferences();

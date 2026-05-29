@@ -297,6 +297,29 @@ async function saveUser(user: User): Promise<void> {
 }
 
 /**
+ * F-S1.5k: write a fresh `display_name` into the locally-cached User so
+ * subsequent `getSavedUser()` reads reflect the new name. EditProfileScreen
+ * calls this after a successful PUT /auth/profile so ProfileScreen's
+ * focus-refetch picks up the new name immediately without waiting for the
+ * next full auth refresh.
+ *
+ * No-op when the user cache is empty (e.g. mid-logout race) — the next
+ * authed boot will hydrate fresh state from /auth/verify.
+ */
+export async function updateSavedUserDisplayName(
+  displayName: string,
+): Promise<void> {
+  try {
+    const current = await getSavedUser();
+    if (!current) return;
+    const next: User = { ...current, display_name: displayName };
+    await saveUser(next);
+  } catch (error) {
+    if (__DEV__) console.error('Error updating saved user display name:', error);
+  }
+}
+
+/**
  * Get token from storage
  */
 export async function getToken(): Promise<string | null> {
