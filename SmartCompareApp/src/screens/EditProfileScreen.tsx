@@ -4,7 +4,8 @@
 // consolidating account edits (Bundle A §3). Avatar upload is stubbed
 // pending S3 + image picker work in a later bundle.
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -21,7 +22,12 @@ import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radii, typography } from '../theme';
 import api, { parseApiError, updateProfile } from '../services/api';
-import { getSavedUser, clearSession, type User } from '../services/authService';
+import {
+  getSavedUser,
+  clearSession,
+  updateSavedUserDisplayName,
+  type User,
+} from '../services/authService';
 import type { RootStackParamList } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditProfile'> & {
@@ -37,15 +43,21 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const u = await getSavedUser();
-      setUser(u);
-      const n = u?.display_name ?? '';
-      setDisplayName(n);
-      setInitialName(n);
-    })();
-  }, []);
+  // F-S1.5k: refetch on focus so the displayed name reflects any update
+  // that happened elsewhere (e.g. a future flow that updates the cached
+  // user via updateSavedUserDisplayName). The initial mount also triggers
+  // this — useFocusEffect fires on mount AND every subsequent focus.
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        const u = await getSavedUser();
+        setUser(u);
+        const n = u?.display_name ?? '';
+        setDisplayName(n);
+        setInitialName(n);
+      })();
+    }, []),
+  );
 
   const dirty = displayName.trim() !== initialName.trim();
   const canSave = dirty && displayName.trim().length >= 2 && !saving;
@@ -62,6 +74,11 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
       const result = await updateProfile(trimmed);
       if (result.success) {
         setInitialName(trimmed);
+        // F-S1.5k: write through to the cached user record so
+        // ProfileScreen's focus-refetch picks up the new name on the
+        // very next render. Without this the user only sees the new
+        // name after a full session refresh.
+        await updateSavedUserDisplayName(trimmed);
         navigation.goBack();
       } else {
         setErrorKey('editProfile.error.saveFailed');
@@ -74,10 +91,12 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
   };
 
   const handleEditStyleProfile = () => {
-    // Cohort modal lives in the existing Onboarding flow in edit mode.
-    // Bundle E B4 hotfix: post-auth edit route renamed Onboarding → OnboardingEdit
-    // to fix RN-Navigation-v7 duplicate-name stuck-on-Step-17 bug.
-    navigation.navigate('OnboardingEdit', { mode: 'edit', source: 'styleProfile' });
+    // Bundle E F-S1.5c: JSX EditProfileScreen.jsx:189-190 "Edit style profile"
+    // subtitle "Update priorities, budget, and brand stance" maps to the
+    // lighter EditPreferencesFlow (priorities + budget + brand_attitude),
+    // not the full 17-step Onboarding re-run. Both this gateway AND Profile's
+    // PrioritiesInline "Tune" CTA converge on EditPreferences for parity.
+    navigation.navigate('EditPreferences');
   };
 
   const handleDeleteAccount = () => {
@@ -106,6 +125,14 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
   };
 
   const avatarLetter = (user?.display_name || user?.email || '?')[0]?.toUpperCase() ?? '?';
+
+  // F-S1.5l: Apple "Hide My Email" wraps the user's real address behind a
+  // `@privaterelay.appleid.com` alias the user never typed. Surfacing that
+  // relay address in the email row feels like leakage; the JSX spec masks
+  // it with an "Apple ID" label and a "kept private by Apple" caption.
+  // Suffix check is sufficient — Apple guarantees the relay TLD.
+  const isAppleRelay =
+    !!user?.email && user.email.toLowerCase().endsWith('@privaterelay.appleid.com');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -147,8 +174,28 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
             maxLength={100}
             editable={!saving}
           />
-          <Text style={styles.fieldLabel}>{t('auth.email')}</Text>
-          <Text style={styles.readonly}>{user?.email ?? '—'}</Text>
+          {/* F-S1.5l: mask Apple Hide-My-Email relay address. The user
+              never typed the @privaterelay.appleid.com alias, so showing
+              it here reads like leakage. Swap to "Apple ID" label +
+              "Email kept private by Apple" caption when the suffix
+              matches. */}
+          {isAppleRelay ? (
+            <>
+              <Text style={styles.fieldLabel}>
+                {t('editprofile.email.appleLabel', { defaultValue: 'Apple ID' })}
+              </Text>
+              <Text style={styles.readonly}>
+                {t('editprofile.email.applePrivate', {
+                  defaultValue: 'Email kept private by Apple',
+                })}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.fieldLabel}>{t('auth.email')}</Text>
+              <Text style={styles.readonly}>{user?.email ?? '—'}</Text>
+            </>
+          )}
         </View>
 
         {/* Style profile entry */}

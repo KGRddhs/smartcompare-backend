@@ -56,6 +56,13 @@ export const I18nManager = {
   forceRTL: jest.fn(),
 };
 
+// Bundle E S1 — screens use Alert.alert for "Coming soon" placeholder
+// CTAs (PaywallScreen subscribe, restore, terms, etc.). jest.spyOn(Alert,
+// 'alert') in test scaffolds requires Alert to be a real exported object.
+export const Alert = {
+  alert: jest.fn(),
+};
+
 export default {
   View,
   Text,
@@ -74,4 +81,5 @@ export default {
   Dimensions,
   StyleSheet,
   I18nManager,
+  Alert,
 };

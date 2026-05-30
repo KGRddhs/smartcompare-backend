@@ -71,6 +71,9 @@ export const Easing = {
   ease: (_t: number) => _t,
   cubic: (_t: number) => _t,
   bezier: (_x1: number, _y1: number, _x2: number, _y2: number) => (_t: number) => _t,
+  // Bundle E shimmer token uses Easing.linear (1.4s linear loop on skeletons).
+  // Real Reanimated exposes linear as a callable identity easing function.
+  linear: (_t: number) => _t,
 };
 
 export default Animated;

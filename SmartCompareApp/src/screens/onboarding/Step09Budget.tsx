@@ -10,6 +10,24 @@
  * a subtle dark hairline accent; top_tier label uses the heaviest
  * available font weight (Geist-Bold; spec calls for "Geist Display
  * Medium" — see Bundle C deviation note in BudgetPicker.tsx).
+ *
+ * Bundle E S2.W2 — JSX-DEVIATION NOTE.
+ * Step09 intentionally does NOT use the OptionRow primitive that the
+ * rest of W2 standardizes on (Step04 / Step08 / Step10 / Step11). Per
+ * dispatcher ruling A from W2 kickoff:
+ *   - JSX OnboardingScreen.jsx has NO Step09 reference. Bundle C
+ *     postdates the Claude-Design JSX kit. JSX-wins doctrine doesn't
+ *     fire here because there's no JSX to defer to.
+ *   - Bundle C § 3c specifies the editorial-dark left-border hairline
+ *     accent on premium / luxury / top_tier rows + Geist-Bold heavy
+ *     weight on top_tier — these are deliberate brand-differentiation
+ *     signals Ahmed approved at Bundle C ship.
+ *   - Folding these into OptionRow would accrete one-screen-only
+ *     surface area on a primitive shared with non-budget screens.
+ *
+ * The bespoke TouchableOpacity card layout therefore stays. Future
+ * audits surfacing "why doesn't Step09 use OptionRow?" should land
+ * here in git blame and find this note.
  */
 
 import React from 'react';

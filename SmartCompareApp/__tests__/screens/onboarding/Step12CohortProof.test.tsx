@@ -1,9 +1,14 @@
 /**
- * Step12CohortProof tests — Phase 2 Task 19.
+ * Step12CohortProof tests — Phase 2 Task 19 + Bundle E QA § 6 audit.
  *
- * "388 GCC shoppers helped train this." Hero illustration #2 +
- * 3 bullet stats animating one-by-one. Sunk-cost + trust + "I'm not
- * alone." See design spec § 2 row 12.
+ * "388 GCC shoppers helped train this." PeerLattice hero (per QA audit
+ * 2026-05-26, replaced CohortBarChart) + 3 bullet stats animating
+ * one-by-one. Sunk-cost + trust + "I'm not alone." See
+ * docs/claude-design-handoff/ui_kits/mobile/OnboardingCohortScreen.jsx.
+ *
+ * NOTE: testID "s12-bar-chart" retained for backward-compat with this
+ * test + downstream call sites. Full S2 Step12 rebuild will rename to
+ * "s12-peer-lattice" alongside the CohortBullet primitive swap.
  */
 
 import React from 'react';
@@ -15,7 +20,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 describe('Step12CohortProof', () => {
-  it('renders the CohortBarChart hero illustration', () => {
+  it('renders the PeerLattice hero illustration', () => {
     const { getByTestId } = render(<Step12CohortProof onNext={jest.fn()} />);
     expect(getByTestId('s12-bar-chart')).toBeTruthy();
   });
@@ -39,9 +44,14 @@ describe('Step12CohortProof', () => {
     expect(onNext).toHaveBeenCalledTimes(1);
   });
 
-  it('passes total + userCohortSize props to the chart when supplied', () => {
+  // Step12 Props retains totalShoppers + userCohortSize for backward compat
+  // with current callers, but the hero (PeerLattice) is self-contained and
+  // ignores them. The full S2 rewire will surface them via PeerLattice props
+  // once that API extends. Test asserts the props are accepted without
+  // crash + the hero still renders.
+  it('accepts total + userCohortSize props without crash (back-compat)', () => {
     const { getByTestId } = render(
-      <Step12CohortProof onNext={jest.fn()} totalShoppers={420} userCohortSize={47} />
+      <Step12CohortProof onNext={jest.fn()} totalShoppers={420} userCohortSize={47} />,
     );
     expect(getByTestId('s12-bar-chart')).toBeTruthy();
   });
@@ -66,6 +76,33 @@ describe('Step12CohortProof', () => {
         );
       expect(flat.opacity).toBeDefined();
       expect(flat.transform).toBeDefined();
+    });
+  });
+
+  // F-S2.W1.hotfix (task #35): on device the bullet rows collapsed to
+  // 24px because the staggered Animated.View wrapper had no width style
+  // and the parent's alignItems:'center' shrank children to content
+  // width — making the inner row's flex:1 text take 0 horizontal space.
+  // Pin the layout contract so the regression can't return silently:
+  // each staggered wrapper MUST stretch to its parent's width.
+  it('staggered bullet wrappers stretch to parent width (regression guard for W1 hotfix)', () => {
+    const { getByTestId } = render(<Step12CohortProof onNext={jest.fn()} />);
+    [0, 1, 2].forEach((i) => {
+      const wrapper = getByTestId(`s12-bullet-${i}`);
+      const styleArr = Array.isArray(wrapper.props.style)
+        ? wrapper.props.style
+        : [wrapper.props.style];
+      const flat: Record<string, unknown> = styleArr
+        .filter(Boolean)
+        .reduce(
+          (acc: Record<string, unknown>, s: Record<string, unknown>) =>
+            Object.assign(acc, s),
+          {} as Record<string, unknown>,
+        );
+      // alignSelf:'stretch' is the load-bearing fix — without it the
+      // inner CohortBullet row collapses on device per the W1 hotfix
+      // root cause.
+      expect(flat.alignSelf).toBe('stretch');
     });
   });
 });

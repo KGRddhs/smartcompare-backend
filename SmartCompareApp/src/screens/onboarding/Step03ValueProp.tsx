@@ -4,13 +4,21 @@
  * Phone mockup hero illustration #1 + "Stop guessing. Start knowing."
  * + Continue. Show value before asking for any data. See design spec
  * § 2 row 3.
+ *
+ * Bundle E S2.W4 VERIFY (2026-05-29): no rewrite needed. The screen
+ * already composes correctly against the design doc § 3.1 spec
+ * (PhoneMockup hero shipped F-S1.4 e977de4 + headline + subtitle +
+ * Continue CTA). No dedicated JSX file exists for s3 in the
+ * Claude-Design handoff kit — the design doc declares the rough
+ * structure (hero + headline + sub + CTA) which this file matches.
+ * Verified in dispatcher's W4 kickoff spec (#30 item 2).
  */
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/Button';
-import { PhoneMockup } from '../../components/illustrations/PhoneMockup';
+import { PhoneMockup } from '../../components/hero/PhoneMockup';
 import { colors, spacing, typography } from '../../theme';
 
 interface Props {

@@ -291,12 +291,6 @@ function App() {
             <Stack.Screen name="Auth">
               {(props) => <AuthNavigator {...props} onLoginSuccess={handleLoginSuccess} />}
             </Stack.Screen>
-            {/* Referral landing is reachable PRE-auth (no signup gate per design 3.5). */}
-            <Stack.Screen
-              name="ReferralLanding"
-              component={ReferralLandingScreen}
-            />
-            <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
           </>
         ) : needsPreferences ? (
           <Stack.Screen name="Onboarding">
@@ -345,15 +339,20 @@ function App() {
               component={EditPreferencesFlow}
               options={{ presentation: 'modal' }}
             />
-            {/* Bundle D 1.F.3: "Edit style profile" re-entry path.
-                Bundle E B4 hotfix 2026-05-26: renamed from "Onboarding" to
-                "OnboardingEdit" because the duplicate-name with the
-                pre-preferences `<Stack.Screen name="Onboarding">` above made
-                React Navigation v7 keep the same route active when
-                `needsPreferences` flipped false on Step 17 Finish — user
-                got stuck on Step 17 instead of advancing to MainTabs.
-                Call sites in EditProfileScreen + ProfileScreen updated to
-                navigate('OnboardingEdit') in the same commit. */}
+            {/* Bundle E F-S1.5j (2026-05-28): renamed from "Onboarding" to
+                "OnboardingEdit" to resolve the RN-Navigation v7 duplicate-
+                route-name pattern. The fresh-flow Stack.Screen at L302 also
+                used name="Onboarding"; React Navigation treated the two as
+                the same route, so when `needsPreferences` flipped false
+                after Step 17 fired onComplete, the navigator refused to
+                swap routes and the user stayed stuck on Step 17. Mirrors
+                the main-lane hotfix at 2e1ceb7 + memory feedback file
+                `feedback_react_navigation_duplicate_route_name.md`.
+                F-S1.5c/d consolidation already repointed every
+                "edit style profile" caller to EditPreferences, so this
+                modal entry has zero direct navigators today; the route
+                stays registered with a distinct name so future bundles
+                can reuse it without re-triggering the collision. */}
             <Stack.Screen
               name="OnboardingEdit"
               options={{ presentation: 'modal', headerShown: false }}
@@ -391,14 +390,25 @@ function App() {
                 headerShown: false,
               }}
             />
-            {/* Authed users tapping a referral link still get the landing page. */}
-            <Stack.Screen
-              name="ReferralLanding"
-              component={ReferralLandingScreen}
-            />
-            <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
           </>
         )}
+
+        {/* Bundle E F-S1.5m (2026-05-29): hoisted out of both auth branches.
+            ReferralLanding + InviteeQuiz were previously hand-copied into
+            pre-auth and post-auth branches under the same `name` props,
+            which collapsed in React Navigation v7 as the same logical
+            route (same shape as F-S1.5j Onboarding fix). Both screens
+            handle their own auth-state branching internally, so they
+            don't need to live inside the conditional. Registering them
+            once at the Navigator-level keeps the linking config (L258:
+            `c/:share_token` → ReferralLanding, `q/:share_token` →
+            InviteeQuiz) unchanged and avoids the duplicate-name pattern
+            from memory feedback_react_navigation_duplicate_route_name.md. */}
+        <Stack.Screen
+          name="ReferralLanding"
+          component={ReferralLandingScreen}
+        />
+        <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

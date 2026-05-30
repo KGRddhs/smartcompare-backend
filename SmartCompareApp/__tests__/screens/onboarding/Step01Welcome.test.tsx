@@ -1,8 +1,19 @@
 /**
- * Step01Welcome tests — Phase 2 Task 13.
+ * Step01Welcome tests — Phase 2 Task 13 + Bundle E S2.W1 REWRITE.
  *
- * Big black Q-logo, hero "Look closer. Decide smarter." Continue + small
- * "Already have an account? Sign in" link below. See design spec § 2 row 1.
+ * Original (Phase 2): big black 96px Q-badge + hero copy + Continue +
+ * sign-in link.
+ *
+ * S2.W1 anatomy per OnboardingWelcomeScreen.jsx:
+ *   - warm-wash tinted-corner bg (testIDs welcome-warm-{left,right})
+ *   - QarenLogo 40px (testID welcome-qicon stays on the wrapper)
+ *   - headline + subtitle copy unchanged
+ *   - 3 QuoteRow testimonials (testIDs welcome-quote-{1,2,3})
+ *   - Continue + sign-in link unchanged
+ *
+ * Tests below pin BOTH the preserved Phase 2 contract AND the new S2.W1
+ * QuoteRow trio + warm-wash corner anchors, so neither piece can
+ * regress silently.
  */
 
 import React from 'react';
@@ -17,6 +28,24 @@ describe('Step01Welcome', () => {
   it('renders the brand Q-icon', () => {
     const { getByTestId } = render(<Step01Welcome onNext={jest.fn()} onSignIn={jest.fn()} />);
     expect(getByTestId('welcome-qicon')).toBeTruthy();
+  });
+
+  it('renders the warm-wash tinted corner pair (S2.W1)', () => {
+    const { getByTestId } = render(<Step01Welcome onNext={jest.fn()} onSignIn={jest.fn()} />);
+    expect(getByTestId('welcome-warm-left')).toBeTruthy();
+    expect(getByTestId('welcome-warm-right')).toBeTruthy();
+  });
+
+  it('renders the 3 QuoteRow testimonials (S2.W1)', () => {
+    const { getByTestId, getByText } = render(
+      <Step01Welcome onNext={jest.fn()} onSignIn={jest.fn()} />,
+    );
+    expect(getByTestId('welcome-quote-1')).toBeTruthy();
+    expect(getByTestId('welcome-quote-2')).toBeTruthy();
+    expect(getByTestId('welcome-quote-3')).toBeTruthy();
+    expect(getByText('onboarding.s1.quote_1')).toBeTruthy();
+    expect(getByText('onboarding.s1.quote_2')).toBeTruthy();
+    expect(getByText('onboarding.s1.quote_3')).toBeTruthy();
   });
 
   it('renders the hero tagline and continue CTA', () => {

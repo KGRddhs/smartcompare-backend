@@ -1,18 +1,28 @@
 /**
- * Step04Country — Phase 2 Task 14.
+ * Step04Country — Bundle E S2.W1 rewrite.
  *
- * 6 GCC flag cards. If country===BH, conditional second question slides in:
- * "Which area?" (Capital / Muharraq / Northern / Southern). See design spec
- * § 2 row 4. Cohort key #1 + GCC-native positioning.
+ * REWRITE not compose — JSX OnboardingExtras.jsx s4 layout differs from
+ * the prior bespoke flag-card grid: it uses OptionRow icon-circle (flag
+ * emoji glyph + label + governorate sub line) and an emerald-accentWord
+ * headline ("Where do you `shop`?") with a thin subtitle. Memory pin:
+ * feedback_compose_vs_rewrite_phrasing.md.
  *
- * Backend writes to `users.demographics_profile.country` and `.governorate`
- * via PUT /api/v1/auth/demographics. Values must match cohort_priors.json
- * exact case ('Capital', not 'capital') per CLAUDE.md cohort match rules.
+ * 6 GCC countries. If country===BH, conditional governorate sub-question
+ * slides in (verbatim Capital/Muharraq/Northern/Southern keys for
+ * cohort_priors.json exact-case match per CLAUDE.md cohort rules).
+ *
+ * Backend writes via PUT /api/v1/auth/demographics. Cohort key #1 + the
+ * GCC-native positioning moment.
+ *
+ * testIDs preserved from the Phase 2 contract:
+ *   - country-BH / -SA / -AE / -KW / -QA / -OM forwarded to each OptionRow
+ *   - gov-Capital / -Muharraq / -Northern / -Southern on the gov chips
  */
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { OptionRow } from '../../components/primitives/OptionRow';
 import { colors, spacing, typography, radii } from '../../theme';
 import { OnboardingCountry, OnboardingGovernorate } from './types';
 
@@ -27,10 +37,20 @@ interface CountryRow {
   code: OnboardingCountry;
   flag: string;
   labelKey: string;
+  // Per JSX, BH renders a governorate hint as the sub-line. Other GCC
+  // countries get no sub for now (their region pickers don't exist yet).
+  subKey?: string;
 }
 
 const COUNTRIES: CountryRow[] = [
-  { code: 'BH', flag: '🇧🇭', labelKey: 'onboarding.s4.bahrain' },
+  // BH leads — design choice (cohort #1, GCC-native positioning); the
+  // governorate sub-line previews the conditional sub-question.
+  {
+    code: 'BH',
+    flag: '🇧🇭',
+    labelKey: 'onboarding.s4.bahrain',
+    subKey: 'onboarding.s4.bh_sub',
+  },
   { code: 'SA', flag: '🇸🇦', labelKey: 'onboarding.s4.saudi_arabia' },
   { code: 'AE', flag: '🇦🇪', labelKey: 'onboarding.s4.uae' },
   { code: 'KW', flag: '🇰🇼', labelKey: 'onboarding.s4.kuwait' },
@@ -55,25 +75,49 @@ export function Step04Country({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{t('onboarding.s4.title')}</Text>
+      {/* Headline — emerald-accentWord on "shop" per JSX OnbHeadline.
+          Three nested Text spans so the middle word inherits the accent
+          color without breaking the line as a whole. */}
+      <Text style={styles.headline}>
+        {t('onboarding.s4.title_before', { defaultValue: 'Where do you ' })}
+        <Text style={styles.headlineAccent}>
+          {t('onboarding.s4.title_accent', { defaultValue: 'shop' })}
+        </Text>
+        {t('onboarding.s4.title_after', { defaultValue: '?' })}
+      </Text>
+
+      <Text style={styles.subtitle}>
+        {t('onboarding.s4.subtitle', {
+          defaultValue:
+            'Currency, retailers, and peer cohort all calibrate to your region.',
+        })}
+      </Text>
 
       <View style={styles.list}>
         {COUNTRIES.map((c) => {
           const selected = country === c.code;
           return (
-            <TouchableOpacity
+            <OptionRow
               key={c.code}
               testID={`country-${c.code}`}
-              onPress={() => onChangeCountry(c.code)}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              style={[styles.card, selected && styles.cardSelected]}
-            >
-              <Text style={styles.flag}>{c.flag}</Text>
-              <Text style={[styles.cardLabel, selected && styles.cardLabelSelected]}>
-                {t(c.labelKey)}
-              </Text>
-            </TouchableOpacity>
+              option={{
+                key: c.code,
+                label: t(c.labelKey),
+                icon: c.flag,
+                // BH preview hint mirrors the governorate set from the
+                // conditional sub-question below — sets expectation
+                // BEFORE the user taps so the second-question reveal
+                // feels continuous, not a surprise.
+                sub: c.subKey
+                  ? t(c.subKey, {
+                      defaultValue: 'Capital, Muharraq, Northern, Southern',
+                    })
+                  : undefined,
+              }}
+              active={selected}
+              onToggle={() => onChangeCountry(c.code)}
+              style="icon-circle"
+            />
           );
         })}
       </View>
@@ -94,7 +138,10 @@ export function Step04Country({
                   style={[styles.govChip, selected && styles.govChipSelected]}
                 >
                   <Text
-                    style={[styles.govChipText, selected && styles.govChipTextSelected]}
+                    style={[
+                      styles.govChipText,
+                      selected && styles.govChipTextSelected,
+                    ]}
                   >
                     {t(`onboarding.s4.gov_${g.toLowerCase()}`)}
                   </Text>
@@ -114,41 +161,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
   },
-  title: {
+  // Headline + accent word — emerald accentWord on "shop" per
+  // OnbHeadline JSX. Display typography for the surrounding text; the
+  // accent span inherits sizing and only overrides color.
+  headline: {
     ...typography.display,
     color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  headlineAccent: {
+    color: colors.accent,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.text.secondary,
     marginBottom: spacing.xl,
   },
   list: {
     gap: spacing.sm,
   },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bg.secondary,
-    borderRadius: radii.card,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  cardSelected: {
-    backgroundColor: colors.bg.primary,
-    borderColor: colors.cta.primary,
-  },
-  flag: {
-    fontSize: 28,
-    // marginEnd auto-flips with writing direction so the gap stays
-    // between the flag and its country label under both LTR and RTL.
-    marginEnd: spacing.md,
-  },
-  cardLabel: {
-    ...typography.title,
-    color: colors.text.primary,
-  },
-  cardLabelSelected: {
-    color: colors.text.primary,
-  },
+  // BH governorate sub-question chips. Unchanged from prior
+  // implementation since this surface still wants a horizontal chip row
+  // (no OptionRow rhythm needed — these are tiny picker-style targets
+  // that fit better as chips per the JSX OnbGovChip pattern).
   subQuestion: {
     marginTop: spacing.xl,
   },

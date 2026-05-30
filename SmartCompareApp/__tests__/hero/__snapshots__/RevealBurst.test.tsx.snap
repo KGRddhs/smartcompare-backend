@@ -1,0 +1,305 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`RevealBurst hero renders default snapshot 1`] = `
+<View
+  style={
+    [
+      {
+        "alignItems": "center",
+        "alignSelf": "center",
+        "justifyContent": "center",
+        "padding": 16,
+      },
+      {
+        "height": 320,
+        "width": 320,
+      },
+    ]
+  }
+>
+  <Svg
+    height={320}
+    viewBox="0 0 320 320"
+    width={320}
+  >
+    <Circle
+      cx={160}
+      cy={106.5}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-0"
+    />
+    <Circle
+      cx={255.26279441628824}
+      cy={145}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-1"
+    />
+    <Circle
+      cx={240.973375253845}
+      cy={246.75}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-2"
+    />
+    <Circle
+      cx={160}
+      cy={310}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-3"
+    />
+    <Circle
+      cx={79.02662474615501}
+      cy={246.75000000000003}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-4"
+    />
+    <Circle
+      cx={64.73720558371176}
+      cy={145}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-5"
+    />
+  </Svg>
+  <View
+    pointerEvents="none"
+    style={
+      {
+        "alignItems": "center",
+        "bottom": 0,
+        "justifyContent": "center",
+        "left": 0,
+        "position": "absolute",
+        "right": 0,
+        "top": 0,
+      }
+    }
+  >
+    <View
+      style={
+        [
+          {
+            "alignItems": "center",
+            "backgroundColor": "#ECFDF5",
+            "justifyContent": "center",
+            "shadowColor": "#10B981",
+            "shadowOffset": {
+              "height": 4,
+              "width": 0,
+            },
+            "shadowOpacity": 0.18,
+            "shadowRadius": 12,
+          },
+          {
+            "borderRadius": 56,
+            "height": 112,
+            "width": 112,
+          },
+        ]
+      }
+      testID="reveal-burst-badge"
+    >
+      <Svg
+        fill="none"
+        height={67}
+        viewBox="0 0 24 24"
+        width={67}
+      >
+        <Circle
+          cx="10"
+          cy="10"
+          fill="none"
+          r="6"
+          stroke="#0A0A0B"
+          strokeWidth={6.979166666666667}
+        />
+        <Line
+          stroke="#0A0A0B"
+          strokeLinecap="round"
+          strokeWidth={6.979166666666667}
+          x1="14.2"
+          x2="20"
+          y1="14.2"
+          y2="20"
+        />
+        <Circle
+          cx="20"
+          cy="20"
+          fill="#0A0A0B"
+          r={4.1875}
+        />
+      </Svg>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`RevealBurst hero renders with custom particle count 1`] = `
+<View
+  style={
+    [
+      {
+        "alignItems": "center",
+        "alignSelf": "center",
+        "justifyContent": "center",
+        "padding": 16,
+      },
+      {
+        "height": 320,
+        "width": 320,
+      },
+    ]
+  }
+>
+  <Svg
+    height={320}
+    viewBox="0 0 320 320"
+    width={320}
+  >
+    <Circle
+      cx={160}
+      cy={106.5}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-0"
+    />
+    <Circle
+      cx={237.78174593052023}
+      cy={122.21825406947978}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-1"
+    />
+    <Circle
+      cx={253.5}
+      cy={200}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-2"
+    />
+    <Circle
+      cx={237.78174593052023}
+      cy={277.78174593052023}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-3"
+    />
+    <Circle
+      cx={160}
+      cy={293.5}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-4"
+    />
+    <Circle
+      cx={82.21825406947978}
+      cy={277.78174593052023}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-5"
+    />
+    <Circle
+      cx={66.5}
+      cy={200}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-6"
+    />
+    <Circle
+      cx={82.21825406947976}
+      cy={122.21825406947978}
+      fill="#10B981"
+      opacity={0.85}
+      r={5}
+      testID="reveal-burst-particle-7"
+    />
+  </Svg>
+  <View
+    pointerEvents="none"
+    style={
+      {
+        "alignItems": "center",
+        "bottom": 0,
+        "justifyContent": "center",
+        "left": 0,
+        "position": "absolute",
+        "right": 0,
+        "top": 0,
+      }
+    }
+  >
+    <View
+      style={
+        [
+          {
+            "alignItems": "center",
+            "backgroundColor": "#ECFDF5",
+            "justifyContent": "center",
+            "shadowColor": "#10B981",
+            "shadowOffset": {
+              "height": 4,
+              "width": 0,
+            },
+            "shadowOpacity": 0.18,
+            "shadowRadius": 12,
+          },
+          {
+            "borderRadius": 56,
+            "height": 112,
+            "width": 112,
+          },
+        ]
+      }
+      testID="reveal-burst-badge"
+    >
+      <Svg
+        fill="none"
+        height={67}
+        viewBox="0 0 24 24"
+        width={67}
+      >
+        <Circle
+          cx="10"
+          cy="10"
+          fill="none"
+          r="6"
+          stroke="#0A0A0B"
+          strokeWidth={6.979166666666667}
+        />
+        <Line
+          stroke="#0A0A0B"
+          strokeLinecap="round"
+          strokeWidth={6.979166666666667}
+          x1="14.2"
+          x2="20"
+          y1="14.2"
+          y2="20"
+        />
+        <Circle
+          cx="20"
+          cy="20"
+          fill="#0A0A0B"
+          r={4.1875}
+        />
+      </Svg>
+    </View>
+  </View>
+</View>
+`;

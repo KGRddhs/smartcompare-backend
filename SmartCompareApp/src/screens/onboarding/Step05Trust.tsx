@@ -1,80 +1,112 @@
 /**
- * Step05Trust — Phase 2 Task 14 + Phase 5 polish.
+ * Step05Trust — Bundle E S2.W1 rewrite.
  *
- * Trust bridge — pure typography + small filled lock icon, hero "Your
- * data stays yours. We just compare." + 3 thin bullets.
+ * REWRITE not compose — JSX OnboardingExtras.jsx s5 dropped the prior
+ * lock-badge hero entirely and uses three `<PrivacyRow icon head body />`
+ * rows with an emerald-accentWord headline ("Your data, your `call`.")
+ * and an "I'm in" CTA. Memory pin:
+ * feedback_compose_vs_rewrite_phrasing.md.
  *
- * Per design § 2 row 5 + Cal-AI weight notes: the lock badge mounts with
- * a subtle 5° rotation (filled, geometric, chunky). Reanimated drives
- * the rotate transform via useAnimatedStyle so reduced-motion settings
- * collapse it gracefully on the host platform; under jest the mock
- * returns the target value verbatim so the test suite can assert it.
+ * Trust bridge — pre-empts the "why do you need this?" objection BEFORE
+ * we ask for age, gender, etc. The 3 rows mirror the JSX recipe verbatim:
+ *   - check    "What we use"          / what's collected
+ *   - search   "What's anonymized"    / what gets stripped before training
+ *   - X        "What we never share"  / what stays on-device forever
  *
- * Pre-empts the "why do you need this?" objection BEFORE we ask for age,
- * gender, etc. Copy strictly follows § 4g audit ("Your data lives on your
- * device", "We match anonymously — no name attached", "Skip anything —
- * and edit later").
+ * Privacy invariant per qaren-cohort skill: this surface conveys policy,
+ * doesn't expose actual signal content. The PrivacyRow primitive owns
+ * the visual recipe (36px accentLight circle + accentDark icon).
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
+import { Check, Search, X } from 'lucide-react-native';
 import { Button } from '../../components/Button';
-import { colors, spacing, typography, radii } from '../../theme';
+import { PrivacyRow } from '../../components/primitives/PrivacyRow';
+import { colors, spacing, typography } from '../../theme';
 
 interface Props {
   onNext: () => void;
 }
 
-const ROTATE_DEG_TARGET = 5;
-const ROTATE_DURATION_MS = 320;
+const ICON_SIZE = 18;
 
 export function Step05Trust({ onNext }: Props) {
   const { t } = useTranslation();
-  const rotation = useSharedValue(0);
-
-  useEffect(() => {
-    rotation.value = withTiming(ROTATE_DEG_TARGET, {
-      duration: ROTATE_DURATION_MS,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [rotation]);
-
-  const lockAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
 
   return (
     <View style={styles.container}>
-      <View style={styles.heroBlock}>
-        <Animated.View
-          style={[styles.lockBadge, lockAnimatedStyle]}
-          testID="trust-lock-icon"
-        >
-          {/* Geometric lock glyph; full custom icon swap-in lives in the
-              broader icon-system rounding-out. The 5° rotation lands the
-              Cal-AI "weight" cue per design § 2 row 5. */}
-          <Text style={styles.lockGlyph}>{'\u{1F512}'}</Text>
-        </Animated.View>
+      <View style={styles.body}>
+        {/* Emerald accent on "call" per JSX OnbHeadline pattern (matches
+            Step04's "shop" accent treatment). Nested Text spans inherit
+            sizing from the parent; the accent span overrides color. */}
+        <Text style={styles.headline}>
+          {t('onboarding.s5.title_before', { defaultValue: 'Your data, your ' })}
+          <Text style={styles.headlineAccent}>
+            {t('onboarding.s5.title_accent', { defaultValue: 'call' })}
+          </Text>
+          {t('onboarding.s5.title_after', { defaultValue: '.' })}
+        </Text>
 
-        <Text style={styles.title}>{t('onboarding.s5.title')}</Text>
+        <Text style={styles.subtitle}>
+          {t('onboarding.s5.subtitle', {
+            defaultValue:
+              'A handful of inputs sharpen the match. Three are off-limits, forever.',
+          })}
+        </Text>
 
-        <View style={styles.bullets}>
-          <Text style={styles.bullet}>{t('onboarding.s5.bullet_1')}</Text>
-          <Text style={styles.bullet}>{t('onboarding.s5.bullet_2')}</Text>
-          <Text style={styles.bullet}>{t('onboarding.s5.bullet_3')}</Text>
+        <View style={styles.rows}>
+          <PrivacyRow
+            testID="trust-row-use"
+            icon={
+              <Check
+                size={ICON_SIZE}
+                color={colors.accentDark}
+                strokeWidth={3}
+              />
+            }
+            head={t('onboarding.s5.privacy_use_head', { defaultValue: 'What we use' })}
+            body={t('onboarding.s5.privacy_use_body', {
+              defaultValue:
+                'Age range, governorate, priorities, budget tier, brand stance — to find peers like you.',
+            })}
+          />
+          <PrivacyRow
+            testID="trust-row-anon"
+            icon={
+              <Search
+                size={ICON_SIZE}
+                color={colors.accentDark}
+                strokeWidth={3}
+              />
+            }
+            head={t('onboarding.s5.privacy_anon_head', { defaultValue: "What's anonymized" })}
+            body={t('onboarding.s5.privacy_anon_body', {
+              defaultValue:
+                'Your queries help Qaren get smarter. We strip your name, email, and identity first.',
+            })}
+          />
+          <PrivacyRow
+            testID="trust-row-never"
+            icon={
+              <X size={ICON_SIZE} color={colors.accentDark} strokeWidth={3} />
+            }
+            head={t('onboarding.s5.privacy_never_head', {
+              defaultValue: 'What we never share',
+            })}
+            body={t('onboarding.s5.privacy_never_body', {
+              defaultValue: 'Your name. Your email. Your budget. Not now, not ever.',
+            })}
+          />
         </View>
       </View>
 
       <View style={styles.footer}>
         <Button
-          title={t('onboarding.s5.continue')}
+          // CTA copy is "I'm in" per JSX, not "Continue" — earns the
+          // user's posture before the demographics block lands.
+          title={t('onboarding.s5.cta', { defaultValue: "I'm in" })}
           variant="primary"
           onPress={onNext}
           testID="trust-continue"
@@ -84,8 +116,6 @@ export function Step05Trust({ onNext }: Props) {
   );
 }
 
-const LOCK_SIZE = 56;
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -93,40 +123,25 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     justifyContent: 'space-between',
   },
-  heroBlock: {
+  body: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xl,
+    paddingTop: spacing.xl,
   },
-  lockBadge: {
-    width: LOCK_SIZE,
-    height: LOCK_SIZE,
-    borderRadius: radii.button,
-    backgroundColor: colors.accentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xl,
-  },
-  lockGlyph: {
-    fontSize: 28,
-  },
-  title: {
+  headline: {
     ...typography.display,
     color: colors.text.primary,
-    textAlign: 'center',
-    marginBottom: spacing.xl,
-    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
   },
-  bullets: {
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.lg,
+  headlineAccent: {
+    color: colors.accent,
   },
-  bullet: {
+  subtitle: {
     ...typography.body,
     color: colors.text.secondary,
-    textAlign: 'center',
+    marginBottom: spacing['2xl'],
+  },
+  rows: {
+    gap: spacing.lg,
   },
   footer: {
     paddingTop: spacing.lg,

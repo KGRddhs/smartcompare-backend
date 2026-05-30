@@ -372,14 +372,18 @@ class TestPrioritiesWeighted:
         assert len(body["priorities"]) == 3
         keys = [p["key"] for p in body["priorities"]]
         assert keys == ["camera_quality", "battery_life", "build_quality"]
-        # Sum-to-100 normalization (B3 Path A): total = 0.95+0.78+0.62 = 2.35
+        # Sum-to-100 Hamilton largest-remainder normalization (Path A R2).
+        # total = 0.95+0.78+0.62 = 2.35
+        #   camera_quality: 0.95/2.35*100 = 40.4255 → floor 40, frac 0.4255
+        #   battery_life:   0.78/2.35*100 = 33.1915 → floor 33, frac 0.1915
+        #   build_quality:  0.62/2.35*100 = 26.3830 → floor 26, frac 0.3830
+        # floors sum = 99 → 1 leftover → largest remainder = camera_quality → 41.
         weights = {p["key"]: p["weight"] for p in body["priorities"]}
-        assert weights["camera_quality"] == 40   # round(0.95/2.35 * 100) = 40
-        assert weights["battery_life"] == 33     # round(0.78/2.35 * 100) = 33
-        assert weights["build_quality"] == 26    # round(0.62/2.35 * 100) = 26
-        # Rounding drift tolerance: sum ∈ [97, 103] for a 3-bar display
-        total_weight = sum(weights.values())
-        assert 97 <= total_weight <= 103
+        assert weights["camera_quality"] == 41
+        assert weights["battery_life"] == 33
+        assert weights["build_quality"] == 26
+        # Hamilton invariant: weights ALWAYS sum to exactly 100.
+        assert sum(weights.values()) == 100
         for p in body["priorities"]:
             assert 0 <= p["weight"] <= 100
             assert p["label_key"] == f"priorities.{p['key']}"

@@ -1,0 +1,51 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`SlideTransition — RTL/LTR snapshot mirror LTR snapshot — step=2 incoming, slides in from right 1`] = `
+<View
+  data-direction="ltr"
+  style={
+    [
+      {
+        "flex": 1,
+      },
+      {
+        "transform": [
+          {
+            "translateX": 0,
+          },
+        ],
+      },
+    ]
+  }
+  testID="slide-ltr"
+>
+  <Text>
+    step content
+  </Text>
+</View>
+`;
+
+exports[`SlideTransition — RTL/LTR snapshot mirror RTL snapshot — step=2 incoming, slides in from left 1`] = `
+<View
+  data-direction="rtl"
+  style={
+    [
+      {
+        "flex": 1,
+      },
+      {
+        "transform": [
+          {
+            "translateX": 0,
+          },
+        ],
+      },
+    ]
+  }
+  testID="slide-rtl"
+>
+  <Text>
+    step content
+  </Text>
+</View>
+`;

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -191,6 +192,123 @@ async def home_savings(
 # =============================================================================
 
 
+# Bundle E B4.3b — JSX-wins extension fields for /home/smart-pick.
+#
+# Keep the truncation budget tight (~140 chars target, 160 hard cap) so the
+# verdict_short sentence fits the SmartPickCard footprint per JSX
+# HomeScreen.jsx:483-489. The truncate routine prefers word boundaries to
+# avoid mid-word chops; the trailing ellipsis is a single Unicode character
+# (`…`) so total byte length stays predictable.
+_VERDICT_SHORT_TARGET_CHARS = 140
+_VERDICT_SHORT_HARD_CAP_CHARS = 160
+
+# Sub-spec extraction: prefer storage/capacity for electronics, size for
+# fashion, dosage for supplements, etc. Order matters — first match wins.
+# When the source product has none of these keys, return None (frontend
+# hides the sub line — per dispatcher rule no fabrication).
+_SUB_SPEC_PRIORITY_KEYS = (
+    "storage", "capacity", "size", "volume", "dosage",
+    "weight", "memory", "ram",
+)
+
+
+def _truncate_verdict_short(text: str) -> Optional[str]:
+    """Trim a winner_declaration to ~140 chars on a word boundary.
+
+    Returns None when input is empty / not a string. Returns the full text
+    when shorter than the target. Appends a single `…` (Unicode horizontal
+    ellipsis) when truncated.
+    """
+    if not isinstance(text, str):
+        return None
+    stripped = text.strip()
+    if not stripped:
+        return None
+    if len(stripped) <= _VERDICT_SHORT_TARGET_CHARS:
+        return stripped
+    # Truncate at last word boundary <= target chars
+    cutoff = stripped[:_VERDICT_SHORT_HARD_CAP_CHARS]
+    last_space = cutoff.rfind(" ", 0, _VERDICT_SHORT_TARGET_CHARS)
+    if last_space <= 0:
+        # No space within target window — hard chop at target.
+        return cutoff[:_VERDICT_SHORT_TARGET_CHARS].rstrip() + "\u2026"
+    return cutoff[:last_space].rstrip() + "\u2026"
+
+
+def _extract_product_sub(full_response: dict, product_idx: int) -> Optional[str]:
+    """Pull a short sub-label (e.g. '128GB') from a product's spec map.
+
+    Reads `full_response.specs.products[idx].specs[<priority_key>]` in
+    order of _SUB_SPEC_PRIORITY_KEYS; returns the first non-empty value
+    stringified. Falls back to None when no priority key has a value
+    (frontend hides the sub line — no fabrication).
+    """
+    if not isinstance(full_response, dict):
+        return None
+    specs_section = full_response.get("specs")
+    if not isinstance(specs_section, dict):
+        return None
+    products = specs_section.get("products")
+    if not isinstance(products, list) or product_idx >= len(products):
+        return None
+    pd = products[product_idx]
+    if not isinstance(pd, dict):
+        return None
+    specs = pd.get("specs")
+    if not isinstance(specs, dict):
+        return None
+    for key in _SUB_SPEC_PRIORITY_KEYS:
+        value = specs.get(key)
+        if value is None:
+            continue
+        # Stringify simple scalars only — never coerce dicts/lists into strings
+        if isinstance(value, (str, int, float)):
+            s = str(value).strip()
+            if s:
+                return s
+    return None
+
+
+def _format_updated_at(created_at_iso: Optional[str]) -> str:
+    """Format `comparisons.created_at` as a short rel string for the
+    SmartPickCard 'Updated …' chip per JSX HomeScreen.jsx:463-465.
+
+    Outputs (server-computed so no clock-skew on device):
+      < 1 min  → "Just now"
+      < 1 hr   → "Xm ago"
+      < 24 hr  → "Xh ago"
+      < 7 day  → "Xd ago"
+      ≥ 7 day  → "Older"
+
+    NEVER returns raw ISO. Falls back to "Recently" on parse failure
+    so the chip is always renderable (never null when the row exists).
+    """
+    if not isinstance(created_at_iso, str) or not created_at_iso.strip():
+        return "Recently"
+    from datetime import datetime, timezone
+    try:
+        # Supabase returns ISO with `Z` suffix or `+00:00`. fromisoformat()
+        # supports the latter; coerce `Z` → `+00:00` for Python 3.10 compat.
+        iso = created_at_iso.strip()
+        if iso.endswith("Z"):
+            iso = iso[:-1] + "+00:00"
+        dt = datetime.fromisoformat(iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        elapsed = (datetime.now(timezone.utc) - dt).total_seconds()
+    except Exception:  # noqa: BLE001
+        return "Recently"
+    if elapsed < 60:
+        return "Just now"
+    if elapsed < 3600:
+        return f"{int(elapsed // 60)}m ago"
+    if elapsed < 86400:
+        return f"{int(elapsed // 3600)}h ago"
+    if elapsed < 86400 * 7:
+        return f"{int(elapsed // 86400)}d ago"
+    return "Older"
+
+
 def _select_smart_pick(
     priorities: list[str],
     comparisons: list[dict],
@@ -272,7 +390,23 @@ def _select_smart_pick(
     winner = products[winner_idx]
     loser = products[loser_idx]
 
+    # Bundle E B4.3b — JSX-wins extension fields. Each is null-when-absent
+    # so the frontend hides the surround per dispatcher rule.
+    category_raw = full.get("category")
+    category = category_raw.strip() if isinstance(category_raw, str) and category_raw.strip() else None
+
+    winner_declaration = (
+        ((full.get("overview") or {}).get("winner") or {}).get("declaration")
+    )
+    verdict_short = _truncate_verdict_short(winner_declaration)
+
+    winner_sub = _extract_product_sub(full, winner_idx)
+    runner_up_sub = _extract_product_sub(full, loser_idx)
+
+    updated_at = _format_updated_at(chosen.get("created_at"))
+
     return {
+        # Legacy fields (one release cycle — same pattern as scoring_v2)
         "comparison_id": chosen.get("id"),
         "winner_name": f"{(winner.get('brand') or '').strip()} {(winner.get('name') or '').strip()}".strip(),
         "runner_up_name": f"{(loser.get('brand') or '').strip()} {(loser.get('name') or '').strip()}".strip(),
@@ -284,6 +418,12 @@ def _select_smart_pick(
             if reason_key == "home.smart_pick.reason.priority_match"
             else {}
         ),
+        # Bundle E B4.3b — JSX-driven extension fields (null-when-absent)
+        "category": category,
+        "updated_at": updated_at,
+        "winner_sub": winner_sub,
+        "runner_up_sub": runner_up_sub,
+        "verdict_short": verdict_short,
     }
 
 
@@ -428,11 +568,35 @@ async def home_smart_pick(
 # =============================================================================
 
 
+_VS_SPLIT_RE = re.compile(r"\s+vs\.?\s+", flags=re.IGNORECASE)
+
+
+def _split_query_into_a_b(query: str) -> tuple[Optional[str], Optional[str]]:
+    """Split a legacy `"X vs Y"` curated string into (a, b).
+
+    Returns (None, None) when the query is malformed (no " vs " separator,
+    splits into !=2 non-empty parts). Matches both `vs` and `vs.` case-insensitively.
+    """
+    if not isinstance(query, str) or not query.strip():
+        return (None, None)
+    parts = _VS_SPLIT_RE.split(query.strip(), maxsplit=1)
+    if len(parts) != 2:
+        return (None, None)
+    a, b = parts[0].strip(), parts[1].strip()
+    if not a or not b:
+        return (None, None)
+    return (a, b)
+
+
 def _load_curated_trending() -> dict[str, list[dict]]:
     """Read the curated JSON file. Returns a region → list[entry] map.
 
-    Each entry is `{query: str, view_count: int}`. The region key gates
-    response shape — see /trending endpoint for the merge logic.
+    Bundle E B4.3a — entries are pre-split {tag, a, b, view_count} per
+    JSX `HomeScreen.jsx:608-651`. For backwards-compat with any pre-Bundle-E
+    curated rows that still ship the legacy `{query, view_count}` shape,
+    this loader derives {a, b} from the query string and defaults `tag`
+    to "Other" when missing. The endpoint then re-assembles a legacy
+    `query` + `count` alias so consumers on either shape work.
 
     Returns an empty dict if the file is missing or malformed — fail-safe
     so a missing file degrades to "no trending items" rather than 500.
@@ -448,7 +612,6 @@ def _load_curated_trending() -> dict[str, list[dict]]:
             raw = json.load(fh)
         if not isinstance(raw, dict):
             return {}
-        # Validate per-region entries
         cleaned: dict[str, list[dict]] = {}
         for region, entries in raw.items():
             if not isinstance(entries, list):
@@ -457,11 +620,34 @@ def _load_curated_trending() -> dict[str, list[dict]]:
             for e in entries:
                 if not isinstance(e, dict):
                     continue
-                q = e.get("query")
                 vc = e.get("view_count")
-                if not isinstance(q, str) or not isinstance(vc, int):
+                if not isinstance(vc, int):
                     continue
-                valid_entries.append({"query": q, "view_count": vc})
+                tag = e.get("tag")
+                a = e.get("a")
+                b = e.get("b")
+                if isinstance(tag, str) and isinstance(a, str) and isinstance(b, str):
+                    # Bundle E shape — already pre-split.
+                    valid_entries.append({
+                        "tag": tag.strip(),
+                        "a": a.strip(),
+                        "b": b.strip(),
+                        "view_count": vc,
+                    })
+                    continue
+                # Legacy shape — derive {a, b} from query string.
+                q = e.get("query")
+                if not isinstance(q, str):
+                    continue
+                derived_a, derived_b = _split_query_into_a_b(q)
+                if derived_a is None or derived_b is None:
+                    continue
+                valid_entries.append({
+                    "tag": (tag.strip() if isinstance(tag, str) and tag.strip() else "Other"),
+                    "a": derived_a,
+                    "b": derived_b,
+                    "view_count": vc,
+                })
             cleaned[region] = valid_entries
         return cleaned
     except Exception as exc:  # noqa: BLE001
@@ -541,9 +727,20 @@ async def home_trending(
 
     curated = _load_curated_trending()
     raw_entries = curated.get(resolved_region) or []
-    # Final shape: attach `region` to each entry for FE clarity
+    # Bundle E B4.3a — JSX-wins shape (tag/a/b/count) + legacy compat fields.
+    # Frontend HomeScreen.jsx:608-651 reads tag/a/b/count; the legacy query +
+    # view_count survive one release cycle for OTA consumers on the pre-Bundle-E
+    # shape (matches the scoring_v2 legacy-key pattern).
     entries = [
-        {"query": e["query"], "view_count": e["view_count"], "region": resolved_region}
+        {
+            "tag": e["tag"],
+            "a": e["a"],
+            "b": e["b"],
+            "count": e["view_count"],
+            "query": f"{e['a']} vs {e['b']}",
+            "view_count": e["view_count"],
+            "region": resolved_region,
+        }
         for e in raw_entries
     ]
 

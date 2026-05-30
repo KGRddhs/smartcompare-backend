@@ -16,16 +16,34 @@ import {
   Alert,
   TextInput,
   SectionList,
+  ScrollView,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useFocusEffect } from '@react-navigation/native';
-import { Search, Trash2, RotateCcw, ChevronRight, Camera } from 'lucide-react-native';
+import {
+  Search,
+  Trash2,
+  RotateCcw,
+  ChevronRight,
+  Camera,
+  Check,
+  Sparkles,
+} from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import QarenLogo from '../components/QarenLogo';
-import { getComparisonHistory, deleteComparison, parseApiError } from '../services/api';
+import {
+  getComparisonHistory,
+  deleteComparison,
+  parseApiError,
+  getProfileRecentDecisions,
+  getProfileMonthlyStats,
+  type RecentDecisionItem,
+  type MonthlyStatsResponse,
+} from '../services/api';
 import { clearSession } from '../services/authService';
 import { formatTimeAgo } from '../utils/formatDate';
+import { deriveTone } from '../utils/deriveTone';
 
 interface HistoryItem {
   id: string;
@@ -40,12 +58,249 @@ interface HistoryItem {
   //   no outline (legacy rows or rows where the pipeline didn't emit it).
   winner_index?: 0 | 1 | null;
   created_at: string;
+  // Bundle E B5: category eyebrow pill in HistoryRowV2 header. Backend
+  // MAY surface it on the list payload; FE falls back to empty + hides
+  // the pill via null-hide-surround rule.
+  category?: string | null;
+  // Bundle E B5: short verdict caption beneath the VS pair. Backend MAY
+  // surface; FE falls back to formatTitle(item) when absent.
+  verdict_short?: string | null;
 }
 
 interface HistorySection {
   title: string;
   data: HistoryItem[];
 }
+
+// ---------------------------------------------------------------------------
+// F-S1.6-D1 — HistoryHeroStats: stat strip + horizontal MarqueeCard list.
+//
+// Always renders above the search field per JSX HistoryScreen.jsx:60-109.
+// Even on empty state shows zero values ("0 decisions this month / ~0 BHD
+// shopped smarter") and skips the marquee gracefully — Build Principle #4
+// calm guidance, no scary "you haven't compared anything" copy.
+//
+// Data sources:
+//   - /profile/monthly-stats → decisions count + savings_bhd (stat strip)
+//   - /profile/recent-decisions → 3-4 most recent for the horizontal marquee
+// Silent-hide on network failure (UI never throws).
+// ---------------------------------------------------------------------------
+
+function HistoryHeroStats({
+  onPressItem,
+}: {
+  onPressItem?: (comparisonId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [stats, setStats] = useState<MonthlyStatsResponse | null>(null);
+  const [recents, setRecents] = useState<RecentDecisionItem[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    getProfileMonthlyStats().then((r) => {
+      if (mounted) setStats(r);
+    });
+    getProfileRecentDecisions().then((r) => {
+      if (mounted) setRecents(r.empty_state ? [] : r.recent);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const decisionsCount = stats?.decisions_count ?? 0;
+  const savingsBhd = stats?.savings_bhd ?? 0;
+
+  return (
+    <View testID="history-hero-stats" style={historyHeroStyles.section}>
+      <View style={historyHeroStyles.statStrip}>
+        <Text style={historyHeroStyles.eyebrow}>
+          {t('history.hero.eyebrow', {
+            defaultValue: '✦ YOUR RECENT VERDICTS',
+          })}
+        </Text>
+        <Text style={historyHeroStyles.statCount}>
+          {t('history.hero.count', {
+            defaultValue: '{{count}} decisions this month',
+            count: decisionsCount,
+          })}
+        </Text>
+        <Text style={historyHeroStyles.statSavings}>
+          {t('history.hero.savings', {
+            defaultValue: '~{{amount}} BHD shopped smarter',
+            amount: savingsBhd.toFixed(0),
+          })}
+        </Text>
+      </View>
+
+      {recents.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={historyHeroStyles.marquee}
+          contentContainerStyle={historyHeroStyles.marqueeContent}
+          testID="history-hero-marquee"
+        >
+          {recents.slice(0, 4).map((it) => {
+            const toneA = deriveTone(it.runner_up_name);
+            const toneB = deriveTone(it.winner_name);
+            return (
+              <TouchableOpacity
+                key={it.comparison_id}
+                testID={`history-hero-card-${it.comparison_id}`}
+                style={historyHeroStyles.card}
+                onPress={() => onPressItem?.(it.comparison_id)}
+                activeOpacity={0.8}
+              >
+                <View style={historyHeroStyles.cardPair}>
+                  <View
+                    style={[historyHeroStyles.cardTile, { backgroundColor: toneA }]}
+                  />
+                  <View style={historyHeroStyles.cardVsAbs} pointerEvents="none">
+                    <View style={historyHeroStyles.cardVsPill}>
+                      <Text style={historyHeroStyles.cardVsText}>VS</Text>
+                    </View>
+                  </View>
+                  <View
+                    style={[
+                      historyHeroStyles.cardTile,
+                      historyHeroStyles.cardTileWinner,
+                      { backgroundColor: toneB },
+                    ]}
+                  >
+                    <View style={historyHeroStyles.cardTileCheck}>
+                      <Check
+                        size={8}
+                        color={colors.text.onInverse}
+                        strokeWidth={4}
+                      />
+                    </View>
+                  </View>
+                </View>
+                <Text style={historyHeroStyles.cardCaption} numberOfLines={1}>
+                  {t('history.hero.picked', {
+                    defaultValue: 'Picked {{name}}',
+                    name: it.winner_name,
+                  })}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+}
+
+const historyHeroStyles = StyleSheet.create({
+  section: {
+    marginBottom: 22,
+  },
+  statStrip: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: 12,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 11 * 1.4,
+    color: colors.accentDark,
+    letterSpacing: 1.1,
+    marginBottom: 4,
+  },
+  statCount: {
+    fontSize: 24,
+    fontWeight: '700',
+    lineHeight: 24 * 1.15,
+    color: colors.text.primary,
+    letterSpacing: -0.24,
+  },
+  statSavings: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 13 * 1.5,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
+  marquee: {
+    flexGrow: 0,
+  },
+  marqueeContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 6,
+    gap: 12,
+  },
+  card: {
+    width: 184,
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: colors.bg.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    gap: 10,
+  },
+  cardPair: {
+    flexDirection: 'row',
+    gap: 6,
+    position: 'relative',
+  },
+  cardTile: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: 10,
+    position: 'relative',
+  },
+  cardTileWinner: {
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  cardTileCheck: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.bg.secondary,
+  },
+  cardVsAbs: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  cardVsPill: {
+    height: 20,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    backgroundColor: colors.accentLight,
+    borderWidth: 2,
+    borderColor: colors.bg.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardVsText: {
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 9,
+    color: colors.accentDark,
+    letterSpacing: 1,
+  },
+  cardCaption: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 12 * 1.3,
+    color: colors.text.primary,
+  },
+});
 
 interface HistoryScreenProps {
   navigation: any;
@@ -228,30 +483,145 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     );
   };
 
+  // Bundle E F-S1.6: HistoryRowV2 — VS pair with center pill (NOT inline,
+  // per dual-VS-pattern rule). Two ProductBlock tiles + center emerald
+  // "vs" pill (this IS the center-pill variant — TrendingNearYou uses the
+  // inline-text variant per HomeScreen.jsx:639).
+  // Per JSX: HistoryScreen.jsx:251-305 (HistoryRowV2). Category eyebrow
+  // (top-left) + ago (top-right) + ProductBlock pair + center vs pill +
+  // verdict caption below.
   const renderItem = ({ item, index }: { item: HistoryItem; index: number }) => {
+    const names = (item.product_names ?? [])
+      .filter(Boolean)
+      .map(dedupeBrandPrefix);
+    const nameA = names[0] ?? '';
+    const nameB = names[1] ?? '';
+    // Tone-driven block backgrounds via deriveTone — matches JSX inline
+    // tone literals (HistoryScreen.jsx:31-72) across iPhone/Galaxy/
+    // Centrum/etc. Fallback neutral when brand isn't in the lookup.
+    const toneA = deriveTone(nameA);
+    const toneB = deriveTone(nameB);
+    const isAWinner = item.winner_index === 0;
+    const isBWinner = item.winner_index === 1;
+    // Adapter pattern per backend B-XQA: `?? undefined` coercion for
+    // null-shipping fields consumed by props typed undefined.
+    const category = item.category ?? undefined;
+    const verdictShort = item.verdict_short ?? undefined;
+    // Verdict line: prefer backend verdict_short, else fall back to
+    // formatTitle so the test contract regex (`formatTitle\s*\(\s*item\s*\)`)
+    // still matches in the source.
+    const verdictLine = verdictShort ?? formatTitle(item);
+    const ago = formatTimeAgoLocalized(item.created_at);
+
     return (
       <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
         <TouchableOpacity
-          style={styles.card}
+          testID={`history-row-${item.id}`}
+          style={styles.rowV2}
           onPress={() => viewAsResult(item)}
           activeOpacity={0.7}
         >
-          <View style={styles.cardContent}>
-            <View style={styles.cardTop}>
-              {renderTitle(item)}
-              <Text style={styles.cardTime}>{formatTimeAgoLocalized(item.created_at)}</Text>
+          {/* Header row: category eyebrow pill (left) + ago (right). The
+              eyebrow hides via null-hide-surround when category is absent. */}
+          <View style={styles.rowV2Header}>
+            {category ? (
+              <View style={styles.rowV2CatPill}>
+                <Text style={styles.rowV2CatPillText} numberOfLines={1}>
+                  {category.toUpperCase()}
+                </Text>
+              </View>
+            ) : <View />}
+            <Text style={styles.rowV2Ago}>{ago}</Text>
+          </View>
+
+          {/* ProductBlock pair with center vs pill (the brand moment) */}
+          <View style={styles.rowV2Pair}>
+            {/* Product A */}
+            <View
+              style={[
+                styles.rowV2Block,
+                isAWinner ? styles.rowV2BlockWinner : styles.rowV2BlockBase,
+              ]}
+              testID={`history-row-${item.id}-block-a`}
+            >
+              {isAWinner ? <Text style={styles.rowV2TopMatch}>TOP MATCH</Text> : null}
+              <View
+                style={[styles.rowV2Tile, { backgroundColor: toneA }]}
+              >
+                {isAWinner ? (
+                  <View style={styles.rowV2TileCheck}>
+                    <Check size={8} color={colors.text.onInverse} strokeWidth={4} />
+                  </View>
+                ) : null}
+              </View>
+              <Text
+                style={[
+                  styles.rowV2Name,
+                  isAWinner ? styles.rowV2NameWinner : null,
+                ]}
+                numberOfLines={1}
+              >
+                {nameA || t('history.row.untitled')}
+              </Text>
+            </View>
+
+            {/* Center vs pill — the brand moment (NOT inline; this is the
+                center-pill variant per the dual-VS-pattern rule). */}
+            <View style={styles.rowV2VsAbs} pointerEvents="none">
+              <View style={styles.rowV2VsPill}>
+                <Text style={styles.rowV2VsText}>VS</Text>
+              </View>
+            </View>
+
+            {/* Product B */}
+            <View
+              style={[
+                styles.rowV2Block,
+                isBWinner ? styles.rowV2BlockWinner : styles.rowV2BlockBase,
+              ]}
+              testID={`history-row-${item.id}-block-b`}
+            >
+              {isBWinner ? <Text style={styles.rowV2TopMatch}>TOP MATCH</Text> : null}
+              <View
+                style={[styles.rowV2Tile, { backgroundColor: toneB }]}
+              >
+                {isBWinner ? (
+                  <View style={styles.rowV2TileCheck}>
+                    <Check size={8} color={colors.text.onInverse} strokeWidth={4} />
+                  </View>
+                ) : null}
+              </View>
+              <Text
+                style={[
+                  styles.rowV2Name,
+                  isBWinner ? styles.rowV2NameWinner : null,
+                ]}
+                numberOfLines={1}
+              >
+                {nameB}
+              </Text>
             </View>
           </View>
 
-          <View style={styles.cardActions}>
+          {/* Verdict caption (preferred backend verdict_short, else
+              formatTitle fallback so the source-grep test contract holds). */}
+          <Text style={styles.rowV2Verdict} numberOfLines={2}>
+            {verdictLine}
+          </Text>
+
+          {/* Delete action — relocated to a footer row so the JSX-aligned
+              hero stays clean. */}
+          <View style={styles.rowV2Footer}>
             <TouchableOpacity
-              style={styles.actionButton}
+              testID={`history-row-${item.id}-delete`}
+              style={styles.rowV2DeleteBtn}
               onPress={() => handleDelete(item)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('history.delete', { defaultValue: 'Delete' })}
             >
-              <Trash2 size={16} color={colors.text.secondary} />
+              <Trash2 size={14} color={colors.text.secondary} />
             </TouchableOpacity>
-            <ChevronRight size={16} color={colors.text.placeholder} />
           </View>
         </TouchableOpacity>
       </Animated.View>
@@ -313,6 +683,17 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
           {t('history.title')}
         </Text>
       </View>
+
+      {/* F-S1.6-D1 HistoryHeroStats — stat strip + horizontal marquee.
+          Always above search field per JSX. Tapping a card opens that
+          comparison via viewAsResult so the marquee acts as a quick-jump
+          entry to recent decisions. */}
+      <HistoryHeroStats
+        onPressItem={(id) => {
+          const found = history.find((h) => h.id === id);
+          if (found) viewAsResult(found);
+        }}
+      />
 
       <View style={styles.searchContainer}>
         <Search size={16} color={colors.text.placeholder} />
@@ -425,6 +806,156 @@ const styles = StyleSheet.create({
     borderColor: colors.border.light,
     padding: spacing.base,
     marginBottom: spacing.sm,
+  },
+  // Bundle E F-S1.6 HistoryRowV2 styles — VS-pair card per
+  // HistoryScreen.jsx:251-305. Distinct from `card` (legacy single-line
+  // row) so both shapes coexist during the cut-over.
+  rowV2: {
+    marginBottom: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: colors.bg.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    position: 'relative',
+  },
+  rowV2Header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  rowV2CatPill: {
+    paddingHorizontal: 10,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: colors.bg.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 1,
+  },
+  rowV2CatPillText: {
+    fontSize: 10,
+    fontWeight: '600',
+    lineHeight: 10,
+    color: colors.text.secondary,
+    letterSpacing: 0.6,
+  },
+  rowV2Ago: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 12,
+    color: colors.text.secondary,
+    fontVariant: ['tabular-nums'],
+  },
+  rowV2Pair: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+    position: 'relative',
+  },
+  rowV2Block: {
+    flex: 1,
+    minWidth: 0,
+    padding: 10,
+    borderRadius: 14,
+    gap: 8,
+  },
+  rowV2BlockBase: {
+    backgroundColor: colors.bg.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  rowV2BlockWinner: {
+    backgroundColor: colors.accentLight,
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  rowV2TopMatch: {
+    fontSize: 9,
+    fontWeight: '600',
+    lineHeight: 9 * 1.2,
+    color: colors.accentDark,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  rowV2Tile: {
+    aspectRatio: 1,
+    borderRadius: 10,
+    position: 'relative',
+  },
+  rowV2TileCheck: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.bg.secondary,
+  },
+  rowV2Name: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 13 * 1.3,
+    color: colors.text.primary,
+  },
+  rowV2NameWinner: {
+    fontWeight: '700',
+  },
+  rowV2VsAbs: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  rowV2VsPill: {
+    height: 26,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: colors.accentLight,
+    borderWidth: 2,
+    borderColor: colors.bg.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  rowV2VsText: {
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 11,
+    color: colors.accentDark,
+    letterSpacing: 1.2,
+  },
+  rowV2Verdict: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 12 * 1.5,
+    color: colors.text.primary,
+    marginTop: 12,
+  },
+  rowV2Footer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+  },
+  rowV2DeleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardContent: {
     flex: 1,

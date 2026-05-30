@@ -53,12 +53,18 @@ describe('ProfileScreen — Bundle A nav wiring (4.9)', () => {
     expect(SOURCE).not.toMatch(/setEditingName\(\s*!\s*editingName\s*\)/);
   });
 
-  it('Preferences row navigates to EditPreferences (not the old Onboarding)', () => {
-    expect(SOURCE).toMatch(/navigation\.navigate\(\s*['"]EditPreferences['"]\s*\)/);
-    // Legacy: navigation.navigate('Onboarding', { mode: 'edit' }) from the
-    // Preferences row context — that exact handler shape is removed.
-    // (Onboarding may still be referenced elsewhere, e.g. styleProfile edit.)
-    expect(SOURCE).not.toMatch(/profile\.preferences[\s\S]{0,200}Onboarding[^)]*mode:\s*['"]edit['"]/);
+  // Bundle E F-S1.5c (c.2.i ruling): the Profile→Preferences row is
+  // removed per JSX ProfileScreen.jsx:259-261 (ACCOUNT group has only
+  // Edit profile / Change password / Language + the spec-added Upgrade).
+  // EditPreferences is now reached via EditProfile → "Edit style profile"
+  // linkRow per JSX EditProfileScreen.jsx:189-190. The EditPreferences
+  // nav-contract assertion moves to
+  // __tests__/EditProfileScreen.editPreferences.test.tsx where it pins
+  // the new gateway. The Profile→PrioritiesInline "Tune" CTA also routes
+  // to EditPreferences for parity (single canonical lighter-edit target).
+  it('Profile handleEditStyleProfile routes to EditPreferences (not legacy Onboarding(mode=edit))', () => {
+    expect(SOURCE).toMatch(/handleEditStyleProfile[\s\S]{0,400}navigation\.navigate\(\s*['"]EditPreferences['"]\s*\)/);
+    expect(SOURCE).not.toMatch(/handleEditStyleProfile[\s\S]{0,400}Onboarding[\s\S]{0,40}mode:\s*['"]edit['"]/);
   });
 
   it('Privacy Policy row navigates to Legal with doc=privacy', () => {

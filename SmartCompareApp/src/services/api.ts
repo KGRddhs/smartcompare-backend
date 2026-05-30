@@ -296,7 +296,17 @@ export async function changePassword(currentPassword: string, newPassword: strin
 export async function getPreferences(): Promise<UserPreferences | null> {
   try {
     const response = await api.get('/api/v1/auth/preferences');
-    return response.data.preferences || null;
+    const prefs = response.data?.preferences;
+    // F-S1.5i: Backend returns `{ preferences: {} }` for users with no
+    // prefs row (e.g. fresh signups who skipped onboarding step 08).
+    // `{}` is truthy in JS so the prior `|| null` shipped through →
+    // EditPreferencesFlow loaded empty state then PUT 422'd because
+    // backend Pydantic requires priorities + budget + brand_attitude.
+    // Treat both null AND empty object as "no preferences row".
+    if (!prefs || typeof prefs !== 'object' || Object.keys(prefs).length === 0) {
+      return null;
+    }
+    return prefs;
   } catch {
     return null;
   }
@@ -619,6 +629,12 @@ export interface CohortDisplayProfile {
     preferred_assistance_style?: string;
     [key: string]: any;
   };
+  // Bundle E F-S1.5d / B-S1.YELLOW (backend 135d923) — echoed from
+  // users.demographics so the owner can see their own region in the
+  // ProfileHeaderRow subtitle ("{governorate} · GCC"). Null when the
+  // user skipped Step 04 or selected the "Prefer not to say" sentinel
+  // (backend null-resolves both EN + AR forms).
+  governorate?: string | null;
 }
 
 /**
@@ -695,6 +711,32 @@ export interface HomeSmartPickItem {
   runner_up_price_bhd: number | null;
   reason_key: string;
   reason_params: Record<string, string>;
+  // --- Bundle E B4.3b extensions (per HomeScreen.jsx:438-501) ---
+  // ALL nullable — render-site MUST hide-the-surround when null per the
+  // null-hide-surround rule (don't fabricate, don't render the eyebrow /
+  // chip / sub-line / verdict caption when its source field is null).
+  /** Category eyebrow pill (e.g. "Electronics", "Skincare"). Nullable. */
+  category: string | null;
+  /** Server-computed relative-time string (e.g. "Updated 30m ago",
+   *  "Today"). NEVER raw ISO — clock-skew avoided. Always non-null when
+   *  smart_pick itself is non-null (backend derives it from
+   *  comparisons.created_at). */
+  updated_at: string;
+  /** Winning product's spec sub-line (e.g. "128GB"). Nullable. */
+  winner_sub: string | null;
+  /** Runner-up product's spec sub-line (e.g. "256GB"). Nullable. */
+  runner_up_sub: string | null;
+  /** Short verdict sentence (≤160 chars, no scary vocab). Nullable. */
+  verdict_short: string | null;
+  /**
+   * Optional precomputed tone/sub conveniences. Backend MAY populate;
+   * frontend falls back to deriveTone(winner_name) for tone + the
+   * winner_sub / runner_up_sub fields for spec lines when these are
+   * absent. Exists at the type level so the Bundle E contract test
+   * (HomeScreen.bundleE.contract.test.tsx § 4) recognizes the new shape.
+   */
+  tone?: string;
+  sub?: string;
 }
 
 export interface HomeSmartPickResponse {
@@ -713,8 +755,22 @@ export async function getHomeSmartPick(): Promise<HomeSmartPickResponse> {
 }
 
 export interface HomeTrendingItem {
+  // --- Bundle E B4.3a — JSX-wins pre-split shape (per HomeScreen.jsx:609-615) ---
+  /** Category tag eyebrow (e.g. "Electronics", "Skincare", "Supplements"). */
+  tag: string;
+  /** Pre-split product A name. Backend splits the curated query by " vs " so
+   *  frontend never does fragile string parsing. */
+  a: string;
+  /** Pre-split product B name. */
+  b: string;
+  /** Comparison view count (tabular-nums "142 ↗" rendered by consumer). */
+  count: number;
+  // --- Legacy fields surviving one release cycle for backwards-compat ---
+  /** @deprecated Use `a`/`b` split. Will be removed after Bundle F. */
   query: string;
+  /** @deprecated Use `count` (same value). Will be removed after Bundle F. */
   view_count: number;
+  /** Region tag carried through for upstream filtering. */
   region: string;
 }
 

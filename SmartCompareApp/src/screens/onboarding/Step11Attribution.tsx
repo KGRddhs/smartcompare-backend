@@ -1,21 +1,78 @@
 /**
- * Step11Attribution — Phase 2 Task 15.
+ * Step11Attribution — Bundle E S2.W2 REWRITE.
  *
- * 6 stacked cards: Friend / Instagram / TikTok / App Store / Google /
- * Other. Market-research signal. Backend route POST
- * /api/v1/auth/attribution lives in Task 8 (already shipped); the values
- * here MUST match its Pydantic enum exactly. See § 2 row 11.
+ * Source of truth: docs/claude-design-handoff/ui_kits/mobile/OnboardingScreen.jsx
+ * Cal-AI-Lite OptionRow icon-circle rhythm. No dedicated JSX file exists
+ * for s11 — design doc § 3.1 says all multi-option onboarding steps
+ * inherit the OnboardingScreen.jsx OptionRow pattern.
+ *
+ * Per memory feedback_compose_vs_rewrite_phrasing.md this is a REWRITE
+ * (not compose) — visual harmony with Step04 + Step08 + Step10 comes
+ * from a single primitive surface.
+ *
+ * 6 stacked sources: friend / instagram / tiktok / app_store / google /
+ * other. Values MUST match POST /api/v1/auth/attribution Pydantic enum
+ * exactly (`Literal['friend','instagram','tiktok','app_store','google',
+ * 'other']`) per CLAUDE.md attribution endpoint contract.
+ *
+ * Test contract preserved (Step11Attribution.test.tsx — 4 tests):
+ *   - testID="attr-{friend|instagram|tiktok|app_store|google|other}"
+ *     forwarded to each OptionRow root
+ *   - onChange(value) fires with the snake_case backend value
+ *   - accessibilityState.selected mirrors active state
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { colors, spacing, typography, radii } from '../../theme';
+import {
+  Users,
+  Camera,
+  Music,
+  ShoppingBag,
+  Search,
+  MoreHorizontal,
+} from 'lucide-react-native';
+import { OptionRow } from '../../components/primitives/OptionRow';
+import { colors, spacing, typography } from '../../theme';
 import { OnboardingAttributionSource } from './types';
 
 interface Props {
   value?: OnboardingAttributionSource;
   onChange: (source: OnboardingAttributionSource) => void;
+}
+
+// F-S2.W2.hotfix (task #38): per-source lucide-react-native icons.
+// Ahmed's W2 device walk caught empty circles on Step11 — W2 shipped
+// label-only OptionRow rows. Icon mapping:
+//   - friend    → Users (group of two)
+//   - instagram → Camera (Instagram brand glyph removed from
+//                 lucide-react-native v1.x; Camera is the semantic
+//                 stand-in for a photo-sharing source)
+//   - tiktok    → Music (TikTok is a music-video platform; lucide
+//                 dropped brand glyphs in v1.x)
+//   - app_store → ShoppingBag (app marketplace)
+//   - google    → Search (search-driven discovery)
+//   - other     → MoreHorizontal (3-dot fallback)
+// All 6 verified as lucide-react-native@1.14.0 exports (or aliases:
+// MoreHorizontal → Ellipsis).
+const ICON_SIZE = 20;
+const ICON_STROKE = 2;
+function sourceIcon(key: OnboardingAttributionSource, color: string): React.ReactNode {
+  switch (key) {
+    case 'friend':
+      return <Users size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'instagram':
+      return <Camera size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'tiktok':
+      return <Music size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'app_store':
+      return <ShoppingBag size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'google':
+      return <Search size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+    case 'other':
+      return <MoreHorizontal size={ICON_SIZE} color={color} strokeWidth={ICON_STROKE} />;
+  }
 }
 
 const SOURCES: { value: OnboardingAttributionSource; labelKey: string }[] = [
@@ -36,20 +93,21 @@ export function Step11Attribution({ value, onChange }: Props) {
 
       <View style={styles.list}>
         {SOURCES.map((s) => {
-          const selected = value === s.value;
+          const active = value === s.value;
+          const iconColor = active ? colors.accentDark : colors.text.primary;
           return (
-            <TouchableOpacity
+            <OptionRow
               key={s.value}
               testID={`attr-${s.value}`}
-              onPress={() => onChange(s.value)}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              style={[styles.card, selected && styles.cardSelected]}
-            >
-              <Text style={[styles.cardLabel, selected && styles.cardLabelSelected]}>
-                {t(s.labelKey)}
-              </Text>
-            </TouchableOpacity>
+              option={{
+                key: s.value,
+                label: t(s.labelKey),
+                icon: sourceIcon(s.value, iconColor),
+              }}
+              active={active}
+              onToggle={() => onChange(s.value)}
+              style="icon-circle"
+            />
           );
         })}
       </View>
@@ -70,24 +128,5 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: spacing.sm,
-  },
-  card: {
-    backgroundColor: colors.bg.secondary,
-    borderRadius: radii.card,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  cardSelected: {
-    backgroundColor: colors.bg.primary,
-    borderColor: colors.cta.primary,
-  },
-  cardLabel: {
-    ...typography.title,
-    color: colors.text.primary,
-  },
-  cardLabelSelected: {
-    color: colors.text.primary,
   },
 });
