@@ -238,4 +238,29 @@ describe('ResultsAccordion — render coverage', () => {
     const reFetched = getByTestId('results-specs-toggle');
     expect(reFetched.props.accessibilityState).toMatchObject({ expanded: true });
   });
+
+  it('isSpecDifferent returns true for single-product degenerate case', () => {
+    // When specsSrc.length < 2, isSpecDifferent (lines 86-89 of
+    // ResultsAccordion.tsx) returns true so the row stays visible
+    // under showDiffsOnly.
+    const oneProduct = [mockProducts[0]];
+    const { getByTestId, getByText } = render(
+      <ResultsAccordion products={oneProduct as any} />
+    );
+    fireEvent.press(getByTestId('results-specs-toggle'));
+    expect(getByText('display')).toBeTruthy();
+  });
+
+  it('renders empty proscons body when both products lack pros + cons', () => {
+    const noPC = [
+      { ...mockProducts[0], pros: [], cons: [] },
+      { ...mockProducts[1], pros: [], cons: [] },
+    ];
+    const { getByTestId, queryByText } = render(
+      <ResultsAccordion products={noPC as any} />
+    );
+    fireEvent.press(getByTestId('results-accordion-toggle-proscons'));
+    expect(queryByText('+ Faster CPU')).toBeNull();
+    expect(queryByText('+ Better camera')).toBeNull();
+  });
 });
