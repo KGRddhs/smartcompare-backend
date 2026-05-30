@@ -91,9 +91,13 @@ async def extract_image_via_gpt(
     if not organic_results:
         return None
 
+    # Defensive: drop None / non-dict entries before .get() — caller may pass
+    # heterogeneous lists in pathological cases (Serper API drift, partial
+    # parse failures upstream).
     organic_block = "\n".join(
         f"- {r.get('link', '')}: {r.get('snippet', '')}"
         for r in organic_results[:10]
+        if isinstance(r, dict)
     )
     prompt = _TIER3_PROMPT.format(
         product_name=product_name,
@@ -174,7 +178,10 @@ async def get_product_image_url(
 
         if isinstance(response, dict):
             images = response.get("images") or []
-            if images and isinstance(images[0], dict):
+            # Defensive: future Serper API drift may return `images` as a
+            # string / dict / int. We require a list before indexing — any
+            # other shape falls through to Tier 3 instead of crashing.
+            if isinstance(images, list) and images and isinstance(images[0], dict):
                 candidate = images[0].get("imageUrl")
                 if _is_valid_image_url(candidate):
                     logger.info("[image] Tier 1 Serper hit for %r", name[:60])
