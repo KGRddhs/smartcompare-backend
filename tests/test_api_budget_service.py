@@ -348,3 +348,183 @@ class TestEdgeCases:
         raw = mock_redis_helpers["store"][_circuit_key("scrapedo")]
         state = json.loads(raw)
         assert before <= state["last_failure_at"] <= after
+
+
+# ============================================================================
+# Bundle E S3 — Serper Images dedicated daily counter
+# ============================================================================
+
+@pytest.fixture
+def mock_image_redis():
+    """Mock redis_client.incrby/decrby/expire for the image-counter tests."""
+    store = {"counter": 0}
+
+    def fake_incrby(key, n):
+        store["counter"] += n
+        store[key] = store["counter"]
+        return store["counter"]
+
+    def fake_decrby(key, n):
+        store["counter"] -= n
+        store[key] = store["counter"]
+        return store["counter"]
+
+    mock_client = MagicMock()
+    mock_client.incrby = MagicMock(side_effect=fake_incrby)
+    mock_client.decrby = MagicMock(side_effect=fake_decrby)
+    mock_client.expire = MagicMock(return_value=True)
+
+    with patch("app.services.cache_service.redis_client", mock_client):
+        yield {"client": mock_client, "store": store}
+
+
+class TestSerperImageCounter:
+    def test_first_call_allowed_and_sets_ttl(self, mock_image_redis):
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        result = try_consume_serper_image_credit(1)
+
+        assert result is True
+        mock_image_redis["client"].incrby.assert_called_once()
+        # Counter at 1 → first write → TTL must be set
+        mock_image_redis["client"].expire.assert_called_once()
+
+    def test_subsequent_calls_do_not_reset_ttl(self, mock_image_redis):
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        try_consume_serper_image_credit(1)
+        try_consume_serper_image_credit(1)
+
+        # First call sets TTL, second call should NOT
+        assert mock_image_redis["client"].expire.call_count == 1
+
+    def test_within_budget_returns_true(self, mock_image_redis):
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        # Default budget is 500; 100 calls should still allow
+        for _ in range(100):
+            assert try_consume_serper_image_credit(1) is True
+
+    def test_over_budget_returns_false_and_rolls_back(self, mock_image_redis):
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        # Set counter near limit, then try to overflow
+        mock_image_redis["store"]["counter"] = 499
+        assert try_consume_serper_image_credit(1) is True   # 500 (at limit, still OK)
+        assert try_consume_serper_image_credit(1) is False  # 501 → rejected + rollback
+
+        # After rollback, counter should be back at 500
+        assert mock_image_redis["store"]["counter"] == 500
+        mock_image_redis["client"].decrby.assert_called_once()
+
+    def test_n_zero_returns_true_without_redis_call(self, mock_image_redis):
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        assert try_consume_serper_image_credit(0) is True
+        mock_image_redis["client"].incrby.assert_not_called()
+
+    def test_n_negative_returns_true_without_redis_call(self, mock_image_redis):
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        assert try_consume_serper_image_credit(-1) is True
+        mock_image_redis["client"].incrby.assert_not_called()
+
+    def test_redis_none_fails_open(self):
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        with patch("app.services.cache_service.redis_client", None):
+            assert try_consume_serper_image_credit(1) is True
+
+    def test_redis_exception_fails_open(self):
+        """Redis errors must not block image pipeline — burn the credit, keep going.
+
+        Per memory/project_upstash_redis_singlepoint_failure.md: image pipeline
+        is a UX feature, not security; we'd rather risk over-spending Serper
+        credit than ship a placeholder image when Redis is down.
+        """
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        mock_client = MagicMock()
+        mock_client.incrby.side_effect = RuntimeError("Redis SET error")
+        with patch("app.services.cache_service.redis_client", mock_client):
+            assert try_consume_serper_image_credit(1) is True
+
+    def test_expire_failure_does_not_block(self, mock_image_redis):
+        """TTL expire failure is logged but the increment still counts."""
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        mock_image_redis["client"].expire.side_effect = RuntimeError("EXPIRE failed")
+        # Still returns True — counter was incremented even though TTL set failed
+        assert try_consume_serper_image_credit(1) is True
+
+    def test_custom_n_value_consumes_multiple_credits(self, mock_image_redis):
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        assert try_consume_serper_image_credit(3) is True
+        assert mock_image_redis["store"]["counter"] == 3
+
+    def test_env_var_overrides_default_budget(self, mock_image_redis, monkeypatch):
+        from app.services.api_budget_service import try_consume_serper_image_credit
+
+        monkeypatch.setenv("SERPER_IMAGE_DAILY_BUDGET", "10")
+        # First 10 calls succeed
+        for _ in range(10):
+            assert try_consume_serper_image_credit(1) is True
+        # 11th call rejected
+        assert try_consume_serper_image_credit(1) is False
+
+    def test_env_var_malformed_falls_back_to_default(self, mock_image_redis, monkeypatch):
+        """Garbage env value → use default 500."""
+        from app.services.api_budget_service import (
+            try_consume_serper_image_credit,
+            _serper_image_daily_budget,
+        )
+
+        monkeypatch.setenv("SERPER_IMAGE_DAILY_BUDGET", "not_an_int")
+        assert _serper_image_daily_budget() == 500
+        assert try_consume_serper_image_credit(1) is True
+
+
+class TestSerperImageUsageDiagnostic:
+    def test_usage_summary_includes_serper_images_block(self, mock_redis_helpers):
+        from app.services.api_budget_service import get_usage_summary
+
+        result = get_usage_summary()
+        assert "serper_images" in result["providers"]
+        assert result["providers"]["serper_images"]["scope"] == "daily"
+        assert result["providers"]["serper_images"]["used"] == 0
+        assert result["providers"]["serper_images"]["limit"] == 500
+
+    def test_usage_summary_reflects_consumed_credits(self, mock_redis_helpers):
+        from app.services.api_budget_service import _serper_image_key, get_usage_summary
+
+        mock_redis_helpers["store"][_serper_image_key()] = "42"
+        result = get_usage_summary()
+        assert result["providers"]["serper_images"]["used"] == 42
+        assert result["providers"]["serper_images"]["remaining"] == 458
+
+    def test_get_serper_image_usage_returns_dict(self, mock_redis_helpers):
+        from app.services.api_budget_service import _serper_image_key, get_serper_image_usage
+
+        mock_redis_helpers["store"][_serper_image_key()] = "5"
+        usage = get_serper_image_usage()
+        assert usage == {"used": 5, "limit": 500, "remaining": 495}
+
+    def test_get_serper_image_usage_fail_safe_when_redis_errors(self):
+        from app.services.api_budget_service import get_serper_image_usage
+
+        with patch(
+            "app.services.api_budget_service._redis_get",
+            side_effect=Exception("Redis down"),
+        ):
+            usage = get_serper_image_usage()
+            assert usage == {"used": 0, "limit": 500, "remaining": 500}
+
+
+class TestSerperImageKey:
+    def test_key_contains_today_date(self):
+        from app.services.api_budget_service import _serper_image_key
+        from datetime import datetime, timezone
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        assert _serper_image_key() == f"budget:serper_images:{today}"
