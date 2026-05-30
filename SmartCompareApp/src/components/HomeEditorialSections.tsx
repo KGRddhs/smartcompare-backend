@@ -393,9 +393,9 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
 
 // ---------------------------------------------------------------------------
 // HomeEditorialSections — composed wrapper rendered below the CompareCard.
-// Wraps all 4 sections in a ScrollView so the screen scrolls cleanly when
-// data is present. When nothing is rendering, the wrapper itself collapses
-// to a 0-height view (preserving R16 contract surface).
+// S3 REWRITE: drops the internal ScrollView so the 4 sections render as
+// flat siblings inside HomeScreen's main scroll per JSX:695-709. Hosts
+// only a paddings View around the 4 child sections.
 // ---------------------------------------------------------------------------
 
 interface HomeEditorialSectionsProps {
@@ -406,18 +406,15 @@ interface HomeEditorialSectionsProps {
 
 export default function HomeEditorialSections(props: HomeEditorialSectionsProps) {
   return (
-    <ScrollView
-      testID="home-editorial-scroll"
-      style={styles.scroll}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
+    <View
+      testID="home-editorial"
+      style={styles.scrollContent}
     >
       <SmartPickCard onPressVerdict={props.onPressVerdict} />
       <QuickCategories onPickCategory={props.onPickCategory} />
       <SavingsBanner />
       <TrendingNearYou onPressTrending={props.onPressTrending} />
-      <View style={{ height: spacing['2xl'] }} />
-    </ScrollView>
+    </View>
   );
 }
 

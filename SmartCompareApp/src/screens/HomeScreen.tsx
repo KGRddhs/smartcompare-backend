@@ -1,32 +1,30 @@
 /**
- * Qaren - Home Screen (Bundle B redesign + Bundle D Claude-Design integration).
+ * Qaren - Home Screen (Bundle E S3 REWRITE).
  *
- * Renders the TwoInputShell for Text + URL modes and a Scan placeholder
- * for camera mode. When canCompare is false, takes over the middle of the
- * screen with the PaywallBanner per spec § 6.2 (hides hero, category strip,
- * header counter; dims mode chips to 50%).
+ * REWRITTEN top-down per docs/claude-design-handoff/ui_kits/mobile/
+ * HomeScreen.jsx (1-717). Element order:
+ *   1. Header        — QarenLogo + "Qaren" word + HeaderCounter pill
+ *                      [JSX:674-683]
+ *   2. Hero          — "Compare anything." 600/16 [JSX:685-691]
+ *   3. CategoryStrip — horizontal scroll of 5 cats [JSX:693, 391-432]
+ *   4. CompareCard   — [JSX:163-220]
+ *        ModeSegment (pill container w/ 3 inner tabs) [JSX:111-160]
+ *        Body (ScanBody | TwoInputShell) [JSX:179-197]
+ *        Compare CTA (full-width black button at bottom) [JSX:199-217]
+ *   5. SmartPickCard  [JSX:438-501]
+ *   6. QuickCategories [JSX:534-570]
+ *   7. SavingsBanner  [JSX:573-605]
+ *   8. TrendingNearYou [JSX:608-651]
  *
- * Bundle D integration (Claude-Design `docs/claude-design-handoff/ui_kits/mobile/
- * HomeScreen.jsx`, commit 0b87415) applies 3 crowding fixes per the
- * `mobile/README.md` table:
- *   FIX 1 — Single HeaderCounter chip in the header row replaces the
- *           simultaneous BonusCountdownCard + ComparisonCounter pair at
- *           the bottom. Counter taps through to Paywall.
- *   FIX 2 — Mode chips MOVED INSIDE the compare card as a top segmented
- *           control (black-on-active iOS segmented vibe).
- *   FIX 3 — Empty-state preview of the comparison structure (two outlined
- *           numeral circles + emerald "vs" pill) — already implemented by
- *           TwoInputShell in text/url mode; no-op here.
+ * DELETED from prior state:
+ *   - home-editorial-stub 0-height marker (not in JSX)
+ *   - the void-serverOnline plumbing (no health-state UI in JSX).
+ *     healthCheck() retained as a fire-and-forget for telemetry — its
+ *     return value is no longer threaded into state.
+ *   - Per-chip border/borderColor on the 3 mode chips (the pill container
+ *     now owns the outer border)
  *
- * Bundle D editorial sections (SmartPickCard / QuickCategories /
- * SavingsBanner / TrendingNearYou from Claude-Design HomeScreen.jsx
- * lines 438-651) are EXPLICITLY DEFERRED — would expand scope ~50%
- * (new backend APIs, 30+ i18n keys, privacy review for trending). See
- * `docs/plans/bundle-d-followups.md` "FRONTEND: HomeScreen 4 editorial
- * sections" entry for un-deferral checklist + cost estimate.
- *
- * Spec: docs/superpowers/specs/2026-05-17-bundle-b-two-input-ux-design.md
- *   § 3 anatomy · § 4 interactions · § 6 freemium · § 8 analytics
+ * Element-order checklist: docs/plans/_s3-a1-element-order.md
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -36,6 +34,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
+  ScrollView,
   Alert,
   ActivityIndicator,
 } from 'react-native';
@@ -70,22 +69,13 @@ import CategorySelector from '../components/CategorySelector';
 import QarenLogo from '../components/QarenLogo';
 import TwoInputShell from '../components/TwoInputShell';
 import PaywallBanner from '../components/PaywallBanner';
-// Bundle D 2.F.2 Screen 1 — editorial sections un-deferred per Backend 2.5
-// ship. SmartPickCard, QuickCategories, SavingsBanner, TrendingNearYou.
-// Each section hides silently on empty_state / threshold-miss / failure.
 import HomeEditorialSections from '../components/HomeEditorialSections';
-// Bundle D FIX 1: ComparisonCounter + BonusCountdownCard no longer
-// rendered on HomeScreen — collapsed into the single HeaderCounter chip
-// in the header row. Components remain in src/components/ for other
-// surfaces (Profile, EditPreferences) that may consume them; remove
-// imports here to satisfy strict no-unused-locals.
 import { useComparisonCounter } from '../hooks/useComparisonCounter';
 import { getReferralStatus } from '../services/referralService';
 
 const RECENT_SEARCHES_KEY = '@qaren_recent_searches';
 const MAX_RECENT = 5;
-// Bundle B/C/D — exactly 2 products per comparison. Exported so the
-// ScanCameraScreen modal + tests can read the same constant.
+// Bundle B/C/D — exactly 2 products per comparison.
 export const MAX_IMAGES = 2;
 
 type HomeScreenProps = {
@@ -93,18 +83,11 @@ type HomeScreenProps = {
   onLogout?: () => void;
 };
 
-/**
- * 3 equal-weight input modes (design § 4a).
- * 'scan' → launches fullscreen ScanCameraScreen modal.
- * 'url'  → renders TwoInputShell in URL mode.
- * 'type' → renders TwoInputShell in Text mode.
- */
 type InputMode = 'scan' | 'url' | 'type';
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
   const { t } = useTranslation();
   const [, setUser] = useState<User | null>(null);
-  const [serverOnline, setServerOnline] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
@@ -114,6 +97,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const [inputMode, setInputMode] = useState<InputMode>('scan');
   const [selectedCategory, setSelectedCategory] = useState<string>('electronics');
+  // Track which text/url pair the user has entered so the Compare CTA can
+  // gate on "both ≥ 2 chars". TwoInputShell still owns its own per-field
+  // input state for in-card UX; we mirror just enough to gate the CTA.
+  const [pairA, setPairA] = useState<string>('');
+  const [pairB, setPairB] = useState<string>('');
   const abortRef = useRef<(() => void) | null>(null);
 
   const { used, total, canCompare, increment } = useComparisonCounter();
@@ -128,7 +116,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // submit, reset after each submit.
   const pasteSplitUsedRef = useRef(false);
   const autoswitchUsedRef = useRef(false);
-  // compare_entry_view de-dupe: only fire once per mode-entry.
   const lastViewedModeRef = useRef<InputMode | null>(null);
   const prevCanCompareRef = useRef<boolean>(canCompare);
 
@@ -159,9 +146,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }, [])
   );
 
-  /**
-   * Min-display floor (1.2s) for Home→Results transitions per design § 3.
-   */
+  // Min-display floor (1.2s) for Home→Results transitions per design § 3.
   const loadingStartedAtRef = useRef<number | null>(null);
   const MIN_LOADING_MS = 1200;
   const navigateToResultsWithFloor = useCallback(
@@ -192,12 +177,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setUser(savedUser);
   };
 
+  // Fire-and-forget health check — no longer surfaced in UI per S3
+  // (JSX has no health-state indicator). Kept as telemetry.
   const checkServer = async () => {
     try {
-      const isHealthy = await healthCheck();
-      setServerOnline(isHealthy);
+      await healthCheck();
     } catch {
-      setServerOnline(false);
+      /* fire-and-forget */
     }
   };
 
@@ -226,7 +212,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   // --- Analytics ---
 
-  // compare_entry_view — fires whenever the active mode changes.
   useEffect(() => {
     if (lastViewedModeRef.current !== inputMode) {
       lastViewedModeRef.current = inputMode;
@@ -234,7 +219,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
   }, [inputMode]);
 
-  // compare_entry_paywall_banner_view — fires when canCompare flips to false.
   useEffect(() => {
     if (prevCanCompareRef.current && !canCompare) {
       trackEvent('compare_entry_paywall_banner_view', { mode: inputMode });
@@ -372,27 +356,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const handleModeChange = (mode: InputMode) => {
     if (!canCompare) {
-      // Spec § 6.2 — dimmed chips still tappable. Per team-lead approval
-      // of spec § 4.11 Q4: change active mode so the next paywall_banner_view
-      // re-fire reflects the user's intent, then re-fire that event with
-      // the new mode (the canCompare-flip useEffect above only catches
-      // true→false transitions, not chip-tap-while-already-false). Then
-      // route to Paywall as before.
       if (mode !== inputMode) setInputMode(mode);
       trackEvent('compare_entry_paywall_banner_view', { mode });
       navigation.navigate('Paywall');
       return;
     }
-    // Path A R2: tapping Scan chip switches inputMode so the in-card
-    // placeholder ("Tap to scan") renders first. User then taps the
-    // placeholder to open ScanCameraScreen. Prevents the jarring jump
-    // straight from chip-tap into a fullscreen camera modal.
     setInputMode(mode);
   };
 
-  // Gallery fallback kept for the camera-permission path. Auto-launches
-  // the gallery picker; on selection, hands off to ScanCameraScreen via
-  // navigation params so the existing scan flow handles compare.
   const pickFromGalleryFallback = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -407,6 +378,29 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   };
 
   const cameraPermissionGranted = permission?.granted;
+
+  // Compare CTA gate: scan is always allowed (route to camera); text/url
+  // need both inputs >= 2 chars (matches JSX:164-166).
+  const ctaEnabled = (() => {
+    if (!canCompare) return false;
+    if (inputMode === 'scan') return true;
+    return pairA.trim().length >= 2 && pairB.trim().length >= 2;
+  })();
+
+  const handleCtaPress = () => {
+    if (!ctaEnabled) return;
+    if (inputMode === 'scan') {
+      navigation.navigate('ScanCamera');
+      return;
+    }
+    if (inputMode === 'url') handleUrlCompare(pairA, pairB);
+    else handleTextCompare(pairA, pairB);
+  };
+
+  const ctaLabel =
+    inputMode === 'scan'
+      ? t('home.cta.openCamera', { defaultValue: 'Open camera' })
+      : t('home.compare.cta', { defaultValue: 'Compare' });
 
   const renderCenterArea = () => {
     if (!canCompare) {
@@ -440,12 +434,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         );
       }
-      // F-S1.4-B2: Replace placeholder camera with JSX-aligned ScanBody
-      // preview pattern per HomeScreen.jsx:222-265. Two PreviewRow items
-      // ((1) + dashed "Tap to snap product A" / (2) + dashed "Tap to snap
-      // product B") flanking a hairline + center emerald "vs" pill. Both
-      // rows route to ScanCamera since slot routing is handled there;
-      // the home preview is purely a visual entry point.
+      // JSX-aligned ScanBody preview pattern per HomeScreen.jsx:222-265.
       const goToScan = () => navigation.navigate('ScanCamera');
       return (
         <View testID="home-scan-preview" style={styles.scanPreview}>
@@ -473,9 +462,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             </View>
           </TouchableOpacity>
 
-          {/* Hairline + center emerald "vs" pill (matches the
-              TwoInputShell divider exactly so the visual rhythm carries
-              across text / url / scan modes). */}
           <View style={styles.scanPreviewDivider} pointerEvents="none">
             <View style={styles.scanPreviewHairline} />
             <View style={styles.scanPreviewVsPill}>
@@ -517,12 +503,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       );
     }
 
-    // Text + URL modes both render through TwoInputShell.
+    // Text + URL modes both render through TwoInputShell. We mirror its
+    // values into local pair state so the Compare CTA below the card can
+    // gate on the same predicate.
     return (
       <TwoInputShell
         mode={inputMode === 'url' ? 'url' : 'text'}
         disabled={loading}
+        onChange={(a, b) => {
+          setPairA(a);
+          setPairB(b);
+        }}
         onSubmit={(a, b) => {
+          setPairA(a);
+          setPairB(b);
           if (inputMode === 'url') handleUrlCompare(a, b);
           else handleTextCompare(a, b);
         }}
@@ -552,13 +546,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     );
   };
 
-  // serverOnline is currently unused in the new rendering path; suppressed
-  // until a health-state UI lands. Kept for potential future use.
-  void serverOnline;
-
-  // Bundle D FIX 1 — collapsed header counter. Replaces the previous
-  // simultaneous BonusCountdownCard + ComparisonCounter at the bottom.
-  // Bonus tail (`+N`) only renders when bonusRemaining > 0. Tap → Paywall.
   const baseFreeRemaining = Math.max(0, total - used);
   const isLastFree = baseFreeRemaining === 1;
   const handleHeaderCounterPress = () => {
@@ -568,6 +555,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* 1. Header — Q logo + Qaren wordmark + HeaderCounter pill */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <QarenLogo size={28} />
@@ -622,8 +610,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         )}
       </View>
 
+      {/* 2. Hero copy "Compare anything." */}
       {canCompare && <Text style={styles.hero}>{t('home.hero')}</Text>}
 
+      {/* 3. CategoryStrip */}
       {canCompare && (
         <CategorySelector
           value={selectedCategory}
@@ -631,89 +621,109 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         />
       )}
 
-      {/* Bundle D FIX 2 — segmented mode control INSIDE the compare card.
-          Dimmed to 50% during paywall takeover but still tappable so the
-          `compare_entry_paywall_banner_view` re-fires with the user's
-          intended mode (spec § 4.11 Q4). */}
-      <View
-        style={[
-          styles.compareCard,
-          !canCompare && styles.compareCardPaywall,
-        ]}
+      {/* Outer scroll wraps CompareCard + 4 editorial sections per JSX:695. */}
+      <ScrollView
+        testID="home-main-scroll"
+        style={styles.mainScroll}
+        contentContainerStyle={styles.mainScrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
+        {/* 4. CompareCard — ModeSegment + Body + Compare CTA */}
         <View
           style={[
-            styles.modeChipRail,
-            !canCompare && { opacity: 0.5 },
+            styles.compareCard,
+            !canCompare && styles.compareCardPaywall,
           ]}
         >
-          <ModeChip
-            testID="home-mode-scan"
-            label={t('home.mode.scan')}
-            icon={
-              <ScanIcon
-                size={14}
-                color={inputMode === 'scan' ? colors.cta.onPrimary : colors.text.secondary}
-              />
-            }
-            active={inputMode === 'scan'}
-            onPress={() => handleModeChange('scan')}
-          />
-          <ModeChip
-            testID="home-mode-link"
-            label={t('home.mode.link')}
-            icon={
-              <LinkIcon
-                size={14}
-                color={inputMode === 'url' ? colors.cta.onPrimary : colors.text.secondary}
-              />
-            }
-            active={inputMode === 'url'}
-            onPress={() => handleModeChange('url')}
-          />
-          <ModeChip
-            testID="home-mode-type"
-            label={t('home.mode.type')}
-            icon={
-              <TypeIcon
-                size={14}
-                color={inputMode === 'type' ? colors.cta.onPrimary : colors.text.secondary}
-              />
-            }
-            active={inputMode === 'type'}
-            onPress={() => handleModeChange('type')}
-          />
+          {/* ModeSegment — pill container w/ 3 inner tabs [JSX:111-160] */}
+          <View
+            style={[
+              styles.modeSegment,
+              !canCompare && { opacity: 0.5 },
+            ]}
+            accessibilityRole="tablist"
+          >
+            <ModeTab
+              testID="home-mode-scan"
+              label={t('home.mode.scan')}
+              icon={
+                <ScanIcon
+                  size={14}
+                  color={inputMode === 'scan' ? colors.cta.onPrimary : colors.text.secondary}
+                />
+              }
+              active={inputMode === 'scan'}
+              onPress={() => handleModeChange('scan')}
+            />
+            <ModeTab
+              testID="home-mode-link"
+              label={t('home.mode.link')}
+              icon={
+                <LinkIcon
+                  size={14}
+                  color={inputMode === 'url' ? colors.cta.onPrimary : colors.text.secondary}
+                />
+              }
+              active={inputMode === 'url'}
+              onPress={() => handleModeChange('url')}
+            />
+            <ModeTab
+              testID="home-mode-type"
+              label={t('home.mode.type')}
+              icon={
+                <TypeIcon
+                  size={14}
+                  color={inputMode === 'type' ? colors.cta.onPrimary : colors.text.secondary}
+                />
+              }
+              active={inputMode === 'type'}
+              onPress={() => handleModeChange('type')}
+            />
+          </View>
+
+          {/* Center area — ScanBody | TwoInputShell | PaywallBanner */}
+          <View style={styles.centerArea} testID="home-center-area">
+            {renderCenterArea()}
+          </View>
+
+          {/* Compare CTA — full-width black button [JSX:199-217]. Hidden
+              during paywall takeover (PaywallBanner has its own CTA). */}
+          {canCompare && (
+            <TouchableOpacity
+              testID="home-compare-cta"
+              onPress={handleCtaPress}
+              disabled={!ctaEnabled}
+              accessibilityRole="button"
+              accessibilityLabel={ctaLabel}
+              accessibilityState={{ disabled: !ctaEnabled }}
+              style={[
+                styles.compareCta,
+                !ctaEnabled && styles.compareCtaDisabled,
+              ]}
+            >
+              <Text style={styles.compareCtaText}>{ctaLabel}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        <View style={styles.centerArea} testID="home-center-area">
-          {renderCenterArea()}
-        </View>
-      </View>
-
-      {/* Bundle D 2.F.2 Screen 1 — 4 editorial sections (un-deferred per
-          Ahmed's no-deferral pick + Backend 2.5 SHIPPED 2026-05-23).
-          Each section silently hides on empty_state / threshold-miss /
-          network failure (Build Principle #4). Stub anchor `home-editorial-stub`
-          retained as a 0-height marker for parent test-IDs that may grep it,
-          but the live sections render via HomeEditorialSections below. */}
-      <View testID="home-editorial-stub" style={{ height: 0 }} />
-      {canCompare && (
-        <HomeEditorialSections
-          onPressVerdict={(comparisonId) =>
-            navigation.navigate('Results' as any, { from_history: comparisonId } as any)
-          }
-          onPickCategory={(cat) => {
-            setSelectedCategory(cat as any);
-            handleModeChange('type');
-          }}
-          onPressTrending={() => {
-            // Trending tap just primes the type-mode CompareCard; user re-types
-            // or pastes the query into TwoInputShell. We don't drill into
-            // TwoInputShell's internal A/B state from here.
-            handleModeChange('type');
-          }}
-        />
-      )}
+        {/* 5-8. Editorial sections — JSX flat-sibling order (no internal
+            ScrollView; the wrapper renders a View now). */}
+        {canCompare && (
+          <HomeEditorialSections
+            onPressVerdict={(comparisonId) =>
+              navigation.navigate('Results' as any, { from_history: comparisonId } as any)
+            }
+            onPickCategory={(cat) => {
+              setSelectedCategory(cat as any);
+              handleModeChange('type');
+            }}
+            onPressTrending={() => {
+              handleModeChange('type');
+            }}
+          />
+        )}
+      </ScrollView>
 
       {loading && statusMessage ? (
         <View style={styles.loadingOverlay}>
@@ -726,10 +736,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 }
 
 /**
- * Equal-weight mode chip per design § 4a. Active state surfaced via
- * accessibilityState.selected (testable) and visual fill (emerald).
+ * Pill-container inner tab (S3 REWRITE).
+ *
+ * JSX:131-157 — flex:1 inner pill, borderRadius 999, no own border (the
+ * outer ModeSegment owns the border). Black fill when active.
  */
-interface ModeChipProps {
+interface ModeTabProps {
   testID: string;
   label: string;
   icon: React.ReactNode;
@@ -737,7 +749,7 @@ interface ModeChipProps {
   onPress: () => void;
 }
 
-function ModeChip({ testID, label, icon, active, onPress }: ModeChipProps) {
+function ModeTab({ testID, label, icon, active, onPress }: ModeTabProps) {
   const scale = useSharedValue(active ? 1 : 0.96);
 
   React.useEffect(() => {
@@ -761,16 +773,16 @@ function ModeChip({ testID, label, icon, active, onPress }: ModeChipProps) {
   };
 
   return (
-    <Animated.View style={animStyle}>
+    <Animated.View style={[styles.modeTabHost, animStyle]}>
       <TouchableOpacity
         testID={testID}
         onPress={handlePress}
         accessibilityRole="button"
         accessibilityState={{ selected: active }}
-        style={[styles.modeChip, active && styles.modeChipActive]}
+        style={[styles.modeTab, active && styles.modeTabActive]}
       >
         {icon}
-        <Text style={[styles.modeChipText, active && styles.modeChipTextActive]}>
+        <Text style={[styles.modeTabText, active && styles.modeTabTextActive]}>
           {label}
         </Text>
       </TouchableOpacity>
@@ -803,9 +815,6 @@ const styles = StyleSheet.create({
   logoSpaced: {
     marginStart: spacing.sm,
   },
-  // Bundle D FIX 1 — HeaderCounter chip. Right-aligned in header row.
-  // accentLight bg + accent border + accentDark text when isLastFree=true
-  // (free === 1) per Claude-Design `HeaderCounter` (HomeScreen.jsx:324-349).
   headerCounter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -824,7 +833,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: '600',
     color: colors.text.secondary,
-    // Tabular numerals so the counter doesn't jiggle as the digit changes.
     fontVariant: ['tabular-nums'],
   },
   headerCounterTextLast: {
@@ -836,23 +844,6 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     opacity: 0.5,
   },
-  // Bundle D FIX 2 — compare card wraps mode-chips + center area.
-  compareCard: {
-    flex: 1,
-    marginHorizontal: spacing.lg,
-    backgroundColor: colors.bg.secondary,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-    overflow: 'hidden',
-  },
-  // During paywall takeover the card stays present (so the PaywallBanner
-  // renders inside it) but the border softens so the visual emphasis sits
-  // on the banner copy, not the container.
-  compareCardPaywall: {
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
-  },
   hero: {
     ...typography.body,
     fontWeight: '600',
@@ -860,50 +851,87 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
+  // S3 — outer scroll hosts CompareCard + editorial sections.
+  mainScroll: {
+    flex: 1,
+  },
+  mainScrollContent: {
+    paddingBottom: spacing['3xl'],
+  },
+  // CompareCard wraps ModeSegment + Body + Compare CTA per JSX:163-220.
+  compareCard: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    padding: spacing.base,
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  compareCardPaywall: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
   centerArea: {
-    flex: 1,
+    marginTop: spacing.md,
   },
-  // B1 (Path A): mode chip rail sits at the top of compareCard. zIndex
-  // ensures the chips paint above any flex sibling whose intrinsic height
-  // would otherwise cause layout overlap on iOS Safari-Area + ScrollView
-  // nesting. Position relative anchors the stacking context.
-  modeChipRail: {
+  // S3 REWRITE — ModeSegment pill container [JSX:111-160].
+  // ONE outer container w/ borderRadius 999 + 1px border + padding 4 +
+  // 4px gap. Each inner tab borrows the container's border (none of its
+  // own). Active tab gets cta.primary fill + onPrimary text.
+  modeSegment: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-    position: 'relative',
-    zIndex: 2,
+    padding: 4,
+    gap: 4,
+    backgroundColor: colors.bg.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    borderRadius: 999,
   },
-  bottomBar: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-  },
-  // B1 (Path A): scanPlaceholder no longer paints its own bg + margin
-  // (already inside compareCard with bg.secondary). The previous nested-
-  // card setup pushed the camera icon visually under the mode chip rail.
-  // Transparent bg + no horizontal margin = clean inline layout.
-  scanPlaceholder: {
+  modeTabHost: {
     flex: 1,
+  },
+  modeTab: {
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing['2xl'],
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    minHeight: 36,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
   },
-  scanPlaceholderTitle: {
-    ...typography.title,
-    color: colors.text.primary,
-    marginTop: spacing.base,
-    marginBottom: spacing.xs,
-    textAlign: 'center',
+  modeTabActive: {
+    backgroundColor: colors.cta.primary,
   },
-  scanPlaceholderHint: {
-    ...typography.body,
+  modeTabText: {
+    ...typography.caption,
     color: colors.text.secondary,
-    textAlign: 'center',
+    fontWeight: '500',
   },
-  // F-S1.4-B2 — JSX-aligned scan preview pattern (HomeScreen.jsx:222-265).
-  // Two PreviewRow items + center emerald "vs" pill divider + footer hint.
+  modeTabTextActive: {
+    color: colors.cta.onPrimary,
+    fontWeight: '600',
+  },
+  // S3 REWRITE — Compare CTA [JSX:199-217]. Full-width, 48px tall,
+  // cta.primary background, cta.onPrimary text. Disabled state at 0.5.
+  compareCta: {
+    marginTop: spacing.lg,
+    height: 48,
+    borderRadius: radii.button,
+    backgroundColor: colors.cta.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compareCtaDisabled: {
+    opacity: 0.5,
+  },
+  compareCtaText: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.cta.onPrimary,
+  },
+  // Scan preview pattern — unchanged from prior state, JSX:222-265.
   scanPreview: {
     flexDirection: 'column',
     gap: 12,
@@ -930,12 +958,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     color: colors.text.secondary,
   },
-  // F-S1.4d redesign: dashed box reads as a snap target (camera-centric)
-  // rather than a text-input row. Column layout puts the camera glyph
-  // ABOVE the stacked "Tap to snap" / "Product A|B" labels. minHeight 76
-  // keeps the dashed border tall enough to feel like a capture surface;
-  // numeral circle + dashed border + vs pill + footer hint untouched
-  // (still spec-correct per HomeScreen.jsx:222-265).
   scanPreviewPlaceholder: {
     flex: 1,
     minHeight: 76,
@@ -963,11 +985,6 @@ const styles = StyleSheet.create({
     lineHeight: 12 * 1.4,
     color: colors.text.secondary,
   },
-  // Hairline + emerald "vs" pill divider (mirrors TwoInputShell so the
-  // visual rhythm carries across text / url / scan modes). The hairline
-  // runs along the numeral-circle column (insetInlineStart 11px); the
-  // pill is centered on the row gap (margin top/bottom keep the 22px
-  // numeral circles from overlapping the pill).
   scanPreviewDivider: {
     height: 6,
     position: 'relative',
@@ -1007,11 +1024,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   permissionCard: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing['3xl'],
-    marginHorizontal: spacing.base,
     backgroundColor: colors.bg.secondary,
     borderRadius: radii.card,
   },
@@ -1046,33 +1061,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
     ...typography.caption,
   },
-  modeChip: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.chip,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-    backgroundColor: colors.bg.secondary,
-    minHeight: 44,
-  },
-  modeChipActive: {
-    backgroundColor: colors.cta.primary,
-    borderColor: colors.cta.primary,
-  },
-  modeChipText: {
-    ...typography.caption,
-    color: colors.text.secondary,
-    fontWeight: '500',
-  },
-  modeChipTextActive: {
-    color: colors.cta.onPrimary,
-    fontWeight: '600',
-  },
   loadingOverlay: {
     position: 'absolute',
     bottom: 80,
@@ -1093,7 +1081,7 @@ const styles = StyleSheet.create({
   },
 });
 
-// Re-export so existing CameraView import is still tree-shaken. Pulls the
-// expo-camera permissions hook into the bundle even when the user never
-// reaches a permission-granted state, preserving the previous behavior.
+// Re-export guard for the expo-camera CameraView import so the
+// permissions hook stays in the bundle even when the user never reaches
+// a permission-granted state.
 void CameraView;
