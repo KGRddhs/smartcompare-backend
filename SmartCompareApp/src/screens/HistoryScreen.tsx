@@ -153,8 +153,12 @@ function HistoryHeroStats({
                 activeOpacity={0.8}
               >
                 <View style={historyHeroStyles.cardPair}>
+                  {/* Bundle E S3 — A2/A4 image_url slot. A4 wires <Image>
+                      in follow-up PR; A2 emits the slot at the JSX-cited
+                      position so A4 can target it via testID. */}
                   <View
                     style={[historyHeroStyles.cardTile, { backgroundColor: toneA }]}
+                    testID="history-hero-card-image-slot-a"
                   />
                   <View style={historyHeroStyles.cardVsAbs} pointerEvents="none">
                     <View style={historyHeroStyles.cardVsPill}>
@@ -167,6 +171,7 @@ function HistoryHeroStats({
                       historyHeroStyles.cardTileWinner,
                       { backgroundColor: toneB },
                     ]}
+                    testID="history-hero-card-image-slot-b"
                   >
                     <View style={historyHeroStyles.cardTileCheck}>
                       <Check
@@ -545,8 +550,10 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
               testID={`history-row-${item.id}-block-a`}
             >
               {isAWinner ? <Text style={styles.rowV2TopMatch}>TOP MATCH</Text> : null}
+              {/* Bundle E S3 — A2/A4 image_url slot per JSX 226-233. */}
               <View
                 style={[styles.rowV2Tile, { backgroundColor: toneA }]}
+                testID={`history-row-${item.id}-block-a-image-slot`}
               >
                 {isAWinner ? (
                   <View style={styles.rowV2TileCheck}>
@@ -582,8 +589,10 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
               testID={`history-row-${item.id}-block-b`}
             >
               {isBWinner ? <Text style={styles.rowV2TopMatch}>TOP MATCH</Text> : null}
+              {/* Bundle E S3 — A2/A4 image_url slot per JSX 226-233. */}
               <View
                 style={[styles.rowV2Tile, { backgroundColor: toneB }]}
+                testID={`history-row-${item.id}-block-b-image-slot`}
               >
                 {isBWinner ? (
                   <View style={styles.rowV2TileCheck}>
