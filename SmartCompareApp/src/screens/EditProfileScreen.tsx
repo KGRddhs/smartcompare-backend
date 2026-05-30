@@ -1,8 +1,36 @@
 // SmartCompareApp/src/screens/EditProfileScreen.tsx
 //
-// Promotes the cramped inline name edit on Profile to a real screen
-// consolidating account edits (Bundle A §3). Avatar upload is stubbed
-// pending S3 + image picker work in a later bundle.
+// Bundle E S3 REWRITE per docs/claude-design-handoff/ui_kits/mobile/
+// EditProfileScreen.jsx (1-233). Element order:
+//   1. Header              — back chevron + centered "Edit Profile" + spacer
+//                            [JSX:23-43]
+//   2. AvatarBlock         — 96x96 circle bg.secondary + 36/700 initial
+//                            + "Photo upload coming soon" caption [JSX:45-63]
+//   3. Eyebrow "Account"   — [JSX:65-74]
+//   4. FormCard            — 2 fields: Display name + Email (or Apple ID mask)
+//                            [JSX:76-87, 173-185]
+//   5. NavRow Edit style profile (Star icon-circle + label + sub + chevron)
+//                            [JSX:122-148, 187-191]
+//   6. Eyebrow "Account actions" [JSX:193]
+//   7. Delete card (bordered, single NavRow with Trash icon, destructive)
+//                            [JSX:194-206]
+//   8. Sticky Save CTA (bottom-pinned outside ScrollView) [JSX:210-228]
+//
+// Element-order checklist: docs/plans/_s3-a1-element-order.md
+//
+// REWRITES from prior state:
+//   - Save CTA moved OUT of ScrollView into a sibling sticky-bottom slot
+//     (top hairline border + bg.primary background) so it never scrolls
+//     out of reach on long edit screens.
+//   - "Danger zone" eyebrow renamed to "Account actions" per JSX:193.
+//   - Delete row wrapped in a bordered card (deleteCard style) and gets
+//     a Trash2 icon-circle on the left.
+//   - Edit-style-profile linkRow gains a Star icon-circle + the
+//     "Update priorities, budget, and brand stance" sub-line.
+//
+// Preserved (S2 6b2be83): Apple Hide-My-Email relay mask — when the
+// user's email ends with @privaterelay.appleid.com, the row swaps to
+// "Apple ID" label + "Email kept private by Apple" caption.
 
 import React, { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
@@ -18,7 +46,7 @@ import {
   Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Star, Trash2 } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radii, typography } from '../theme';
 import api, { parseApiError, updateProfile } from '../services/api';
@@ -44,9 +72,7 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
   const [deleting, setDeleting] = useState(false);
 
   // F-S1.5k: refetch on focus so the displayed name reflects any update
-  // that happened elsewhere (e.g. a future flow that updates the cached
-  // user via updateSavedUserDisplayName). The initial mount also triggers
-  // this — useFocusEffect fires on mount AND every subsequent focus.
+  // that happened elsewhere.
   useFocusEffect(
     useCallback(() => {
       (async () => {
@@ -74,10 +100,6 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
       const result = await updateProfile(trimmed);
       if (result.success) {
         setInitialName(trimmed);
-        // F-S1.5k: write through to the cached user record so
-        // ProfileScreen's focus-refetch picks up the new name on the
-        // very next render. Without this the user only sees the new
-        // name after a full session refresh.
         await updateSavedUserDisplayName(trimmed);
         navigation.goBack();
       } else {
@@ -91,11 +113,9 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
   };
 
   const handleEditStyleProfile = () => {
-    // Bundle E F-S1.5c: JSX EditProfileScreen.jsx:189-190 "Edit style profile"
-    // subtitle "Update priorities, budget, and brand stance" maps to the
-    // lighter EditPreferencesFlow (priorities + budget + brand_attitude),
-    // not the full 17-step Onboarding re-run. Both this gateway AND Profile's
-    // PrioritiesInline "Tune" CTA converge on EditPreferences for parity.
+    // Bundle E F-S1.5c: "Edit style profile" maps to EditPreferencesFlow
+    // (priorities + budget + brand_attitude), not the full 17-step
+    // Onboarding re-run.
     navigation.navigate('EditPreferences');
   };
 
@@ -126,16 +146,13 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
 
   const avatarLetter = (user?.display_name || user?.email || '?')[0]?.toUpperCase() ?? '?';
 
-  // F-S1.5l: Apple "Hide My Email" wraps the user's real address behind a
-  // `@privaterelay.appleid.com` alias the user never typed. Surfacing that
-  // relay address in the email row feels like leakage; the JSX spec masks
-  // it with an "Apple ID" label and a "kept private by Apple" caption.
-  // Suffix check is sufficient — Apple guarantees the relay TLD.
+  // S2 6b2be83 preserved: Apple Hide-My-Email relay mask.
   const isAppleRelay =
     !!user?.email && user.email.toLowerCase().endsWith('@privaterelay.appleid.com');
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* 1. Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -150,7 +167,7 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {/* Avatar — stubbed; photo upload deferred to a later bundle. */}
+        {/* 2. AvatarBlock */}
         <View style={styles.avatarSection}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{avatarLetter}</Text>
@@ -158,8 +175,10 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
           <Text style={styles.avatarHint}>{t('editProfile.avatar.placeholder')}</Text>
         </View>
 
-        {/* Account section */}
+        {/* 3. Eyebrow "Account" */}
         <Text style={styles.sectionLabel}>{t('editProfile.section.account')}</Text>
+
+        {/* 4. FormCard — display name + email (or Apple ID mask) */}
         <View style={styles.card}>
           <Text style={styles.fieldLabel}>{t('profile.name')}</Text>
           <TextInput
@@ -174,11 +193,6 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
             maxLength={100}
             editable={!saving}
           />
-          {/* F-S1.5l: mask Apple Hide-My-Email relay address. The user
-              never typed the @privaterelay.appleid.com alias, so showing
-              it here reads like leakage. Swap to "Apple ID" label +
-              "Email kept private by Apple" caption when the suffix
-              matches. */}
           {isAppleRelay ? (
             <>
               <Text style={styles.fieldLabel}>
@@ -198,19 +212,62 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
           )}
         </View>
 
-        {/* Style profile entry */}
+        {/* 5. NavRow "Edit style profile" — Star icon-circle + label + sub
+            + chevron per JSX:122-148, 187-191. */}
         <TouchableOpacity
+          testID="edit-style-profile-row"
           onPress={handleEditStyleProfile}
-          style={styles.linkRow}
+          style={styles.navRow}
           accessibilityRole="button"
         >
-          <Text style={styles.linkLabel}>{t('editProfile.editStyleProfile')}</Text>
-          <ChevronRight size={18} color={colors.text.secondary} />
+          <View style={styles.navRowIconCircle}>
+            <Star size={18} color={colors.text.primary} />
+          </View>
+          <View style={styles.navRowBody}>
+            <Text style={styles.navRowLabel}>{t('editProfile.editStyleProfile')}</Text>
+            <Text style={styles.navRowSub}>
+              {t('editProfile.editStyleProfile.sub', {
+                defaultValue: 'Update priorities, budget, and brand stance',
+              })}
+            </Text>
+          </View>
+          <ChevronRight size={18} color={colors.text.placeholder} />
         </TouchableOpacity>
 
         {errorKey ? <Text style={styles.errorText}>{t(errorKey)}</Text> : null}
 
+        {/* 6. Eyebrow "Account actions" (renamed from "Danger zone") */}
+        <Text style={[styles.sectionLabel, styles.accountActionsLabel]}>
+          {t('editProfile.section.accountActions', { defaultValue: 'Account actions' })}
+        </Text>
+
+        {/* 7. Delete card — bordered card containing one destructive NavRow
+            with Trash icon-circle. JSX:194-206. */}
+        <View style={styles.deleteCard}>
+          <TouchableOpacity
+            testID="edit-delete-account-row"
+            onPress={handleDeleteAccount}
+            disabled={deleting}
+            style={styles.deleteRow}
+            accessibilityRole="button"
+          >
+            <View style={styles.deleteIconCircle}>
+              <Trash2 size={18} color={colors.destructive} />
+            </View>
+            {deleting ? (
+              <ActivityIndicator color={colors.destructive} />
+            ) : (
+              <Text style={styles.deleteLabel}>{t('editProfile.deleteAccount')}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* 8. Sticky Save CTA — pinned to bottom OUTSIDE ScrollView per
+          JSX:210-228. Top hairline border separates from scroll content. */}
+      <View style={styles.saveStickyHost}>
         <TouchableOpacity
+          testID="edit-save-cta"
           onPress={handleSave}
           disabled={!canSave}
           style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
@@ -223,24 +280,7 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
             <Text style={styles.saveBtnText}>{t('common.save')}</Text>
           )}
         </TouchableOpacity>
-
-        {/* Account actions / Danger */}
-        <Text style={[styles.sectionLabel, styles.dangerLabel]}>
-          {t('editProfile.dangerZone')}
-        </Text>
-        <TouchableOpacity
-          onPress={handleDeleteAccount}
-          disabled={deleting}
-          style={styles.dangerRow}
-          accessibilityRole="button"
-        >
-          {deleting ? (
-            <ActivityIndicator color={colors.destructive} />
-          ) : (
-            <Text style={styles.dangerLabelText}>{t('editProfile.deleteAccount')}</Text>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -259,11 +299,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
   },
-  // Bundle D Claude-Design (option small, Task 2.F.2 screen 5): header
-  // back-button bumped 32→36 to match EditProfileScreen.jsx + the same
-  // pattern shipped on ResultsScreen.tsx:1385 (95691c2). Transparent
-  // background per JSX (back button has no fill on EditProfile — modal-
-  // style, quieter than the data screens' bg.secondary circular treatment).
   headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   title: {
     ...typography.bodyEmphasis,
@@ -278,11 +313,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xl,
   },
-  // Bundle D Claude-Design (option small, Task 2.F.2 screen 5):
-  // avatar bumped 88→96 to match EditProfileScreen.jsx AvatarBlock
-  // (width 96, height 96, borderRadius 48). Same bg.secondary fill +
-  // hero typography. Larger circle leans into the avatar as the visual
-  // hero of the edit surface per the design intent.
   avatar: {
     width: 96,
     height: 96,
@@ -332,33 +362,42 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     padding: spacing.md,
   },
-  linkRow: {
+  // S3 — NavRow with icon-circle + label + sub + chevron per JSX:122-148.
+  navRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
     backgroundColor: colors.bg.secondary,
     borderRadius: radii.card,
     marginBottom: spacing.lg,
+    minHeight: 56,
   },
-  linkLabel: {
-    ...typography.body,
-    color: colors.text.primary,
-  },
-  saveBtn: {
-    backgroundColor: colors.cta.primary,
-    padding: spacing.md,
-    borderRadius: radii.button,
+  navRowIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.bg.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
   },
-  saveBtnDisabled: {
-    opacity: 0.4,
+  navRowBody: {
+    flex: 1,
+    minWidth: 0,
   },
-  saveBtnText: {
-    color: colors.cta.onPrimary,
-    ...typography.bodyEmphasis,
+  navRowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    lineHeight: 15 * 1.3,
+    color: colors.text.primary,
+  },
+  navRowSub: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 12 * 1.4,
+    color: colors.text.secondary,
+    marginTop: 2,
   },
   errorText: {
     ...typography.caption,
@@ -366,19 +405,65 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     textAlign: 'center',
   },
-  dangerLabel: {
+  // S3 — Account actions eyebrow above the Delete card. Extra top margin
+  // separates it from the form above.
+  accountActionsLabel: {
     marginTop: spacing.xl,
   },
-  dangerRow: {
-    padding: spacing.md,
-    borderRadius: radii.card,
+  // S3 — Delete card (bordered, hosts the destructive NavRow). JSX:194-206.
+  deleteCard: {
     backgroundColor: colors.bg.secondary,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    overflow: 'hidden',
+    marginBottom: spacing.lg,
+  },
+  deleteRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 48,
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
+    minHeight: 56,
+  },
+  deleteIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.bg.primary,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  dangerLabelText: {
-    ...typography.bodyEmphasis,
+  deleteLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    lineHeight: 15 * 1.3,
     color: colors.destructive,
+  },
+  // S3 — Sticky bottom Save CTA host. Top hairline border + bg.primary
+  // background. Pinned to bottom OUTSIDE the ScrollView. JSX:210-228.
+  saveStickyHost: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+    backgroundColor: colors.bg.primary,
+  },
+  saveBtn: {
+    backgroundColor: colors.cta.primary,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 52,
+  },
+  saveBtnDisabled: {
+    opacity: 0.4,
+  },
+  saveBtnText: {
+    color: colors.cta.onPrimary,
+    ...typography.bodyEmphasis,
   },
 });

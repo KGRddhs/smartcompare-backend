@@ -202,6 +202,12 @@ export interface TwoInputShellProps {
   onPasteSplit?: (sourceBox: 'a' | 'b') => void;
   onModeAutoswitch?: (from: 'text', to: 'url') => void;
   onReady?: (timeToReadyMs: number) => void;
+  /**
+   * Fires after every keystroke / paste with the current (a, b) pair.
+   * Lets external surfaces (e.g. HomeScreen's Compare CTA) gate on the
+   * pair without owning the input state.
+   */
+  onChange?: (a: string, b: string) => void;
   initialA?: string;
   initialB?: string;
   disabled?: boolean;
@@ -268,6 +274,7 @@ function TwoInputShell({
   onPasteSplit,
   onModeAutoswitch,
   onReady,
+  onChange,
   initialA,
   initialB,
   disabled = false,
@@ -354,6 +361,14 @@ function TwoInputShell({
       if (captionTimerRef.current) clearTimeout(captionTimerRef.current);
     };
   }, []);
+
+  // S3 — surface the live (a, b) pair to external gate consumers (the
+  // HomeScreen Compare CTA reads this to enable/disable). Fire-and-forget
+  // on every box change. Safe under mode flips because boxA/boxB are
+  // re-seeded by the mode useEffect above.
+  useEffect(() => {
+    onChange?.(boxA, boxB);
+  }, [boxA, boxB, onChange]);
 
   const showCaption = useCallback((kind: Exclude<CaptionKind, null>) => {
     setCaption(kind);
