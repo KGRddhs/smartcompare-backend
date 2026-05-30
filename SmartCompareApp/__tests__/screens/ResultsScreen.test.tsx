@@ -43,8 +43,24 @@ const RESULTS_PATH = path.resolve(
   __dirname,
   '../../src/screens/ResultsScreen.tsx',
 );
-
-const SOURCE = fs.readFileSync(RESULTS_PATH, 'utf8');
+// Bundle E S3 — Lane A2: presentation extracted to ResultsContent.tsx.
+const RESULTS_CONTENT_PATH = path.resolve(
+  __dirname,
+  '../../src/components/results/ResultsContent.tsx',
+);
+const RESULTS_ACCORDION_PATH = path.resolve(
+  __dirname,
+  '../../src/components/results/ResultsAccordion.tsx',
+);
+const SOURCE = [
+  fs.readFileSync(RESULTS_PATH, 'utf8'),
+  fs.existsSync(RESULTS_CONTENT_PATH)
+    ? fs.readFileSync(RESULTS_CONTENT_PATH, 'utf8')
+    : '',
+  fs.existsSync(RESULTS_ACCORDION_PATH)
+    ? fs.readFileSync(RESULTS_ACCORDION_PATH, 'utf8')
+    : '',
+].join('\n');
 
 describe('ResultsScreen — Bundle E Task 0.1 defensive guards', () => {
   it('handles undefined route.params without crashing (early return)', () => {
@@ -151,9 +167,12 @@ describe('ResultsScreen — Bundle E Task 0.2 button removal', () => {
 
   it('keeps the Share button intact (no regression)', () => {
     // Decision 6 deletes whatsNext + save, NOT share. Make sure the
-    // share affordance survives the prune.
-    expect(SOURCE).toMatch(/t\(['"]results\.share['"]\)/);
+    // share affordance survives the prune. Bundle E S3 also pruned the
+    // duplicate `results.share`-labeled actions row below feedback per
+    // JSX; the header Share button (icon + handleShare) is the lone
+    // remaining affordance.
     expect(SOURCE).toMatch(/<Share2\s/);
+    expect(SOURCE).toMatch(/onShare|handleShare/);
   });
 });
 

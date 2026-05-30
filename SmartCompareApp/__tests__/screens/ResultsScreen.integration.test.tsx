@@ -35,7 +35,17 @@ const RESULTS_PATH = path.resolve(
   '../../src/screens/ResultsScreen.tsx',
 );
 
-const SOURCE = fs.readFileSync(RESULTS_PATH, 'utf8');
+// Bundle E S3 — Lane A2: presentation extracted to ResultsContent.tsx.
+const RESULTS_CONTENT_PATH = path.resolve(
+  __dirname,
+  '../../src/components/results/ResultsContent.tsx',
+);
+const SOURCE = [
+  fs.readFileSync(RESULTS_PATH, 'utf8'),
+  fs.existsSync(RESULTS_CONTENT_PATH)
+    ? fs.readFileSync(RESULTS_CONTENT_PATH, 'utf8')
+    : '',
+].join('\n');
 
 describe('ResultsScreen — Task 3.5 scoring_v2 wiring', () => {
   describe('imports the four Bundle E components', () => {
