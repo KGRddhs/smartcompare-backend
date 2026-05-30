@@ -405,6 +405,20 @@ def _select_smart_pick(
 
     updated_at = _format_updated_at(chosen.get("created_at"))
 
+    # Bundle E S3 A3 — extract per-product image_url from the source
+    # comparison row's `products[*].image_url`. Returns the string when it's
+    # a valid http(s) URL; null otherwise (FE renders placeholder primitive).
+    # Rejects non-string types defensively (legacy malformed rows can hold
+    # ints / dicts / lists; we don't pass through bad shapes).
+    def _safe_image_url(product: dict) -> Optional[str]:
+        raw = product.get("image_url") if isinstance(product, dict) else None
+        if not isinstance(raw, str):
+            return None
+        stripped = raw.strip()
+        if not (stripped.startswith("http://") or stripped.startswith("https://")):
+            return None
+        return stripped
+
     return {
         # Legacy fields (one release cycle — same pattern as scoring_v2)
         "comparison_id": chosen.get("id"),
@@ -424,6 +438,11 @@ def _select_smart_pick(
         "winner_sub": winner_sub,
         "runner_up_sub": runner_up_sub,
         "verdict_short": verdict_short,
+        # Bundle E S3 A3 — image_url extension. Null when source comparison
+        # was saved before A3 deploy (no image_url on legacy products).
+        # FE renders placeholder primitive on null.
+        "winner_image_url": _safe_image_url(winner),
+        "runner_up_image_url": _safe_image_url(loser),
     }
 
 
