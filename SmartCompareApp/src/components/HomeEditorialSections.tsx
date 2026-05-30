@@ -37,6 +37,7 @@ import {
   type HomeTrendingItem,
 } from '../services/api';
 import { deriveTone } from '../utils/deriveTone';
+import { ProductImage } from './primitives/ProductImage';
 
 // ---------------------------------------------------------------------------
 // 1. SmartPickCard
@@ -117,6 +118,17 @@ export function SmartPickCard({ onPressVerdict }: SmartPickCardProps) {
             ]}
             testID="home-smart-pick-tile-runner-up"
           >
+            {/* Bundle E S3 A4 Wave 2 — ProductImage at top of tile per
+                HomeScreen.jsx:506-525 (aspectRatio 1, radius 12, tone
+                placeholder). Consumes A3 dbf3a5f runner_up_image_url. */}
+            <ProductImage
+              testID="home-smart-pick-runner-up-image"
+              imageUrl={pick.runner_up_image_url}
+              placeholderTone={runnerUpTone}
+              aspectRatio={1}
+              borderRadius={12}
+              style={styles.smartTileImage}
+            />
             <Text style={styles.smartTileName} numberOfLines={1}>
               {pick.runner_up_name}
             </Text>
@@ -145,6 +157,17 @@ export function SmartPickCard({ onPressVerdict }: SmartPickCardProps) {
             <View style={styles.smartTileCheck}>
               <Check size={10} color={colors.bg.primary} strokeWidth={4} />
             </View>
+            {/* Bundle E S3 A4 Wave 2 — ProductImage at top of tile per
+                HomeScreen.jsx:506-525. Consumes A3 dbf3a5f
+                winner_image_url. */}
+            <ProductImage
+              testID="home-smart-pick-winner-image"
+              imageUrl={pick.winner_image_url}
+              placeholderTone={winnerTone}
+              aspectRatio={1}
+              borderRadius={12}
+              style={styles.smartTileImage}
+            />
             <Text
               style={[styles.smartTileName, styles.smartTileNameWinner]}
               numberOfLines={1}
@@ -511,6 +534,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border.light,
     gap: 4,
+  },
+  // Bundle E S3 A4 Wave 2 — ProductImage tile inside SmartPick PickTile.
+  // Per HomeScreen.jsx:506-525 the image box itself carries the tone +
+  // radius 12 + aspectRatio 1. ProductImage's own placeholderTone +
+  // aspectRatio + borderRadius props handle the visual; this style only
+  // adds tile-internal margin so it doesn't collide with the check chip.
+  smartTileImage: {
+    marginBottom: 4,
   },
   smartTileMuted: {
     opacity: 0.7,
