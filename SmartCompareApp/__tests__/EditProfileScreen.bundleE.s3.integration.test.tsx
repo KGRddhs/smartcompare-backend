@@ -12,6 +12,7 @@
  */
 
 import React from 'react';
+import { TextInput } from 'react-native';
 import { render, waitFor, fireEvent } from '@testing-library/react-native';
 
 jest.mock('@react-navigation/native', () => {
@@ -178,7 +179,7 @@ describe('EditProfileScreen S3 integration — Save CTA flow', () => {
     await waitFor(() => {
       expect(rendered.getByText('K')).toBeTruthy();
     });
-    const inputs = rendered.UNSAFE_getAllByType('TextInput');
+    const inputs = rendered.UNSAFE_getAllByType(TextInput);
     fireEvent.changeText(inputs[0], 'Karim Updated');
     const cta = rendered.getByTestId('edit-save-cta');
     await waitFor(() => {
@@ -193,7 +194,7 @@ describe('EditProfileScreen S3 integration — Save CTA flow', () => {
     await waitFor(() => {
       expect(rendered.getByText('K')).toBeTruthy();
     });
-    const inputs = rendered.UNSAFE_getAllByType('TextInput');
+    const inputs = rendered.UNSAFE_getAllByType(TextInput);
     fireEvent.changeText(inputs[0], 'Karim Updated');
     const cta = rendered.getByTestId('edit-save-cta');
     fireEvent.press(cta);
@@ -211,7 +212,7 @@ describe('EditProfileScreen S3 integration — Save CTA flow', () => {
     await waitFor(() => {
       expect(rendered.getByText('K')).toBeTruthy();
     });
-    const inputs = rendered.UNSAFE_getAllByType('TextInput');
+    const inputs = rendered.UNSAFE_getAllByType(TextInput);
     fireEvent.changeText(inputs[0], 'Karim Updated');
     const cta = rendered.getByTestId('edit-save-cta');
     fireEvent.press(cta);
@@ -228,7 +229,7 @@ describe('EditProfileScreen S3 integration — Save CTA flow', () => {
     await waitFor(() => {
       expect(rendered.getByText('K')).toBeTruthy();
     });
-    const inputs = rendered.UNSAFE_getAllByType('TextInput');
+    const inputs = rendered.UNSAFE_getAllByType(TextInput);
     fireEvent.changeText(inputs[0], 'Karim Updated');
     const cta = rendered.getByTestId('edit-save-cta');
     fireEvent.press(cta);

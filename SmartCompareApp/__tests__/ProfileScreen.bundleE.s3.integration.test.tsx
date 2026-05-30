@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { Switch, TextInput } from 'react-native';
 import { render, waitFor, fireEvent } from '@testing-library/react-native';
 
 jest.mock('@react-navigation/native', () => {
@@ -236,7 +237,7 @@ describe('ProfileScreen S3 integration — preferences toggle paths', () => {
       expect(mockGetPreferences).toHaveBeenCalled();
     });
     // RCTSwitch from RN mock — get all RCTSwitch elements.
-    const switches = rendered.UNSAFE_getAllByType('RCTSwitch' as any);
+    const switches = rendered.UNSAFE_getAllByType(Switch);
     expect(switches.length).toBeGreaterThan(0);
     // First switch is AI sharing master.
     fireEvent(switches[0], 'valueChange', false);
@@ -252,7 +253,7 @@ describe('ProfileScreen S3 integration — preferences toggle paths', () => {
     await waitFor(() => {
       expect(mockGetPreferences).toHaveBeenCalled();
     });
-    const switches = rendered.UNSAFE_getAllByType('RCTSwitch' as any);
+    const switches = rendered.UNSAFE_getAllByType(Switch);
     fireEvent(switches[0], 'valueChange', false);
     await waitFor(() => {
       expect(mockSavePreferences).toHaveBeenCalled();
@@ -266,7 +267,7 @@ describe('ProfileScreen S3 integration — preferences toggle paths', () => {
     await waitFor(() => {
       expect(mockGetPreferences).toHaveBeenCalled();
     });
-    const switches = rendered.UNSAFE_getAllByType('RCTSwitch' as any);
+    const switches = rendered.UNSAFE_getAllByType(Switch);
     // Second switch is notifications master.
     if (switches.length >= 2) {
       fireEvent(switches[1], 'valueChange', false);
@@ -283,7 +284,7 @@ describe('ProfileScreen S3 integration — preferences toggle paths', () => {
     await waitFor(() => {
       expect(mockGetPreferences).toHaveBeenCalled();
     });
-    const switches = rendered.UNSAFE_getAllByType('RCTSwitch' as any);
+    const switches = rendered.UNSAFE_getAllByType(Switch);
     // Switches >= 3 means we have sub-toggles. Press one.
     if (switches.length >= 3) {
       fireEvent(switches[2], 'valueChange', false);
@@ -334,7 +335,7 @@ describe('ProfileScreen S3 integration — password change modal', () => {
     const props = makeProps();
     const rendered = render(<ProfileScreen {...props} />);
     fireEvent.press(rendered.getByTestId('profile-row-password'));
-    const inputs = rendered.UNSAFE_getAllByType('TextInput');
+    const inputs = rendered.UNSAFE_getAllByType(TextInput);
     // 3 inputs in the modal: current / new / confirm.
     fireEvent.changeText(inputs[0], 'oldPass1');
     fireEvent.changeText(inputs[1], 'newPass123');
@@ -376,7 +377,7 @@ describe('ProfileScreen S3 integration — password change modal', () => {
     const props = makeProps();
     const rendered = render(<ProfileScreen {...props} />);
     fireEvent.press(rendered.getByTestId('profile-row-password'));
-    const inputs = rendered.UNSAFE_getAllByType('TextInput');
+    const inputs = rendered.UNSAFE_getAllByType(TextInput);
     fireEvent.changeText(inputs[0], 'oldPass1');
     fireEvent.changeText(inputs[1], 'newPass123');
     fireEvent.changeText(inputs[2], 'differentPass');
@@ -394,7 +395,7 @@ describe('ProfileScreen S3 integration — password change modal', () => {
     const props = makeProps();
     const rendered = render(<ProfileScreen {...props} />);
     fireEvent.press(rendered.getByTestId('profile-row-password'));
-    const inputs = rendered.UNSAFE_getAllByType('TextInput');
+    const inputs = rendered.UNSAFE_getAllByType(TextInput);
     fireEvent.changeText(inputs[0], 'oldPass1');
     fireEvent.changeText(inputs[1], 'short');
     fireEvent.changeText(inputs[2], 'short');
