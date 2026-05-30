@@ -438,3 +438,63 @@ Per `tests/_bundle_c_v1_backlog.md` (test-bundle-c `529c35c`) + post-merge hot-f
 ---
 
 **RETRACTION (2026-05-22):** Whole-project audit verified `ENABLE_BUNDLE_C_SCORING=false` on Railway. The flag gates exactly one site in `scoring_service.py:944` — the `None vs MISSING_SCORE=50` swap for missing raw signals. In current production, missing signals get `MISSING_SCORE=50`, so the A.4.9 silent dim omission filter never fires and the calibration cascade operates on numeric defaults. All other Bundle C behaviors (A.3.x, A.4.5, A.4.7, A.5.x, A.6.x, A.7.x, A.9.x, A.10.x, frontend Section B) are unconditional and remain live. The "always-on per Option A" claim above describes the *shipped code intent*, not the *deployed runtime*. Canonical state with full table: [BUNDLE_C_PROD_STATE.md](BUNDLE_C_PROD_STATE.md). Re-validation checklist in that doc; flag remains off until the checklist is run.
+
+---
+
+## Bundle E Visual Fidelity Pass (Session 55-57, SHIPPED 2026-05-30 — merge `d2d9386`)
+
+Visual-fidelity overhaul against `*.jsx` reference kit: 5 hero SVGs + 12 design-token primitives + motion tokens + RTL slide wrapper rewired across 8 tab surfaces, then the 17-step onboarding rewritten top-down per `OnboardingFlow.jsx`. Worktree: `../smartcompare-bundle-e-vf` on `feature/bundle-e-visual-fidelity` (worktree intentionally preserved post-merge for forensic). Branch: 98 commits ahead of pre-merge HEAD `c37e9f5`; merge commit `d2d9386` (138 files changed, +18,366/-2,885). Path A R2 holdovers (history detail unwrap + Scan chip placeholder) folded into S1 surface rewrites. Bundle D Google Sign-In carry-over RESOLVED out-of-band via Supabase dashboard "Skip nonce checks" toggle (no code change — see `memory/project_supabase_google_skip_nonce.md`).
+
+### Scope by stage
+
+- **S0 (sealed pre-S1):** 5 hero SVGs (PhoneMockup, CohortBarChart, ConcentricMotif, LoadingRings, RevealBurst — Reanimated, zero Lottie); 12 primitives in `src/components/primitives/`; motion tokens in `src/theme/motion.ts`; RTL slide wrapper (SlideTransition with directional translateX) + `deriveTone()` util. Q-S0 GREEN gate cleared.
+- **S1 (8 tab surfaces, rewritten top-down per JSX):** HomeScreen TwoInputShell preserved with B1 numeral-circle layout; ScanBody (B2) spec-correct dashed buttons (UX-questionable per Ahmed device walkthrough, polished later); HistoryStats (D1) numerals + sparkline; ProfileScreen FULL REWRITE (F-S1.5c) top-down against `ProfileScreen.jsx:36-322` — ProfileHeaderRow at top, RecentDecisionsRow marquee, MonthStrip 3-tile, FlatSettings unified card; EditProfileScreen Apple Hide-My-Email relay masking; D3 winner-card; LoadingScreen variants integrated.
+- **S2 (12 of 17 onboarding steps + LoadingScreen variants + RTL slides):** rewrites against `Step01-Step17.jsx`; SlideTransition wrapper; Step 14 theatrical loading 3.2s min; Step 16 conditional skip when user pre-authenticated; Step 17 push card moved BELOW headline+subtitle per JSX reading order; Step 17 spacing hotfix. CRITICAL #40 SlideTransition initial-mount fix (translateX initial value MUST be destination state, not source — blank Step01 after Google sign-in regression). #41 snapshot baseline rebuild after #40.
+- **Backend lane:** B3 normalize `/home/trending` to `{tag,a,b,count}` while preserving legacy `query`/`view_count` (dual-shape compat — VERIFIED in prod probe this session); `/home/smart-pick` extension `{category,updated_at,winner_sub,runner_up_sub,verdict_short}`; endpoint shape contract test; cohort load smoke. B4 Google Sign-In RESOLVED via Supabase Dashboard → Providers → Google → "Skip nonce checks" (zero code change; `@react-native-google-signin@16.1.2` iOS SDK auto-embeds hashed nonce JS can't satisfy — see `memory/project_supabase_google_skip_nonce.md`).
+
+### Path A R2 holdovers folded in
+
+History detail unwrap (`response.data.comparison.full_response` shape) and Scan tab chip → in-card placeholder behavior (no auto-jump) were deferred from Bundle D into the S1 surface rewrites rather than shipped as Path A R3. Now in main as part of d2d9386.
+
+### Key learnings (saved to memory)
+
+1. **REWRITE vs compose phrasing** (`memory/feedback_compose_vs_rewrite_phrasing.md`) — agents interpret "compose against JSX" as surgical patch on existing component. Bundle E S1 third-strike (after D2 ProfileScreen patched-not-rewritten three times) cemented the discipline: dispatcher must say "REWRITE `<Screen>.tsx` top-down against `<Screen>.jsx`" + enumerated element order + explicit DELETE for stale Bundle D pieces.
+2. **Animation initial value IS what user sees on mount** (`memory/feedback_animation_initial_value_must_be_destination.md`) — never initialize Reanimated shared values at animation source (translateX=±width, opacity=0) unless path-to-destination is guaranteed on first mount. S2 CRITICAL #40 — SlideTransition initial-mount left content offscreen, blank Step01 after Google sign-in.
+3. **Snapshot tests can rubber-stamp live bugs as expected behavior** (`memory/feedback_snapshots_as_staleness_liability.md`) — when a snapshot fails after a structural fix, verify the diff BEFORE running `-u`. Snapshots encode OUTPUT not INTENT — if generated against buggy code, they pin the bug as the contract. S2 #41 paired with #40.
+4. **RN `alignItems: 'center'` child-collapse trap** (`memory/feedback_rn_alignitems_center_collapse.md`) — primitive with `flexDirection: 'row'` + inner `flex: 1` text inside ancestor with `alignItems: 'center'` → child without `alignSelf: 'stretch'` collapses to intrinsic width, label measures 0px. Jest text renderer ignores layout so static tests pass. F-S2.W1 hotfix `927e488`.
+5. **React Navigation v7 duplicate route name** (`memory/feedback_react_navigation_duplicate_route_name.md`) — conditional `<Stack.Screen>` with same `name` in different branches = stuck route. Distinct names (`Onboarding` + `OnboardingEdit`) required. Bundle E B4 day-1 hotfix.
+6. **3-silent-nudges escalation rule** (CLAUDE.md operating principle) — multi-agent stalls: after 3 silent SendMessage nudges without progress, dispatcher takes over. Pattern surfaced repeatedly across S1 rework cycles.
+7. **Expo Updates two-launch propagation** — JS bundle delivered via `eas update` doesn't activate until the SECOND app open (first download silently, second swap). Tester confusion source if not communicated.
+8. **Visual fidelity needs device walkthrough gate** (`memory/feedback_agent_signoff_vs_device_walkthrough.md`) — tsc/Jest/expo-doctor GREEN proves token + spacing shipped, NOT composition/motion/illustration parity. Bundle D + Bundle E S1 both surfaced this; REPEATED 2026-05-26.
+9. **Conditional-step-skip pattern** — when a step has prerequisites that may be met by a prior state (e.g. Step 16 "Save Advisor" pre-authenticated), skip in the navigator's `next()` logic rather than rendering a no-op screen.
+
+### Sentry MCP linked to qaren-rr DE region
+
+`.claude/settings.json` configured for `https://de.sentry.io` regionUrl. Zero new issues fired in 30min post-deploy window.
+
+### Ship verification (this session, independent post-merge)
+
+- Merge SHA `d2d9386` confirmed on `origin/main`.
+- Conflict-file cross-checks PASS: CLAUDE.md ("Bundle E S2 visual-fidelity in flight" + 3-silent-nudges + two-launch propagation), App.tsx (distinct `Onboarding` + `OnboardingEdit` routes), ProfileScreen.tsx (ProfileHeaderRow + RecentDecisionsRow + MonthStrip + FlatSettings present), types.ts (`'top_tier'` in `BudgetValue`).
+- `/health` 200. `/api/v1/home/trending?region=saudi_arabia` returns dual-shape rows (`tag`/`a`/`b`/`count` + legacy `query`/`view_count`/`region`).
+- SSE `/api/v1/text/compare/stream?q=iPhone+15+vs+Galaxy+S24` flows `status` → `specs` → `prices` cleanly under 30s budget.
+- Railway deploy logs (`since=30m`, `level=error`): only INFO Uvicorn startup lines.
+- Railway HTTP logs (`status>=500`, `since=30m`): no entries.
+- Sentry qaren-rr DE region (`firstSeen:>=2026-05-30T10:00:00 is:unresolved`): zero issues.
+- Static conflict-marker scan (`<<<<<<<` / `>>>>>>>` line-start, excluding `*.md` and `docs/`): empty.
+
+### EAS Update group ID
+
+Latest preview-channel update `019e6814-...` per Bundle E branch handoff (pre-merge). Post-merge OTA push from main pending Ahmed.
+
+### Carry-over from Bundle D
+
+- **B4 Google Sign-In** RESOLVED via Supabase Dashboard toggle (`memory/project_supabase_google_skip_nonce.md`). Re-enable on Supabase project migration.
+- **History detail / Scan tab** — Path A R2 fixes folded into S1 surface rewrites; both now in d2d9386.
+
+### Deferred follow-ups (post-merge backlog, none blocking)
+
+- S1 B2 ScanBody dashed buttons UX polish (spec-correct but read as text inputs per Ahmed device walkthrough).
+- D3 winner-card device-leg verification (composition + motion parity).
+- EAS group ID minting + tester device screenshots from main.
+- TestFlight invite (~150 testers) — gated on this QA lane sign-off.
