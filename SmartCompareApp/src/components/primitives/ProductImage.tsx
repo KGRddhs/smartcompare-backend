@@ -71,23 +71,33 @@ export function ProductImage({
       tileStyle,
       style as StyleProp<ImageStyle>,
     ];
+    // Wrap in a host View so the base testID lands on a stable parent
+    // regardless of which branch (img vs placeholder) renders. Existing
+    // testID queries from upstream consumers (A2 slot contract) keep
+    // working; the inner -img / -placeholder suffix is the discriminator.
     return (
-      <Image
-        testID={testID ? `${testID}-img` : undefined}
-        source={{ uri: imageUrl as string }}
-        accessibilityRole="image"
-        onError={() => setErrored(true)}
-        style={imageStyle}
-      />
+      <View testID={testID} style={styles.host}>
+        <Image
+          testID={testID ? `${testID}-img` : undefined}
+          source={{ uri: imageUrl as string }}
+          accessibilityRole="image"
+          onError={() => setErrored(true)}
+          style={imageStyle}
+        />
+      </View>
     );
   }
 
   return (
     <View
-      testID={testID ? `${testID}-placeholder` : undefined}
-      accessibilityRole="image"
-      style={[styles.tile, styles.placeholder, tileStyle, { backgroundColor: placeholderTone }, style]}
+      testID={testID}
+      style={styles.host}
     >
+      <View
+        testID={testID ? `${testID}-placeholder` : undefined}
+        accessibilityRole="image"
+        style={[styles.tile, styles.placeholder, tileStyle, { backgroundColor: placeholderTone }, style]}
+      >
       <View testID={testID ? `${testID}-placeholder-icon` : undefined} style={styles.iconWrap}>
         <Svg width={28} height={28} viewBox="0 0 24 24">
           <Rect
@@ -111,11 +121,18 @@ export function ProductImage({
           />
         </Svg>
       </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // Host wrapper exists purely to carry the base testID stably so
+  // upstream consumers (A2's slot contract) keep working regardless of
+  // which branch (img / placeholder) renders. No layout side-effect.
+  host: {
+    width: '100%',
+  },
   tile: {
     width: '100%',
     overflow: 'hidden',

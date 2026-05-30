@@ -32,6 +32,7 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import QarenLogo from '../components/QarenLogo';
+import { ProductImage } from '../components/primitives/ProductImage';
 import {
   getComparisonHistory,
   deleteComparison,
@@ -153,26 +154,32 @@ function HistoryHeroStats({
                 activeOpacity={0.8}
               >
                 <View style={historyHeroStyles.cardPair}>
-                  {/* Bundle E S3 — A2/A4 image_url slot. A4 wires <Image>
-                      in follow-up PR; A2 emits the slot at the JSX-cited
-                      position so A4 can target it via testID. */}
-                  <View
-                    style={[historyHeroStyles.cardTile, { backgroundColor: toneA }]}
+                  {/* Bundle E S3 A4 Wave 2 — ProductImage 4-state primitive.
+                      RecentDecisionItem may include winner_image_url +
+                      runner_up_image_url (forward-compat); placeholder tone
+                      falls back to the per-brand toneA / toneB palette. */}
+                  <ProductImage
                     testID="history-hero-card-image-slot-a"
+                    imageUrl={it.runner_up_image_url}
+                    placeholderTone={toneA}
+                    aspectRatio={1}
+                    borderRadius={radii.button}
+                    style={historyHeroStyles.cardTile}
                   />
                   <View style={historyHeroStyles.cardVsAbs} pointerEvents="none">
                     <View style={historyHeroStyles.cardVsPill}>
                       <Text style={historyHeroStyles.cardVsText}>VS</Text>
                     </View>
                   </View>
-                  <View
-                    style={[
-                      historyHeroStyles.cardTile,
-                      historyHeroStyles.cardTileWinner,
-                      { backgroundColor: toneB },
-                    ]}
-                    testID="history-hero-card-image-slot-b"
-                  >
+                  <View style={historyHeroStyles.cardTileWinnerWrap}>
+                    <ProductImage
+                      testID="history-hero-card-image-slot-b"
+                      imageUrl={it.winner_image_url}
+                      placeholderTone={toneB}
+                      aspectRatio={1}
+                      borderRadius={radii.button}
+                      style={[historyHeroStyles.cardTile, historyHeroStyles.cardTileWinner]}
+                    />
                     <View style={historyHeroStyles.cardTileCheck}>
                       <Check
                         size={8}
@@ -253,6 +260,13 @@ const historyHeroStyles = StyleSheet.create({
     flex: 1,
     aspectRatio: 1,
     borderRadius: 10,
+    position: 'relative',
+  },
+  // Bundle E S3 A4 Wave 2 — wraps ProductImage to host the absolute-
+  // positioned winner check chip without violating the primitive's
+  // self-contained tile.
+  cardTileWinnerWrap: {
+    flex: 1,
     position: 'relative',
   },
   cardTileWinner: {
@@ -508,6 +522,18 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     const toneB = deriveTone(nameB);
     const isAWinner = item.winner_index === 0;
     const isBWinner = item.winner_index === 1;
+    // Bundle E S3 A4 Wave 2 — derive image_url per product from saved
+    // full_response.products[i].image_url. Legacy rows saved BEFORE the A3
+    // deploy will not have the field; ProductImage's 4-state primitive
+    // handles undefined/null/onError → placeholder.
+    const fullResponseProducts =
+      (item.full_response && Array.isArray(item.full_response.products))
+        ? item.full_response.products
+        : [];
+    const imageUrlA: string | null =
+      fullResponseProducts[0]?.image_url ?? null;
+    const imageUrlB: string | null =
+      fullResponseProducts[1]?.image_url ?? null;
     // Adapter pattern per backend B-XQA: `?? undefined` coercion for
     // null-shipping fields consumed by props typed undefined.
     const category = item.category ?? undefined;
@@ -550,11 +576,18 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
               testID={`history-row-${item.id}-block-a`}
             >
               {isAWinner ? <Text style={styles.rowV2TopMatch}>TOP MATCH</Text> : null}
-              {/* Bundle E S3 — A2/A4 image_url slot per JSX 226-233. */}
-              <View
-                style={[styles.rowV2Tile, { backgroundColor: toneA }]}
-                testID={`history-row-${item.id}-block-a-image-slot`}
-              >
+              {/* Bundle E S3 A4 Wave 2 — ProductImage primitive per JSX
+                  HistoryScreen.jsx:226-233. tone background falls through
+                  as placeholderTone. */}
+              <View style={styles.rowV2TileWrap}>
+                <ProductImage
+                  testID={`history-row-${item.id}-block-a-image-slot`}
+                  imageUrl={imageUrlA}
+                  placeholderTone={toneA}
+                  aspectRatio={1}
+                  borderRadius={radii.button}
+                  style={styles.rowV2Tile}
+                />
                 {isAWinner ? (
                   <View style={styles.rowV2TileCheck}>
                     <Check size={8} color={colors.text.onInverse} strokeWidth={4} />
@@ -589,11 +622,17 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
               testID={`history-row-${item.id}-block-b`}
             >
               {isBWinner ? <Text style={styles.rowV2TopMatch}>TOP MATCH</Text> : null}
-              {/* Bundle E S3 — A2/A4 image_url slot per JSX 226-233. */}
-              <View
-                style={[styles.rowV2Tile, { backgroundColor: toneB }]}
-                testID={`history-row-${item.id}-block-b-image-slot`}
-              >
+              {/* Bundle E S3 A4 Wave 2 — ProductImage primitive per JSX
+                  HistoryScreen.jsx:226-233. */}
+              <View style={styles.rowV2TileWrap}>
+                <ProductImage
+                  testID={`history-row-${item.id}-block-b-image-slot`}
+                  imageUrl={imageUrlB}
+                  placeholderTone={toneB}
+                  aspectRatio={1}
+                  borderRadius={radii.button}
+                  style={styles.rowV2Tile}
+                />
                 {isBWinner ? (
                   <View style={styles.rowV2TileCheck}>
                     <Check size={8} color={colors.text.onInverse} strokeWidth={4} />
@@ -888,6 +927,12 @@ const styles = StyleSheet.create({
     color: colors.accentDark,
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+  // Bundle E S3 A4 Wave 2 — wraps ProductImage to host the absolute-
+  // positioned winner check chip without violating the primitive's
+  // self-contained tile.
+  rowV2TileWrap: {
+    position: 'relative',
   },
   rowV2Tile: {
     aspectRatio: 1,

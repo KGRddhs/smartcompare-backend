@@ -42,7 +42,7 @@ import Animated, {
   useAnimatedStyle,
   type SharedValue,
 } from 'react-native-reanimated';
-import { ArrowLeft, Share2, Smartphone } from 'lucide-react-native';
+import { ArrowLeft, Share2 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
 import { colors, spacing, radii, typography } from '../../theme';
@@ -59,6 +59,7 @@ import { PersonalizationChip } from './PersonalizationChip';
 import { RevealBurst } from '../hero/RevealBurst';
 import { ResultsAccordion } from './ResultsAccordion';
 import { anyEstimated } from '../../services/sourceMethod';
+import { ProductImage } from '../primitives/ProductImage';
 
 type SheetLeg = 'price' | 'reviews' | 'specs' | null;
 
@@ -189,18 +190,18 @@ export function ResultsContent({
                   ]}
                   testID={`results-product-card-${idx}`}
                 >
-                  {/* image_url slot — A4 wires <Image> in follow-up PR.
-                      For now: neutral placeholder square per JSX 50-58. */}
-                  <View
-                    style={styles.productImageSlot}
+                  {/* Bundle E S3 A4 Wave 2 — ProductImage primitive consumes
+                      product.image_url (A3 contract `8c299ce`). 4-state
+                      fallback: string→<Image>, null/undefined/onError→
+                      placeholder. JSX:50-58 (aspectRatio 1, radius 14,
+                      neutral #EEEFF4 placeholder tone). */}
+                  <ProductImage
                     testID={`results-product-image-slot-${idx}`}
-                  >
-                    <Smartphone
-                      size={32}
-                      color={colors.text.placeholder}
-                      strokeWidth={1.5}
-                    />
-                  </View>
+                    imageUrl={product.image_url}
+                    aspectRatio={1}
+                    borderRadius={14}
+                    style={styles.productImageSlot}
+                  />
                   <Text style={styles.productName} numberOfLines={2}>
                     {product.name}
                   </Text>

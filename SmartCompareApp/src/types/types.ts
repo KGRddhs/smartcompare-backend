@@ -86,6 +86,11 @@ export interface Product {
   confidence?: number;
   data_freshness?: string;
   pros_cons?: { pros: string[]; cons: string[] };
+  // Bundle E S3 A3 (commit 8c299ce) — Tier-cascade image_url. string when
+  // any tier hits; null when all tiers exhausted. Legacy rows saved before
+  // A3 deploy may omit the field entirely (undefined). All three states
+  // resolve to the placeholder primitive via ProductImage.
+  image_url?: string | null;
 }
 
 // --- Comparison types ---

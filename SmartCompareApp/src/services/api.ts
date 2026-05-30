@@ -737,6 +737,15 @@ export interface HomeSmartPickItem {
    */
   tone?: string;
   sub?: string;
+  /**
+   * Bundle E S3 A3 (commit `dbf3a5f`) — image_url for winner + runner-up
+   * tiles. string when any A3 tier hits; null when all tiers exhausted.
+   * Legacy rows saved BEFORE A3 deploy may omit the fields entirely
+   * (undefined). All three states resolve to the placeholder primitive
+   * via ProductImage's 4-state fallback.
+   */
+  winner_image_url?: string | null;
+  runner_up_image_url?: string | null;
 }
 
 export interface HomeSmartPickResponse {
@@ -802,6 +811,11 @@ export interface RecentDecisionItem {
   winner_name: string;
   runner_up_name: string;
   created_at: string;
+  // Bundle E S3 A4 Wave 2 — forward-compat for image_url surfacing.
+  // Backend MAY populate via /profile/recent-decisions; HistoryScreen
+  // falls back to ProductImage's placeholder when null/undefined.
+  winner_image_url?: string | null;
+  runner_up_image_url?: string | null;
 }
 
 export interface RecentDecisionsResponse {
