@@ -94,3 +94,7 @@ export const Plane = createIcon('Plane');
 export const ChefHat = createIcon('ChefHat');
 export const Mountain = createIcon('Mountain');
 export const Palette = createIcon('Palette');
+// Bundle E S3 — Lane A2 additions for ResultsAccordion. (Smartphone
+// already declared earlier in this file; do NOT redeclare.)
+export const ListChecks = createIcon('ListChecks');
+export const BarChart3 = createIcon('BarChart3');

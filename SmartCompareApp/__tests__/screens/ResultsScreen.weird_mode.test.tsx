@@ -11,7 +11,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const RESULTS_PATH = path.resolve(__dirname, '../../src/screens/ResultsScreen.tsx');
-const SOURCE = fs.readFileSync(RESULTS_PATH, 'utf8');
+// Bundle E S3 — Lane A2: presentation extracted to ResultsContent.tsx.
+const RESULTS_CONTENT_PATH = path.resolve(
+  __dirname,
+  '../../src/components/results/ResultsContent.tsx',
+);
+const SOURCE = [
+  fs.readFileSync(RESULTS_PATH, 'utf8'),
+  fs.existsSync(RESULTS_CONTENT_PATH)
+    ? fs.readFileSync(RESULTS_CONTENT_PATH, 'utf8')
+    : '',
+].join('\n');
 
 describe('ResultsScreen weird-mode hero suppression (spec § 2e)', () => {
   it('reads scoring_v2.comparison_quality somewhere in the source', () => {

@@ -4,6 +4,7 @@ Uses cache_service helpers (_redis_get, _redis_set, _redis_incr, _redis_expire)
 for Redis access. Gracefully degrades if Redis is unavailable.
 """
 import json
+import os
 import time
 import logging
 from datetime import datetime, timezone
@@ -12,6 +13,21 @@ from typing import Dict, Any
 from app.services.cache_service import _redis_get, _redis_set, _redis_incr, _redis_expire
 
 logger = logging.getLogger(__name__)
+
+# Default daily image-search budget. Separate from the main `serper` lifetime
+# counter so the Bundle E S3 image pipeline cannot starve price/spec credit.
+# Override via env `SERPER_IMAGE_DAILY_BUDGET` on Railway.
+_DEFAULT_SERPER_IMAGE_DAILY_BUDGET = 500
+
+
+def _serper_image_daily_budget() -> int:
+    """Resolve the daily image-search budget from env (read fresh each call so
+    tests + Railway env updates take effect without a restart)."""
+    try:
+        return int(os.environ.get("SERPER_IMAGE_DAILY_BUDGET", _DEFAULT_SERPER_IMAGE_DAILY_BUDGET))
+    except (TypeError, ValueError):
+        return _DEFAULT_SERPER_IMAGE_DAILY_BUDGET
+
 
 # Provider configurations — budgets and thresholds
 PROVIDER_CONFIGS = {
@@ -233,4 +249,105 @@ def get_usage_summary() -> Dict[str, Any]:
             pass
         breakers[provider] = state_data
 
+    # Bundle E S3 — image-pipeline daily counter (read-only summary)
+    image_daily_limit = _serper_image_daily_budget()
+    image_used = 0
+    try:
+        raw = _redis_get(_serper_image_key())
+        if raw is not None:
+            image_used = int(raw)
+    except Exception:
+        pass
+    result["serper_images"] = {
+        "used": image_used,
+        "limit": image_daily_limit,
+        "remaining": max(0, image_daily_limit - image_used),
+        "scope": "daily",
+    }
+
     return {"providers": result, "circuit_breakers": breakers}
+
+
+# ============================================================================
+# Bundle E S3 — Serper Images dedicated daily counter
+# Separate from `serper` lifetime budget so the image pipeline cannot
+# starve price / spec / review Serper credit.
+# ============================================================================
+
+def _serper_image_key() -> str:
+    """Redis key for today's Serper Images count (UTC-aligned daily bucket)."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return f"budget:serper_images:{today}"
+
+
+# TTL for daily image counter: 36 hours so the key lives across the UTC
+# boundary even if Redis trims aggressively (35h would be tight in some
+# Upstash trim windows; 36h matches the pattern of _MONTHLY_TTL safety margin).
+_SERPER_IMAGE_TTL = 36 * 3600
+
+
+def try_consume_serper_image_credit(n: int = 1) -> bool:
+    """Atomically check-and-increment the daily Serper Images counter.
+
+    Returns True when the call may proceed (and the counter has been
+    incremented), False when today's budget is exhausted. Fails OPEN on Redis
+    errors per memory/project_upstash_redis_singlepoint_failure.md — we'd
+    rather burn a credit than ship a placeholder image.
+
+    Args:
+        n: number of credits to consume (default 1).
+    """
+    if n <= 0:
+        return True
+
+    limit = _serper_image_daily_budget()
+    key = _serper_image_key()
+
+    try:
+        from app.services.cache_service import redis_client
+        if redis_client is None:
+            return True  # fail-open
+
+        # Atomic INCRBY first, then check — race-free counter math.
+        new_value = redis_client.incrby(key, n)
+        # Set TTL on first write only (incrby returns n on first call).
+        if new_value == n:
+            try:
+                redis_client.expire(key, _SERPER_IMAGE_TTL)
+            except Exception as e:
+                logger.warning("[BUDGET] serper_images TTL set failed: %s", e)
+
+        if new_value > limit:
+            # Roll back the increment so the counter accurately reflects
+            # *consumed* credits, not attempted ones — keeps admin dashboard
+            # readable.
+            try:
+                redis_client.decrby(key, n)
+            except Exception:
+                pass
+            logger.warning(
+                "[BUDGET] serper_images daily budget exhausted (%s/%s)",
+                new_value, limit,
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.warning("[BUDGET] serper_images consume failed: %s — fail-open", e)
+        return True
+
+
+def get_serper_image_usage() -> Dict[str, int]:
+    """Diagnostic — return current day usage for the Serper Images counter.
+
+    Returns:
+        {"used": int, "limit": int, "remaining": int}
+    """
+    limit = _serper_image_daily_budget()
+    used = 0
+    try:
+        raw = _redis_get(_serper_image_key())
+        if raw is not None:
+            used = int(raw)
+    except Exception:
+        pass
+    return {"used": used, "limit": limit, "remaining": max(0, limit - used)}

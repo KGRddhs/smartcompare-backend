@@ -628,6 +628,11 @@ def build_comparison_response(
                     "pros": pd.get("pros_cons", {}).get("pros", []),
                     "cons": pd.get("pros_cons", {}).get("cons", []),
                     "best_for": comparison.get("best_for", {}).get(f"product_{i}", ""),
+                    # Bundle E S3 — per-product image URL (Tier cascade
+                    # resolved upstream in _fetch_product_data Phase 1).
+                    # String when any tier hit; None when all tiers exhausted
+                    # (frontend renders placeholder primitive).
+                    "image_url": pd.get("image_url"),
                     # Bundle D A.6.4 — per-product budget-fit indicator.
                     # 'match' / 'near' / 'mismatch' / 'unknown'.
                     # price_tiers map is keyed by "{brand} {name}".strip()
@@ -761,6 +766,11 @@ def build_comparison_response(
             pd["pros"] = (pd.get("pros_cons") or {}).get("pros") or []
         if "cons" not in pd:
             pd["cons"] = (pd.get("pros_cons") or {}).get("cons") or []
+        # Bundle E S3 — ensure image_url is present (None when missing) so
+        # FE consumers using the legacy `products` alias path don't see
+        # KeyError; mirror the canonical `overview.products[*].image_url`.
+        if "image_url" not in pd:
+            pd["image_url"] = None
     result["products"] = product_data
     result["comparison"] = comparison
     result["recommendation"] = comparison.get("winner_reason", "")

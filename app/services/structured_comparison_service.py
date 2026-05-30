@@ -520,6 +520,7 @@ from app.services.response_builder import (
     build_comparison_response,
     derive_rating_from_scores,
 )
+from app.services.image_service import get_product_image_url
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
@@ -1464,10 +1465,18 @@ class StructuredComparisonService:
                 yield ("complete", insufficient_response)
                 return
 
-            # Yield specs
+            # Yield specs (Bundle E S3 — piggyback image_url onto specs event
+            # since both land together at end of Phase 1; avoids adding a new
+            # SSE event type that frontend would need to subscribe to).
             yield ("specs", {
                 "products": [
-                    {"brand": pd.get("brand"), "name": pd.get("name"), "specs": pd.get("specs"), "fact_check": pd.get("fact_check")}
+                    {
+                        "brand": pd.get("brand"),
+                        "name": pd.get("name"),
+                        "specs": pd.get("specs"),
+                        "fact_check": pd.get("fact_check"),
+                        "image_url": pd.get("image_url"),
+                    }
                     for pd in product_data
                 ]
             })
@@ -1846,13 +1855,28 @@ class StructuredComparisonService:
             ), stage_timings))
             phase1_keys.append("reviews")
 
+        # Bundle E S3 — image_url resolution runs in parallel with specs+price
+        # +reviews. Tier 1.5 piggyback happens AFTER Phase 1 returns (because
+        # the page-scrape image, when present, lives inside the price result
+        # which we don't have yet). Here we kick off Tier 1 (Serper Images) +
+        # Tier 3 (GPT) eagerly; the post-Phase1 piggyback short-circuit will
+        # override with the FREE result when available. Net: piggyback hit
+        # path costs zero extra wall (we discard the eager Tier 1/3 result),
+        # piggyback miss path saves zero wall too (Tier 1/3 already running).
+        phase1_tasks.append(_timed_task("image_url", get_product_image_url(
+            full_name, region=region,
+            page_scrape_image=None,  # piggyback evaluated post-Phase1 below
+            organic_results=(unified_search.get("organic", []) if unified_search else None),
+        ), stage_timings))
+        phase1_keys.append("image_url")
+
         t1 = time.perf_counter() if stage_timings is not None else None
         phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
         if stage_timings is not None:
             # phase1_wall_ms = gather wall (max of parallel tasks);
-            # specs_ms / price_ms / reviews_ms = per-task wall (populated by _timed_task).
+            # specs_ms / price_ms / reviews_ms / image_url_ms = per-task wall.
             stage_timings["phase1_wall_ms"] = round((time.perf_counter() - t1) * 1000, 1)
-            for k in ("specs", "price", "reviews"):
+            for k in ("specs", "price", "reviews", "image_url"):
                 stage_timings.setdefault(f"{k}_ms", 0.0)
 
         for i, key in enumerate(phase1_keys):
@@ -1866,6 +1890,17 @@ class StructuredComparisonService:
             result["best_price"] = result["price"].get("amount")
             result["currency"] = result["price"].get("currency", "BHD")
             result["retailer"] = result["price"].get("retailer")
+            # Bundle E S3 — Tier 1.5 piggyback override. If the price tier
+            # already scraped a real product page and the page yielded an
+            # og:image / JSON-LD image, prefer that over the Serper Images
+            # / GPT result we kicked off in parallel. Page-scrape images
+            # are FREE (already paid by the price scrape) AND usually
+            # higher fidelity (real product hero shot vs Serper thumbnail).
+            page_img = result["price"].get("image_url")
+            if page_img and isinstance(page_img, str) and (
+                page_img.startswith("http://") or page_img.startswith("https://")
+            ):
+                result["image_url"] = page_img.strip()
 
         # Fact-check: verify spec citations
         if result.get("specs") and isinstance(result["specs"], dict):

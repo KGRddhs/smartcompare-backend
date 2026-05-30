@@ -21,7 +21,25 @@ const RESULTS_PATH = path.resolve(
   '../src/screens/ResultsScreen.tsx'
 );
 
-const SOURCE = fs.readFileSync(RESULTS_PATH, 'utf8');
+// Bundle E S3 — Lane A2: presentation extracted to ResultsContent.tsx +
+// ResultsAccordion.tsx. The redesign assertions read all three files.
+const RESULTS_CONTENT_PATH = path.resolve(
+  __dirname,
+  '../src/components/results/ResultsContent.tsx'
+);
+const RESULTS_ACCORDION_PATH = path.resolve(
+  __dirname,
+  '../src/components/results/ResultsAccordion.tsx'
+);
+const SOURCE = [
+  fs.readFileSync(RESULTS_PATH, 'utf8'),
+  fs.existsSync(RESULTS_CONTENT_PATH)
+    ? fs.readFileSync(RESULTS_CONTENT_PATH, 'utf8')
+    : '',
+  fs.existsSync(RESULTS_ACCORDION_PATH)
+    ? fs.readFileSync(RESULTS_ACCORDION_PATH, 'utf8')
+    : '',
+].join('\n');
 
 describe('ResultsScreen redesign — Phase 3 Task 30 (source assertions)', () => {
   it('uses results.whyWePicked for the verdict section title', () => {

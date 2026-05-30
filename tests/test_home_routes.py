@@ -89,6 +89,8 @@ def _comparison_row(
     winner_declaration: str | None = None,
     p0_specs: dict | None = None,
     p1_specs: dict | None = None,
+    p0_image_url: str | None = "__UNSET__",  # sentinel: don't add key when "__UNSET__"
+    p1_image_url: str | None = "__UNSET__",
     created_at: str = "2026-05-23T00:00:00Z",
 ):
     """Shape a comparison row matching `comparisons.full_response` v2 contract.
@@ -97,20 +99,23 @@ def _comparison_row(
     are optional fixture knobs so smart-pick extension tests can drive the
     `category` / `verdict_short` / `sub` / `updated_at` extraction paths.
     """
+    p0 = {
+        "brand": p0_brand,
+        "name": p0_name,
+        "price": {"amount": p0_price, "currency": "BHD"},
+    }
+    p1 = {
+        "brand": p1_brand,
+        "name": p1_name,
+        "price": {"amount": p1_price, "currency": "BHD"},
+    }
+    if p0_image_url != "__UNSET__":
+        p0["image_url"] = p0_image_url
+    if p1_image_url != "__UNSET__":
+        p1["image_url"] = p1_image_url
     full = {
         "winner_index": winner_idx,
-        "products": [
-            {
-                "brand": p0_brand,
-                "name": p0_name,
-                "price": {"amount": p0_price, "currency": "BHD"},
-            },
-            {
-                "brand": p1_brand,
-                "name": p1_name,
-                "price": {"amount": p1_price, "currency": "BHD"},
-            },
-        ],
+        "products": [p0, p1],
         "scoring": {"dimension_winners": dim_winners or {}},
     }
     if category is not None:
@@ -644,6 +649,201 @@ class TestHomeSmartPick:
                 f"legacy field {legacy_key!r} must survive one release cycle; "
                 f"pick keys: {sorted(pick.keys())}"
             )
+
+
+# =============================================================================
+# Bundle E S3 A3 — /home/smart-pick image_url extension
+# =============================================================================
+
+
+class TestHomeSmartPickImageUrl:
+    """Bundle E S3 A3 — winner_image_url + runner_up_image_url extracted from
+    the comparison row's products[*].image_url field (string OR null).
+
+    Source of truth: smart_pick reads `comparisons.full_response`. Old rows
+    saved BEFORE S3 deploy lack image_url → null. New rows have it.
+
+    Contract for A4 (FE consumer):
+      smart_pick.winner_image_url: string | null
+      smart_pick.runner_up_image_url: string | null
+    """
+
+    def _setup_smart_pick_row(self, supabase, comp_resp, priorities=None):
+        """Helper — wire up the table dispatch for smart-pick tests."""
+        prefs = {"priorities": priorities} if priorities else {}
+        user_resp = MagicMock()
+        user_resp.data = {"preferences": prefs}
+
+        def _table_dispatch(name):
+            m = MagicMock()
+            if name == "users":
+                m.select.return_value.eq.return_value.single.return_value.execute.return_value = user_resp
+            else:
+                m.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+            return m
+        supabase.table.side_effect = _table_dispatch
+
+    def test_both_products_have_image_urls_emitted_to_payload(self):
+        """Both products in the source comparison have image_url strings →
+        smart_pick.{winner,runner_up}_image_url are those strings."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        rows = [_comparison_row(
+            winner_idx=0,
+            p0_brand="Apple", p0_name="iPhone 15",
+            p1_brand="Samsung", p1_name="Galaxy S24",
+            p0_image_url="https://example.com/iphone15.jpg",
+            p1_image_url="https://example.com/galaxy.jpg",
+        )]
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = rows
+        self._setup_smart_pick_row(supabase, comp_resp)
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        assert resp.status_code == 200, resp.text
+        pick = resp.json()["smart_pick"]
+        assert pick is not None
+        assert pick["winner_image_url"] == "https://example.com/iphone15.jpg"
+        assert pick["runner_up_image_url"] == "https://example.com/galaxy.jpg"
+
+    def test_both_products_missing_image_url_emits_null(self):
+        """Legacy comparison row saved BEFORE S3 deploy lacks image_url keys
+        entirely → endpoint emits null for both (FE renders placeholder)."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        # Default _comparison_row helper omits image_url keys (sentinel)
+        rows = [_comparison_row(
+            winner_idx=1,
+            p0_brand="Apple", p0_name="iPhone 15",
+            p1_brand="Samsung", p1_name="Galaxy S24",
+        )]
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = rows
+        self._setup_smart_pick_row(supabase, comp_resp)
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        assert resp.status_code == 200, resp.text
+        pick = resp.json()["smart_pick"]
+        assert pick is not None
+        assert pick["winner_image_url"] is None
+        assert pick["runner_up_image_url"] is None
+        # Keys MUST be present (FE relies on shape)
+        assert "winner_image_url" in pick
+        assert "runner_up_image_url" in pick
+
+    def test_mixed_winner_has_image_runner_up_null(self):
+        """One product has image_url, other doesn't — emit string + null."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        # winner_idx=0 has image; winner_idx=1 (loser) does not
+        rows = [_comparison_row(
+            winner_idx=0,
+            p0_brand="Apple", p0_name="iPhone 15",
+            p1_brand="Samsung", p1_name="Galaxy S24",
+            p0_image_url="https://example.com/iphone15.jpg",
+            p1_image_url=None,  # explicitly null
+        )]
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = rows
+        self._setup_smart_pick_row(supabase, comp_resp)
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        assert resp.status_code == 200, resp.text
+        pick = resp.json()["smart_pick"]
+        assert pick is not None
+        assert pick["winner_image_url"] == "https://example.com/iphone15.jpg"
+        assert pick["runner_up_image_url"] is None
+
+    def test_empty_state_does_not_carry_image_url_keys(self):
+        """When empty_state=True (no eligible comparisons), smart_pick is None
+        and the endpoint MUST NOT fabricate image_url fields somewhere weird."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = []
+        self._setup_smart_pick_row(supabase, comp_resp)
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["empty_state"] is True
+        assert body["smart_pick"] is None
+        # Defensive — top-level body should NOT have image_url keys leaked
+        assert "winner_image_url" not in body
+        assert "runner_up_image_url" not in body
+
+    def test_winner_runner_up_swap_when_winner_idx_is_1(self):
+        """winner_idx=1 means products[1] is winner, products[0] is runner-up.
+        winner_image_url must follow the WINNER, not the array index."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        rows = [_comparison_row(
+            winner_idx=1,  # Samsung wins
+            p0_brand="Apple", p0_name="iPhone 15",
+            p1_brand="Samsung", p1_name="Galaxy S24",
+            p0_image_url="https://example.com/iphone15.jpg",   # runner-up image
+            p1_image_url="https://example.com/galaxy.jpg",      # winner image
+        )]
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = rows
+        self._setup_smart_pick_row(supabase, comp_resp)
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        pick = resp.json()["smart_pick"]
+        assert pick["winner_name"] == "Samsung Galaxy S24"
+        assert pick["winner_image_url"] == "https://example.com/galaxy.jpg"
+        assert pick["runner_up_name"] == "Apple iPhone 15"
+        assert pick["runner_up_image_url"] == "https://example.com/iphone15.jpg"
+
+    def test_invalid_image_url_types_emit_null(self):
+        """If full_response.products[i].image_url is somehow non-string
+        (legacy malformed row, lone int / dict / list), endpoint emits null
+        rather than passing through the bad value."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        # Hand-craft a row with malformed image_url values
+        row = _comparison_row(winner_idx=0, p0_brand="A", p0_name="X", p1_brand="B", p1_name="Y")
+        row["full_response"]["products"][0]["image_url"] = 42         # int
+        row["full_response"]["products"][1]["image_url"] = {"u": "x"}  # dict
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = [row]
+        self._setup_smart_pick_row(supabase, comp_resp)
+
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/home/smart-pick", headers={"Authorization": "Bearer fake"})
+
+        assert resp.status_code == 200, resp.text
+        pick = resp.json()["smart_pick"]
+        assert pick["winner_image_url"] is None
+        assert pick["runner_up_image_url"] is None
 
 
 # =============================================================================
