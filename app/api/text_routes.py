@@ -211,7 +211,9 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
 @limiter.limit("10/minute")
 async def text_compare_get(
     request: Request,
-    q: str = Query(..., max_length=500, description="Comparison query, e.g., 'iPhone 15 vs S24'"),
+    q: Optional[str] = Query(None, max_length=500, description="Legacy single-string query, e.g., 'iPhone 15 vs S24'"),
+    product_a: Optional[str] = Query(None, max_length=80, description="Bundle B: explicit first product, paired with product_b"),
+    product_b: Optional[str] = Query(None, max_length=80, description="Bundle B: explicit second product, paired with product_a"),
     region: str = Query("bahrain", description="GCC region for pricing"),
     specs: bool = Query(True, description="Include specifications"),
     reviews: bool = Query(True, description="Include reviews"),
@@ -220,7 +222,32 @@ async def text_compare_get(
     selected_category: Optional[str] = Query(None, description="User-selected category hint"),
     user: Optional[Dict] = Depends(get_optional_user),
 ):
-    """GET version of text comparison for easy testing."""
+    """GET version of text comparison for easy testing.
+
+    Dual-shape (Bundle B § 5.1) — matches the POST + streaming endpoints:
+      - ?q=iPhone+15+vs+Galaxy+S24                     (legacy single-string)
+      - ?product_a=iPhone+15&product_b=Galaxy+S24      (Bundle B pair)
+    Sending both or neither raises 422. When the pair is provided, q is
+    synthesized as "{product_a} vs {product_b}" so the orchestrator stays
+    shape-agnostic.
+    """
+    has_pair = bool(product_a and product_a.strip() and product_b and product_b.strip())
+    has_query = bool(q and q.strip())
+    if has_pair and has_query:
+        raise HTTPException(
+            status_code=422,
+            detail="Send EITHER q OR product_a+product_b, not both",
+        )
+    if not has_pair and not has_query:
+        raise HTTPException(
+            status_code=422,
+            detail="Send product_a+product_b OR q",
+        )
+    explicit_pair = None
+    if has_pair:
+        explicit_pair = (product_a.strip(), product_b.strip())
+        q = f"{product_a.strip()} vs {product_b.strip()}"
+
     service = get_comparison_service()
     start_time = time.time()
 
@@ -261,6 +288,7 @@ async def text_compare_get(
         selected_category=selected_category,
         user_preferences=user_prefs,
         user_id=user.get("id") if user else None,
+        explicit_pair=explicit_pair,
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
