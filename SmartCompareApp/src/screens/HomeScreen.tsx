@@ -157,6 +157,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         advanceTimerRef.current = null;
         loadingStartedAtRef.current = null;
         navigation.navigate('Results' as any, { result });
+        // setLoading(false) fires AFTER navigate so the theatrical
+        // loader stays mounted until the user is on the Results screen.
+        // On cached/fast paths setLoading(false) at the caller would
+        // unmount LoadingScreenVariants BEFORE the floor timer fires,
+        // exposing bare HomeScreen for up to 1.2s.
+        setLoading(false);
       };
       if (remaining === 0) advance();
       else advanceTimerRef.current = setTimeout(advance, remaining);
@@ -285,11 +291,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       },
       onComplete: async (data) => {
         abortRef.current = null;
-        setLoading(false);
         setStatusMessage('');
         if (!navigated && data.success) {
           navigated = true;
           await increment();
+          // Loader stays mounted until navigateToResultsWithFloor's
+          // `advance` closure calls setLoading(false) AFTER navigate.
+          // See navigateToResultsWithFloor comment above for rationale.
           navigateToResultsWithFloor(data);
         } else if (!data.success) {
           // Backend reported success=false — never queue a floor nav.
@@ -297,6 +305,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             clearTimeout(advanceTimerRef.current);
             advanceTimerRef.current = null;
           }
+          setLoading(false);
           Alert.alert(t('common.error'), data.error || t('home.errors.comparison'));
         }
       },
@@ -356,8 +365,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       });
       if (response.data.success) {
         await increment();
+        // Loader stays mounted until navigateToResultsWithFloor's
+        // `advance` closure calls setLoading(false) AFTER navigate.
         navigateToResultsWithFloor(response.data);
       } else {
+        // Backend reported success=false — drop loader immediately.
+        setLoading(false);
         Alert.alert(t('common.error'), response.data.error || t('home.errors.comparison'));
       }
     } catch (error: any) {
@@ -367,6 +380,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         clearTimeout(advanceTimerRef.current);
         advanceTimerRef.current = null;
       }
+      // Drop loader immediately on error — errors should never wait the
+      // theatrical floor.
+      setLoading(false);
       const parsed = parseApiError(error);
       if (parsed.code === 'CONTENT_UNAVAILABLE') {
         const layer = error?.response?.data?.layer ?? 'unknown';
@@ -377,8 +393,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       } else {
         Alert.alert(t('common.error'), parsed.message);
       }
-    } finally {
-      setLoading(false);
     }
   };
 
