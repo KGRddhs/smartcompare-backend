@@ -541,6 +541,44 @@ class TestGetEndpointDualShape:
         call_kwargs = mock_service.compare_from_text.await_args.kwargs
         assert call_kwargs["query"] == "iPhone 15 vs Galaxy S24"
 
+    def test_get_endpoint_pair_propagates_explicit_pair(self, mock_service):
+        """Gate B [IMPORTANT]: GET-pair must forward explicit_pair=(a,b) to
+        compare_from_text so the service skips parse_product_query() — same
+        contract as the POST handler (test_explicit_pair_kwarg_propagates)
+        and the SSE handler. Without this, the GET-fallback path burns an
+        unnecessary GPT call + 1-2s of latency vs POST/SSE."""
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"product_a": "iPhone 15", "product_b": "Galaxy S24"},
+        )
+        assert response.status_code == 200
+        call_kwargs = mock_service.compare_from_text.await_args.kwargs
+        assert call_kwargs.get("explicit_pair") == ("iPhone 15", "Galaxy S24")
+
+    def test_get_endpoint_query_path_no_explicit_pair(self, mock_service):
+        """Legacy q= shape must NOT set explicit_pair — the service still
+        runs parse_product_query() to extract structured products from the
+        freeform string. Mirrors POST test_query_path_no_explicit_pair_kwarg."""
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"q": "iPhone 15 vs Galaxy S24"},
+        )
+        assert response.status_code == 200
+        call_kwargs = mock_service.compare_from_text.await_args.kwargs
+        assert call_kwargs.get("explicit_pair") is None
+
+    def test_get_endpoint_pair_explicit_pair_stripped_inputs(self, mock_service):
+        """Whitespace in pair inputs is stripped BEFORE being forwarded as
+        explicit_pair (parity with POST handler line 65 and SSE handler
+        line 359)."""
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"product_a": "  iPhone 15  ", "product_b": "  Galaxy S24  "},
+        )
+        assert response.status_code == 200
+        call_kwargs = mock_service.compare_from_text.await_args.kwargs
+        assert call_kwargs.get("explicit_pair") == ("iPhone 15", "Galaxy S24")
+
 
 # ============================================
 # Bundle E S3 hotfix — image_url persistence invariant

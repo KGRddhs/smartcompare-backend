@@ -243,7 +243,9 @@ async def text_compare_get(
             status_code=422,
             detail="Send product_a+product_b OR q",
         )
+    explicit_pair = None
     if has_pair:
+        explicit_pair = (product_a.strip(), product_b.strip())
         q = f"{product_a.strip()} vs {product_b.strip()}"
 
     service = get_comparison_service()
@@ -286,6 +288,7 @@ async def text_compare_get(
         selected_category=selected_category,
         user_preferences=user_prefs,
         user_id=user.get("id") if user else None,
+        explicit_pair=explicit_pair,
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
