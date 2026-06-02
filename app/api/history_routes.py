@@ -9,6 +9,7 @@ from starlette.requests import Request
 from typing import Optional
 
 from app.api.auth_routes import get_current_user
+from app.services.cache_service import delete_cached
 from app.services.database_service import (
     get_user_comparisons,
     get_comparison_by_id,
@@ -193,5 +194,16 @@ async def remove_comparison(
     deleted = await delete_comparison(str(comparison_id), current_user["id"], access_token=token)
     if not deleted:
         raise HTTPException(status_code=500, detail="Failed to delete comparison")
+
+    # Wave 2 (c) — bust dependent caches so the deleted row stops winning
+    # /home/smart-pick (cache_key=home:smart_pick:{user_id}, 5min TTL) and
+    # stops appearing in /profile/recent-decisions (cache_key=profile_recent:
+    # {user_id}, 5min TTL). Device walk image #13: stale iPhone 14 pick after
+    # delete reproduced exactly this race. Fail-soft: delete_cached swallows
+    # Redis errors so a Redis outage doesn't fail an otherwise-successful
+    # delete; the worst case is up to 5min of stale display.
+    user_id = current_user["id"]
+    delete_cached(f"home:smart_pick:{user_id}")
+    delete_cached(f"profile_recent:{user_id}")
 
     return {"success": True}

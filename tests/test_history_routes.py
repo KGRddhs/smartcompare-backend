@@ -610,3 +610,85 @@ def test_list_history_image_urls_null_when_full_response_missing():
             assert row["runner_up_image_url"] is None
         finally:
             _cleanup_overrides()
+
+
+# ============================================
+# Wave 2 (c) — SmartPick stale-after-delete fix via cache invalidation
+# Device walk image #13: "Today's Tailored Pick" tile shows iPhone 14
+# (deleted from History) instead of newer iPhone 17.
+#
+# Root cause: /home/smart-pick + /profile/recent-decisions each cache for
+# 5min per-user in Redis (home_routes.py:486 + profile_routes.py:133).
+# Supabase .delete() at database_service.py:288 is a HARD delete — the row
+# IS gone — but the cached pick/recent-list is NOT busted, so stale rows
+# render until the 5min TTL expires.
+#
+# Fix: DELETE /comparisons/{id} must invalidate both cache keys after a
+# successful delete. Tests pin both `home:smart_pick:{user_id}` and
+# `profile_recent:{user_id}` bust patterns.
+# ============================================
+
+
+@patch("app.api.history_routes.delete_comparison", new_callable=AsyncMock, return_value=True)
+@patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=MOCK_COMPARISON)
+def test_delete_busts_home_smart_pick_cache(mock_get, mock_del):
+    """DELETE /comparisons/{id} must invalidate home:smart_pick:{user_id}."""
+    with patch("app.api.history_routes.delete_cached") as mock_delete_cached:
+        client = _get_client_with_user()
+        try:
+            resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+            assert resp.status_code == 200
+            # delete_cached must have been called with the home/smart_pick key
+            called_keys = [c.args[0] for c in mock_delete_cached.call_args_list]
+            assert "home:smart_pick:user-123" in called_keys, (
+                f"home:smart_pick cache not busted; delete_cached called with: {called_keys}"
+            )
+        finally:
+            _cleanup_overrides()
+
+
+@patch("app.api.history_routes.delete_comparison", new_callable=AsyncMock, return_value=True)
+@patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=MOCK_COMPARISON)
+def test_delete_busts_profile_recent_cache(mock_get, mock_del):
+    """DELETE /comparisons/{id} must invalidate profile_recent:{user_id}."""
+    with patch("app.api.history_routes.delete_cached") as mock_delete_cached:
+        client = _get_client_with_user()
+        try:
+            resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+            assert resp.status_code == 200
+            called_keys = [c.args[0] for c in mock_delete_cached.call_args_list]
+            assert "profile_recent:user-123" in called_keys, (
+                f"profile_recent cache not busted; delete_cached called with: {called_keys}"
+            )
+        finally:
+            _cleanup_overrides()
+
+
+@patch("app.api.history_routes.delete_comparison", new_callable=AsyncMock, return_value=False)
+@patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=MOCK_COMPARISON)
+def test_delete_failure_does_not_bust_cache(mock_get, mock_del):
+    """When the DB delete fails, the cache MUST NOT be busted — otherwise
+    we'd nuke a valid cache for no reason. Pin the invariant: cache bust
+    runs ONLY after delete_comparison returns True."""
+    with patch("app.api.history_routes.delete_cached") as mock_delete_cached:
+        client = _get_client_with_user()
+        try:
+            resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+            assert resp.status_code == 500
+            assert mock_delete_cached.call_count == 0
+        finally:
+            _cleanup_overrides()
+
+
+@patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=MOCK_COMPARISON)
+def test_delete_forbidden_does_not_bust_cache(mock_get):
+    """When the user doesn't own the row (404), no cache invalidation
+    fires — wrong user's cache must not be touched."""
+    with patch("app.api.history_routes.delete_cached") as mock_delete_cached:
+        client = _get_client_with_user(MOCK_OTHER_USER)
+        try:
+            resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+            assert resp.status_code == 404
+            assert mock_delete_cached.call_count == 0
+        finally:
+            _cleanup_overrides()
