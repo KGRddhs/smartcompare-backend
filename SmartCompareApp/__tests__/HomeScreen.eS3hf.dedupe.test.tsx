@@ -61,11 +61,12 @@ describe('HomeScreen — Compare CTA is scan-mode-only (no double button)', () =
   });
 
   it('HomeScreen does NOT render a CTA outside the scan branch (no orphan home-compare-cta sibling)', () => {
-    // Defense in depth: ensure scanCtaEnabled gate exists (the new
-    // scan-only gate name) and the legacy ctaEnabled wide-mode gate
-    // does not co-exist.
-    expect(HOME_SRC).toMatch(/scanCtaEnabled/);
+    // Defense in depth: the legacy wide-mode `ctaEnabled` predicate is
+    // gone AND no per-render flag (e.g. scanCtaEnabled) recreates the
+    // dead-code surface. The single source of truth for whether the
+    // scan CTA renders is the JSX gate `inputMode === 'scan' &&`.
     expect(HOME_SRC).not.toMatch(/const\s+ctaEnabled\s*=\s*\(/);
+    expect(HOME_SRC).not.toMatch(/\bscanCtaEnabled\b/);
   });
 });
 

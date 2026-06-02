@@ -142,7 +142,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   );
 
   // Min-display floor (1.2s) for Home→Results transitions per design § 3.
+  // advanceTimerRef captures the pending setTimeout handle so we can
+  // cancel the navigation if the user leaves the screen (unmount) OR
+  // the compare aborts on error before the floor expires.
   const loadingStartedAtRef = useRef<number | null>(null);
+  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MIN_LOADING_MS = 1200;
   const navigateToResultsWithFloor = useCallback(
     (result: any) => {
@@ -150,14 +154,26 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       const elapsed = Date.now() - startedAt;
       const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
       const advance = () => {
+        advanceTimerRef.current = null;
         loadingStartedAtRef.current = null;
         navigation.navigate('Results' as any, { result });
       };
       if (remaining === 0) advance();
-      else setTimeout(advance, remaining);
+      else advanceTimerRef.current = setTimeout(advance, remaining);
     },
     [navigation]
   );
+
+  // Clear any pending floor timer on unmount so navigate-after-unmount
+  // can never fire (Gate B #1). Error paths cancel inline.
+  useEffect(() => {
+    return () => {
+      if (advanceTimerRef.current) {
+        clearTimeout(advanceTimerRef.current);
+        advanceTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -276,11 +292,22 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           await increment();
           navigateToResultsWithFloor(data);
         } else if (!data.success) {
+          // Backend reported success=false — never queue a floor nav.
+          if (advanceTimerRef.current) {
+            clearTimeout(advanceTimerRef.current);
+            advanceTimerRef.current = null;
+          }
           Alert.alert(t('common.error'), data.error || t('home.errors.comparison'));
         }
       },
       onError: (error: any) => {
         abortRef.current = null;
+        // Cancel any pending floor timer so a failed compare can never
+        // silently navigate to Results after the 1.2s floor expires.
+        if (advanceTimerRef.current) {
+          clearTimeout(advanceTimerRef.current);
+          advanceTimerRef.current = null;
+        }
         setLoading(false);
         setStatusMessage('');
         const parsed = parseApiError(error);
@@ -334,6 +361,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         Alert.alert(t('common.error'), response.data.error || t('home.errors.comparison'));
       }
     } catch (error: any) {
+      // Cancel any pending floor timer so a failed URL compare can
+      // never silently navigate to Results after the 1.2s floor expires.
+      if (advanceTimerRef.current) {
+        clearTimeout(advanceTimerRef.current);
+        advanceTimerRef.current = null;
+      }
       const parsed = parseApiError(error);
       if (parsed.code === 'CONTENT_UNAVAILABLE') {
         const layer = error?.response?.data?.layer ?? 'unknown';
@@ -378,11 +411,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // the Compare button INSIDE TwoInputShell (single source of truth — the
   // shell already owns the bothValid gate + celebration). The HomeScreen
   // CTA below renders ONLY in scan mode where its label is "Open camera"
-  // and TwoInputShell is not on screen.
-  const scanCtaEnabled = canCompare && inputMode === 'scan';
-
+  // and TwoInputShell is not on screen. The conditional render gate at
+  // the JSX site (`canCompare && inputMode === 'scan' &&`) is the single
+  // truth — no separate flag needed.
   const handleScanCtaPress = () => {
-    if (!scanCtaEnabled) return;
     navigation.navigate('ScanCamera');
   };
 
@@ -679,14 +711,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             <TouchableOpacity
               testID="home-compare-cta"
               onPress={handleScanCtaPress}
-              disabled={!scanCtaEnabled}
               accessibilityRole="button"
               accessibilityLabel={scanCtaLabel}
-              accessibilityState={{ disabled: !scanCtaEnabled }}
-              style={[
-                styles.compareCta,
-                !scanCtaEnabled && styles.compareCtaDisabled,
-              ]}
+              accessibilityState={{ disabled: false }}
+              style={styles.compareCta}
             >
               <Text style={styles.compareCtaText}>{scanCtaLabel}</Text>
             </TouchableOpacity>
@@ -919,9 +947,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cta.primary,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  compareCtaDisabled: {
-    opacity: 0.5,
   },
   compareCtaText: {
     ...typography.body,
