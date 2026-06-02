@@ -73,14 +73,20 @@ describe('HomeScreen S3 — JSX:199-217 Compare CTA inside CompareCard', () => {
   });
 
   it('Compare CTA label uses i18n home.compare.cta and home.cta.openCamera', () => {
-    // CompareCard primary CTA flips label by mode:
-    //   - scan  → "Open camera"
-    //   - link  → "Compare"
-    //   - type  → "Compare"
+    // HomeScreen owns the scan-mode CTA ("Open camera"); in link/type
+    // modes the Compare CTA is consolidated inside TwoInputShell (which
+    // references home.compare.cta). Both i18n keys must still exist.
     expect(enLocale['home.compare.cta']).toBeDefined();
     expect(enLocale['home.cta.openCamera']).toBeDefined();
-    expect(homeSrc).toMatch(/home\.compare\.cta/);
+    // HomeScreen.tsx references home.cta.openCamera (scan label).
     expect(homeSrc).toMatch(/home\.cta\.openCamera/);
+    // home.compare.cta lives in TwoInputShell now — verify it's referenced
+    // there so the canonical Compare label still routes through i18n.
+    const twoInputSrc = fs.readFileSync(
+      path.resolve(__dirname, '../src/components/TwoInputShell.tsx'),
+      'utf8'
+    );
+    expect(twoInputSrc).toMatch(/home\.compare\.cta/);
   });
 
   it('Compare CTA style is full-width 48px-tall with cta.primary background', () => {

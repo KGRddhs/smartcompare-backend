@@ -475,3 +475,232 @@ class TestLiveRailwaySmoke:
         assert r.status_code == 200
         body = r.json()
         assert body.get("success") is True
+
+
+# ============================================
+# Bundle E S3 hotfix — GET /text/compare dual-shape parity with POST + SSE
+# (device walk image #5: SSE failed → fallback to GET /text/compare with
+# product_a/product_b only → FastAPI Query(...) required `q` → 422.)
+# ============================================
+
+
+class TestGetEndpointDualShape:
+    """L3 hotfix: GET /text/compare must accept BOTH q-only and pair shapes
+    so the streamComparison() SSE fallback in api.ts L482 doesn't 422 when
+    the caller is in pair mode. Mirrors the POST + SSE contracts."""
+
+    def test_get_endpoint_accepts_query_shape(self, mock_service):
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"q": "iPhone 15 vs Galaxy S24"},
+        )
+        assert response.status_code == 200
+
+    def test_get_endpoint_accepts_pair_shape(self, mock_service):
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"product_a": "iPhone 15", "product_b": "Galaxy S24"},
+        )
+        assert response.status_code == 200
+
+    def test_get_endpoint_rejects_both_shapes(self, mock_service):
+        response = client.get(
+            "/api/v1/text/compare",
+            params={
+                "q": "X vs Y",
+                "product_a": "X",
+                "product_b": "Y",
+            },
+        )
+        assert response.status_code == 422
+
+    def test_get_endpoint_rejects_neither_shape(self, mock_service):
+        response = client.get("/api/v1/text/compare")
+        assert response.status_code == 422
+
+    def test_get_endpoint_rejects_pair_with_empty_product_a(self, mock_service):
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"product_a": "", "product_b": "Galaxy S24"},
+        )
+        assert response.status_code == 422
+
+    def test_get_endpoint_rejects_pair_with_whitespace_product_b(self, mock_service):
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"product_a": "iPhone 15", "product_b": "   "},
+        )
+        assert response.status_code == 422
+
+    def test_get_endpoint_pair_synthesizes_query(self, mock_service):
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"product_a": "  iPhone 15  ", "product_b": "  Galaxy S24  "},
+        )
+        assert response.status_code == 200
+        call_kwargs = mock_service.compare_from_text.await_args.kwargs
+        assert call_kwargs["query"] == "iPhone 15 vs Galaxy S24"
+
+    def test_get_endpoint_pair_propagates_explicit_pair(self, mock_service):
+        """Gate B [IMPORTANT]: GET-pair must forward explicit_pair=(a,b) to
+        compare_from_text so the service skips parse_product_query() — same
+        contract as the POST handler (test_explicit_pair_kwarg_propagates)
+        and the SSE handler. Without this, the GET-fallback path burns an
+        unnecessary GPT call + 1-2s of latency vs POST/SSE."""
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"product_a": "iPhone 15", "product_b": "Galaxy S24"},
+        )
+        assert response.status_code == 200
+        call_kwargs = mock_service.compare_from_text.await_args.kwargs
+        assert call_kwargs.get("explicit_pair") == ("iPhone 15", "Galaxy S24")
+
+    def test_get_endpoint_query_path_no_explicit_pair(self, mock_service):
+        """Legacy q= shape must NOT set explicit_pair — the service still
+        runs parse_product_query() to extract structured products from the
+        freeform string. Mirrors POST test_query_path_no_explicit_pair_kwarg."""
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"q": "iPhone 15 vs Galaxy S24"},
+        )
+        assert response.status_code == 200
+        call_kwargs = mock_service.compare_from_text.await_args.kwargs
+        assert call_kwargs.get("explicit_pair") is None
+
+    def test_get_endpoint_pair_explicit_pair_stripped_inputs(self, mock_service):
+        """Whitespace in pair inputs is stripped BEFORE being forwarded as
+        explicit_pair (parity with POST handler line 65 and SSE handler
+        line 359)."""
+        response = client.get(
+            "/api/v1/text/compare",
+            params={"product_a": "  iPhone 15  ", "product_b": "  Galaxy S24  "},
+        )
+        assert response.status_code == 200
+        call_kwargs = mock_service.compare_from_text.await_args.kwargs
+        assert call_kwargs.get("explicit_pair") == ("iPhone 15", "Galaxy S24")
+
+
+# ============================================
+# Bundle E S3 hotfix — image_url persistence invariant
+# (device walk image #12: HistoryScreen rows show placeholder phone glyphs
+# despite the Bundle E S3 A4 Wave 2 ProductImage wiring. Root cause: rows
+# saved BEFORE the A3 image pipeline deploy did not carry image_url; new
+# rows MUST carry it through save_comparison's `full_response` JSONB.)
+# ============================================
+
+
+class TestImageUrlSavedInFullResponse:
+    """L3 hotfix: assert image_url survives the save_comparison pipeline so
+    HistoryScreen at HistoryScreen.tsx:534 can read full_response.products[i]
+    .image_url. The save_comparison persistence is JSONB — it preserves the
+    dict shape verbatim — so the invariant is that build_comparison_response
+    populates image_url on BOTH overview.products[i] AND the legacy
+    products[i] alias before the row is persisted."""
+
+    def test_build_comparison_response_includes_image_url_in_overview(self):
+        from app.services.response_builder import build_comparison_response
+
+        result = build_comparison_response(
+            products=[
+                {"brand": "Apple", "name": "iPhone 15", "image_url": "https://cdn.apple.com/i15.jpg"},
+                {"brand": "Samsung", "name": "Galaxy S24", "image_url": "https://cdn.samsung.com/s24.jpg"},
+            ],
+            comparison={},
+            query="iPhone 15 vs Galaxy S24",
+        )
+        overview_products = result["overview"]["products"]
+        assert overview_products[0]["image_url"] == "https://cdn.apple.com/i15.jpg"
+        assert overview_products[1]["image_url"] == "https://cdn.samsung.com/s24.jpg"
+
+    def test_build_comparison_response_includes_image_url_in_legacy_products_alias(self):
+        # HistoryScreen.tsx:530-534 reads `item.full_response.products[i].image_url`
+        # — that's the LEGACY alias path, not overview.products. Must be plumbed.
+        from app.services.response_builder import build_comparison_response
+
+        result = build_comparison_response(
+            products=[
+                {"brand": "Apple", "name": "iPhone 15", "image_url": "https://cdn.apple.com/i15.jpg"},
+                {"brand": "Samsung", "name": "Galaxy S24", "image_url": "https://cdn.samsung.com/s24.jpg"},
+            ],
+            comparison={},
+            query="iPhone 15 vs Galaxy S24",
+        )
+        legacy_products = result["products"]
+        assert legacy_products[0]["image_url"] == "https://cdn.apple.com/i15.jpg"
+        assert legacy_products[1]["image_url"] == "https://cdn.samsung.com/s24.jpg"
+
+    def test_build_comparison_response_image_url_none_when_missing(self):
+        # When the image pipeline returns None (all tiers exhausted), the
+        # response must still carry the key as None — frontend ProductImage
+        # 4-state primitive handles the None/undefined → placeholder fallback.
+        from app.services.response_builder import build_comparison_response
+
+        result = build_comparison_response(
+            products=[
+                {"brand": "Apple", "name": "iPhone 15"},
+                {"brand": "Samsung", "name": "Galaxy S24"},
+            ],
+            comparison={},
+            query="iPhone 15 vs Galaxy S24",
+        )
+        assert result["overview"]["products"][0]["image_url"] is None
+        assert result["overview"]["products"][1]["image_url"] is None
+        # Legacy alias also gets None (defensive).
+        assert result["products"][0]["image_url"] is None
+        assert result["products"][1]["image_url"] is None
+
+    def test_save_comparison_preserves_image_url_in_full_response(self, monkeypatch):
+        # save_comparison writes `full_response` JSONB verbatim — assert the
+        # image_url survives the dict-pass to the Supabase insert payload.
+        import asyncio
+        from app.services import database_service
+
+        captured = {}
+
+        class _FakeBuilder:
+            def insert(self, record):
+                captured["record"] = record
+                class _Exec:
+                    data = [{"id": "test-id"}]
+                    def execute(self):
+                        return self
+                return _Exec()
+
+        class _FakeClient:
+            def table(self, name):
+                captured["table"] = name
+                return _FakeBuilder()
+
+        monkeypatch.setattr(database_service, "get_supabase_client", lambda: _FakeClient())
+
+        full_response = {
+            "success": True,
+            "overview": {
+                "products": [
+                    {"name": "iPhone 15", "image_url": "https://cdn.apple.com/i15.jpg"},
+                    {"name": "Galaxy S24", "image_url": "https://cdn.samsung.com/s24.jpg"},
+                ],
+            },
+            "products": [
+                {"name": "iPhone 15", "image_url": "https://cdn.apple.com/i15.jpg"},
+                {"name": "Galaxy S24", "image_url": "https://cdn.samsung.com/s24.jpg"},
+            ],
+            "metadata": {"query": "iPhone 15 vs Galaxy S24"},
+        }
+
+        result = asyncio.run(
+            database_service.save_comparison(
+                full_response=full_response,
+                query="iPhone 15 vs Galaxy S24",
+                input_type="text",
+                user_id="00000000-0000-0000-0000-000000000000",
+            )
+        )
+
+        assert result is not None
+        saved_full = captured["record"]["full_response"]
+        # Both shapes preserved verbatim (JSONB pass-through).
+        assert saved_full["overview"]["products"][0]["image_url"] == "https://cdn.apple.com/i15.jpg"
+        assert saved_full["overview"]["products"][1]["image_url"] == "https://cdn.samsung.com/s24.jpg"
+        assert saved_full["products"][0]["image_url"] == "https://cdn.apple.com/i15.jpg"
+        assert saved_full["products"][1]["image_url"] == "https://cdn.samsung.com/s24.jpg"

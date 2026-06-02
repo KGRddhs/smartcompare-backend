@@ -471,6 +471,9 @@ export function streamComparison(
             selected_category: options?.selected_category,
             ...(options?.nocache && { nocache: true }),
           };
+          // Bundle E S3 hotfix — GET /text/compare now accepts dual-shape (q OR pair).
+          // We send the explicit pair so backend skips parse_product_query() for
+          // higher-confidence extraction. Pair-shape support landed alongside this.
           const queryParams =
             typeof input === 'string'
               ? { q: input, ...baseParams }

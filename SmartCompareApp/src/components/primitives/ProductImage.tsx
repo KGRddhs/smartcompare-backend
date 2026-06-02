@@ -25,7 +25,15 @@
  */
 
 import React from 'react';
-import { Image, ImageStyle, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import {
+  Image,
+  ImageResizeMode,
+  ImageStyle,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
 import Svg, { Line, Rect } from 'react-native-svg';
 
 import { colors } from '../../theme';
@@ -37,6 +45,13 @@ interface Props {
   placeholderTone?: string;
   aspectRatio?: number;
   borderRadius?: number;
+  /**
+   * How the loaded image should fit inside its square tile. Defaults to
+   * `'cover'` (matches previous behavior) — pass `'contain'` for product
+   * hero cards where the full photo must fit without crop and the
+   * placeholder tone is intended to show as a neutral letterbox.
+   */
+  resizeMode?: ImageResizeMode;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
@@ -51,6 +66,7 @@ export function ProductImage({
   placeholderTone = DEFAULT_TONE,
   aspectRatio = 1,
   borderRadius = 14,
+  resizeMode = 'cover',
   testID,
   style,
 }: Props) {
@@ -76,12 +92,16 @@ export function ProductImage({
     // testID queries from upstream consumers (A2 slot contract) keep
     // working; the inner -img / -placeholder suffix is the discriminator.
     return (
-      <View testID={testID} style={styles.host}>
+      <View
+        testID={testID}
+        style={[styles.host, { aspectRatio, borderRadius, backgroundColor: placeholderTone, overflow: 'hidden' }]}
+      >
         <Image
           testID={testID ? `${testID}-img` : undefined}
           source={{ uri: imageUrl as string }}
           accessibilityRole="image"
           onError={() => setErrored(true)}
+          resizeMode={resizeMode}
           style={imageStyle}
         />
       </View>
@@ -139,6 +159,7 @@ const styles = StyleSheet.create({
   },
   tileImage: {
     width: '100%',
+    height: '100%',
     overflow: 'hidden',
   },
   placeholder: {
