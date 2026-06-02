@@ -104,6 +104,46 @@ def _extract_product_names(full_response: dict) -> tuple[Optional[str], Optional
     return (winner_name or None, loser_name or None)
 
 
+def _safe_image_url(product: dict) -> Optional[str]:
+    """Mirror of `home_routes._safe_image_url` — extract per-product
+    image_url from a comparison row's `products[*].image_url`. Returns the
+    string when it's a valid http(s) URL; None otherwise (FE renders
+    placeholder primitive). Rejects non-string types defensively (legacy
+    malformed rows can hold ints / dicts / lists; we don't pass bad
+    shapes through to the wire).
+    """
+    raw = product.get("image_url") if isinstance(product, dict) else None
+    if not isinstance(raw, str):
+        return None
+    stripped = raw.strip()
+    if not (stripped.startswith("http://") or stripped.startswith("https://")):
+        return None
+    return stripped
+
+
+def _extract_product_image_urls(full_response: dict) -> tuple[Optional[str], Optional[str]]:
+    """Return (winner_image_url, runner_up_image_url) from a v2 full_response.
+
+    Locked shape with L2 (Wave 2 b565a38): top-level per-row fields on
+    /profile/recent-decisions, /comparisons, and /home/smart-pick. Derived
+    server-side using winner_index. Returns (None, None) on any shape
+    gap so FE can rely on the keys always being present (with None when
+    absent) — no defensive presence checks needed in the consumer.
+    """
+    if not isinstance(full_response, dict):
+        return (None, None)
+    products = full_response.get("products") or []
+    if not isinstance(products, list) or len(products) < 2:
+        return (None, None)
+    winner_idx = full_response.get("winner_index")
+    if winner_idx not in (0, 1):
+        return (None, None)
+    loser_idx = 1 - winner_idx
+    winner = products[winner_idx] or {}
+    loser = products[loser_idx] or {}
+    return (_safe_image_url(winner), _safe_image_url(loser))
+
+
 # =============================================================================
 # 1. GET /api/v1/profile/recent-decisions
 # =============================================================================
@@ -162,13 +202,21 @@ async def profile_recent_decisions(
 
     recent = []
     for row in rows:
-        winner_name, runner_up_name = _extract_product_names(row.get("full_response") or {})
+        full = row.get("full_response") or {}
+        winner_name, runner_up_name = _extract_product_names(full)
         if not winner_name or not runner_up_name:
             continue
+        # Wave 2 — per-row image_url derived from full_response.products[*]
+        # via the same `_safe_image_url` gate as /home/smart-pick. Always
+        # ship both keys (None when source row predates A3 image pipeline
+        # or fails the http(s) gate) — FE consumer relies on key presence.
+        winner_image_url, runner_up_image_url = _extract_product_image_urls(full)
         recent.append({
             "comparison_id": row.get("id"),
             "winner_name": winner_name,
             "runner_up_name": runner_up_name,
+            "winner_image_url": winner_image_url,
+            "runner_up_image_url": runner_up_image_url,
             "created_at": row.get("created_at"),
         })
 
