@@ -26,6 +26,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -34,7 +35,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { LoadingRings } from '../components/hero/LoadingRings';
-import { StageChecklist, Stage } from '../components/StageChecklist';
+import { StageChecklist, Stage, StageStatus } from '../components/StageChecklist';
 import { LoadingTipsCarousel } from '../components/LoadingTipsCarousel';
 // CounterTicker import dropped per F-S2.W3.hotfix — LoadingRings hosts
 // the single counter chip now. The external duplicate chip + its
@@ -91,6 +92,50 @@ interface Props {
 const DEFAULT_MIN_DISPLAY_MS = 3200;
 const DEFAULT_TIP_INTERVAL_MS = 3200;
 const DEFAULT_COUNTER_DURATION_MS = 2400;
+// Wave 2: default comparison-mode StageChecklist auto-cycles every
+// 900ms per JSX LoadingScreen.jsx:71. Each stage walks pending →
+// active → done at this cadence; the cycle restarts after every stage
+// is done so users in slow-backend territory never see a frozen list.
+const STAGE_CYCLE_MS = 900;
+// Wave 2: default comparison-mode factoid card rotates every ~5s. The
+// LoadingTipsCarousel uses cross-fade internally so the rotation is
+// gentle (not a hard cut) — per "no scary copy / no jitter" rule.
+const COMPARISON_TIP_INTERVAL_MS = 5000;
+
+// Default comparison-mode i18n keys. Caller can override via the
+// `stages` / `tips` props (Step14 onboarding does this; HomeScreen
+// relies on the defaults).
+const DEFAULT_COMPARISON_STAGE_KEYS = [
+  { id: '0', key: 'loading.stage.understanding' },
+  { id: '1', key: 'loading.stage.reading_specs' },
+  { id: '2', key: 'loading.stage.cross_checking' },
+  { id: '3', key: 'loading.stage.analyzing_reviews' },
+  { id: '4', key: 'loading.stage.locking_match' },
+];
+
+const DEFAULT_COMPARISON_TIP_KEYS = [
+  'loading.tip.peer_prioritize',
+  'loading.tip.cross_checks',
+  'loading.tip.work_for_you',
+  'loading.tip.save_offline',
+];
+
+// Walks the active-stage cursor through 0..stages.length, with one
+// "all done" hold beat at the end before the cycle restarts so users
+// see every checkmark land before the list resets. Pure helper so
+// the test can verify timer math independently of the React tree.
+function deriveStageStatuses(
+  count: number,
+  cursor: number,
+): StageStatus[] {
+  const result: StageStatus[] = [];
+  for (let i = 0; i < count; i++) {
+    if (i < cursor) result.push('done');
+    else if (i === cursor) result.push('active');
+    else result.push('pending');
+  }
+  return result;
+}
 
 export function LoadingScreenVariants({
   variant,
@@ -99,8 +144,8 @@ export function LoadingScreenVariants({
   onDone,
   minDisplayMs = DEFAULT_MIN_DISPLAY_MS,
   stages,
-  tips = [],
-  tipIntervalMs = DEFAULT_TIP_INTERVAL_MS,
+  tips,
+  tipIntervalMs,
   cohortFooter,
   counterTarget,
   // counterDurationMs intentionally accepted-and-unused per
@@ -110,6 +155,7 @@ export function LoadingScreenVariants({
   caption,
   testID,
 }: Props) {
+  const { t } = useTranslation();
   // Mode "onboarding" always concentric (Step14). Mode "comparison"
   // resolves the variant on first mount via useMemo so re-renders during
   // load do not flip the variant mid-fly.
@@ -118,6 +164,60 @@ export function LoadingScreenVariants({
     if (variant) return variant;
     return Math.random() < 0.5 ? 'concentric' : 'streaming';
   }, [mode, variant]);
+
+  // Wave 2: when the caller supplies no stages AND we're in comparison
+  // mode, derive a self-cycling 5-stage default. Cursor advances every
+  // STAGE_CYCLE_MS so users always see motion — even on backends that
+  // resolve faster than the inner cycle, the navigateToResultsWithFloor
+  // gate keeps the loader on-screen for ≥1.2s so at least the first
+  // transition lands.
+  const shouldDeriveStages = !stages && mode === 'comparison';
+  const [stageCursor, setStageCursor] = useState(0);
+  useEffect(() => {
+    if (!shouldDeriveStages) return;
+    const id = setInterval(() => {
+      setStageCursor((prev) => {
+        const next = prev + 1;
+        // Loop after every stage is done (cursor == count). Holding one
+        // beat at "all done" gives the final checkmark time to read.
+        if (next > DEFAULT_COMPARISON_STAGE_KEYS.length) return 0;
+        return next;
+      });
+    }, STAGE_CYCLE_MS);
+    return () => clearInterval(id);
+  }, [shouldDeriveStages]);
+
+  // Effective stages — caller override OR derived comparison defaults.
+  const effectiveStages = useMemo<Stage[] | undefined>(() => {
+    if (stages) return stages;
+    if (!shouldDeriveStages) return undefined;
+    const statuses = deriveStageStatuses(
+      DEFAULT_COMPARISON_STAGE_KEYS.length,
+      stageCursor,
+    );
+    return DEFAULT_COMPARISON_STAGE_KEYS.map((row, i) => ({
+      id: row.id,
+      label: t(row.key, { defaultValue: row.key }),
+      status: statuses[i],
+    }));
+  }, [stages, shouldDeriveStages, stageCursor, t]);
+
+  // Effective tips — caller override OR derived comparison defaults
+  // (translated). Onboarding without an override gets `undefined` so
+  // Step14's own ONBOARDING_TIPS sequence is the only path to render.
+  const effectiveTips = useMemo<string[] | undefined>(() => {
+    if (tips) return tips;
+    if (mode !== 'comparison') return undefined;
+    return DEFAULT_COMPARISON_TIP_KEYS.map((key) =>
+      t(key, { defaultValue: key }),
+    );
+  }, [tips, mode, t]);
+
+  // Tip rotation interval: caller override OR 5s comparison default OR
+  // legacy 3.2s onboarding default.
+  const effectiveTipIntervalMs =
+    tipIntervalMs ??
+    (mode === 'comparison' ? COMPARISON_TIP_INTERVAL_MS : DEFAULT_TIP_INTERVAL_MS);
 
   // onDone gate. Fire exactly once — covers both modes.
   const firedRef = useRef(false);
@@ -180,16 +280,16 @@ export function LoadingScreenVariants({
             </Text>
           ) : null}
 
-          {stages && stages.length > 0 ? (
+          {effectiveStages && effectiveStages.length > 0 ? (
             <View style={styles.stageCard} testID="loading-stage-card">
-              <StageChecklist stages={stages} />
+              <StageChecklist stages={effectiveStages} />
             </View>
           ) : null}
 
-          {tips.length > 0 ? (
+          {effectiveTips && effectiveTips.length > 0 ? (
             <LoadingTipsCarousel
-              tips={tips}
-              intervalMs={tipIntervalMs}
+              tips={effectiveTips}
+              intervalMs={effectiveTipIntervalMs}
               testID="loading-tips"
               style={styles.tips}
             />
