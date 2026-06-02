@@ -36,7 +36,6 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -70,6 +69,7 @@ import QarenLogo from '../components/QarenLogo';
 import TwoInputShell from '../components/TwoInputShell';
 import PaywallBanner from '../components/PaywallBanner';
 import HomeEditorialSections from '../components/HomeEditorialSections';
+import { LoadingScreenVariants } from './LoadingScreenVariants';
 import { useComparisonCounter } from '../hooks/useComparisonCounter';
 import { getReferralStatus } from '../services/referralService';
 
@@ -97,11 +97,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const [inputMode, setInputMode] = useState<InputMode>('scan');
   const [selectedCategory, setSelectedCategory] = useState<string>('electronics');
-  // Track which text/url pair the user has entered so the Compare CTA can
-  // gate on "both ≥ 2 chars". TwoInputShell still owns its own per-field
-  // input state for in-card UX; we mirror just enough to gate the CTA.
-  const [pairA, setPairA] = useState<string>('');
-  const [pairB, setPairB] = useState<string>('');
   const abortRef = useRef<(() => void) | null>(null);
 
   const { used, total, canCompare, increment } = useComparisonCounter();
@@ -379,28 +374,21 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const cameraPermissionGranted = permission?.granted;
 
-  // Compare CTA gate: scan is always allowed (route to camera); text/url
-  // need both inputs >= 2 chars (matches JSX:164-166).
-  const ctaEnabled = (() => {
-    if (!canCompare) return false;
-    if (inputMode === 'scan') return true;
-    return pairA.trim().length >= 2 && pairB.trim().length >= 2;
-  })();
+  // Compare CTA gate: scan-only on HomeScreen. Type/Link modes consolidate
+  // the Compare button INSIDE TwoInputShell (single source of truth — the
+  // shell already owns the bothValid gate + celebration). The HomeScreen
+  // CTA below renders ONLY in scan mode where its label is "Open camera"
+  // and TwoInputShell is not on screen.
+  const scanCtaEnabled = canCompare && inputMode === 'scan';
 
-  const handleCtaPress = () => {
-    if (!ctaEnabled) return;
-    if (inputMode === 'scan') {
-      navigation.navigate('ScanCamera');
-      return;
-    }
-    if (inputMode === 'url') handleUrlCompare(pairA, pairB);
-    else handleTextCompare(pairA, pairB);
+  const handleScanCtaPress = () => {
+    if (!scanCtaEnabled) return;
+    navigation.navigate('ScanCamera');
   };
 
-  const ctaLabel =
-    inputMode === 'scan'
-      ? t('home.cta.openCamera', { defaultValue: 'Open camera' })
-      : t('home.compare.cta', { defaultValue: 'Compare' });
+  const scanCtaLabel = t('home.cta.openCamera', {
+    defaultValue: 'Open camera',
+  });
 
   const renderCenterArea = () => {
     if (!canCompare) {
@@ -503,20 +491,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       );
     }
 
-    // Text + URL modes both render through TwoInputShell. We mirror its
-    // values into local pair state so the Compare CTA below the card can
-    // gate on the same predicate.
+    // Text + URL modes both render through TwoInputShell. The shell owns
+    // its own per-field input state AND its own Compare CTA — the
+    // HomeScreen CTA is hidden in these modes (single source of truth
+    // for the Compare action lives in the shell).
     return (
       <TwoInputShell
         mode={inputMode === 'url' ? 'url' : 'text'}
         disabled={loading}
-        onChange={(a, b) => {
-          setPairA(a);
-          setPairB(b);
-        }}
         onSubmit={(a, b) => {
-          setPairA(a);
-          setPairB(b);
           if (inputMode === 'url') handleUrlCompare(a, b);
           else handleTextCompare(a, b);
         }}
@@ -687,22 +670,25 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             {renderCenterArea()}
           </View>
 
-          {/* Compare CTA — full-width black button [JSX:199-217]. Hidden
-              during paywall takeover (PaywallBanner has its own CTA). */}
-          {canCompare && (
+          {/* Compare CTA — scan-mode only. In link/type modes the CTA is
+              consolidated INSIDE TwoInputShell (single source of truth).
+              In scan mode the label flips to "Open camera" and routes
+              straight to the ScanCamera screen. Hidden during paywall
+              takeover (PaywallBanner has its own CTA). */}
+          {canCompare && inputMode === 'scan' && (
             <TouchableOpacity
               testID="home-compare-cta"
-              onPress={handleCtaPress}
-              disabled={!ctaEnabled}
+              onPress={handleScanCtaPress}
+              disabled={!scanCtaEnabled}
               accessibilityRole="button"
-              accessibilityLabel={ctaLabel}
-              accessibilityState={{ disabled: !ctaEnabled }}
+              accessibilityLabel={scanCtaLabel}
+              accessibilityState={{ disabled: !scanCtaEnabled }}
               style={[
                 styles.compareCta,
-                !ctaEnabled && styles.compareCtaDisabled,
+                !scanCtaEnabled && styles.compareCtaDisabled,
               ]}
             >
-              <Text style={styles.compareCtaText}>{ctaLabel}</Text>
+              <Text style={styles.compareCtaText}>{scanCtaLabel}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -725,10 +711,21 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         )}
       </ScrollView>
 
-      {loading && statusMessage ? (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="small" color={colors.accent} />
-          <Text style={styles.loadingText}>{statusMessage}</Text>
+      {/* Theatrical loading screen — replaces the prior small toast at
+          the bottom of Home. Renders edge-to-edge so the brand moment
+          (LoadingRings + caption) lands cleanly. The min-display floor
+          (1.2s) is owned by navigateToResultsWithFloor on Home, so the
+          inner LoadingScreenVariants runs in "comparison" mode (no
+          additional floor) and the outer navigation queue keeps the
+          screen visible until the floor + backend resolve. */}
+      {loading ? (
+        <View style={styles.loadingFullscreen} pointerEvents="auto">
+          <LoadingScreenVariants
+            variant="concentric"
+            mode="comparison"
+            caption={statusMessage || t('results.loading.finding')}
+            testID="home-loading-screen"
+          />
         </View>
       ) : null}
     </SafeAreaView>
@@ -1061,23 +1058,11 @@ const styles = StyleSheet.create({
     color: colors.accent,
     ...typography.caption,
   },
-  loadingOverlay: {
-    position: 'absolute',
-    bottom: 80,
-    left: spacing.xl,
-    right: spacing.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.base,
-    borderRadius: radii.chip,
-  },
-  loadingText: {
-    color: '#FFF',
-    ...typography.caption,
+  loadingFullscreen: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.bg.primary,
+    zIndex: 100,
+    elevation: 100,
   },
 });
 

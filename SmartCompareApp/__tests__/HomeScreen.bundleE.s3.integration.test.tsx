@@ -239,22 +239,25 @@ describe('HomeScreen S3 integration — mode switching', () => {
     });
   });
 
-  it('tapping Type mode flips label to "Compare"', async () => {
+  it('tapping Type mode hides the HomeScreen scan CTA (TwoInputShell owns it)', async () => {
     const props = makeProps();
     const rendered = render(<HomeScreen {...props} />);
     fireEvent.press(rendered.getByTestId('home-mode-type'));
     await waitFor(() => {
-      expect(rendered.getByText('Compare')).toBeTruthy();
+      // The scan-mode CTA (testID home-compare-cta) is gated on inputMode==='scan';
+      // in type mode TwoInputShell's internal CTA is canonical.
+      expect(rendered.queryByTestId('home-compare-cta')).toBeNull();
+      expect(rendered.getByTestId('mock-two-input-shell')).toBeTruthy();
     });
   });
 
-  it('Compare CTA in text mode is DISABLED until both inputs >= 2 chars', async () => {
+  it('tapping Link mode hides the HomeScreen scan CTA (TwoInputShell owns it)', async () => {
     const props = makeProps();
     const rendered = render(<HomeScreen {...props} />);
-    fireEvent.press(rendered.getByTestId('home-mode-type'));
+    fireEvent.press(rendered.getByTestId('home-mode-link'));
     await waitFor(() => {
-      const cta = rendered.getByTestId('home-compare-cta');
-      expect(cta.props.accessibilityState).toEqual({ disabled: true });
+      expect(rendered.queryByTestId('home-compare-cta')).toBeNull();
+      expect(rendered.getByTestId('mock-two-input-shell')).toBeTruthy();
     });
   });
 });
@@ -306,7 +309,7 @@ describe('HomeScreen S3 integration — scan preview row taps', () => {
 });
 
 describe('HomeScreen S3 integration — text compare flow via TwoInputShell', () => {
-  it('text mode CTA press calls streamComparison when inputs are valid', async () => {
+  it('text mode submit via TwoInputShell.onSubmit calls streamComparison', async () => {
     let subscribeFn: any = null;
     mockStreamComparison.mockReturnValue({
       subscribe: (handlers: any) => {
@@ -317,18 +320,12 @@ describe('HomeScreen S3 integration — text compare flow via TwoInputShell', ()
     const props = makeProps();
     const rendered = render(<HomeScreen {...props} />);
     fireEvent.press(rendered.getByTestId('home-mode-type'));
-    // TwoInputShell mock has onChange exposed via its props. Find it
-    // and fire (a, b) to mirror real input.
     const shell = await waitFor(() =>
       rendered.getByTestId('mock-two-input-shell'),
     );
-    // Invoke the onChange prop directly to simulate text input.
-    shell.props.onChange('iPhone 15', 'Galaxy S24');
-    await waitFor(() => {
-      const cta = rendered.getByTestId('home-compare-cta');
-      expect(cta.props.accessibilityState).toEqual({ disabled: false });
-    });
-    fireEvent.press(rendered.getByTestId('home-compare-cta'));
+    // TwoInputShell now owns its own Compare CTA — drive its onSubmit prop
+    // directly to mirror a user tap inside the shell.
+    shell.props.onSubmit('iPhone 15', 'Galaxy S24');
     expect(mockStreamComparison).toHaveBeenCalledWith(
       { product_a: 'iPhone 15', product_b: 'Galaxy S24' },
       expect.objectContaining({ selected_category: 'electronics' }),
@@ -350,18 +347,9 @@ describe('HomeScreen S3 integration — text compare flow via TwoInputShell', ()
     const shell = await waitFor(() =>
       rendered.getByTestId('mock-two-input-shell'),
     );
-    shell.props.onChange('iPhone 15', 'Galaxy S24');
-    await waitFor(() => {
-      const cta = rendered.getByTestId('home-compare-cta');
-      expect(cta.props.accessibilityState).toEqual({ disabled: false });
-    });
-    fireEvent.press(rendered.getByTestId('home-compare-cta'));
+    shell.props.onSubmit('iPhone 15', 'Galaxy S24');
     // Drive SSE callback.
     await subscribeFn.onComplete({ success: true, comparison: {} });
-    // Allow min-display floor (1.2s) — fast-forward via fake timers
-    // would be cleaner; here we just assert subscribe completed without
-    // throwing and Results navigation will happen on the next tick or
-    // setTimeout schedule.
     expect(mockStreamComparison).toHaveBeenCalled();
   });
 });
@@ -413,7 +401,7 @@ describe('HomeScreen S3 integration — TwoInputShell callbacks fire analytics',
 });
 
 describe('HomeScreen S3 integration — URL compare flow', () => {
-  it('URL CTA press calls api.post(/url/compare)', async () => {
+  it('URL submit via TwoInputShell.onSubmit calls api.post(/url/compare)', async () => {
     mockApiPost.mockResolvedValueOnce({
       data: { success: true, comparison: {} },
     });
@@ -423,12 +411,7 @@ describe('HomeScreen S3 integration — URL compare flow', () => {
     const shell = await waitFor(() =>
       rendered.getByTestId('mock-two-input-shell'),
     );
-    shell.props.onChange('https://noon.com/a', 'https://amazon.com/b');
-    await waitFor(() => {
-      const cta = rendered.getByTestId('home-compare-cta');
-      expect(cta.props.accessibilityState).toEqual({ disabled: false });
-    });
-    fireEvent.press(rendered.getByTestId('home-compare-cta'));
+    shell.props.onSubmit('https://noon.com/a', 'https://amazon.com/b');
     await waitFor(() => {
       expect(mockApiPost).toHaveBeenCalledWith(
         '/api/v1/url/compare',
@@ -453,12 +436,7 @@ describe('HomeScreen S3 integration — error/edge paths', () => {
     const shell = await waitFor(() =>
       rendered.getByTestId('mock-two-input-shell'),
     );
-    shell.props.onChange('https://noon.com/a', 'https://amazon.com/b');
-    await waitFor(() => {
-      const cta = rendered.getByTestId('home-compare-cta');
-      expect(cta.props.accessibilityState).toEqual({ disabled: false });
-    });
-    fireEvent.press(rendered.getByTestId('home-compare-cta'));
+    shell.props.onSubmit('https://noon.com/a', 'https://amazon.com/b');
     await waitFor(() => {
       expect(alertSpy).toHaveBeenCalled();
     });
@@ -477,11 +455,7 @@ describe('HomeScreen S3 integration — error/edge paths', () => {
     const shell = await waitFor(() =>
       rendered.getByTestId('mock-two-input-shell'),
     );
-    shell.props.onChange('https://noon.com/a', 'https://amazon.com/b');
-    await waitFor(() => {
-      expect(rendered.getByTestId('home-compare-cta').props.accessibilityState).toEqual({ disabled: false });
-    });
-    fireEvent.press(rendered.getByTestId('home-compare-cta'));
+    shell.props.onSubmit('https://noon.com/a', 'https://amazon.com/b');
     await waitFor(() => {
       expect(alertSpy).toHaveBeenCalled();
     });
@@ -519,18 +493,14 @@ describe('HomeScreen S3 integration — error/edge paths', () => {
     const shell = await waitFor(() =>
       rendered.getByTestId('mock-two-input-shell'),
     );
-    shell.props.onChange('iPhone 15', 'Galaxy S24');
-    await waitFor(() => {
-      expect(rendered.getByTestId('home-compare-cta').props.accessibilityState).toEqual({ disabled: false });
-    });
-    fireEvent.press(rendered.getByTestId('home-compare-cta'));
+    shell.props.onSubmit('iPhone 15', 'Galaxy S24');
     // Drive the onError callback.
     subscribeFn.onError({ message: 'GPT timeout' });
     expect(alertSpy).toHaveBeenCalled();
     alertSpy.mockRestore();
   });
 
-  it('SSE onStatus updates the loading status message', async () => {
+  it('SSE onStatus updates the loading caption', async () => {
     let subscribeFn: any = null;
     mockStreamComparison.mockReturnValue({
       subscribe: (handlers: any) => {
@@ -544,12 +514,9 @@ describe('HomeScreen S3 integration — error/edge paths', () => {
     const shell = await waitFor(() =>
       rendered.getByTestId('mock-two-input-shell'),
     );
-    shell.props.onChange('iPhone 15', 'Galaxy S24');
-    await waitFor(() => {
-      expect(rendered.getByTestId('home-compare-cta').props.accessibilityState).toEqual({ disabled: false });
-    });
-    fireEvent.press(rendered.getByTestId('home-compare-cta'));
-    // Drive a status callback.
+    shell.props.onSubmit('iPhone 15', 'Galaxy S24');
+    // Drive a status callback — status surfaces via LoadingScreenVariants
+    // caption (full-screen theatrical loader) now.
     subscribeFn.onStatus('Finding products');
     await waitFor(() => {
       expect(rendered.getByText('Finding products')).toBeTruthy();
@@ -563,10 +530,11 @@ describe('HomeScreen S3 integration — editorial section callbacks', () => {
     const rendered = render(<HomeScreen {...props} />);
     const editorial = rendered.getByTestId('mock-home-editorial-sections');
     editorial.props.onPickCategory('skincare');
-    // Should also fire compare_entry_view for new mode.
+    // In type mode the scan-only home-compare-cta is hidden and the
+    // TwoInputShell (which owns the Compare CTA now) is rendered.
     await waitFor(() => {
-      // Compare CTA label flipped to "Compare" (text mode)
-      expect(rendered.getByText('Compare')).toBeTruthy();
+      expect(rendered.queryByTestId('home-compare-cta')).toBeNull();
+      expect(rendered.getByTestId('mock-two-input-shell')).toBeTruthy();
     });
   });
 
@@ -576,7 +544,8 @@ describe('HomeScreen S3 integration — editorial section callbacks', () => {
     const editorial = rendered.getByTestId('mock-home-editorial-sections');
     editorial.props.onPressTrending();
     await waitFor(() => {
-      expect(rendered.getByText('Compare')).toBeTruthy();
+      expect(rendered.queryByTestId('home-compare-cta')).toBeNull();
+      expect(rendered.getByTestId('mock-two-input-shell')).toBeTruthy();
     });
   });
 
