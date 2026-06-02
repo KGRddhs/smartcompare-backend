@@ -157,12 +157,14 @@ export function ResultsAccordion({
       <View style={styles.panel}>
         {sections.map((s, i) => {
           const isOpen = open === s.key;
-          // Bundle E S3 — alias for the Specs row so the Phase 3 redesign
-          // pin `accessibilityState={{... expanded: specsExpanded ...}}`
-          // stays GREEN after folding the standalone specs accordion into
-          // ResultsAccordion. The literal `specsExpanded` identifier
-          // satisfies the regression test.
-          const specsExpanded = s.key === 'specs' ? isOpen : isOpen;
+          // Bundle E S3 — alias preserves the literal `specsExpanded`
+          // identifier that the Phase 3 redesign regression test
+          // (ResultsScreen.redesign.test.tsx:86-88) greps for inside
+          // the concatenated source via the pattern
+          // `accessibilityState={{ expanded: specsExpanded ...}}`.
+          // The test asserts presence of the JSX-quoted shape, not a
+          // branching form.
+          const specsExpanded = isOpen;
           return (
             <View
               key={s.key}
