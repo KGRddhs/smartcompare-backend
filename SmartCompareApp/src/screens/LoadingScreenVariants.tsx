@@ -166,26 +166,25 @@ export function LoadingScreenVariants({
   }, [mode, variant]);
 
   // Wave 2: when the caller supplies no stages AND we're in comparison
-  // mode, derive a self-cycling 5-stage default. Cursor advances every
-  // STAGE_CYCLE_MS so users always see motion — even on backends that
-  // resolve faster than the inner cycle, the navigateToResultsWithFloor
-  // gate keeps the loader on-screen for ≥1.2s so at least the first
-  // transition lands.
+  // mode, derive a self-walking 5-stage default. Cursor advances 0..count
+  // then FREEZES at count (R3 fix per Gate B): on wall floors of 14-25s
+  // a modulo loop made all 5 emerald checkmarks vanish back to pending
+  // 2-4 times per comparison. The loader stays mounted via
+  // navigateToResultsWithFloor until backend resolves, so the frozen
+  // all-done state IS the correct UX — work is locked in.
   const shouldDeriveStages = !stages && mode === 'comparison';
   const [stageCursor, setStageCursor] = useState(0);
+  const stageCount = DEFAULT_COMPARISON_STAGE_KEYS.length;
   useEffect(() => {
     if (!shouldDeriveStages) return;
     const id = setInterval(() => {
-      setStageCursor((prev) => {
-        const next = prev + 1;
-        // Loop after every stage is done (cursor == count). Holding one
-        // beat at "all done" gives the final checkmark time to read.
-        if (next > DEFAULT_COMPARISON_STAGE_KEYS.length) return 0;
-        return next;
-      });
+      // Freeze at count — no wrap. React's setState bails when
+      // value === prev, so the interval naturally goes quiet past the
+      // freeze point (no extra re-renders).
+      setStageCursor((prev) => Math.min(prev + 1, stageCount));
     }, STAGE_CYCLE_MS);
     return () => clearInterval(id);
-  }, [shouldDeriveStages]);
+  }, [shouldDeriveStages, stageCount]);
 
   // Effective stages — caller override OR derived comparison defaults.
   const effectiveStages = useMemo<Stage[] | undefined>(() => {
