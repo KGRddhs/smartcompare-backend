@@ -200,6 +200,7 @@ export function ResultsContent({
                     imageUrl={product.image_url}
                     aspectRatio={1}
                     borderRadius={14}
+                    resizeMode="contain"
                     style={styles.productImageSlot}
                   />
                   <Text style={styles.productName} numberOfLines={2}>

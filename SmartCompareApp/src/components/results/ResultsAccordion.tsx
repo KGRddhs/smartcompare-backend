@@ -40,7 +40,13 @@ function filterSpecs(specs: Record<string, any>): Array<[string, any]> {
   return Object.entries(specs).filter(([key, value]) => {
     if (HIDDEN_FIELDS.has(key)) return false;
     if (key.endsWith('_source')) return false;
+    // Backend emits internal diagnostic fields prefixed with `_` (e.g.
+    // `_field_confidence`). They must never reach the spec table — both
+    // because the key itself is not user-facing and because the value is
+    // typically a nested object that would render as "[object Object]".
+    if (key.startsWith('_')) return false;
     if (value === null || value === undefined) return false;
+    if (typeof value === 'object') return false;
     if (
       typeof value === 'string' &&
       NA_VALUES.has(value.toLowerCase().trim())
@@ -283,20 +289,26 @@ export function ResultsAccordion({
                     {allSpecKeys
                       .filter((k) => !showDiffsOnly || isSpecDifferent(k))
                       .map((key) => {
-                        const values = specsSrc.map(
-                          (p: any) => p.specs?.[key]
-                        );
+                        const values = specsSrc.map((p: any) => {
+                          const raw = p.specs?.[key];
+                          if (raw == null || typeof raw === 'object')
+                            return '—';
+                          const str = String(raw);
+                          if (NA_VALUES.has(str.toLowerCase().trim()))
+                            return '—';
+                          return str;
+                        });
                         return (
                           <View key={key} style={styles.specsRow}>
                             <Text style={styles.specsCellKey}>
                               {key.replace(/_/g, ' ')}
                             </Text>
-                            {values.map((v: any, vi: number) => (
+                            {values.map((v: string, vi: number) => (
                               <Text
                                 key={vi}
                                 style={styles.specsCellValue}
                               >
-                                {v != null ? String(v) : '—'}
+                                {v}
                               </Text>
                             ))}
                           </View>
