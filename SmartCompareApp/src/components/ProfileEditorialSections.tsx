@@ -45,6 +45,7 @@ import {
   type WeightedPriority,
 } from '../services/api';
 import { deriveTone } from '../utils/deriveTone';
+import { ProductImage } from './primitives/ProductImage';
 
 // ---------------------------------------------------------------------------
 // 1. RecentDecisionsRow
@@ -100,18 +101,39 @@ function MiniVsCard({
       activeOpacity={0.7}
     >
       <View style={styles.miniRow}>
-        <View style={[styles.miniTile, { backgroundColor: runnerUpTone }]} />
+        {/* Bundle E S3 Hot-Fix Wave 2 — ProductImage 4-state primitive.
+            RecentDecisionItem carries winner_image_url + runner_up_image_url
+            optional fields; the per-brand tone falls through as
+            placeholderTone so legacy + null rows keep the colored backdrop
+            instead of regressing to a neutral grey rectangle. */}
+        <View style={styles.miniTile}>
+          <ProductImage
+            testID="profile-recent-card-runner-up-image-slot"
+            imageUrl={item.runner_up_image_url}
+            placeholderTone={runnerUpTone}
+            aspectRatio={1}
+            borderRadius={10}
+            resizeMode="contain"
+            style={styles.miniTileImage}
+          />
+        </View>
         <View style={styles.miniVsPill}>
           <Text style={styles.miniVsText}>{t('profile.recent.vs')}</Text>
         </View>
-        <View
-          style={[
-            styles.miniTile,
-            styles.miniTileWinner,
-            { backgroundColor: winnerTone },
-          ]}
-        >
-          <View style={styles.miniTileCheck}>
+        <View style={[styles.miniTile, styles.miniTileWinner]}>
+          <ProductImage
+            testID="profile-recent-card-winner-image-slot"
+            imageUrl={item.winner_image_url}
+            placeholderTone={winnerTone}
+            aspectRatio={1}
+            borderRadius={10}
+            resizeMode="contain"
+            style={styles.miniTileImage}
+          />
+          <View
+            testID="profile-recent-card-winner-check"
+            style={styles.miniTileCheck}
+          >
             <Check size={7} color={colors.text.onInverse} strokeWidth={4} />
           </View>
         </View>
@@ -441,6 +463,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    overflow: 'hidden',
+  },
+  miniTileImage: {
+    // ProductImage host fills the parent miniTile via flex:1 + aspectRatio
+    // on the parent. The primitive itself owns sizing via its `aspectRatio`
+    // prop; this style keeps the rounded corners consistent with the tile.
+    borderRadius: 10,
   },
   miniTileMuted: {
     backgroundColor: '#E8E9ED',
