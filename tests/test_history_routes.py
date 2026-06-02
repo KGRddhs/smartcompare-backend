@@ -436,3 +436,177 @@ def test_list_history_winner_index_null_when_full_response_missing(mock_get, moc
         assert rows[3]["winner_index"] is None
     finally:
         _cleanup_overrides()
+
+
+# ============================================
+# Wave 2 — image_url extension on /history list
+# Locked shape with L2 (b565a38): top-level per-row winner_image_url +
+# runner_up_image_url (string|null) derived server-side using winner_index.
+# Same _safe_image_url contract as /home/smart-pick + /profile/recent-decisions.
+# ============================================
+
+
+def _history_row_with_image(
+    *, row_id: str, winner_idx, p0_image, p1_image, full_response_extra=None,
+):
+    """Build a comparisons history row with image_url on each product slot.
+
+    winner_idx is placed at full_response.metadata.winner_index to match the
+    canonical write path (build_comparison_response). Pass full_response_extra
+    to override the wrapper for edge-case tests (e.g., None full_response,
+    missing products array).
+    """
+    full = {
+        "metadata": {"winner_index": winner_idx} if winner_idx is not None else {},
+        "products": [
+            {"brand": "Apple", "name": "iPhone 15", "image_url": p0_image},
+            {"brand": "Samsung", "name": "Galaxy S24", "image_url": p1_image},
+        ],
+    }
+    if full_response_extra is not None:
+        full = full_response_extra
+    return {
+        "id": row_id,
+        "query": "iPhone 15 vs Galaxy S24",
+        "product_names": ["Apple iPhone 15", "Samsung Galaxy S24"],
+        "input_type": "text",
+        "user_id": "user-123",
+        "full_response": full,
+        "created_at": "2026-05-23T10:00:00Z",
+    }
+
+
+def test_list_history_image_urls_present_when_both_products_have_image_url():
+    rows = [_history_row_with_image(
+        row_id="r1", winner_idx=0,
+        p0_image="https://cdn.apple.com/i15.jpg",
+        p1_image="https://cdn.samsung.com/s24.jpg",
+    )]
+    with patch("app.api.history_routes.get_user_comparison_count",
+               new_callable=AsyncMock, return_value=1), \
+         patch("app.api.history_routes.get_user_comparisons",
+               new_callable=AsyncMock, return_value=rows):
+        client = _get_client_with_user()
+        try:
+            resp = client.get("/api/v1/comparisons/history")
+            assert resp.status_code == 200
+            row = resp.json()["comparisons"][0]
+            assert row["winner_image_url"] == "https://cdn.apple.com/i15.jpg"
+            assert row["runner_up_image_url"] == "https://cdn.samsung.com/s24.jpg"
+        finally:
+            _cleanup_overrides()
+
+
+def test_list_history_image_urls_respect_winner_index_swap():
+    """When winner_index=1, winner_image_url must come from products[1]."""
+    rows = [_history_row_with_image(
+        row_id="r2", winner_idx=1,
+        p0_image="https://cdn.apple.com/i15.jpg",
+        p1_image="https://cdn.samsung.com/s24.jpg",
+    )]
+    with patch("app.api.history_routes.get_user_comparison_count",
+               new_callable=AsyncMock, return_value=1), \
+         patch("app.api.history_routes.get_user_comparisons",
+               new_callable=AsyncMock, return_value=rows):
+        client = _get_client_with_user()
+        try:
+            resp = client.get("/api/v1/comparisons/history")
+            row = resp.json()["comparisons"][0]
+            # winner_idx=1 → winner is Samsung, runner_up is Apple
+            assert row["winner_image_url"] == "https://cdn.samsung.com/s24.jpg"
+            assert row["runner_up_image_url"] == "https://cdn.apple.com/i15.jpg"
+        finally:
+            _cleanup_overrides()
+
+
+def test_list_history_image_urls_null_when_absent():
+    """Pre-A3-deploy rows have no image_url field → response ships None."""
+    rows = [_history_row_with_image(
+        row_id="r3", winner_idx=0, p0_image=None, p1_image=None,
+    )]
+    with patch("app.api.history_routes.get_user_comparison_count",
+               new_callable=AsyncMock, return_value=1), \
+         patch("app.api.history_routes.get_user_comparisons",
+               new_callable=AsyncMock, return_value=rows):
+        client = _get_client_with_user()
+        try:
+            resp = client.get("/api/v1/comparisons/history")
+            row = resp.json()["comparisons"][0]
+            assert row["winner_image_url"] is None
+            assert row["runner_up_image_url"] is None
+        finally:
+            _cleanup_overrides()
+
+
+def test_list_history_image_urls_reject_non_http_scheme():
+    """Defense vs malformed legacy rows holding garbage strings / dangerous URIs."""
+    rows = [_history_row_with_image(
+        row_id="r4", winner_idx=0,
+        p0_image="javascript:alert(1)",
+        p1_image="data:image/png;base64,abc",
+    )]
+    with patch("app.api.history_routes.get_user_comparison_count",
+               new_callable=AsyncMock, return_value=1), \
+         patch("app.api.history_routes.get_user_comparisons",
+               new_callable=AsyncMock, return_value=rows):
+        client = _get_client_with_user()
+        try:
+            resp = client.get("/api/v1/comparisons/history")
+            row = resp.json()["comparisons"][0]
+            assert row["winner_image_url"] is None
+            assert row["runner_up_image_url"] is None
+        finally:
+            _cleanup_overrides()
+
+
+def test_list_history_image_urls_null_when_winner_index_missing():
+    """Without winner_index, we can't derive winner vs runner_up — both null.
+    Mirrors the existing winner_index null behavior (rows[2]/[3] in MOCK_LIST_WITH_WINNER_INDEX_SHAPES)."""
+    rows = [_history_row_with_image(
+        row_id="r5", winner_idx=None,
+        p0_image="https://cdn.apple.com/i15.jpg",
+        p1_image="https://cdn.samsung.com/s24.jpg",
+        full_response_extra={
+            "products": [
+                {"brand": "Apple", "name": "iPhone 15", "image_url": "https://cdn.apple.com/i15.jpg"},
+                {"brand": "Samsung", "name": "Galaxy S24", "image_url": "https://cdn.samsung.com/s24.jpg"},
+            ],
+            # No metadata.winner_index AND no comparison.winner_index
+        },
+    )]
+    with patch("app.api.history_routes.get_user_comparison_count",
+               new_callable=AsyncMock, return_value=1), \
+         patch("app.api.history_routes.get_user_comparisons",
+               new_callable=AsyncMock, return_value=rows):
+        client = _get_client_with_user()
+        try:
+            resp = client.get("/api/v1/comparisons/history")
+            row = resp.json()["comparisons"][0]
+            assert row["winner_index"] is None
+            assert row["winner_image_url"] is None
+            assert row["runner_up_image_url"] is None
+        finally:
+            _cleanup_overrides()
+
+
+def test_list_history_image_urls_null_when_full_response_missing():
+    """Row with full_response=None must not raise + both image_url null."""
+    rows = [_history_row_with_image(
+        row_id="r6", winner_idx=0, p0_image=None, p1_image=None,
+        full_response_extra=None,  # use default
+    )]
+    # Override to None
+    rows[0]["full_response"] = None
+    with patch("app.api.history_routes.get_user_comparison_count",
+               new_callable=AsyncMock, return_value=1), \
+         patch("app.api.history_routes.get_user_comparisons",
+               new_callable=AsyncMock, return_value=rows):
+        client = _get_client_with_user()
+        try:
+            resp = client.get("/api/v1/comparisons/history")
+            assert resp.status_code == 200
+            row = resp.json()["comparisons"][0]
+            assert row["winner_image_url"] is None
+            assert row["runner_up_image_url"] is None
+        finally:
+            _cleanup_overrides()
