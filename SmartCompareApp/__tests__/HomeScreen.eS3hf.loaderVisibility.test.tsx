@@ -156,8 +156,11 @@ jest.mock('../src/screens/LoadingScreenVariants', () => {
   return {
     LoadingScreenVariants: (props: any) =>
       ReactRequired.createElement('View', {
-        testID: 'mock-loading-screen-variants',
         ...props,
+        // testID set AFTER spread so HomeScreen's own testID prop
+        // ("home-loading-screen") does not shadow the mock's testID.
+        // The visibility assertions below pin on the mock's testID.
+        testID: 'mock-loading-screen-variants',
       }),
   };
 });
