@@ -7,6 +7,7 @@ Test counts per dispatcher anchor:
 """
 from __future__ import annotations
 
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -168,6 +169,173 @@ class TestRecentDecisions:
         assert ("schema_version", 2) in all_eq_calls, (
             f"schema_version=2 filter not applied; recorded eq calls: {all_eq_calls}"
         )
+
+
+# =============================================================================
+# Wave 2 — image_url extension on /profile/recent-decisions
+# Locked shape with L2: each row carries top-level `winner_image_url` +
+# `runner_up_image_url` (string|null), derived server-side from
+# full_response.products[winner_index].image_url + [1-winner_index].image_url
+# via the `_safe_image_url` helper pattern from home_routes.py:413-420.
+# =============================================================================
+
+
+def _row_with_image_urls(
+    winner_idx: int,
+    p0_image: Optional[str] = None,
+    p1_image: Optional[str] = None,
+    *,
+    id_: str = "comp-img",
+    created_at: str = "2026-05-23T10:00:00Z",
+):
+    """Build a comparisons row with image_url on each product slot.
+
+    Mirrors _comparison_row but lets each test pin the per-slot image_url
+    independently (including invalid shapes for the http(s) guard tests).
+    """
+    return {
+        "id": id_,
+        "created_at": created_at,
+        "full_response": {
+            "winner_index": winner_idx,
+            "products": [
+                {
+                    "brand": "Apple", "name": "iPhone 15",
+                    "price": {"amount": 329.0, "currency": "BHD"},
+                    "image_url": p0_image,
+                },
+                {
+                    "brand": "Samsung", "name": "Galaxy S24",
+                    "price": {"amount": 299.0, "currency": "BHD"},
+                    "image_url": p1_image,
+                },
+            ],
+        },
+    }
+
+
+class TestRecentDecisionsImageUrlWave2:
+    """Locked shape with L2 (b565a38) — top-level winner_image_url +
+    runner_up_image_url per row. Derived server-side using winner_index."""
+
+    def test_image_urls_present_when_both_products_have_image_url(self):
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        rows = [_row_with_image_urls(
+            winner_idx=0,
+            p0_image="https://cdn.apple.com/i15.jpg",
+            p1_image="https://cdn.samsung.com/s24.jpg",
+        )]
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = rows
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+
+        with patch("app.api.profile_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.profile_routes._redis_get", return_value=None), \
+             patch("app.api.profile_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/profile/recent-decisions", headers={"Authorization": "Bearer fake"})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        entry = body["recent"][0]
+        assert entry["winner_image_url"] == "https://cdn.apple.com/i15.jpg"
+        assert entry["runner_up_image_url"] == "https://cdn.samsung.com/s24.jpg"
+
+    def test_image_urls_respect_winner_index_swap(self):
+        """When winner_index=1, winner_image_url must come from products[1]."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        rows = [_row_with_image_urls(
+            winner_idx=1,
+            p0_image="https://cdn.apple.com/i15.jpg",
+            p1_image="https://cdn.samsung.com/s24.jpg",
+        )]
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = rows
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+
+        with patch("app.api.profile_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.profile_routes._redis_get", return_value=None), \
+             patch("app.api.profile_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/profile/recent-decisions", headers={"Authorization": "Bearer fake"})
+
+        body = resp.json()
+        entry = body["recent"][0]
+        # winner_idx=1 → winner is Samsung, runner_up is Apple
+        assert entry["winner_image_url"] == "https://cdn.samsung.com/s24.jpg"
+        assert entry["runner_up_image_url"] == "https://cdn.apple.com/i15.jpg"
+
+    def test_image_url_null_when_absent_on_source_row(self):
+        """Pre-A3-deploy rows have no image_url field — response must ship
+        explicit None (frontend renders placeholder primitive)."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        rows = [_row_with_image_urls(winner_idx=0, p0_image=None, p1_image=None)]
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = rows
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+
+        with patch("app.api.profile_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.profile_routes._redis_get", return_value=None), \
+             patch("app.api.profile_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/profile/recent-decisions", headers={"Authorization": "Bearer fake"})
+
+        body = resp.json()
+        entry = body["recent"][0]
+        assert entry["winner_image_url"] is None
+        assert entry["runner_up_image_url"] is None
+
+    def test_image_url_rejected_when_not_http_or_https(self):
+        """Defense-in-depth http(s)-only gate per _safe_image_url. Anything
+        else (file://, javascript:, garbage strings, ints, dicts) → None."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        rows = [_row_with_image_urls(
+            winner_idx=0,
+            p0_image="javascript:alert(1)",
+            p1_image="not-a-url",
+        )]
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = rows
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+
+        with patch("app.api.profile_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.profile_routes._redis_get", return_value=None), \
+             patch("app.api.profile_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/profile/recent-decisions", headers={"Authorization": "Bearer fake"})
+
+        body = resp.json()
+        entry = body["recent"][0]
+        assert entry["winner_image_url"] is None
+        assert entry["runner_up_image_url"] is None
+
+    def test_image_url_partial_one_present_one_missing(self):
+        """Mixed: winner has image_url, runner_up doesn't (or vice versa)."""
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+
+        rows = [_row_with_image_urls(
+            winner_idx=0,
+            p0_image="https://cdn.apple.com/i15.jpg",
+            p1_image=None,
+        )]
+        supabase = MagicMock()
+        comp_resp = MagicMock(); comp_resp.data = rows
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = comp_resp
+
+        with patch("app.api.profile_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.profile_routes._redis_get", return_value=None), \
+             patch("app.api.profile_routes._redis_set", return_value=True):
+            resp = client.get("/api/v1/profile/recent-decisions", headers={"Authorization": "Bearer fake"})
+
+        body = resp.json()
+        entry = body["recent"][0]
+        assert entry["winner_image_url"] == "https://cdn.apple.com/i15.jpg"
+        assert entry["runner_up_image_url"] is None
 
 
 # =============================================================================
