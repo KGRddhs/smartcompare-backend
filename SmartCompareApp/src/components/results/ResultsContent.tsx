@@ -1,31 +1,35 @@
 /**
- * Bundle E S3 — Lane A2 — ResultsContent
+ * Bundle E S3 — Lane A2 — ResultsContent (REWRITE 2026-06-02)
  *
  * Source of truth: docs/claude-design-handoff/ui_kits/mobile/ResultsScreen.jsx
- * (lines 1-410, especially the top-down composition at 286-407)
+ * (top-down composition at lines 286-407 of the JSX reference).
  *
  * This is the PURE PRESENTATION layer extracted from the 1956-line
- * ResultsScreen.tsx. ResultsScreen is now a thin orchestrator that owns:
+ * ResultsScreen.tsx orchestrator. The orchestrator owns:
  *  - SSE / loading / error / empty-state branches
  *  - scoring_v2 + personalization derivation
  *  - DemographicsBottomSheet, ShareBottomSheet, Loop 1 toast
  *  - trackEvents pendingEventsRef batching on unmount
  *
- * Everything visual lives here, in JSX top-down element order:
- *  1. Header (back + TopMatchBadge + share)
- *  2. Product pair hero (with vs pill on divider) + image_url slots
- *  3. "Why this fits you" verdict block
- *  4. Confidence pills (with "What we know" eyebrow)
- *  5. Cohort badge (single-line softened paragraph)
- *  6. DimensionBars (winners/losers per dim)
- *  7. PersonalizationChip (hides when applied_shifts empty)
- *  8. ConfidenceDetailsSheet (modal-style, driven by sheetLeg)
- *  9. ResultsAccordion ("Dig deeper" — Reviews + Pros & Cons + Specs)
- * 10. FeedbackCard ("Was this helpful?")
+ * JSX top-down element order (anchors pinned by
+ * `__tests__/components/ResultsContent.rewriteOrder.test.tsx`):
+ *  1. Header           — back / TopMatchBadge / share        (JSX 297-311)
+ *  2. Hero pair        — two ProductCards + "vs" pill        (JSX 316-333)
+ *  3. Why this fits you — eyebrow + verdict + runner-up cap  (JSX 336-346)
+ *  4. scoring_v2 hero  — HeroRings/em-dash + DimensionBars
+ *                        + PersonalizationChip + sheet       (JSX 349-353)
+ *  5. Confidence pills — "What we know" eyebrow              (JSX 356-365)
+ *  6. Cohort badge     — softened single-line paragraph      (JSX 367-377)
+ *  7. Dig deeper       — Reviews / Pros & Cons / Specs       (JSX 105-211, 381)
+ *  8. Feedback prompt  — Accurate / Detailed / Fast chips    (JSX 384-404)
  *
- * image_url slot — A4 wires <Image source={{uri: product.image_url}} /> in
- * a follow-up PR. For now, A2 provides the placeholder slot at the
- * JSX-cited position with neutral fallback.
+ * Prior structure interleaved verdict → confidence → cohort → scoring_v2
+ * hero → accordion which inverted the JSX ordering of scoring vs cohort
+ * vs confidence. This REWRITE realigns the block sequence to the JSX
+ * top-down while preserving every Bundle C/D/E scoring_v2 / personalization
+ * / weird-mode / RevealBurst contract (verified by the existing test
+ * suite — those testIDs and conditionals are reproduced verbatim, only
+ * relocated within the scroll body).
  */
 
 import React from 'react';
@@ -267,47 +271,27 @@ export function ResultsContent({
           )}
         </Animated.View>
 
-        {/* ─── # 4 Confidence pills + "What we know" eyebrow (JSX 356-365) ─── */}
-        {scoring_v2?.confidence_legs ? (
-          <Animated.View
-            entering={FadeInDown.delay(300).duration(400)}
-            style={styles.section}
-            testID="results-content-confidence"
-          >
-            <Text style={styles.eyebrow}>{t('results.whatWeKnow')}</Text>
-            <ConfidencePills
-              confidence={scoring_v2.confidence_legs}
-              hidePricePill={anyEstimated(products)}
-              onPillPress={onPillPress}
-              testID="results-content-confidence-pills"
-            />
-          </Animated.View>
-        ) : null}
+        {/* ─── # 4 scoring_v2 hero card (JSX 349-353 — DimensionBars stack) ───
+            Bundle E § Decision 2/3 — scoring_v2 hero card.
 
-        {/* ─── # 5 Cohort badge — single-line softened paragraph (JSX 367-377) ─── */}
-        <View
-          style={styles.cohortSlot}
-          testID="results-cohort-badge-slot"
-        >
-          <CohortBadge
-            peerCount={cohortPeerCount}
-            governorate={cohortGovernorate}
-            isRTL={isRTL}
-          />
-        </View>
+            Per JSX top-down, DimensionBars sit BETWEEN the verdict block
+            and the confidence pills. The Bundle C/D/E scoring_v2 hero
+            (HeroRings + RevealBurst + PersonalizationChip + DimensionBars
+            + ConfidenceDetailsSheet) lives in this slot since the bars
+            are its central surface — keeping the whole scoring unit
+            together rather than splitting bars away from rings.
 
-        {/* ─── # 6 scoring_v2 hero card ───
-            Bundle E § Decision 2/3 — scoring_v2 hero card. Bundle C § 2e —
-            in weird-mode the hero rings + TopMatchBadge are suppressed and
-            replaced by a calm em-dash placeholder. Verdict text (rewritten
-            by backend prompt in weird-mode) carries the meaning. NO banner
-            anywhere — per FIVE critical rules #1. */}
+            Bundle C § 2e — in weird-mode the rings + TopMatchBadge are
+            suppressed and replaced by a calm em-dash placeholder.
+            Verdict text (rewritten by backend prompt in weird-mode)
+            carries the meaning. NO banner anywhere — per FIVE critical
+            rules #1. */}
         {scoring_v2 && scoring_v2.dimensions && scoring_v2.dimensions.length >= 3
           ? (() => {
               const isWeird = scoring_v2.comparison_quality === 'weird';
               return (
                 <Animated.View
-                  entering={FadeInDown.delay(400).duration(400)}
+                  entering={FadeInDown.delay(300).duration(400)}
                   style={styles.section}
                   testID="results-scoring-v2"
                 >
@@ -370,6 +354,35 @@ export function ResultsContent({
               );
             })()
           : null}
+
+        {/* ─── # 5 Confidence pills + "What we know" eyebrow (JSX 356-365) ─── */}
+        {scoring_v2?.confidence_legs ? (
+          <Animated.View
+            entering={FadeInDown.delay(400).duration(400)}
+            style={styles.section}
+            testID="results-content-confidence"
+          >
+            <Text style={styles.eyebrow}>{t('results.whatWeKnow')}</Text>
+            <ConfidencePills
+              confidence={scoring_v2.confidence_legs}
+              hidePricePill={anyEstimated(products)}
+              onPillPress={onPillPress}
+              testID="results-content-confidence-pills"
+            />
+          </Animated.View>
+        ) : null}
+
+        {/* ─── # 6 Cohort badge — single-line softened paragraph (JSX 367-377) ─── */}
+        <View
+          style={styles.cohortSlot}
+          testID="results-cohort-badge-slot"
+        >
+          <CohortBadge
+            peerCount={cohortPeerCount}
+            governorate={cohortGovernorate}
+            isRTL={isRTL}
+          />
+        </View>
 
         {/*
          * Bundle E § Decision 3 one-release backward-compat. When the
