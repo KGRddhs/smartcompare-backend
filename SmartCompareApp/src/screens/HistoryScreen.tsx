@@ -66,6 +66,15 @@ interface HistoryItem {
   // Bundle E B5: short verdict caption beneath the VS pair. Backend MAY
   // surface; FE falls back to formatTitle(item) when absent.
   verdict_short?: string | null;
+  // Bundle E S3 Hot-Fix Wave 2 (L3 endpoint extension): backend computes
+  // these from full_response.products[winner_index].image_url and
+  // full_response.products[1 - winner_index].image_url so the list-row
+  // render does not need to traverse the full_response JSONB on every
+  // row. Optional + nullable — list cache from pre-Wave-2 deploys will
+  // still ship without them; the row reader falls back to the
+  // full_response traversal in that case.
+  winner_image_url?: string | null;
+  runner_up_image_url?: string | null;
 }
 
 interface HistorySection {
@@ -522,18 +531,32 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     const toneB = deriveTone(nameB);
     const isAWinner = item.winner_index === 0;
     const isBWinner = item.winner_index === 1;
-    // Bundle E S3 A4 Wave 2 — derive image_url per product from saved
-    // full_response.products[i].image_url. Legacy rows saved BEFORE the A3
-    // deploy will not have the field; ProductImage's 4-state primitive
-    // handles undefined/null/onError → placeholder.
+    // Bundle E S3 Hot-Fix Wave 2 — prefer the top-level
+    // winner_image_url + runner_up_image_url fields (L3 endpoint
+    // extension, shallow payload), fall back to the full_response
+    // traversal for backward-compat with pre-Wave-2 cached list state.
+    // Mapping is winner-relative: when winner_index=0, block A is the
+    // WINNER tile, so imageUrlA reads winner_image_url; when
+    // winner_index=1, the mapping inverts. winner_index can be null
+    // (legacy rows where the pipeline didn't emit it) — in that case we
+    // fall straight through to the full_response slice.
     const fullResponseProducts =
       (item.full_response && Array.isArray(item.full_response.products))
         ? item.full_response.products
         : [];
-    const imageUrlA: string | null =
-      fullResponseProducts[0]?.image_url ?? null;
-    const imageUrlB: string | null =
-      fullResponseProducts[1]?.image_url ?? null;
+    const winnerImageUrlTopLevel = item.winner_image_url ?? null;
+    const runnerImageUrlTopLevel = item.runner_up_image_url ?? null;
+    const imageUrlA: string | null = isAWinner
+      ? (item.winner_image_url ?? fullResponseProducts[0]?.image_url ?? null)
+      : (item.runner_up_image_url ?? fullResponseProducts[0]?.image_url ?? null);
+    const imageUrlB: string | null = isBWinner
+      ? (item.winner_image_url ?? fullResponseProducts[1]?.image_url ?? null)
+      : (item.runner_up_image_url ?? fullResponseProducts[1]?.image_url ?? null);
+    // Suppress "unused" lint without changing runtime — these locals
+    // document the field names + survive future refactors that pull
+    // the values directly. (eslint no-unused-vars is silent here.)
+    void winnerImageUrlTopLevel;
+    void runnerImageUrlTopLevel;
     // Adapter pattern per backend B-XQA: `?? undefined` coercion for
     // null-shipping fields consumed by props typed undefined.
     const category = item.category ?? undefined;
