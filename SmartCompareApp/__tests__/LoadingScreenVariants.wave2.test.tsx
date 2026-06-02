@@ -158,14 +158,15 @@ describe('LoadingScreenVariants — Wave 2 default sections (comparison mode)', 
         testID="lsv-wave2"
       />,
     );
-    const tipNode = getByTestId('loading-tips');
-    const initial = (tipNode.props.children ?? '').toString();
-    // The carousel children text changes index every interval. Advance
-    // past the 5s rotation interval and the rendered tip key must differ.
+    // Wave 2 R2: tip string lives on the inner Text node (testID
+    // `loading-tips-text`); the host is the Animated.View. Cross-fade
+    // adds a 200ms fade-out before the index swap, so advance by
+    // intervalMs + 200ms to land on the next tip.
+    const initial = getByTestId('loading-tips-text').props.children;
     act(() => {
-      jest.advanceTimersByTime(5000);
+      jest.advanceTimersByTime(5000 + 200);
     });
-    const next = (getByTestId('loading-tips').props.children ?? '').toString();
+    const next = getByTestId('loading-tips-text').props.children;
     expect(next).not.toBe('');
     expect(next).not.toBe(initial);
   });
@@ -195,7 +196,7 @@ describe('LoadingScreenVariants — Wave 2 default sections (comparison mode)', 
       />,
     );
     // The first tip rendered must be one of the comparison-mode keys.
-    const text = (getByTestId('loading-tips').props.children ?? '').toString();
+    const text = getByTestId('loading-tips-text').props.children;
     expect(EXPECTED_TIP_KEYS).toContain(text);
   });
 
@@ -228,7 +229,7 @@ describe('LoadingScreenVariants — Wave 2 default sections (comparison mode)', 
         testID="lsv-wave2"
       />,
     );
-    const text = (getByTestId('loading-tips').props.children ?? '').toString();
+    const text = getByTestId('loading-tips-text').props.children;
     expect(text).toBe('Only this tip');
   });
 
