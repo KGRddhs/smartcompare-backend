@@ -9,6 +9,7 @@ from starlette.requests import Request
 from typing import Optional
 
 from app.api.auth_routes import get_current_user
+from app.services.cache_service import delete_cached
 from app.services.database_service import (
     get_user_comparisons,
     get_comparison_by_id,
@@ -42,6 +43,47 @@ def _extract_winner_index(full_response) -> Optional[int]:
     return None
 
 
+def _safe_image_url(product) -> Optional[str]:
+    """Mirror of `home_routes._safe_image_url` / `profile_routes._safe_image_url`.
+
+    Returns the image URL when it's a non-empty http(s) string; None
+    otherwise. Defensive vs malformed legacy rows holding ints / dicts /
+    garbage / dangerous schemes (javascript:, data:).
+    """
+    raw = product.get("image_url") if isinstance(product, dict) else None
+    if not isinstance(raw, str):
+        return None
+    stripped = raw.strip()
+    if not (stripped.startswith("http://") or stripped.startswith("https://")):
+        return None
+    return stripped
+
+
+def _extract_winner_runner_up_image_urls(
+    full_response, winner_index: Optional[int],
+) -> tuple[Optional[str], Optional[str]]:
+    """Return (winner_image_url, runner_up_image_url) for a history row.
+
+    Locked shape with L2 (Wave 2 b565a38). Derived via winner_index against
+    full_response.products[*]. Returns (None, None) whenever the shape gap
+    prevents deterministic winner/runner-up identification — same key
+    contract as the existing /home/smart-pick + /profile/recent-decisions
+    surfaces: keys always present, None when undeterminable.
+    """
+    if winner_index not in (0, 1):
+        return (None, None)
+    if not isinstance(full_response, dict):
+        return (None, None)
+    products = full_response.get("products") or []
+    if not isinstance(products, list) or len(products) < 2:
+        return (None, None)
+    loser_index = 1 - winner_index
+    return (
+        _safe_image_url(products[winner_index] or {}),
+        _safe_image_url(products[loser_index] or {}),
+    )
+
+
 @router.get("/history")
 @limiter.limit("30/minute")
 async def list_comparisons(
@@ -63,12 +105,22 @@ async def list_comparisons(
 
     summaries = []
     for c in comparisons:
+        full = c.get("full_response")
+        winner_index = _extract_winner_index(full)
+        # Wave 2 — per-row image_url derived from full_response.products[*]
+        # via winner_index + _safe_image_url gate. Always ship both keys
+        # (None when undeterminable) so FE consumer can rely on presence.
+        winner_image_url, runner_up_image_url = (
+            _extract_winner_runner_up_image_urls(full, winner_index)
+        )
         summaries.append({
             "id": c.get("id"),
             "query": c.get("query"),
             "product_names": c.get("product_names", []),
             "input_type": c.get("input_type", "text"),
-            "winner_index": _extract_winner_index(c.get("full_response")),
+            "winner_index": winner_index,
+            "winner_image_url": winner_image_url,
+            "runner_up_image_url": runner_up_image_url,
             "created_at": c.get("created_at"),
         })
 
@@ -142,5 +194,16 @@ async def remove_comparison(
     deleted = await delete_comparison(str(comparison_id), current_user["id"], access_token=token)
     if not deleted:
         raise HTTPException(status_code=500, detail="Failed to delete comparison")
+
+    # Wave 2 (c) — bust dependent caches so the deleted row stops winning
+    # /home/smart-pick (cache_key=home:smart_pick:{user_id}, 5min TTL) and
+    # stops appearing in /profile/recent-decisions (cache_key=profile_recent:
+    # {user_id}, 5min TTL). Device walk image #13: stale iPhone 14 pick after
+    # delete reproduced exactly this race. Fail-soft: delete_cached swallows
+    # Redis errors so a Redis outage doesn't fail an otherwise-successful
+    # delete; the worst case is up to 5min of stale display.
+    user_id = current_user["id"]
+    delete_cached(f"home:smart_pick:{user_id}")
+    delete_cached(f"profile_recent:{user_id}")
 
     return {"success": True}
