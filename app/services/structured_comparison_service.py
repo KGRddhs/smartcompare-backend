@@ -736,7 +736,7 @@ def _should_escalate_price_scrape(
     return should_escalate(confidence)
 
 
-def _build_luxury_scrapers(
+def _build_escalation_scrapers(
     *,
     candidate_urls: List[Tuple[str, str]],
     full_name: str,
@@ -786,10 +786,10 @@ def _build_luxury_scrapers(
     return scrapers
 
 
-# L2.5 forward-compat alias — new name reflects the post-rename semantics
-# (escalation, not luxury-only). Existing tests monkeypatch the legacy name
-# so it stays the canonical binding callers should NOT bypass.
-_build_escalation_scrapers = _build_luxury_scrapers
+# DEPRECATED — use _build_escalation_scrapers; remove in Bundle C.
+# Legacy name retained for one release so existing monkeypatch tests
+# (test_fan_out_integration.py) keep working without simultaneous churn.
+_build_luxury_scrapers = _build_escalation_scrapers
 
 
 class StructuredComparisonService:
@@ -2521,7 +2521,7 @@ class StructuredComparisonService:
             # to fall through to Tier 2 to honor the per-product wall budget. ---
             if candidate_urls:
                 try:
-                    scrapers = _build_luxury_scrapers(
+                    scrapers = _build_escalation_scrapers(
                         candidate_urls=candidate_urls,
                         full_name=full_name,
                         currency=currency,

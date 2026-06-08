@@ -59,16 +59,16 @@ def _make_candidate(domain: str, source_method: str, value: float, rank: int):
 # ---------------------------------------------------------------------------
 
 class TestScraperBuilderExists:
-    """_build_luxury_scrapers() must return a list of zero-arg coroutines
+    """_build_escalation_scrapers() must return a list of zero-arg coroutines
     fan_out_price_lookup can call. Each coroutine yields a candidate dict
     in fan_out's expected shape."""
 
     def test_helper_importable(self):
-        from app.services.structured_comparison_service import _build_luxury_scrapers  # noqa: F401
+        from app.services.structured_comparison_service import _build_escalation_scrapers  # noqa: F401
 
     @pytest.mark.asyncio
     async def test_builder_returns_scrapers_for_each_candidate_url(self):
-        from app.services.structured_comparison_service import _build_luxury_scrapers
+        from app.services.structured_comparison_service import _build_escalation_scrapers
 
         candidate_urls = [
             ("https://www.louisvuitton.com/p/1", "louisvuitton.com"),
@@ -76,7 +76,7 @@ class TestScraperBuilderExists:
             ("https://www.ounass.ae/p/3", "ounass.ae"),
         ]
 
-        scrapers = _build_luxury_scrapers(
+        scrapers = _build_escalation_scrapers(
             candidate_urls=candidate_urls,
             full_name="LV Neverfull",
             currency="BHD",
@@ -209,9 +209,9 @@ class TestCounterfeitFilterPreserved:
 class TestEmptyCandidateSet:
     @pytest.mark.asyncio
     async def test_empty_url_list_yields_no_scrapers(self):
-        from app.services.structured_comparison_service import _build_luxury_scrapers
+        from app.services.structured_comparison_service import _build_escalation_scrapers
 
-        scrapers = _build_luxury_scrapers(
+        scrapers = _build_escalation_scrapers(
             candidate_urls=[],
             full_name="LV",
             currency="BHD",
@@ -245,7 +245,7 @@ class TestEmptyCandidateSet:
 #   5. all-None scrapers → Tier 2 (GPT) runs
 #
 # These will RED until backend-opus replaces the sequential cascade in
-# `_get_price()` with `fan_out_price_lookup(scrapers=_build_luxury_scrapers(
+# `_get_price()` with `fan_out_price_lookup(scrapers=_build_escalation_scrapers(
 # candidate_urls=..., full_name=..., currency=..., scraping_mode=...))`.
 # ===========================================================================
 
@@ -358,7 +358,7 @@ class TestFanOutHighestRankWinner:
         assert fan_out_mock.call_count >= 1, (
             "fan_out_price_lookup was never invoked from _get_price() — "
             "Tier 1.5 still runs the sequential cascade. Wire it via "
-            "_build_luxury_scrapers(candidate_urls=..., full_name=..., "
+            "_build_escalation_scrapers(candidate_urls=..., full_name=..., "
             "currency=..., scraping_mode=...) then pass the list to "
             "fan_out_price_lookup()."
         )
@@ -410,10 +410,10 @@ class TestPendingScrapersCancelledOnConfirmation:
                 cancelled.append("slow_d")
                 raise
 
-        # Force _build_luxury_scrapers to return our 4 controlled scrapers
+        # Force _build_escalation_scrapers to return our 4 controlled scrapers
         # so the cancellation behavior is deterministic.
         monkeypatch.setattr(
-            "app.services.structured_comparison_service._build_luxury_scrapers",
+            "app.services.structured_comparison_service._build_escalation_scrapers",
             lambda **kw: [_fast_a, _fast_b, _slow_c, _slow_d],
         )
         _stub_tier1_empty(monkeypatch)
@@ -476,7 +476,7 @@ class TestCounterfeitDomainFiltered:
             return []  # empty → fan_out returns no best → Tier 2 fallback
 
         monkeypatch.setattr(
-            "app.services.structured_comparison_service._build_luxury_scrapers",
+            "app.services.structured_comparison_service._build_escalation_scrapers",
             _capture_scrapers,
         )
         monkeypatch.setattr(
@@ -498,17 +498,17 @@ class TestCounterfeitDomainFiltered:
 
         await clean_service._get_price(**luxury_inputs)
 
-        # RED gate: if _build_luxury_scrapers is never invoked, captured_urls
+        # RED gate: if _build_escalation_scrapers is never invoked, captured_urls
         # stays empty — the assertion below catches the missing integration.
         assert len(captured_urls) >= 1, (
-            "_build_luxury_scrapers was never invoked from _get_price() — "
+            "_build_escalation_scrapers was never invoked from _get_price() — "
             "fan_out integration missing. captured_urls is empty."
         )
         for url in captured_urls:
             assert "dhgate" not in url.lower(), (
                 f"counterfeit domain dhgate.com leaked into the fan_out "
                 f"scraper list: {url}. The discovery filter must reject "
-                f"non-whitelisted domains BEFORE _build_luxury_scrapers sees them."
+                f"non-whitelisted domains BEFORE _build_escalation_scrapers sees them."
             )
             assert "aliexpress" not in url.lower(), (
                 f"counterfeit domain aliexpress.com leaked into the fan_out "
@@ -518,7 +518,7 @@ class TestCounterfeitDomainFiltered:
 
 class TestScrapingModeSoftSkipsFirecrawl:
     """firecrawl_service.should_fan_out(url, mode='soft') returns False for
-    non-luxury domains. _build_luxury_scrapers honors the gate in isolation;
+    non-luxury domains. _build_escalation_scrapers honors the gate in isolation;
     the integration must FORWARD the scraping_mode arg so the gate fires
     end-to-end. With SCRAPING_MODE=soft + a non-luxury URL (amazon.ae),
     only the curl scraper should be in the list — no Firecrawl, no Scrape.do."""
@@ -547,7 +547,7 @@ class TestScrapingModeSoftSkipsFirecrawl:
             return []
 
         monkeypatch.setattr(
-            "app.services.structured_comparison_service._build_luxury_scrapers",
+            "app.services.structured_comparison_service._build_escalation_scrapers",
             _capture_build,
         )
         monkeypatch.setattr(
@@ -569,11 +569,11 @@ class TestScrapingModeSoftSkipsFirecrawl:
         await clean_service._get_price(**luxury_inputs)
 
         assert len(captured_modes) >= 1, (
-            "_build_luxury_scrapers was never invoked — fan_out integration "
+            "_build_escalation_scrapers was never invoked — fan_out integration "
             "missing in _get_price()."
         )
         assert "soft" in captured_modes, (
-            f"SCRAPING_MODE=soft did not propagate to _build_luxury_scrapers. "
+            f"SCRAPING_MODE=soft did not propagate to _build_escalation_scrapers. "
             f"captured_modes={captured_modes}. The integration must read the "
             f"env var and forward it via the scraping_mode kwarg so the "
             f"should_fan_out() gate fires."
