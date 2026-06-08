@@ -239,7 +239,7 @@
       "category": "supplements",
       "region": "bahrain",
       "expected_prices": {
-        "product_0": {"min": 3, "max": 12, "currency": "BHD", "note": "iherb.com USD → BHD"},
+        "product_0": {"min": 3, "max": 8, "currency": "BHD", "note": "iherb.com 240ct 5000 IU ~$8 USD → ~3 BHD floor; max 8 covers larger softgel counts (L4 audit 2026-06-08 — trimmed from 12 to tighten midpoint test)"},
         "product_1": {"min": 5, "max": 18, "currency": "BHD", "note": "bn.boots.com JSON-LD"}
       },
       "expected_specs": {
@@ -803,7 +803,7 @@
       "category": "grocery",
       "region": "bahrain",
       "expected_prices": {
-        "product_0": {"min": 1, "max": 5, "currency": "BHD"},
+        "product_0": {"min": 1, "max": 4, "currency": "BHD", "note": "Lulu BH Lindt Excellence 70% 100g typically 1.5-3 BHD (L4 audit 2026-06-08 — trimmed max from 5 to 4)"},
         "product_1": {"min": 3, "max": 10, "currency": "BHD"}
       },
       "expected_specs": {
@@ -821,8 +821,8 @@
       "category": "grocery",
       "region": "bahrain",
       "expected_prices": {
-        "product_0": {"min": 1, "max": 4, "currency": "BHD"},
-        "product_1": {"min": 2, "max": 6, "currency": "BHD"}
+        "product_0": {"min": 2, "max": 6, "currency": "BHD", "note": "Lulu BH Nescafe Gold 200g typically 3-5 BHD; raised min from 1 to 2 (L4 audit 2026-06-08)"},
+        "product_1": {"min": 3, "max": 8, "currency": "BHD", "note": "Lulu BH Mövenpick Gold 200g 4-6 BHD typical; raised max from 6 to 8 to cover 250g pack (L4 audit 2026-06-08)"}
       },
       "expected_specs": {
         "product_0": {},

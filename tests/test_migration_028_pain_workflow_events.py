@@ -1,0 +1,236 @@
+"""Drift guard for Migration 028 — pain_workflow_events.
+
+Plan: docs/plans/2026-06-08-B-phase1-db-schema-audit-preflight.md § 4.3
+Migration: migrations/028_pain_workflow_events.sql
+Rollback:  migrations/rollback/028_pain_workflow_events.sql
+
+The CHECK constraint on `workflow_name` must stay synchronised with the
+canonical names emitted by `scripts/etl_survey_to_priors.py` into
+`data/pain_workflow_priors.json`. A drift between the two means
+backend writes will be silently rejected by the CHECK, OR the prior
+aggregator will silently drop rows whose names don't appear in the
+file.
+
+This test reads BOTH files and asserts equality. It is the cheapest
+way to catch the most common B.1 regression — someone renames a
+workflow in one place and forgets the other.
+"""
+
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PAIN_JSON = REPO_ROOT / "data" / "pain_workflow_priors.json"
+MIGRATION_SQL = REPO_ROOT / "migrations" / "028_pain_workflow_events.sql"
+ROLLBACK_SQL = REPO_ROOT / "migrations" / "rollback" / "028_pain_workflow_events.sql"
+
+
+def _strip_sql_line_comments(sql: str) -> str:
+    """Remove `-- ... \\n` line comments. Trailing `(parens)` inside
+    comments would otherwise terminate `[^)]+` regex matches and yield
+    a partial CHECK-constraint payload."""
+    return re.sub(r"--[^\n]*", "", sql)
+
+
+def _extract_workflow_names_from_sql() -> set:
+    """Parse the CHECK constraint values out of the migration. Looks for
+    the pwe_workflow_name_check block and extracts every single-quoted
+    string literal between the IN ( ... ) parens."""
+    sql = _strip_sql_line_comments(MIGRATION_SQL.read_text(encoding="utf-8"))
+    m = re.search(
+        r"workflow_name\s+IN\s*\(\s*([^)]+)\s*\)",
+        sql,
+        re.IGNORECASE | re.DOTALL,
+    )
+    assert m is not None, "Could not find workflow_name IN (...) block in migration 028"
+    return set(re.findall(r"'([^']+)'", m.group(1)))
+
+
+def _extract_signal_types_from_sql() -> set:
+    sql = _strip_sql_line_comments(MIGRATION_SQL.read_text(encoding="utf-8"))
+    m = re.search(
+        r"signal_type\s+IN\s*\(\s*([^)]+)\s*\)",
+        sql,
+        re.IGNORECASE | re.DOTALL,
+    )
+    assert m is not None, "Could not find signal_type IN (...) block in migration 028"
+    return set(re.findall(r"'([^']+)'", m.group(1)))
+
+
+def _workflow_names_from_priors() -> set:
+    priors = json.loads(PAIN_JSON.read_text(encoding="utf-8"))
+    return {w["name"] for w in priors["workflows"]}
+
+
+# ---------------------------------------------------------------------------
+# Drift checks
+# ---------------------------------------------------------------------------
+
+def test_migration_028_file_exists():
+    assert MIGRATION_SQL.exists(), f"missing {MIGRATION_SQL}"
+
+
+def test_rollback_028_file_exists():
+    assert ROLLBACK_SQL.exists(), f"missing {ROLLBACK_SQL}"
+
+
+def test_workflow_names_in_check_match_priors_json():
+    """The 8 canonical workflow names in the CHECK constraint MUST
+    equal the 8 names emitted by the ETL into pain_workflow_priors.json."""
+    sql_names = _extract_workflow_names_from_sql()
+    json_names = _workflow_names_from_priors()
+    only_in_sql = sql_names - json_names
+    only_in_json = json_names - sql_names
+    assert sql_names == json_names, (
+        f"Workflow name drift between migration 028 and pain_workflow_priors.json.\n"
+        f"  Only in SQL CHECK: {sorted(only_in_sql)}\n"
+        f"  Only in JSON:      {sorted(only_in_json)}"
+    )
+
+
+def test_workflow_names_count_is_8():
+    """Sanity check — the design § 6 prescribes exactly 8 workflows."""
+    sql_names = _extract_workflow_names_from_sql()
+    assert len(sql_names) == 8
+
+
+def test_signal_type_check_has_canonical_8():
+    """The signal_type CHECK constraint defines the canonical 8-type
+    instrumentation taxonomy (preflight § 4.3)."""
+    sql_signals = _extract_signal_types_from_sql()
+    expected = {
+        "abandonment",
+        "requery_within_5min",
+        "share_then_no_purchase",
+        "long_dwell",
+        "tldr_only",
+        "expanded_all_specs",
+        "compared_again_same_pair",
+        "changed_priority",
+    }
+    assert sql_signals == expected
+
+
+# ---------------------------------------------------------------------------
+# Structural assertions on the SQL itself
+# ---------------------------------------------------------------------------
+
+def test_migration_028_wraps_in_transaction():
+    sql = MIGRATION_SQL.read_text(encoding="utf-8")
+    assert "BEGIN;" in sql
+    assert "COMMIT;" in sql
+
+
+def test_migration_028_enables_rls():
+    sql = MIGRATION_SQL.read_text(encoding="utf-8")
+    assert "ENABLE ROW LEVEL SECURITY" in sql
+
+
+def test_migration_028_has_select_policy_only():
+    """User-facing policies should be SELECT-only; INSERT/UPDATE/DELETE go
+    through service role per preflight § 6 RLS posture decision."""
+    sql = MIGRATION_SQL.read_text(encoding="utf-8")
+    assert "CREATE POLICY pwe_own_select" in sql
+    # Defensive: no INSERT/UPDATE/DELETE policy snuck in
+    forbidden = [
+        re.compile(r"CREATE POLICY [a-z_]+\s+ON public.pain_workflow_events\s+FOR INSERT", re.IGNORECASE),
+        re.compile(r"CREATE POLICY [a-z_]+\s+ON public.pain_workflow_events\s+FOR UPDATE", re.IGNORECASE),
+        re.compile(r"CREATE POLICY [a-z_]+\s+ON public.pain_workflow_events\s+FOR DELETE", re.IGNORECASE),
+    ]
+    for pat in forbidden:
+        assert not pat.search(sql), f"Unexpected non-SELECT policy in migration 028: {pat.pattern}"
+
+
+def test_migration_028_user_id_cascades_on_delete():
+    """User deletion must cascade to their pain-workflow events (App
+    Store account-deletion requirement; matches the migration 025
+    cascade extension pattern)."""
+    sql = MIGRATION_SQL.read_text(encoding="utf-8")
+    # Find the user_id REFERENCES line and assert ON DELETE CASCADE
+    m = re.search(
+        r"user_id\s+uuid\s+NOT NULL\s+REFERENCES\s+public\.users\(id\)\s+ON DELETE\s+(\w+)",
+        sql,
+        re.IGNORECASE,
+    )
+    assert m is not None, "Could not locate user_id FK line"
+    assert m.group(1).upper() == "CASCADE"
+
+
+def test_migration_028_comparison_id_sets_null_on_delete():
+    """Comparison purges (DELETE /history/{id}) must NOT cascade to
+    workflow events — the signal "user abandoned this comparison" is
+    still useful even if the comparison record is gone."""
+    sql = MIGRATION_SQL.read_text(encoding="utf-8")
+    m = re.search(
+        r"comparison_id\s+uuid\s+NULL\s+REFERENCES\s+public\.comparisons\(id\)\s+ON DELETE\s+(\w+\s*\w*)",
+        sql,
+        re.IGNORECASE,
+    )
+    assert m is not None, "Could not locate comparison_id FK line"
+    assert "SET NULL" in m.group(1).upper()
+
+
+def test_migration_028_creates_expected_indexes():
+    sql = MIGRATION_SQL.read_text(encoding="utf-8")
+    for idx in (
+        "idx_pwe_workflow_name",
+        "idx_pwe_user_workflow_time",
+        "idx_pwe_comparison_id",
+        "idx_pwe_recent",
+    ):
+        assert idx in sql, f"missing expected index {idx}"
+
+
+def test_migration_028_recent_index_is_partial():
+    """The 'recent' index should be a partial index gated on a date
+    predicate so it stays cheap once history accumulates."""
+    sql = MIGRATION_SQL.read_text(encoding="utf-8")
+    # Capture the full CREATE INDEX … ;  statement (terminator = first ;).
+    m = re.search(
+        r"CREATE INDEX IF NOT EXISTS idx_pwe_recent[^;]+;",
+        sql,
+        re.IGNORECASE,
+    )
+    assert m is not None
+    block = m.group(0)
+    assert "WHERE" in block.upper()
+    assert "interval" in block.lower()
+
+
+# ---------------------------------------------------------------------------
+# Rollback symmetry
+# ---------------------------------------------------------------------------
+
+def test_rollback_028_drops_table():
+    sql = ROLLBACK_SQL.read_text(encoding="utf-8")
+    assert "DROP TABLE IF EXISTS public.pain_workflow_events" in sql
+
+
+def test_rollback_028_drops_policy_before_table():
+    """DROP POLICY must come before DROP TABLE in the script."""
+    sql = ROLLBACK_SQL.read_text(encoding="utf-8")
+    policy_pos = sql.find("DROP POLICY")
+    table_pos = sql.find("DROP TABLE")
+    assert policy_pos != -1
+    assert table_pos != -1
+    assert policy_pos < table_pos
+
+
+def test_rollback_028_drops_all_indexes_explicitly():
+    sql = ROLLBACK_SQL.read_text(encoding="utf-8")
+    for idx in (
+        "idx_pwe_workflow_name",
+        "idx_pwe_user_workflow_time",
+        "idx_pwe_comparison_id",
+        "idx_pwe_recent",
+    ):
+        assert f"DROP INDEX IF EXISTS public.{idx}" in sql, f"rollback missing DROP INDEX for {idx}"
+
+
+def test_rollback_028_wraps_in_transaction():
+    sql = ROLLBACK_SQL.read_text(encoding="utf-8")
+    assert "BEGIN;" in sql
+    assert "COMMIT;" in sql
