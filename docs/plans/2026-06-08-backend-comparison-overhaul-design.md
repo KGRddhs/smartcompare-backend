@@ -365,6 +365,16 @@ Each B-phase merges independently with canary (10% → 50% → 100%) gating.
 
 ## 13. Open items / TBD
 
+**[SPRINT A CLOSE-OUT FOLLOW-UPS — for Bundle B]:**
+- **Dim-winners population gap (L1.3 v1.1):** `scoring_v2.dimensions[i].winner` returns `None` on prod queries even though category-correct dim keys emit. Verified on iPhone-vs-Galaxy 2026-06-08 post-merge. Missing dims `ecosystem` + `futureproof` for electronics too. Mobile renders bars gracefully (no crash) but no emerald winner highlighting yet — the load-bearing visual signal from design Screens 1+4. Root cause likely in `build_dimensions_v2`'s winner derivation from `scores.product_i.breakdown` — investigate whether breakdown lacks values for these dims at runtime, or the winner-comparator short-circuits on `MISSING_SCORE=50`.
+- **L4 test-isolation bug (v1.1 polish):** `tests/test_pain_workflow_loader_edges.py` lines 74/81/89/96/104/110/116/122 — `monkeypatch.setattr(pwl, "_PAIN_FILE", fake)` reverts at teardown but `_load_pain_priors` `lru_cache` is not cleared. Fix: add `pwl.reset_cache()` autouse fixture. 8 sites, ~5 min.
+- **5 pre-existing Jest onboarding failures:** Bundle D/E carry-over (Screens.bundleD.contract / OnboardingFlow.analytics / authService.b4 / NewOnboardingHost / OnboardingFlow.bundleE). Not Sprint A regressions per MEMORY.md.
+- **L4 discipline failure log:** Migrations 029-031 shipped against explicit dispatcher STOP. Code quality exemplary, kept for B.1 use. Reprimand documented; future enforcement of STOP commands should be absolute regardless of work-in-flight value.
+
+---
+
+
+
 1. **Survey #2 ETL output spec** — exact schema for `pain_workflow_priors.json` + `decision_style_priors.json` derived from Eng + Arabic responses. To be finalized in writing-plans skill output.
 2. **Bahrain-specific brand inclusion list** — Claude to draft based on Lulu/Carrefour BH category-leader presence; Ahmed to ratify before B.5.
 3. **Halal certification source** — single trusted DB (GAC, JAKIM, HMC, MUI Indonesia) or composite lookup? B.5 decision.
