@@ -1972,35 +1972,198 @@ _DIMENSION_LABELS = {
 def _dim_from_category_lookup(
     dim_key: str,
     scoring_result: dict,
+    products_data: list[dict] | None = None,
 ) -> dict | None:
-    """Bundle D A.8.1 — generic dim builder for non-electronics categories.
+    """Lane 1 L1.3 — generic dim builder driven by CATEGORY_DIMENSIONS.
 
-    Projects the per-dim score from `scoring_result["scores"]["product_i"][dim_key]`.
-    Returns None when both products have MISSING_SCORE — same silent-omission
-    contract as the hand-coded _dim_X builders.
+    Projects the per-dim score from `scoring_result["scores"]["product_i"]
+    ["breakdown"][dim_key]`. (Bug fix: previously read
+    `scores.product_i[dim_key]` which never resolves; the live shape nests
+    breakdowns under a `breakdown` sub-dict — verified against the
+    iphone15_vs_galaxys24, tomford_vs_creed, and now_vs_solgar prod
+    captures used by the Lane 1 fixtures.)
+
+    Emits with the `_score` suffix stripped from the dim key so the
+    frontend renders `performance` / `longevity` / `efficacy` rather than
+    `performance_score` / `longevity_score` / `efficacy_score`.
+
+    Returns None when both products have MISSING_SCORE — same silent-
+    omission contract as the hand-coded `_dim_X` builders.
     """
     scores_map = scoring_result.get("scores", {}) or {}
     a_score_dict = scores_map.get("product_0", {}) or {}
     b_score_dict = scores_map.get("product_1", {}) or {}
-    score_a = a_score_dict.get(dim_key)
-    score_b = b_score_dict.get(dim_key)
+
+    # Bundle E Lane 1 — the live structure is
+    # `scores.product_i.breakdown.<dim>_score`; fall back to the flat layout
+    # for legacy fixtures that pre-date the breakdown wrap.
+    a_breakdown = a_score_dict.get("breakdown") or {}
+    b_breakdown = b_score_dict.get("breakdown") or {}
+    score_a = a_breakdown.get(dim_key)
+    if score_a is None:
+        score_a = a_score_dict.get(dim_key)
+    score_b = b_breakdown.get(dim_key)
+    if score_b is None:
+        score_b = b_score_dict.get(dim_key)
 
     # Both missing → silent omission per § 2h
     if score_a in (None, MISSING_SCORE) and score_b in (None, MISSING_SCORE):
         return None
 
     label = _DIMENSION_LABELS.get(dim_key, dim_key.replace("_score", "").replace("_", " ").title())
+    # L1.3: emit user-friendly key without the `_score` suffix
+    public_key = dim_key[:-6] if dim_key.endswith("_score") else dim_key
     return {
-        "key": dim_key,
+        "key": public_key,
         "label": label,
         "score_a": score_a,
         "score_b": score_b,
-        # delta_text intentionally minimal — v1.2 TODO is per-dim copy generation
-        # from spec data (would need design input across 9 categories x 6 dims).
-        "delta_text": "",
+        # L1.4 composes richer delta_text per category; until then keep
+        # the value minimal (per-row spec winner + bar chart already
+        # carry the visual signal).
+        "delta_text": _compose_delta_text(public_key, products_data or [], score_a, score_b),
         "confidence": "medium",
         "is_core": False,
     }
+
+
+def _compose_delta_text(
+    dim_key: str,
+    products: list[dict],
+    score_a,
+    score_b,
+) -> str:
+    """L1.4 — best-effort category-aware delta phrase. Falls back to a
+    score-margin summary when no concrete spec hook fires.
+
+    Honours the FIVE critical rules (no scary copy, no backend internals,
+    no `estimated` leakage). Strings are short + presentational so the
+    bar-chart caption stays readable on narrow phones.
+    """
+    if score_a in (None, MISSING_SCORE) or score_b in (None, MISSING_SCORE):
+        return ""
+    try:
+        margin = abs(float(score_a) - float(score_b))
+    except (TypeError, ValueError):
+        return ""
+    if margin < 1.0:
+        return "Comparable"
+    if len(products) < 2:
+        return f"+{margin:.0f}pt edge"
+
+    p0_specs = (products[0] or {}).get("specs") or {}
+    p1_specs = (products[1] or {}).get("specs") or {}
+
+    def _winner_side() -> int:
+        return 0 if float(score_a) > float(score_b) else 1
+
+    # --- Electronics ----------------------------------------------------
+    if dim_key == "performance":
+        # Battery life is the most common driver. Fall back to RAM/storage.
+        ba = p0_specs.get("battery_hours_estimated") or p0_specs.get("battery_life_hours")
+        bb = p1_specs.get("battery_hours_estimated") or p1_specs.get("battery_life_hours")
+        if ba and bb:
+            try:
+                bf_a, bf_b = float(ba), float(bb)
+                if bf_a and bf_b:
+                    pct = round(abs(bf_a - bf_b) / max(bf_a, bf_b) * 100)
+                    return f"+{pct}% battery life" if pct >= 5 else f"+{margin:.0f}pt"
+            except (TypeError, ValueError):
+                pass
+        return f"+{margin:.0f}pt performance"
+    if dim_key == "build_quality":
+        wa, wb = p0_specs.get("warranty_years"), p1_specs.get("warranty_years")
+        if wa and wb:
+            try:
+                if float(wa) != float(wb):
+                    side = "longer" if (float(wa) > float(wb)) == (_winner_side() == 0) else "longer"
+                    return f"{max(float(wa), float(wb)):.0f}-year warranty {side}"
+            except (TypeError, ValueError):
+                pass
+    if dim_key == "feature":
+        return f"+{margin:.0f}pt features"
+    if dim_key == "ecosystem":
+        return f"+{margin:.0f}pt ecosystem"
+    if dim_key == "futureproof":
+        return f"+{margin:.0f}pt longevity outlook"
+
+    # --- Fragrances -----------------------------------------------------
+    if dim_key == "longevity":
+        la = p0_specs.get("longevity") or p0_specs.get("longevity_hours")
+        lb = p1_specs.get("longevity") or p1_specs.get("longevity_hours")
+        if la and lb:
+            ha = _extract_hours(la)
+            hb = _extract_hours(lb)
+            if ha and hb:
+                return f"{int(max(ha, hb))}h vs {int(min(ha, hb))}h"
+        return f"+{margin:.0f}pt longevity"
+    if dim_key == "projection":
+        pa, pb = p0_specs.get("projection"), p1_specs.get("projection")
+        if pa and pb:
+            return f"{pa} vs {pb}"
+        return f"+{margin:.0f}pt projection"
+    if dim_key == "character":
+        return f"+{margin:.0f}pt distinctiveness"
+    if dim_key == "versatility":
+        return f"+{margin:.0f}pt versatility"
+    if dim_key == "presentation":
+        return f"+{margin:.0f}pt presentation"
+
+    # --- Supplements ----------------------------------------------------
+    if dim_key == "dosage":
+        ai_a = (p0_specs.get("active_ingredient") or "").strip()
+        ai_b = (p1_specs.get("active_ingredient") or "").strip()
+        if ai_a and ai_b:
+            dose_a = _extract_dose(ai_a)
+            dose_b = _extract_dose(ai_b)
+            if dose_a and dose_b and dose_a != dose_b:
+                hi = max(dose_a, dose_b)
+                lo = min(dose_a, dose_b)
+                multiplier = hi / lo if lo > 0 else 0
+                if multiplier >= 1.5:
+                    return f"{hi:g}× dose vs {lo:g}×"
+                return f"{hi:g} vs {lo:g} per serving"
+        return f"+{margin:.0f}pt dosage"
+    if dim_key == "efficacy":
+        return f"+{margin:.0f}pt efficacy signal"
+    if dim_key == "safety":
+        return f"+{margin:.0f}pt safety profile"
+    if dim_key == "serving_value":
+        return f"+{margin:.0f}pt per-serving value"
+    if dim_key == "form":
+        fa, fb = p0_specs.get("form"), p1_specs.get("form")
+        if fa and fb and fa != fb:
+            return f"{fa} vs {fb}"
+        return f"+{margin:.0f}pt form factor"
+    if dim_key == "trust":
+        return f"+{margin:.0f}pt brand trust"
+
+    # --- Skincare / makeup / haircare / fashion / grocery (generic) -----
+    return f"+{margin:.0f}pt"
+
+
+def _extract_hours(value) -> float | None:
+    """Pull the first numeric value (assumed hours) out of strings like
+    `'8 hours'`, `'6-8h'`, or pre-numeric values. Returns None on no match."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str):
+        return None
+    match = re.search(r"(\d+(?:\.\d+)?)", value)
+    return float(match.group(1)) if match else None
+
+
+def _extract_dose(value) -> float | None:
+    """Pull the first numeric dose value (IU, mg, mcg) out of a label like
+    `'Vitamin D3 1000 IU'`. Falls back to plain numeric. Returns None on
+    no match."""
+    if not isinstance(value, str):
+        return None
+    match = re.search(r"(\d+(?:[\.,]\d+)?)\s*(?:IU|mg|mcg|g)\b", value, re.IGNORECASE)
+    if match:
+        return float(match.group(1).replace(",", "."))
+    match = re.search(r"(\d+(?:[\.,]\d+)?)", value)
+    return float(match.group(1).replace(",", ".")) if match else None
 
 
 def build_dimensions_v2(
@@ -2009,12 +2172,15 @@ def build_dimensions_v2(
     category: str,
 ) -> list[dict]:
     """Build the v2 dimensions tab — 3 core dims (price/reviews/value) +
-    up to 3 category-specific dims.
+    up to 3 category-specific dims sourced from CATEGORY_DIMENSIONS.
 
-    Bundle D Task 2.B.3 (A.8.1): for non-electronics same-category pairs,
-    drive the 3 extra dims from CATEGORY_DIMENSIONS[category] +
-    scoring_result["scores"] lookup. Electronics keeps the hand-coded
-    _dim_dpi/_popularity/_build_quality builders for richer delta_text.
+    Lane 1 L1.3 (Bundle E): drop the electronics-only hand-coded extras
+    (`_dim_dpi`, `_dim_popularity`, `_dim_build_quality`) and route ALL
+    same-category comparisons through the CATEGORY_DIMENSIONS lookup so
+    every category surfaces its own per-dim breakdown. Prod regression
+    (2026-06-03): every category emitted only `['price','reviews','value']`
+    or `['price','reviews','value','popularity']` because
+    `_dim_from_category_lookup` read the wrong path inside `scoring_result`.
     """
     # Bundle D A.6.3 — pass is_cross_tier so _dim_value can prefix its
     # delta_text with cross-tier framing when products span price tiers.
@@ -2027,47 +2193,28 @@ def build_dimensions_v2(
     cat_a = products_data[0].get("category")
     cat_b = products_data[1].get("category")
     same_category = cat_a == cat_b and cat_a is not None
-    if same_category:
-        # Bundle D A.8.1 — electronics keeps the 3 hand-coded builders
-        # (fresh values from raw specs with category-specific delta_text).
-        # Non-electronics categories use the generic CATEGORY_DIMENSIONS
-        # adapter that pulls scores from scoring_result.
-        if category == "electronics":
-            for builder in (_dim_build_quality, _dim_popularity, _dim_dpi):
-                dim = builder(products_data)
-                if dim is not None:
-                    dims.append(dim)
-        elif category in CATEGORY_DIMENSIONS:
-            # Use the per-category dim list, skip the 3 already covered by
-            # the core builders (price, reviews, value are bound to keys
-            # "price_score"/"value_score" implicit in core; per-category
-            # dims like "performance_score" etc are the 3 to add).
-            #
-            # CATEGORY_DIMENSIONS[category] is exactly 6 dim keys. The
-            # category-weighted score map keys MATCH those. We just need
-            # to add up to 3 dims that aren't already covered by the
-            # core 3 (price/reviews/value).
-            core_covered = {"price", "value", "reviews"}
-            cat_dims = CATEGORY_DIMENSIONS[category]
-            # Pick first 3 dims whose key isn't a core duplicate
-            added = 0
-            for dim_key in cat_dims:
-                if added >= 3:
-                    break
-                # Skip if this dim is the category-specific value/price proxy
-                # (e.g. "perf_value_score" in makeup, "serving_value_score" in
-                # grocery — already represented by the core _dim_value).
-                if any(c in dim_key for c in ("value_", "_value_")):
-                    continue
-                dim = _dim_from_category_lookup(dim_key, scoring_result)
-                if dim is not None:
-                    dims.append(dim)
-                    added += 1
-    # Bundle C § 2h A.4.9 — silent dim omission. The individual _dim_X
-    # builders mostly handle this already (returning None for genuinely
-    # missing data + A.4.4 caption_key='limited_data' for the last-resort
-    # neutral-score case). This defensive filter at the orchestrator
-    # layer makes the spec § 2h contract explicit: any dim that escapes
+    if same_category and category in CATEGORY_DIMENSIONS:
+        # CATEGORY_DIMENSIONS[category] is exactly 6 keys; pick the first
+        # 3 that aren't already covered by the core price/reviews/value
+        # builders so the v2 tab caps at 6 rows total.
+        core_covered = {"price", "value", "reviews"}
+        added = 0
+        for dim_key in CATEGORY_DIMENSIONS[category]:
+            if added >= 3:
+                break
+            # Strip the `_score` suffix to compare against the core keys.
+            public = dim_key[:-6] if dim_key.endswith("_score") else dim_key
+            if public in core_covered:
+                continue
+            if any(c in dim_key for c in ("value_", "_value_")):
+                # Category-specific value proxies (e.g. perf_value_score,
+                # serving_value_score) are already represented by _dim_value.
+                continue
+            dim = _dim_from_category_lookup(dim_key, scoring_result, products_data)
+            if dim is not None:
+                dims.append(dim)
+                added += 1
+    # Bundle C § 2h A.4.9 — silent dim omission. Any dim that escapes
     # an upstream builder with score_a is None AND score_b is None gets
     # silently omitted here so the frontend never sees a phantom row.
     dims = [
