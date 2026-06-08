@@ -1,0 +1,784 @@
+{
+  "success": true,
+  "query": "iPhone 15 vs Galaxy S24",
+  "category": "electronics",
+  "category_switched": false,
+  "original_category": null,
+  "overview": {
+    "winner": {
+      "product_index": 1,
+      "name": "Samsung Galaxy S24",
+      "declaration": "Samsung Galaxy S24",
+      "reason": "Samsung Galaxy S24 scores 89.0/100, outperforming iPhone 15 by 34.5 points.",
+      "key_tradeoff": "Apple iPhone 15 offers superior build quality with a score of 70.0.",
+      "margin": 34.5
+    },
+    "products": [
+      {
+        "brand": "Apple",
+        "name": "iPhone 15",
+        "price": {
+          "amount": 142.12,
+          "currency": "BHD",
+          "retailer": "Walmart - YYWireless",
+          "url": "https://www.google.com/search?ibp=oshop&q=iPhone+15&prds=localAnnotatedOfferId:1,catalogid:9773944300151137991,pvo:2,pvt:hg,rds:PC_6027158597472037202%7CPROD_PC_6027158597472037202&gl=us&udm=28&pvorigin=2",
+          "in_stock": true,
+          "source_method": "local_bhd",
+          "confidence": 1.0,
+          "_cached": false
+        },
+        "rating": 4.7,
+        "review_count": 57000,
+        "overall_score": 54.5,
+        "value_badge": "premium_price",
+        "value_context": "Apple iPhone 15 offers premium build quality but at a higher price point in the GCC market.",
+        "pros": [
+          "48 MP main camera captures impressive detail.",
+          "16 hours, 15 minutes battery life as tested.",
+          "Apple A16 Bionic chipset ensures smooth performance.",
+          "IP68 water resistance for durability."
+        ],
+        "cons": [
+          "Battery life may be insufficient for heavy use.",
+          "High price point compared to competitors.",
+          "Limited RAM at 6 GB."
+        ],
+        "best_for": "Ideal for users valuing build quality and ecosystem integration.",
+        "image_url": "https://cdsassets.apple.com/live/7WUAS350/images/tech-specs/iphone_15_hero.png",
+        "value_match": "unknown"
+      },
+      {
+        "brand": "Samsung",
+        "name": "Galaxy S24",
+        "price": {
+          "amount": 126.14,
+          "currency": "BHD",
+          "retailer": "Walmart - Wireless Source",
+          "url": "https://www.google.com/search?ibp=oshop&q=Galaxy+S24&prds=localAnnotatedOfferId:1,productid:12241648904661622796,pvo:2,pvt:hg,rds:PC_6027158597472037202%7CPROD_PC_6027158597472037202&gl=us&udm=28&pvorigin=2",
+          "in_stock": true,
+          "source_method": "local_bhd",
+          "confidence": 1.0,
+          "_cached": false
+        },
+        "rating": 4.6,
+        "review_count": 150000,
+        "overall_score": 89.0,
+        "value_badge": "great_value",
+        "value_context": "Samsung Galaxy S24 provides excellent performance and features at a more competitive price in the GCC market.",
+        "pros": [
+          "Snapdragon 8 Gen 3 chipset offers robust performance.",
+          "Triple rear camera setup for excellent photography.",
+          "Lightweight at 167 g for easy handling.",
+          "Competitive price in the GCC market."
+        ],
+        "cons": [
+          "Battery drains to 20% by 3pm with heavy use.",
+          "Display quality less vibrant compared to some competitors."
+        ],
+        "best_for": "Best for users seeking high performance and value for money.",
+        "image_url": "https://i5.walmartimages.com/seo/Samsung-Galaxy-S24-256GB-US-Version-Unlocked-Android-Smartphone-with-50MP-Camera-8K-Video-Long-Battery-Marble-Gray_c70f133f-968b-459c-ad11-bef1e287b7ea.db451ef78808754c12262de42fb341c6.jpeg",
+        "value_match": "unknown"
+      }
+    ],
+    "tradeoffs": [
+      {
+        "winner_wins": {
+          "dimension": "performance_score",
+          "product": "Samsung Galaxy S24",
+          "margin": 70.0
+        },
+        "loser_wins": {
+          "dimension": "build_quality_score",
+          "product": "Apple iPhone 15",
+          "margin": 33.6
+        }
+      }
+    ],
+    "confidence": {
+      "legs": {
+        "price": "strong",
+        "reviews": "strong",
+        "specs": "strong"
+      },
+      "overall": "high",
+      "price": {
+        "source_count": 2,
+        "method": "retailer_verified",
+        "freshness": "live"
+      },
+      "rating": {
+        "review_count": 57000,
+        "source": "Best Buy via Google Shopping",
+        "verified": true
+      },
+      "specs": {
+        "verified_pct": 36,
+        "citation_count": 11
+      }
+    }
+  },
+  "specs": {
+    "products": [
+      {
+        "brand": "Apple",
+        "name": "iPhone 15",
+        "specs": {
+          "display": "6.1 inches",
+          "processor": "Apple A16 Bionic",
+          "ram": "6 GB",
+          "storage": "128 GB",
+          "battery": "3349 mAh",
+          "rear_camera": "Dual, 48 MP + 12 MP",
+          "front_camera": "12 MP",
+          "os": "iOS 17",
+          "connectivity": "N/A",
+          "weight": "171 g",
+          "water_resistance": "IP68",
+          "_field_confidence": {
+            "display": "snippet",
+            "processor": "snippet",
+            "ram": "snippet",
+            "storage": "snippet",
+            "battery": "snippet",
+            "rear_camera": "snippet",
+            "front_camera": "snippet",
+            "water_resistance": "snippet",
+            "os": "smart_fallback",
+            "weight": "smart_fallback"
+          }
+        },
+        "spec_advantages": [
+          "Superior build quality with a score of 70.0."
+        ]
+      },
+      {
+        "brand": "Samsung",
+        "name": "Galaxy S24",
+        "specs": {
+          "display": "6.2 inches",
+          "processor": "Snapdragon 8 Gen 3",
+          "ram": "8 GB",
+          "storage": "128 GB",
+          "battery": "4000 mAh",
+          "rear_camera": "Triple, 50 MP + 12 MP + 10 MP",
+          "front_camera": "12 MP",
+          "os": "Android",
+          "connectivity": "Wi-Fi 6, 5G, Bluetooth 5.3",
+          "weight": "167 g",
+          "water_resistance": "IP68",
+          "_field_confidence": {
+            "weight": "smart_fallback"
+          }
+        },
+        "spec_advantages": [
+          "Performance score of 100.0.",
+          "Features score of 96.8."
+        ]
+      }
+    ],
+    "specs_comparison": {
+      "product_0_advantages": [
+        "Superior build quality with a score of 70.0."
+      ],
+      "product_1_advantages": [
+        "Performance score of 100.0.",
+        "Features score of 96.8."
+      ],
+      "similar": [
+        "Both have 12 MP front cameras.",
+        "IP68 water resistance."
+      ]
+    }
+  },
+  "reviews": {
+    "products": [
+      {
+        "brand": "Apple",
+        "name": "iPhone 15",
+        "rating": 4.7,
+        "review_count": 57000,
+        "rating_source": {
+          "name": "Best Buy via Google Shopping",
+          "url": "https://www.google.com/search?ibp=oshop&q=iPhone+15&prds=localAnnotatedOfferId:1,catalogid:9402654696244930073,pvo:2,pvt:hg,rds:PC_6027158597472037202%7CPROD_PC_6027158597472037202&gl=us&udm=28&pvorigin=2",
+          "retrieved_at": "2026-06-08T06:44:32.357350Z",
+          "extract_method": "google_shopping",
+          "confidence": "high"
+        },
+        "review_summary": {
+          "overall_sentiment": "mixed",
+          "consensus": "The Apple iPhone 15 has received a variety of feedback, with many praising its camera capabilities and performance, while others express concerns about battery life. Overall, it appears to be a solid device, but some users feel it may not meet their expectations in certain areas.",
+          "highlights": [
+            {
+              "point": "[pcmag.com] Battery life (as tested) is 16 hours, 15 minutes",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[gsmarena.com] Features a 6.1\u00e2\u20ac\u00b2\u00e2\u20ac\u00b2 display and Apple A16 Bionic chipset",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[91mobiles.com] The 48MP main camera captures impressive detail",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[pcmag.com] Some users report that battery life could be insufficient for heavy use",
+              "sentiment": "negative"
+            },
+            {
+              "point": "[gsmarena.com] The device's price point is considered high compared to competitors",
+              "sentiment": "negative"
+            }
+          ],
+          "review_volume": "moderate",
+          "agreement_level": "moderate"
+        }
+      },
+      {
+        "brand": "Samsung",
+        "name": "Galaxy S24",
+        "rating": 4.6,
+        "review_count": 150000,
+        "rating_source": {
+          "name": "Walmart - Cellfeee via Google Shopping",
+          "url": "https://www.google.com/search?ibp=oshop&q=Galaxy+S24&prds=localAnnotatedOfferId:1,catalogid:7859218666237913348,pvo:2,pvt:hg,rds:PC_6027158597472037202%7CPROD_PC_6027158597472037202&gl=us&udm=28&pvorigin=2",
+          "retrieved_at": "2026-06-08T06:44:30.741314Z",
+          "extract_method": "google_shopping",
+          "confidence": "high"
+        },
+        "review_summary": {
+          "overall_sentiment": "mixed",
+          "consensus": "The Samsung Galaxy S24 is recognized for its impressive camera capabilities and sleek design, but some users have expressed concerns regarding battery life and performance under heavy usage. Overall, it is seen as a solid option for those seeking a compact smartphone with high-end features.",
+          "highlights": [
+            {
+              "point": "[2] 50 MP + 12 MP + 10 MP Triple Rear Camera delivers excellent photography results.",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[1] Features a Snapdragon 8 Gen 3 chipset, providing robust performance.",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[7] Compact size and lightweight design make it easy to handle.",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[4] Battery drains to 20% by 3pm with heavy camera use.",
+              "sentiment": "negative"
+            },
+            {
+              "point": "[3] Display quality is praised, but some find it less vibrant compared to competitors.",
+              "sentiment": "mixed"
+            }
+          ],
+          "review_volume": "moderate",
+          "agreement_level": "moderate"
+        }
+      }
+    ]
+  },
+  "scoring": {
+    "scores": {
+      "product_0": {
+        "overall": 54.5,
+        "breakdown": {
+          "performance_score": 30.0,
+          "value_score": 30.0,
+          "build_quality_score": 70.0,
+          "feature_score": 55.6,
+          "ecosystem_score": 100,
+          "futureproof_score": 94.0
+        },
+        "weights_used": {
+          "performance_score": 0.25,
+          "value_score": 0.2,
+          "build_quality_score": 0.15,
+          "feature_score": 0.2,
+          "ecosystem_score": 0.1,
+          "futureproof_score": 0.1
+        },
+        "missing_data": null
+      },
+      "product_1": {
+        "overall": 89.0,
+        "breakdown": {
+          "performance_score": 100.0,
+          "value_score": 100.0,
+          "build_quality_score": 36.4,
+          "feature_score": 96.8,
+          "ecosystem_score": 100,
+          "futureproof_score": 92.0
+        },
+        "weights_used": {
+          "performance_score": 0.25,
+          "value_score": 0.2,
+          "build_quality_score": 0.15,
+          "feature_score": 0.2,
+          "ecosystem_score": 0.1,
+          "futureproof_score": 0.1
+        },
+        "missing_data": null
+      }
+    },
+    "dimension_winners": {
+      "performance_score": {
+        "winner": "Samsung Galaxy S24",
+        "margin": 70.0
+      },
+      "value_score": {
+        "winner": "Samsung Galaxy S24",
+        "margin": 70.0
+      },
+      "build_quality_score": {
+        "winner": "Apple iPhone 15",
+        "margin": 33.6
+      },
+      "feature_score": {
+        "winner": "Samsung Galaxy S24",
+        "margin": 41.2
+      },
+      "ecosystem_score": {
+        "winner": "tie",
+        "margin": 0
+      },
+      "futureproof_score": {
+        "winner": "tie",
+        "margin": 2.0
+      }
+    },
+    "price_tiers": {
+      "Apple iPhone 15": "mid",
+      "Samsung Galaxy S24": "mid"
+    },
+    "is_cross_tier": false,
+    "scoring_method": "category_weighted",
+    "category_weights": {
+      "performance_score": 0.25,
+      "value_score": 0.2,
+      "build_quality_score": 0.15,
+      "feature_score": 0.2,
+      "ecosystem_score": 0.1,
+      "futureproof_score": 0.1
+    }
+  },
+  "scoring_v2": {
+    "overall_score": {
+      "product_a": 72,
+      "product_b": 90,
+      "winner_idx": 1
+    },
+    "win_margin": 18,
+    "dimensions": [
+      {
+        "key": "price",
+        "label": "Price",
+        "score_a": 83,
+        "score_b": 85,
+        "delta_text": "BHD 15.98 less",
+        "confidence": "high",
+        "is_core": true
+      },
+      {
+        "key": "reviews",
+        "label": "Reviews",
+        "score_a": 88,
+        "score_b": 88,
+        "delta_text": "0.1 stars higher",
+        "confidence": "high",
+        "is_core": true
+      },
+      {
+        "key": "value",
+        "label": "Value",
+        "score_a": 86,
+        "score_b": 88,
+        "delta_text": "Slightly better value on the other side",
+        "confidence": "medium",
+        "is_core": true,
+        "is_cross_tier": false
+      },
+      {
+        "key": "popularity",
+        "label": "Popularity",
+        "score_a": 77,
+        "score_b": 88,
+        "delta_text": "57000 reviews vs 150000",
+        "confidence": "high",
+        "is_core": false
+      }
+    ],
+    "factual_verdict": {
+      "line1": "Galaxy S24 comes in 11% cheaper.",
+      "line2": "iPhone 15 rates a touch higher with shoppers."
+    },
+    "comparison_quality": "normal",
+    "personalization": {
+      "applied_shifts": []
+    }
+  },
+  "personalization": {
+    "personalized": false,
+    "factors": [],
+    "personalized_insights": [],
+    "applied_shifts": []
+  },
+  "metadata": {
+    "query": "iPhone 15 vs Galaxy S24",
+    "region": "bahrain",
+    "elapsed_ms": 18556,
+    "elapsed_seconds": 18.56,
+    "api_calls": 12,
+    "total_cost": 0.008769,
+    "gpt_calls": 6,
+    "serper_calls": 6,
+    "cached": false,
+    "fact_check": {
+      "product_0": {
+        "specs_verified": 4,
+        "specs_likely": 4,
+        "specs_flagged": 0,
+        "specs_unverified": 3,
+        "price_verified": false,
+        "price_deviation_pct": 68.4,
+        "review_sentiment_consistent": null,
+        "review_rating_deviation": null
+      },
+      "product_1": {
+        "specs_verified": 1,
+        "specs_likely": 0,
+        "specs_flagged": 0,
+        "specs_unverified": 10,
+        "price_verified": false,
+        "price_deviation_pct": 70.3,
+        "review_sentiment_consistent": null,
+        "review_rating_deviation": null
+      }
+    },
+    "verdict_validation": {
+      "winner_aligned": true,
+      "claims_validated": 3,
+      "claims_softened": 2,
+      "claims_flagged": 1,
+      "confidence_adjustment": null
+    },
+    "timestamp": "2026-06-08T06:44:39.893500",
+    "comparison_quality": "normal",
+    "budget_mismatch": false,
+    "cohort_injected": false
+  },
+  "products": [
+    {
+      "brand": "Apple",
+      "name": "iPhone 15",
+      "full_name": "Apple iPhone 15",
+      "variant": null,
+      "category": "electronics",
+      "query": "iPhone 15",
+      "specs": {
+        "display": "6.1 inches",
+        "processor": "Apple A16 Bionic",
+        "ram": "6 GB",
+        "storage": "128 GB",
+        "battery": "3349 mAh",
+        "rear_camera": "Dual, 48 MP + 12 MP",
+        "front_camera": "12 MP",
+        "os": "iOS 17",
+        "connectivity": "N/A",
+        "weight": "171 g",
+        "water_resistance": "IP68",
+        "_field_confidence": {
+          "display": "snippet",
+          "processor": "snippet",
+          "ram": "snippet",
+          "storage": "snippet",
+          "battery": "snippet",
+          "rear_camera": "snippet",
+          "front_camera": "snippet",
+          "water_resistance": "snippet",
+          "os": "smart_fallback",
+          "weight": "smart_fallback"
+        }
+      },
+      "price": {
+        "amount": 142.12,
+        "currency": "BHD",
+        "retailer": "Walmart - YYWireless",
+        "url": "https://www.google.com/search?ibp=oshop&q=iPhone+15&prds=localAnnotatedOfferId:1,catalogid:9773944300151137991,pvo:2,pvt:hg,rds:PC_6027158597472037202%7CPROD_PC_6027158597472037202&gl=us&udm=28&pvorigin=2",
+        "in_stock": true,
+        "source_method": "local_bhd",
+        "confidence": 1.0,
+        "_cached": false
+      },
+      "reviews": {
+        "average_rating": null,
+        "total_reviews": null,
+        "review_summary": {
+          "overall_sentiment": "mixed",
+          "consensus": "The Apple iPhone 15 has received a variety of feedback, with many praising its camera capabilities and performance, while others express concerns about battery life. Overall, it appears to be a solid device, but some users feel it may not meet their expectations in certain areas.",
+          "highlights": [
+            {
+              "point": "[pcmag.com] Battery life (as tested) is 16 hours, 15 minutes",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[gsmarena.com] Features a 6.1\u00e2\u20ac\u00b2\u00e2\u20ac\u00b2 display and Apple A16 Bionic chipset",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[91mobiles.com] The 48MP main camera captures impressive detail",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[pcmag.com] Some users report that battery life could be insufficient for heavy use",
+              "sentiment": "negative"
+            },
+            {
+              "point": "[gsmarena.com] The device's price point is considered high compared to competitors",
+              "sentiment": "negative"
+            }
+          ],
+          "review_volume": "moderate",
+          "agreement_level": "moderate"
+        },
+        "source_ratings": [],
+        "common_praises": [
+          "[pcmag.com] Battery life (as tested) is 16 hours, 15 minutes",
+          "[gsmarena.com] Features a 6.1\u00e2\u20ac\u00b2\u00e2\u20ac\u00b2 display and Apple A16 Bionic chipset",
+          "[91mobiles.com] The 48MP main camera captures impressive detail"
+        ],
+        "common_complaints": [
+          "[pcmag.com] Some users report that battery life could be insufficient for heavy use",
+          "[gsmarena.com] The device's price point is considered high compared to competitors"
+        ],
+        "_cached": false,
+        "verified_rating": {
+          "rating": 4.7,
+          "review_count": 57000,
+          "source": "Best Buy via Google Shopping",
+          "verified": true
+        }
+      },
+      "image_url": "https://cdsassets.apple.com/live/7WUAS350/images/tech-specs/iphone_15_hero.png",
+      "best_price": 142.12,
+      "currency": "BHD",
+      "retailer": "Walmart - YYWireless",
+      "rating": 4.7,
+      "review_count": 57000,
+      "rating_verified": true,
+      "rating_source": {
+        "name": "Best Buy via Google Shopping",
+        "url": "https://www.google.com/search?ibp=oshop&q=iPhone+15&prds=localAnnotatedOfferId:1,catalogid:9402654696244930073,pvo:2,pvt:hg,rds:PC_6027158597472037202%7CPROD_PC_6027158597472037202&gl=us&udm=28&pvorigin=2",
+        "retrieved_at": "2026-06-08T06:44:32.357350Z",
+        "extract_method": "google_shopping",
+        "confidence": "high"
+      },
+      "fact_check": {
+        "specs_verified": 4,
+        "specs_likely": 4,
+        "specs_flagged": 0,
+        "specs_unverified": 3,
+        "price_verified": false,
+        "price_deviation_pct": 68.4,
+        "review_sentiment_consistent": null,
+        "review_rating_deviation": null
+      },
+      "data_freshness": "mixed",
+      "pros_cons": {
+        "pros": [
+          "48 MP main camera captures impressive detail.",
+          "16 hours, 15 minutes battery life as tested.",
+          "Apple A16 Bionic chipset ensures smooth performance.",
+          "IP68 water resistance for durability."
+        ],
+        "cons": [
+          "Battery life may be insufficient for heavy use.",
+          "High price point compared to competitors.",
+          "Limited RAM at 6 GB."
+        ]
+      },
+      "value_badge": "premium_price",
+      "pros": [
+        "48 MP main camera captures impressive detail.",
+        "16 hours, 15 minutes battery life as tested.",
+        "Apple A16 Bionic chipset ensures smooth performance.",
+        "IP68 water resistance for durability."
+      ],
+      "cons": [
+        "Battery life may be insufficient for heavy use.",
+        "High price point compared to competitors.",
+        "Limited RAM at 6 GB."
+      ]
+    },
+    {
+      "brand": "Samsung",
+      "name": "Galaxy S24",
+      "full_name": "Samsung Galaxy S24",
+      "variant": null,
+      "category": "electronics",
+      "query": "Galaxy S24",
+      "specs": {
+        "display": "6.2 inches",
+        "processor": "Snapdragon 8 Gen 3",
+        "ram": "8 GB",
+        "storage": "128 GB",
+        "battery": "4000 mAh",
+        "rear_camera": "Triple, 50 MP + 12 MP + 10 MP",
+        "front_camera": "12 MP",
+        "os": "Android",
+        "connectivity": "Wi-Fi 6, 5G, Bluetooth 5.3",
+        "weight": "167 g",
+        "water_resistance": "IP68",
+        "_field_confidence": {
+          "weight": "smart_fallback"
+        }
+      },
+      "price": {
+        "amount": 126.14,
+        "currency": "BHD",
+        "retailer": "Walmart - Wireless Source",
+        "url": "https://www.google.com/search?ibp=oshop&q=Galaxy+S24&prds=localAnnotatedOfferId:1,productid:12241648904661622796,pvo:2,pvt:hg,rds:PC_6027158597472037202%7CPROD_PC_6027158597472037202&gl=us&udm=28&pvorigin=2",
+        "in_stock": true,
+        "source_method": "local_bhd",
+        "confidence": 1.0,
+        "_cached": false
+      },
+      "reviews": {
+        "average_rating": null,
+        "total_reviews": null,
+        "review_summary": {
+          "overall_sentiment": "mixed",
+          "consensus": "The Samsung Galaxy S24 is recognized for its impressive camera capabilities and sleek design, but some users have expressed concerns regarding battery life and performance under heavy usage. Overall, it is seen as a solid option for those seeking a compact smartphone with high-end features.",
+          "highlights": [
+            {
+              "point": "[2] 50 MP + 12 MP + 10 MP Triple Rear Camera delivers excellent photography results.",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[1] Features a Snapdragon 8 Gen 3 chipset, providing robust performance.",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[7] Compact size and lightweight design make it easy to handle.",
+              "sentiment": "positive"
+            },
+            {
+              "point": "[4] Battery drains to 20% by 3pm with heavy camera use.",
+              "sentiment": "negative"
+            },
+            {
+              "point": "[3] Display quality is praised, but some find it less vibrant compared to competitors.",
+              "sentiment": "mixed"
+            }
+          ],
+          "review_volume": "moderate",
+          "agreement_level": "moderate"
+        },
+        "source_ratings": [],
+        "common_praises": [
+          "[2] 50 MP + 12 MP + 10 MP Triple Rear Camera delivers excellent photography results.",
+          "[1] Features a Snapdragon 8 Gen 3 chipset, providing robust performance.",
+          "[7] Compact size and lightweight design make it easy to handle."
+        ],
+        "common_complaints": [
+          "[4] Battery drains to 20% by 3pm with heavy camera use."
+        ],
+        "_cached": false,
+        "verified_rating": {
+          "rating": 4.6,
+          "review_count": 150000,
+          "source": "Walmart - Cellfeee via Google Shopping",
+          "verified": true
+        }
+      },
+      "image_url": "https://i5.walmartimages.com/seo/Samsung-Galaxy-S24-256GB-US-Version-Unlocked-Android-Smartphone-with-50MP-Camera-8K-Video-Long-Battery-Marble-Gray_c70f133f-968b-459c-ad11-bef1e287b7ea.db451ef78808754c12262de42fb341c6.jpeg",
+      "best_price": 126.14,
+      "currency": "BHD",
+      "retailer": "Walmart - Wireless Source",
+      "rating": 4.6,
+      "review_count": 150000,
+      "rating_verified": true,
+      "rating_source": {
+        "name": "Walmart - Cellfeee via Google Shopping",
+        "url": "https://www.google.com/search?ibp=oshop&q=Galaxy+S24&prds=localAnnotatedOfferId:1,catalogid:7859218666237913348,pvo:2,pvt:hg,rds:PC_6027158597472037202%7CPROD_PC_6027158597472037202&gl=us&udm=28&pvorigin=2",
+        "retrieved_at": "2026-06-08T06:44:30.741314Z",
+        "extract_method": "google_shopping",
+        "confidence": "high"
+      },
+      "fact_check": {
+        "specs_verified": 1,
+        "specs_likely": 0,
+        "specs_flagged": 0,
+        "specs_unverified": 10,
+        "price_verified": false,
+        "price_deviation_pct": 70.3,
+        "review_sentiment_consistent": null,
+        "review_rating_deviation": null
+      },
+      "data_freshness": "mixed",
+      "pros_cons": {
+        "pros": [
+          "Snapdragon 8 Gen 3 chipset offers robust performance.",
+          "Triple rear camera setup for excellent photography.",
+          "Lightweight at 167 g for easy handling.",
+          "Competitive price in the GCC market."
+        ],
+        "cons": [
+          "Battery drains to 20% by 3pm with heavy use.",
+          "Display quality less vibrant compared to some competitors."
+        ]
+      },
+      "value_badge": "great_value",
+      "pros": [
+        "Snapdragon 8 Gen 3 chipset offers robust performance.",
+        "Triple rear camera setup for excellent photography.",
+        "Lightweight at 167 g for easy handling.",
+        "Competitive price in the GCC market."
+      ],
+      "cons": [
+        "Battery drains to 20% by 3pm with heavy use.",
+        "Display quality less vibrant compared to some competitors."
+      ]
+    }
+  ],
+  "comparison": {
+    "winner_index": 1,
+    "winner_declaration": "Samsung Galaxy S24",
+    "winner_reason": "Samsung Galaxy S24 scores 89.0/100, outperforming iPhone 15 by 34.5 points.",
+    "key_tradeoff": "Apple iPhone 15 offers superior build quality with a score of 70.0.",
+    "value_context": {
+      "product_0": "Apple iPhone 15 offers premium build quality but at a higher price point in the GCC market.",
+      "product_1": "Samsung Galaxy S24 provides excellent performance and features at a more competitive price in the GCC market."
+    },
+    "best_for": {
+      "product_0": "Ideal for users valuing build quality and ecosystem integration.",
+      "product_1": "Best for users seeking high performance and value for money."
+    },
+    "specs_comparison": {
+      "product_0_advantages": [
+        "Superior build quality with a score of 70.0."
+      ],
+      "product_1_advantages": [
+        "Performance score of 100.0.",
+        "Features score of 96.8."
+      ],
+      "similar": [
+        "Both have 12 MP front cameras.",
+        "IP68 water resistance."
+      ]
+    }
+  },
+  "recommendation": "Samsung Galaxy S24 scores 89.0/100, outperforming iPhone 15 by 34.5 points.",
+  "key_differences": [],
+  "winner_index": 1,
+  "category_used": "electronics",
+  "personalized": false,
+  "personalization_factors": [],
+  "personalized_insights": [],
+  "price_method_mismatch": false,
+  "tier_context": {
+    "price_tiers": {
+      "Apple iPhone 15": "mid",
+      "Samsung Galaxy S24": "mid"
+    },
+    "is_cross_tier": false
+  }
+}
