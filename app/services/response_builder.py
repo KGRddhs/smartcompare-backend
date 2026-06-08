@@ -122,6 +122,88 @@ def _compute_budget_mismatch(
     return _compute_value_match(winner_tier, budget_pref) == "mismatch"
 
 
+def _compose_variant_string(product: Dict[str, Any], category: str) -> str:
+    """Lane 1 L1.7 — build a short variant tag like '128GB · Black' for
+    the product card. Category-aware: phones get storage+color+ram,
+    fragrances get volume+concentration, supplements get dose+form,
+    fashion gets size+color+material, etc.
+
+    Returns "" when no hooks fire so the FE renders the title alone.
+    Caps at 3 segments to fit narrow phones (design Screen 1 contract).
+    """
+    if not isinstance(product, dict):
+        return ""
+    specs = product.get("specs") or {}
+    if not isinstance(specs, dict):
+        return ""
+
+    # Category-specific extraction order. The first 3 hits become the
+    # rendered tag; everything past the cap is dropped.
+    if category == "electronics":
+        keys = ("storage", "color", "ram")
+    elif category == "fragrances":
+        keys = ("volume_ml", "concentration")
+    elif category == "fashion":
+        keys = ("size", "color", "material")
+    elif category in ("supplements", "vitamins"):
+        keys = ("active_ingredient", "form", "serving_size")
+    elif category in ("makeup",):
+        keys = ("shade", "finish", "spf")
+    elif category in ("skincare",):
+        keys = ("volume_ml", "form", "spf")
+    elif category in ("haircare",):
+        keys = ("volume_ml", "hair_type", "form")
+    elif category in ("grocery",):
+        keys = ("weight", "package_size", "flavor")
+    else:
+        # `other` / unknown — grab a few common hooks generically.
+        keys = ("size", "color", "volume_ml", "weight")
+
+    parts: list[str] = []
+    for key in keys:
+        if len(parts) >= 3:
+            break
+        value = specs.get(key)
+        if value in (None, "", []):
+            continue
+        # Tidy ml-style numerics.
+        if key == "volume_ml":
+            try:
+                parts.append(f"{int(float(value))}ml")
+            except (TypeError, ValueError):
+                parts.append(str(value).strip())
+        else:
+            parts.append(str(value).strip())
+    return " · ".join(parts[:3])
+
+
+def _build_pros_cons_block(
+    product: Dict[str, Any],
+    is_winner: bool,
+) -> Dict[str, Any]:
+    """Lane 1 L1.8 — emit the explicit accordion block.
+
+    Sources pros / cons from `product_data[i].pros_cons.{pros,cons}` (the
+    primary path used by extraction_service). Caps each side at 4 per
+    design Screen 1 height constraint. `is_winner` lets the FE star the
+    winner side without re-reading overview.winner.product_index.
+    """
+    pc = product.get("pros_cons")
+    if not isinstance(pc, dict):
+        pc = {}
+    pros = pc.get("pros") or []
+    cons = pc.get("cons") or []
+    if not isinstance(pros, list):
+        pros = []
+    if not isinstance(cons, list):
+        cons = []
+    return {
+        "pros": list(pros)[:4],
+        "cons": list(cons)[:4],
+        "is_winner": bool(is_winner),
+    }
+
+
 def _safe_compute_applied_shifts(scoring_result: Dict[str, Any]) -> list:
     """Spec § 7a: chip hides itself when applied_shifts is empty list — so
     we ALWAYS return a list (never None). Reads weights_used from the
@@ -688,14 +770,22 @@ def build_comparison_response(
                 {
                     "brand": pd.get("brand"),
                     "name": pd.get("name"),
+                    # Lane 1 L1.7 — short variant tag like '128GB · Black'.
+                    # Empty string when no hooks fire (FE renders title alone).
+                    "variant": _compose_variant_string(pd, category_used),
                     "price": pd.get("price"),
                     "rating": pd.get("rating"),
                     "review_count": pd.get("review_count"),
                     "overall_score": scoring_result.get("scores", {}).get(f"product_{i}", {}).get("overall"),
                     "value_badge": pd.get("value_badge", "fair_price"),
                     "value_context": _value_context_for(i),
-                    "pros": pd.get("pros_cons", {}).get("pros", []),
-                    "cons": pd.get("pros_cons", {}).get("cons", []),
+                    "pros": pd.get("pros_cons", {}).get("pros", []) if isinstance(pd.get("pros_cons"), dict) else [],
+                    "cons": pd.get("pros_cons", {}).get("cons", []) if isinstance(pd.get("pros_cons"), dict) else [],
+                    # Lane 1 L1.8 — explicit accordion block for design Screen 1.
+                    # FE stars the winner side via `is_winner`. Kept additive
+                    # alongside legacy `pros` / `cons` flat keys for one
+                    # release; consumers can migrate at their own pace.
+                    "pros_cons": _build_pros_cons_block(pd, is_winner=(i == winner_index)),
                     "best_for": comparison.get("best_for", {}).get(f"product_{i}", ""),
                     # Bundle E S3 — per-product image URL (Tier cascade
                     # resolved upstream in _fetch_product_data Phase 1).
