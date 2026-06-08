@@ -1606,7 +1606,9 @@ class StructuredComparisonService:
                         "rating": pd.get("rating"), "review_count": pd.get("review_count"),
                         "rating_verified": pd.get("rating_verified"),
                         "rating_source": pd.get("rating_source"),
-                        "review_summary": pd.get("reviews", {}).get("review_summary", {
+                        # See response_builder.py:963 — same (X or {}).get fix.
+                        # Regression: PYTHON-FASTAPI-J event ecaa64acab224c599c9aba3bb92dfc89.
+                        "review_summary": (pd.get("reviews") or {}).get("review_summary", {
                             "overall_sentiment": "mixed", "consensus": "",
                             "highlights": [], "review_volume": "minimal", "agreement_level": "moderate",
                         }),
@@ -1957,7 +1959,12 @@ class StructuredComparisonService:
         _PHASE1_TIMEOUTS = {
             "specs": 8.0,     # GPT-4o-mini extraction
             "price": 18.0,    # Tier 1 + 1.5 cascade can land at ~15s
-            "reviews": 6.0,   # Serper + GPT cleanup
+            # reviews bumped 6.0 → 10.0 in the post-ec2751b hotfix —
+            # measured floor was 4-5s post-D2 (Session 51, per
+            # memory/feedback_measure_before_optimize.md), so the original
+            # 6s ceiling tripped on cold-cache + set pd['reviews']=None,
+            # exposing the .get('reviews', {}).get bug.
+            "reviews": 10.0,  # Serper + GPT cleanup (measured 4-5s + headroom)
             "image_url": 5.0, # Serper Images + Tier 3 GPT fallback
         }
 
