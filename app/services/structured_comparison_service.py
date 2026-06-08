@@ -1042,7 +1042,56 @@ class StructuredComparisonService:
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
     ) -> Dict[str, Any]:
-        """Main entry point for text-based comparisons.
+        """L2.7 — hard-capped entry point: wraps `_compare_from_text_impl` in
+        asyncio.wait_for(STREAM_HARD_CAP_SECONDS) so the non-streaming path
+        gets the same 25s ceiling the streaming path already has. On timeout
+        a graceful `success:false, code:TIMEOUT` response is returned instead
+        of propagating asyncio.TimeoutError to the caller.
+        """
+        try:
+            return await asyncio.wait_for(
+                self._compare_from_text_impl(
+                    query=query,
+                    region=region,
+                    include_specs=include_specs,
+                    include_reviews=include_reviews,
+                    include_pros_cons=include_pros_cons,
+                    nocache=nocache,
+                    selected_category=selected_category,
+                    vision_products=vision_products,
+                    user_preferences=user_preferences,
+                    user_id=user_id,
+                    explicit_pair=explicit_pair,
+                ),
+                timeout=STREAM_HARD_CAP_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[L2.7] compare_from_text hard-cap %.1fs hit for query=%r",
+                STREAM_HARD_CAP_SECONDS, query,
+            )
+            return {
+                "success": False,
+                "error": "We couldn't finish this comparison in time. Try again.",
+                "code": "TIMEOUT",
+                "total_cost": self.total_cost,
+            }
+
+    async def _compare_from_text_impl(
+        self,
+        query: str,
+        region: str = "bahrain",
+        include_specs: bool = True,
+        include_reviews: bool = True,
+        include_pros_cons: bool = True,
+        nocache: bool = False,
+        selected_category: Optional[str] = None,
+        vision_products: Optional[List[Dict]] = None,
+        user_preferences: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        explicit_pair: Optional[Tuple[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """Main entry point for text-based comparisons (post-L2.7 inner impl).
 
         explicit_pair: when provided (Bundle B dual-shape), the service
         skips parse_product_query() and trusts the caller's pair.
