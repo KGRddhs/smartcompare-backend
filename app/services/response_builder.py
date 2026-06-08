@@ -177,6 +177,128 @@ def _compose_variant_string(product: Dict[str, Any], category: str) -> str:
     return " · ".join(parts[:3])
 
 
+# Fields where SMALLER values win the comparison (e.g. weight — lighter
+# phone is better). Defaults to LARGER-wins for everything else.
+_SPEC_SMALLER_WINS = {
+    "weight",
+    "weight_g",
+    "weight_grams",
+    "thickness",
+    "thickness_mm",
+    "depth",
+    "size",  # ambiguous; better to leave to string-equality
+}
+
+# Spec fields with internal-only / metadata semantics — never emit as
+# comparable rows on Screen 4.
+_SPEC_INTERNAL_FIELDS = {
+    "_field_confidence",
+    "_internal",
+    "_extraction_metadata",
+}
+
+# Tokens that signal "no data" on a string spec — the populated side
+# wins the comparison.
+_SPEC_NA_TOKENS = {"n/a", "na", "none", "unknown", "-", ""}
+
+
+import re as _re_specs
+
+
+def _extract_numeric(value) -> float | None:
+    """Pull the first numeric out of a spec value like '3349 mAh' / '6 GB' /
+    '6.1 inches' / 171. Returns None when no number was found."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str):
+        return None
+    match = _re_specs.search(r"-?(\d+(?:\.\d+)?)", value)
+    return float(match.group(1)) if match else None
+
+
+def _spec_row_winner(
+    field: str,
+    p0_value,
+    p1_value,
+) -> int | str | None:
+    """Per-row winner detection. Returns 0/1/'tie'/None.
+
+    Numeric specs: SMALLER wins for `_SPEC_SMALLER_WINS` fields, LARGER
+    wins otherwise. String specs: 'tie' on equality; the populated side
+    wins when the other side is N/A / null; None otherwise (FE renders
+    a neutral row).
+    """
+    p0_str = str(p0_value).strip() if p0_value is not None else ""
+    p1_str = str(p1_value).strip() if p1_value is not None else ""
+    p0_na = p0_str.lower() in _SPEC_NA_TOKENS or p0_value is None
+    p1_na = p1_str.lower() in _SPEC_NA_TOKENS or p1_value is None
+
+    if p0_na and p1_na:
+        return None
+    if p0_na:
+        return 1
+    if p1_na:
+        return 0
+
+    n0 = _extract_numeric(p0_value)
+    n1 = _extract_numeric(p1_value)
+    if n0 is not None and n1 is not None:
+        if abs(n0 - n1) < 1e-9:
+            return "tie"
+        smaller_wins = field.lower() in _SPEC_SMALLER_WINS
+        if smaller_wins:
+            return 0 if n0 < n1 else 1
+        return 0 if n0 > n1 else 1
+
+    # Both strings, no numeric — tie on equality (case-insensitive); else
+    # neutral so the FE renders the row without a winner highlight.
+    if p0_str.lower() == p1_str.lower():
+        return "tie"
+    return None
+
+
+def _build_specs_rows(
+    products: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Lane 1 L1.9 — build the per-row specs comparison list for design
+    Screen 4. Emits one row per spec field that BOTH products have
+    populated. Internal metadata fields (`_field_confidence`, etc.) are
+    skipped; one-sided fields are skipped (no half-empty rows)."""
+    if len(products) < 2:
+        return []
+    p0_specs = (products[0] or {}).get("specs") or {}
+    p1_specs = (products[1] or {}).get("specs") or {}
+    if not isinstance(p0_specs, dict) or not isinstance(p1_specs, dict):
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    # Use p0's key order so the FE renders a deterministic sequence;
+    # any fields exclusive to p1 are appended at the end.
+    seen: set[str] = set()
+    fields = list(p0_specs.keys()) + [k for k in p1_specs.keys() if k not in p0_specs]
+    for field in fields:
+        if field in _SPEC_INTERNAL_FIELDS or field.startswith("_"):
+            continue
+        if field in seen:
+            continue
+        seen.add(field)
+        v0 = p0_specs.get(field)
+        v1 = p1_specs.get(field)
+        if v0 in (None, "") or v1 in (None, ""):
+            continue
+        rows.append(
+            {
+                "field": field,
+                "p0_value": v0,
+                "p1_value": v1,
+                "winner": _spec_row_winner(field, v0, v1),
+            }
+        )
+    return rows
+
+
 def _build_pros_cons_block(
     product: Dict[str, Any],
     is_winner: bool,
@@ -820,7 +942,14 @@ def build_comparison_response(
                 }
                 for i, pd in enumerate(product_data)
             ],
-            "specs_comparison": comparison.get("specs_comparison", {}),
+            # Lane 1 L1.9 — augment specs_comparison with `rows` list so
+            # design Screen 4 can render the per-row table with emerald
+            # winner highlighting. Existing `product_0_advantages`,
+            # `product_1_advantages`, `similar` keys remain (additive).
+            "specs_comparison": {
+                **(comparison.get("specs_comparison") or {}),
+                "rows": _build_specs_rows(product_data),
+            },
         },
 
         "reviews": {
