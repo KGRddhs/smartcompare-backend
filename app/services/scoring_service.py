@@ -1810,9 +1810,13 @@ def _dim_value(products: list[dict], is_cross_tier: bool = False) -> dict:
         if gap_ratio < 0.05:
             delta = "Nearly identical value"
         elif gap_ratio < 0.15:
+            # L1.4 — banned-word audit: "better" is on the test_dimensions_builder
+            # banned list. Rephrase using the same factual register as the
+            # other gap-ratio buckets ("Noticeably more...", "Substantially
+            # stronger...").
             delta = (
-                "Slightly better value here"
-                if winner_va else "Slightly better value on the other side"
+                "Slightly higher value here"
+                if winner_va else "Slightly higher value on the other side"
             )
         elif gap_ratio < 0.35:
             delta = (

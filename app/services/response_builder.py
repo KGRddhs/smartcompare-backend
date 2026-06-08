@@ -12,6 +12,7 @@ from app.services.scoring_service import (
     MISSING_SCORE,
     build_dimensions_v2,
     calibrate_score,
+    compute_confidence,
 )
 
 logger = logging.getLogger(__name__)
@@ -395,6 +396,61 @@ def _build_factual_verdict(
     return {"line1": line1, "line2": line2}
 
 
+def _confidence_legs_and_details(
+    product_data: List[Dict[str, Any]],
+) -> tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
+    """Lane 1 L1.6 — compute the per-leg confidence + evidence dicts for
+    scoring_v2. Wraps the existing `compute_confidence` so callers get
+    the same legs as `overview.confidence` plus an FE-friendly
+    `confidence_details` shape (sources_count, method_p0/method_p1,
+    review counts, verified spec %).
+
+    Defensive — never raises. Falls back to all-weak legs + empty detail
+    dicts if `compute_confidence` blows up on unexpected input.
+    """
+    try:
+        conf = compute_confidence(product_data) or {}
+    except Exception:  # noqa: BLE001 — wrapper must never crash the response
+        conf = {}
+
+    legs = conf.get("legs") or {"price": "weak", "reviews": "weak", "specs": "weak"}
+
+    # Per-leg evidence — match the existing `overview.confidence` shape
+    # one-for-one so the FE can read either surface. Use plural
+    # `sources_count` per the design plan (Screen 1 sheet calls it
+    # "sources"); the legacy singular `source_count` stays on
+    # `overview.confidence.price` for backwards-compat.
+    price_legacy = conf.get("price") or {}
+    rating_legacy = conf.get("rating") or {}
+    specs_legacy = conf.get("specs") or {}
+
+    # Pull per-product source methods to expose on the price detail card.
+    p0 = (product_data[0] if product_data else {}) or {}
+    p1 = (product_data[1] if len(product_data) > 1 else {}) or {}
+    method_p0 = ((p0.get("price") or {}) if isinstance(p0.get("price"), dict) else {}).get("source_method")
+    method_p1 = ((p1.get("price") or {}) if isinstance(p1.get("price"), dict) else {}).get("source_method")
+
+    confidence_details = {
+        "price": {
+            "sources_count": price_legacy.get("source_count", 0),
+            "method": price_legacy.get("method"),
+            "method_p0": method_p0,
+            "method_p1": method_p1,
+            "freshness": price_legacy.get("freshness"),
+        },
+        "reviews": {
+            "review_count": rating_legacy.get("review_count", 0),
+            "source": rating_legacy.get("source"),
+            "verified": bool(rating_legacy.get("verified")),
+        },
+        "specs": {
+            "verified_pct": specs_legacy.get("verified_pct", 0),
+            "citation_count": specs_legacy.get("citation_count", 0),
+        },
+    }
+    return legs, confidence_details
+
+
 def _build_scoring_v2(
     product_data: List[Dict[str, Any]],
     scoring_result: Dict[str, Any],
@@ -415,6 +471,13 @@ def _build_scoring_v2(
     factual_verdict = _build_factual_verdict(
         product_data, scoring_result, winner_index, dimensions
     )
+    # Lane 1 L1.6 — surface the existing per-leg confidence on scoring_v2
+    # so the design Screen 1 confidence pills + tap-to-reveal sheet can
+    # read the data directly off the v2 payload. Mirrors
+    # `overview.confidence` — the upstream `compute_confidence(...)` call
+    # in structured_comparison_service already computes the legs + per-
+    # leg evidence dicts; we just thread them through.
+    confidence_legs, confidence_details = _confidence_legs_and_details(product_data)
     scoring_v2 = {
         "overall_score": {
             "product_a": score_a,
@@ -437,6 +500,12 @@ def _build_scoring_v2(
         "personalization": {
             "applied_shifts": _safe_compute_applied_shifts(scoring_result),
         },
+        # Lane 1 L1.6 — confidence_legs is the pill-row enum dict
+        # ({price/reviews/specs: strong|acceptable|weak}); confidence_details
+        # exposes the per-leg evidence (source counts, methods, review
+        # counts, verified spec %).
+        "confidence_legs": confidence_legs,
+        "confidence_details": confidence_details,
     }
 
     # Bundle C § 1b diagnostic — log when scoring_v2 ships without a populated
