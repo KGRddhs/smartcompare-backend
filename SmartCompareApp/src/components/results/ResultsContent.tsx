@@ -136,6 +136,13 @@ export function ResultsContent({
   const specsProducts = isNewFormat
     ? (result as any)?.specs?.products
     : undefined;
+  // Lane A-L3 Task L3.2 — forward the per-row winner array (when L1
+  // emits it) so the spec table can paint emerald per row. Tasks L3.3
+  // wires the same accordion to the overall winnerIndex for the
+  // pros/cons star prefix.
+  const specsComparison = isNewFormat
+    ? (result as any)?.specs?.specs_comparison
+    : undefined;
 
   return (
     <View style={styles.container} testID="results-content">
@@ -429,6 +436,8 @@ export function ResultsContent({
             products={products}
             reviewProducts={reviewProducts}
             specsProducts={specsProducts}
+            specsComparison={specsComparison}
+            winnerIndex={winnerIndex}
             testID="results-content-accordion-inner"
           />
         </Animated.View>

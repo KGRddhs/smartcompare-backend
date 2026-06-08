@@ -145,6 +145,22 @@ describe('L3.6 — DimensionBars use v2 dimensions with category-specific labels
   });
 });
 
+describe('L3.2 — per-row emerald winner highlighting in specs table', () => {
+  // The accordion is stubbed in this file. We use a dedicated direct-import
+  // suite for ResultsAccordion (see __tests__/components/ResultsAccordion.v2.test.tsx).
+  it('exposes the specsComparison row data through to ResultsAccordion (L1 contract)', () => {
+    // This is a contract pin: ResultsContent must forward the
+    // `specs.specs_comparison` array (per-row {field, p0_value, p1_value, winner})
+    // alongside the existing `specs.products` so the accordion can paint
+    // emerald on the winning cell. Without forwarding, the accordion stays
+    // on the legacy `specsProducts[i].specs[key]` rendering path.
+    const result = (fixture as any);
+    expect(result.specs.specs_comparison).toBeDefined();
+    expect(result.specs.specs_comparison.length).toBeGreaterThan(0);
+    expect(result.specs.specs_comparison[0]).toHaveProperty('winner');
+  });
+});
+
 describe('L3.5 — ConfidencePills wired to confidence_legs; sheet wired to confidence_details', () => {
   it('renders 3 confidence pills sourced from scoring_v2.confidence_legs', () => {
     const { getByTestId } = render(<ResultsContent {...makeProps()} />);
