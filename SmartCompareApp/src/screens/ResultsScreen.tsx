@@ -4,12 +4,6 @@
  * Preserves ALL business logic: SSE handling, event tracking, share, feedback.
  */
 import React, { useState, useEffect, useRef } from 'react';
-// Lane A-L3 Task L3.7 — wall-time instrumentation. ResultsScreen marks
-// the 4 visual stages: first_card_visible, all_cards_visible,
-// ready_celebration (winner reveal), user_tappable (post-reveal interactive).
-// HomeScreen / SSE side marks ttfb. report() fires on unmount so partial
-// journeys still surface in Sentry with whatever stages reached.
-import { getWallTimeTracker } from '../lib/performance/wallTimeInstrumentation';
 import {
   View,
   Text,
@@ -298,35 +292,14 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     });
   };
 
-  // Lane A-L3 Task L3.7 — mark first/all-card visibility milestones as
-  // soon as the result settles + loadingResult false transitions. Both
-  // products are mounted simultaneously in the hero pair (`heroPair`
-  // FlatList in ResultsContent), so the two stages collapse onto the
-  // same React tick — but the *tag pair* lets the dashboard catch the
-  // case where a future redesign staggers card paint (settle-window).
-  useEffect(() => {
-    if (loadingResult) return;
-    if (!products || products.length < 2) return;
-    const tracker = getWallTimeTracker();
-    tracker.mark('first_card_visible');
-    tracker.mark('all_cards_visible');
-  }, [loadingResult, products?.length]);
-
   useEffect(() => {
     // Winner reveal with haptic feedback + Bundle B/C/D Task 3.3 spring.
-    const tracker = getWallTimeTracker();
     const timer = setTimeout(async () => {
       setWinnerRevealed(true);
       winnerScale.value = withSpring(1, motion.springConfig.progress);
-      // Lane A-L3 Task L3.7 — celebration fires; 3-part haptic on reveal.
-      tracker.mark('ready_celebration');
       try {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       } catch {}
-      // Spring is ~400ms; mark `user_tappable` after the spring settles
-      // so the tag reflects "moment the user can actually interact"
-      // rather than "moment the reveal began."
-      setTimeout(() => tracker.mark('user_tappable'), 420);
     }, 800);
 
     return () => {
@@ -341,11 +314,6 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       if (pendingEventsRef.current.length > 0) {
         trackEvents(pendingEventsRef.current);
       }
-      // Lane A-L3 Task L3.7 — report aggregate `comparison_wall_time` event
-      // on unmount so partial journeys still surface stages reached. No-op
-      // when start() was never called (e.g. history-detail entry, where
-      // HomeScreen-side tracker.start() didn't fire).
-      tracker.report();
     };
   }, []);
 

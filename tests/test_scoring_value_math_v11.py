@@ -35,20 +35,17 @@ class TestA62RicherDeltaText:
         dim = _dim_value([_mk(4.5, 100), _mk(4.4, 100)])
         assert dim["delta_text"] == "Nearly identical value"
 
-    def test_small_gap_returns_slightly_higher(self):
-        """Lane 1 L1.4 (2026-06-08) — copy rephrased from 'Slightly better'
-        to 'Slightly higher' so it passes the test_dimensions_builder
-        banned-word audit ('better' is on the banned list)."""
+    def test_small_gap_returns_slightly_better(self):
         from app.services.scoring_service import _dim_value
         # 4.5/100=0.045 vs 4.0/100=0.040 → gap ~11.1%
         dim = _dim_value([_mk(4.5, 100), _mk(4.0, 100)])
-        assert "Slightly higher value here" == dim["delta_text"]
+        assert "Slightly better value here" == dim["delta_text"]
 
     def test_small_gap_other_side_wins(self):
         from app.services.scoring_service import _dim_value
-        # Product B wins: 4.0/100=0.040 vs 4.5/100=0.045
+        # Product B better: 4.0/100=0.040 vs 4.5/100=0.045
         dim = _dim_value([_mk(4.0, 100), _mk(4.5, 100)])
-        assert "Slightly higher value on the other side" == dim["delta_text"]
+        assert "Slightly better value on the other side" == dim["delta_text"]
 
     def test_moderate_gap_returns_noticeable(self):
         from app.services.scoring_service import _dim_value

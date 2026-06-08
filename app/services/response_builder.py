@@ -12,7 +12,6 @@ from app.services.scoring_service import (
     MISSING_SCORE,
     build_dimensions_v2,
     calibrate_score,
-    compute_confidence,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,210 +119,6 @@ def _compute_budget_mismatch(
     budget' caption beside the verdict.
     """
     return _compute_value_match(winner_tier, budget_pref) == "mismatch"
-
-
-def _compose_variant_string(product: Dict[str, Any], category: str) -> str:
-    """Lane 1 L1.7 — build a short variant tag like '128GB · Black' for
-    the product card. Category-aware: phones get storage+color+ram,
-    fragrances get volume+concentration, supplements get dose+form,
-    fashion gets size+color+material, etc.
-
-    Returns "" when no hooks fire so the FE renders the title alone.
-    Caps at 3 segments to fit narrow phones (design Screen 1 contract).
-    """
-    if not isinstance(product, dict):
-        return ""
-    specs = product.get("specs") or {}
-    if not isinstance(specs, dict):
-        return ""
-
-    # Category-specific extraction order. The first 3 hits become the
-    # rendered tag; everything past the cap is dropped.
-    if category == "electronics":
-        keys = ("storage", "color", "ram")
-    elif category == "fragrances":
-        keys = ("volume_ml", "concentration")
-    elif category == "fashion":
-        keys = ("size", "color", "material")
-    elif category in ("supplements", "vitamins"):
-        keys = ("active_ingredient", "form", "serving_size")
-    elif category in ("makeup",):
-        keys = ("shade", "finish", "spf")
-    elif category in ("skincare",):
-        keys = ("volume_ml", "form", "spf")
-    elif category in ("haircare",):
-        keys = ("volume_ml", "hair_type", "form")
-    elif category in ("grocery",):
-        keys = ("weight", "package_size", "flavor")
-    else:
-        # `other` / unknown — grab a few common hooks generically.
-        keys = ("size", "color", "volume_ml", "weight")
-
-    parts: list[str] = []
-    for key in keys:
-        if len(parts) >= 3:
-            break
-        value = specs.get(key)
-        if value in (None, "", []):
-            continue
-        # Tidy ml-style numerics.
-        if key == "volume_ml":
-            try:
-                parts.append(f"{int(float(value))}ml")
-            except (TypeError, ValueError):
-                parts.append(str(value).strip())
-        else:
-            parts.append(str(value).strip())
-    return " · ".join(parts[:3])
-
-
-# Fields where SMALLER values win the comparison (e.g. weight — lighter
-# phone is better). Defaults to LARGER-wins for everything else.
-_SPEC_SMALLER_WINS = {
-    "weight",
-    "weight_g",
-    "weight_grams",
-    "thickness",
-    "thickness_mm",
-    "depth",
-    "size",  # ambiguous; better to leave to string-equality
-}
-
-# Spec fields with internal-only / metadata semantics — never emit as
-# comparable rows on Screen 4.
-_SPEC_INTERNAL_FIELDS = {
-    "_field_confidence",
-    "_internal",
-    "_extraction_metadata",
-}
-
-# Tokens that signal "no data" on a string spec — the populated side
-# wins the comparison.
-_SPEC_NA_TOKENS = {"n/a", "na", "none", "unknown", "-", ""}
-
-
-import re as _re_specs
-
-
-def _extract_numeric(value) -> float | None:
-    """Pull the first numeric out of a spec value like '3349 mAh' / '6 GB' /
-    '6.1 inches' / 171. Returns None when no number was found."""
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if not isinstance(value, str):
-        return None
-    match = _re_specs.search(r"-?(\d+(?:\.\d+)?)", value)
-    return float(match.group(1)) if match else None
-
-
-def _spec_row_winner(
-    field: str,
-    p0_value,
-    p1_value,
-) -> int | str | None:
-    """Per-row winner detection. Returns 0/1/'tie'/None.
-
-    Numeric specs: SMALLER wins for `_SPEC_SMALLER_WINS` fields, LARGER
-    wins otherwise. String specs: 'tie' on equality; the populated side
-    wins when the other side is N/A / null; None otherwise (FE renders
-    a neutral row).
-    """
-    p0_str = str(p0_value).strip() if p0_value is not None else ""
-    p1_str = str(p1_value).strip() if p1_value is not None else ""
-    p0_na = p0_str.lower() in _SPEC_NA_TOKENS or p0_value is None
-    p1_na = p1_str.lower() in _SPEC_NA_TOKENS or p1_value is None
-
-    if p0_na and p1_na:
-        return None
-    if p0_na:
-        return 1
-    if p1_na:
-        return 0
-
-    n0 = _extract_numeric(p0_value)
-    n1 = _extract_numeric(p1_value)
-    if n0 is not None and n1 is not None:
-        if abs(n0 - n1) < 1e-9:
-            return "tie"
-        smaller_wins = field.lower() in _SPEC_SMALLER_WINS
-        if smaller_wins:
-            return 0 if n0 < n1 else 1
-        return 0 if n0 > n1 else 1
-
-    # Both strings, no numeric — tie on equality (case-insensitive); else
-    # neutral so the FE renders the row without a winner highlight.
-    if p0_str.lower() == p1_str.lower():
-        return "tie"
-    return None
-
-
-def _build_specs_rows(
-    products: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """Lane 1 L1.9 — build the per-row specs comparison list for design
-    Screen 4. Emits one row per spec field that BOTH products have
-    populated. Internal metadata fields (`_field_confidence`, etc.) are
-    skipped; one-sided fields are skipped (no half-empty rows)."""
-    if len(products) < 2:
-        return []
-    p0_specs = (products[0] or {}).get("specs") or {}
-    p1_specs = (products[1] or {}).get("specs") or {}
-    if not isinstance(p0_specs, dict) or not isinstance(p1_specs, dict):
-        return []
-
-    rows: List[Dict[str, Any]] = []
-    # Use p0's key order so the FE renders a deterministic sequence;
-    # any fields exclusive to p1 are appended at the end.
-    seen: set[str] = set()
-    fields = list(p0_specs.keys()) + [k for k in p1_specs.keys() if k not in p0_specs]
-    for field in fields:
-        if field in _SPEC_INTERNAL_FIELDS or field.startswith("_"):
-            continue
-        if field in seen:
-            continue
-        seen.add(field)
-        v0 = p0_specs.get(field)
-        v1 = p1_specs.get(field)
-        if v0 in (None, "") or v1 in (None, ""):
-            continue
-        rows.append(
-            {
-                "field": field,
-                "p0_value": v0,
-                "p1_value": v1,
-                "winner": _spec_row_winner(field, v0, v1),
-            }
-        )
-    return rows
-
-
-def _build_pros_cons_block(
-    product: Dict[str, Any],
-    is_winner: bool,
-) -> Dict[str, Any]:
-    """Lane 1 L1.8 — emit the explicit accordion block.
-
-    Sources pros / cons from `product_data[i].pros_cons.{pros,cons}` (the
-    primary path used by extraction_service). Caps each side at 4 per
-    design Screen 1 height constraint. `is_winner` lets the FE star the
-    winner side without re-reading overview.winner.product_index.
-    """
-    pc = product.get("pros_cons")
-    if not isinstance(pc, dict):
-        pc = {}
-    pros = pc.get("pros") or []
-    cons = pc.get("cons") or []
-    if not isinstance(pros, list):
-        pros = []
-    if not isinstance(cons, list):
-        cons = []
-    return {
-        "pros": list(pros)[:4],
-        "cons": list(cons)[:4],
-        "is_winner": bool(is_winner),
-    }
 
 
 def _safe_compute_applied_shifts(scoring_result: Dict[str, Any]) -> list:
@@ -600,61 +395,6 @@ def _build_factual_verdict(
     return {"line1": line1, "line2": line2}
 
 
-def _confidence_legs_and_details(
-    product_data: List[Dict[str, Any]],
-) -> tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
-    """Lane 1 L1.6 — compute the per-leg confidence + evidence dicts for
-    scoring_v2. Wraps the existing `compute_confidence` so callers get
-    the same legs as `overview.confidence` plus an FE-friendly
-    `confidence_details` shape (sources_count, method_p0/method_p1,
-    review counts, verified spec %).
-
-    Defensive — never raises. Falls back to all-weak legs + empty detail
-    dicts if `compute_confidence` blows up on unexpected input.
-    """
-    try:
-        conf = compute_confidence(product_data) or {}
-    except Exception:  # noqa: BLE001 — wrapper must never crash the response
-        conf = {}
-
-    legs = conf.get("legs") or {"price": "weak", "reviews": "weak", "specs": "weak"}
-
-    # Per-leg evidence — match the existing `overview.confidence` shape
-    # one-for-one so the FE can read either surface. Use plural
-    # `sources_count` per the design plan (Screen 1 sheet calls it
-    # "sources"); the legacy singular `source_count` stays on
-    # `overview.confidence.price` for backwards-compat.
-    price_legacy = conf.get("price") or {}
-    rating_legacy = conf.get("rating") or {}
-    specs_legacy = conf.get("specs") or {}
-
-    # Pull per-product source methods to expose on the price detail card.
-    p0 = (product_data[0] if product_data else {}) or {}
-    p1 = (product_data[1] if len(product_data) > 1 else {}) or {}
-    method_p0 = ((p0.get("price") or {}) if isinstance(p0.get("price"), dict) else {}).get("source_method")
-    method_p1 = ((p1.get("price") or {}) if isinstance(p1.get("price"), dict) else {}).get("source_method")
-
-    confidence_details = {
-        "price": {
-            "sources_count": price_legacy.get("source_count", 0),
-            "method": price_legacy.get("method"),
-            "method_p0": method_p0,
-            "method_p1": method_p1,
-            "freshness": price_legacy.get("freshness"),
-        },
-        "reviews": {
-            "review_count": rating_legacy.get("review_count", 0),
-            "source": rating_legacy.get("source"),
-            "verified": bool(rating_legacy.get("verified")),
-        },
-        "specs": {
-            "verified_pct": specs_legacy.get("verified_pct", 0),
-            "citation_count": specs_legacy.get("citation_count", 0),
-        },
-    }
-    return legs, confidence_details
-
-
 def _build_scoring_v2(
     product_data: List[Dict[str, Any]],
     scoring_result: Dict[str, Any],
@@ -675,13 +415,6 @@ def _build_scoring_v2(
     factual_verdict = _build_factual_verdict(
         product_data, scoring_result, winner_index, dimensions
     )
-    # Lane 1 L1.6 — surface the existing per-leg confidence on scoring_v2
-    # so the design Screen 1 confidence pills + tap-to-reveal sheet can
-    # read the data directly off the v2 payload. Mirrors
-    # `overview.confidence` — the upstream `compute_confidence(...)` call
-    # in structured_comparison_service already computes the legs + per-
-    # leg evidence dicts; we just thread them through.
-    confidence_legs, confidence_details = _confidence_legs_and_details(product_data)
     scoring_v2 = {
         "overall_score": {
             "product_a": score_a,
@@ -704,12 +437,6 @@ def _build_scoring_v2(
         "personalization": {
             "applied_shifts": _safe_compute_applied_shifts(scoring_result),
         },
-        # Lane 1 L1.6 — confidence_legs is the pill-row enum dict
-        # ({price/reviews/specs: strong|acceptable|weak}); confidence_details
-        # exposes the per-leg evidence (source counts, methods, review
-        # counts, verified spec %).
-        "confidence_legs": confidence_legs,
-        "confidence_details": confidence_details,
     }
 
     # Bundle C § 1b diagnostic — log when scoring_v2 ships without a populated
@@ -892,22 +619,14 @@ def build_comparison_response(
                 {
                     "brand": pd.get("brand"),
                     "name": pd.get("name"),
-                    # Lane 1 L1.7 — short variant tag like '128GB · Black'.
-                    # Empty string when no hooks fire (FE renders title alone).
-                    "variant": _compose_variant_string(pd, category_used),
                     "price": pd.get("price"),
                     "rating": pd.get("rating"),
                     "review_count": pd.get("review_count"),
                     "overall_score": scoring_result.get("scores", {}).get(f"product_{i}", {}).get("overall"),
                     "value_badge": pd.get("value_badge", "fair_price"),
                     "value_context": _value_context_for(i),
-                    "pros": pd.get("pros_cons", {}).get("pros", []) if isinstance(pd.get("pros_cons"), dict) else [],
-                    "cons": pd.get("pros_cons", {}).get("cons", []) if isinstance(pd.get("pros_cons"), dict) else [],
-                    # Lane 1 L1.8 — explicit accordion block for design Screen 1.
-                    # FE stars the winner side via `is_winner`. Kept additive
-                    # alongside legacy `pros` / `cons` flat keys for one
-                    # release; consumers can migrate at their own pace.
-                    "pros_cons": _build_pros_cons_block(pd, is_winner=(i == winner_index)),
+                    "pros": pd.get("pros_cons", {}).get("pros", []),
+                    "cons": pd.get("pros_cons", {}).get("cons", []),
                     "best_for": comparison.get("best_for", {}).get(f"product_{i}", ""),
                     # Bundle E S3 — per-product image URL (Tier cascade
                     # resolved upstream in _fetch_product_data Phase 1).
@@ -942,14 +661,7 @@ def build_comparison_response(
                 }
                 for i, pd in enumerate(product_data)
             ],
-            # Lane 1 L1.9 — augment specs_comparison with `rows` list so
-            # design Screen 4 can render the per-row table with emerald
-            # winner highlighting. Existing `product_0_advantages`,
-            # `product_1_advantages`, `similar` keys remain (additive).
-            "specs_comparison": {
-                **(comparison.get("specs_comparison") or {}),
-                "rows": _build_specs_rows(product_data),
-            },
+            "specs_comparison": comparison.get("specs_comparison", {}),
         },
 
         "reviews": {

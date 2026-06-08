@@ -90,17 +90,7 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-// PRE-EXISTING SKIP (WIP/HomeScreen-pre-existing-test-repair, 2026-06-08):
-// This render-based suite pre-dates Bundle B's HomeScreen rewrite
-// (commit 21e7bc0). The new JSX has different testIDs and the mock
-// stack here doesn't stub the rewrite's added dependencies (useFocusEffect
-// double-call + new useComparisonCounter signature + camera permission
-// gate). Coverage of the chip-haptic behavior is preserved via source-grep
-// in `__tests__/HomeScreen.currentDesign.contract.test.ts` — see the
-// "chip haptic vocab discipline" describe block.
-// Tracked in MEMORY.md § "HomeScreen variant integration tests need
-// re-mocking (Bundle B post-merge)".
-describe.skip('HomeScreen — mode chip spring + haptic (Task 3.1)', () => {
+describe('HomeScreen — mode chip spring + haptic (Task 3.1)', () => {
   it('fires Haptics.impactAsync(Light) on scan chip tap', () => {
     const { getByTestId } = render(<HomeScreen navigation={mockNavigation} />);
     fireEvent.press(getByTestId('home-mode-scan'));

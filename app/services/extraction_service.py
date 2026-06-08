@@ -390,38 +390,14 @@ def _build_specs_prompt(brand: str, name: str, variant: str, category: str, sear
         + dynamic CATEGORY/SCHEMA section
         + optional drug_context.
     The static prefix engages OpenAI gpt-4o-mini auto-prompt-caching.
-
-    L2.12 — when `detect_product_type` resolves a specific subtype
-    (e.g. ``electronics.phone`` / ``fragrances.niche`` / ``supplements.protein``)
-    the prompt uses the PRODUCT_TYPE_SCHEMAS field list for that subtype
-    instead of the broad CATEGORY_SPEC_SCHEMAS list. Schemas fall back to
-    the category-level list when subtype detection returns ``"<cat>.default"``
-    (unknown category) so existing categories not yet in PRODUCT_TYPE_SCHEMAS
-    keep behaving as before.
     """
     s_brand = sanitize_prompt_input(brand)
     s_name = sanitize_prompt_input(name)
     s_variant = sanitize_prompt_input(variant)
     variant_note = f" ({s_variant})" if s_variant else ""
 
-    # L2.12 — try product-type-specific schema first.
-    try:
-        from app.services.product_type_router import (
-            detect_product_type,
-            get_schema_for_type,
-        )
-
-        full_name_for_detection = f"{s_brand} {s_name}".strip()
-        type_key = detect_product_type(full_name_for_detection, category)
-        type_fields = get_schema_for_type(type_key)
-    except Exception:
-        type_fields = []
-
-    if type_fields:
-        fields = type_fields
-    else:
-        schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
-        fields = CATEGORY_SPEC_SCHEMAS[schema_key]
+    schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
+    fields = CATEGORY_SPEC_SCHEMAS[schema_key]
     fields_json = ",\n    ".join(f'"{f}": null' for f in fields)
 
     # D2 Intervention 2: static prefix FIRST (cached by OpenAI auto-caching
@@ -1102,26 +1078,20 @@ strength. Do not add UI directives; only rewrite the natural text.
 """
 
 
-def build_verdict_prompt(
-    products,
-    comparison_quality: str = "normal",
-    user_cohort: Optional[Dict[str, Any]] = None,
-) -> str:
-    """Bundle C § 2e A.4.5 + A-L4.2 — assemble the verdict-call system
-    prompt. Composition order:
+def build_verdict_prompt(products, comparison_quality: str = "normal") -> str:
+    """Bundle C § 2e A.4.5 — assemble the verdict-call system prompt with
+    an optional weird-comparison context block when comparison_quality
+    triggers the non-forced framing.
 
-      1. COMPARISON_SYSTEM base
-      2. Category personality (per-category language tone)
-      3. Pain-workflow constraints (A-L4.2: top-3 survey-derived, cohort-aware)
-      4. Decision-style preference hint (A-L4.2)
-      5. Optional weird-comparison framing
-
-    `user_cohort` shape: {"age_group": "25-34", "gender": "Female",
-    "nationality": "Bahraini"}. Missing fields fall back to the global
-    survey rank — no exception, no crash.
-
-    Returns the full system_msg string.
+    Returns the full system_msg string. The existing generate_comparison()
+    inline-builds its prompt with the same COMPARISON_SYSTEM base +
+    personality + scoring_summary + preferences — this helper exposes a
+    slim contract for unit tests that don't need the full async pipeline
+    and lets future callers route through build_verdict_prompt() once
+    the orchestration refactor lands.
     """
+    # Best-effort category inference for personality block (test calls may
+    # pass an empty products list — fall back to 'other').
     category = "other"
     if products:
         first = products[0] or {}
@@ -1132,18 +1102,6 @@ def build_verdict_prompt(
         base += build_personality_prompt(category)
     except Exception:  # noqa: BLE001 — personality helper is best-effort
         pass
-
-    # A-L4.2 — inject top-3 pain-workflow constraints + decision-style hint
-    try:
-        from app.services.pain_workflow_loader import (
-            build_pain_workflow_block,
-            build_decision_style_block,
-        )
-        base += build_pain_workflow_block(user_cohort)
-        base += build_decision_style_block(user_cohort)
-    except Exception as exc:  # noqa: BLE001 — pain-workflow injection is best-effort
-        logger.warning("pain_workflow injection failed: %s", exc)
-
     if comparison_quality == "weird":
         base += _WEIRD_VERDICT_INSTRUCTION
     return base
@@ -1176,20 +1134,6 @@ async def generate_comparison(
         from app.services.prompt_personalities import build_personality_prompt
         system_msg = COMPARISON_SYSTEM
         system_msg += build_personality_prompt(category)
-
-        # A-L4.2 — inject pain-workflow constraints + decision-style hint
-        # before the per-call scoring/preferences blocks. Demographics_profile
-        # carries the (age_group, gender, nationality) needed for cohort
-        # match; missing keys fall back to the global survey rank.
-        try:
-            from app.services.pain_workflow_loader import (
-                build_pain_workflow_block,
-                build_decision_style_block,
-            )
-            system_msg += build_pain_workflow_block(demographics_profile)
-            system_msg += build_decision_style_block(demographics_profile)
-        except Exception as exc:  # noqa: BLE001 — best-effort, never blocks verdict
-            logger.warning("pain_workflow injection in generate_comparison failed: %s", exc)
 
         if scores_summary:
             system_msg += f"""

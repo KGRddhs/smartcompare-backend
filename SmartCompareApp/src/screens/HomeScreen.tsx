@@ -72,12 +72,6 @@ import HomeEditorialSections from '../components/HomeEditorialSections';
 import { LoadingScreenVariants } from './LoadingScreenVariants';
 import { useComparisonCounter } from '../hooks/useComparisonCounter';
 import { getReferralStatus } from '../services/referralService';
-// Lane A-L3 Task L3.7 — wall-time instrumentation. Tracker starts on
-// Compare tap, marks `ttfb` on first SSE event; ResultsScreen continues
-// through `first_card_visible` / `all_cards_visible` / `ready_celebration`
-// / `user_tappable`. Aggregated info-level Sentry event surfaces in the
-// dashboard for the 88s wall-time gap diagnosis.
-import { getWallTimeTracker } from '../lib/performance/wallTimeInstrumentation';
 
 const RECENT_SEARCHES_KEY = '@qaren_recent_searches';
 const MAX_RECENT = 5;
@@ -276,19 +270,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setStatusMessage(t('results.loading.finding'));
     loadingStartedAtRef.current = Date.now();
     let navigated = false;
-    // Lane A-L3 Task L3.7 — start wall-time tracker at the user's
-    // Compare tap. Subsequent stages (`ttfb`, `first_card_visible`,
-    // `all_cards_visible`, `ready_celebration`, `user_tappable`) get
-    // marked across HomeScreen + ResultsScreen.
-    const wallTime = getWallTimeTracker();
-    wallTime.start();
-    let ttfbMarked = false;
-    const markTtfb = () => {
-      if (!ttfbMarked) {
-        ttfbMarked = true;
-        wallTime.mark('ttfb');
-      }
-    };
 
     trackEvent('compare_entry_submit', {
       mode: 'text',
@@ -306,13 +287,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
     subscribe({
       onStatus: (message) => {
-        markTtfb();
         setStatusMessage(typeof message === 'string' ? message : String(message));
       },
-      onSpecs: () => markTtfb(),
-      onPrices: () => markTtfb(),
       onComplete: async (data) => {
-        markTtfb();
         abortRef.current = null;
         setStatusMessage('');
         if (!navigated && data.success) {
