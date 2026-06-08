@@ -157,6 +157,68 @@ def test_lane2_confidence_escalation_for_non_luxury():
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(
+    os.environ.get("L2_DEPLOYED") != "true",
+    reason="Hard source_trace assertion runs only after L2 merges to prod. "
+    "Set L2_DEPLOYED=true once the lane is on Railway.",
+)
+def test_lane2_source_trace_shape_post_merge_fragrance():
+    """L2.9 surface coming online end-to-end. Per team-lead's L2.13 follow-up:
+    once L2 deploys, source_trace MUST be present on success responses.
+
+    Uses `Tom Ford Black Orchid vs Creed Aventus` — fragrances triggers the
+    Tier 1.5 escalation path that L2.5 rebuilt (confidence-driven, no longer
+    luxury-gated). When the env flag is set (post-merge), this test promotes
+    from soft-skip (in test_lane2_prod_scenario) to a hard assertion on the
+    full source_trace shape.
+    """
+    with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
+        response = client.get(
+            f"{PROD_BASE}/api/v1/text/compare",
+            params={
+                "q": "Tom Ford Black Orchid vs Creed Aventus",
+                "nocache": "true",
+            },
+        )
+    assert response.status_code == 200
+    data = response.json()
+
+    if data.get("code"):
+        pytest.skip(f"backend graceful degrade: {data['code']}")
+    assert data.get("success") is True
+
+    metadata = data.get("metadata") or {}
+    source_trace = metadata.get("source_trace")
+
+    assert source_trace is not None, (
+        "post-L2-merge: metadata.source_trace MUST be present on success "
+        "responses (L2.9 contract)"
+    )
+    assert "products" in source_trace
+    assert len(source_trace["products"]) == 2, (
+        f"source_trace.products should have 2 entries, got "
+        f"{len(source_trace['products'])}"
+    )
+
+    for ptrace in source_trace["products"]:
+        assert "name" in ptrace
+        assert "races" in ptrace
+        races = ptrace["races"]
+        assert isinstance(races, dict)
+        # At least price + specs + reviews + image must be tracked
+        assert {"price", "specs", "reviews", "image"} <= set(races.keys()), (
+            f"missing race keys: have {set(races.keys())}"
+        )
+        for race_name, race_data in races.items():
+            assert "sources_tried" in race_data
+            assert "sources_returned_value" in race_data
+            assert "wall_ms" in race_data
+            assert isinstance(race_data["sources_tried"], list)
+            assert isinstance(race_data["sources_returned_value"], list)
+            assert isinstance(race_data["wall_ms"], int)
+
+
+@pytest.mark.integration
 def test_lane2_specs_use_product_type_schema_in_prod():
     """L2.12 probe — phone query should yield phone-specific schema fields
     in specs.products[i].specs. Washer would yield capacity_kg etc."""
