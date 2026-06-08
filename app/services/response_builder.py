@@ -960,7 +960,12 @@ def build_comparison_response(
                     "rating": pd.get("rating"),
                     "review_count": pd.get("review_count"),
                     "rating_source": pd.get("rating_source"),
-                    "review_summary": pd.get("reviews", {}).get("review_summary", {
+                    # L2 per-race timeout sets pd['reviews']=None on TimeoutError;
+                    # the legacy `.get("reviews", {})` returns None (not {}) when
+                    # the key is PRESENT with None value, then .get('review_summary')
+                    # raises AttributeError. (X or {}).get(...) coalesces None→{}.
+                    # Regression: PYTHON-FASTAPI-J event ecaa64acab224c599c9aba3bb92dfc89.
+                    "review_summary": (pd.get("reviews") or {}).get("review_summary", {
                         "overall_sentiment": "mixed",
                         "consensus": "",
                         "highlights": [],
