@@ -140,9 +140,23 @@ export function ResultsContent({
   // emits it) so the spec table can paint emerald per row. Tasks L3.3
   // wires the same accordion to the overall winnerIndex for the
   // pros/cons star prefix.
-  const specsComparison = isNewFormat
+  //
+  // L2 cross-QA verdict (2026-06-08) caught a cross-lane shape mismatch:
+  // L1's response_builder emits
+  //   `specs_comparison: { rows: [...], product_0_advantages: [...], ... }`
+  // (dict-with-rows, preserving the legacy advantages keys alongside the
+  // new per-row array). Fixtures used during L3 development carried a
+  // flat array shape. Accept both so prod renders emerald winner cells
+  // even before backend converges on a single shape. Resilient to
+  // future schema migrations either direction.
+  const specsComparisonRaw = isNewFormat
     ? (result as any)?.specs?.specs_comparison
     : undefined;
+  const specsComparison: Array<any> | undefined = Array.isArray(specsComparisonRaw)
+    ? specsComparisonRaw
+    : Array.isArray(specsComparisonRaw?.rows)
+      ? specsComparisonRaw.rows
+      : undefined;
 
   return (
     <View style={styles.container} testID="results-content">
