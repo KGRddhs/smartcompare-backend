@@ -143,6 +143,49 @@ describe('L3.6 — DimensionBars use v2 dimensions with category-specific labels
     expect(getByText(/0\.2[\u2605]?[\s\S]*higher rating/i)).toBeTruthy();
     expect(getByText(/Galaxy S24 fits/i)).toBeTruthy();
   });
+
+  it('honors dim.winner override on per-dim emerald paint (L3.6 contract)', () => {
+    // The value dim in the fixture has score_a (82) < score_b (85) AND
+    // dim.winner=1. Both paths agree on B-wins. Now flip: pass a dim
+    // where score_a > score_b but dim.winner=1 → fill should still favor B.
+    const flipped = JSON.parse(JSON.stringify(fixture));
+    flipped.scoring_v2.dimensions = [
+      {
+        key: 'cross_tier',
+        label: 'Value',
+        score_a: 90,
+        score_b: 70,
+        delta_text: 'Different tier framing',
+        confidence: 'high',
+        winner: 1,
+      },
+      flipped.scoring_v2.dimensions[1],
+      flipped.scoring_v2.dimensions[2],
+      flipped.scoring_v2.dimensions[3],
+    ];
+    const { getByTestId } = render(
+      <ResultsContent
+        {...makeProps({
+          result: flipped,
+          scoring_v2: flipped.scoring_v2,
+        })}
+      />
+    );
+    // Per DimensionBars convention testID is `results-v2-bars-fill-{a|b}`
+    // suffixed by the row key. dim.winner=1 → fill-b is emerald (accent),
+    // fill-a is the secondary text color.
+    const { colors } = require('../src/theme');
+    const fillA = getByTestId('results-v2-bars-row-cross_tier-fill-a');
+    const fillB = getByTestId('results-v2-bars-row-cross_tier-fill-b');
+    const styleA = Array.isArray(fillA.props.style)
+      ? Object.assign({}, ...fillA.props.style.filter(Boolean))
+      : fillA.props.style;
+    const styleB = Array.isArray(fillB.props.style)
+      ? Object.assign({}, ...fillB.props.style.filter(Boolean))
+      : fillB.props.style;
+    expect(styleB.backgroundColor).toBe(colors.accent);
+    expect(styleA.backgroundColor).not.toBe(colors.accent);
+  });
 });
 
 describe('L3.2 — per-row emerald winner highlighting in specs table', () => {
