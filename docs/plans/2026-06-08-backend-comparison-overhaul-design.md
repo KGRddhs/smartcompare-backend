@@ -1,6 +1,7 @@
 # Backend Comparison Engine Overhaul — Design
 
 **Status:** Design approved (brainstorming 2026-06-08, Ahmed + Claude).
+**[CORRECTION 2026-06-08, post-Sprint-A-Day-1]:** The original audit script checked `overview.factual_verdict` (which is by design empty) instead of `scoring_v2.factual_verdict` (the canonical home). L1-be-v2 verified via 3 fresh prod curls that `scoring_v2.factual_verdict.line1/line2` is populated for electronics, fragrances, AND supplements. The "5 design-parity shape gaps" claim below is **actually 4**: factual_verdict was always populated; the gaps are confidence_legs NULL, confidence_details absent, variant string missing, pros_cons empty in overview path, per-row spec winner-flag missing. Lane 1's L1.5 task became a regression-net pin rather than a NULL fix. See `memory/feedback_audit_script_deep_print_values.md` for the lesson.
 **Owner:** Ahmed.
 **Approach:** **C** — ship (A) Wiring + Quality sprint first (15–17 working days), then plan + execute (B) Intelligence Layer (6–8 weeks).
 **Implementation plan:** to be authored by `superpowers:writing-plans` immediately after this design is committed.
@@ -12,7 +13,7 @@
 The current backend comparison engine has correct architectural bones (per-request services, parallel Phase 1/2, category-aware extraction, fact-checking) but four load-bearing failures make the user-facing output appear "stupid":
 
 1. **`scoring_v2` schema disconnect** — backend computes 6 category-specific dimensions per legacy `scoring.dimension_winners` but emits only 3–4 hand-coded generic dims (`price`, `reviews`, `value`, `popularity`) into `scoring_v2.dimensions`. Mobile reads v2 and renders identical generic bars for every category.
-2. **5 design-parity shape gaps** — `factual_verdict.line1/2` NULL, `confidence_legs` + `confidence_details` NULL, no per-retailer review quote structure, no product variant string ("128GB · Black"), no per-row winner highlighting in specs table.
+2. **~~5~~ 4 design-parity shape gaps** — ~~`factual_verdict.line1/2` NULL,~~ `confidence_legs` + `confidence_details` NULL, no per-retailer review quote structure, no product variant string ("128GB · Black"), no per-row winner highlighting in specs table, **`overview.products[i].pros_cons` empty arrays** (the original list mis-grouped this under "factual_verdict"). See `[CORRECTION 2026-06-08]` at top.
 3. **Tier-cascade luxury-gated** — Firecrawl/Scrape.do fire ONLY for `is_luxury_brand()` queries; non-luxury queries with bad Tier 1 data (Tom Ford at 20 BHD) never escalate, no cross-validation.
 4. **Prompts ignore documented user pain** — 400+ surveys + existing personality prompts show users want 2–3 clear differences with explicit budget/value framing and decisive verdicts; current verdict prompt produces hedge-y multi-spec recommendations.
 
@@ -37,7 +38,7 @@ Validated against 3 live production curls + Railway env + 4 parallel code agents
 | "Missing data huge problem" | Wiring problem, not extraction problem. Data IS computed; just not piped to mobile-facing response keys. |
 
 **Live production data (3 categories, 2026-06-08, all `nocache=true`):**
-- Electronics (iPhone 15 vs Galaxy S24): 29s, 12 API calls, $0.0088. Specs 11 fields populated at `top.specs.products[i].specs`. `scoring_v2.dimensions`: ['price','reviews','value','popularity']. All dim winners NULL. `factual_verdict.line1/2`: NULL. `overview.products[i].pros_cons`: empty. Image URLs present.
+- Electronics (iPhone 15 vs Galaxy S24): 29s, 12 API calls, $0.0088. Specs 11 fields populated at `top.specs.products[i].specs`. `scoring_v2.dimensions`: ['price','reviews','value','popularity']. All dim winners NULL. ~~`factual_verdict.line1/2`: NULL.~~ `overview.products[i].pros_cons`: empty. Image URLs present. **[CORRECTION 2026-06-08]** factual_verdict was actually populated at `scoring_v2.factual_verdict.line1/line2` — the audit script checked the wrong path. L1's verification curl: `"iPhone 15 carries a 8% price premium for the upgrade."` / `"Galaxy S24 pulls ahead on Popularity."`
 - Fragrances (Tom Ford Black Orchid vs Creed Aventus): 28s, 11 API calls, $0.0076. Tom Ford price 20.68 BHD — **wrong** (real retail ~50–130 BHD; Tier 1 picked up a sample/wrong-variant).
 - Supplements (Now Foods D3 vs Solgar D3): 25s, 12 API calls, $0.0086. iHerb scrape path firing correctly.
 

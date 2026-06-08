@@ -342,7 +342,9 @@ git commit -- app/services/scoring_service.py tests/ \
   -m "feat(L1): delta_text quantified per-category (battery h, longevity h, dosage IU)"
 ```
 
-### Task L1.5: Fix `_build_factual_verdict` NULL emission
+### Task L1.5: ~~Fix `_build_factual_verdict` NULL emission~~ → **Pin populated state with regression net**
+
+**[CORRECTION 2026-06-08]:** Per L1-be-v2 prod-curl verification (3 categories all returned populated `scoring_v2.factual_verdict.line1/line2`), the original "NULL emission" claim was a dispatcher audit-script error (checked `overview.factual_verdict`, wrong path). The actual task is to add a regression-net test fixture pinning the populated state — preserving the Bundle C A.3.2 builder against future drift. The implementation steps below remain useful as defensive guidance if any future query returns NULL; the test added at commit 9957970 (Sprint A Day 1) is the actual deliverable.
 
 **Files:**
 - Modify: `app/services/response_builder.py:353-396`
