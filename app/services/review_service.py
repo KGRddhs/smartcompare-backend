@@ -22,13 +22,25 @@ logger = logging.getLogger(__name__)
 REVIEWS_CACHE_TTL = 7 * 24 * 60 * 60  # 7 days
 
 # Category-specific review search terms
+# L2.10 — added 4 missing entries (supplements/fragrances/haircare/other) so
+# every category in CATEGORY_SPEC_SCHEMAS has its own review-search term
+# vocabulary. Previously these fell back to the implicit "user reviews pros
+# cons rating" string, which yielded weak Serper organic results for
+# supplements (no dosage/clinical context) and fragrances (no
+# longevity/sillage signal).
 CATEGORY_REVIEW_TERMS = {
     "electronics": "user reviews pros cons battery camera performance display",
     "grocery": "user reviews taste quality ingredients value",
     "beauty": "user reviews results skin ingredients effectiveness",
+    "makeup": "user reviews shade match coverage finish wear",
+    "skincare": "user reviews skin texture irritation results",
     "fashion": "user reviews fit quality comfort sizing",
     "home": "user reviews quality durability assembly value",
     "sports": "user reviews performance comfort durability",
+    "supplements": "user reviews dosage effectiveness side effects clinical purity",
+    "fragrances": "user reviews longevity sillage projection scent character season",
+    "haircare": "user reviews results frizz scalp hair type texture scent",
+    "other": "user reviews quality value durability function",
 }
 
 GARBAGE_PATTERNS = [
