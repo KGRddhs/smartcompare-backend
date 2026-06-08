@@ -215,6 +215,20 @@ export function ResultsContent({
                       {product.brand}
                     </Text>
                   ) : null}
+                  {/* Lane A-L3 Task L3.1 — variant string (e.g. "128GB · Black")
+                      surfaces below the brand sub on each card. Backend writes
+                      `overview.products[i].variant` per design Screen 1.
+                      Hidden when missing or empty so legacy data + low-confidence
+                      categories don't render an empty line. */}
+                  {product.variant ? (
+                    <Text
+                      testID={`results-product-variant-${idx}`}
+                      style={styles.productVariant}
+                      numberOfLines={1}
+                    >
+                      {product.variant}
+                    </Text>
+                  ) : null}
                   <Text
                     style={[
                       styles.productPrice,
@@ -515,6 +529,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.text.secondary,
     lineHeight: 12 * 1.4,
+  },
+  // Lane A-L3 Task L3.1 — variant tag below brand on the product card.
+  productVariant: {
+    fontSize: 11,
+    color: colors.text.secondary,
+    lineHeight: 11 * 1.4,
+    marginTop: 2,
   },
   productPrice: {
     fontSize: 18,
