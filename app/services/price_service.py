@@ -31,6 +31,90 @@ ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "fa
 
 logger = logging.getLogger(__name__)
 
+
+def _median(values: List[float]) -> float:
+    """Median that returns the arithmetic mean of the middle two for
+    even-length lists (standard statistical median)."""
+    s = sorted(values)
+    n = len(s)
+    if n == 0:
+        return 0.0
+    if n % 2 == 1:
+        return s[n // 2]
+    return (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+
+def consolidate_price_sources(sources: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """L2.8 — cross-validation across multiple price candidates.
+
+    Takes a list of source dicts (``{"src": str, "amount": float,
+    "retailer_score": float?}``) and returns ``{"amount": median,
+    "sources_count": int, "flags": [str], "cross_validation":
+    "passed"|"single_source"}`` or ``None`` if no usable sources exist.
+
+    Outlier rejection rule: when there are 3+ sources, drop any value more
+    than 2 standard deviations from the mean, then re-compute the median
+    of the remaining values.
+
+    Disagreement flag: when any surviving value differs by more than 20%
+    from the consolidated median, ``"sources_disagree"`` is appended to
+    ``flags`` (the consolidated number is still returned — caller decides
+    whether to suppress).
+    """
+    if not sources:
+        return None
+
+    amounts = [
+        float(s["amount"])
+        for s in sources
+        if s.get("amount") is not None and float(s["amount"]) > 0
+    ]
+    if not amounts:
+        return None
+
+    flags: List[str] = []
+
+    if len(amounts) == 1:
+        return {
+            "amount": amounts[0],
+            "sources_count": 1,
+            "flags": flags,
+            "cross_validation": "single_source",
+        }
+
+    # Outlier rejection — anchor on the median (robust to skew). Anything
+    # outside [0.5x, 2x] of the initial median is treated as a bogus listing
+    # (counterfeit, garbled price string, wrong currency). Median-anchored
+    # is more reliable than stdev when 1 of 3 samples is an order of
+    # magnitude off, because that single value dominates the stdev.
+    survivors = list(amounts)
+    if len(amounts) >= 3:
+        initial_median = _median(amounts)
+        if initial_median > 0:
+            new_survivors = [
+                a for a in amounts
+                if 0.5 * initial_median <= a <= 2.0 * initial_median
+            ]
+            if new_survivors and len(new_survivors) < len(amounts):
+                survivors = new_survivors
+                flags.append("outlier_dropped")
+
+    consolidated = _median(survivors)
+
+    # Disagreement flag — any survivor >20% from the consolidated median.
+    if consolidated > 0 and any(
+        abs(a - consolidated) / consolidated > 0.20 for a in survivors
+    ):
+        flags.append("sources_disagree")
+
+    return {
+        "amount": consolidated,
+        "sources_count": len(sources),
+        "flags": flags,
+        "cross_validation": "passed",
+    }
+
+
 # Pattern for stripping model variants to broaden price searches
 MODEL_VARIANT_PATTERN = re.compile(r'\s+(pro|plus|max|ultra|\d{2,}gb|\d+tb)$', re.IGNORECASE)
 

@@ -326,6 +326,10 @@ export interface Dimension {
   value_match_b?: ValueMatch;
   is_cross_tier?: boolean;
   key_tradeoff?: string;
+  // Lane A-L3 Task L3.6 — explicit per-dim winner index from backend.
+  // When present, takes precedence over score-comparison fallback so the
+  // bar emerald-paint matches L1's authoritative scoring_v2.dim_winners.
+  winner?: 0 | 1 | null;
 }
 
 export interface OverallScore {

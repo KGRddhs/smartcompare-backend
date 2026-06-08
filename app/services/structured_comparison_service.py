@@ -497,6 +497,14 @@ from app.services.rating_service import (
     RATING_TIER_2,
     RATING_TIER_3,
 )
+# L2.5 — confidence-driven escalation replaces the legacy is_luxury_brand()
+# gate. The predicate fires the Tier 1.5 page-scrape cascade for ANY category
+# (electronics, supplements, fragrances, ...) when Tier 1 Serper data is
+# low-confidence — not just for luxury brands.
+from app.services.confidence_service import (
+    compute_price_confidence,
+    should_escalate,
+)
 from app.services.review_service import (
     clean_review_content,
     clean_review_citations,
@@ -707,6 +715,27 @@ async def _scrapedo_scraper(
     }
 
 
+def _should_escalate_price_scrape(
+    sources: List[Dict[str, Any]],
+    training_estimate: Optional[float] = None,
+    brand: Optional[str] = None,
+) -> bool:
+    """L2.5 — confidence-driven Tier 1.5 escalation gate.
+
+    Replaces the legacy ``is_luxury_brand()`` gate. Now fires for any
+    category when Tier 1 Serper data is weak (single source from a low-score
+    retailer, sources disagreeing, or a 40%+ deviation from the training
+    estimate). ``brand`` is accepted for legacy compat but ignored —
+    confidence metrics drive the decision.
+    """
+    if not sources:
+        return True
+    confidence = compute_price_confidence(
+        sources, training_estimate=training_estimate
+    )
+    return should_escalate(confidence)
+
+
 def _build_luxury_scrapers(
     *,
     candidate_urls: List[Tuple[str, str]],
@@ -755,6 +784,12 @@ def _build_luxury_scrapers(
             scrapers.append(_sd_with_args)
 
     return scrapers
+
+
+# L2.5 forward-compat alias — new name reflects the post-rename semantics
+# (escalation, not luxury-only). Existing tests monkeypatch the legacy name
+# so it stays the canonical binding callers should NOT bypass.
+_build_escalation_scrapers = _build_luxury_scrapers
 
 
 class StructuredComparisonService:
@@ -1007,7 +1042,56 @@ class StructuredComparisonService:
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
     ) -> Dict[str, Any]:
-        """Main entry point for text-based comparisons.
+        """L2.7 — hard-capped entry point: wraps `_compare_from_text_impl` in
+        asyncio.wait_for(STREAM_HARD_CAP_SECONDS) so the non-streaming path
+        gets the same 25s ceiling the streaming path already has. On timeout
+        a graceful `success:false, code:TIMEOUT` response is returned instead
+        of propagating asyncio.TimeoutError to the caller.
+        """
+        try:
+            return await asyncio.wait_for(
+                self._compare_from_text_impl(
+                    query=query,
+                    region=region,
+                    include_specs=include_specs,
+                    include_reviews=include_reviews,
+                    include_pros_cons=include_pros_cons,
+                    nocache=nocache,
+                    selected_category=selected_category,
+                    vision_products=vision_products,
+                    user_preferences=user_preferences,
+                    user_id=user_id,
+                    explicit_pair=explicit_pair,
+                ),
+                timeout=STREAM_HARD_CAP_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[L2.7] compare_from_text hard-cap %.1fs hit for query=%r",
+                STREAM_HARD_CAP_SECONDS, query,
+            )
+            return {
+                "success": False,
+                "error": "We couldn't finish this comparison in time. Try again.",
+                "code": "TIMEOUT",
+                "total_cost": self.total_cost,
+            }
+
+    async def _compare_from_text_impl(
+        self,
+        query: str,
+        region: str = "bahrain",
+        include_specs: bool = True,
+        include_reviews: bool = True,
+        include_pros_cons: bool = True,
+        nocache: bool = False,
+        selected_category: Optional[str] = None,
+        vision_products: Optional[List[Dict]] = None,
+        user_preferences: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        explicit_pair: Optional[Tuple[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """Main entry point for text-based comparisons (post-L2.7 inner impl).
 
         explicit_pair: when provided (Bundle B dual-shape), the service
         skips parse_product_query() and trusts the caller's pair.
@@ -1021,6 +1105,12 @@ class StructuredComparisonService:
 
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
+
+        # L2.9 — per-request source_trace collector. Always-on observability
+        # for which tiers fired for each race (price / specs / reviews /
+        # image). Populated by `_fetch_product_data` then merged into
+        # response.metadata.source_trace at response build time.
+        self._source_trace: Dict[str, Any] = {}
 
         # L1 content safety pre-filter (spec sec 5.2). Runs on the canonical query
         # string — for explicit_pair shape, this is the concatenated "A vs B"
@@ -1213,6 +1303,13 @@ class StructuredComparisonService:
             elapsed = (datetime.now() - start_time).total_seconds()
 
             t_build = time.perf_counter() if orchestrator_timings is not None else None
+            # L2.9 — emit metadata.source_trace when the collector accumulated
+            # any per-product records. Absent when the orchestrator never ran
+            # Phase 1 (e.g. early-return on content-safety block).
+            _metadata_override: Dict[str, Any] = {}
+            if getattr(self, "_source_trace", None):
+                _metadata_override["source_trace"] = self._source_trace
+
             result = build_comparison_response(
                 product_data=product_data,
                 comparison=comparison,
@@ -1233,6 +1330,7 @@ class StructuredComparisonService:
                 gpt_calls=self.gpt_calls,
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
+                metadata=_metadata_override or None,
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
@@ -1332,6 +1430,12 @@ class StructuredComparisonService:
 
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
+
+        # L2.9 — per-request source_trace collector. Always-on observability
+        # for which tiers fired for each race (price / specs / reviews /
+        # image). Populated by `_fetch_product_data` then merged into
+        # response.metadata.source_trace at response build time.
+        self._source_trace: Dict[str, Any] = {}
 
         # L1 content safety pre-filter (spec sec 5.2). Same gate as sync path —
         # blocked queries terminate the stream with an error event before any
@@ -1632,6 +1736,12 @@ class StructuredComparisonService:
             elapsed = (datetime.now() - start_time).total_seconds()
 
             t_build = time.perf_counter() if orchestrator_timings is not None else None
+            # L2.9 — source_trace pass-through for streaming path. Same
+            # contract as the non-streaming compare_from_text_impl call site.
+            _metadata_override: Dict[str, Any] = {}
+            if getattr(self, "_source_trace", None):
+                _metadata_override["source_trace"] = self._source_trace
+
             complete_response = build_comparison_response(
                 product_data=product_data,
                 comparison=comparison,
@@ -1652,6 +1762,7 @@ class StructuredComparisonService:
                 gpt_calls=self.gpt_calls,
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
+                metadata=_metadata_override or None,
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
@@ -1836,11 +1947,31 @@ class StructuredComparisonService:
             except Exception as e:
                 logger.warning(f"Drug DB lookup failed: {e}")
 
+        # L2.6 — per-race timeout caps. Each race is wrapped in
+        # asyncio.wait_for so a single slow tier (e.g., 15s Tier 1.5 fan-out
+        # for price) cannot drag the whole Phase 1 wall over the
+        # STREAM_HARD_CAP_SECONDS budget. On timeout the race result is None
+        # (handled below as `result[key] = None`); response_builder treats
+        # None as missing data and `_validate_renderable` decides whether to
+        # surface an INSUFFICIENT_DATA error.
+        _PHASE1_TIMEOUTS = {
+            "specs": 8.0,     # GPT-4o-mini extraction
+            "price": 18.0,    # Tier 1 + 1.5 cascade can land at ~15s
+            "reviews": 6.0,   # Serper + GPT cleanup
+            "image_url": 5.0, # Serper Images + Tier 3 GPT fallback
+        }
+
         if include_specs:
-            phase1_tasks.append(_timed_task("specs", self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context), stage_timings))
+            phase1_tasks.append(asyncio.wait_for(
+                _timed_task("specs", self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context), stage_timings),
+                timeout=_PHASE1_TIMEOUTS["specs"],
+            ))
             phase1_keys.append("specs")
 
-        phase1_tasks.append(_timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings))
+        phase1_tasks.append(asyncio.wait_for(
+            _timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings),
+            timeout=_PHASE1_TIMEOUTS["price"],
+        ))
         phase1_keys.append("price")
 
         if include_reviews:
@@ -1848,11 +1979,14 @@ class StructuredComparisonService:
             # retailer_ratings is None here because shopping_items_cache is
             # populated DURING _get_price (Phase 1) so we can't pre-collect.
             # _get_reviews accepts None and skips retailer_ratings enrichment.
-            phase1_tasks.append(_timed_task("reviews", self._get_reviews(
-                brand, name, variant, search_query, nocache,
-                category=category, retailer_ratings=None,
-                search_results=unified_search,
-            ), stage_timings))
+            phase1_tasks.append(asyncio.wait_for(
+                _timed_task("reviews", self._get_reviews(
+                    brand, name, variant, search_query, nocache,
+                    category=category, retailer_ratings=None,
+                    search_results=unified_search,
+                ), stage_timings),
+                timeout=_PHASE1_TIMEOUTS["reviews"],
+            ))
             phase1_keys.append("reviews")
 
         # Bundle E S3 — image_url resolution runs in parallel with specs+price
@@ -1863,11 +1997,14 @@ class StructuredComparisonService:
         # override with the FREE result when available. Net: piggyback hit
         # path costs zero extra wall (we discard the eager Tier 1/3 result),
         # piggyback miss path saves zero wall too (Tier 1/3 already running).
-        phase1_tasks.append(_timed_task("image_url", get_product_image_url(
-            full_name, region=region,
-            page_scrape_image=None,  # piggyback evaluated post-Phase1 below
-            organic_results=(unified_search.get("organic", []) if unified_search else None),
-        ), stage_timings))
+        phase1_tasks.append(asyncio.wait_for(
+            _timed_task("image_url", get_product_image_url(
+                full_name, region=region,
+                page_scrape_image=None,  # piggyback evaluated post-Phase1 below
+                organic_results=(unified_search.get("organic", []) if unified_search else None),
+            ), stage_timings),
+            timeout=_PHASE1_TIMEOUTS["image_url"],
+        ))
         phase1_keys.append("image_url")
 
         t1 = time.perf_counter() if stage_timings is not None else None
@@ -1880,11 +2017,48 @@ class StructuredComparisonService:
                 stage_timings.setdefault(f"{k}_ms", 0.0)
 
         for i, key in enumerate(phase1_keys):
-            if isinstance(phase1_results[i], Exception):
+            if isinstance(phase1_results[i], asyncio.TimeoutError):
+                # L2.6 — per-race timeout fired. Distinct WARNING (not ERROR)
+                # because graceful degrade is the contracted behavior; the
+                # missing field gets a None and downstream renderers + the
+                # INSUFFICIENT_DATA validator decide whether the overall
+                # comparison still ships.
+                logger.warning(
+                    "[L2.6] Phase 1 race timeout for %s (limit %.1fs)",
+                    key, _PHASE1_TIMEOUTS.get(key, 0.0),
+                )
+                result[key] = None
+            elif isinstance(phase1_results[i], Exception):
                 logger.error(f"Error fetching {key}: {phase1_results[i]}")
                 result[key] = None
             else:
                 result[key] = phase1_results[i]
+
+        # L2.9 — emit a per-product source_trace record into the orchestrator
+        # collector. Tier names are the labels the renderer surfaces; in the
+        # absence of full per-tier hit/miss info we collapse to "race-fired
+        # / race-yielded" pairs derived from result presence.
+        try:
+            tracker = getattr(self, "_source_trace", None)
+            if tracker is not None:
+                product_key = f"product_{len(tracker.get('products', []))}"
+                per_product = {
+                    "name": full_name,
+                    "races": {},
+                }
+                for k in ("specs", "price", "reviews", "image_url"):
+                    if k in phase1_keys:
+                        wall_ms = 0
+                        if stage_timings is not None:
+                            wall_ms = int(stage_timings.get(f"{k}_ms", 0) or 0)
+                        per_product["races"][k if k != "image_url" else "image"] = {
+                            "sources_tried": [k],
+                            "sources_returned_value": ([k] if result.get(k) else []),
+                            "wall_ms": wall_ms,
+                        }
+                tracker.setdefault("products", []).append(per_product)
+        except Exception as e:
+            logger.warning("[L2.9] source_trace record failed: %s", e)
 
         if result.get("price"):
             result["best_price"] = result["price"].get("amount")
@@ -2232,17 +2406,34 @@ class StructuredComparisonService:
                 price["_cached"] = False
                 return price
 
-        # --- Tier 1.5: Page scraping cascade (luxury brands only) ---
+        # --- Tier 1.5: Page scraping cascade (confidence-driven, all categories) ---
+        # L2.5 — replaced the legacy is_luxury_brand() gate with
+        # _should_escalate_price_scrape(), which fires for any category
+        # whenever Tier 1 confidence is low (no source, single weak source,
+        # disagreement, or >40% deviation from training estimate). Tom Ford
+        # still escalates; Xiaomi 14 with a bogus 20-BHD Tier-1 result now
+        # also escalates instead of being blocked by the luxury gate.
         # Bundle E § Decision 8 — scatter-gather refactor. The 3 Serper
-        # discovery queries (official → authorized → GCC retailers) now run
-        # in PARALLEL via asyncio.gather (D2 follow-up — saves ~2s on every
-        # luxury query). Priority ordering is preserved by processing the
-        # results in [official, authorized, GCC] sequence after the gather.
-        # The per-URL page-scrape attempts are then RACED via
-        # fan_out_price_lookup, which is bounded by asyncio.wait_for(15s)
-        # so Cloudflare-protected sites can't blow the per-product wall
-        # budget (e.g. ssense.com via Scrape.do typically 20-25s).
-        if not price and is_luxury_brand(full_name) and ENABLE_PAGE_SCRAPE:
+        # discovery queries (official → authorized → GCC retailers) run in
+        # PARALLEL via asyncio.gather; the per-URL page-scrape attempts are
+        # then RACED via fan_out_price_lookup, bounded by asyncio.wait_for(15s).
+        tier1_sources: List[Dict[str, Any]] = []
+        if price and price.get("amount"):
+            tier1_sources.append({
+                "src": price.get("source_method") or "serper_shopping",
+                "amount": float(price["amount"]),
+                "retailer_score": float(price.get("retailer_score") or 0.0),
+            })
+
+        if ENABLE_PAGE_SCRAPE and _should_escalate_price_scrape(
+            tier1_sources,
+            training_estimate=(
+                float(tier3_estimate["amount"])
+                if tier3_estimate and tier3_estimate.get("amount")
+                else None
+            ),
+            brand=brand,
+        ):
             scraping_mode = os.environ.get("SCRAPING_MODE", "hard")
             candidate_urls: List[Tuple[str, str]] = []
 

@@ -205,15 +205,18 @@ class TestContextualDimSkippedWhenDataMissing:
             f"DPI emitted despite missing-on-Ducky: keys={emitted_keys}"
         )
 
-    def test_dpi_dim_emitted_when_both_products_have_dpi(self):
+    def test_dpi_dim_NOT_emitted_post_L1_rewrite(self):
+        """Lane 1 L1.3 (2026-06-08) — dropped the hand-coded `_dim_dpi`
+        builder. Electronics now uses the CATEGORY_DIMENSIONS lookup +
+        scoring_result.breakdown path. The legacy `dpi` key is gone."""
         products = [
             _mouse("Glorious Model O", 22.0, 4.6, 1200, dpi=12000),
             _mouse("Ducky One 2 Mini", 52.0, 4.4, 800, dpi=8000),
         ]
         result = build_dimensions_v2(products, _scoring_result_two_products(), "electronics")
         emitted_keys = {d["key"] for d in result}
-        assert "dpi" in emitted_keys, (
-            f"DPI dim missing despite both products having it: keys={emitted_keys}"
+        assert "dpi" not in emitted_keys, (
+            f"DPI dim leaked post-L1.3 rewrite (should be gone): keys={emitted_keys}"
         )
 
     def test_popularity_dim_skipped_when_either_review_count_le_50(self):
@@ -229,14 +232,18 @@ class TestContextualDimSkippedWhenDataMissing:
             f"Popularity emitted despite low-review-count side: keys={emitted_keys}"
         )
 
-    def test_popularity_dim_emitted_when_both_above_50(self):
+    def test_popularity_dim_NOT_emitted_post_L1_rewrite(self):
+        """Lane 1 L1.3 (2026-06-08) — dropped the hand-coded `_dim_popularity`
+        builder. Electronics now uses CATEGORY_DIMENSIONS lookup;
+        review-count signal is folded into the existing `reviews` core
+        dim instead of a separate `popularity` row."""
         products = [
             _mouse("Glorious Model O", 22.0, 4.6, review_count=1200, dpi=None),
             _mouse("Ducky One 2 Mini", 52.0, 4.4, review_count=800, dpi=None),
         ]
         result = build_dimensions_v2(products, _scoring_result_two_products(), "electronics")
         emitted_keys = {d["key"] for d in result}
-        assert "popularity" in emitted_keys
+        assert "popularity" not in emitted_keys
 
     def test_build_quality_dim_skipped_when_one_lacks_warranty(self):
         """Design § Decision 2: Build/Reliability needs brand reputation
@@ -298,15 +305,30 @@ class TestCrossCategoryUniversalDimsOnly:
 
     def test_same_category_can_still_emit_contextual(self):
         """Sanity: this isn't a regression of the contextual path —
-        same-category WITH shared spec still gets the contextual dim."""
+        same-category WITH shared per-dim scores still gets the
+        contextual dim. Lane 1 L1.3 (2026-06-08) — contextual dims now
+        come from `scoring_result.scores.product_i.breakdown[dim_key]`
+        rather than spec presence (DPI/popularity were the legacy
+        electronics extras)."""
         products = [
             _mouse("Glorious Model O", 22.0, 4.6, 1200, dpi=12000),
             _mouse("Ducky One 2 Mini", 52.0, 4.4, 800, dpi=8000),
         ]
-        result = build_dimensions_v2(products, _scoring_result_two_products(), "electronics")
+        sr = _scoring_result_two_products()
+        sr["scores"]["product_0"]["breakdown"] = {
+            "performance_score": 88,
+            "build_quality_score": 80,
+            "feature_score": 75,
+        }
+        sr["scores"]["product_1"]["breakdown"] = {
+            "performance_score": 70,
+            "build_quality_score": 78,
+            "feature_score": 72,
+        }
+        result = build_dimensions_v2(products, sr, "electronics")
         assert len(result) > 3, (
-            "same-category with shared DPI spec should emit at least 1 "
-            f"contextual dim; got only core dims: {[d['key'] for d in result]}"
+            "same-category with populated scoring breakdown should emit "
+            f">3 dims; got: {[d['key'] for d in result]}"
         )
 
 

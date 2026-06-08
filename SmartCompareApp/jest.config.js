@@ -28,6 +28,11 @@ module.exports = {
     '^expo-font$': '<rootDir>/__mocks__/expo-font.ts',
     '^@expo-google-fonts/cairo$': '<rootDir>/__mocks__/expo-google-fonts-cairo.ts',
     '^react-native-svg$': '<rootDir>/__mocks__/react-native-svg.ts',
+    // Lane A-L3 Task L3.7 — stub @sentry/react-native. Published ESM
+    // re-exports from @sentry/core which Jest CJS can't parse; tests
+    // get a quiet no-op shim. Tests asserting Sentry behavior override
+    // via per-file `jest.mock('@sentry/react-native', ...)`.
+    '^@sentry/react-native$': '<rootDir>/__mocks__/sentry-react-native.ts',
     '\\.(ttf|otf|woff2?|png|jpg)$': '<rootDir>/__mocks__/fileStub.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],

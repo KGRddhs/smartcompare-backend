@@ -115,10 +115,6 @@ describe('HomeScreen min-display floor — source-level wiring (Task #54)', () =
     expect(SOURCE).toMatch(/navigateToResultsWithFloor/);
   });
 
-  it('uses the floor helper for image-identify success', () => {
-    expect(SOURCE).toMatch(/navigateToResultsWithFloor\(\s*result\s*\)/);
-  });
-
   it('uses the floor helper for SSE-stream success', () => {
     expect(SOURCE).toMatch(/navigateToResultsWithFloor\(\s*data\s*\)/);
   });
@@ -129,21 +125,54 @@ describe('HomeScreen min-display floor — source-level wiring (Task #54)', () =
     );
   });
 
-  it('does NOT navigate to Results without the floor on success paths', () => {
-    // Each successful navigate to Results must go through the helper.
-    // The Paywall navigates and error paths can use direct navigate;
-    // we only forbid `navigate('Results', ...)` which would bypass.
-    const directNav = SOURCE.match(
-      /navigation\.navigate\(['"]Results['"]\s*,/g
+  // Bundle B redesign moved the image-identify path out of HomeScreen
+  // (now ScanCamera → ResultsScreen via vision_products param). HomeScreen
+  // text/URL paths still flow through the floor helper; image-identify
+  // entry is no longer applicable to this test surface.
+
+  it('does NOT navigate Compare success paths without the floor helper', () => {
+    // Each successful compare must go through navigateToResultsWithFloor.
+    // The helper itself contains the only `navigation.navigate('Results' as any`
+    // call shape. Direct navigate to Results in HomeScreen is reserved for
+    // distinct entry shapes (history tap, etc.) that don't need the
+    // brand-moment floor.
+    //
+    // Compare-path forbidden pattern: a bare
+    // `navigation.navigate('Results', {result: ...})` outside the helper.
+    // The helper match is the case-cast `'Results' as any` form so the
+    // un-cast literal-args form must stay at 0 occurrences.
+    const bareLiteralNav = SOURCE.match(
+      /navigation\.navigate\(['"]Results['"]\s*,\s*\{\s*result\s*:/g
     );
-    // The helper itself is the ONLY allowed direct call to
-    // `navigation.navigate('Results' as any, ...)` — case-cast version.
-    // Source has 1 such call (inside the helper closure). All other
-    // paths use the helper. So the count must be exactly 1.
-    expect((directNav ?? []).length).toBe(0);
-    const helperInternalNav = SOURCE.match(
+    expect((bareLiteralNav ?? []).length).toBe(0);
+
+    // The helper is the ONLY allowed `'Results' as any` call. Bundle E
+    // S3 redesign added a separate history-entry navigate with the
+    // `{from_history: ...}` shape — that's a distinct entry path (not
+    // a compare-success completion) and DOES NOT need the floor.
+    const helperShapedCalls = SOURCE.match(
       /navigation\.navigate\(['"]Results['"] as any/g
     );
+    const helperInternalNav = SOURCE.match(
+      /navigation\.navigate\(['"]Results['"] as any,\s*\{\s*result\s*\}/g
+    );
+    // At least 1 helper-shaped call must exist (the floor closure itself).
+    expect((helperShapedCalls ?? []).length).toBeGreaterThanOrEqual(1);
+    // And EXACTLY 1 of those must wrap a `{result}` (the floor's payload
+    // — proves no second compare-success navigation has slipped in).
     expect((helperInternalNav ?? []).length).toBe(1);
+  });
+
+  it('history-tap entry sidesteps the floor (distinct from compare success)', () => {
+    // Bundle E S3 — HomeEditorialSections.onPressVerdict navigates with
+    // a `from_history` param shape. This is documented as an exception
+    // to the floor rule: the entry isn't a comparison-completion (the
+    // result is already cached/fetched in History), so the brand moment
+    // doesn't need to land. Pinning the pattern keeps the exception
+    // explicit so future refactors can audit it.
+    const historyTapNav = SOURCE.match(
+      /navigation\.navigate\(['"]Results['"] as any,\s*\{\s*from_history\s*:/g
+    );
+    expect((historyTapNav ?? []).length).toBe(1);
   });
 });

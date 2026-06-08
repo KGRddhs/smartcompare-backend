@@ -1,0 +1,155 @@
+{
+  "success": true,
+  "category_used": "haircare",
+  "overview": {
+    "winner": {
+      "product_index": 0,
+      "name": "Olaplex No. 3 Hair Perfector",
+      "declaration": "Olaplex No. 3 fits you best",
+      "reason": "Patented bond-rebuilding chemistry with the longest evidence base.",
+      "key_tradeoff": "K18 is a leave-in (no rinse) for time-conscious routines.",
+      "margin": 0.06
+    },
+    "products": [
+      {
+        "brand": "Olaplex",
+        "name": "Olaplex No. 3 Hair Perfector",
+        "variant": "100ml \u00b7 Pre-wash",
+        "image_url": "https://cdn.example.com/olaplex-no3.jpg",
+        "price": { "amount": 14.0, "currency": "BHD", "retailer": "Sephora", "source_method": "page_scrape" },
+        "rating": 4.6,
+        "review_count": 31200,
+        "overall_score": 86,
+        "value_badge": "fair_price",
+        "value_context": "in_range",
+        "pros": ["Patented bis-aminopropyl diglycol dimaleate", "Visible strand integrity after 4 weeks", "Universal hair type"],
+        "cons": ["Requires shower routine", "10 min minimum dwell time"],
+        "best_for": "color-treated + chemically processed hair",
+        "pros_cons": { "pros": ["Patented bis-aminopropyl diglycol dimaleate", "Visible strand integrity after 4 weeks", "Universal hair type"], "cons": ["Requires shower routine", "10 min minimum dwell time"] },
+        "is_winner": true
+      },
+      {
+        "brand": "K18",
+        "name": "K18 Leave-In Molecular Repair Hair Mask",
+        "variant": "50ml \u00b7 Leave-in",
+        "image_url": "https://cdn.example.com/k18-leave-in.jpg",
+        "price": { "amount": 17.5, "currency": "BHD", "retailer": "Sephora", "source_method": "page_scrape" },
+        "rating": 4.5,
+        "review_count": 14800,
+        "overall_score": 82,
+        "value_badge": "fair_price",
+        "value_context": "in_range",
+        "pros": ["Leave-in (no rinse)", "4 min activation", "Peptide-based bond repair"],
+        "cons": ["Higher per-ml cost", "Smaller bottle"],
+        "best_for": "time-efficient repair routines",
+        "pros_cons": { "pros": ["Leave-in (no rinse)", "4 min activation", "Peptide-based bond repair"], "cons": ["Higher per-ml cost", "Smaller bottle"] },
+        "is_winner": false
+      }
+    ],
+    "tradeoffs": [],
+    "confidence": { "price": { "source_count": 3, "method": "page_scrape", "freshness": "fresh" }, "rating": { "review_count": 31200, "source": "google_shopping", "verified": true }, "specs": { "verified_pct": 0.83, "citation_count": 6 }, "overall": "high" }
+  },
+  "specs": {
+    "products": [
+      {
+        "brand": "Olaplex",
+        "name": "Olaplex No. 3 Hair Perfector",
+        "specs": { "active_ingredient": "Bis-aminopropyl diglycol dimaleate", "format": "Pre-wash treatment", "dwell_time": "10-90 min", "volume": "100ml", "use_frequency": "Weekly", "sulfate_free": "Yes", "color_safe": "Yes" },
+        "spec_advantages": ["Patented bond-rebuilding active"]
+      },
+      {
+        "brand": "K18",
+        "name": "K18 Leave-In Molecular Repair Hair Mask",
+        "specs": { "active_ingredient": "K18 peptide (sh-Oligopeptide-2)", "format": "Leave-in", "dwell_time": "4 min activation", "volume": "50ml", "use_frequency": "Every 4-6 washes", "sulfate_free": "Yes", "color_safe": "Yes" },
+        "spec_advantages": ["Patent-pending peptide, 4-minute leave-in format"]
+      }
+    ],
+    "specs_comparison": [
+      { "field": "active_ingredient", "p0_value": "Bis-aminopropyl diglycol dimaleate", "p1_value": "K18 peptide (sh-Oligopeptide-2)", "winner": 0 },
+      { "field": "format", "p0_value": "Pre-wash treatment", "p1_value": "Leave-in", "winner": 1 },
+      { "field": "dwell_time", "p0_value": "10-90 min", "p1_value": "4 min activation", "winner": 1 },
+      { "field": "volume", "p0_value": "100ml", "p1_value": "50ml", "winner": 0 },
+      { "field": "use_frequency", "p0_value": "Weekly", "p1_value": "Every 4-6 washes", "winner": null },
+      { "field": "sulfate_free", "p0_value": "Yes", "p1_value": "Yes", "winner": null },
+      { "field": "color_safe", "p0_value": "Yes", "p1_value": "Yes", "winner": null }
+    ]
+  },
+  "reviews": {
+    "products": [
+      {
+        "brand": "Olaplex",
+        "name": "Olaplex No. 3 Hair Perfector",
+        "rating": 4.6,
+        "review_count": 31200,
+        "rating_source": { "name": "Google Shopping", "url": "https://shopping.google.com" },
+        "review_summary": {
+          "overall_sentiment": "positive",
+          "consensus": "Strongest evidence for visible bond repair on color-treated hair.",
+          "highlights": [
+            { "point": "Visible strand integrity after 4 weeks", "sentiment": "positive" },
+            { "point": "Long dwell time is a routine commitment", "sentiment": "negative" }
+          ],
+          "review_volume": "high",
+          "agreement_level": "strong"
+        },
+        "retailer_quotes": [
+          { "retailer": "Sephora", "rating": 5, "text": "Saved my bleached hair. Visible difference in 2 weeks." },
+          { "retailer": "Amazon", "rating": 5, "text": "Patented chemistry. Nothing else compares." }
+        ]
+      },
+      {
+        "brand": "K18",
+        "name": "K18 Leave-In Molecular Repair Hair Mask",
+        "rating": 4.5,
+        "review_count": 14800,
+        "rating_source": { "name": "Google Shopping", "url": "https://shopping.google.com" },
+        "review_summary": {
+          "overall_sentiment": "positive",
+          "consensus": "Fast leave-in format with peptide-based repair; smaller bottle.",
+          "highlights": [
+            { "point": "4-minute leave-in routine", "sentiment": "positive" },
+            { "point": "Smaller bottle than competitors", "sentiment": "negative" }
+          ],
+          "review_volume": "moderate",
+          "agreement_level": "strong"
+        },
+        "retailer_quotes": [
+          { "retailer": "Sephora", "rating": 5, "text": "Game-changer. 4 minutes and done." },
+          { "retailer": "Amazon", "rating": 4, "text": "Expensive but works. Wish the bottle was bigger." }
+        ]
+      }
+    ]
+  },
+  "scoring_v2": {
+    "overall_score": { "product_a": 86, "product_b": 82 },
+    "win_margin": 4,
+    "dimensions": [
+      { "key": "price", "label": "Price", "score_a": 82, "score_b": 76, "delta_text": "BHD 3.5 less", "confidence": "high", "is_core": true, "winner": 0 },
+      { "key": "reviews", "label": "Reviews", "score_a": 90, "score_b": 88, "delta_text": "0.1\u2605 higher", "confidence": "high", "is_core": true, "winner": 0 },
+      { "key": "value", "label": "Value", "score_a": 84, "score_b": 80, "delta_text": "Comparable", "confidence": "medium", "is_core": true, "value_match_a": "in_range", "value_match_b": "in_range", "winner": 0 },
+      { "key": "hair_match", "label": "Hair match", "score_a": 88, "score_b": 84, "delta_text": "Universal hair type", "confidence": "medium", "winner": 0 },
+      { "key": "results", "label": "Results", "score_a": 90, "score_b": 84, "delta_text": "Stronger 4-week evidence", "confidence": "high", "winner": 0 },
+      { "key": "ingredient", "label": "Ingredients", "score_a": 86, "score_b": 82, "delta_text": "Patented active", "confidence": "high", "winner": 0 }
+    ],
+    "comparison_quality": "normal",
+    "personalization": { "applied_shifts": [] },
+    "confidence_legs": { "price": "strong", "reviews": "strong", "specs": "acceptable" },
+    "confidence_details": {
+      "price": ["3 retailers checked across Bahrain.", "Pricing fresh within 24 hours."],
+      "reviews": ["31,200 reviews aggregated for Olaplex.", "Source: Google Shopping with verified reviews."],
+      "specs": ["6 of 7 specs verified against citations."]
+    },
+    "factual_verdict": {
+      "line1": "BHD 3.5 less, 0.1\u2605 higher, patented bond-rebuilding active.",
+      "line2": "If a 4-min leave-in saves your routine, the K18 fits."
+    }
+  },
+  "products": [
+    { "brand": "Olaplex", "name": "Olaplex No. 3 Hair Perfector", "variant": "100ml \u00b7 Pre-wash", "image_url": "https://cdn.example.com/olaplex-no3.jpg", "price": { "amount": 14.0, "currency": "BHD" }, "rating": 4.6, "review_count": 31200, "pros": ["Patented active", "Visible results", "Universal"], "cons": ["Long dwell time"] },
+    { "brand": "K18", "name": "K18 Leave-In Molecular Repair Hair Mask", "variant": "50ml \u00b7 Leave-in", "image_url": "https://cdn.example.com/k18-leave-in.jpg", "price": { "amount": 17.5, "currency": "BHD" }, "rating": 4.5, "review_count": 14800, "pros": ["Leave-in", "4 min activation", "Peptide repair"], "cons": ["Higher cost", "Smaller bottle"] }
+  ],
+  "winner_index": 0,
+  "recommendation": "Olaplex No. 3 fits you best",
+  "key_differences": ["Active chemistry", "Format", "Dwell time", "Bottle size"],
+  "metadata": { "query": "Olaplex No 3 vs K18 leave-in", "region": "bahrain", "elapsed_seconds": 9.5, "total_cost": 0.009, "api_calls": 4, "timestamp": "2026-06-08T00:00:00Z" }
+}

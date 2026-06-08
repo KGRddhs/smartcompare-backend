@@ -1,0 +1,154 @@
+{
+  "success": true,
+  "category_used": "other",
+  "overview": {
+    "winner": {
+      "product_index": 1,
+      "name": "Aarke Carbonator 3",
+      "declaration": "Aarke Carbonator 3 fits you best",
+      "reason": "Stainless-steel build and serviceability outlast plastic builds.",
+      "key_tradeoff": "Sodastream Terra costs ~40% less up front.",
+      "margin": 0.08
+    },
+    "products": [
+      {
+        "brand": "Sodastream",
+        "name": "Sodastream Terra",
+        "variant": "Single CO2 \u00b7 1L bottle",
+        "image_url": "https://cdn.example.com/sodastream-terra.jpg",
+        "price": { "amount": 33.0, "currency": "BHD", "retailer": "Carrefour", "source_method": "page_scrape" },
+        "rating": 4.5,
+        "review_count": 12800,
+        "overall_score": 82,
+        "value_badge": "great_value",
+        "value_context": "in_range",
+        "pros": ["Lower entry price", "Wide retail availability", "Quick-connect CO2 cartridges"],
+        "cons": ["Mostly plastic body", "Bottles must be replaced over time"],
+        "best_for": "value-first sparkling-water households",
+        "pros_cons": { "pros": ["Lower entry price", "Wide retail availability", "Quick-connect CO2 cartridges"], "cons": ["Mostly plastic body", "Bottles must be replaced over time"] },
+        "is_winner": false
+      },
+      {
+        "brand": "Aarke",
+        "name": "Aarke Carbonator 3",
+        "variant": "Brushed steel \u00b7 PET bottle",
+        "image_url": "https://cdn.example.com/aarke-carbonator3.jpg",
+        "price": { "amount": 55.0, "currency": "BHD", "retailer": "Aarke", "source_method": "page_scrape" },
+        "rating": 4.6,
+        "review_count": 7400,
+        "overall_score": 87,
+        "value_badge": "fair_price",
+        "value_context": "in_range",
+        "pros": ["Stainless steel body", "Serviceable for years", "Premium kitchen aesthetic"],
+        "cons": ["Higher up-front cost", "Manual carbonation lever"],
+        "best_for": "long-term users prioritising durability",
+        "pros_cons": { "pros": ["Stainless steel body", "Serviceable for years", "Premium kitchen aesthetic"], "cons": ["Higher up-front cost", "Manual carbonation lever"] },
+        "is_winner": true
+      }
+    ],
+    "tradeoffs": [],
+    "confidence": { "price": { "source_count": 3, "method": "page_scrape", "freshness": "fresh" }, "rating": { "review_count": 12800, "source": "google_shopping", "verified": true }, "specs": { "verified_pct": 0.81, "citation_count": 6 }, "overall": "high" }
+  },
+  "specs": {
+    "products": [
+      {
+        "brand": "Sodastream",
+        "name": "Sodastream Terra",
+        "specs": { "body_material": "Plastic + steel accents", "co2_system": "Quick-connect", "bottle_material": "PET (BPA-free)", "weight": "1.1kg", "warranty": "2 years", "made_in": "China" },
+        "spec_advantages": ["Quick-connect CO2 saves a step"]
+      },
+      {
+        "brand": "Aarke",
+        "name": "Aarke Carbonator 3",
+        "specs": { "body_material": "Stainless steel", "co2_system": "Threaded standard cylinder", "bottle_material": "PET (BPA-free)", "weight": "1.4kg", "warranty": "3 years", "made_in": "Italy" },
+        "spec_advantages": ["Full stainless steel chassis"]
+      }
+    ],
+    "specs_comparison": [
+      { "field": "body_material", "p0_value": "Plastic + steel accents", "p1_value": "Stainless steel", "winner": 1 },
+      { "field": "co2_system", "p0_value": "Quick-connect", "p1_value": "Threaded standard cylinder", "winner": 0 },
+      { "field": "bottle_material", "p0_value": "PET (BPA-free)", "p1_value": "PET (BPA-free)", "winner": null },
+      { "field": "weight", "p0_value": "1.1kg", "p1_value": "1.4kg", "winner": null },
+      { "field": "warranty", "p0_value": "2 years", "p1_value": "3 years", "winner": 1 },
+      { "field": "made_in", "p0_value": "China", "p1_value": "Italy", "winner": null }
+    ]
+  },
+  "reviews": {
+    "products": [
+      {
+        "brand": "Sodastream",
+        "name": "Sodastream Terra",
+        "rating": 4.5,
+        "review_count": 12800,
+        "rating_source": { "name": "Google Shopping", "url": "https://shopping.google.com" },
+        "review_summary": {
+          "overall_sentiment": "positive",
+          "consensus": "Reliable budget pick; plastic feel and bottle wear are the trade-offs.",
+          "highlights": [
+            { "point": "Quick-connect CO2 is easy", "sentiment": "positive" },
+            { "point": "Feels plasticky next to premium units", "sentiment": "negative" }
+          ],
+          "review_volume": "high",
+          "agreement_level": "strong"
+        },
+        "retailer_quotes": [
+          { "retailer": "Carrefour", "rating": 5, "text": "Works as advertised. Easy CO2 swaps." },
+          { "retailer": "Amazon", "rating": 4, "text": "Solid value but the plastic finish feels cheap." }
+        ]
+      },
+      {
+        "brand": "Aarke",
+        "name": "Aarke Carbonator 3",
+        "rating": 4.6,
+        "review_count": 7400,
+        "rating_source": { "name": "Google Shopping", "url": "https://shopping.google.com" },
+        "review_summary": {
+          "overall_sentiment": "positive",
+          "consensus": "Premium build pays back if you carbonate daily for years.",
+          "highlights": [
+            { "point": "Looks like kitchen jewelry", "sentiment": "positive" },
+            { "point": "Manual lever takes practice", "sentiment": "negative" }
+          ],
+          "review_volume": "moderate",
+          "agreement_level": "strong"
+        },
+        "retailer_quotes": [
+          { "retailer": "Aarke", "rating": 5, "text": "Built to last. Best-looking unit in our kitchen." },
+          { "retailer": "Amazon", "rating": 4, "text": "Heavier than expected but feels solid." }
+        ]
+      }
+    ]
+  },
+  "scoring_v2": {
+    "overall_score": { "product_a": 82, "product_b": 87 },
+    "win_margin": 5,
+    "dimensions": [
+      { "key": "price", "label": "Price", "score_a": 90, "score_b": 78, "delta_text": "BHD 22 less", "confidence": "high", "is_core": true, "winner": 0 },
+      { "key": "reviews", "label": "Reviews", "score_a": 88, "score_b": 90, "delta_text": "Comparable", "confidence": "high", "is_core": true, "winner": 1 },
+      { "key": "value", "label": "Value", "score_a": 86, "score_b": 84, "delta_text": "Lower up-front cost", "confidence": "medium", "is_core": true, "value_match_a": "in_range", "value_match_b": "in_range", "winner": 0 },
+      { "key": "function", "label": "Function", "score_a": 84, "score_b": 86, "delta_text": "Both carbonate effectively", "confidence": "medium", "winner": 1 },
+      { "key": "build", "label": "Build", "score_a": 78, "score_b": 92, "delta_text": "Stainless steel chassis", "confidence": "high", "winner": 1 },
+      { "key": "reliability", "label": "Reliability", "score_a": 80, "score_b": 88, "delta_text": "3-year warranty", "confidence": "medium", "winner": 1 }
+    ],
+    "comparison_quality": "normal",
+    "personalization": { "applied_shifts": [] },
+    "confidence_legs": { "price": "strong", "reviews": "strong", "specs": "acceptable" },
+    "confidence_details": {
+      "price": ["3 retailers checked across Bahrain.", "Pricing fresh within 24 hours."],
+      "reviews": ["12,800 reviews aggregated for Sodastream.", "Source: Google Shopping with verified reviews."],
+      "specs": ["6 of 6 specs verified against brand spec pages."]
+    },
+    "factual_verdict": {
+      "line1": "Stainless steel chassis, 1-year longer warranty, 0.1\u2605 higher.",
+      "line2": "If lower up-front cost matters most, the Terra fits."
+    }
+  },
+  "products": [
+    { "brand": "Sodastream", "name": "Sodastream Terra", "variant": "Single CO2 \u00b7 1L bottle", "image_url": "https://cdn.example.com/sodastream-terra.jpg", "price": { "amount": 33.0, "currency": "BHD" }, "rating": 4.5, "review_count": 12800, "pros": ["Lower price", "Wide availability", "Quick-connect CO2"], "cons": ["Plastic body", "Bottle replacement"] },
+    { "brand": "Aarke", "name": "Aarke Carbonator 3", "variant": "Brushed steel \u00b7 PET bottle", "image_url": "https://cdn.example.com/aarke-carbonator3.jpg", "price": { "amount": 55.0, "currency": "BHD" }, "rating": 4.6, "review_count": 7400, "pros": ["Stainless steel", "Serviceable", "Premium aesthetic"], "cons": ["Higher cost", "Manual lever"] }
+  ],
+  "winner_index": 1,
+  "recommendation": "Aarke Carbonator 3 fits you best",
+  "key_differences": ["Body material", "CO2 system", "Warranty"],
+  "metadata": { "query": "Sodastream Terra vs Aarke Carbonator 3", "region": "bahrain", "elapsed_seconds": 9.4, "total_cost": 0.009, "api_calls": 4, "timestamp": "2026-06-08T00:00:00Z" }
+}
