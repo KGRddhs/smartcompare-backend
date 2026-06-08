@@ -2123,9 +2123,18 @@ def _compose_delta_text(
             if dose_a and dose_b and dose_a != dose_b:
                 hi = max(dose_a, dose_b)
                 lo = min(dose_a, dose_b)
+                # L4 cross-QA nit (2026-06-08): the previous `×` framing
+                # ("5000× dose vs 1000×") read as a multiplier of the raw
+                # IU dose, which is wrong. Render the unit when we can
+                # detect it (IU / mg / mcg / g); else fall back to a
+                # multiplier-only phrasing ("5× higher dose") that's
+                # unambiguous.
+                unit = _extract_dose_unit(ai_a) or _extract_dose_unit(ai_b)
+                if unit:
+                    return f"{hi:g} {unit} vs {lo:g} {unit}"
                 multiplier = hi / lo if lo > 0 else 0
                 if multiplier >= 1.5:
-                    return f"{hi:g}× dose vs {lo:g}×"
+                    return f"{multiplier:.1f}× higher dose"
                 return f"{hi:g} vs {lo:g} per serving"
         return f"+{margin:.0f}pt dosage"
     if dim_key == "efficacy":
@@ -2168,6 +2177,20 @@ def _extract_dose(value) -> float | None:
         return float(match.group(1).replace(",", "."))
     match = re.search(r"(\d+(?:[\.,]\d+)?)", value)
     return float(match.group(1).replace(",", ".")) if match else None
+
+
+def _extract_dose_unit(value) -> str | None:
+    """L4 cross-QA fix — pair with `_extract_dose` to render
+    user-friendly delta_text. Returns the unit string with canonical
+    casing (`'IU'`, `'mg'`, `'mcg'`, `'g'`) or None on no match."""
+    if not isinstance(value, str):
+        return None
+    match = re.search(r"\d+(?:[\.,]\d+)?\s*(IU|mg|mcg|g)\b", value, re.IGNORECASE)
+    if not match:
+        return None
+    raw = match.group(1)
+    # Canonical casing: IU upper, mg/mcg/g lower
+    return "IU" if raw.upper() == "IU" else raw.lower()
 
 
 def build_dimensions_v2(

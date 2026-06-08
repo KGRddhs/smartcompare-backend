@@ -129,17 +129,60 @@ def test_compose_delta_text_fragrance_longevity_hours():
     assert "10" in result or "6" in result
 
 
-def test_compose_delta_text_supplement_dosage_multiplier():
+def test_compose_delta_text_supplement_dosage_renders_unit():
+    """L4 cross-QA fix (2026-06-08): when the IU/mg/mcg unit is detectable,
+    delta_text renders `5000 IU vs 1000 IU`, NOT the misleading `5000×
+    dose vs 1000×` multiplier-style framing."""
     from app.services.scoring_service import _compose_delta_text
 
     products = [
         {"specs": {"active_ingredient": "Vitamin D3 1000 IU"}},
         {"specs": {"active_ingredient": "Vitamin D3 5000 IU"}},
     ]
-    # Use scores that aren't MISSING_SCORE sentinel
     result = _compose_delta_text("dosage", products, 60, 88)
-    # Either multiplier form (5×) or dose-per-serving form
-    assert any(token in result for token in ("×", "x", "per serving", "5000", "1000"))
+    assert "IU" in result
+    assert "5000" in result
+    assert "1000" in result
+    # Specifically must NOT use the old `5000× dose vs 1000×` framing
+    assert "5000×" not in result
+    assert "1000×" not in result
+
+
+def test_compose_delta_text_supplement_dosage_renders_mg():
+    from app.services.scoring_service import _compose_delta_text
+
+    products = [
+        {"specs": {"active_ingredient": "Magnesium 200 mg"}},
+        {"specs": {"active_ingredient": "Magnesium 400 mg"}},
+    ]
+    result = _compose_delta_text("dosage", products, 60, 88)
+    assert "mg" in result
+    assert "400" in result
+    assert "200" in result
+
+
+def test_compose_delta_text_supplement_dosage_no_unit_falls_back_to_multiplier():
+    """When no IU/mg/mcg unit is detectable (e.g. 'Probiotic 50 billion'),
+    fall back to unambiguous `Nx higher dose` framing."""
+    from app.services.scoring_service import _compose_delta_text
+
+    products = [
+        {"specs": {"active_ingredient": "Probiotic 50 billion"}},
+        {"specs": {"active_ingredient": "Probiotic 100 billion"}},
+    ]
+    result = _compose_delta_text("dosage", products, 60, 88)
+    assert "higher dose" in result or "per serving" in result
+
+
+def test_extract_dose_unit_canonical_casing():
+    """IU canonical upper, mg/mcg/g canonical lower."""
+    from app.services.scoring_service import _extract_dose_unit
+
+    assert _extract_dose_unit("Vitamin D3 1000 iu") == "IU"
+    assert _extract_dose_unit("Vitamin D3 1000 IU") == "IU"
+    assert _extract_dose_unit("Magnesium 400 MG") == "mg"
+    assert _extract_dose_unit("Folate 400 mcg") == "mcg"
+    assert _extract_dose_unit("no unit here") is None
 
 
 # ---------------------------------------------------------------------------
