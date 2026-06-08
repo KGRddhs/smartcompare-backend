@@ -390,14 +390,38 @@ def _build_specs_prompt(brand: str, name: str, variant: str, category: str, sear
         + dynamic CATEGORY/SCHEMA section
         + optional drug_context.
     The static prefix engages OpenAI gpt-4o-mini auto-prompt-caching.
+
+    L2.12 — when `detect_product_type` resolves a specific subtype
+    (e.g. ``electronics.phone`` / ``fragrances.niche`` / ``supplements.protein``)
+    the prompt uses the PRODUCT_TYPE_SCHEMAS field list for that subtype
+    instead of the broad CATEGORY_SPEC_SCHEMAS list. Schemas fall back to
+    the category-level list when subtype detection returns ``"<cat>.default"``
+    (unknown category) so existing categories not yet in PRODUCT_TYPE_SCHEMAS
+    keep behaving as before.
     """
     s_brand = sanitize_prompt_input(brand)
     s_name = sanitize_prompt_input(name)
     s_variant = sanitize_prompt_input(variant)
     variant_note = f" ({s_variant})" if s_variant else ""
 
-    schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
-    fields = CATEGORY_SPEC_SCHEMAS[schema_key]
+    # L2.12 — try product-type-specific schema first.
+    try:
+        from app.services.product_type_router import (
+            detect_product_type,
+            get_schema_for_type,
+        )
+
+        full_name_for_detection = f"{s_brand} {s_name}".strip()
+        type_key = detect_product_type(full_name_for_detection, category)
+        type_fields = get_schema_for_type(type_key)
+    except Exception:
+        type_fields = []
+
+    if type_fields:
+        fields = type_fields
+    else:
+        schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
+        fields = CATEGORY_SPEC_SCHEMAS[schema_key]
     fields_json = ",\n    ".join(f'"{f}": null' for f in fields)
 
     # D2 Intervention 2: static prefix FIRST (cached by OpenAI auto-caching
