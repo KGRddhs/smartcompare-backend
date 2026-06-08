@@ -2112,6 +2112,8 @@ def _compose_delta_text(
         return f"+{margin:.0f}pt versatility"
     if dim_key == "presentation":
         return f"+{margin:.0f}pt presentation"
+    if dim_key == "wear_value":
+        return f"+{margin:.0f}pt value per wear"
 
     # --- Supplements ----------------------------------------------------
     if dim_key == "dosage":
@@ -2151,8 +2153,65 @@ def _compose_delta_text(
     if dim_key == "trust":
         return f"+{margin:.0f}pt brand trust"
 
-    # --- Skincare / makeup / haircare / fashion / grocery (generic) -----
+    # --- Skincare / makeup / haircare / fashion / grocery / other ------
+    # Wave-2 idle-time fix (2026-06-08): the previous bare "+28pt" fallback
+    # rendered identically across 28 dim×category cells, making the design
+    # cards look like stubbed copy. Append the dim label so the user sees
+    # "+28pt nutrition", "+28pt craft", "+28pt actives", etc.
+    generic_label = _DIM_LABEL_FALLBACKS.get(dim_key)
+    if generic_label:
+        return f"+{margin:.0f}pt {generic_label}"
     return f"+{margin:.0f}pt"
+
+
+# Wave-2 fallback labels for the dim keys whose `_compose_delta_text`
+# branches above don't have category-specific copy. Covers the 28 cells
+# across grocery (5) / makeup (5) / skincare (6) / haircare (6) /
+# fashion (6) / other (6). Ordering aligns with CATEGORY_DIMENSIONS.
+_DIM_LABEL_FALLBACKS = {
+    # --- electronics (build_quality fall-through when no warranty data) --
+    "build_quality": "build quality",
+    # --- grocery --------------------------------------------------------
+    "nutrition": "nutrition",
+    "ingredient": "ingredients",
+    "taste": "taste",
+    "dietary": "dietary fit",
+    "availability": "availability",
+    # --- makeup ---------------------------------------------------------
+    "shade": "shade range",
+    "skin_compat": "skin compatibility",
+    "finish": "finish",
+    "ingredient_safety": "ingredient safety",
+    "perf_value": "performance value",
+    # --- skincare -------------------------------------------------------
+    "actives": "active ingredients",
+    "evidence": "evidence",
+    # skin_compat already covered above (shared with makeup)
+    "formulation": "formulation",
+    "sensory": "sensory",
+    "results_value": "results value",
+    # --- haircare -------------------------------------------------------
+    "hair_match": "hair match",
+    "results": "results",
+    # ingredient already covered above (shared with grocery)
+    "scent": "scent",
+    "multi_value": "multi-use value",
+    "scalp": "scalp",
+    # --- fashion --------------------------------------------------------
+    "craft": "craftsmanship",
+    "fit": "fit",
+    "style": "style",
+    "durability": "durability",
+    "heritage": "heritage",
+    "cpw": "cost per wear",
+    # --- other ----------------------------------------------------------
+    "function": "function",
+    "build": "build",
+    "review": "reviews",
+    # `value` is reserved by the core _dim_value builder — skip
+    "reliability": "reliability",
+    "feature_match": "feature match",
+}
 
 
 def _extract_hours(value) -> float | None:
