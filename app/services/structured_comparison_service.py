@@ -497,6 +497,14 @@ from app.services.rating_service import (
     RATING_TIER_2,
     RATING_TIER_3,
 )
+# L2.5 — confidence-driven escalation replaces the legacy is_luxury_brand()
+# gate. The predicate fires the Tier 1.5 page-scrape cascade for ANY category
+# (electronics, supplements, fragrances, ...) when Tier 1 Serper data is
+# low-confidence — not just for luxury brands.
+from app.services.confidence_service import (
+    compute_price_confidence,
+    should_escalate,
+)
 from app.services.review_service import (
     clean_review_content,
     clean_review_citations,
@@ -707,6 +715,27 @@ async def _scrapedo_scraper(
     }
 
 
+def _should_escalate_price_scrape(
+    sources: List[Dict[str, Any]],
+    training_estimate: Optional[float] = None,
+    brand: Optional[str] = None,
+) -> bool:
+    """L2.5 — confidence-driven Tier 1.5 escalation gate.
+
+    Replaces the legacy ``is_luxury_brand()`` gate. Now fires for any
+    category when Tier 1 Serper data is weak (single source from a low-score
+    retailer, sources disagreeing, or a 40%+ deviation from the training
+    estimate). ``brand`` is accepted for legacy compat but ignored —
+    confidence metrics drive the decision.
+    """
+    if not sources:
+        return True
+    confidence = compute_price_confidence(
+        sources, training_estimate=training_estimate
+    )
+    return should_escalate(confidence)
+
+
 def _build_luxury_scrapers(
     *,
     candidate_urls: List[Tuple[str, str]],
@@ -755,6 +784,12 @@ def _build_luxury_scrapers(
             scrapers.append(_sd_with_args)
 
     return scrapers
+
+
+# L2.5 forward-compat alias — new name reflects the post-rename semantics
+# (escalation, not luxury-only). Existing tests monkeypatch the legacy name
+# so it stays the canonical binding callers should NOT bypass.
+_build_escalation_scrapers = _build_luxury_scrapers
 
 
 class StructuredComparisonService:
@@ -2232,17 +2267,34 @@ class StructuredComparisonService:
                 price["_cached"] = False
                 return price
 
-        # --- Tier 1.5: Page scraping cascade (luxury brands only) ---
+        # --- Tier 1.5: Page scraping cascade (confidence-driven, all categories) ---
+        # L2.5 — replaced the legacy is_luxury_brand() gate with
+        # _should_escalate_price_scrape(), which fires for any category
+        # whenever Tier 1 confidence is low (no source, single weak source,
+        # disagreement, or >40% deviation from training estimate). Tom Ford
+        # still escalates; Xiaomi 14 with a bogus 20-BHD Tier-1 result now
+        # also escalates instead of being blocked by the luxury gate.
         # Bundle E § Decision 8 — scatter-gather refactor. The 3 Serper
-        # discovery queries (official → authorized → GCC retailers) now run
-        # in PARALLEL via asyncio.gather (D2 follow-up — saves ~2s on every
-        # luxury query). Priority ordering is preserved by processing the
-        # results in [official, authorized, GCC] sequence after the gather.
-        # The per-URL page-scrape attempts are then RACED via
-        # fan_out_price_lookup, which is bounded by asyncio.wait_for(15s)
-        # so Cloudflare-protected sites can't blow the per-product wall
-        # budget (e.g. ssense.com via Scrape.do typically 20-25s).
-        if not price and is_luxury_brand(full_name) and ENABLE_PAGE_SCRAPE:
+        # discovery queries (official → authorized → GCC retailers) run in
+        # PARALLEL via asyncio.gather; the per-URL page-scrape attempts are
+        # then RACED via fan_out_price_lookup, bounded by asyncio.wait_for(15s).
+        tier1_sources: List[Dict[str, Any]] = []
+        if price and price.get("amount"):
+            tier1_sources.append({
+                "src": price.get("source_method") or "serper_shopping",
+                "amount": float(price["amount"]),
+                "retailer_score": float(price.get("retailer_score") or 0.0),
+            })
+
+        if ENABLE_PAGE_SCRAPE and _should_escalate_price_scrape(
+            tier1_sources,
+            training_estimate=(
+                float(tier3_estimate["amount"])
+                if tier3_estimate and tier3_estimate.get("amount")
+                else None
+            ),
+            brand=brand,
+        ):
             scraping_mode = os.environ.get("SCRAPING_MODE", "hard")
             candidate_urls: List[Tuple[str, str]] = []
 
