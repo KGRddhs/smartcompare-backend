@@ -297,6 +297,23 @@ Wired to Sentry tag (per-source firing counts) + `/admin/source-trace` panel. "D
 
 This is a cheap pre-investment test that prevents building a $0.005/comparison feature for marginal lift.
 
+### 10.1 Sprint A status (2026-06-08)
+
+L4.4 authored the procedure + helper script + structured recording file
+in this Sprint:
+
+- Procedure doc: `docs/plans/2026-06-08-A-instagram-feasibility-test.md`
+- Helper script: `scripts/instagram_feasibility_test.py` (init / record / summary subcommands)
+- Recording file: `data/instagram_feasibility_findings.json` (5 stub queries bootstrapped)
+- Tests: `tests/test_instagram_feasibility.py` (13 green — schema + decision-rule)
+
+**Status:** PENDING manual execution. Ahmed runs the 5 × ~12 min walk
+(Steps 1–5 per query) OR defers to (B). The script's `summary` subcommand
+emits the green-light / cut verdict once all 5 queries are scored.
+
+Until executed, B.4 backlog carries a **decision-pending** marker against
+Apify integration; cost cap + circuit breaker spec is unchanged.
+
 ---
 
 ## 11. Team execution contract (binding for both A + B)
