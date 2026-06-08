@@ -87,6 +87,118 @@ def test_extract_multiple_currencies():
 
 
 # ---------------------------------------------------------------------------
+# Realistic retailer snippet shapes — captured patterns from Lulu / Sharaf / Carrefour
+# ---------------------------------------------------------------------------
+
+def test_extract_bhd_three_decimals():
+    """BHD convention uses 3 decimal places (mils): 24.500 BHD = 24.5 BHD."""
+    out = mod._extract_prices_from_text("Price: BHD 24.500 | Lulu Bahrain")
+    assert any(abs(v - 24.5) < 0.01 for v, _ in out)
+
+
+def test_extract_bhd_no_space_after_currency():
+    """Some snippets concatenate currency + number without whitespace."""
+    out = mod._extract_prices_from_text("Now BHD12.450 only")
+    assert any(abs(v - 12.45) < 0.01 for v, _ in out)
+
+
+def test_extract_bd_no_space_short_form():
+    out = mod._extract_prices_from_text("BD7.500 special offer")
+    assert any(abs(v - 7.5) < 0.01 for v, _ in out)
+
+
+def test_extract_bhd_integer_no_decimal():
+    """Some retailers omit decimals when round (e.g. BHD 24)."""
+    out = mod._extract_prices_from_text("Sale BHD 24 instead of BHD 30")
+    bhd_values = [v for v, _ in out]
+    assert any(abs(v - 24) < 0.01 for v in bhd_values)
+
+
+def test_extract_bhd_range_format():
+    """Lulu/Sharaf often list price ranges (multi-variant)."""
+    out = mod._extract_prices_from_text("From BHD 7.500 - BHD 24.500")
+    bhd_values = [v for v, _ in out]
+    assert any(abs(v - 7.5) < 0.01 for v in bhd_values)
+    assert any(abs(v - 24.5) < 0.01 for v in bhd_values)
+
+
+def test_extract_lulu_realistic_snippet():
+    """Captured pattern: 'Lulu Hypermarket Online Shopping in Bahrain ... BHD 24.500'"""
+    snippet = "Lulu Hypermarket Online Shopping in Bahrain. NOW Foods Vitamin D3 5000 IU 240 Softgels BHD 24.500 ..."
+    out = mod._extract_prices_from_text(snippet)
+    assert any(abs(v - 24.5) < 0.01 for v, _ in out)
+
+
+def test_extract_sharaf_realistic_snippet():
+    """Sharaf DG often uses 'BD' short form."""
+    snippet = "Apple iPhone 15 128GB Pink. Was BD 358.000 - Now BD 299.500 | Sharaf DG"
+    out = mod._extract_prices_from_text(snippet)
+    bhd_values = [v for v, _ in out]
+    assert any(abs(v - 358) < 0.5 for v in bhd_values)
+    assert any(abs(v - 299.5) < 0.5 for v in bhd_values)
+
+
+def test_extract_iherb_usd_pattern():
+    """iHerb snippet: '$8.99 (Save 24%) | iHerb'"""
+    snippet = "NOW Foods Vitamin D3 5000 IU 240 Softgels. Only $8.99 (Save 24%) at iHerb"
+    out = mod._extract_prices_from_text(snippet)
+    # 8.99 USD * 0.377 ≈ 3.39 BHD
+    bhd_values = [v for v, _ in out]
+    assert any(abs(v - 3.39) < 0.1 for v in bhd_values)
+
+
+def test_extract_skips_random_year_numbers():
+    """Numbers in 'iPhone 15' or 'Apple Watch Series 9' must NOT match as prices.
+    The regex requires an adjacent currency token, so bare numbers don't match."""
+    out = mod._extract_prices_from_text("Apple iPhone 15 Pro Max 256GB review video uploaded 2024")
+    assert out == []
+
+
+def test_extract_aed_with_dirhams_word():
+    out = mod._extract_prices_from_text("Available for AED 1099 in Dubai")
+    bhd_values = [v for v, _ in out]
+    # 1099 AED * 0.103 ≈ 113 BHD
+    assert any(abs(v - 113) < 2 for v in bhd_values)
+
+
+# ---------------------------------------------------------------------------
+# _normalise_snippet — HTML entity + whitespace handling
+# ---------------------------------------------------------------------------
+
+def test_normalise_snippet_unescapes_html_entities():
+    """Serper snippets occasionally have &nbsp; / &amp; / non-breaking space."""
+    result = mod._normalise_snippet("Price&nbsp;BHD&nbsp;24.500")
+    assert result == "Price BHD 24.500"
+
+
+def test_normalise_extracted_through_full_pipeline():
+    """End-to-end: HTML-entity-wrapped snippet → extracted BHD price."""
+    out = mod._extract_prices_from_text("Price&nbsp;BHD&nbsp;24.500")
+    assert any(abs(v - 24.5) < 0.01 for v, _ in out)
+
+
+def test_normalise_snippet_unescapes_amp():
+    assert "&" in mod._normalise_snippet("Crew &amp; Co. Bahrain")
+
+
+def test_normalise_snippet_collapses_whitespace():
+    """Multiple spaces / tabs / newlines → single space."""
+    assert mod._normalise_snippet("foo  \t\n  bar") == "foo bar"
+
+
+def test_normalise_snippet_handles_nbsp_unicode():
+    """\u00a0 (non-breaking space) → ASCII space."""
+    result = mod._normalise_snippet("Price\u00a0BHD\u00a024.500")
+    assert "\u00a0" not in result
+    assert result == "Price BHD 24.500"
+
+
+def test_normalise_snippet_empty_input():
+    assert mod._normalise_snippet("") == ""
+    assert mod._normalise_snippet(None) == ""
+
+
+# ---------------------------------------------------------------------------
 # Range inference
 # ---------------------------------------------------------------------------
 

@@ -92,10 +92,23 @@ EXTRA_RETAILERS_BY_CAT: Dict[str, List[Tuple[str, str]]] = {
 
 # Currency extraction patterns. Bahrain dinars (BHD) are most common in
 # Bahrain retail snippets; iHerb shows USD only.
-_BHD_RE = re.compile(r"(?:BHD|BD|\.د\.ب|د\.ب)\s*([0-9]+(?:[\.,][0-9]+)?)|([0-9]+(?:[\.,][0-9]+)?)\s*(?:BHD|BD)", re.IGNORECASE)
-_USD_RE = re.compile(r"(?:USD|\$)\s*([0-9]+(?:[\.,][0-9]+)?)|([0-9]+(?:[\.,][0-9]+)?)\s*(?:USD)", re.IGNORECASE)
-_AED_RE = re.compile(r"(?:AED|Dhs?)\s*([0-9]+(?:[\.,][0-9]+)?)", re.IGNORECASE)
-_SAR_RE = re.compile(r"(?:SAR|SR)\s*([0-9]+(?:[\.,][0-9]+)?)", re.IGNORECASE)
+#
+# v2 (Task A debug round): relaxed whitespace + 3-decimal BHD support +
+# multi-digit (4 figure prices like fragrances/electronics) + non-space
+# adjacency (BHD12.345 with no gap). The `\b` boundary keeps random
+# numbers in "iPhone 16" from matching as a price. Number capture allows
+# 1-5 digit integer + optional 1-3 decimal places (BHD mils convention).
+_NUM_GROUP = r"([0-9]{1,5}(?:[.,][0-9]{1,3})?)"
+_BHD_RE = re.compile(
+    rf"(?:BHD|BD|\.د\.ب|د\.ب)\s*{_NUM_GROUP}|{_NUM_GROUP}\s*(?:BHD|BD)\b",
+    re.IGNORECASE,
+)
+_USD_RE = re.compile(
+    rf"(?:USD|\$)\s*{_NUM_GROUP}|{_NUM_GROUP}\s*(?:USD)\b",
+    re.IGNORECASE,
+)
+_AED_RE = re.compile(rf"(?:AED|Dhs?)\s*{_NUM_GROUP}|{_NUM_GROUP}\s*(?:AED|Dhs?)\b", re.IGNORECASE)
+_SAR_RE = re.compile(rf"(?:SAR|SR)\s*{_NUM_GROUP}|{_NUM_GROUP}\s*(?:SAR|SR)\b", re.IGNORECASE)
 
 # Conversion to BHD (rough static — actual conversion in production uses
 # exchange_rate_service). These are conservative for seed work.
@@ -116,10 +129,25 @@ def _to_bhd(value: float, currency: str) -> float:
     return value
 
 
+def _normalise_snippet(text: str) -> str:
+    """Strip HTML entities + collapse whitespace so the regex set sees a
+    predictable single-line input. Serper organic[].snippet occasionally
+    contains `&nbsp;`, `&amp;`, and stray `\u00a0`s that break adjacency
+    matches like 'BHD 12.450'."""
+    import html as _html
+    if not text:
+        return ""
+    out = _html.unescape(text)
+    out = out.replace("\u00a0", " ")  # non-breaking space → ASCII space
+    out = re.sub(r"\s+", " ", out)
+    return out.strip()
+
+
 def _extract_prices_from_text(text: str) -> List[Tuple[float, str]]:
     """Return list of (value_in_BHD, source_currency) tuples for any
     prices found in `text`. Filters out implausibly large values
     (>10000) and trivial values (<0.05)."""
+    text = _normalise_snippet(text)
     out: List[Tuple[float, str]] = []
     for pattern, cur in ((_BHD_RE, "BHD"), (_USD_RE, "USD"), (_AED_RE, "AED"), (_SAR_RE, "SAR")):
         for m in pattern.finditer(text):
@@ -272,6 +300,62 @@ async def research_query(q: Dict[str, Any], max_retailers: Optional[int] = None)
     return enriched
 
 
+async def cmd_debug(args: argparse.Namespace) -> int:
+    """Dump raw Serper organic[] for the first N queries so a human can
+    eyeball what shape the snippets actually have. No extraction, no
+    write — purely diagnostic. Burns Serper credits proportional to
+    --limit × --max-retailers × 2 products."""
+    _require_serper_key()
+
+    gold_path = Path(args.gold)
+    gold = json.loads(gold_path.read_text(encoding="utf-8"))
+    queries = gold["queries"]
+    if args.category:
+        queries = [q for q in queries if q["category"] == args.category]
+    limit = args.limit or 3
+    queries = queries[:limit]
+
+    print(f"# DEBUG dump: {len(queries)} queries x ~{(args.max_retailers or 3)*2} retailer searches")
+    print(f"# WARN: this burns ~{len(queries)*(args.max_retailers or 3)*2} Serper calls")
+    print("")
+
+    for q in queries:
+        p0_name, p1_name = _extract_two_products(q["query"])
+        cat = q.get("category", "other")
+        retailers = list(RETAILER_QUERIES) + EXTRA_RETAILERS_BY_CAT.get(cat, [])
+        if args.max_retailers:
+            retailers = retailers[: args.max_retailers]
+
+        for product_name in (p0_name, p1_name):
+            print(f"=== QUERY {q['id']:14} :: {product_name!r} ===")
+            for retailer, qtmpl in retailers:
+                serper_q = qtmpl.format(product=product_name)
+                try:
+                    result = await search_web(serper_q, num_results=5, country="bh")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  [{retailer}] ERROR: {exc}")
+                    continue
+                organic = result.get("organic") or []
+                print(f"  [{retailer:14}] q={serper_q!r}  n_results={len(organic)}")
+                for i, hit in enumerate(organic[:3]):
+                    title = (hit.get("title") or "")[:120]
+                    snippet_raw = (hit.get("snippet") or "")[:200]
+                    snippet_norm = _normalise_snippet(snippet_raw)[:200]
+                    url = (hit.get("link") or "")[:100]
+                    extracted = _extract_prices_from_text(snippet_norm + " " + title)
+                    print(f"    hit[{i}] url={url}")
+                    print(f"      title:    {title!r}")
+                    print(f"      snippet:  {snippet_raw!r}")
+                    if snippet_norm != snippet_raw:
+                        print(f"      norm:     {snippet_norm!r}")
+                    if extracted:
+                        print(f"      EXTRACTED: {extracted}")
+                    else:
+                        print(f"      EXTRACTED: (none)")
+            print("")
+    return 0
+
+
 async def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gold", default=str(DEFAULT_GOLD))
@@ -280,8 +364,12 @@ async def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--category", default=None)
     parser.add_argument("--max-retailers", type=int, default=None, help="Cap retailer queries per product (budget control)")
     parser.add_argument("--dry-run", action="store_true", help="Don't write — print summary only")
+    parser.add_argument("--debug", action="store_true", help="Dump raw Serper organic[] for N=--limit queries, no extraction, no write")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.debug:
+        return await cmd_debug(args)
 
     # Hard-fail when key missing — otherwise destructive write would fire.
     if not args.dry_run:
