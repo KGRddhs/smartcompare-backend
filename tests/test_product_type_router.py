@@ -1,0 +1,327 @@
+"""L2.3 — Tests for `product_type_router.py` (25+ product-type schemas).
+
+Maps product name + category -> "<category>.<sub_type>" key with a tailored
+spec schema. Keyword-based detection; GPT fallback for unknowns added in L2.4.
+"""
+
+import pytest
+
+from app.services.product_type_router import (
+    PRODUCT_TYPE_KEYWORDS,
+    PRODUCT_TYPE_SCHEMAS,
+    detect_product_type,
+    get_schema_for_type,
+)
+
+
+# ---------- electronics ----------
+
+def test_detect_phone_from_iphone():
+    assert detect_product_type("iPhone 15 Pro", "electronics") == "electronics.phone"
+
+
+def test_detect_phone_from_galaxy_s():
+    assert detect_product_type("Samsung Galaxy S24", "electronics") == "electronics.phone"
+
+
+def test_detect_tv_from_lg_oled():
+    assert detect_product_type("LG OLED55C3", "electronics") == "electronics.tv"
+
+
+def test_detect_tv_from_qled():
+    assert detect_product_type("Samsung 65 QLED 4K TV", "electronics") == "electronics.tv"
+
+
+def test_detect_laptop_from_macbook():
+    assert detect_product_type("MacBook Pro 14", "electronics") == "electronics.laptop"
+
+
+def test_detect_tablet_from_ipad():
+    assert detect_product_type("iPad Air M2", "electronics") == "electronics.tablet"
+
+
+def test_detect_smartwatch_from_apple_watch():
+    assert (
+        detect_product_type("Apple Watch Series 9", "electronics")
+        == "electronics.smartwatch"
+    )
+
+
+def test_detect_headphones_from_airpods():
+    assert (
+        detect_product_type("AirPods Pro 2", "electronics") == "electronics.headphones"
+    )
+
+
+def test_detect_speaker_from_sonos():
+    assert detect_product_type("Sonos One SL", "electronics") == "electronics.speaker"
+
+
+def test_detect_washer():
+    assert (
+        detect_product_type("Samsung WW90T504DAB Washing Machine", "electronics")
+        == "electronics.washer"
+    )
+
+
+def test_detect_ac():
+    assert detect_product_type("Carrier 1.5T Split AC", "electronics") == "electronics.ac"
+
+
+def test_detect_refrigerator():
+    assert (
+        detect_product_type("LG Side by Side Refrigerator", "electronics")
+        == "electronics.refrigerator"
+    )
+
+
+def test_detect_vacuum_from_dyson():
+    assert detect_product_type("Dyson V15 Detect", "electronics") == "electronics.vacuum"
+
+
+def test_detect_gaming_console_from_ps5():
+    assert detect_product_type("PS5 Slim Console", "electronics") == "electronics.gaming_console"
+
+
+# ---------- supplements ----------
+
+def test_detect_vitamin_d():
+    assert detect_product_type("Vitamin D 5000 IU", "supplements") == "supplements.vitamin"
+
+
+def test_detect_protein_supplement():
+    assert (
+        detect_product_type("Optimum Nutrition Gold Standard Whey Protein", "supplements")
+        == "supplements.protein"
+    )
+
+
+def test_detect_fish_oil():
+    assert detect_product_type("Nordic Naturals Omega 3", "supplements") == "supplements.fish_oil"
+
+
+def test_detect_preworkout():
+    assert detect_product_type("C4 Pre-Workout", "supplements") == "supplements.preworkout"
+
+
+# ---------- fragrances ----------
+
+def test_detect_fragrance_edp():
+    assert (
+        detect_product_type("Tom Ford Black Orchid Eau de Parfum 50ml", "fragrances")
+        == "fragrances.edp"
+    )
+
+
+def test_detect_fragrance_edt():
+    assert (
+        detect_product_type("Dior Sauvage Eau de Toilette 100ml", "fragrances")
+        == "fragrances.edt"
+    )
+
+
+def test_detect_fragrance_niche_creed():
+    assert detect_product_type("Creed Aventus 100ml", "fragrances") == "fragrances.niche"
+
+
+# ---------- makeup / skincare / haircare ----------
+
+def test_detect_makeup_foundation():
+    assert (
+        detect_product_type("Fenty Beauty Pro Filt'r Foundation", "makeup")
+        == "makeup.foundation"
+    )
+
+
+def test_detect_skincare_sunscreen():
+    assert (
+        detect_product_type("La Roche-Posay Anthelios SPF 50+", "skincare")
+        == "skincare.sunscreen"
+    )
+
+
+def test_detect_haircare_shampoo():
+    assert (
+        detect_product_type("Olaplex No.4 Bond Maintenance Shampoo", "haircare")
+        == "haircare.shampoo"
+    )
+
+
+# ---------- fashion / grocery ----------
+
+def test_detect_fashion_bag():
+    assert detect_product_type("Louis Vuitton Neverfull Tote", "fashion") == "fashion.bag"
+
+
+def test_detect_fashion_shoe_sneaker():
+    assert detect_product_type("Nike Air Force 1", "fashion") == "fashion.shoe"
+
+
+def test_detect_grocery_olive_oil():
+    assert detect_product_type("Bertolli Extra Virgin Olive Oil", "grocery") == "grocery.oil"
+
+
+# ---------- schema retrieval ----------
+
+def test_get_schema_for_phone_has_required_fields():
+    schema = get_schema_for_type("electronics.phone")
+    expected_fields = [
+        "display", "processor", "ram", "storage", "battery", "rear_camera",
+        "front_camera", "os", "weight",
+    ]
+    for f in expected_fields:
+        assert f in schema, f"phone schema missing {f!r}"
+
+
+def test_get_schema_for_washer_has_capacity():
+    schema = get_schema_for_type("electronics.washer")
+    assert "capacity_kg" in schema
+    assert "spin_rpm" in schema
+
+
+def test_get_schema_for_protein():
+    schema = get_schema_for_type("supplements.protein")
+    assert "protein_g_serving" in schema
+    assert "calories" in schema
+
+
+def test_get_schema_for_fragrance_edp():
+    schema = get_schema_for_type("fragrances.edp")
+    assert "longevity_hrs" in schema
+    assert "sillage" in schema
+    assert "notes_top" in schema
+
+
+def test_get_schema_for_unknown_returns_empty_list():
+    assert get_schema_for_type("unknown.unknown") == []
+
+
+def test_schema_uniqueness_phone_vs_washer():
+    """Different product types must have distinguishing fields."""
+    phone = set(get_schema_for_type("electronics.phone"))
+    washer = set(get_schema_for_type("electronics.washer"))
+    assert "rear_camera" in phone and "rear_camera" not in washer
+    assert "capacity_kg" in washer and "capacity_kg" not in phone
+
+
+def test_minimum_25_product_type_schemas():
+    """Per design: 25 product-type schemas."""
+    assert len(PRODUCT_TYPE_SCHEMAS) >= 25
+
+
+def test_all_keyword_keys_have_schemas():
+    """Every product-type with keyword detection must have a schema."""
+    for type_key in PRODUCT_TYPE_KEYWORDS:
+        # multivitamin keyword maps may legitimately fall under supplements.vitamin
+        # in detection, but the schema lookup should still exist
+        assert type_key in PRODUCT_TYPE_SCHEMAS, f"no schema for {type_key}"
+
+
+# ---------- fallback / category default ----------
+
+def test_unknown_product_in_known_category_falls_to_first_subtype():
+    """Unknown electronics product falls to the first electronics.* subtype."""
+    result = detect_product_type("Some Obscure Gadget XYZ", "electronics")
+    # category-specific fallback uses first match for the category
+    assert result.startswith("electronics.")
+
+
+def test_completely_unknown_category_returns_category_default():
+    """No matching keywords AND no candidates for the category -> '<cat>.default'."""
+    result = detect_product_type("XYZ123", "totally_made_up_category")
+    assert result == "totally_made_up_category.default"
+
+
+# ---------- L2.4: GPT-4o-mini fallback (mocked) ----------
+
+import os
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+# Ensure openai_service module can import without a real key (it reads env at
+# module init for the singleton client). Tests below mock the network call.
+os.environ.setdefault("OPENAI_API_KEY", "sk-test-dummy")
+
+from app.services.product_type_router import detect_product_type_async
+
+
+@pytest.mark.asyncio
+async def test_async_returns_keyword_match_when_confident():
+    """Confident keyword hit short-circuits before GPT or cache."""
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = AsyncMock()
+    with patch("app.services.cache_service.get_cached") as mock_cache, \
+         patch("app.services.openai_service.client", fake_client):
+        result = await detect_product_type_async("iPhone 15 Pro", "electronics")
+        assert result == "electronics.phone"
+        mock_cache.assert_not_called()
+        fake_client.chat.completions.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_falls_to_gpt_when_keywords_dont_fire():
+    """A name with no keyword match goes to GPT classifier."""
+    ambiguous_name = "MegaGadget X9000"
+    fake_response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content="electronics.vacuum"))
+        ],
+        usage=SimpleNamespace(total_tokens=12),
+    )
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = AsyncMock(return_value=fake_response)
+    with patch("app.services.cache_service.get_cached", return_value=None), \
+         patch("app.services.cache_service.set_cached", return_value=True) as mock_set, \
+         patch("app.services.openai_service.client", fake_client):
+        result = await detect_product_type_async(ambiguous_name, "electronics")
+        assert result == "electronics.vacuum"
+        fake_client.chat.completions.create.assert_awaited_once()
+        mock_set.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_async_uses_cache_hit_to_avoid_gpt():
+    ambiguous_name = "MegaGadget X9000"
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = AsyncMock()
+    with patch(
+        "app.services.cache_service.get_cached",
+        return_value={"type": "electronics.tablet"},
+    ), patch("app.services.openai_service.client", fake_client):
+        result = await detect_product_type_async(ambiguous_name, "electronics")
+        assert result == "electronics.tablet"
+        fake_client.chat.completions.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_falls_back_to_kw_on_gpt_error():
+    """If GPT call raises, fall back gracefully to keyword result."""
+    ambiguous_name = "MegaGadget X9000"
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = AsyncMock(
+        side_effect=RuntimeError("openai down")
+    )
+    with patch("app.services.cache_service.get_cached", return_value=None), \
+         patch("app.services.openai_service.client", fake_client):
+        result = await detect_product_type_async(ambiguous_name, "electronics")
+        assert result.startswith("electronics.")
+
+
+@pytest.mark.asyncio
+async def test_async_falls_back_to_kw_on_invalid_gpt_response():
+    """GPT replies with something not in the allowed type list -> fall back."""
+    ambiguous_name = "MegaGadget X9000"
+    fake_response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content="totally_made_up_key"))
+        ],
+        usage=SimpleNamespace(total_tokens=12),
+    )
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = AsyncMock(return_value=fake_response)
+    with patch("app.services.cache_service.get_cached", return_value=None), \
+         patch("app.services.cache_service.set_cached") as mock_set, \
+         patch("app.services.openai_service.client", fake_client):
+        result = await detect_product_type_async(ambiguous_name, "electronics")
+        assert result.startswith("electronics.")
+        mock_set.assert_not_called()

@@ -352,6 +352,13 @@ const RESULTS_SRC = _fs.readFileSync(
   _path.resolve(__dirname, '../src/screens/ResultsScreen.tsx'),
   'utf8'
 );
+// Bundle E S3 A2 extracted the hero product cards from ResultsScreen into
+// ResultsContent so the orchestrator stays narrow. The `winner-card-anim`
+// testID followed the JSX into ResultsContent.tsx.
+const RESULTS_CONTENT_SRC = _fs.readFileSync(
+  _path.resolve(__dirname, '../src/components/results/ResultsContent.tsx'),
+  'utf8'
+);
 
 describe('Bundle B contract — critical testID preservation (R16)', () => {
   it('HomeScreen exposes the `home-center-area` testID (Bundle B 21e7bc0 rewire)', () => {
@@ -397,12 +404,12 @@ describe('Bundle B contract — critical testID preservation (R16)', () => {
     expect(RESULTS_SRC).toMatch(/testID="results-empty-state"/);
   });
 
-  it('ResultsScreen preserves `winner-card-anim` testID (conditional on isWinner)', () => {
-    // Conditional mount per ResultsScreen.tsx:640 — only when isWinner=true.
-    // Pattern: `testID={isWinner ? 'winner-card-anim' : undefined}`.
-    // Pinning the literal string guards against rename during Claude-Design
-    // redesign of the §5a/§5b/§5c winner-reveal animation surface.
-    expect(RESULTS_SRC).toMatch(/testID=\{[^}]*['"]winner-card-anim['"]/);
+  it('ResultsContent preserves `winner-card-anim` testID (conditional on isWinner)', () => {
+    // Bundle E S3 A2 — moved from ResultsScreen.tsx → ResultsContent.tsx
+    // as part of the orchestrator/presentation split. Conditional mount
+    // (`testID={isWinner ? 'winner-card-anim' : undefined}`) preserved
+    // verbatim so existing winner-reveal e2e selectors keep matching.
+    expect(RESULTS_CONTENT_SRC).toMatch(/testID=\{[^}]*['"]winner-card-anim['"]/);
   });
 });
 

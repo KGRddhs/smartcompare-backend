@@ -1,0 +1,180 @@
+{
+  "_metadata": {
+    "schema_version": 1,
+    "initialised_at": "2026-06-08T08:20:13Z",
+    "decision_rule": "Green-light if >=3 of 5 queries score >=3 unique-value (per docs/plans/2026-06-08-A-instagram-feasibility-test.md § 1).",
+    "doc": "docs/plans/2026-06-08-A-instagram-feasibility-test.md"
+  },
+  "findings": [
+    {
+      "id": "frag-tomford-black-orchid",
+      "category": "fragrances",
+      "query": "Tom Ford Black Orchid",
+      "tested_at": null,
+      "tester": null,
+      "instagram_brand_main": {
+        "handle": "@tomfordbeauty",
+        "posts_reviewed": 0,
+        "unique_signals": [],
+        "notes": ""
+      },
+      "instagram_influencers": [
+        {
+          "handle": "@TBD_gcc_reviewer_1",
+          "unique_signals": []
+        },
+        {
+          "handle": "@TBD_gcc_reviewer_2",
+          "unique_signals": []
+        },
+        {
+          "handle": "@TBD_gcc_reviewer_3",
+          "unique_signals": []
+        }
+      ],
+      "tiktok": {
+        "hashtag_reviewed": "#tomfordblackorchid",
+        "posts_reviewed": 0,
+        "unique_signals": []
+      },
+      "score": null,
+      "decision_rationale": ""
+    },
+    {
+      "id": "make-fenty-pro-filtr",
+      "category": "makeup",
+      "query": "Fenty Pro Filt'r Foundation",
+      "tested_at": null,
+      "tester": null,
+      "instagram_brand_main": {
+        "handle": "@fentybeauty",
+        "posts_reviewed": 0,
+        "unique_signals": [],
+        "notes": ""
+      },
+      "instagram_influencers": [
+        {
+          "handle": "@TBD_gcc_reviewer_1",
+          "unique_signals": []
+        },
+        {
+          "handle": "@TBD_gcc_reviewer_2",
+          "unique_signals": []
+        },
+        {
+          "handle": "@TBD_gcc_reviewer_3",
+          "unique_signals": []
+        }
+      ],
+      "tiktok": {
+        "hashtag_reviewed": "#fentyprofiltr",
+        "posts_reviewed": 0,
+        "unique_signals": []
+      },
+      "score": null,
+      "decision_rationale": ""
+    },
+    {
+      "id": "fash-birkenstock-arizona",
+      "category": "fashion",
+      "query": "Birkenstock Arizona",
+      "tested_at": null,
+      "tester": null,
+      "instagram_brand_main": {
+        "handle": "@birkenstock",
+        "posts_reviewed": 0,
+        "unique_signals": [],
+        "notes": ""
+      },
+      "instagram_influencers": [
+        {
+          "handle": "@TBD_gcc_reviewer_1",
+          "unique_signals": []
+        },
+        {
+          "handle": "@TBD_gcc_reviewer_2",
+          "unique_signals": []
+        },
+        {
+          "handle": "@TBD_gcc_reviewer_3",
+          "unique_signals": []
+        }
+      ],
+      "tiktok": {
+        "hashtag_reviewed": "#birkenstockarizona",
+        "posts_reviewed": 0,
+        "unique_signals": []
+      },
+      "score": null,
+      "decision_rationale": ""
+    },
+    {
+      "id": "elec-dyson-airwrap",
+      "category": "electronics",
+      "query": "Dyson Airwrap",
+      "tested_at": null,
+      "tester": null,
+      "instagram_brand_main": {
+        "handle": "@dyson",
+        "posts_reviewed": 0,
+        "unique_signals": [],
+        "notes": ""
+      },
+      "instagram_influencers": [
+        {
+          "handle": "@TBD_gcc_reviewer_1",
+          "unique_signals": []
+        },
+        {
+          "handle": "@TBD_gcc_reviewer_2",
+          "unique_signals": []
+        },
+        {
+          "handle": "@TBD_gcc_reviewer_3",
+          "unique_signals": []
+        }
+      ],
+      "tiktok": {
+        "hashtag_reviewed": "#dysonairwrap",
+        "posts_reviewed": 0,
+        "unique_signals": []
+      },
+      "score": null,
+      "decision_rationale": ""
+    },
+    {
+      "id": "supp-gardenoflife-omega3",
+      "category": "supplements",
+      "query": "Garden of Life Omega-3",
+      "tested_at": null,
+      "tester": null,
+      "instagram_brand_main": {
+        "handle": "@gardenoflife",
+        "posts_reviewed": 0,
+        "unique_signals": [],
+        "notes": ""
+      },
+      "instagram_influencers": [
+        {
+          "handle": "@TBD_gcc_reviewer_1",
+          "unique_signals": []
+        },
+        {
+          "handle": "@TBD_gcc_reviewer_2",
+          "unique_signals": []
+        },
+        {
+          "handle": "@TBD_gcc_reviewer_3",
+          "unique_signals": []
+        }
+      ],
+      "tiktok": {
+        "hashtag_reviewed": "#gardenoflifeomega",
+        "posts_reviewed": 0,
+        "unique_signals": []
+      },
+      "score": null,
+      "decision_rationale": ""
+    }
+  ]
+}

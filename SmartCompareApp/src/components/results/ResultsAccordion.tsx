@@ -27,6 +27,14 @@ interface ResultsAccordionProps {
     review_count?: number | null;
     rating_source?: { name?: string; url?: string } | null;
     review_summary?: ReviewSummary;
+    /** Lane A-L3 Task L3.4 — up to 3 retailer quotes per product
+     *  (Amazon / Noon / X). Backend writes
+     *  `reviews.products[i].retailer_quotes`. */
+    retailer_quotes?: Array<{
+      retailer: string;
+      rating?: number | null;
+      text: string;
+    }>;
   }>;
   /** Bundle E S3 — specs section data (new structured format).
    *  `spec_advantages` is a short list of pre-summarized per-product
@@ -39,6 +47,18 @@ interface ResultsAccordionProps {
     specs?: Record<string, any>;
     spec_advantages?: string[];
   }>;
+  /** Lane A-L3 Task L3.2 — per-row winner data. Backend writes
+   *  `specs.specs_comparison`. When present, each row's winning cell
+   *  paints emerald. */
+  specsComparison?: Array<{
+    field: string;
+    p0_value: string;
+    p1_value: string;
+    winner: 0 | 1 | null;
+  }>;
+  /** Lane A-L3 Task L3.3 — overall winner index. Used to draw the
+   *  winner-star (★) prefix on the winning column in the pros/cons grid. */
+  winnerIndex?: 0 | 1;
   testID?: string;
 }
 
@@ -69,6 +89,8 @@ export function ResultsAccordion({
   products,
   reviewProducts,
   specsProducts,
+  specsComparison,
+  winnerIndex,
   testID,
 }: ResultsAccordionProps) {
   const { t } = useTranslation();
@@ -118,6 +140,21 @@ export function ResultsAccordion({
     const v1 = (specsSrc[1] as any)?.specs?.[key];
     return String(v0) !== String(v1);
   };
+
+  // Lane A-L3 Task L3.2 — fast O(1) lookup of per-row winner index from
+  // the backend's specs_comparison array. Null/missing → no emerald
+  // (tie or pre-v2 data).
+  const winnerByField: Record<string, 0 | 1 | null> = React.useMemo(() => {
+    const map: Record<string, 0 | 1 | null> = {};
+    if (Array.isArray(specsComparison)) {
+      for (const r of specsComparison) {
+        if (r && typeof r.field === 'string') {
+          map[r.field] = r.winner ?? null;
+        }
+      }
+    }
+    return map;
+  }, [specsComparison]);
 
   const sections: Array<{
     key: AccordionKey;
@@ -238,6 +275,46 @@ export function ResultsAccordion({
                           </Text>
                         )
                       )}
+                      {/* Lane A-L3 Task L3.4 — per-retailer review quote block.
+                          Up to 3 quotes per product (Amazon / Noon / X). When
+                          retailer_quotes is absent, nothing renders so legacy
+                          rows stay calm. */}
+                      {Array.isArray(rp.retailer_quotes) &&
+                      rp.retailer_quotes.length > 0 ? (
+                        <View style={styles.retailerQuotesBlock}>
+                          {rp.retailer_quotes
+                            .slice(0, 3)
+                            .map((q: any, qi: number) => (
+                              <View
+                                key={qi}
+                                testID={`${testID}-reviews-quote-${idx}-${qi}`}
+                                style={styles.retailerQuote}
+                              >
+                                <View style={styles.retailerQuoteHeader}>
+                                  <Text
+                                    style={styles.retailerQuoteRetailer}
+                                    numberOfLines={1}
+                                  >
+                                    {String(q.retailer || '').toUpperCase()}
+                                  </Text>
+                                  {typeof q.rating === 'number' ? (
+                                    <Text
+                                      style={styles.retailerQuoteRating}
+                                    >
+                                      {'\u2605'} {q.rating}
+                                    </Text>
+                                  ) : null}
+                                </View>
+                                <Text
+                                  style={styles.retailerQuoteText}
+                                  numberOfLines={3}
+                                >
+                                  {String(q.text || '')}
+                                </Text>
+                              </View>
+                            ))}
+                        </View>
+                      ) : null}
                     </View>
                   ))}
                 </View>
@@ -249,31 +326,53 @@ export function ResultsAccordion({
                   style={styles.body}
                 >
                   <View style={styles.prosConsGrid}>
-                    {products.map((p, idx) => (
-                      <View key={idx} style={styles.prosConsCol}>
-                        <Text style={styles.prosConsName} numberOfLines={1}>
-                          {p.name}
-                        </Text>
-                        {(p.pros ?? []).map((pro, pi) => (
-                          <Text
-                            key={`pro-${pi}`}
-                            style={styles.prosConsPro}
-                            numberOfLines={2}
-                          >
-                            + {pro}
-                          </Text>
-                        ))}
-                        {(p.cons ?? []).map((con, ci) => (
-                          <Text
-                            key={`con-${ci}`}
-                            style={styles.prosConsCon}
-                            numberOfLines={2}
-                          >
-                            − {con}
-                          </Text>
-                        ))}
-                      </View>
-                    ))}
+                    {products.map((p, idx) => {
+                      const isWinner =
+                        typeof winnerIndex === 'number' && winnerIndex === idx;
+                      return (
+                        <View key={idx} style={styles.prosConsCol}>
+                          <View style={styles.prosConsNameRow}>
+                            {/* Lane A-L3 Task L3.3 — emerald ★ prefix on the
+                                winning product's column header per design
+                                Screen 3 ("WHAT FANS LOVE / DRAWBACKS"). Hidden
+                                when winnerIndex is undefined so legacy callers
+                                don't render an empty star. */}
+                            {isWinner ? (
+                              <Text
+                                testID={`${testID}-proscons-winner-star-${idx}`}
+                                style={styles.prosConsWinnerStar}
+                              >
+                                {'\u2605'}
+                              </Text>
+                            ) : null}
+                            <Text
+                              style={styles.prosConsName}
+                              numberOfLines={1}
+                            >
+                              {p.name}
+                            </Text>
+                          </View>
+                          {(p.pros ?? []).map((pro, pi) => (
+                            <Text
+                              key={`pro-${pi}`}
+                              style={styles.prosConsPro}
+                              numberOfLines={2}
+                            >
+                              + {pro}
+                            </Text>
+                          ))}
+                          {(p.cons ?? []).map((con, ci) => (
+                            <Text
+                              key={`con-${ci}`}
+                              style={styles.prosConsCon}
+                              numberOfLines={2}
+                            >
+                              − {con}
+                            </Text>
+                          ))}
+                        </View>
+                      );
+                    })}
                   </View>
                 </View>
               )}
@@ -381,19 +480,48 @@ export function ResultsAccordion({
                             return '—';
                           return str;
                         });
+                        // Lane A-L3 Task L3.2 — emerald winner cell.
+                        // winner === 0 → p0 wins (cell idx 0 paints emerald).
+                        // winner === 1 → p1 wins (cell idx 1 paints emerald).
+                        // winner === null or absent → neutral (both stay default).
+                        const winner = winnerByField[key];
                         return (
-                          <View key={key} style={styles.specsRow}>
+                          <View
+                            key={key}
+                            testID={
+                              testID
+                                ? `${testID}-specs-row-${key}`
+                                : undefined
+                            }
+                            style={styles.specsRow}
+                          >
                             <Text style={styles.specsCellKey}>
                               {key.replace(/_/g, ' ')}
                             </Text>
-                            {values.map((v: string, vi: number) => (
-                              <Text
-                                key={vi}
-                                style={styles.specsCellValue}
-                              >
-                                {v}
-                              </Text>
-                            ))}
+                            {values.map((v: string, vi: number) => {
+                              const isWinnerCell =
+                                winner === vi && winner !== null;
+                              return (
+                                <Text
+                                  key={vi}
+                                  testID={
+                                    testID
+                                      ? `${testID}-specs-cell-${key}-${vi}`
+                                      : undefined
+                                  }
+                                  style={
+                                    isWinnerCell
+                                      ? [
+                                          styles.specsCellValue,
+                                          styles.specsCellWinner,
+                                        ]
+                                      : styles.specsCellValue
+                                  }
+                                >
+                                  {v}
+                                </Text>
+                              );
+                            })}
                           </View>
                         );
                       })}
@@ -498,6 +626,42 @@ const styles = StyleSheet.create({
   reviewHighlightNeg: {
     color: colors.destructive,
   },
+  // Lane A-L3 Task L3.4 — per-retailer review quote block per design
+  // Screen 2 ("WHAT REVIEWERS SAY" → 3 small cards per product).
+  retailerQuotesBlock: {
+    marginTop: 8,
+    gap: 8,
+  },
+  retailerQuote: {
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: colors.bg.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  retailerQuoteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  retailerQuoteRetailer: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    color: colors.text.secondary,
+    flexShrink: 1,
+  },
+  retailerQuoteRating: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  retailerQuoteText: {
+    fontSize: 12,
+    color: colors.text.primary,
+    lineHeight: 12 * 1.4,
+  },
   prosConsGrid: {
     flexDirection: 'row',
     gap: 12,
@@ -510,7 +674,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.text.primary,
+    flexShrink: 1,
+  },
+  // Lane A-L3 Task L3.3 — row container for the winner-star + name.
+  prosConsNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     marginBottom: 8,
+  },
+  // Lane A-L3 Task L3.3 — emerald star marking the overall winner on
+  // the pros/cons grid column header.
+  prosConsWinnerStar: {
+    fontSize: 12,
+    color: colors.accent,
   },
   prosConsPro: {
     fontSize: 11,
@@ -585,6 +762,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: colors.text.primary,
+  },
+  // Lane A-L3 Task L3.2 — winning spec cell paints emerald (accent),
+  // bold weight, per design Screen 4.
+  specsCellWinner: {
+    color: colors.accent,
+    fontWeight: '700',
   },
 });
 

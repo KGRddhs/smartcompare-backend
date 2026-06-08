@@ -205,7 +205,18 @@ function DimensionRow({ dimension, winnerIndex, testID }: DimensionRowProps) {
   // Per-row winner: whichever score is higher inside THIS dimension —
   // not the overall comparison winner. Emerald paints that side's bar
   // fill; the other side gets neutral gray. Ties go to overall winner.
-  const aWins = score_a > score_b || (score_a === score_b && winnerIndex === 0);
+  //
+  // Lane A-L3 Task L3.6 — when L1 emits an explicit `winner` index on
+  // the dim, prefer it over the score-comparison heuristic. This matches
+  // backend's authoritative scoring_v2.dim_winners (e.g. value dim
+  // factors in cross-tier framing the FE can't replicate).
+  const aWins =
+    dimension.winner === 0
+      ? true
+      : dimension.winner === 1
+        ? false
+        : score_a > score_b ||
+          (score_a === score_b && winnerIndex === 0);
   const fillA = aWins ? colors.accent : colors.text.secondary;
   const fillB = aWins ? colors.text.secondary : colors.accent;
 
