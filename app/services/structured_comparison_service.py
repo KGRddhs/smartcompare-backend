@@ -1871,11 +1871,31 @@ class StructuredComparisonService:
             except Exception as e:
                 logger.warning(f"Drug DB lookup failed: {e}")
 
+        # L2.6 — per-race timeout caps. Each race is wrapped in
+        # asyncio.wait_for so a single slow tier (e.g., 15s Tier 1.5 fan-out
+        # for price) cannot drag the whole Phase 1 wall over the
+        # STREAM_HARD_CAP_SECONDS budget. On timeout the race result is None
+        # (handled below as `result[key] = None`); response_builder treats
+        # None as missing data and `_validate_renderable` decides whether to
+        # surface an INSUFFICIENT_DATA error.
+        _PHASE1_TIMEOUTS = {
+            "specs": 8.0,     # GPT-4o-mini extraction
+            "price": 18.0,    # Tier 1 + 1.5 cascade can land at ~15s
+            "reviews": 6.0,   # Serper + GPT cleanup
+            "image_url": 5.0, # Serper Images + Tier 3 GPT fallback
+        }
+
         if include_specs:
-            phase1_tasks.append(_timed_task("specs", self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context), stage_timings))
+            phase1_tasks.append(asyncio.wait_for(
+                _timed_task("specs", self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context), stage_timings),
+                timeout=_PHASE1_TIMEOUTS["specs"],
+            ))
             phase1_keys.append("specs")
 
-        phase1_tasks.append(_timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings))
+        phase1_tasks.append(asyncio.wait_for(
+            _timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings),
+            timeout=_PHASE1_TIMEOUTS["price"],
+        ))
         phase1_keys.append("price")
 
         if include_reviews:
@@ -1883,11 +1903,14 @@ class StructuredComparisonService:
             # retailer_ratings is None here because shopping_items_cache is
             # populated DURING _get_price (Phase 1) so we can't pre-collect.
             # _get_reviews accepts None and skips retailer_ratings enrichment.
-            phase1_tasks.append(_timed_task("reviews", self._get_reviews(
-                brand, name, variant, search_query, nocache,
-                category=category, retailer_ratings=None,
-                search_results=unified_search,
-            ), stage_timings))
+            phase1_tasks.append(asyncio.wait_for(
+                _timed_task("reviews", self._get_reviews(
+                    brand, name, variant, search_query, nocache,
+                    category=category, retailer_ratings=None,
+                    search_results=unified_search,
+                ), stage_timings),
+                timeout=_PHASE1_TIMEOUTS["reviews"],
+            ))
             phase1_keys.append("reviews")
 
         # Bundle E S3 — image_url resolution runs in parallel with specs+price
@@ -1898,11 +1921,14 @@ class StructuredComparisonService:
         # override with the FREE result when available. Net: piggyback hit
         # path costs zero extra wall (we discard the eager Tier 1/3 result),
         # piggyback miss path saves zero wall too (Tier 1/3 already running).
-        phase1_tasks.append(_timed_task("image_url", get_product_image_url(
-            full_name, region=region,
-            page_scrape_image=None,  # piggyback evaluated post-Phase1 below
-            organic_results=(unified_search.get("organic", []) if unified_search else None),
-        ), stage_timings))
+        phase1_tasks.append(asyncio.wait_for(
+            _timed_task("image_url", get_product_image_url(
+                full_name, region=region,
+                page_scrape_image=None,  # piggyback evaluated post-Phase1 below
+                organic_results=(unified_search.get("organic", []) if unified_search else None),
+            ), stage_timings),
+            timeout=_PHASE1_TIMEOUTS["image_url"],
+        ))
         phase1_keys.append("image_url")
 
         t1 = time.perf_counter() if stage_timings is not None else None
@@ -1915,7 +1941,18 @@ class StructuredComparisonService:
                 stage_timings.setdefault(f"{k}_ms", 0.0)
 
         for i, key in enumerate(phase1_keys):
-            if isinstance(phase1_results[i], Exception):
+            if isinstance(phase1_results[i], asyncio.TimeoutError):
+                # L2.6 — per-race timeout fired. Distinct WARNING (not ERROR)
+                # because graceful degrade is the contracted behavior; the
+                # missing field gets a None and downstream renderers + the
+                # INSUFFICIENT_DATA validator decide whether the overall
+                # comparison still ships.
+                logger.warning(
+                    "[L2.6] Phase 1 race timeout for %s (limit %.1fs)",
+                    key, _PHASE1_TIMEOUTS.get(key, 0.0),
+                )
+                result[key] = None
+            elif isinstance(phase1_results[i], Exception):
                 logger.error(f"Error fetching {key}: {phase1_results[i]}")
                 result[key] = None
             else:
