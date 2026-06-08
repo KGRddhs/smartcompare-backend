@@ -4,6 +4,7 @@ Functions are standalone (no self).
 FIX M5: _clean_review_citations processes review_summary.highlights[].point format.
 FIX M6: Removed dead code processing detailed_praises/detailed_complaints (never populated).
 """
+import asyncio
 import re
 import logging
 from typing import Optional, List, Dict, Any
@@ -251,3 +252,84 @@ async def get_reviews(
 
     reviews["_cached"] = False
     return reviews
+
+
+# ---------- L2.11: per-retailer review-quote fetcher (Y from design) ----------
+
+# Retailer-specific Serper site-filters. Order is the design priority:
+# Amazon (deepest review depth) -> Noon (GCC native) -> X (social/word of mouth).
+RETAILER_QUOTE_SITES = [
+    ("Amazon", "amazon.com OR amazon.ae"),
+    ("Noon", "noon.com"),
+    ("X", "x.com OR twitter.com"),
+]
+
+# Cache per product 14d — review quote is stable.
+_RETAILER_QUOTES_CACHE_TTL = 14 * 24 * 60 * 60
+
+
+def _quote_cache_key(brand: str, name: str, variant: str | None) -> str:
+    parts = [brand or "", name or "", variant or ""]
+    return "retailer_quotes:" + "|".join(p.strip().lower() for p in parts)
+
+
+async def fetch_retailer_quotes(
+    brand: str,
+    name: str,
+    variant: str | None,
+    track_serper_cost_fn=None,
+) -> list:
+    """L2.11 — fetch up to 3 per-retailer review snippets in parallel.
+
+    Returns a list of ``{retailer, rating, text}`` entries (max 3). Each entry
+    comes from a single Serper site-filtered organic search. Quote text is the
+    first organic snippet of length > 20 chars; rating is extracted from the
+    Serper richSnippet when present, otherwise None.
+
+    Caches per product 14 days. ~$0.003 net cost per cache miss (3x Serper).
+    """
+    cache_key = _quote_cache_key(brand, name, variant)
+    cached = get_cached(cache_key)
+    if cached and isinstance(cached, dict) and isinstance(cached.get("quotes"), list):
+        return cached["quotes"]
+
+    product_query = f"{brand} {name} {variant or ''} review".strip()
+
+    async def _one(retailer: str, site_filter: str):
+        try:
+            q = f'{product_query} site:{site_filter}'.strip()
+            result = await search_web(q, num_results=5)
+            if track_serper_cost_fn:
+                track_serper_cost_fn()
+        except Exception as e:
+            logger.warning("[L2.11] retailer quote fetch failed for %s: %s", retailer, e)
+            return None
+        organic = (result or {}).get("organic", []) or []
+        for item in organic:
+            snippet = (item.get("snippet") or "").strip()
+            if len(snippet) < 20:
+                continue
+            rating = None
+            rich = item.get("richSnippet") or {}
+            top = rich.get("top") if isinstance(rich, dict) else None
+            if isinstance(top, dict):
+                detected = top.get("detected_extensions") or {}
+                rating_val = detected.get("rating") or detected.get("starRating")
+                if isinstance(rating_val, (int, float)):
+                    rating = float(rating_val)
+            return {"retailer": retailer, "rating": rating, "text": snippet}
+        return None
+
+    tasks = [_one(r, s) for r, s in RETAILER_QUOTE_SITES]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    quotes = []
+    for r in results:
+        if isinstance(r, Exception) or r is None:
+            continue
+        quotes.append(r)
+        if len(quotes) >= 3:
+            break
+
+    if quotes:
+        set_cached(cache_key, {"quotes": quotes}, _RETAILER_QUOTES_CACHE_TTL)
+    return quotes
