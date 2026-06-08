@@ -1106,6 +1106,12 @@ class StructuredComparisonService:
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
 
+        # L2.9 — per-request source_trace collector. Always-on observability
+        # for which tiers fired for each race (price / specs / reviews /
+        # image). Populated by `_fetch_product_data` then merged into
+        # response.metadata.source_trace at response build time.
+        self._source_trace: Dict[str, Any] = {}
+
         # L1 content safety pre-filter (spec sec 5.2). Runs on the canonical query
         # string — for explicit_pair shape, this is the concatenated "A vs B"
         # form (validator already built it in text_routes.py), so the joined
@@ -1297,6 +1303,13 @@ class StructuredComparisonService:
             elapsed = (datetime.now() - start_time).total_seconds()
 
             t_build = time.perf_counter() if orchestrator_timings is not None else None
+            # L2.9 — emit metadata.source_trace when the collector accumulated
+            # any per-product records. Absent when the orchestrator never ran
+            # Phase 1 (e.g. early-return on content-safety block).
+            _metadata_override: Dict[str, Any] = {}
+            if getattr(self, "_source_trace", None):
+                _metadata_override["source_trace"] = self._source_trace
+
             result = build_comparison_response(
                 product_data=product_data,
                 comparison=comparison,
@@ -1317,6 +1330,7 @@ class StructuredComparisonService:
                 gpt_calls=self.gpt_calls,
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
+                metadata=_metadata_override or None,
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
@@ -1416,6 +1430,12 @@ class StructuredComparisonService:
 
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
+
+        # L2.9 — per-request source_trace collector. Always-on observability
+        # for which tiers fired for each race (price / specs / reviews /
+        # image). Populated by `_fetch_product_data` then merged into
+        # response.metadata.source_trace at response build time.
+        self._source_trace: Dict[str, Any] = {}
 
         # L1 content safety pre-filter (spec sec 5.2). Same gate as sync path —
         # blocked queries terminate the stream with an error event before any
@@ -1716,6 +1736,12 @@ class StructuredComparisonService:
             elapsed = (datetime.now() - start_time).total_seconds()
 
             t_build = time.perf_counter() if orchestrator_timings is not None else None
+            # L2.9 — source_trace pass-through for streaming path. Same
+            # contract as the non-streaming compare_from_text_impl call site.
+            _metadata_override: Dict[str, Any] = {}
+            if getattr(self, "_source_trace", None):
+                _metadata_override["source_trace"] = self._source_trace
+
             complete_response = build_comparison_response(
                 product_data=product_data,
                 comparison=comparison,
@@ -1736,6 +1762,7 @@ class StructuredComparisonService:
                 gpt_calls=self.gpt_calls,
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
+                metadata=_metadata_override or None,
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
@@ -2006,6 +2033,32 @@ class StructuredComparisonService:
                 result[key] = None
             else:
                 result[key] = phase1_results[i]
+
+        # L2.9 — emit a per-product source_trace record into the orchestrator
+        # collector. Tier names are the labels the renderer surfaces; in the
+        # absence of full per-tier hit/miss info we collapse to "race-fired
+        # / race-yielded" pairs derived from result presence.
+        try:
+            tracker = getattr(self, "_source_trace", None)
+            if tracker is not None:
+                product_key = f"product_{len(tracker.get('products', []))}"
+                per_product = {
+                    "name": full_name,
+                    "races": {},
+                }
+                for k in ("specs", "price", "reviews", "image_url"):
+                    if k in phase1_keys:
+                        wall_ms = 0
+                        if stage_timings is not None:
+                            wall_ms = int(stage_timings.get(f"{k}_ms", 0) or 0)
+                        per_product["races"][k if k != "image_url" else "image"] = {
+                            "sources_tried": [k],
+                            "sources_returned_value": ([k] if result.get(k) else []),
+                            "wall_ms": wall_ms,
+                        }
+                tracker.setdefault("products", []).append(per_product)
+        except Exception as e:
+            logger.warning("[L2.9] source_trace record failed: %s", e)
 
         if result.get("price"):
             result["best_price"] = result["price"].get("amount")
