@@ -1,0 +1,168 @@
+{
+  "metadata": {
+    "source": [
+      "Fillout ENG results (2).csv",
+      "Fillout arab results (9).csv"
+    ],
+    "generated_at": "2026-06-08T06:51:13Z",
+    "total_responses": 443,
+    "total_with_pain_signal": 391,
+    "schema_version": 1,
+    "note": "Ranks derived from survey aggregate of Q7 + Difficulties columns; prompt_instruction text matches design § 6 verbatim; per_cohort_weight is share of the cohort's signals attributable to this workflow."
+  },
+  "workflows": [
+    {
+      "rank": 1,
+      "name": "close_option_paralysis",
+      "description": "User stalls when comparing 2-3 close options that look equally good.",
+      "prompt_instruction": "If product scores are within 10 points of each other, do NOT say 'both are good.' Provide an EXPLICIT tie-break: 'If budget matters most, pick A; if X matters most, pick B.' Always pivot the choice on a single concrete attribute the buyer can self-check.",
+      "survey_weight": 0.5882,
+      "per_cohort_weight": {
+        "45+_female_non_bahraini": 0.3333,
+        "25-34_female_bahraini": 0.2639,
+        "35-44_female_non_bahraini": 0.1,
+        "35-44_male_non_bahraini": 0.2,
+        "18-24_female_non_bahraini": 0.3,
+        "25-34_male_non_bahraini": 0.375,
+        "25-34_male_bahraini": 0.2222,
+        "18-24_female_bahraini": 0.3259,
+        "18-24_male_bahraini": 0.2743,
+        "35-44_male_bahraini": 0.3684,
+        "45+_male_non_bahraini": 0.1667,
+        "25-34_female_non_bahraini": 0.2222,
+        "45+_male_bahraini": 0.2105,
+        "45+_female_bahraini": 0.32,
+        "35-44_female_bahraini": 0.2333
+      }
+    },
+    {
+      "rank": 2,
+      "name": "value_budget_uncertainty",
+      "description": "Buyer unsure whether the price-per-feature ratio justifies the spend.",
+      "prompt_instruction": "Open the verdict with the value-per-BHD comparison and budget alignment. Cite price first, scores second. State which product gives more capability per dinar at this budget tier.",
+      "survey_weight": 0.5217,
+      "per_cohort_weight": {
+        "45+_female_non_bahraini": 0.3333,
+        "25-34_female_bahraini": 0.2639,
+        "35-44_female_non_bahraini": 0.3,
+        "35-44_male_non_bahraini": 0.4,
+        "18-24_female_non_bahraini": 0.4,
+        "25-34_male_non_bahraini": 0.125,
+        "25-34_male_bahraini": 0.2963,
+        "18-24_female_bahraini": 0.246,
+        "18-24_male_bahraini": 0.2566,
+        "35-44_male_bahraini": 0.1579,
+        "25-34_female_non_bahraini": 0.3333,
+        "45+_male_bahraini": 0.1579,
+        "45+_female_bahraini": 0.28,
+        "35-44_female_bahraini": 0.2667,
+        "18-24_male_non_bahraini": 0.5
+      }
+    },
+    {
+      "rank": 3,
+      "name": "too_many_specs",
+      "description": "User overwhelmed by long spec lists or option counts.",
+      "prompt_instruction": "Surface a MAXIMUM of 3 differences in key_tradeoff. Never list 6+ specs in the verdict text. Compress to the smallest set the buyer actually decides on. Long specs belong in the spec table, not the verdict prose.",
+      "survey_weight": 0.4194,
+      "per_cohort_weight": {
+        "25-34_female_bahraini": 0.2153,
+        "35-44_female_non_bahraini": 0.2,
+        "18-24_female_non_bahraini": 0.1,
+        "25-34_male_non_bahraini": 0.25,
+        "25-34_male_bahraini": 0.2407,
+        "18-24_female_bahraini": 0.1885,
+        "18-24_male_bahraini": 0.2389,
+        "35-44_male_bahraini": 0.1579,
+        "45+_male_non_bahraini": 0.3333,
+        "25-34_female_non_bahraini": 0.1111,
+        "45+_male_bahraini": 0.1579,
+        "45+_female_bahraini": 0.28,
+        "35-44_female_bahraini": 0.1667,
+        "18-24_male_non_bahraini": 0.25
+      }
+    },
+    {
+      "rank": 4,
+      "name": "trust_paralysis",
+      "description": "Buyer doubts whether claims are supported by enough sources.",
+      "prompt_instruction": "Cite source counts inline: 'Confirmed by 3 retailers + 2 reviewer publications.' Never make a bare claim. If only one source supports a spec, mark it tentative and continue.",
+      "survey_weight": 0.3146,
+      "per_cohort_weight": {
+        "45+_female_non_bahraini": 0.3333,
+        "25-34_female_bahraini": 0.1319,
+        "35-44_female_non_bahraini": 0.2,
+        "18-24_female_non_bahraini": 0.05,
+        "25-34_male_non_bahraini": 0.125,
+        "25-34_male_bahraini": 0.1296,
+        "18-24_female_bahraini": 0.1438,
+        "18-24_male_bahraini": 0.1504,
+        "35-44_male_bahraini": 0.1579,
+        "45+_male_non_bahraini": 0.3333,
+        "25-34_female_non_bahraini": 0.1111,
+        "45+_male_bahraini": 0.3684,
+        "45+_female_bahraini": 0.08,
+        "35-44_female_bahraini": 0.3
+      }
+    },
+    {
+      "rank": 5,
+      "name": "decision_speed",
+      "description": "Buyer wants the answer in seconds, not minutes.",
+      "prompt_instruction": "Lead with a TL;DR one-sentence winner declaration that names the product and the single most important reason. Detail follows for tap-to-expand readers — never bury the winner past the first sentence.",
+      "survey_weight": 0.1381,
+      "per_cohort_weight": {
+        "25-34_female_bahraini": 0.0903,
+        "35-44_female_non_bahraini": 0.1,
+        "18-24_female_non_bahraini": 0.15,
+        "25-34_male_non_bahraini": 0.125,
+        "25-34_male_bahraini": 0.0741,
+        "18-24_female_bahraini": 0.0543,
+        "18-24_male_bahraini": 0.0619,
+        "35-44_male_bahraini": 0.1053,
+        "45+_male_non_bahraini": 0.1667,
+        "25-34_female_non_bahraini": 0.2222,
+        "45+_male_bahraini": 0.0526,
+        "45+_female_bahraini": 0.04,
+        "35-44_female_bahraini": 0.0333
+      }
+    },
+    {
+      "rank": 6,
+      "name": "post_decision_regret",
+      "description": "Buyer regrets the trade-off they made after committing.",
+      "prompt_instruction": "Explicitly name the trade-off the buyer is accepting. Use the form 'Choosing A means you give up Y.' Frame it as a conscious choice, not a downside discovered later.",
+      "survey_weight": 0.0691,
+      "per_cohort_weight": {
+        "25-34_female_bahraini": 0.0347,
+        "35-44_female_non_bahraini": 0.1,
+        "35-44_male_non_bahraini": 0.2,
+        "25-34_male_bahraini": 0.037,
+        "18-24_female_bahraini": 0.0383,
+        "18-24_male_bahraini": 0.0177,
+        "35-44_male_bahraini": 0.0526,
+        "45+_male_bahraini": 0.0526,
+        "18-24_male_non_bahraini": 0.25
+      }
+    },
+    {
+      "rank": 7,
+      "name": "warranty_aftersales_missing",
+      "description": "Buyer cares about warranty + after-sales coverage but it's not surfaced.",
+      "prompt_instruction": "Surface warranty and return-policy information when available. If one product lacks a stated warranty in Bahrain, flag that as a deciding factor rather than a footnote.",
+      "survey_weight": 0.0077,
+      "per_cohort_weight": {
+        "35-44_male_non_bahraini": 0.2,
+        "18-24_female_bahraini": 0.0032
+      }
+    },
+    {
+      "rank": 8,
+      "name": "brand_loyalty_vs_evidence",
+      "description": "Buyer favours a known brand but evidence points to the alternative.",
+      "prompt_instruction": "If the user's preferred brand loses on the data, acknowledge it: 'Brand X is well-known for Y, but on the specific attributes that match your priorities here, Z is the better fit.' Respect brand affinity; do not dismiss it.",
+      "survey_weight": 0.0,
+      "per_cohort_weight": {}
+    }
+  ]
+}
