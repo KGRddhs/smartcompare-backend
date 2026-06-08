@@ -1165,7 +1165,8 @@ class StructuredComparisonService:
                     })
                 parsed = {"comparison_type": "value"}
             else:
-                logger.info(f"Parsing query: {query}")
+                query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]
+                logger.info(f"Parsing query: query_hash={query_hash} length={len(query)}")
                 parsed, usage = await parse_product_query(query)
                 self._track_gpt_cost(usage)
 

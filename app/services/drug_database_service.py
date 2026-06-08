@@ -4,6 +4,7 @@ Drug Database Service - Queries Bahrain approved health products from Supabase.
 Used to inject official drug registration data into GPT prompts for
 more accurate supplement spec extraction.
 """
+import hashlib
 import logging
 from typing import List, Dict, Optional
 from app.services.database_service import get_supabase_client
@@ -34,7 +35,8 @@ async def find_matching_drugs(query: str, limit: int = 5) -> List[Dict]:
         return response.data if response.data else []
 
     except Exception as e:
-        logger.warning(f"Drug database lookup failed for '{query}': {e}")
+        query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]
+        logger.warning(f"Drug database lookup failed: query_hash={query_hash} length={len(query)} error={e}")
         return []
 
 
