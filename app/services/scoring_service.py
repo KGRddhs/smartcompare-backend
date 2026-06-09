@@ -1801,6 +1801,40 @@ def _get_currency(product: dict) -> str:
     return "BHD"
 
 
+# F2.4 tie threshold — kept identical to compute_dimension_winners (line ~1463)
+# so the v2 per-dim winner and the legacy dimension_winners agree on what
+# counts as a tie. Sub-threshold margins resolve to None (NOT a phantom
+# winner — B0-A phantom-tie invariant).
+_DIM_WINNER_TIE_MARGIN = 3.0
+
+
+def _dim_winner(score_a, score_b, confidence: str | None = None) -> int | None:
+    """Authoritative per-dimension winner index for the v2 dimensions tab.
+
+    Returns 0 (product A wins this dim), 1 (product B wins), or None
+    (tie / limited data). The frontend `Dimension.winner?: 0 | 1 | null`
+    contract reads this directly instead of re-deriving from the bars.
+
+    None when: either score is missing/MISSING_SCORE, confidence is "low"
+    (limited-data rows must not declare a winner), or the absolute margin
+    is under the tie threshold.
+    """
+    if score_a is None or score_b is None:
+        return None
+    if score_a in (MISSING_SCORE,) and score_b in (MISSING_SCORE,):
+        return None
+    if confidence == "low":
+        return None
+    try:
+        a = float(score_a)
+        b = float(score_b)
+    except (TypeError, ValueError):
+        return None
+    if abs(a - b) < _DIM_WINNER_TIE_MARGIN:
+        return None
+    return 0 if a > b else 1
+
+
 def _dim_price(products: list[dict]) -> dict:
     a, b = products[0], products[1]
     pa, pb = _get_price(a) or 0.0, _get_price(b) or 0.0
@@ -2372,4 +2406,11 @@ def build_dimensions_v2(
         d for d in dims
         if not (d.get("score_a") is None and d.get("score_b") is None)
     ]
+    # F2.4 — emit the authoritative per-dim winner (0 | 1 | None) the
+    # frontend Dimension.winner contract expects. No `_dim_*` builder set
+    # this, so on prod every scoring_v2.dimensions[i].winner was None and
+    # DimensionBars fell back to a score heuristic. Derive it from each
+    # dim's own scores + confidence, sub-threshold → None (no phantom tie).
+    for d in dims:
+        d["winner"] = _dim_winner(d.get("score_a"), d.get("score_b"), d.get("confidence"))
     return dims[:6]
