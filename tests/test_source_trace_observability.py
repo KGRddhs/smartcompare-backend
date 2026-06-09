@@ -137,7 +137,9 @@ def test_response_omits_source_trace_when_not_provided():
 def test_source_trace_shape_contract_documented():
     """The per-race trace MUST always include these keys when populated:
     sources_tried (list), sources_returned_value (list), wall_ms (int).
-    Optional keys: median_chosen (numeric), cross_validation (enum)."""
+    Optional keys: median_chosen (numeric), cross_validation (enum).
+    F1.4 adds two more OPTIONAL keys on the price race: route (enum) +
+    source_weight (numeric)."""
     # This is a documentation-only assertion that fails if someone changes
     # the contract without updating this test or the corresponding spec.
     expected_keys = {
@@ -149,3 +151,62 @@ def test_source_trace_shape_contract_documented():
     for race, keys in expected_keys.items():
         for k in keys:
             assert isinstance(k, str)
+    # F1.4 optional price-race annotations.
+    optional_price_keys = ["route", "source_weight"]
+    for k in optional_price_keys:
+        assert isinstance(k, str)
+
+
+def test_price_race_route_and_weight_round_trip():
+    """F1.4 — when the orchestrator annotates the price race with `route`
+    and `source_weight` (Tier 1.5 escalation), build_comparison_response
+    surfaces them verbatim on metadata.source_trace.products."""
+    product_data = _minimal_product_data()
+    scoring_result = {
+        "winner_index": 0,
+        "scores": {"product_0": {"overall": 75.0}, "product_1": {"overall": 60.0}},
+        "tradeoff_pairs": [],
+        "value_badges": [], "comparison_quality": "normal",
+        "personalization": {"applied_shifts": []},
+        "price_tiers": {},
+        "comparison_pair": ["product_a", "product_b"],
+        "verdict_text": "Test.",
+        "key_differences": [],
+    }
+    source_trace = {
+        "products": [
+            {
+                "name": "B Test",
+                "races": {
+                    "price": {
+                        "sources_tried": ["serper_shopping", "curl:sharafdg.com.bh"],
+                        "sources_returned_value": ["curl:sharafdg.com.bh"],
+                        "wall_ms": 4200,
+                        "route": "registry",
+                        "source_weight": 3.0,
+                    },
+                },
+            },
+        ],
+    }
+
+    response = build_comparison_response(
+        query="A vs B",
+        product_data=product_data,
+        scoring_result=scoring_result,
+        comparison=None,
+        region="bahrain",
+        api_calls=4,
+        elapsed_seconds=1.5,
+        total_cost=0.01,
+        gpt_calls=2,
+        serper_calls=1,
+        from_cache=False,
+        verdict_validation={},
+        metadata={"source_trace": source_trace},
+    )
+
+    trace = response["metadata"]["source_trace"]
+    price_race = trace["products"][0]["races"]["price"]
+    assert price_race["route"] == "registry"
+    assert price_race["source_weight"] == 3.0

@@ -943,6 +943,11 @@ class StructuredComparisonService:
         self.gpt_calls = 0
         self.serper_calls = 0
         self._shopping_items_cache = {}
+        # B.0 (Lane F1, F1.4) — per-request Tier 1.5 routing record, keyed by
+        # full_name -> {route, source_weight}. Written when a registry/legacy
+        # candidate wins the fan_out race; read by the source_trace builder so
+        # each price-value trace entry records which path fired.
+        self._tier15_routes: Dict[str, Dict[str, Any]] = {}
 
     # ============================================
     # Static method wrappers for backward compat
@@ -1226,6 +1231,7 @@ class StructuredComparisonService:
         # image). Populated by `_fetch_product_data` then merged into
         # response.metadata.source_trace at response build time.
         self._source_trace: Dict[str, Any] = {}
+        self._tier15_routes = {}
 
         # L1 content safety pre-filter (spec sec 5.2). Runs on the canonical query
         # string — for explicit_pair shape, this is the concatenated "A vs B"
@@ -1552,6 +1558,7 @@ class StructuredComparisonService:
         # image). Populated by `_fetch_product_data` then merged into
         # response.metadata.source_trace at response build time.
         self._source_trace: Dict[str, Any] = {}
+        self._tier15_routes = {}
 
         # L1 content safety pre-filter (spec sec 5.2). Same gate as sync path —
         # blocked queries terminate the stream with an error event before any
@@ -2174,11 +2181,22 @@ class StructuredComparisonService:
                         wall_ms = 0
                         if stage_timings is not None:
                             wall_ms = int(stage_timings.get(f"{k}_ms", 0) or 0)
-                        per_product["races"][k if k != "image_url" else "image"] = {
+                        race_entry = {
                             "sources_tried": [k],
                             "sources_returned_value": ([k] if result.get(k) else []),
                             "wall_ms": wall_ms,
                         }
+                        # F1.4 — annotate the price race with the Tier 1.5
+                        # routing path (registry / legacy_fallback / official /
+                        # tier1_5) + the registry source_weight, when an
+                        # escalation candidate won the fan_out race for this
+                        # product. Absent on Tier-1-only / estimated prices.
+                        if k == "price":
+                            route_rec = self._tier15_routes.get(full_name)
+                            if route_rec:
+                                race_entry["route"] = route_rec["route"]
+                                race_entry["source_weight"] = route_rec["source_weight"]
+                        per_product["races"][k if k != "image_url" else "image"] = race_entry
                 tracker.setdefault("products", []).append(per_product)
         except Exception as e:
             logger.warning("[L2.9] source_trace record failed: %s", e)
@@ -2656,6 +2674,26 @@ class StructuredComparisonService:
                         # (firecrawl_brand_domain / page_scrape_jsonld /
                         # scrapedo_rendered / confirmed_multi_source).
                         winning_price["source_method"] = best.get("source_method", "page_scrape")
+                        # F1.4 — record the routing path of the winning candidate
+                        # (registry / legacy_fallback / official) for source_trace.
+                        # Match the winning retailer domain back to `harvested`.
+                        win_domain = str(winning_price.get("retailer") or "").replace("www.", "").lower()
+                        for _link, _label, _route, _weight in harvested:
+                            if _label.lower() == win_domain or win_domain.endswith("." + _label.lower()) or _label.lower().endswith("." + win_domain):
+                                self._tier15_routes[full_name] = {
+                                    "route": _route,
+                                    "source_weight": _weight,
+                                }
+                                break
+                        else:
+                            # Winner domain not matched (rare — e.g. redirect
+                            # changed the host). Still flag that Tier 1.5 fired.
+                            self._tier15_routes[full_name] = {
+                                "route": "tier1_5",
+                                "source_weight": score_source(
+                                    winning_price.get("url", "") or f"https://{win_domain}", category
+                                ),
+                            }
                         set_cached(cache_key, winning_price, PRICE_CACHE_TTL)
                         self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
                         winning_price["_cached"] = False
