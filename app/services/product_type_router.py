@@ -7,9 +7,7 @@ into the GPT-4o-mini system prompt — so an iPhone gets
 display/processor/ram/...  while a washing machine gets
 capacity_kg/spin_rpm/energy_class.
 
-Detection is keyword-based and synchronous. The async path
-`detect_product_type_async` (L2.4) adds a GPT-4o-mini fallback for products
-whose name doesn't trip any keyword, cached in Redis for 7 days.
+Detection is keyword-based and synchronous.
 """
 
 from typing import List
@@ -142,94 +140,3 @@ def detect_product_type(product_name: str, category: str) -> str:
 def get_schema_for_type(type_key: str) -> List[str]:
     """Return the field list for `type_key` (empty list when unknown)."""
     return list(PRODUCT_TYPE_SCHEMAS.get(type_key, []))
-
-
-# ---------- L2.4: async path with GPT fallback ----------
-
-_PRODUCT_TYPE_CACHE_PREFIX = "product_type:"
-_PRODUCT_TYPE_CACHE_TTL_S = 7 * 24 * 60 * 60  # 7 days
-
-
-async def detect_product_type_async(product_name: str, category: str) -> str:
-    """Async product-type detection with GPT-4o-mini fallback.
-
-    Returns the keyword-detected type when it does NOT match the category's
-    first-subtype fallback (i.e. confident keyword hit). Otherwise asks
-    GPT-4o-mini to classify into one of the known subtypes for the category,
-    cached in Redis for 7 days.
-
-    On any GPT-side failure the kw result is returned (graceful fallback).
-    """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    kw_result = detect_product_type(product_name, category)
-
-    # If keyword detection was confident (i.e., not the first-subtype fallback),
-    # accept it. Note: also accept when the kw match equals the first subtype
-    # but the keyword actually fired (we can't tell easily without re-running,
-    # so we always try GPT when result==first_subtype AND it differs from a
-    # clean keyword hit). Simple heuristic: if any keyword for kw_result
-    # appears in the product name, treat as confident.
-    name_lower = (product_name or "").lower()
-    keywords_for_result = PRODUCT_TYPE_KEYWORDS.get(kw_result, [])
-    if any(kw in name_lower for kw in keywords_for_result):
-        return kw_result
-
-    if kw_result.endswith(".default"):
-        # Unknown category — no GPT classification possible
-        return kw_result
-
-    # Build candidate list for the category
-    types_for_cat = sorted(
-        k for k in PRODUCT_TYPE_SCHEMAS if k.startswith(f"{category}.")
-    )
-    if not types_for_cat:
-        return kw_result
-
-    # Cache check
-    try:
-        from app.services.cache_service import get_cached, set_cached
-
-        cache_key = (
-            f"{_PRODUCT_TYPE_CACHE_PREFIX}{category}:"
-            f"{(product_name or '').lower()[:80]}"
-        )
-        cached = get_cached(cache_key)
-        if isinstance(cached, dict) and cached.get("type") in types_for_cat:
-            return cached["type"]
-    except Exception as e:  # cache outage -> graceful fall-through
-        logger.warning("[product_type] cache get failed: %s", e)
-        cache_key = None
-
-    # GPT-4o-mini classification
-    try:
-        from app.services.openai_service import client
-
-        prompt = (
-            f"Classify the product below into EXACTLY one of these type keys.\n"
-            f"Respond with the exact key only — no extra text.\n\n"
-            f"Allowed type keys: {', '.join(types_for_cat)}\n\n"
-            f"Product: {product_name!r}\n"
-            f"Category: {category}\n\n"
-            f"Type key:"
-        )
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=20,
-            temperature=0,
-        )
-        text = (response.choices[0].message.content or "").strip()
-        if text in types_for_cat:
-            try:
-                if cache_key:
-                    set_cached(cache_key, {"type": text}, ttl=_PRODUCT_TYPE_CACHE_TTL_S)
-            except Exception as e:
-                logger.warning("[product_type] cache set failed: %s", e)
-            return text
-    except Exception as e:
-        logger.warning("[product_type] GPT fallback failed: %s", e)
-
-    return kw_result
