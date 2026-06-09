@@ -498,3 +498,126 @@ Latest preview-channel update `019e6814-...` per Bundle E branch handoff (pre-me
 - D3 winner-card device-leg verification (composition + motion parity).
 - EAS group ID minting + tester device screenshots from main.
 - TestFlight invite (~150 testers) — gated on this QA lane sign-off.
+
+## Bundle E S3 Hot-Fix Wave 1 (Session 58, SHIPPED 2026-06-02 — merge `0432247`)
+
+**Trigger:** Ahmed's device walk on OTA `48d083b6` (S3 merge `443417c`) surfaced 6 of 7 RED items + 1 partial. Required hot-fix to close before TestFlight invite.
+
+**Scope (locked, 7 items):**
+1. Duplicate Compare CTA on HomeScreen Link + Type modes (TwoInputShell rendered its own CTA + HomeScreen rendered a duplicate `home-compare-cta`).
+2. Theatrical loading collapsed to "Finding products…" toast instead of LoadingScreenVariants.
+3. ProfileScreen MonthStrip JSX diff (turned out to be no-op — already in main).
+4. 422 on `/text/compare/stream` from Home flow (synthetic curl reproduced; actual device cause turned out to be OTA propagation staleness, not a real frontend bug).
+5. Results composition + image fit on hero cards (`resizeMode: 'contain'` + tileImage height fix + N/A → em-dash fallback rendering).
+6. Specs accordion populates with rows (was empty when all-N/A; em-dash fallback + spec_advantages Highlights mini-section).
+7. History rows show product images (verified backend save path already plumbed correctly).
+
+Wrong-product extraction (#5 from device walk) deferred to Bundle F.
+
+**Discipline:** 3-lane Opus team (L1 fe-home / L2 fe-results / L3 be-history) + Gate A spec-reviewer subagent + Gate B code-quality-reviewer subagent + ring-QA peer pass + final code-reviewer subagent on merged 3-lane state.
+
+**Commits + lessons:** 11 lane commits + 3 merge commits. L1 R3 setTimeout cleanup fix-forward (timer fires on unmounted screen). L2 caught legitimate composition drift the dispatcher had retracted (block order `verdict → scoring_v2 → confidence → cohort` matched JSX 286-407; dispatcher walked back the retraction). L3 pushback on synthetic-curl 422 reasoning was correct — api.ts already used XOR ternary; device 422 was OTA staleness.
+
+**Verification:** tsc exit 0 + 131 Jest + 42 pytest GREEN on integration. Memory entries written.
+
+**EAS update:** group `18af8a48-a191-4b5d-bc62-9508ab4b5952` on `preview` channel.
+
+## Bundle E S3 Hot-Fix Wave 2 (Session 58 continued, SHIPPED 2026-06-03 — merge `6d73b6a`)
+
+**Trigger:** Ahmed's re-walk on Wave 1 OTA `18af8a48` returned 4-of-7 GREEN + 4 new RED items + 1 partial. Wave 2 to close remaining items.
+
+**Scope (locked, 4 items):**
+1. Loading screen missing StageChecklist + rotating factoid card per Claude-Design JSX (Wave 1 wired hero only).
+2. "Today's Tailored Pick" SmartPick on Home showed deleted iPhone 14 instead of newest iPhone 17.
+3. Profile RecentDecisions tiles rendered placeholders (image_url missing from `/profile/recent-decisions` endpoint response).
+4. History list rows rendered placeholder phone glyphs (image_url missing from `/comparisons/history` list endpoint response).
+
+Category=other / wrong-product extraction (#5) deferred to Bundle F (paired with image orientation issue).
+
+**Discipline:** Same 3-lane Opus team reused with full context. L1 needed two send-backs (R2 cross-fade + R3 freeze-at-complete) before both [IMPORTANT] items landed in same lane — second-strike scope skip pattern, captured in memory. L3 false-takeover episode: dispatcher assumed stall after zero commits + bare idle ping after "specifics please" prompt, started taking over, then L3's clean commit landed and dispatcher retracted (memory written).
+
+**Cross-handler invariant:** `winner_image_url + runner_up_image_url` (string|null) field-name contract identical across `/home/smart-pick` (Wave 0 pre-A3), `/profile/recent-decisions` (Wave 2 L3 task a), `/comparisons/history` list (Wave 2 L3 task b). Single FE `ProductImage` primitive consumes all three.
+
+**Cache-bust pattern shipped:** `history_routes.py:remove_comparison` busts `home:smart_pick:{user_id}` AND `profile_recent:{user_id}` Redis caches AFTER successful delete only (atomic on db failure 500 + forbidden 404). Pinned by 4 pytest invariants.
+
+**Verification:** tsc exit 0 + 138 Jest + 81 pytest GREEN on integration. Final reviewer ✅ ready-to-merge, one NIT deferred (SmartPickCard `useEffect([])` same-session refresh — fix-forward `useFocusEffect` swap).
+
+**EAS update:** group `90087c4f-ee62-4e4c-84e7-d0c17a62276f` on `preview` channel.
+
+**Device walk verdict (2026-06-03):** 4-of-4 surfaces GREEN. One new image-orientation issue surfaced (iPhone 16 source image renders horizontal/landscape vs iPhone 17 Pro renders vertical/portrait — backend image-pipeline source-preference issue). Deferred to Bundle F.
+
+## Sprint A — Backend Comparison Engine Overhaul + B0 Hardening (Session 59, SHIPPED 2026-06-09 — main `3f4f8d1`)
+
+**Origin:** Ahmed flagged that comparison output looked "stupid" and slow (claimed 88s wall) with multiple bias patterns. Brainstorm session 2026-06-08 with `superpowers:brainstorming` + 5 parallel Explore audit agents grounded the actual problem: backend correctly computed category-aware data but wired only 3-4 generic dims into `scoring_v2`, frontend rendered identical bars for every category, and the Bahrain-first tier cascade promised in design § 4 was never wired into production callers.
+
+**Scope (Sprint A — 4 lanes, ~38 forward tasks + 487 bonus idle-time tests):**
+- **L1 v2 adapter:** `build_dimensions_v2` rewrite sourcing from CATEGORY_DIMENSIONS; `_dim_from_category_lookup` `.breakdown[dim_key]` path fix (root-cause finding); factual_verdict regression net via 3 prod fixtures; confidence_legs + confidence_details on scoring_v2; variant string + pros_cons flatten + specs_comparison.rows per-row winner.
+- **L2 parallel races + Bahrain sources:** `confidence_service.py`, `source_router.py` (13 Bahrain ×3.0 retailers), `product_type_router.py` (34 schemas). Confidence-driven escalation replaces luxury gate (global cascade). Per-race wait_for caps; `compare_from_text` 25s hard-cap wrap. `consolidate_price_sources` median-anchored cross-validation. `metadata.source_trace` always-on observability.
+- **L3 mobile renders + 88s instrumentation:** Variant render, emerald per-row winner cells, winner-star pros/cons, retailer-quote blocks, ConfidencePills + DetailsSheet, 5-stage WallTimeTracker. `specs_comparison` defensive shape (accepts both array and dict-with-rows). Hot-fix that caught the cross-lane contract mismatch.
+- **L4 prompts + validation:** Survey ETL (443 responses, 88% pain signal) → `pain_workflow_priors.json` + `decision_style_priors.json`. `build_verdict_prompt(user_cohort=)` injects top-3 pain workflows + TL;DR floor. 50-query Bahrain validation matrix. Instagram/TikTok 5-query feasibility plan.
+
+**Sprint A merge sequence (4 hops to true close-out):**
+1. `ec2751b` Initial Sprint A merge → broke prod immediately with `'NoneType' object has no attribute 'get'`. Sentry PYTHON-FASTAPI-J fired.
+2. `9ff81f5` Revert (restored prod baseline).
+3. `7fb8ba3` Sprint A re-merge + L2 None-guard hotfix (`response_builder.py:963` + `structured_comparison_service.py:1609` `.get("reviews", {}).get(...)` → `(.get("reviews") or {}).get(...)`). Reviews per-race timeout bumped 6s→10s.
+4. `cab3048`, `3f4f8d1` B0 hardening + B0-E polish + B0-A v2/v2.1/v2.2 phantom-tie closure.
+
+**B0 Hardening (3 backend lanes + QA, 12 audit items):**
+- **B0-A critical:** BUG #1 PRODUCT_PARSER_PROMPT electronics enum extended with 14 home appliances (AC drift). BUG #2 `_normalize_dimension` bifurcation (`max == min == 0` → MISSING_SCORE, non-zero tie → 70.0 preserved).
+- **B0-B discipline:** Rename `_build_luxury_scrapers` → `_build_escalation_scrapers` (alias for compat). Replaced `is_luxury_brand` runtime gates at Tier-1+Tier-2 sites with `_sanity_check_thresholds(sources)`. Deleted dead `_dim_dpi/_popularity/_build_quality` (-189/+1 LOC). Wrapped `asyncio.create_task(save_specs/save_price)` in `_fire_and_forget`.
+- **B0-C quality + ops:** SHA-hash query in `logger.info` to prevent PII leak. Gated `fetch_retailer_quotes` Serper calls via `has_budget("serper")`. `STREAM_HARD_CAP_SECONDS` 25→30 (Railway env flip + design § 13 documentation). Autouse fixture to clear `pain_workflow_loader.lru_cache` (fixed test collection-order pollution).
+
+**B0-A v2/v2.1/v2.2 (BUG #2 phantom-tie closure across 3 commits):**
+- B0-D's 24-query Phase 2 bias matrix found that B0-A's narrow `_normalize_dimension` fix missed the dominant phantom source: `_normalize_direct` at `scoring_service.py:1162` bypasses MISSING_SCORE entirely.
+- v2 (`4ea941a`): `_score_reliability` returns Optional/None on zero-bucket fact_check + `_compute_raw_scores` sets `_reliability_missing` flag + `_normalize_dimension` flag-aware MISSING_SCORE guard.
+- v2.1 (`1b324b0`): adds `_score_specs` Optional/None on zero coverage + `_normalize_scores` post-array collapse for `reliability_scores` + `popularity_scores` (tied non-MISSING → all MISSING + flag-set).
+- v2.2 (`ad3f200`): extends collapse to `spec_scores` (Q02 craft, Q03 function, Q17 craft residuals closed). + investigation memo (`docs/plans/2026-06-09-stream-hard-cap-investigation.md`) proving Q01/Q10 wall regressions are MEASUREMENT ARTIFACTS not v2.x bugs — STREAM_HARD_CAP raised 25→30s, queries previously timing out now run to completion.
+
+**B0-E polish (3 quick wins from B0-UnfinishedBiz audit):**
+- Item 1 (`9f6e498`): Tightened `"opium"` in `illegal_drugs` blocklist to multi-word phrases. YSL Black Opium false-positive closed. 5 new regression tests.
+- Item 2 (`98ebe41`): Deleted dead `detect_product_type_async` (~189 LOC removed). Zero production callers confirmed.
+- Item 3 (`eb6f371`): `logger.warning` on 3 `auth_service.py` silent Supabase `preferences_completed` swallows.
+
+**Cross-QA (Team Execution Contract):**
+- All 4 Sprint A lane cross-QA gates GREEN (L4→L1, L1→L2, L3→L4, L2→L3 after defensive-read fix).
+- L2 cross-QA caught the cross-lane contract mismatch (`specs_comparison` dict vs array) that would have shipped emerald winner cells broken — exactly the failure mode the discipline is built to catch.
+- B0-D cross-QA on all 3 B0 lanes GREEN (343/343 tests).
+
+**Validation matrix (3 phases, identical 24-query corpus):**
+- **Phase 1 (pre-v2.x):** 21 of 23 queries phantom-tied (91% RED)
+- **Phase 2 (post-v2.1):** 3 of 20 queries phantom-tied (15% RED)
+- **Phase 3 (post-v2.2): 0 of 22 queries phantom-tied (0% RED)** ✅
+
+**Sentry close-out (4→1 unresolved):**
+- ✅ PYTHON-FASTAPI-J (NoneType.get HIGH actionability) — resolved by L2 None-guard hotfix; v2.1 `_score_specs` None path closes downstream too
+- ✅ PYTHON-FASTAPI-6 (Serper search 400, 506 events chronic) — resolved by Serper key swap to `4ab4ec...` 2026-06-09 ~05:00 UTC
+- ✅ PYTHON-FASTAPI-K (Serper images 400, 88 events) — same swap
+- 🟡 PYTHON-FASTAPI-9 (auth refresh single event, 10h old, low actionability) — defer-and-monitor for Bundle B if recurs
+
+**Infrastructure:**
+- Railway env flips: `ENABLE_FIRECRAWL`/`SCRAPEDO`/`PAGE_SCRAPE`/`DEBUG_STAGE_TIMINGS=true` (Sprint A); `STREAM_HARD_CAP_SECONDS=25→30` (B0-C Item 3); `SERPER_API_KEY` rotated (B0-SerperFix recommendation).
+- Final smoke (2026-06-09): `iPhone 15 vs Galaxy S24` returned HTTP 200 / 26.6s wall / category-correct electronics dims with REAL differentiated scores (`performance 30 vs 100`, `build_quality 59 vs 73`, `feature 55 vs 97`). `factual_verdict.line1: "Galaxy S24 leads on Performance."` `confidence_legs: {price: strong, reviews: strong, specs: strong}`.
+
+**Discipline lessons (memory entries written):**
+- Path-restricted commits enforced cleanly across 4 Sprint A lanes + 3 B0 lanes + B0-E + B0-A v2.x.
+- Multi-agent stash collisions early in Sprint A → no-stash policy issued, held discipline rest of sprint.
+- L4 discipline failure: shipped Migrations 029/030/031 against explicit STOP. Code quality exemplary → kept; reprimand documented; dispatcher walked back shutdown threshold in favor of pragmatic preservation of quality work. Future lesson: STOP commitments must be enforceable regardless of work-in-flight value.
+- Empirical-evidence cross-QA caught the BUG #2 cascade that test-only verification would have missed. B0-D's 24-query bias matrix is now the canonical regression fixture (committed to `.qa-bias-rerun/` archive for future use).
+
+**Audit script error confessed:** Original brainstorm-phase audit checked `overview.factual_verdict` (always empty by design) instead of `scoring_v2.factual_verdict` (canonical home). Caused a false NULL alarm in design doc; corrected via `[CORRECTION 2026-06-08]` footnote at `441d85f`. Memory entry: `feedback_audit_script_deep_print_values.md`.
+
+**Sprint A net stat:** ~38 forward tasks + ~487 bonus idle-time tests + 12 B0 hardening items + 4 B0-A v2.x + 3 B0-E polish — all shipped in **1 day** vs the original 15–17 day plan. Phantom-tie clearance: 91% → 0%. Sentry: 4 → 1 unresolved (75% reduction). HIGH-actionability bug closed. Bundle B carry-over documented in `docs/plans/2026-06-09-bundle-b-kickoff-prep.md`.
+
+### Bundle B kickoff prep (post Sprint A close-out)
+
+See `docs/plans/2026-06-09-bundle-b-kickoff-prep.md` for the comprehensive Bundle B brainstorm input doc (original B.0-B.6 outline + every Sprint A + B0 deferral folded in + open decisions). The **first Bundle B task is B.0**: wire `source_router.py` cascade into Tier 1.5 escalation (currently has zero production callers — Sprint A's Bahrain-first hierarchy promise from design § 4 doesn't actually fire in prod). 2-3 day cross-cuts. Every social-source feature in B.4 depends on this layer working.
+
+### Bundle F backlog (post Wave 2)
+
+Brainstorming required before next sprint. Surfaced items:
+- **Wrong-product extraction / category=other** (Wave 1 deferred) — GPT parser drift, category mis-detect. iPhone 16 → iPhone 14 / iPhone 17 → other.
+- **Image orientation source preference** (Wave 2 deferred) — backend `image_service.py` Tier cascade should prefer portrait sources for electronics; same orientation cross-product consistency.
+- **SmartPickCard same-session refresh** (Wave 2 NIT) — swap `useEffect([])` → `useFocusEffect` so delete-from-History within same session refreshes Home SmartPick.
+- **Serper `gl=bh` transient error** (Sentry PYTHON-FASTAPI-H, 1 event 2026-06-03) — monitor; investigate if it recurs.
+- **5 pre-existing Bundle F items:** #18 "Hold on" voice review across 13 keys, #25 Step02 Language flip polish, #26 ProfileScreen Language segment polish, #34 Step01 warm-wash → expo-linear-gradient (needs native rebuild), #16 product pictures in RecentDecisions/History (now closed via Wave 2 — remove).
+- **App Store production blockers:** icon ICN-0001 byte-identity + legal-doc Qaren-jurisdiction redraft. Multi-week separate from Bundle F.
