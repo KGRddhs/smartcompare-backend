@@ -115,3 +115,20 @@ def score_source(url: str, category: str) -> float:
             if not s.categories or category in s.categories:
                 return s.weight
     return 0.5
+
+
+def build_site_discovery_query(
+    product_query: str, category: str, tier: str = "bahrain", limit: int = 4
+) -> str:
+    """Serper query targeting registry sources of one tier for a category.
+
+    Returns '<query> site:a OR site:b ...' — empty string when the tier has
+    no sources for the category (the caller then skips the discovery call).
+    Domains preserve registry order (Bahrain-first within the tier).
+    """
+    domains = [
+        s.domain for s in get_sources_for_category(category) if s.tier == tier
+    ][:limit]
+    if not domains:
+        return ""
+    return f"{product_query} " + " OR ".join(f"site:{d}" for d in domains)
