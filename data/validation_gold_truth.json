@@ -3,7 +3,7 @@
     "schema_version": 1,
     "authored_at": "2026-06-08",
     "author": "L4-prompts-eval (drafted) — Ahmed ratifies expected_prices via lulu.com.bh / sharafdg.com / carrefourbh.com / iherb.com / bn.boots.com manual checks",
-    "queries": 175,
+    "queries": 200,
     "pass_threshold_per_query": 0.8,
     "gate_aggregate_pass_rate": 0.8,
     "axis_weights": {
@@ -5797,6 +5797,831 @@
         "Levi's 501 stretch jeggings fabric standard",
         "Lee Brooklyn made in Bahrain",
         "Levi's 501 contains performance cooling fabric"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-007",
+      "query": "Crocs Classic Clog vs Skechers Foamies",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 12,
+          "max": 30,
+          "currency": "BHD",
+          "note": "noon.com + sharafdg.com.bh Crocs Classic Clog converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 10,
+          "max": 26,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Skechers Foamies clog converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Crocs Classic's Croslite cushioning, durability and Jibbitz ecosystem keep it the benchmark casual clog",
+      "forbidden_facts": [
+        "Skechers Foamies is genuine Crocs-branded",
+        "Crocs Classic Clog leather upper standard",
+        "Skechers Foamies memory-foam gel insole standard",
+        "Crocs Classic Clog waterproof Gore-Tex membrane"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-008",
+      "query": "Puma Suede Classic vs Adidas Gazelle",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 22,
+          "max": 45,
+          "currency": "BHD",
+          "note": "noon.com + sharafdg.com.bh Puma Suede Classic converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 28,
+          "max": 55,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Adidas Gazelle converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Adidas Gazelle's retro silhouette and current trend resonance give it stronger style appeal despite the premium",
+      "forbidden_facts": [
+        "Puma Suede Classic Boost midsole standard",
+        "Adidas Gazelle is a running performance shoe",
+        "Puma Suede Classic primeknit upper standard",
+        "Adidas Gazelle made in Bahrain"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-009",
+      "query": "Fossil Gen 6 smartwatch vs Citizen Eco-Drive watch",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 55,
+          "max": 130,
+          "currency": "BHD",
+          "note": "noon.com + sharafdg.com.bh Fossil Gen 6 smartwatch converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 50,
+          "max": 150,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Citizen Eco-Drive watch converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Citizen Eco-Drive's solar movement needs no charging or battery swaps, a more durable long-term timepiece",
+      "forbidden_facts": [
+        "Citizen Eco-Drive runs Wear OS smartwatch apps",
+        "Fossil Gen 6 solar-charged movement standard",
+        "Citizen Eco-Drive requires daily winding mechanical",
+        "Fossil Gen 6 mechanical automatic movement"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-010",
+      "query": "Ray-Ban Aviator vs Oakley Holbrook sunglasses",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 45,
+          "max": 90,
+          "currency": "BHD",
+          "note": "noon.com + sunglass-hut GCC Ray-Ban Aviator converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 45,
+          "max": 95,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Oakley Holbrook converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Ray-Ban Aviator's timeless design and broad GCC retail presence make it the safer everyday style choice",
+      "forbidden_facts": [
+        "Oakley Holbrook polarized standard on all base models",
+        "Ray-Ban Aviator photochromic transition lenses standard",
+        "Oakley Holbrook prescription-only lenses",
+        "Ray-Ban Aviator titanium frame standard base"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-011",
+      "query": "Herschel Little America backpack vs JanSport SuperBreak backpack",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 25,
+          "max": 55,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Herschel Little America backpack converted to BHD"
+        },
+        "product_1": {
+          "min": 12,
+          "max": 30,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae JanSport SuperBreak backpack converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Herschel's padded laptop sleeve and sturdier build justify the premium for daily commuting and travel",
+      "forbidden_facts": [
+        "JanSport SuperBreak has a dedicated padded laptop compartment standard",
+        "Herschel Little America is waterproof submersible",
+        "JanSport SuperBreak anti-theft hidden zip standard",
+        "Herschel Little America solar-charging panel built in"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-012",
+      "query": "Nike Dri-FIT t-shirt vs Adidas Aeroready t-shirt",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 8,
+          "max": 22,
+          "currency": "BHD",
+          "note": "noon.com + sharafdg.com.bh Nike Dri-FIT training tee converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 22,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Adidas Aeroready training tee converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Nike Dri-FIT's moisture-wicking performance and broad GCC availability make it the go-to gym tee",
+      "forbidden_facts": [
+        "Adidas Aeroready is a heavyweight cotton tee",
+        "Nike Dri-FIT merino wool base standard",
+        "Adidas Aeroready built-in UV SPF 50 fabric standard",
+        "Nike Dri-FIT cooling gel-infused fibres"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-013",
+      "query": "Tommy Hilfiger polo shirt vs Lacoste polo shirt",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 18,
+          "max": 45,
+          "currency": "BHD",
+          "note": "noon.com + Tommy GCC store Tommy Hilfiger polo converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 28,
+          "max": 60,
+          "currency": "BHD",
+          "note": "noon.com + ounass.com Lacoste L.12.12 polo converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Lacoste's signature pique cotton and heritage fit hold shape and prestige better over time",
+      "forbidden_facts": [
+        "Tommy Hilfiger polo is genuine Lacoste-made",
+        "Lacoste polo performance moisture-wicking polyester standard",
+        "Tommy Hilfiger polo SPF 50 UV fabric standard",
+        "Lacoste polo made in Bahrain"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-014",
+      "query": "Timberland 6-inch boots vs Dr. Martens 1460 boots",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 45,
+          "max": 95,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Timberland 6-inch Premium boots converted to BHD"
+        },
+        "product_1": {
+          "min": 50,
+          "max": 100,
+          "currency": "BHD",
+          "note": "noon.com + ounass.com Dr. Martens 1460 boots converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Timberland's waterproof nubuck and cushioned sole suit broader everyday wear than the stiffer Dr. Martens break-in",
+      "forbidden_facts": [
+        "Dr. Martens 1460 waterproof Gore-Tex standard",
+        "Timberland 6-inch boots steel-toe safety standard",
+        "Dr. Martens 1460 memory-foam comfort insole out of box standard",
+        "Timberland 6-inch boots made in Bahrain"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-015",
+      "query": "Calvin Klein boxer briefs vs Tommy Hilfiger boxer briefs",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 8,
+          "max": 25,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Calvin Klein boxer briefs 3-pack converted to BHD"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 25,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Tommy Hilfiger boxer briefs 3-pack converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Calvin Klein's signature waistband fit and cotton-stretch comfort make it the benchmark in this segment",
+      "forbidden_facts": [
+        "Tommy Hilfiger boxer briefs merino wool standard",
+        "Calvin Klein boxer briefs antibacterial silver-thread standard",
+        "Tommy Hilfiger boxer briefs SPF UV fabric",
+        "Calvin Klein boxer briefs made in Bahrain"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-016",
+      "query": "Michael Kors smartwatch strap vs Fossil leather strap",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 12,
+          "max": 35,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Michael Kors watch strap converted to BHD; widened across materials"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 28,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Fossil leather watch strap converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Fossil's genuine-leather straps offer better value and wider compatibility for everyday watch wear",
+      "forbidden_facts": [
+        "Fossil leather strap is exotic crocodile skin standard",
+        "Michael Kors strap titanium mesh standard at base price",
+        "Fossil leather strap waterproof dive-rated 200m",
+        "Michael Kors strap solar-charging band"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-017",
+      "query": "Aldo crossbody bag vs Charles & Keith crossbody bag",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 18,
+          "max": 45,
+          "currency": "BHD",
+          "note": "noon.com + Aldo GCC store crossbody bag converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 15,
+          "max": 40,
+          "currency": "BHD",
+          "note": "noon.com + Charles & Keith GCC crossbody bag converted to BHD; strong GCC mall presence"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Charles & Keith's on-trend designs and strong GCC mall footprint give it the edge for fashion-forward buyers",
+      "forbidden_facts": [
+        "Charles & Keith bag is genuine full-grain leather standard",
+        "Aldo crossbody bag solar-charging panel built in",
+        "Charles & Keith bag made in Bahrain",
+        "Aldo crossbody bag RFID-blocking lining standard premium"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-006",
+      "query": "Philips Essential air fryer vs Black and Decker Aerofry air fryer",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 25,
+          "max": 95,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com Philips Essential HD9200 BHD 27.99 (sale from 54.99); larger HD9270 up to ~95"
+        },
+        "product_1": {
+          "min": 40,
+          "max": 90,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com Black & Decker Aerofry AF400 BHD 49.99; Digital AOF100 BHD 69.99"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Philips' Rapid Air technology and even cooking give more consistent results, the air-fryer benchmark in Bahrain",
+      "forbidden_facts": [
+        "Black & Decker Aerofry dual-basket standard",
+        "Philips Essential air fryer pressure-cook function standard",
+        "Black & Decker Aerofry self-cleaning steam cycle",
+        "Philips Essential air fryer 10-litre oven capacity base"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-007",
+      "query": "Kenwood hand blender vs Braun MultiQuick hand blender",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 10,
+          "max": 45,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com Kenwood Hand Blender HBM02 BHD 14.50; noon.com tri-blade set BHD 39.9"
+        },
+        "product_1": {
+          "min": 25,
+          "max": 60,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Braun Hand Blender MQ520 BHD 29.99, MQ745 BHD 52.70"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Braun MultiQuick's powerful motor and smooth-start tech handle tougher blending tasks more reliably",
+      "forbidden_facts": [
+        "Kenwood hand blender cordless rechargeable standard base",
+        "Braun MultiQuick includes a full stand-mixer bowl standard",
+        "Kenwood hand blender 1500W motor standard",
+        "Braun MultiQuick self-cleaning standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-008",
+      "query": "Philips electric kettle vs Kenwood electric kettle",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 5,
+          "max": 25,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + bahrain.sharafdg.com Philips 1.7L electric kettle Bahrain price"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 22,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Kenwood 1.7L electric kettle Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Philips' build quality and reliable auto-shutoff make it the more durable everyday kettle for the price",
+      "forbidden_facts": [
+        "Kenwood electric kettle temperature-control digital standard base",
+        "Philips electric kettle gooseneck pour-over standard",
+        "Kenwood electric kettle keep-warm 24-hour standard base",
+        "Philips kettle built-in water filter standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-009",
+      "query": "Ariston water heater vs Super General water heater",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 30,
+          "max": 110,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com + bahrain.microless.com Ariston electric water heater 50-100L Bahrain price"
+        },
+        "product_1": {
+          "min": 25,
+          "max": 90,
+          "currency": "BHD",
+          "note": "bahrain.microless.com + shopalmoayyed.com Super General water heater 50-100L Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Ariston's titanium-coated tank and proven reliability justify the premium for long Bahrain service life",
+      "forbidden_facts": [
+        "Super General water heater solar-powered standard base",
+        "Ariston water heater tankless instant standard at this price",
+        "Super General water heater WiFi app control standard",
+        "Ariston water heater 200-litre capacity base model"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-010",
+      "query": "Dyson V8 cordless vacuum vs Xiaomi Mi Vacuum G10",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 130,
+          "max": 240,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com + extra.com/en-bh Dyson V8 cordless vacuum Bahrain price"
+        },
+        "product_1": {
+          "min": 70,
+          "max": 150,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Xiaomi Mi Vacuum Cleaner G10 converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Dyson V8's stronger suction, build quality and Bahrain service network justify the premium for whole-home cleaning",
+      "forbidden_facts": [
+        "Xiaomi Mi Vacuum G10 self-emptying dock standard",
+        "Dyson V8 robotic LIDAR navigation standard",
+        "Xiaomi Mi Vacuum G10 laser dust detection on base",
+        "Dyson V8 wet-mop function standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-011",
+      "query": "Nutribullet blender vs NutriBullet Magic Bullet",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 20,
+          "max": 55,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + bahrain.sharafdg.com Nutribullet 900 Pro Bahrain price"
+        },
+        "product_1": {
+          "min": 12,
+          "max": 35,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Magic Bullet compact blender converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "The full-size Nutribullet's stronger motor blends frozen fruit and greens far better for daily smoothies",
+      "forbidden_facts": [
+        "Magic Bullet 1200W motor standard",
+        "Nutribullet includes a heating soup function standard",
+        "Magic Bullet vacuum-seal blending standard",
+        "Nutribullet self-cleaning UV cycle standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-012",
+      "query": "Philips Lumea IPL vs Braun Silk-expert Pro IPL",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 90,
+          "max": 200,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com Philips Lumea IPL hair removal converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 100,
+          "max": 220,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Braun Silk-expert Pro 5 IPL converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Braun Silk-expert Pro's faster flash rate and skin-tone sensor make full-body sessions quicker and safer",
+      "forbidden_facts": [
+        "Philips Lumea is a laser diode device not IPL",
+        "Braun Silk-expert Pro permanent hair removal guaranteed forever",
+        "Philips Lumea works on dark skin tone VI standard",
+        "Braun Silk-expert Pro cordless battery-only standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-013",
+      "query": "Tefal steam iron vs Philips steam iron",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 8,
+          "max": 35,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com Tefal steam iron Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 35,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + bahrain.sharafdg.com Philips steam iron Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Tefal's durable ceramic soleplate and reliable steam output give it the everyday-ironing edge",
+      "forbidden_facts": [
+        "Philips steam iron cordless standard at this price",
+        "Tefal steam iron is a full garment steamer station standard",
+        "Philips steam iron self-cleaning robotic standard",
+        "Tefal steam iron titanium soleplate standard base"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-014",
+      "query": "Super General table fan vs Geepas pedestal fan",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 6,
+          "max": 25,
+          "currency": "BHD",
+          "note": "bahrain.microless.com + lulu.com.bh Super General table fan Bahrain price; GCC home brand"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 30,
+          "currency": "BHD",
+          "note": "lulu.com.bh + noon.com Geepas pedestal fan Bahrain price; popular GCC appliance brand"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Geepas pedestal fan's adjustable height and wider oscillation cool a room more effectively for a small premium",
+      "forbidden_facts": [
+        "Super General table fan bladeless Dyson-style standard",
+        "Geepas pedestal fan built-in air purifier HEPA standard",
+        "Super General table fan misting cooling standard",
+        "Geepas pedestal fan solar-powered standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-015",
+      "query": "DeLonghi espresso machine vs Breville Barista Express",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 50,
+          "max": 160,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com + noon.com DeLonghi pump espresso machine converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 200,
+          "max": 380,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Breville Barista Express converted to BHD; prosumer tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Breville Barista Express's integrated grinder and precise control deliver cafe-quality espresso for serious home baristas",
+      "forbidden_facts": [
+        "DeLonghi espresso machine has a built-in conical burr grinder standard at entry price",
+        "Breville Barista Express is a capsule pod machine",
+        "DeLonghi espresso machine dual-boiler standard base",
+        "Breville Barista Express fully automatic bean-to-cup one-touch standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-016",
+      "query": "Sharp microwave oven vs Panasonic microwave oven",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 25,
+          "max": 90,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com + lulu.com.bh Sharp 20-25L microwave Bahrain price"
+        },
+        "product_1": {
+          "min": 28,
+          "max": 100,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com + extra.com/en-bh Panasonic inverter microwave Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Panasonic's inverter technology heats more evenly than Sharp's standard magnetron at the mid tier",
+      "forbidden_facts": [
+        "Sharp microwave has built-in air-fryer convection standard at entry price",
+        "Panasonic microwave steam-oven function standard base",
+        "Sharp microwave inverter standard on all models",
+        "Panasonic microwave 60-litre capacity entry model"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-017",
+      "query": "Philips beard trimmer vs Braun Series 3 shaver",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 10,
+          "max": 35,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + bn.boots.com Philips beard trimmer Bahrain price"
+        },
+        "product_1": {
+          "min": 18,
+          "max": 50,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + noon.com Braun Series 3 electric shaver Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "A Philips beard trimmer suits the styled-beard grooming most GCC men want, with adjustable length combs",
+      "forbidden_facts": [
+        "Braun Series 3 is a beard-sculpting trimmer not a foil shaver",
+        "Philips beard trimmer foil close-shave head standard",
+        "Braun Series 3 laser-guided trim standard",
+        "Philips beard trimmer self-sharpening titanium standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-018",
+      "query": "Lock & Lock food container set vs Tupperware container set",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 5,
+          "max": 25,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com Lock & Lock airtight container set Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 35,
+          "currency": "BHD",
+          "note": "noon.com + Tupperware GCC container set converted/Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Lock & Lock's reliable airtight seal and value pricing make it the practical everyday food-storage pick",
+      "forbidden_facts": [
+        "Tupperware container set is glass borosilicate standard",
+        "Lock & Lock containers oven-safe to 250C standard",
+        "Tupperware set includes vacuum-seal pump standard",
+        "Lock & Lock containers self-heating standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "other-019",
+      "query": "Bionaire air cooler vs Super General air cooler",
+      "category": "other",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 30,
+          "max": 90,
+          "currency": "BHD",
+          "note": "lulu.com.bh + noon.com Bionaire evaporative air cooler Bahrain price"
+        },
+        "product_1": {
+          "min": 25,
+          "max": 80,
+          "currency": "BHD",
+          "note": "bahrain.microless.com + shopalmoayyed.com Super General air cooler Bahrain price; GCC home brand"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Super General's larger water tank and local service support suit Bahrain's dry-heat cooling needs at a lower price",
+      "forbidden_facts": [
+        "Bionaire air cooler is a full split AC compressor unit",
+        "Super General air cooler refrigerant-based cooling standard",
+        "Bionaire air cooler WiFi smart-home control standard base",
+        "Super General air cooler built-in HEPA medical-grade purifier standard"
       ],
       "max_wall_seconds": 30.0
     }
