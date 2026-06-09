@@ -1245,7 +1245,19 @@ class ScoringService:
     def _normalize_dimension(
         self, raw_scores: List[Dict], idx: int, key: str, higher_better: bool = True
     ) -> float:
-        """Normalize a dimension score relative to competitors."""
+        """Normalize a dimension score relative to competitors.
+
+        B0-A BUG #2 fix (2026-06-08): when all raw signals are zero (no
+        spec data was extracted across any product), return MISSING_SCORE
+        so the downstream silent-omission path (build_dimensions_v2 §
+        A.4.9) drops the dim rather than surfacing a phantom 70.0/70.0
+        tie pair. The legacy `return 70.0` here was an unfinished
+        placeholder — for genuine non-zero ties it represented a "draw",
+        but the same path triggered for missing-signal cases (both
+        `_score_specs` returning 0.0), producing the
+        `('craft', 70.0, 70.0)`, `('durability', 30.0, 30.0)` literals
+        seen in the 24-query bias audit.
+        """
         values = []
         for rs in raw_scores:
             v = rs.get(key)
@@ -1260,6 +1272,13 @@ class ScoringService:
         min_val = min(values)
 
         if max_val == min_val:
+            # B0-A BUG #2: distinguish "no signal extracted" (max==min==0)
+            # from "genuine tied non-zero signal" (max==min==X, X>0).
+            # The no-signal case must propagate MISSING_SCORE so silent
+            # dim omission in build_dimensions_v2 fires; otherwise we'd
+            # ship a fake 70/70 tie row.
+            if max_val == 0:
+                return MISSING_SCORE
             return 70.0
 
         if higher_better:
