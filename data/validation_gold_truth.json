@@ -3,7 +3,7 @@
     "schema_version": 1,
     "authored_at": "2026-06-08",
     "author": "L4-prompts-eval (drafted) — Ahmed ratifies expected_prices via lulu.com.bh / sharafdg.com / carrefourbh.com / iherb.com / bn.boots.com manual checks",
-    "queries": 75,
+    "queries": 100,
     "pass_threshold_per_query": 0.8,
     "gate_aggregate_pass_rate": 0.8,
     "axis_weights": {
@@ -2413,6 +2413,835 @@
         "Rani Float carbonated standard",
         "KDD juice cold-pressed standard",
         "Rani Float dairy-based smoothie"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-008",
+      "query": "India Gate basmati rice 5kg vs Daawat basmati rice 5kg",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 6,
+          "max": 12,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh India Gate Classic Basmati 5kg listed BHD 8.59"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 11,
+          "currency": "BHD",
+          "note": "carrefourbh.com + lulu.com.bh Daawat basmati 5kg Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "weight": "5kg"
+        },
+        "product_1": {
+          "weight": "5kg"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "India Gate's longer aged grains and consistent quality make it the GCC household favourite for biryani",
+      "forbidden_facts": [
+        "Daawat brown basmati only",
+        "India Gate organic certified standard",
+        "Daawat 10 year aged grain standard",
+        "India Gate parboiled rice base variant"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-009",
+      "query": "Al Foah dates vs Bateel dates",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 8,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Al Foah plain dates (Khalas/Fard) pack — mainstream tier, no amazon.com listing"
+        },
+        "product_1": {
+          "min": 4.8,
+          "max": 26,
+          "currency": "BHD",
+          "note": "bateel.bh luxury gourmet dates range BHD 4.8-26; premium gift tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Al Foah offers excellent everyday Emirati dates at a fraction of Bateel's gift-tier price, best value for daily use",
+      "forbidden_facts": [
+        "Bateel dates sugar-free standard",
+        "Al Foah dates Medjool only variety",
+        "Bateel dates grown in Bahrain",
+        "Al Foah chocolate-stuffed dates standard pack"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-010",
+      "query": "Rabea tea vs Lipton Yellow Label tea",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.7,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Rabea: loose 200g BHD 0.85, 400g BHD 1.20, 100+20 teabags BHD 1.39"
+        },
+        "product_1": {
+          "min": 1,
+          "max": 3,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Lipton teabags 100+30 BHD 1.69 Bahrain"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Rabea's stronger Gulf-style black tea and lower price make it the regional staple in Bahrain homes",
+      "forbidden_facts": [
+        "Lipton Yellow Label organic certified standard",
+        "Rabea green-tea-only brand",
+        "Lipton Yellow Label loose-leaf only format",
+        "Rabea decaffeinated standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-011",
+      "query": "Barbican non-alcoholic malt vs Moussy non-alcoholic malt",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.3,
+          "max": 2.6,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Barbican 330ml single BHD 0.40, 6-pack BHD 2.40"
+        },
+        "product_1": {
+          "min": 0.4,
+          "max": 2.9,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Moussy classic 5+1 BHD 2.50, peach 6-pack BHD 2.79"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Barbican's wider flavour range and lower per-bottle price make it the GCC malt-beverage leader",
+      "forbidden_facts": [
+        "Moussy contains 0.5% alcohol above halal threshold",
+        "Barbican energy-drink caffeine added",
+        "Moussy dairy-based malt",
+        "Barbican brewed with hops at alcoholic strength"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-012",
+      "query": "Vimto cordial vs Tang orange powder",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.8,
+          "max": 3,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Vimto Fruit Cordial 710ml Bahrain shelf price; sparkling 330ml BHD 0.29 reference"
+        },
+        "product_1": {
+          "min": 0.6,
+          "max": 3.5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Tang orange powder 375g/1kg/2kg Bahrain range"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Vimto's distinctive berry cordial is a Ramadan staple across the Gulf, preferred over generic powder mixes",
+      "forbidden_facts": [
+        "Tang sugar-free standard formulation",
+        "Vimto cordial carbonated",
+        "Tang orange real juice content 50%",
+        "Vimto cordial alcoholic base"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-013",
+      "query": "Al Ain bottled water 1.5L vs Aquafina bottled water 1.5L",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.3,
+          "max": 1.2,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com Al Ain 12x1.5L + roots/ahmarket BH 6x1.5L ~BHD 0.45-0.90"
+        },
+        "product_1": {
+          "min": 0.3,
+          "max": 1.3,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Aquafina 6x1.5L Bahrain; 30x200ml BHD 0.725 reference"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Al Ain's local GCC sourcing and lower price make it the everyday bulk-water value pick in Bahrain",
+      "forbidden_facts": [
+        "Aquafina alkaline pH 9.5 standard",
+        "Al Ain sparkling mineral default",
+        "Aquafina glass bottle standard",
+        "Al Ain water added electrolytes premium standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-014",
+      "query": "Almarai long life milk vs Nadec long life milk",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.3,
+          "max": 1.3,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Almarai UHT milk 1L Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 0.3,
+          "max": 1.3,
+          "currency": "BHD",
+          "note": "talabat.com + megamart.bh Nadec UHT milk 1L Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Almarai's market-leading distribution and consistent flavour give it the everyday edge in Bahrain",
+      "forbidden_facts": [
+        "Nadec A2 protein milk standard",
+        "Almarai lactose-free default variant",
+        "Nadec organic certified standard",
+        "Almarai milk camel-milk base"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-015",
+      "query": "Al Alali tomato paste vs Americana tomato paste",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.3,
+          "max": 1.5,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Al Alali tomato paste can Bahrain shelf — GCC pantry staple"
+        },
+        "product_1": {
+          "min": 0.2,
+          "max": 1.4,
+          "currency": "BHD",
+          "note": "talabat.com Americana tomato paste can Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Al Alali's thicker concentrate and trusted regional reputation make it the GCC cooking favourite",
+      "forbidden_facts": [
+        "Americana organic tomato paste standard",
+        "Al Alali sun-dried tomato base",
+        "Americana no-salt-added default",
+        "Al Alali tomato paste imported from Italy single-origin"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-016",
+      "query": "Afia sunflower oil vs Hayat sunflower oil",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1,
+          "max": 4,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Afia sunflower oil 1.5-1.8L Bahrain shelf — popular GCC cooking oil"
+        },
+        "product_1": {
+          "min": 1,
+          "max": 4,
+          "currency": "BHD",
+          "note": "talabat.com + megamart.bh Hayat sunflower oil 1.5L Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Afia's wide GCC availability and consistent frying performance give it the household edge",
+      "forbidden_facts": [
+        "Hayat extra-virgin olive oil base",
+        "Afia cold-pressed standard",
+        "Hayat oil omega-3 fortified standard",
+        "Afia coconut oil blend default"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-017",
+      "query": "Al Wadi honey vs Langnese honey",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 6,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Al Wadi Al Akhdar honey jar Bahrain shelf — Levantine GCC brand"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 8,
+          "currency": "BHD",
+          "note": "lulu.com.bh Langnese honey 500g Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Langnese's pure German-graded honey has a more refined flavour and trusted quality control",
+      "forbidden_facts": [
+        "Al Wadi Manuka honey UMF certified",
+        "Langnese raw unfiltered standard",
+        "Al Wadi honey royal-jelly fortified standard",
+        "Langnese honey produced in Bahrain"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-018",
+      "query": "Tiffany biscuits vs Loacker wafers",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.5,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Tiffany biscuits multipack Bahrain shelf — UAE-made GCC brand"
+        },
+        "product_1": {
+          "min": 1,
+          "max": 4,
+          "currency": "BHD",
+          "note": "lulu.com.bh Loacker wafer pack Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Loacker's crisper wafer layers and richer cream filling justify the premium for most buyers",
+      "forbidden_facts": [
+        "Tiffany sugar-free biscuits standard",
+        "Loacker gluten-free default range",
+        "Tiffany Italian-made origin",
+        "Loacker wafers vegan standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-019",
+      "query": "Patchi chocolate vs Bateel chocolate",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 5,
+          "max": 30,
+          "currency": "BHD",
+          "note": "Patchi Bahrain boutique (City Centre / Seef) gift box — Lebanese premium chocolate, no amazon.com listing; band widened across box sizes"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 28,
+          "currency": "BHD",
+          "note": "bateel.bh chocolate/date gift assortments Bahrain; premium gift tier, widened across sizes"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Patchi's signature gift presentation and chocolate variety dominate the GCC corporate-gifting market",
+      "forbidden_facts": [
+        "Bateel chocolate sugar-free standard",
+        "Patchi chocolate produced in Switzerland",
+        "Bateel chocolate vegan default range",
+        "Patchi single-origin 100% cocoa standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-020",
+      "query": "KDD evaporated milk vs Rainbow evaporated milk",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.2,
+          "max": 1,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com KDD evaporated milk can Bahrain shelf — Kuwaiti GCC brand"
+        },
+        "product_1": {
+          "min": 0.2,
+          "max": 1,
+          "currency": "BHD",
+          "note": "talabat.com Rainbow evaporated milk can Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Rainbow's long-standing GCC presence and creamier texture make it the regional tea-and-dessert favourite",
+      "forbidden_facts": [
+        "KDD evaporated milk plant-based standard",
+        "Rainbow milk camel-milk base",
+        "KDD evaporated milk sugar-free condensed default",
+        "Rainbow milk fortified with vitamin D3 5000 IU"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-021",
+      "query": "Nestle Cerelac vs Bebelac infant cereal",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "lulu.com.bh + bn.boots.com Nestle Cerelac wheat 400g Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 6,
+          "currency": "BHD",
+          "note": "carrefourbh.com Bebelac infant cereal Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Cerelac's wide GCC availability and trusted iron-fortification make it the default first-cereal choice",
+      "forbidden_facts": [
+        "Bebelac organic certified standard",
+        "Cerelac sugar-free standard formula",
+        "Bebelac goat-milk base default",
+        "Cerelac contains probiotics at therapeutic dose standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-022",
+      "query": "Indomie noodles vs Maggi 2-minute noodles",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.1,
+          "max": 1.5,
+          "currency": "BHD",
+          "note": "lulu.com.bh + talabat.com Indomie pack/multipack Bahrain shelf — huge GCC popularity"
+        },
+        "product_1": {
+          "min": 0.1,
+          "max": 1.5,
+          "currency": "BHD",
+          "note": "carrefourbh.com Maggi 2-minute noodles pack Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Indomie's iconic Mi Goreng flavour has a near-cult following across the GCC, edging Maggi on taste preference",
+      "forbidden_facts": [
+        "Maggi noodles whole-wheat standard",
+        "Indomie air-dried not fried standard",
+        "Maggi noodles MSG-free default",
+        "Indomie gluten-free rice-noodle base standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-023",
+      "query": "Al Kabeer frozen samosa vs Americana frozen samosa",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1,
+          "max": 4,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Al Kabeer frozen samosa pack Bahrain shelf — GCC frozen-foods brand"
+        },
+        "product_1": {
+          "min": 1,
+          "max": 4,
+          "currency": "BHD",
+          "note": "talabat.com Americana frozen samosa pack Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Al Kabeer's reliable filling-to-pastry ratio and Ramadan ubiquity make it the GCC frozen-snack staple",
+      "forbidden_facts": [
+        "Americana samosa baked not fried standard",
+        "Al Kabeer samosa gluten-free pastry",
+        "Americana samosa plant-based meat standard",
+        "Al Kabeer samosa air-fryer-only instructions"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-024",
+      "query": "Lurpak butter vs President butter",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Lurpak butter 200-400g Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 1.2,
+          "max": 4.5,
+          "currency": "BHD",
+          "note": "lulu.com.bh President butter 200-250g Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Lurpak's clean Danish flavour and bake performance make it the GCC premium-butter benchmark",
+      "forbidden_facts": [
+        "President butter plant-based standard",
+        "Lurpak ghee-only product",
+        "President butter lactose-free default",
+        "Lurpak butter produced in France"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-025",
+      "query": "Almarai labneh vs Puck labneh",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.8,
+          "max": 3,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Almarai labneh tub Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 1,
+          "max": 3.5,
+          "currency": "BHD",
+          "note": "talabat.com Puck labneh tub/jar Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Puck's creamier set and iconic GCC breakfast presence give it the edge for spreads and mezze",
+      "forbidden_facts": [
+        "Almarai labneh goat-milk base standard",
+        "Puck labneh vegan default",
+        "Almarai labneh probiotic-fortified therapeutic",
+        "Puck labneh sugar-free dessert variant standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-026",
+      "query": "Galaxy chocolate vs Cadbury Dairy Milk",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.3,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Galaxy chocolate bar Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 0.3,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "talabat.com Cadbury Dairy Milk bar Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Galaxy's silkier melt suits the GCC palate and dominates regional impulse-chocolate sales",
+      "forbidden_facts": [
+        "Cadbury Dairy Milk sugar-free standard",
+        "Galaxy chocolate 85% dark default",
+        "Cadbury Dairy Milk vegan standard bar",
+        "Galaxy chocolate produced in Bahrain"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-027",
+      "query": "Quaker Oats vs Mornflake oats",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1,
+          "max": 4,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Quaker Oats 500g-1kg Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 1,
+          "max": 4.5,
+          "currency": "BHD",
+          "note": "lulu.com.bh Mornflake oats Bahrain shelf price; widened where exact BH price unverified"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Quaker's universal GCC availability and trusted brand make it the default breakfast-oats pick",
+      "forbidden_facts": [
+        "Mornflake steel-cut only format",
+        "Quaker Oats instant-only no rolled variant",
+        "Mornflake oats gluten-free certified standard",
+        "Quaker Oats protein-fortified 30g per serving standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-028",
+      "query": "Nutella hazelnut spread vs Mars Galaxy chocolate spread",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1,
+          "max": 5,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Nutella 350-750g Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 1,
+          "max": 4.5,
+          "currency": "BHD",
+          "note": "talabat.com Galaxy chocolate spread jar Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Nutella's distinctive hazelnut profile and brand loyalty keep it the GCC spread leader",
+      "forbidden_facts": [
+        "Galaxy spread sugar-free standard",
+        "Nutella palm-oil-free standard",
+        "Galaxy spread vegan default",
+        "Nutella spread no-added-sugar variant standard shelf"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-029",
+      "query": "Al Ain rose water vs Al Wadi orange blossom water",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.6,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "lulu.com.bh + megamart.bh Al Ain rose water ~300ml Bahrain shelf — regional brand"
+        },
+        "product_1": {
+          "min": 0.8,
+          "max": 3,
+          "currency": "BHD",
+          "note": "carrefourbh.com Al Wadi Al Akhdar orange blossom water Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Al Wadi's orange blossom water is the more versatile baking-and-drinks staple in Levantine and Gulf kitchens",
+      "forbidden_facts": [
+        "Al Ain rose water culinary-grade certified organic",
+        "Al Wadi orange blossom water added sugar",
+        "Al Ain rose water distilled in France",
+        "Al Wadi blossom water alcoholic extract base"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-030",
+      "query": "Foster Clark's custard powder vs Bird's custard powder",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.3,
+          "max": 2,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Foster Clark's custard powder Bahrain shelf — GCC-popular brand"
+        },
+        "product_1": {
+          "min": 0.5,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "lulu.com.bh Bird's custard powder Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Foster Clark's broad GCC distribution and value pricing make it the regional dessert-staple choice",
+      "forbidden_facts": [
+        "Bird's custard powder egg-based standard",
+        "Foster Clark's sugar-free custard default",
+        "Bird's custard powder vegan-certified standard",
+        "Foster Clark's custard powder produced in Bahrain"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-031",
+      "query": "Almarai zabadi yoghurt vs Mazzraty yoghurt",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.3,
+          "max": 1.5,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Almarai zabadi/yoghurt tub Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 0.3,
+          "max": 1.5,
+          "currency": "BHD",
+          "note": "talabat.com + megamart.bh Mazzraty yoghurt tub Bahrain shelf — Bahraini local dairy"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Mazzraty's locally produced Bahraini freshness gives it a same-day-shelf edge for Bahrain shoppers",
+      "forbidden_facts": [
+        "Mazzraty Greek-strained yoghurt only standard",
+        "Almarai zabadi plant-based default",
+        "Mazzraty yoghurt camel-milk base standard",
+        "Almarai zabadi probiotic therapeutic-dose certified"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "groc-032",
+      "query": "Pringles chips vs Lay's Stax chips",
+      "category": "grocery",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.6,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "lulu.com.bh + carrefourbh.com Pringles can Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 0.6,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "talabat.com Lay's Stax can Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Pringles' wider flavour range and stronger GCC brand recall keep it ahead in the stackable-chips segment",
+      "forbidden_facts": [
+        "Lay's Stax baked-not-fried standard",
+        "Pringles gluten-free certified standard",
+        "Lay's Stax made from whole potato slices",
+        "Pringles chips zero-fat default variant"
       ],
       "max_wall_seconds": 30.0
     }
