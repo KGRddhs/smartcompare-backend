@@ -2341,9 +2341,14 @@ class StructuredComparisonService:
 
         if specs and not specs.get("error"):
             set_cached(cache_key, specs, SPECS_CACHE_TTL)
-            # Save to L2 DB (fire-and-forget)
+            # Save to L2 DB (fire-and-forget — B0-B Item 4: wrapped per
+            # audit convention 2026-05-22 so DB write exceptions WARNING-log
+            # instead of silently disappearing).
             from app.services.product_data_service import save_specs
-            asyncio.create_task(save_specs(cache_key, brand, name, variant, category, specs))
+            _fire_and_forget(
+                save_specs(cache_key, brand, name, variant, category, specs),
+                label="save_specs",
+            )
 
         specs["_search_snippets"] = raw_snippets
         specs["_cached"] = False
@@ -2897,9 +2902,17 @@ class StructuredComparisonService:
     # ============================================
 
     def _save_price_to_db(self, cache_key: str, brand: str, name: str, variant: Optional[str], region: str, price: Dict):
-        """Fire-and-forget save price to L2 DB."""
+        """Fire-and-forget save price to L2 DB.
+
+        B0-B Item 4: wrapped per audit convention 2026-05-22 so DB write
+        exceptions WARNING-log via the `_fire_and_forget` done-callback
+        instead of silently disappearing.
+        """
         from app.services.product_data_service import save_price
-        asyncio.create_task(save_price(cache_key, brand, name, variant, region, price))
+        _fire_and_forget(
+            save_price(cache_key, brand, name, variant, region, price),
+            label="save_price",
+        )
 
     def _track_gpt_cost(self, usage: dict):
         """Track real GPT cost from token usage."""
