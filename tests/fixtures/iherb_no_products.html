@@ -1,0 +1,13 @@
+<!--
+  iHerb search page with zero product results (neither GA cards nor product
+  microdata). fetch_iherb_price must still return None gracefully so the
+  caller's downstream tiers run — the fallback must not fabricate a price.
+-->
+<html>
+<body>
+  <div class="search-no-results">
+    <h1>No results found</h1>
+    <p>We couldn't find any products matching your search.</p>
+  </div>
+</body>
+</html>

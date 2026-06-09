@@ -1,0 +1,59 @@
+<!--
+  Trimmed iHerb search-results fixture (microdata-only variant).
+
+  Models the real bh.iherb.com/search markup captured 2026-06-10 BUT with the
+  proprietary data-ga-* attributes REMOVED — the failure mode where iHerb
+  renames/drops its Google-Analytics data attributes and the legacy
+  `a[data-ga-brand-name][data-ga-discount-price][title]` selector returns zero
+  cards (→ fetch_iherb_price returns None → expensive Firecrawl/Scrape.do
+  fan-out). The schema.org microdata (meta[itemprop=price] + itemprop=name
+  inside div.product-inner) survives, which the F2.2 fallback parses.
+-->
+<html>
+<body>
+  <div class="products">
+    <div class="product-cell-container">
+      <div class="product-inner product-inner-wide">
+        <a class="product-link" href="https://bh.iherb.com/pr/now-foods-vitamin-d-3-5-000-iu-120-softgels/12345"
+           title="NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels">
+          <span itemprop="name">NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels</span>
+        </a>
+        <div class="product-rating" data-rating="4.8" data-review-count="3120"></div>
+        <div class="price">
+          <meta itemprop="price" content="3.852" />
+          <meta itemprop="priceCurrency" content="BHD" />
+          <span class="price-inner">BHD 3.85</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="product-cell-container">
+      <div class="product-inner product-inner-wide">
+        <a class="product-link" href="https://bh.iherb.com/pr/california-gold-nutrition-vitamin-d3-125-mcg/67890"
+           title="California Gold Nutrition, Vitamin D3, 125 mcg, 90 Softgels">
+          <span itemprop="name">California Gold Nutrition, Vitamin D3, 125 mcg (5,000 IU), 90 Softgels</span>
+        </a>
+        <div class="price">
+          <meta itemprop="price" content="1.565" />
+          <meta itemprop="priceCurrency" content="BHD" />
+          <span class="price-inner">BHD 1.57</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="product-cell-container">
+      <div class="product-inner product-inner-wide">
+        <a class="product-link" href="https://bh.iherb.com/pr/solgar-vitamin-d3-cholecalciferol-5000-iu/24680"
+           title="Solgar, Vitamin D3 (Cholecalciferol), 5,000 IU, 120 Softgels">
+          <span itemprop="name">Solgar, Vitamin D3 (Cholecalciferol), 5,000 IU, 120 Softgels</span>
+        </a>
+        <div class="price">
+          <meta itemprop="price" content="5.049" />
+          <meta itemprop="priceCurrency" content="BHD" />
+          <span class="price-inner">BHD 5.05</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
