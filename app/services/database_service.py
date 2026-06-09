@@ -21,6 +21,17 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 # Admin client singleton (for health check, admin analytics, anonymous inserts)
 _admin_client: Optional[Client] = None
 
+# Canonical change_source enum for user_preference_history (Migration 029).
+# MUST stay in sync with the 029 CHECK constraint — drift is guarded by
+# tests/test_preference_history_wiring.py::test_valid_change_sources_match_migration_029_enum.
+VALID_PREFERENCE_CHANGE_SOURCES = frozenset({
+    "manual_edit",
+    "cohort_default",
+    "onboarding_initial",
+    "import_from_demographics",
+    "system_correction",
+})
+
 
 def get_admin_supabase_client() -> Client:
     """Get Supabase client with service-role key. ONLY for admin operations."""
@@ -613,3 +624,53 @@ async def save_user_attribution(user_id: str, source: str) -> Dict:
     except Exception as e:
         logger.error(f"[DB] save_user_attribution failed for user {user_id}: {e}")
         return {"success": False, "error": "Failed to save attribution"}
+
+
+async def record_preference_history(
+    user_id: str,
+    preferences: Optional[Dict],
+    change_source: str,
+) -> bool:
+    """Append a snapshot of `users.preferences` to user_preference_history.
+
+    Append-only audit log (Migration 029) the eval loop reads to correlate
+    "preferences changed at T1 -> verdicts at T2 felt better/worse." Called
+    fire-and-forget from save_user_preferences after a successful UPDATE, so
+    this MUST fail soft: any error returns False and logs rather than raising
+    into the (already-succeeded) preferences write.
+
+    Service-role client by design — 029 has no anon/authenticated INSERT
+    policy (tamper-resistant audit trail).
+
+    `change_source` is validated against VALID_PREFERENCE_CHANGE_SOURCES
+    before the DB round-trip so a typo'd source fails locally instead of
+    burning a request on a guaranteed CHECK rejection.
+    """
+    if change_source not in VALID_PREFERENCE_CHANGE_SOURCES:
+        logger.warning(
+            "[DB] record_preference_history: invalid change_source %r for user %s "
+            "(allowed: %s) — snapshot NOT written",
+            change_source,
+            user_id,
+            sorted(VALID_PREFERENCE_CHANGE_SOURCES),
+        )
+        return False
+    try:
+        admin = get_admin_supabase_client()
+        admin.table("user_preference_history").insert({
+            "user_id": user_id,
+            # 029 column is NOT NULL — coerce a None snapshot to '{}' rather
+            # than send NULL (which the DB would reject).
+            "preferences": preferences or {},
+            "change_source": change_source,
+            # created_at is DB-defaulted (now()); do not send a client clock.
+        }).execute()
+        return True
+    except Exception as e:
+        logger.warning(
+            "[DB] record_preference_history failed for user %s (source=%s): %r",
+            user_id,
+            change_source,
+            e,
+        )
+        return False
