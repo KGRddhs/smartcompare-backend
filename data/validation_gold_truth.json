@@ -3,7 +3,7 @@
     "schema_version": 1,
     "authored_at": "2026-06-08",
     "author": "L4-prompts-eval (drafted) — Ahmed ratifies expected_prices via lulu.com.bh / sharafdg.com / carrefourbh.com / iherb.com / bn.boots.com manual checks",
-    "queries": 100,
+    "queries": 125,
     "pass_threshold_per_query": 0.8,
     "gate_aggregate_pass_rate": 0.8,
     "axis_weights": {
@@ -3242,6 +3242,859 @@
         "Pringles gluten-free certified standard",
         "Lay's Stax made from whole potato slices",
         "Pringles chips zero-fat default variant"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-004",
+      "query": "Tresemme Keratin Smooth shampoo vs Sunsilk Soft & Smooth shampoo",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.2,
+          "max": 4,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Tresemme Keratin Smooth 200ml BHD 1.69; 500ml offer pack higher"
+        },
+        "product_1": {
+          "min": 1,
+          "max": 3.5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Sunsilk Soft & Smooth 400ml BHD 2.09, 700ml BHD 3.19, 200ml BHD 1.19"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Tresemme's salon-style keratin formula gives smoother results for frizz-prone hair in the humid Gulf climate",
+      "forbidden_facts": [
+        "Sunsilk sulfate-free standard",
+        "Tresemme Keratin Smooth contains real keratin protein extract at clinical concentration",
+        "Sunsilk shampoo bond-repair peptide formula",
+        "Tresemme shampoo organic certified"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-005",
+      "query": "Dove Daily Care shampoo vs L'Oreal Elvive shampoo",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.4,
+          "max": 3.5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Dove Daily Care 400ml BHD 2.49, 200ml BHD 1.49"
+        },
+        "product_1": {
+          "min": 1.5,
+          "max": 3.5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh L'Oreal Elvive 400ml BHD 2.59, 200ml BHD 1.59"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "L'Oreal Elvive's targeted repair range and broader variant choice edge out Dove for damaged or coloured hair",
+      "forbidden_facts": [
+        "Dove Daily Care sulfate-free standard",
+        "Elvive shampoo keratin protein bond rebuild at salon strength",
+        "Dove shampoo paraben-free certified standard",
+        "Elvive shampoo vegan-certified default"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-006",
+      "query": "Dabur Vatika coconut hair oil vs Dabur Amla hair oil",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.4,
+          "max": 2,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Dabur Vatika hair oil 125ml BHD 0.59 — South-Asian diaspora staple in Bahrain"
+        },
+        "product_1": {
+          "min": 0.5,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Dabur Amla hair oil 100ml BHD 0.79, 300ml larger"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Vatika's enriched coconut base with herbs suits scalp nourishment and is the more versatile everyday oil",
+      "forbidden_facts": [
+        "Dabur Amla oil cold-pressed extra-virgin standard",
+        "Vatika hair oil silicone-free certified",
+        "Dabur Amla oil contains minoxidil",
+        "Vatika oil argan-only formulation"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-007",
+      "query": "Head & Shoulders anti-dandruff shampoo vs Clear anti-dandruff shampoo",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 4,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com Head & Shoulders 400-700ml Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 1.4,
+          "max": 3.8,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Clear anti-dandruff 400ml Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Head & Shoulders' zinc pyrithione formula is the established anti-dandruff benchmark with proven flake control",
+      "forbidden_facts": [
+        "Clear shampoo ketoconazole prescription strength",
+        "Head & Shoulders sulfate-free standard",
+        "Clear anti-dandruff contains selenium sulfide 2.5% prescription dose",
+        "Head & Shoulders shampoo bond-repair peptide formula"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-008",
+      "query": "Garnier Fructis conditioner vs Pantene Pro-V conditioner",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.2,
+          "max": 3.5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com Garnier Fructis conditioner 400ml Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 1.2,
+          "max": 3.5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Pantene Pro-V conditioner 400ml Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Pantene Pro-V's Pro-Vitamin B5 conditioning gives more reliable smoothness and slip for the price",
+      "forbidden_facts": [
+        "Garnier Fructis silicone-free certified standard",
+        "Pantene Pro-V keratin bond builder at salon strength",
+        "Garnier Fructis vegan-certified default",
+        "Pantene conditioner contains argan oil 100% pure"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-009",
+      "query": "Cantu Shea Butter leave-in vs Shea Moisture curl cream",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 2.5,
+          "max": 7,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com Cantu Shea Butter leave-in conditioner converted to BHD"
+        },
+        "product_1": {
+          "min": 3,
+          "max": 8,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Shea Moisture curl enhancing smoothie converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Cantu's shea-butter leave-in offers stronger slip and definition for curly hair at the lower price point",
+      "forbidden_facts": [
+        "Shea Moisture curl cream sulfate shampoo included",
+        "Cantu leave-in protein-free formula standard",
+        "Shea Moisture curl cream contains keratin bond builder",
+        "Cantu Shea Butter 100% raw unrefined only ingredient"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-010",
+      "query": "L'Oreal Elvive Hyaluron Pure shampoo vs Herbal Essences bio:renew shampoo",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 4,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh L'Oreal Elvive Hyaluron Pure 400ml + conditioner 360ml beauty event pack reference"
+        },
+        "product_1": {
+          "min": 1.4,
+          "max": 4,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com Herbal Essences bio:renew 400ml Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Elvive Hyaluron Pure suits oily roots and dry ends better, a common Gulf-climate hair concern",
+      "forbidden_facts": [
+        "Herbal Essences bio:renew sulfate-free certified standard",
+        "Elvive Hyaluron Pure injectable-grade hyaluronic acid",
+        "Herbal Essences contains bond-repair peptide",
+        "Elvive shampoo 100% natural origin certified"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-011",
+      "query": "Schwarzkopf Gliss hair mask vs Garnier Ultimate Blends hair mask",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Schwarzkopf Gliss hair repair mask converted to BHD"
+        },
+        "product_1": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com Garnier Ultimate Blends mask Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Schwarzkopf Gliss's keratin-care mask delivers stronger repair for chemically treated hair",
+      "forbidden_facts": [
+        "Garnier Ultimate Blends bond-builder identical to Olaplex",
+        "Schwarzkopf Gliss contains real human keratin",
+        "Garnier mask sulfate shampoo included",
+        "Schwarzkopf Gliss vegan-certified default"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-012",
+      "query": "TRESemme heat protect spray vs L'Oreal Elvive heat protect spray",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 2,
+          "max": 6,
+          "currency": "BHD",
+          "note": "noon.com + bn.boots.com TRESemme heat protection spray converted to BHD; widened where exact BH price unverified"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 6,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae L'Oreal Elvive heat protect spray converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "TRESemme's heat-protect spray is the more widely trusted styling-prep product for blow-dry and straightening",
+      "forbidden_facts": [
+        "L'Oreal heat protect spray SPF sun protection 50",
+        "TRESemme heat spray alcohol-free certified standard",
+        "L'Oreal heat protect protects to 450C",
+        "TRESemme heat spray contains keratin bond builder"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-013",
+      "query": "Parachute coconut oil vs Bajaj Almond Drops hair oil",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.4,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + talabat.com Parachute coconut oil 200-500ml Bahrain shelf — diaspora staple"
+        },
+        "product_1": {
+          "min": 0.5,
+          "max": 2.5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Bajaj Almond Drops hair oil Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Parachute's pure coconut oil is the multi-use scalp-and-skin staple favoured across Bahrain's South-Asian community",
+      "forbidden_facts": [
+        "Bajaj Almond Drops 100% sweet almond oil only",
+        "Parachute coconut oil fractionated MCT standard",
+        "Bajaj Almond Drops contains minoxidil",
+        "Parachute oil cold-pressed extra-virgin certified organic"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-014",
+      "query": "Maui Moisture shampoo vs OGX Coconut Milk shampoo",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 2.5,
+          "max": 7,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Maui Moisture shampoo converted to BHD"
+        },
+        "product_1": {
+          "min": 2.5,
+          "max": 7,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com OGX Coconut Milk shampoo converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "OGX Coconut Milk's lighter formula and wider Bahrain availability make it the easier everyday pick",
+      "forbidden_facts": [
+        "Maui Moisture sulfate-free claim false (it is sulfate-free)",
+        "OGX Coconut Milk contains bond-repair peptide",
+        "Maui Moisture 100% vegan certified standard",
+        "OGX shampoo prescription anti-hair-loss formula"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-015",
+      "query": "Wella Koleston hair colour vs L'Oreal Excellence hair colour",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Wella Koleston hair colour kit converted to BHD; popular GCC salon brand"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 6,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com L'Oreal Excellence Creme Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "L'Oreal Excellence's triple-care home-kit gives more reliable grey coverage and conditioning for DIY colouring",
+      "forbidden_facts": [
+        "Wella Koleston ammonia-free standard home kit",
+        "L'Oreal Excellence PPD-free certified",
+        "Wella Koleston henna-only natural dye",
+        "L'Oreal Excellence permanent colour lasts 6 months"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-016",
+      "query": "Batiste dry shampoo vs Colab dry shampoo",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 4.5,
+          "currency": "BHD",
+          "note": "bn.boots.com + luluhypermarket.com/en-bh Batiste dry shampoo 200ml Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 5,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Colab dry shampoo converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Batiste's wide fragrance range and strong Bahrain availability make it the default dry-shampoo choice",
+      "forbidden_facts": [
+        "Colab dry shampoo aerosol-free standard",
+        "Batiste dry shampoo contains real water for wet-wash",
+        "Colab dry shampoo bond-repair formula",
+        "Batiste 100% talc-free certified standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-017",
+      "query": "Keune Care keratin shampoo vs Kerastase Nutritive shampoo",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 4,
+          "max": 12,
+          "currency": "BHD",
+          "note": "noon.com + Bahrain salon retail Keune Care shampoo converted to BHD; widened across sizes"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 22,
+          "currency": "BHD",
+          "note": "ounass.com + noon.com Kerastase Nutritive shampoo converted to BHD; salon-premium tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Kerastase Nutritive's salon-grade nourishment justifies its premium for dry, sensitised hair",
+      "forbidden_facts": [
+        "Keune Care sulfate-free certified standard",
+        "Kerastase Nutritive contains real keratin protein extract",
+        "Keune shampoo drugstore price tier",
+        "Kerastase Nutritive vegan-certified default"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-018",
+      "query": "Sebamed Anti-Hairloss shampoo vs Vichy Dercos Energising shampoo",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "bn.boots.com + Bahrain pharmacy Sebamed Anti-Hairloss shampoo Bahrain price"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 14,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com Vichy Dercos Energising shampoo converted to BHD; dermo-cosmetic tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Vichy Dercos's aminexil-based formula has stronger clinical backing for thinning-hair concerns",
+      "forbidden_facts": [
+        "Sebamed Anti-Hairloss contains minoxidil 5%",
+        "Vichy Dercos prescription finasteride included",
+        "Sebamed shampoo regrows hair follicles guaranteed",
+        "Vichy Dercos sulfate-free certified standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-019",
+      "query": "Aussie 3 Minute Miracle conditioner vs Pantene 3 Minute Miracle conditioner",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 2,
+          "max": 6,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com Aussie 3 Minute Miracle conditioner converted to BHD"
+        },
+        "product_1": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Pantene 3 Minute Miracle conditioner Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Aussie's deep-moisture 3-minute treatment gives more noticeable softness for dry, frizzy hair",
+      "forbidden_facts": [
+        "Pantene 3 Minute Miracle bond-builder identical to Olaplex",
+        "Aussie conditioner sulfate shampoo included",
+        "Pantene 3 Minute Miracle contains real keratin extract",
+        "Aussie conditioner vegan-certified default standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-020",
+      "query": "Nizoral anti-dandruff shampoo vs Selsun Blue shampoo",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "bn.boots.com + Bahrain pharmacy Nizoral anti-dandruff shampoo Bahrain price"
+        },
+        "product_1": {
+          "min": 2.5,
+          "max": 8,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Selsun Blue shampoo converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Nizoral's ketoconazole formula targets the dandruff-causing yeast directly, the stronger choice for persistent dandruff",
+      "forbidden_facts": [
+        "Selsun Blue contains ketoconazole standard",
+        "Nizoral shampoo prescription-only in Bahrain",
+        "Selsun Blue sulfate-free certified standard",
+        "Nizoral shampoo cures seborrheic dermatitis permanently"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "hair-021",
+      "query": "Mielle Rosemary Mint oil vs The Ordinary Multi-Peptide hair serum",
+      "category": "haircare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Mielle Rosemary Mint scalp oil converted to BHD; viral GCC popularity"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 14,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com The Ordinary Multi-Peptide Serum for Hair Density converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "The Ordinary's peptide serum has clearer ingredient transparency and targeted density support at a fair price",
+      "forbidden_facts": [
+        "Mielle Rosemary Mint oil clinically proven hair regrowth like minoxidil",
+        "The Ordinary hair serum contains minoxidil",
+        "Mielle oil sulfate-free shampoo included",
+        "The Ordinary Multi-Peptide serum prescription strength finasteride"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-007",
+      "query": "California Gold Nutrition CollagenUP vs Sports Research Collagen Peptides",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 5,
+          "max": 18,
+          "currency": "BHD",
+          "note": "iherb.com CollagenUP 206g ~$15-22 → ~6-9 BHD, 464g/1kg larger → up to ~18 BHD (USD x0.376)"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 22,
+          "currency": "BHD",
+          "note": "iherb.com Sports Research Collagen Peptides 454g ~$25-32 → ~9-12 BHD; larger tubs up to ~22 BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Collagen Peptides"
+        },
+        "product_1": {
+          "active_ingredient": "Collagen Peptides"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "CollagenUP adds hyaluronic acid and vitamin C at a lower price per gram, better value for skin support",
+      "forbidden_facts": [
+        "Sports Research Collagen vegan plant-based",
+        "CollagenUP type II cartilage collagen only",
+        "Sports Research Collagen contains 50g protein per scoop",
+        "CollagenUP flavored with added sugar standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-008",
+      "query": "NOW Foods Zinc vs Thorne Zinc Picolinate",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 2,
+          "max": 8,
+          "currency": "BHD",
+          "note": "iherb.com NOW Foods Zinc 50mg 250 tabs ~$8-11 → ~3-5 BHD floor (USD x0.376)"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 14,
+          "currency": "BHD",
+          "note": "iherb.com Thorne Zinc Picolinate 60 caps ~$12-18 → ~5-7 BHD; premium bioavailable tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Zinc"
+        },
+        "product_1": {
+          "active_ingredient": "Zinc Picolinate"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "NOW Foods Zinc delivers the same elemental zinc at a much lower price per serving for everyday immune support",
+      "forbidden_facts": [
+        "Thorne Zinc Picolinate contains copper to balance standard",
+        "NOW Foods Zinc chelated picolinate identical to Thorne",
+        "Thorne Zinc 100mg megadose standard",
+        "NOW Foods Zinc vegan-incompatible gelatin capsule only"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-009",
+      "query": "NOW Foods Biotin vs Natrol Biotin",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 2,
+          "max": 9,
+          "currency": "BHD",
+          "note": "iherb.com NOW Foods Biotin 5000mcg 120 caps ~$9-13 → ~3-5 BHD (USD x0.376)"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 9,
+          "currency": "BHD",
+          "note": "iherb.com Natrol Biotin 10000mcg 100 tabs ~$8-12 → ~3-5 BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Biotin"
+        },
+        "product_1": {
+          "active_ingredient": "Biotin"
+        }
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Natrol's higher-dose fast-dissolve tablet offers stronger hair-and-nail support per serving at a similar price",
+      "forbidden_facts": [
+        "Natrol Biotin contains collagen standard",
+        "NOW Foods Biotin prescription strength",
+        "Natrol Biotin gummy form only standard",
+        "NOW Foods Biotin clinically proven to cure hair loss"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-010",
+      "query": "Culturelle probiotic vs Garden of Life Dr. Formulated probiotic",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 6,
+          "max": 18,
+          "currency": "BHD",
+          "note": "iherb.com Culturelle Daily Probiotic 30 caps ~$18-24 → ~7-9 BHD (USD x0.376); larger counts higher"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 24,
+          "currency": "BHD",
+          "note": "iherb.com Garden of Life Dr. Formulated probiotic 30 caps ~$22-30 → ~8-11 BHD; multi-strain tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Probiotic"
+        },
+        "product_1": {
+          "active_ingredient": "Probiotic"
+        }
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Garden of Life's higher CFU count and multi-strain blend give broader gut-flora support",
+      "forbidden_facts": [
+        "Culturelle 50 billion CFU multi-strain standard",
+        "Garden of Life probiotic single-strain only",
+        "Culturelle requires no refrigeration because it has zero live cultures",
+        "Garden of Life probiotic contains antibiotics"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-011",
+      "query": "Doctor's Best Magnesium Glycinate vs NOW Foods Magnesium Citrate",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 4,
+          "max": 14,
+          "currency": "BHD",
+          "note": "iherb.com Doctor's Best High Absorption Magnesium 240 tabs ~$14-20 → ~5-8 BHD (USD x0.376)"
+        },
+        "product_1": {
+          "min": 3,
+          "max": 12,
+          "currency": "BHD",
+          "note": "iherb.com NOW Foods Magnesium Citrate 250 caps ~$10-15 → ~4-6 BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Magnesium Glycinate"
+        },
+        "product_1": {
+          "active_ingredient": "Magnesium Citrate"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Magnesium glycinate is gentler on the stomach and better for sleep and relaxation than citrate",
+      "forbidden_facts": [
+        "NOW Foods Magnesium Citrate causes no laxative effect",
+        "Doctor's Best Magnesium Glycinate is magnesium oxide",
+        "NOW Foods Magnesium Citrate contains 1000mg elemental per cap",
+        "Doctor's Best Magnesium chelated identical to oxide form"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-012",
+      "query": "Nature's Bounty Fish Oil vs Kirkland Signature Fish Oil",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 4,
+          "max": 14,
+          "currency": "BHD",
+          "note": "bn.boots.com + iherb.com Nature's Bounty Fish Oil 1200mg 120 softgels ~$10-16 → ~4-6 BHD"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 16,
+          "currency": "BHD",
+          "note": "amazon.ae + noon.com Kirkland Signature Fish Oil 1000mg 400 softgels converted to BHD; bulk value"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Fish Oil"
+        },
+        "product_1": {
+          "active_ingredient": "Fish Oil"
+        }
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Kirkland's 400-count bulk pack gives far more servings per dinar for routine omega-3 intake",
+      "forbidden_facts": [
+        "Kirkland Fish Oil vegan algae-based",
+        "Nature's Bounty Fish Oil pharmaceutical-grade prescription Lovaza",
+        "Kirkland Fish Oil 3000mg EPA per softgel",
+        "Nature's Bounty Fish Oil contains added vitamin D 5000 IU standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-013",
+      "query": "NOW Foods Vitamin C vs Emergen-C immune support",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 12,
+          "currency": "BHD",
+          "note": "iherb.com NOW Foods Vitamin C-1000 250 tabs ~$11-16 → ~4-6 BHD (USD x0.376)"
+        },
+        "product_1": {
+          "min": 4,
+          "max": 14,
+          "currency": "BHD",
+          "note": "iherb.com + bn.boots.com Emergen-C 30 packets ~$12-18 → ~5-7 BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Vitamin C"
+        },
+        "product_1": {
+          "active_ingredient": "Vitamin C"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "NOW Foods Vitamin C tablets give a much lower cost per gram for daily supplementation than single-serve sachets",
+      "forbidden_facts": [
+        "Emergen-C sugar-free standard formulation",
+        "NOW Foods Vitamin C liposomal encapsulated standard",
+        "Emergen-C contains 5000mg vitamin C per packet",
+        "NOW Foods Vitamin C IV-grade injectable"
       ],
       "max_wall_seconds": 30.0
     }
