@@ -918,9 +918,16 @@ class ScoringService:
             scores["_review_missing"] = True
 
         # Reliability signal (from fact_check)
+        # B0-A v2: _score_reliability may return None when fact_check has
+        # zero populated buckets — handle that path identically to the
+        # missing-fact_check path (set _reliability_missing flag so
+        # downstream dim-level aggregation correctly omits the dim).
         fact_check = product.get("fact_check")
         if fact_check and isinstance(fact_check, dict):
-            scores["reliability_raw"] = self._score_reliability(fact_check)
+            reliability_score = self._score_reliability(fact_check)
+            scores["reliability_raw"] = reliability_score
+            if reliability_score is None:
+                scores["_reliability_missing"] = True
         else:
             scores["reliability_raw"] = None
             scores["_reliability_missing"] = True
@@ -1018,16 +1025,24 @@ class ScoringService:
 
         return total_score / scored_fields
 
-    def _score_reliability(self, fact_check: Dict[str, Any]) -> float:
-        """Score reliability from fact_check data on 0-1 scale."""
-        verified = fact_check.get("specs_verified", 0)
-        likely = fact_check.get("specs_likely", 0)
-        flagged = fact_check.get("specs_flagged", 0)
-        unverified = fact_check.get("specs_unverified", 0)
+    def _score_reliability(self, fact_check: Dict[str, Any]) -> Optional[float]:
+        """Score reliability from fact_check data on 0-1 scale.
+
+        B0-A v2 fix (2026-06-08): return None when fact_check has zero
+        populated buckets so downstream MISSING_SCORE propagation +
+        silent dim omission fire. Pre-v2 constant 0.5 default was the
+        phantom (30,30) literal source surfaced by the 24-query bias
+        re-run (B0-D root-cause investigation).
+        """
+        # Coerce None-valued bucket entries to 0 so `total` math is safe.
+        verified = fact_check.get("specs_verified") or 0
+        likely = fact_check.get("specs_likely") or 0
+        flagged = fact_check.get("specs_flagged") or 0
+        unverified = fact_check.get("specs_unverified") or 0
         total = verified + likely + flagged + unverified
 
         if total == 0:
-            return 0.5
+            return None  # B0-A v2: was `return 0.5` — phantom (30,30) source.
 
         score = (verified * 1.0 + likely * 0.7 + unverified * 0.3 + flagged * 0.0) / total
 
@@ -1272,12 +1287,24 @@ class ScoringService:
         min_val = min(values)
 
         if max_val == min_val:
-            # B0-A BUG #2: distinguish "no signal extracted" (max==min==0)
-            # from "genuine tied non-zero signal" (max==min==X, X>0).
-            # The no-signal case must propagate MISSING_SCORE so silent
-            # dim omission in build_dimensions_v2 fires; otherwise we'd
-            # ship a fake 70/70 tie row.
-            if max_val == 0:
+            # B0-A BUG #2 v1: distinguish "no signal extracted" (max==min==0)
+            # from "genuine tied non-zero signal" (max==min==X, X>0). The
+            # no-signal case must propagate MISSING_SCORE so silent dim
+            # omission in build_dimensions_v2 fires; otherwise we'd ship a
+            # fake 70/70 tie row.
+            #
+            # B0-A BUG #2 v2: extend v1 to also check per-product
+            # `_<signal>_missing` flags. Partial-coverage extraction
+            # scenarios (e.g. both products have 1 spec field populated,
+            # _score_specs returns ~1.0 for both → max==min==1.0 > 0) fell
+            # through to `return 70.0` in v1 — phantom (70,70) literal pair
+            # surfaced by the 24-query bias re-run. Flag check catches it.
+            signal_kind = key.replace("_raw", "")
+            flag_key = f"_{signal_kind}_missing"
+            both_sides_flagged_missing = all(
+                rs.get(flag_key) for rs in raw_scores
+            )
+            if max_val == 0 or both_sides_flagged_missing:
                 return MISSING_SCORE
             return 70.0
 
