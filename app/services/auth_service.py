@@ -154,8 +154,9 @@ async def login_user(email: str, password: str) -> Dict:
                 ).single().execute()
                 if row.data:
                     prefs_completed = row.data.get("preferences_completed", False)
-            except Exception:
-                pass  # Default to False if lookup fails
+            except Exception as e:
+                logger.warning("[auth] preferences_completed lookup failed: %s", e)
+                # Default to False if lookup fails
 
             result = {
                 "success": True,
@@ -177,7 +178,7 @@ async def login_user(email: str, password: str) -> Dict:
                 "success": False,
                 "error": "Login failed"
             }
-            
+
     except Exception as e:
         return _categorize_auth_error(e, "login")
 
@@ -207,8 +208,8 @@ async def refresh_session(refresh_token: str) -> Dict:
                     ).single().execute()
                     if row.data:
                         prefs_completed = row.data.get("preferences_completed", False)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("[auth] preferences_completed lookup failed: %s", e)
                 result["user"] = {
                     "id": response.user.id,
                     "email": response.user.email,
@@ -357,8 +358,8 @@ async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -
             ).single().execute()
             if prefs_row.data:
                 prefs_completed = prefs_row.data.get("preferences_completed", False)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[auth] preferences_completed lookup failed: %s", e)
 
         result = {
             "success": True,
