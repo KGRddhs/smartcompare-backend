@@ -3,7 +3,7 @@
     "schema_version": 1,
     "authored_at": "2026-06-08",
     "author": "L4-prompts-eval (drafted) — Ahmed ratifies expected_prices via lulu.com.bh / sharafdg.com / carrefourbh.com / iherb.com / bn.boots.com manual checks",
-    "queries": 125,
+    "queries": 150,
     "pass_threshold_per_query": 0.8,
     "gate_aggregate_pass_rate": 0.8,
     "axis_weights": {
@@ -4095,6 +4095,873 @@
         "NOW Foods Vitamin C liposomal encapsulated standard",
         "Emergen-C contains 5000mg vitamin C per packet",
         "NOW Foods Vitamin C IV-grade injectable"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-014",
+      "query": "NOW Foods Ashwagandha vs Himalaya Ashwagandha",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 12,
+          "currency": "BHD",
+          "note": "iherb.com NOW Foods Ashwagandha 450mg 90 caps ~$9-14 → ~4-6 BHD (USD x0.376)"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 10,
+          "currency": "BHD",
+          "note": "iherb.com + bn.boots.com Himalaya Ashwagandha 60 caps ~$8-12 → ~3-5 BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Ashwagandha"
+        },
+        "product_1": {
+          "active_ingredient": "Ashwagandha"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "NOW Foods' standardised root extract gives a more consistent withanolide dose for stress support",
+      "forbidden_facts": [
+        "Himalaya Ashwagandha KSM-66 patented standard",
+        "NOW Foods Ashwagandha contains added caffeine",
+        "Himalaya Ashwagandha prescription anxiolytic",
+        "NOW Foods Ashwagandha 1000mg per cap megadose"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-015",
+      "query": "Optimum Nutrition Creatine vs Creature Creatine",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 6,
+          "max": 20,
+          "currency": "BHD",
+          "note": "iherb.com + noon.com Optimum Nutrition Micronized Creatine 300g ~$18-26 → ~7-10 BHD (USD x0.376)"
+        },
+        "product_1": {
+          "min": 6,
+          "max": 20,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Beast Sports Creature creatine blend converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Creatine Monohydrate"
+        },
+        "product_1": {
+          "active_ingredient": "Creatine"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "ON's pure micronized monohydrate is the proven, cost-effective standard versus a proprietary blend",
+      "forbidden_facts": [
+        "Creature creatine monohydrate only single ingredient",
+        "Optimum Nutrition Creatine HCL form standard",
+        "Creature creatine contains banned stimulants",
+        "Optimum Nutrition Creatine flavored with added sugar default"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-016",
+      "query": "Nature Made Vitamin D3 2000 IU vs NOW Foods Vitamin D3 2000 IU",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 12,
+          "currency": "BHD",
+          "note": "iherb.com + bn.boots.com Nature Made Vitamin D3 2000 IU 100 softgels ~$9-14 → ~4-6 BHD"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 9,
+          "currency": "BHD",
+          "note": "iherb.com NOW Foods Vitamin D3 2000 IU 240 softgels ~$8-11 → ~3-5 BHD (USD x0.376)"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Vitamin D3"
+        },
+        "product_1": {
+          "active_ingredient": "Vitamin D3"
+        }
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "NOW Foods offers a much higher softgel count per dinar at the same potency for routine vitamin D supplementation",
+      "forbidden_facts": [
+        "Nature Made D3 vegan lichen-sourced standard",
+        "NOW Foods D3 2000 IU is actually D2 ergocalciferol",
+        "Nature Made D3 contains 10000 IU per softgel",
+        "NOW Foods D3 prescription-only in Bahrain"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-017",
+      "query": "Garden of Life Vitamin Code Women vs One A Day Women's multivitamin",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 8,
+          "max": 24,
+          "currency": "BHD",
+          "note": "iherb.com Garden of Life Vitamin Code Women 120 caps ~$26-34 → ~10-13 BHD (USD x0.376); whole-food tier"
+        },
+        "product_1": {
+          "min": 4,
+          "max": 14,
+          "currency": "BHD",
+          "note": "iherb.com + bn.boots.com One A Day Women's 100 tabs ~$11-16 → ~4-6 BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Garden of Life's whole-food fermented blend with probiotics and enzymes offers fuller-spectrum support for daily wellness",
+      "forbidden_facts": [
+        "One A Day Women's whole-food fermented standard",
+        "Garden of Life Vitamin Code Women contains iron at 65mg therapeutic dose",
+        "One A Day Women's prescription prenatal",
+        "Garden of Life multivitamin gummy form only"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-018",
+      "query": "Applied Nutrition BCAA vs Optimum Nutrition Amino Energy",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 6,
+          "max": 18,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Applied Nutrition BCAA converted to BHD; popular GCC gym brand"
+        },
+        "product_1": {
+          "min": 7,
+          "max": 20,
+          "currency": "BHD",
+          "note": "iherb.com + noon.com Optimum Nutrition Amino Energy 270g ~$22-30 → ~8-11 BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "ON Amino Energy combines aminos with a light caffeine kick, the more versatile pre/intra-workout for most lifters",
+      "forbidden_facts": [
+        "Applied Nutrition BCAA contains 200mg caffeine standard",
+        "ON Amino Energy creatine-loaded formula",
+        "Applied Nutrition BCAA vegan-incompatible whey base",
+        "ON Amino Energy banned stimulant DMAA included"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-019",
+      "query": "Jamieson Vitamin C vs Holland & Barrett Vitamin C",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 12,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com Jamieson Vitamin C 500mg Bahrain price; Canadian brand popular in GCC pharmacies"
+        },
+        "product_1": {
+          "min": 3,
+          "max": 11,
+          "currency": "BHD",
+          "note": "Holland & Barrett GCC + noon.com Vitamin C 1000mg converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Vitamin C"
+        },
+        "product_1": {
+          "active_ingredient": "Vitamin C"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Jamieson's timed-release format and strong GCC pharmacy presence make it the trusted everyday vitamin C pick",
+      "forbidden_facts": [
+        "Holland & Barrett Vitamin C liposomal standard",
+        "Jamieson Vitamin C IV-grade injectable",
+        "Holland & Barrett Vitamin C contains 5000mg per tablet",
+        "Jamieson Vitamin C prescription-strength only"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-020",
+      "query": "NOW Foods Turmeric Curcumin vs Sports Research Turmeric Curcumin",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 4,
+          "max": 14,
+          "currency": "BHD",
+          "note": "iherb.com NOW Foods Curcumin 60 caps ~$14-20 → ~5-8 BHD (USD x0.376)"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 16,
+          "currency": "BHD",
+          "note": "iherb.com Sports Research Turmeric Curcumin with BioPerine 60 softgels ~$16-22 → ~6-8 BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Curcumin"
+        },
+        "product_1": {
+          "active_ingredient": "Curcumin"
+        }
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Sports Research pairs curcumin with BioPerine and coconut oil for better absorption per serving",
+      "forbidden_facts": [
+        "NOW Foods Curcumin contains black pepper BioPerine standard at all",
+        "Sports Research Turmeric vegan-incompatible gelatin only",
+        "NOW Foods Curcumin prescription anti-inflammatory NSAID",
+        "Sports Research Turmeric 95% curcuminoids guaranteed cures arthritis"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-021",
+      "query": "Centrum Silver vs Pharmaton multivitamin",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 5,
+          "max": 16,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com Centrum Silver 100 tabs Bahrain pharmacy price"
+        },
+        "product_1": {
+          "min": 6,
+          "max": 18,
+          "currency": "BHD",
+          "note": "bn.boots.com Pharmaton Vitality / Capsules Bahrain pharmacy price; popular GCC ginseng multivit"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Pharmaton's ginseng-enriched formula has strong GCC pharmacy trust for energy and vitality in older adults",
+      "forbidden_facts": [
+        "Centrum Silver contains ginseng standard",
+        "Pharmaton is a prescription stimulant",
+        "Centrum Silver gummy form only standard",
+        "Pharmaton contains 5000 IU vitamin D therapeutic dose standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "supp-022",
+      "query": "Now Foods L-Theanine vs Jarrow Formulas Theanine",
+      "category": "supplements",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 4,
+          "max": 14,
+          "currency": "BHD",
+          "note": "iherb.com NOW Foods L-Theanine 200mg 120 caps ~$14-20 → ~5-8 BHD (USD x0.376)"
+        },
+        "product_1": {
+          "min": 4,
+          "max": 14,
+          "currency": "BHD",
+          "note": "iherb.com Jarrow Formulas Theanine 100mg 60 caps ~$10-15 → ~4-6 BHD; smaller count"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "L-Theanine"
+        },
+        "product_1": {
+          "active_ingredient": "L-Theanine"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "NOW Foods offers a higher per-cap dose and larger count, better value for daily calm-focus support",
+      "forbidden_facts": [
+        "Jarrow Theanine contains caffeine for focus standard",
+        "NOW Foods L-Theanine prescription anxiolytic",
+        "Jarrow Theanine is melatonin",
+        "NOW Foods L-Theanine 1000mg megadose per cap"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-006",
+      "query": "Nivea Soft moisturiser vs Neutrogena Hydro Boost water gel",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 0.6,
+          "max": 3,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Nivea Soft 50ml BHD 0.69; Creme 250ml BHD 2.19"
+        },
+        "product_1": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "bn.boots.com Neutrogena Hydro Boost water gel 50ml Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {
+          "active_ingredient": "Hyaluronic Acid"
+        }
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Neutrogena Hydro Boost's hyaluronic acid gel hydrates without heaviness, better for the humid Gulf climate",
+      "forbidden_facts": [
+        "Nivea Soft contains hyaluronic acid serum strength",
+        "Neutrogena Hydro Boost contains retinol standard",
+        "Nivea Soft SPF 50 sun protection",
+        "Neutrogena Hydro Boost prescription-grade"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-007",
+      "query": "Cetaphil Gentle Skin Cleanser vs Simple Refreshing Facial Wash",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 4,
+          "max": 13,
+          "currency": "BHD",
+          "note": "bn.boots.com Cetaphil Gentle Face & Body 118ml BHD 6.00; Oily 236ml BHD 11.30"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 6,
+          "currency": "BHD",
+          "note": "bn.boots.com + luluhypermarket.com/en-bh Simple Refreshing Facial Wash 150ml Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Cetaphil's dermatologist-recommended gentle formula suits sensitive and reactive skin better for daily use",
+      "forbidden_facts": [
+        "Simple facial wash contains salicylic acid 2% standard",
+        "Cetaphil Gentle Cleanser foaming sulfate base",
+        "Simple facial wash SPF protection included",
+        "Cetaphil cleanser prescription acne treatment"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-008",
+      "query": "The Ordinary Hyaluronic Acid 2% vs The INKEY List Hyaluronic Acid",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com The Ordinary Hyaluronic Acid 2% + B5 30ml Bahrain price"
+        },
+        "product_1": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com The INKEY List Hyaluronic Acid Serum 30ml Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Hyaluronic Acid"
+        },
+        "product_1": {
+          "active_ingredient": "Hyaluronic Acid"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "The Ordinary's multi-weight HA with B5 has the more established formulation track record at the same budget price",
+      "forbidden_facts": [
+        "The INKEY List HA contains retinol standard",
+        "The Ordinary Hyaluronic Acid contains vitamin C 20%",
+        "The INKEY List HA SPF 30 included",
+        "The Ordinary HA injectable filler grade"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-009",
+      "query": "La Roche-Posay Anthelios SPF 50 vs Avene Very High Protection SPF 50",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 6,
+          "max": 16,
+          "currency": "BHD",
+          "note": "bn.boots.com La Roche-Posay Anthelios SPF 50+ fluid Bahrain price; dermo-cosmetic tier"
+        },
+        "product_1": {
+          "min": 6,
+          "max": 16,
+          "currency": "BHD",
+          "note": "bn.boots.com Avene Very High Protection SPF 50+ Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "spf": "50"
+        },
+        "product_1": {
+          "spf": "50"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "La Roche-Posay Anthelios offers a lighter, less-greasy finish ideal for daily high-UV Gulf wear",
+      "forbidden_facts": [
+        "Avene SPF 50 is SPF 100",
+        "La Roche-Posay Anthelios chemical-free mineral-only base standard",
+        "Avene SPF 50 contains retinol",
+        "La Roche-Posay Anthelios waterproof 24 hours"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-010",
+      "query": "CeraVe Moisturizing Cream vs Eucerin Advanced Repair Cream",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 4,
+          "max": 12,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com CeraVe Moisturizing Cream 340g Bahrain price"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 14,
+          "currency": "BHD",
+          "note": "bn.boots.com Eucerin Advanced Repair Cream Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "CeraVe's ceramide-and-hyaluronic formula with bigger tub size gives stronger barrier repair value",
+      "forbidden_facts": [
+        "Eucerin Advanced Repair contains retinol standard",
+        "CeraVe Moisturizing Cream SPF 30 included",
+        "Eucerin cream prescription eczema steroid",
+        "CeraVe Moisturizing Cream fragranced citrus standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-011",
+      "query": "The Ordinary Retinol 0.5% vs CeraVe Resurfacing Retinol Serum",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 10,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com The Ordinary Retinol 0.5% in Squalane 30ml Bahrain price"
+        },
+        "product_1": {
+          "min": 6,
+          "max": 16,
+          "currency": "BHD",
+          "note": "bn.boots.com CeraVe Resurfacing Retinol Serum 30ml Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Retinol"
+        },
+        "product_1": {
+          "active_ingredient": "Retinol"
+        }
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "CeraVe's encapsulated retinol with ceramides and niacinamide is gentler for beginners managing texture and marks",
+      "forbidden_facts": [
+        "The Ordinary Retinol 0.5% is prescription tretinoin",
+        "CeraVe Resurfacing Retinol contains hydroquinone",
+        "The Ordinary Retinol SPF protection included",
+        "CeraVe Retinol Serum 2% concentration standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-012",
+      "query": "Garnier Vitamin C serum vs L'Oreal Revitalift Vitamin C serum",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 10,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com Garnier Vitamin C Brightening Serum Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 14,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com L'Oreal Revitalift Clinical Vitamin C serum Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "active_ingredient": "Vitamin C"
+        },
+        "product_1": {
+          "active_ingredient": "Vitamin C"
+        }
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "L'Oreal Revitalift's higher 12% pure vitamin C concentration delivers stronger brightening for the modest premium",
+      "forbidden_facts": [
+        "Garnier Vitamin C serum contains 20% L-ascorbic acid",
+        "L'Oreal Revitalift Vitamin C is prescription strength",
+        "Garnier serum SPF 50 included",
+        "L'Oreal Revitalift Vitamin C contains retinol at clinical dose"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-013",
+      "query": "Nivea Men face wash vs Garnier Men face wash",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com Nivea Men face wash Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Garnier Men face wash Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Garnier Men's charcoal and oil-control range suits the Gulf climate's heat-and-sweat needs slightly better",
+      "forbidden_facts": [
+        "Nivea Men face wash contains salicylic acid prescription dose",
+        "Garnier Men face wash SPF 50 sunscreen",
+        "Nivea Men face wash exfoliating microbeads banned standard",
+        "Garnier Men face wash contains retinol"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-014",
+      "query": "Pixi Glow Tonic vs Thayers Witch Hazel Toner",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 5,
+          "max": 14,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com Pixi Glow Tonic 250ml Bahrain price"
+        },
+        "product_1": {
+          "min": 4,
+          "max": 12,
+          "currency": "BHD",
+          "note": "iherb.com + noon.com Thayers Witch Hazel Toner 355ml converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Pixi Glow Tonic's 5% glycolic acid gives gentle daily exfoliation and glow that suits most skin types",
+      "forbidden_facts": [
+        "Thayers Witch Hazel contains glycolic acid 5% standard",
+        "Pixi Glow Tonic is alcohol-denat heavy drying base",
+        "Thayers Toner SPF protection included",
+        "Pixi Glow Tonic prescription chemical peel strength"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-015",
+      "query": "Bioderma Sebium gel vs Effaclar gel cleanser",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 5,
+          "max": 14,
+          "currency": "BHD",
+          "note": "bn.boots.com Bioderma Sebium Gel cleanser Bahrain price; dermo-cosmetic"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 14,
+          "currency": "BHD",
+          "note": "bn.boots.com La Roche-Posay Effaclar gel cleanser Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Effaclar's zinc-and-acid blend targets oily, breakout-prone skin a touch more effectively in the Gulf heat",
+      "forbidden_facts": [
+        "Bioderma Sebium contains benzoyl peroxide prescription",
+        "Effaclar gel SPF 50 sunscreen included",
+        "Bioderma Sebium gel is a moisturiser not cleanser",
+        "Effaclar cleanser contains retinol clinical dose"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-016",
+      "query": "Aveeno Daily Moisturizing Lotion vs Vaseline Intensive Care lotion",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "bn.boots.com + luluhypermarket.com/en-bh Aveeno Daily Moisturizing Lotion Bahrain price"
+        },
+        "product_1": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com Vaseline Intensive Care lotion 400ml Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Aveeno's colloidal oatmeal soothes dry, sensitive skin better despite the higher price",
+      "forbidden_facts": [
+        "Vaseline Intensive Care contains colloidal oatmeal standard",
+        "Aveeno lotion SPF 30 included",
+        "Vaseline Intensive Care is petroleum-free standard",
+        "Aveeno lotion prescription eczema steroid"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-017",
+      "query": "Mixa sensitive skin cream vs Sanex Zero% cream",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 2,
+          "max": 7,
+          "currency": "BHD",
+          "note": "carrefourbh.com + bn.boots.com Mixa sensitive skin cream Bahrain price; European drugstore brand in GCC"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 7,
+          "currency": "BHD",
+          "note": "noon.com + carrefourbh.com Sanex Zero% cream converted/Bahrain shelf price; widened where unverified"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Mixa's sensitive-skin focus and niacinamide content make it the gentler everyday choice for reactive skin",
+      "forbidden_facts": [
+        "Sanex Zero% contains retinol standard",
+        "Mixa cream SPF 50 sun protection",
+        "Sanex Zero% is a prescription steroid cream",
+        "Mixa cream contains fragrance and essential oils standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-018",
+      "query": "The Ordinary AHA 30% BHA 2% Peeling Solution vs Some By Mi AHA BHA PHA toner",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 10,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com The Ordinary AHA 30% + BHA 2% Peeling Solution 30ml Bahrain price"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 14,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Some By Mi AHA BHA PHA 30 Days Miracle Toner converted to BHD; K-beauty popular GCC"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "The Ordinary's potent weekly peeling solution gives stronger resurfacing per dinar for experienced users",
+      "forbidden_facts": [
+        "Some By Mi toner is a 30% acid peel strength",
+        "The Ordinary AHA BHA Peeling Solution daily-use safe standard",
+        "Some By Mi toner SPF protection included",
+        "The Ordinary Peeling Solution prescription medical peel"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "skin-019",
+      "query": "Garnier Micellar Cleansing Water Pink vs Nivea MicellAIR water",
+      "category": "skincare",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + carrefourbh.com Garnier Micellar Water Pink 400ml Bahrain shelf price"
+        },
+        "product_1": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh Nivea MicellAIR micellar water 400ml Bahrain shelf price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Garnier Micellar Pink's all-in-one makeup removal and broad availability make it the GCC drugstore staple",
+      "forbidden_facts": [
+        "Nivea MicellAIR contains glycolic acid exfoliant",
+        "Garnier Micellar Water Pink is an oil-based cleanser",
+        "Nivea MicellAIR SPF protection included",
+        "Garnier Micellar Water contains retinol"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-006",
+      "query": "NYX Setting Spray vs essence Stay All Day setting spray",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "namshi.com bahrain + carrefourbh.com NYX Professional Makeup Setting Spray Bahrain price"
+        },
+        "product_1": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "noon.com + carrefourbh.com essence setting spray converted/Bahrain shelf price; ultra-budget tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "NYX's setting spray holds makeup through Gulf heat and humidity more reliably than the budget essence option",
+      "forbidden_facts": [
+        "essence setting spray is a primer not a finishing spray",
+        "NYX Setting Spray contains SPF 50",
+        "essence setting spray waterproof 24-hour hold guaranteed",
+        "NYX Setting Spray contains skincare retinol"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-007",
+      "query": "L'Oreal Infallible foundation vs Revlon ColorStay foundation",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 4,
+          "max": 11,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + bn.boots.com L'Oreal Infallible 24H foundation Bahrain price"
+        },
+        "product_1": {
+          "min": 4,
+          "max": 11,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com Revlon ColorStay foundation Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "L'Oreal Infallible's transfer-resistant wear holds up better in heat, with a broader shade range in GCC stores",
+      "forbidden_facts": [
+        "Revlon ColorStay is a tinted moisturiser light coverage only",
+        "L'Oreal Infallible foundation SPF 50 standard",
+        "Revlon ColorStay contains retinol skincare",
+        "L'Oreal Infallible foundation 60 shades in Bahrain stores standard"
       ],
       "max_wall_seconds": 30.0
     }
