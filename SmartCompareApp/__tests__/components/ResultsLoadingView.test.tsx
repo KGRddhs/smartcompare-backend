@@ -16,6 +16,15 @@ jest.mock('expo-haptics', () => ({
   __esModule: true,
 }));
 
+// B.1 F3.5 — the ghost cards now thread an onSignal that calls trackEvent
+// (e.g. result_abandon fires when a card unmounts before the verdict stage,
+// which auto-cleanup triggers at teardown). Stub trackEvent so these tests
+// make no network attempt; pain-event behaviour is covered by
+// ResultsLoadingView.painEvents.test.tsx + StreamingProductCard.painEvents.test.tsx.
+jest.mock('../../src/services/api', () => ({
+  trackEvent: jest.fn(),
+}));
+
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, unknown>) => {
