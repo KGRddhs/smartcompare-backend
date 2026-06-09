@@ -898,9 +898,16 @@ class ScoringService:
             scores["_price_missing"] = True
 
         # Spec signal (raw: category-specific aggregate)
+        # B0-A v2.1: _score_specs may return None when scored_fields == 0
+        # (zero coverage). Handle that path identically to the missing-
+        # specs-dict path so dim-level aggregation propagates the missing
+        # flag and the flag-aware tie guard fires uniformly.
         specs = product.get("specs")
         if specs and isinstance(specs, dict):
-            scores["spec_raw"] = self._score_specs(specs, category)
+            spec_score = self._score_specs(specs, category)
+            scores["spec_raw"] = spec_score
+            if spec_score is None:
+                scores["_spec_missing"] = True
         else:
             scores["spec_raw"] = None
             scores["_spec_missing"] = True
@@ -918,9 +925,16 @@ class ScoringService:
             scores["_review_missing"] = True
 
         # Reliability signal (from fact_check)
+        # B0-A v2: _score_reliability may return None when fact_check has
+        # zero populated buckets — handle that path identically to the
+        # missing-fact_check path (set _reliability_missing flag so
+        # downstream dim-level aggregation correctly omits the dim).
         fact_check = product.get("fact_check")
         if fact_check and isinstance(fact_check, dict):
-            scores["reliability_raw"] = self._score_reliability(fact_check)
+            reliability_score = self._score_reliability(fact_check)
+            scores["reliability_raw"] = reliability_score
+            if reliability_score is None:
+                scores["_reliability_missing"] = True
         else:
             scores["reliability_raw"] = None
             scores["_reliability_missing"] = True
@@ -975,8 +989,19 @@ class ScoringService:
 
         return scores
 
-    def _score_specs(self, specs: Dict[str, Any], category: str) -> float:
-        """Score specs on a 0-1 scale based on category-specific logic."""
+    def _score_specs(self, specs: Dict[str, Any], category: str) -> Optional[float]:
+        """Score specs on a 0-1 scale based on category-specific logic.
+
+        B0-A v2.1 site #4: return None when scored_fields == 0 (zero
+        coverage: empty specs dict OR all fields are 'N/A'/empty). Pre-
+        v2.1 returned 0.0 which downstream `_normalize_dimension` then
+        compared with `max_val == min_val == 0` — the v2 guard caught
+        that case but it was fragile (e.g. partial-coverage equal-
+        average scenarios still leaked at non-zero). Killing the 0.0
+        default at the source means downstream sees None directly, sets
+        `_spec_missing=True`, and the flag-aware tie guard fires
+        uniformly.
+        """
         schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
         schema_fields = CATEGORY_SPEC_SCHEMAS[schema_key]
 
@@ -1007,7 +1032,7 @@ class ScoringService:
                 scored_fields += 1
 
         if scored_fields == 0:
-            return 0.0
+            return None  # B0-A v2.1: was `return 0.0` — phantom-tie source.
 
         total_fields = len(schema_fields)
         coverage_ratio = scored_fields / total_fields if total_fields > 0 else 0
@@ -1018,16 +1043,24 @@ class ScoringService:
 
         return total_score / scored_fields
 
-    def _score_reliability(self, fact_check: Dict[str, Any]) -> float:
-        """Score reliability from fact_check data on 0-1 scale."""
-        verified = fact_check.get("specs_verified", 0)
-        likely = fact_check.get("specs_likely", 0)
-        flagged = fact_check.get("specs_flagged", 0)
-        unverified = fact_check.get("specs_unverified", 0)
+    def _score_reliability(self, fact_check: Dict[str, Any]) -> Optional[float]:
+        """Score reliability from fact_check data on 0-1 scale.
+
+        B0-A v2 fix (2026-06-08): return None when fact_check has zero
+        populated buckets so downstream MISSING_SCORE propagation +
+        silent dim omission fire. Pre-v2 constant 0.5 default was the
+        phantom (30,30) literal source surfaced by the 24-query bias
+        re-run (B0-D root-cause investigation).
+        """
+        # Coerce None-valued bucket entries to 0 so `total` math is safe.
+        verified = fact_check.get("specs_verified") or 0
+        likely = fact_check.get("specs_likely") or 0
+        flagged = fact_check.get("specs_flagged") or 0
+        unverified = fact_check.get("specs_unverified") or 0
         total = verified + likely + flagged + unverified
 
         if total == 0:
-            return 0.5
+            return None  # B0-A v2: was `return 0.5` — phantom (30,30) source.
 
         score = (verified * 1.0 + likely * 0.7 + unverified * 0.3 + flagged * 0.0) / total
 
@@ -1162,6 +1195,33 @@ class ScoringService:
         reliability_scores = [self._normalize_direct(raw_scores, i, "reliability_raw") for i in range(len(raw_scores))]
         popularity_scores = [self._normalize_direct(raw_scores, i, "popularity_raw") for i in range(len(raw_scores))]
 
+        # B0-A v2.1 site #3 — collapse tied non-MISSING reliability/popularity
+        # scores to MISSING_SCORE. _normalize_direct writes the raw value
+        # multiplied by 100 directly into the dim breakdown, bypassing the
+        # _normalize_dimension flag-aware tie guard. When BOTH products land
+        # on the same numeric (e.g. both reliability_raw=0.3 → 30.0), it's
+        # a phantom from sparse-coverage fact_check averaging — NEVER a
+        # genuine signal tie per B0-D's 24-query bias matrix evidence
+        # (ZERO genuine non-MISSING ties observed across the corpus).
+        # Collapse to MISSING_SCORE so downstream silent dim omission
+        # (build_dimensions_v2 § A.4.9) fires uniformly.
+        if (
+            len(reliability_scores) >= 2
+            and len(set(reliability_scores)) == 1
+            and reliability_scores[0] != MISSING_SCORE
+        ):
+            reliability_scores = [MISSING_SCORE] * len(reliability_scores)
+            for rs in raw_scores:
+                rs["_reliability_missing"] = True
+        if (
+            len(popularity_scores) >= 2
+            and len(set(popularity_scores)) == 1
+            and popularity_scores[0] != MISSING_SCORE
+        ):
+            popularity_scores = [MISSING_SCORE] * len(popularity_scores)
+            for rs in raw_scores:
+                rs["_popularity_missing"] = True
+
         # Compute spec_secondary: blended spec and review for variety
         spec_secondary_scores = []
         for i in range(len(raw_scores)):
@@ -1272,12 +1332,24 @@ class ScoringService:
         min_val = min(values)
 
         if max_val == min_val:
-            # B0-A BUG #2: distinguish "no signal extracted" (max==min==0)
-            # from "genuine tied non-zero signal" (max==min==X, X>0).
-            # The no-signal case must propagate MISSING_SCORE so silent
-            # dim omission in build_dimensions_v2 fires; otherwise we'd
-            # ship a fake 70/70 tie row.
-            if max_val == 0:
+            # B0-A BUG #2 v1: distinguish "no signal extracted" (max==min==0)
+            # from "genuine tied non-zero signal" (max==min==X, X>0). The
+            # no-signal case must propagate MISSING_SCORE so silent dim
+            # omission in build_dimensions_v2 fires; otherwise we'd ship a
+            # fake 70/70 tie row.
+            #
+            # B0-A BUG #2 v2: extend v1 to also check per-product
+            # `_<signal>_missing` flags. Partial-coverage extraction
+            # scenarios (e.g. both products have 1 spec field populated,
+            # _score_specs returns ~1.0 for both → max==min==1.0 > 0) fell
+            # through to `return 70.0` in v1 — phantom (70,70) literal pair
+            # surfaced by the 24-query bias re-run. Flag check catches it.
+            signal_kind = key.replace("_raw", "")
+            flag_key = f"_{signal_kind}_missing"
+            both_sides_flagged_missing = all(
+                rs.get(flag_key) for rs in raw_scores
+            )
+            if max_val == 0 or both_sides_flagged_missing:
                 return MISSING_SCORE
             return 70.0
 
