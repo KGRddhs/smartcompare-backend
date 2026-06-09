@@ -529,6 +529,15 @@ from app.services.response_builder import (
     derive_rating_from_scores,
 )
 from app.services.image_service import get_product_image_url
+# B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
+# SOURCE_REGISTRY into the Tier 1.5 price-escalation cascade: a Bahrain
+# `site:` discovery query runs FIRST, and every candidate is gated registry-
+# first (score_source >= 1.5) with the legacy whitelist sets as fallback.
+from app.services.source_router import (
+    build_site_discovery_query,
+    get_sources_for_category,
+    score_source,
+)
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
@@ -809,6 +818,93 @@ def _build_escalation_scrapers(
 # Legacy name retained for one release so existing monkeypatch tests
 # (test_fan_out_integration.py) keep working without simultaneous churn.
 _build_luxury_scrapers = _build_escalation_scrapers
+
+
+def _harvest_candidate_urls(
+    results_by_tier: Dict[str, Any],
+    official_domain: Optional[str],
+    category: str,
+) -> List[Tuple[str, str, str, float]]:
+    """B.0 (Lane F1) — order Serper discovery results into a candidate pool.
+
+    Priority order: **bahrain (registry) -> official -> authorized -> gcc**.
+    Returns `(link, domain_label, route, source_weight)` per candidate; the
+    caller derives the legacy `(link, label)` `candidate_urls` shape and uses
+    `route`/`source_weight` for `source_trace` observability (F1.4).
+
+    Gating (registry-first, legacy-fallback — Dispatcher invariant #1):
+    - bahrain tier: a link enters ONLY when `score_source(link, category) >= 1.5`
+      (registry membership IS the counterfeit whitelist — unknown domains score
+      0.5 and are rejected).
+    - authorized / gcc tiers: registry pass (`score_source >= 1.5`) OR legacy
+      whitelist membership (`OFFICIAL_BRAND_DOMAINS` / `AUTHORIZED_LUXURY_RETAILERS`
+      / `GCC_LUXURY_RETAILERS`). The legacy sets remain the fallback path while
+      we watch the registry win in `source_trace` before deleting them.
+    - official tier: the existing same-domain check against `official_domain`.
+    """
+    harvested: List[Tuple[str, str, str, float]] = []
+
+    # --- Bahrain registry tier (NEW, harvested FIRST) ---
+    bh = results_by_tier.get("bahrain")
+    if bh and bh.get("organic"):
+        for item in bh["organic"][:4]:
+            link = item.get("link", "")
+            if not link or not validate_scrape_url(link):
+                continue
+            weight = score_source(link, category)
+            if weight >= 1.5:
+                link_domain = urlparse(link).netloc.replace("www.", "").lower()
+                harvested.append((link, link_domain, "registry", weight))
+
+    # --- Official brand domain (same-domain check preserved) ---
+    if official_domain and "official" in results_by_tier:
+        official_results = results_by_tier["official"]
+        if official_results and official_results.get("organic"):
+            for organic_item in official_results["organic"][:2]:
+                link = organic_item.get("link")
+                if not link or not validate_scrape_url(link):
+                    continue
+                link_domain = urlparse(link).netloc.replace("www.", "").lower()
+                od = official_domain.lower()
+                if link_domain == od or link_domain.endswith("." + od):
+                    harvested.append(
+                        (link, official_domain, "official", score_source(link, category))
+                    )
+
+    # --- Authorized retailers (registry-first, legacy-fallback) ---
+    if "authorized" in results_by_tier:
+        retailer_results = results_by_tier["authorized"]
+        if retailer_results and retailer_results.get("organic"):
+            for item in retailer_results["organic"][:5]:
+                link = item.get("link", "")
+                if not link:
+                    continue
+                link_domain = urlparse(link).netloc.replace("www.", "")
+                weight = score_source(link, category)
+                if weight >= 1.5:
+                    harvested.append((link, link_domain, "registry", weight))
+                elif (
+                    link_domain in AUTHORIZED_LUXURY_RETAILERS
+                    or link_domain in OFFICIAL_BRAND_DOMAINS
+                ):
+                    harvested.append((link, link_domain, "legacy_fallback", weight))
+
+    # --- GCC retailers (registry-first, legacy-fallback) ---
+    if "gcc" in results_by_tier:
+        gcc_results = results_by_tier["gcc"]
+        if gcc_results and gcc_results.get("organic"):
+            for item in gcc_results["organic"][:3]:
+                link = item.get("link", "")
+                if not link:
+                    continue
+                link_domain = urlparse(link).netloc.replace("www.", "")
+                weight = score_source(link, category)
+                if weight >= 1.5:
+                    harvested.append((link, link_domain, "registry", weight))
+                elif link_domain in GCC_LUXURY_RETAILERS:
+                    harvested.append((link, link_domain, "legacy_fallback", weight))
+
+    return harvested
 
 
 class StructuredComparisonService:
@@ -2475,18 +2571,27 @@ class StructuredComparisonService:
             scraping_mode = os.environ.get("SCRAPING_MODE", "hard")
             candidate_urls: List[Tuple[str, str]] = []
 
-            # --- Discovery: all 3 queries fire concurrently ---
-            # Counterfeit safety preserved: even with `site:louisvuitton.com`,
-            # Serper sometimes returns off-domain marketplace links — every
-            # candidate is whitelisted post-fetch against
-            # OFFICIAL_BRAND_DOMAINS / AUTHORIZED_LUXURY_RETAILERS /
-            # GCC_LUXURY_RETAILERS before entering the candidate pool.
-            # Dispatcher invariant #1.
+            # --- Discovery: all queries fire concurrently ---
+            # B.0 (Lane F1): a Bahrain-first `site:` discovery query leads the
+            # cascade for non-luxury escalations, so Lulu/Sharaf DG/Carrefour BH
+            # listings outrank a distant amazon.com result. Counterfeit safety
+            # preserved: even with `site:louisvuitton.com`, Serper sometimes
+            # returns off-domain marketplace links — every candidate is gated
+            # post-fetch (registry-first `score_source >= 1.5`, legacy whitelist
+            # fallback) before entering the pool. Dispatcher invariant #1.
             official_domain = get_official_domain(full_name)
             retailer_query = f"{full_name} farfetch OR ssense OR net-a-porter"
             gcc_query = f"{full_name} ounass OR bloomingdales dubai OR namshi"
 
             discovery_tasks = []
+            # Bahrain registry discovery FIRST (gated by has_budget("serper")
+            # implicitly — search_web no-ops without a key). Skipped only when
+            # the category has zero Bahrain-tier registry sources.
+            bahrain_query = build_site_discovery_query(
+                full_name, category, tier="bahrain", limit=4
+            )
+            if bahrain_query:
+                discovery_tasks.append(("bahrain", search_web(bahrain_query)))
             if official_domain:
                 discovery_tasks.append(
                     ("official", search_web(f"{full_name} site:{official_domain}"))
@@ -2511,38 +2616,15 @@ class StructuredComparisonService:
                 # gather itself failed (very unlikely with return_exceptions=True)
                 logger.warning(f"[PRICE] Tier 1.5 parallel discovery failed: {e}")
 
-            # Build candidate_urls in priority order: official → authorized → GCC.
-            if official_domain and "official" in results_by_tier:
-                official_results = results_by_tier["official"]
-                if official_results and official_results.get("organic"):
-                    for organic_item in official_results["organic"][:2]:
-                        link = organic_item.get("link")
-                        if not link or not validate_scrape_url(link):
-                            continue
-                        link_domain = urlparse(link).netloc.replace("www.", "").lower()
-                        od = official_domain.lower()
-                        if link_domain == od or link_domain.endswith("." + od):
-                            candidate_urls.append((link, official_domain))
-
-            if "authorized" in results_by_tier:
-                retailer_results = results_by_tier["authorized"]
-                if retailer_results and retailer_results.get("organic"):
-                    for item in retailer_results["organic"][:5]:
-                        link = item.get("link", "")
-                        link_domain = urlparse(link).netloc.replace("www.", "")
-                        # Whitelist gate — counterfeit/marketplace domains
-                        # cannot enter the candidate pool. Dispatcher invariant #1.
-                        if link_domain in AUTHORIZED_LUXURY_RETAILERS or link_domain in OFFICIAL_BRAND_DOMAINS:
-                            candidate_urls.append((link, link_domain))
-
-            if "gcc" in results_by_tier:
-                gcc_results = results_by_tier["gcc"]
-                if gcc_results and gcc_results.get("organic"):
-                    for item in gcc_results["organic"][:3]:
-                        link = item.get("link", "")
-                        link_domain = urlparse(link).netloc.replace("www.", "")
-                        if link_domain in GCC_LUXURY_RETAILERS:
-                            candidate_urls.append((link, link_domain))
+            # Build candidate_urls in priority order:
+            # bahrain (registry) → official → authorized → gcc.
+            # Registry-first gate with legacy-whitelist fallback lives in
+            # _harvest_candidate_urls; `harvested` carries route + source_weight
+            # for the source_trace record (F1.4).
+            harvested = _harvest_candidate_urls(
+                results_by_tier, official_domain, category
+            )
+            candidate_urls = [(link, label) for link, label, _route, _w in harvested]
 
             # --- Race: fan_out_price_lookup runs all per-URL scrapers in
             # parallel, cancels pending tasks when 2 sources confirm within
