@@ -1,0 +1,53 @@
+{
+  "_comment": "F5 (Bundle B S1) taxonomy manifest for data/validation_gold_truth.json. Drives per-category count assertions in tests/test_gold_truth_schema.py. Existing 50 + new 150 = 200. See docs/plans/2026-06-10-B-gold-200-taxonomy.md.",
+  "total_target": 200,
+  "existing_count": 50,
+  "new_count": 150,
+  "new_entries_min_id_index": 51,
+  "new_entries_max_wall_seconds": 30.0,
+  "original_entries_max_wall_seconds": 25.0,
+  "category_totals": {
+    "electronics": 34,
+    "grocery": 32,
+    "supplements": 22,
+    "haircare": 21,
+    "skincare": 19,
+    "other": 19,
+    "fragrances": 18,
+    "makeup": 18,
+    "fashion": 17
+  },
+  "category_existing": {
+    "electronics": 12,
+    "supplements": 6,
+    "fragrances": 6,
+    "makeup": 5,
+    "skincare": 5,
+    "haircare": 3,
+    "fashion": 4,
+    "grocery": 4,
+    "other": 5
+  },
+  "id_prefixes": {
+    "electronics": "elec",
+    "grocery": "groc",
+    "supplements": "supp",
+    "haircare": "hair",
+    "skincare": "skin",
+    "other": "other",
+    "fragrances": "frag",
+    "makeup": "make",
+    "fashion": "fash"
+  },
+  "valid_categories": [
+    "electronics",
+    "grocery",
+    "supplements",
+    "haircare",
+    "skincare",
+    "other",
+    "fragrances",
+    "makeup",
+    "fashion"
+  ]
+}
