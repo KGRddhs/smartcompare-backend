@@ -615,3 +615,156 @@ def test_supplements_optimum_dymatize_clean_reference(service):
         f"(not over-collapsed by v2.1 guard), got {distinct_pairs}. "
         f"Breakdowns: {breakdowns}"
     )
+
+
+# ---------- v2.2: extend _normalize_scores collapse to spec_scores ----------
+#
+# v2.1 covered reliability_scores + popularity_scores but missed spec_scores.
+# Phase 2 live verification (B0-D's 24-query re-run) found 3 residuals:
+#   Q02 fashion: craft:(70,70)
+#   Q03 other: function:(70,70)
+#   Q17 fashion: craft:(70,70)
+# All = partial-coverage _score_specs path where the average happens to match
+# across both products → _spec_missing not set → _normalize_dimension's flag
+# check passes → falls through to `return 70.0` genuine-tie branch.
+# Fix: extend collapse block to spec_scores. spec_secondary_scores benefits
+# transitively (it's computed FROM the post-collapse spec_scores below).
+
+
+def test_normalize_scores_collapses_tied_spec_to_missing(service):
+    """v2.2 — when both products' spec_raw normalizes to the same non-MISSING
+    value (e.g. both 70.0 from partial coverage averaging), collapse to
+    MISSING_SCORE so downstream silent dim omission fires.
+
+    Pre-v2.2: v2.1 _normalize_dimension flag check passed because
+    `_spec_missing` was NOT set on either side (partial coverage with matching
+    averages → non-zero spec_raw, non-flag scenarios). Phantom (70,70) leaked.
+    Post-v2.2: array-level collapse catches it after normalization.
+    """
+    # Both products: spec_raw=1.0 (1 spec field populated each, averaging to
+    # the same value). No _spec_missing flag → v2.1 guard doesn't fire →
+    # _normalize_dimension genuine-tie path returns 70.0.
+    raw_scores = [
+        {"spec_raw": 1.0},
+        {"spec_raw": 1.0},
+    ]
+    products_data = [
+        {"category": "fashion", "price": {"amount": 100}},
+        {"category": "fashion", "price": {"amount": 150}},
+    ]
+    normalized, _, _ = service._normalize_scores(
+        raw_scores, products_data, category="fashion"
+    )
+    # craft_score in fashion maps to spec signal.
+    for i in range(2):
+        score = normalized[i].get("craft_score")
+        assert score == MISSING_SCORE, (
+            f"product_{i} craft_score should collapse to MISSING_SCORE when "
+            f"both sides tied at non-zero spec_raw, got {score!r}"
+        )
+
+
+def test_normalize_scores_preserves_distinct_spec(service):
+    """Sanity — when spec_raw values DIFFER, _normalize_dimension produces
+    distinct outputs and the collapse-to-MISSING guard does NOT fire."""
+    raw_scores = [
+        {"spec_raw": 1.0},  # min → 30.0
+        {"spec_raw": 5.0},  # max → 100.0
+    ]
+    products_data = [
+        {"category": "fashion", "price": {"amount": 100}},
+        {"category": "fashion", "price": {"amount": 150}},
+    ]
+    normalized, _, _ = service._normalize_scores(
+        raw_scores, products_data, category="fashion"
+    )
+    a = normalized[0].get("craft_score")
+    b = normalized[1].get("craft_score")
+    assert a != b, (
+        f"distinct spec_raw should produce distinct craft scores, got ({a}, {b})"
+    )
+    assert a == 30.0 and b == 100.0, f"expected (30.0, 100.0), got ({a}, {b})"
+
+
+def test_normalize_scores_collapse_spec_propagates_to_spec_secondary(service):
+    """spec_secondary_scores are computed FROM spec_scores below the collapse
+    block. After spec_scores collapse to MISSING, the spec_secondary blend
+    should also propagate the missing flag (per existing
+    `if s == MISSING_SCORE and r == MISSING_SCORE` branch in the blend
+    logic — when only spec is MISSING and review has data, falls to review;
+    when both, stays MISSING).
+
+    This test verifies the cascading behavior with a `dim` mapped to
+    `spec_secondary` (e.g. `feature_score` in electronics)."""
+    raw_scores = [
+        {"spec_raw": 1.0, "review_raw": None, "_review_missing": True},
+        {"spec_raw": 1.0, "review_raw": None, "_review_missing": True},
+    ]
+    products_data = [
+        {"category": "electronics", "price": {"amount": 100}},
+        {"category": "electronics", "price": {"amount": 150}},
+    ]
+    normalized, _, _ = service._normalize_scores(
+        raw_scores, products_data, category="electronics"
+    )
+    # feature_score in electronics maps to spec_secondary
+    for i in range(2):
+        score = normalized[i].get("feature_score")
+        assert score == MISSING_SCORE, (
+            f"product_{i} feature_score (spec_secondary, both signals "
+            f"MISSING) must be MISSING_SCORE, got {score!r}"
+        )
+
+
+def test_other_function_dim_no_phantom_post_collapse(service):
+    """Q03 fixture mimic — category=other, sparse spec data with matching
+    averages → function_score must NOT surface (70,70) phantom."""
+    products = [
+        {
+            "brand": "Acme", "name": "Widget A", "category": "other",
+            "specs": {"material": "plastic"},  # 1 of ~7 schema fields
+            "rating": None, "review_count": None,
+            "price": {"amount": 80, "currency": "BHD"}, "fact_check": None,
+        },
+        {
+            "brand": "Zen", "name": "Widget B", "category": "other",
+            "specs": {"material": "metal"},
+            "rating": None, "review_count": None,
+            "price": {"amount": 100, "currency": "BHD"}, "fact_check": None,
+        },
+    ]
+    scoring_result = service.compute_scores(products)
+    forbidden = {(70.0, 70.0), (30.0, 30.0)}
+    breakdowns = [scoring_result["scores"][f"product_{i}"]["breakdown"] for i in range(2)]
+    a, b = breakdowns[0].get("function_score"), breakdowns[1].get("function_score")
+    assert (a, b) not in forbidden, (
+        f"[other] function_score (spec-mapped) surfaced forbidden phantom "
+        f"({a}, {b}) — Q03 v2.2 regression"
+    )
+
+
+def test_fashion_craft_dim_no_phantom_post_collapse(service):
+    """Q02/Q17 fixture mimic — category=fashion, partial-coverage spec data
+    with matching averages → craft_score must NOT surface (70,70) phantom."""
+    products = [
+        {
+            "brand": "BrandA", "name": "Tee A", "category": "fashion",
+            "specs": {"material": "cotton"},
+            "rating": None, "review_count": None,
+            "price": {"amount": 25, "currency": "BHD"}, "fact_check": None,
+        },
+        {
+            "brand": "BrandB", "name": "Tee B", "category": "fashion",
+            "specs": {"material": "polyester"},
+            "rating": None, "review_count": None,
+            "price": {"amount": 30, "currency": "BHD"}, "fact_check": None,
+        },
+    ]
+    scoring_result = service.compute_scores(products)
+    forbidden = {(70.0, 70.0), (30.0, 30.0)}
+    breakdowns = [scoring_result["scores"][f"product_{i}"]["breakdown"] for i in range(2)]
+    a, b = breakdowns[0].get("craft_score"), breakdowns[1].get("craft_score")
+    assert (a, b) not in forbidden, (
+        f"[fashion] craft_score (spec-mapped) surfaced forbidden phantom "
+        f"({a}, {b}) — Q02/Q17 v2.2 regression"
+    )
