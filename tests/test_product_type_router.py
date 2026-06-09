@@ -68,6 +68,40 @@ def test_detect_ac():
     assert detect_product_type("Carrier 1.5T Split AC", "electronics") == "electronics.ac"
 
 
+# ---------- F2.1: AC / appliance schema enrichment ----------
+# The PRODUCT_PARSER electronics enum (extraction_service.py:84) maps every
+# AC phrasing -> category=electronics; detect_product_type then routes them to
+# electronics.ac. These pin the full routing chain plus the coverage_sqm field
+# added so AC specs extract without falling through to the Tier 2/3 cascade
+# (stream-hard-cap memo, 2026-06-09).
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Carrier 1.5 ton split AC",
+        "LG Dual Inverter AC",
+        "Daikin Inverter AC 24000 BTU",
+        "Midea Window AC",
+        "Gree 2 ton air conditioner",
+    ],
+)
+def test_ac_phrasings_route_to_electronics_ac(query):
+    assert detect_product_type(query, "electronics") == "electronics.ac"
+
+
+def test_ac_schema_has_coverage_sqm():
+    """coverage_sqm (room-size coverage) drives AC sizing — must be extractable."""
+    schema = get_schema_for_type("electronics.ac")
+    assert "coverage_sqm" in schema
+
+
+def test_ac_schema_preserves_core_fields():
+    """Enrichment must not drop the existing AC spec fields."""
+    schema = get_schema_for_type("electronics.ac")
+    for f in ("capacity_btu", "energy_class", "inverter", "refrigerant"):
+        assert f in schema, f"AC schema missing {f!r}"
+
+
 def test_detect_refrigerator():
     assert (
         detect_product_type("LG Side by Side Refrigerator", "electronics")
