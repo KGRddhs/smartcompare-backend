@@ -23,7 +23,15 @@ VALID_MATTERED_MOST = [
 
 VALID_EVENT_TYPES = [
     "save", "share", "source_click", "tab_switch",
-    "feedback_submit", "result_view_duration"
+    "feedback_submit", "result_view_duration",
+    # Bundle B B.1 (F3.5) — pain-workflow signals emitted from the mobile
+    # StreamingProductCard. These land in user_events; the backend
+    # pain_workflow derivation (B.2, pain_workflow_service) maps them onto
+    # pain_workflow_events.signal_type later. Keep this list in sync with the
+    # frontend trackEvent call sites in StreamingProductCard.tsx.
+    "spec_expand",      # user expanded the spec list past the 3-row preview (too_many_specs)
+    "result_abandon",   # card unmounted before the verdict stage (abandonment mid-stream)
+    "screenshot",       # user screenshotted the comparison (share-intent / decision-capture)
 ]
 
 MAX_BATCH_SIZE = 50

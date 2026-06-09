@@ -272,6 +272,8 @@ class TestEventsEndpoint:
         valid_types = [
             "save", "share", "source_click", "tab_switch",
             "feedback_submit", "result_view_duration",
+            # B.1 F3.5 — pain-workflow signals fired from StreamingProductCard
+            "spec_expand", "result_abandon", "screenshot",
         ]
         with patch("app.services.feedback_service.get_supabase_client"):
             for et in valid_types:
@@ -279,6 +281,50 @@ class TestEventsEndpoint:
                     "events": [{"event_type": et}],
                 })
                 assert resp.status_code == 200, f"Failed for event_type={et}"
+
+
+class TestPainWorkflowEventTypes:
+    """B.1 F3.5 — the 3 pain-workflow signal types fired from
+    StreamingProductCard must be accepted by POST /api/v1/events so the
+    backend pain_workflow derivation (B.2) has raw user_events to read."""
+
+    def test_spec_expand_accepted(self, client):
+        with patch("app.services.feedback_service.get_supabase_client"):
+            resp = client.post("/api/v1/events", json={
+                "events": [{
+                    "event_type": "spec_expand",
+                    "event_data": {"stage": "specs", "hidden_spec_count": 4},
+                    "comparison_id": "00000000-0000-0000-0000-000000000001",
+                }],
+            })
+        assert resp.status_code == 200
+
+    def test_result_abandon_accepted(self, client):
+        with patch("app.services.feedback_service.get_supabase_client"):
+            resp = client.post("/api/v1/events", json={
+                "events": [{
+                    "event_type": "result_abandon",
+                    "event_data": {"stage": "prices"},
+                }],
+            })
+        assert resp.status_code == 200
+
+    def test_screenshot_accepted(self, client):
+        with patch("app.services.feedback_service.get_supabase_client"):
+            resp = client.post("/api/v1/events", json={
+                "events": [{
+                    "event_type": "screenshot",
+                    "event_data": {"stage": "verdict"},
+                }],
+            })
+        assert resp.status_code == 200
+
+    def test_pain_workflow_types_in_constant(self):
+        """The allowlist constant itself must contain all 3 (guards against a
+        future edit that drops one and silently breaks the mobile wire)."""
+        from app.api.feedback_routes import VALID_EVENT_TYPES
+        for et in ("spec_expand", "result_abandon", "screenshot"):
+            assert et in VALID_EVENT_TYPES, f"{et} missing from VALID_EVENT_TYPES"
 
     def test_all_valid_mattered_most_accepted(self, client):
         """Every valid mattered_most item is accepted."""
