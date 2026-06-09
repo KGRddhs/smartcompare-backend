@@ -1689,7 +1689,8 @@ def calibrate_score(
 # Bundle E § Decision 2 — self-describing dimensions[] contract.
 # Always emits 3 core dims (price, reviews, value); 0..3 contextual.
 # Never emits a dim where either product lacks the underlying data.
-_POPULARITY_MIN_REVIEW_COUNT = 50
+# (B0-B Item 3: dropped `_POPULARITY_MIN_REVIEW_COUNT = 50` — only the
+# deleted `_dim_popularity` builder consumed it.)
 _NEUTRAL_DISPLAY_SCORE = 75
 
 
@@ -1866,70 +1867,22 @@ def _dim_value(products: list[dict], is_cross_tier: bool = False) -> dict:
     }
 
 
-def _dim_dpi(products: list[dict]) -> dict | None:
-    a, b = products[0], products[1]
-    da = a.get("specs", {}).get("dpi")
-    db = b.get("specs", {}).get("dpi")
-    if not da or not db:
-        return None
-    hi = max(da, db)
-    score_a = calibrate_score(50 + 35 * (da / hi))
-    score_b = calibrate_score(50 + 35 * (db / hi))
-    return {
-        "key": "dpi", "label": "DPI",
-        "score_a": score_a, "score_b": score_b,
-        "delta_text": f"{da} DPI vs {db} DPI",
-        "confidence": "high", "is_core": False,
-    }
-
-
-def _dim_popularity(products: list[dict]) -> dict | None:
-    a, b = products[0], products[1]
-    ca, cb = a.get("review_count"), b.get("review_count")
-    if not ca or not cb or ca <= _POPULARITY_MIN_REVIEW_COUNT or cb <= _POPULARITY_MIN_REVIEW_COUNT:
-        return None
-    hi = max(ca, cb)
-    score_a = calibrate_score(50 + 35 * (ca / hi))
-    score_b = calibrate_score(50 + 35 * (cb / hi))
-    return {
-        "key": "popularity", "label": "Popularity",
-        "score_a": score_a, "score_b": score_b,
-        "delta_text": f"{ca} reviews vs {cb}",
-        "confidence": "high", "is_core": False,
-    }
-
-
-def _dim_build_quality(products: list[dict]) -> dict | None:
-    a, b = products[0], products[1]
-    wa, wb = a.get("warranty_years"), b.get("warranty_years")
-    if wa is None or wb is None:
-        return None
-    hi = max(wa, wb) or 1
-    score_a = calibrate_score(60 + 25 * (wa / hi))
-    score_b = calibrate_score(60 + 25 * (wb / hi))
-    return {
-        "key": "build_quality", "label": "Build",
-        "score_a": score_a, "score_b": score_b,
-        "delta_text": f"{wa}-year vs {wb}-year warranty",
-        "confidence": "medium", "is_core": False,
-    }
+# B0-B Item 3 (audit MED #1) — the hand-coded `_dim_dpi`, `_dim_popularity`,
+# and `_dim_build_quality` builders previously sat here. They were never
+# called from `build_dimensions_v2` (Lane 1 L1.3 rewrite, line ~2255 below
+# routes ALL same-category comparisons through the CATEGORY_DIMENSIONS
+# lookup). `_dim_dpi` was also a latent AttributeError risk — it called
+# `a.get("specs", {}).get("dpi")` which crashes when specs=None post the
+# L2 timeout contract. Existing regression tests (test_dimensions_builder
+# and test_scoring_dimensions_v2) already pin that the `dpi`, `popularity`,
+# and `build_quality` keys must NOT appear in `build_dimensions_v2` output,
+# so deleting the dead definitions is safe.
 
 
 # Bundle D Task 2.B.3 (A.8.1) — human-readable labels for the
-# category-specific dim keys in CATEGORY_DIMENSIONS. Skin/hair/fragrance/etc
-# categories don't have hand-coded _dim_X builders, so we project their
-# scores from `scoring_result["scores"]` using these labels.
-#
-# Reading 1 (minimal) of A.8.1: keep the 3 hand-coded electronics builders
-# (_dim_dpi/_popularity/_build_quality) because they compute fresh values
-# from raw specs (DPI, review_count, warranty_years) with category-specific
-# delta_text — that detail is hard to reproduce from the generic
-# CATEGORY_DIMENSIONS lookup. For all OTHER categories, fall back to a
-# generic adapter that pulls per-dim scores from scoring_result.
-#
-# Reading 2 (full replacement of the 3 electronics builders) is queued as
-# a v1.2 TODO — needs design input on per-dim delta_text generation across
-# the 9 categories × 6 dims grid (54 cells).
+# category-specific dim keys in CATEGORY_DIMENSIONS. Each category's
+# per-dim scores are projected from `scoring_result["scores"]` via the
+# generic `_dim_from_category_lookup` adapter using these labels.
 _DIMENSION_LABELS = {
     # electronics (also exposed for other paths that may render them)
     "performance_score": "Performance",
