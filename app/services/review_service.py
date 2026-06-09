@@ -16,6 +16,7 @@ from app.services.extraction_service import (
 )
 from app.services.serper_service import search_web
 from app.services.cache_service import get_cached, set_cached
+from app.services.api_budget_service import has_budget, record_usage
 
 logger = logging.getLogger(__name__)
 
@@ -296,9 +297,18 @@ async def fetch_retailer_quotes(
     product_query = f"{brand} {name} {variant or ''} review".strip()
 
     async def _one(retailer: str, site_filter: str):
+        # B0-C-2: gate every Serper site-search behind has_budget("serper") so
+        # the 2200-credit lifetime quota cannot be drained by retailer-quote
+        # traffic (3 calls per product, 6 per compare). fail-open on Redis down
+        # is inherited from has_budget(); record_usage on success keeps the
+        # counter accurate for subsequent guards.
+        if not has_budget("serper"):
+            logger.info("[L2.11] retailer quote skipped — serper budget exhausted: %s", retailer)
+            return None
         try:
             q = f'{product_query} site:{site_filter}'.strip()
             result = await search_web(q, num_results=5)
+            record_usage("serper")
             if track_serper_cost_fn:
                 track_serper_cost_fn()
         except Exception as e:

@@ -44,3 +44,30 @@ def _scoped_rate_limiter_bypass(request):
         yield
     finally:
         _limiter.enabled = prior
+
+
+# B0-C Item 4 — pain_workflow_loader lru_cache reset.
+# Architectural + security audit: app/services/pain_workflow_loader.py uses
+# @lru_cache(maxsize=1) on _load_pain_priors / _load_style_priors. Tests in
+# test_pain_workflow_loader_edges.py monkeypatch.setattr(pwl, "_PAIN_FILE", fake)
+# but the lru_cache survives across teardown — once a test warms the cache
+# with a missing/corrupt-file None, subsequent tests in OTHER files that
+# touch the verdict-prompt injection path (test_verdict_prompt_pain_workflow_injection.py,
+# extraction_service prompt builder) see None instead of the real priors and
+# the prompt-injection assertions fail.
+#
+# Fix: autouse fixture clears both lru_caches BEFORE every test. Cost is
+# trivial (a single dict reset, no I/O), but the alternative is per-test
+# manual pwl.reset_cache() calls in 6+ test files which keep drifting back
+# into broken state.
+@pytest.fixture(autouse=True)
+def _reset_pain_workflow_cache():
+    """Clear pain_workflow_loader lru_caches before each test to prevent
+    collection-order pollution from monkeypatched _PAIN_FILE / _STYLE_FILE."""
+    try:
+        from app.services import pain_workflow_loader as pwl
+    except Exception:  # pragma: no cover — defensive import
+        yield
+        return
+    pwl.reset_cache()
+    yield

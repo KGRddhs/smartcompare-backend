@@ -165,3 +165,102 @@ async def test_fetch_calls_serper_cost_tracker_per_retailer():
         await fetch_retailer_quotes("Apple", "iPhone 15", None, track_serper_cost_fn=track)
         # 3 retailers, each one Serper call -> 3 tracked calls
         assert len(track_calls) == 3
+
+
+# ---------------------------------------------------------------------------
+# B0-C-2 — has_budget("serper") gate
+# ---------------------------------------------------------------------------
+# Security + ops audit MED #4: fetch_retailer_quotes() fires 3 Serper site-
+# filter calls per product (Amazon/Noon/X), 6 per compare. Unconditional. If
+# any future caller activates this in the hot path, the 2200-credit lifetime
+# Serper quota drains in ~2 days at 200 cache-miss compares/day. The fix
+# gates each call behind `has_budget("serper")` and decrements via
+# record_usage on success.
+#
+# Invariant pinned: when has_budget returns False (quota exhausted), zero
+# Serper calls happen and the function returns [] cleanly — no partial
+# results, no exception, no Sentry noise.
+
+
+@pytest.mark.asyncio
+async def test_fetch_returns_empty_when_serper_budget_exhausted():
+    """All 3 Serper site-searches return None when has_budget('serper') == False."""
+    fake_search = AsyncMock()
+    fake_record_usage = AsyncMock()
+
+    with patch(
+        "app.services.review_service.has_budget", return_value=False,
+    ), patch(
+        "app.services.review_service.record_usage", new=fake_record_usage,
+    ), patch(
+        "app.services.review_service.search_web", new=fake_search,
+    ), patch(
+        "app.services.review_service.get_cached", return_value=None,
+    ), patch(
+        "app.services.review_service.set_cached", return_value=True,
+    ):
+        quotes = await fetch_retailer_quotes("Apple", "iPhone 15", None)
+
+        assert quotes == []
+        fake_search.assert_not_called()
+        fake_record_usage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_records_usage_after_each_successful_serper_call():
+    """record_usage('serper') fires once per successful site-search (3 total)."""
+    record_usage_calls = []
+
+    async def fake_search_web(query, num_results=5):
+        return {"organic": [{"title": "x", "snippet": "x" * 30}]}
+
+    def fake_record_usage(provider, count=1):
+        record_usage_calls.append((provider, count))
+
+    with patch(
+        "app.services.review_service.has_budget", return_value=True,
+    ), patch(
+        "app.services.review_service.record_usage", side_effect=fake_record_usage,
+    ), patch(
+        "app.services.review_service.search_web",
+        new=AsyncMock(side_effect=fake_search_web),
+    ), patch(
+        "app.services.review_service.get_cached", return_value=None,
+    ), patch(
+        "app.services.review_service.set_cached", return_value=True,
+    ):
+        await fetch_retailer_quotes("Apple", "iPhone 15", None)
+
+        assert len(record_usage_calls) == 3
+        assert all(p == "serper" for p, _ in record_usage_calls)
+
+
+@pytest.mark.asyncio
+async def test_fetch_failed_serper_call_does_not_record_usage():
+    """When a Serper site-search raises, record_usage is NOT called for it."""
+    record_usage_calls = []
+
+    async def fake_search_web(query, num_results=5):
+        if "noon.com" in query:
+            raise RuntimeError("serper 503")
+        return {"organic": [{"title": "x", "snippet": "x" * 30}]}
+
+    def fake_record_usage(provider, count=1):
+        record_usage_calls.append((provider, count))
+
+    with patch(
+        "app.services.review_service.has_budget", return_value=True,
+    ), patch(
+        "app.services.review_service.record_usage", side_effect=fake_record_usage,
+    ), patch(
+        "app.services.review_service.search_web",
+        new=AsyncMock(side_effect=fake_search_web),
+    ), patch(
+        "app.services.review_service.get_cached", return_value=None,
+    ), patch(
+        "app.services.review_service.set_cached", return_value=True,
+    ):
+        await fetch_retailer_quotes("Apple", "iPhone 15", None)
+
+        # 2 successful calls (Amazon + X), Noon raised before record_usage
+        assert len(record_usage_calls) == 2

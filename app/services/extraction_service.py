@@ -81,7 +81,7 @@ RULES:
 - Include variant if specified (storage, size, color, etc.)
 - search_query MUST be the exact product name only (brand + model + variant). Never append "price", "buy", "best price", "cheapest", "deals", retailer names, or country names — those tokens break Google Shopping match. Example: "iPhone 16 Pro 256GB" NOT "iPhone 16 Pro 256GB price Bahrain"
 - Category detection -- match based on PRODUCT TYPE, not brand:
-  * electronics: phones, laptops, TVs, cameras, headphones, tablets, consoles, smartwatches
+  * electronics: phones, laptops, TVs, cameras, headphones, tablets, consoles, smartwatches, air conditioners (AC, split AC, window AC, mini-split), refrigerators (fridge, freezer), washing machines (washer, front-load, top-load), dryers, dishwashers, microwaves, ovens, vacuum cleaners (vacuum, robot vacuum), fans, water heaters, blenders, kettles, toasters, coffee makers, irons
   * grocery: food, beverages, household items, cleaning products
   * supplements: vitamins, minerals, health supplements, protein powder
   * makeup: foundation, lipstick, mascara, eyeshadow, concealer, blush, primer
