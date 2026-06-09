@@ -3,7 +3,7 @@
     "schema_version": 1,
     "authored_at": "2026-06-08",
     "author": "L4-prompts-eval (drafted) — Ahmed ratifies expected_prices via lulu.com.bh / sharafdg.com / carrefourbh.com / iherb.com / bn.boots.com manual checks",
-    "queries": 150,
+    "queries": 175,
     "pass_threshold_per_query": 0.8,
     "gate_aggregate_pass_rate": 0.8,
     "axis_weights": {
@@ -4962,6 +4962,841 @@
         "L'Oreal Infallible foundation SPF 50 standard",
         "Revlon ColorStay contains retinol skincare",
         "L'Oreal Infallible foundation 60 shades in Bahrain stores standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-008",
+      "query": "Maybelline Fit Me foundation vs L'Oreal True Match foundation",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + bn.boots.com Maybelline Fit Me foundation Bahrain price"
+        },
+        "product_1": {
+          "min": 4,
+          "max": 11,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com L'Oreal True Match foundation Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Maybelline Fit Me's wide GCC shade availability and natural finish give it the value edge for everyday wear",
+      "forbidden_facts": [
+        "L'Oreal True Match SPF 50 standard",
+        "Maybelline Fit Me full-coverage opaque only finish",
+        "L'Oreal True Match contains retinol skincare",
+        "Maybelline Fit Me 50 shades stocked in Bahrain stores standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-009",
+      "query": "NYX Lip Lingerie liquid lipstick vs essence liquid lipstick",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 8,
+          "currency": "BHD",
+          "note": "namshi.com bahrain + carrefourbh.com NYX Lip Lingerie liquid lipstick Bahrain price"
+        },
+        "product_1": {
+          "min": 1,
+          "max": 4,
+          "currency": "BHD",
+          "note": "carrefourbh.com + noon.com essence liquid lipstick Bahrain shelf/converted; ultra-budget tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "finish": "matte"
+        },
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "NYX Lip Lingerie's longer-wearing matte formula and nude range outperform the budget essence option",
+      "forbidden_facts": [
+        "essence liquid lipstick transfer-proof 24-hour wear guaranteed",
+        "NYX Lip Lingerie contains SPF 30",
+        "essence liquid lipstick is a lip oil gloss not matte",
+        "NYX Lip Lingerie contains skincare hyaluronic serum"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-010",
+      "query": "Maybelline Lash Sensational mascara vs L'Oreal Voluminous mascara",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 8,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + bn.boots.com Maybelline Lash Sensational mascara Bahrain price"
+        },
+        "product_1": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "bn.boots.com + carrefourbh.com L'Oreal Voluminous mascara Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Maybelline Lash Sensational's fanning brush gives fuller volume in one coat, a drugstore favourite in the GCC",
+      "forbidden_facts": [
+        "L'Oreal Voluminous is a tubing fibre mascara standard",
+        "Maybelline Lash Sensational waterproof-only formula",
+        "L'Oreal Voluminous contains lash-growth serum bimatoprost",
+        "Maybelline Lash Sensational contains SPF"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-011",
+      "query": "Huda Beauty Easy Bake powder vs Laura Mercier Translucent powder",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 10,
+          "max": 22,
+          "currency": "BHD",
+          "note": "ounass.com + sephora GCC Huda Beauty Easy Bake loose powder converted to BHD; regional prestige brand"
+        },
+        "product_1": {
+          "min": 12,
+          "max": 26,
+          "currency": "BHD",
+          "note": "ounass.com + noon.com Laura Mercier Translucent Loose Setting Powder converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Huda Beauty Easy Bake suits GCC skin tones and humidity with strong regional brand resonance",
+      "forbidden_facts": [
+        "Laura Mercier Translucent powder is a pressed compact not loose",
+        "Huda Beauty Easy Bake contains SPF 30",
+        "Laura Mercier Translucent powder tinted-only no translucent shade",
+        "Huda Beauty Easy Bake powder skincare retinol infused"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-012",
+      "query": "Anastasia Beverly Hills Brow Wiz vs Benefit Precisely My Brow pencil",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 8,
+          "max": 18,
+          "currency": "BHD",
+          "note": "ounass.com + sephora GCC Anastasia Beverly Hills Brow Wiz converted to BHD"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 18,
+          "currency": "BHD",
+          "note": "ounass.com + noon.com Benefit Precisely My Brow pencil converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "ABH Brow Wiz's ultra-fine tip gives more hair-like precision for the defined GCC brow look",
+      "forbidden_facts": [
+        "Benefit Precisely My Brow is a brow gel not a pencil",
+        "ABH Brow Wiz contains brow-growth serum",
+        "Benefit Precisely My Brow waterproof tattoo 7-day wear",
+        "ABH Brow Wiz refillable mechanical metal body standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-013",
+      "query": "Rimmel Stay Matte powder vs Maybelline Fit Me powder",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 2,
+          "max": 7,
+          "currency": "BHD",
+          "note": "bn.boots.com + carrefourbh.com Rimmel Stay Matte pressed powder Bahrain price"
+        },
+        "product_1": {
+          "min": 3,
+          "max": 8,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + bn.boots.com Maybelline Fit Me pressed powder Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Rimmel Stay Matte's shine control lasts well through humid days at the lowest drugstore price",
+      "forbidden_facts": [
+        "Maybelline Fit Me powder contains SPF 50",
+        "Rimmel Stay Matte is a loose powder not pressed",
+        "Maybelline Fit Me powder skincare niacinamide infused",
+        "Rimmel Stay Matte powder full-coverage foundation replacement standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-014",
+      "query": "MIKYAJY lipstick vs Wet n Wild lipstick",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "MIKYAJY Bahrain stores (City Centre / Seef) lipstick — GCC regional cosmetics brand, no amazon.com listing"
+        },
+        "product_1": {
+          "min": 1.5,
+          "max": 5,
+          "currency": "BHD",
+          "note": "carrefourbh.com + noon.com Wet n Wild lipstick Bahrain shelf/converted; ultra-budget"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "MIKYAJY's GCC-tailored shade range and boutique presence give it the regional edge for matching Gulf skin tones",
+      "forbidden_facts": [
+        "Wet n Wild lipstick contains SPF 30",
+        "MIKYAJY lipstick is a French luxury house",
+        "Wet n Wild lipstick transfer-proof 16-hour wear guaranteed",
+        "MIKYAJY lipstick skincare collagen-infused standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-015",
+      "query": "Revolution Pro concealer vs Catrice True Skin concealer",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 2,
+          "max": 7,
+          "currency": "BHD",
+          "note": "noon.com + bn.boots.com Makeup Revolution Pro concealer converted to BHD"
+        },
+        "product_1": {
+          "min": 2,
+          "max": 6,
+          "currency": "BHD",
+          "note": "carrefourbh.com + noon.com Catrice True Skin concealer Bahrain shelf/converted; ultra-budget"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "coverage": "full"
+        },
+        "product_1": {
+          "coverage": "medium"
+        }
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Catrice True Skin's hydrating serum-concealer gives a more natural under-eye finish for the price",
+      "forbidden_facts": [
+        "Catrice True Skin concealer is a heavy theatrical full-coverage stick",
+        "Revolution Pro concealer contains SPF 50",
+        "Catrice True Skin concealer skincare retinol clinical dose",
+        "Revolution Pro concealer waterproof tattoo 24-hour"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-016",
+      "query": "e.l.f. Halo Glow vs Charlotte Tilbury Flawless Filter",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 4,
+          "max": 12,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae e.l.f. Halo Glow Liquid Filter converted to BHD; viral dupe tier"
+        },
+        "product_1": {
+          "min": 14,
+          "max": 28,
+          "currency": "BHD",
+          "note": "ounass.com + sephora GCC Charlotte Tilbury Flawless Filter converted to BHD; prestige tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "e.l.f. Halo Glow delivers a similar lit-from-within glow at a fraction of the Charlotte Tilbury price",
+      "forbidden_facts": [
+        "Charlotte Tilbury Flawless Filter is full-coverage foundation only",
+        "e.l.f. Halo Glow contains SPF 40",
+        "Charlotte Tilbury Flawless Filter skincare prescription retinol",
+        "e.l.f. Halo Glow is a setting powder not a liquid"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-017",
+      "query": "Maybelline SuperStay Matte Ink vs MAC Locked Kiss Ink",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 3,
+          "max": 9,
+          "currency": "BHD",
+          "note": "luluhypermarket.com/en-bh + bn.boots.com Maybelline SuperStay Matte Ink Bahrain price"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 16,
+          "currency": "BHD",
+          "note": "ounass.com + sephora GCC MAC Locked Kiss Ink liquid lipstick converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {
+          "finish": "matte"
+        },
+        "product_1": {
+          "finish": "matte"
+        }
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Maybelline SuperStay Matte Ink matches prestige longevity through Gulf heat at a third of the price",
+      "forbidden_facts": [
+        "MAC Locked Kiss Ink is a glossy lip oil not matte",
+        "Maybelline SuperStay Matte Ink contains SPF 30",
+        "MAC Locked Kiss Ink skincare collagen plumping",
+        "Maybelline SuperStay Matte Ink is a refillable bullet lipstick"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "make-018",
+      "query": "Bourjois Healthy Mix foundation vs Max Factor Facefinity foundation",
+      "category": "makeup",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 4,
+          "max": 11,
+          "currency": "BHD",
+          "note": "bn.boots.com + noon.com Bourjois Healthy Mix foundation Bahrain price"
+        },
+        "product_1": {
+          "min": 5,
+          "max": 12,
+          "currency": "BHD",
+          "note": "bn.boots.com + carrefourbh.com Max Factor Facefinity All Day Flawless foundation Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Max Factor Facefinity's longer-wearing flawless finish with SPF suits the Gulf climate slightly better",
+      "forbidden_facts": [
+        "Bourjois Healthy Mix is a full-coverage theatrical foundation",
+        "Max Factor Facefinity contains prescription retinol",
+        "Bourjois Healthy Mix SPF 50 standard",
+        "Max Factor Facefinity is a tinted lip balm"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-007",
+      "query": "Lattafa Asad vs Rasasi Hawas for Him",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 6,
+          "max": 18,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com Lattafa Asad 100ml BHD 8.95 (sale from 13); fragrancebh.com BHD 8-15"
+        },
+        "product_1": {
+          "min": 10,
+          "max": 28,
+          "currency": "BHD",
+          "note": "noon.com + bahrain.ahmarket.com Rasasi Hawas for Him 100ml converted/Bahrain price; premium Arabic-house tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Rasasi Hawas's fresh-aquatic Aventus-adjacent profile and stronger projection justify its premium over Asad",
+      "forbidden_facts": [
+        "Lattafa Asad niche-tier longevity rivals Creed",
+        "Rasasi Hawas is a Tom Ford reformulation",
+        "Lattafa Asad contains real oud agarwood oil pure",
+        "Rasasi Hawas vegan alcohol-free attar base"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-008",
+      "query": "Ajmal Amber Wood vs Swiss Arabian Shaghaf Oud",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 12,
+          "max": 35,
+          "currency": "BHD",
+          "note": "noon.com + ajmal GCC Amber Wood 100ml converted to BHD; established Emirati house"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 24,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Swiss Arabian Shaghaf Oud 75ml converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Ajmal Amber Wood's refined woody-amber composition and brand prestige make it the stronger GCC signature scent",
+      "forbidden_facts": [
+        "Swiss Arabian Shaghaf Oud is a Western designer reformulation",
+        "Ajmal Amber Wood contains synthetic-free 100% natural oud",
+        "Shaghaf Oud niche-tier longevity rivals MFK",
+        "Ajmal Amber Wood alcohol-free attar oil base standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-009",
+      "query": "Al Haramain Amber Oud vs Lattafa Khamrah",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 12,
+          "max": 40,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Al Haramain Amber Oud Gold Edition 60ml converted to BHD; premium Arabic-house"
+        },
+        "product_1": {
+          "min": 8,
+          "max": 24,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com + noon.com Lattafa Khamrah 100ml converted/Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Lattafa Khamrah's crowd-pleasing sweet-spicy gourmand profile and value tier make it the better everyday buy",
+      "forbidden_facts": [
+        "Al Haramain Amber Oud is a Creed clone",
+        "Lattafa Khamrah is a niche house above Tom Ford",
+        "Al Haramain Amber Oud contains real ambergris",
+        "Lattafa Khamrah alcohol-free attar oil only standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-010",
+      "query": "Armaf Club de Nuit Intense Man vs Afnan 9pm",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 8,
+          "max": 24,
+          "currency": "BHD",
+          "note": "noon.com + bahrain.ahmarket.com Armaf Club de Nuit Intense Man 105ml converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 7,
+          "max": 22,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Afnan 9pm 100ml converted to BHD; value Arabic-house"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Armaf CDNIM's strong Aventus-adjacent projection and value pricing keep it the GCC clone-tier favourite",
+      "forbidden_facts": [
+        "Afnan 9pm niche-tier longevity rivals Initio",
+        "Armaf Club de Nuit Intense Man is a genuine Creed flanker",
+        "Afnan 9pm contains real oud agarwood pure",
+        "Armaf CDNIM alcohol-free attar base standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-011",
+      "query": "Versace Eros vs Paco Rabanne One Million",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 22,
+          "max": 55,
+          "currency": "BHD",
+          "note": "ounass.com + noon.com Versace Eros EDT 100ml converted to BHD; mainstream designer"
+        },
+        "product_1": {
+          "min": 22,
+          "max": 55,
+          "currency": "BHD",
+          "note": "ounass.com + bn.boots.com Paco Rabanne One Million EDT 100ml Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Versace Eros's sweet-fresh versatility and strong sillage make it the more wearable crowd-pleaser",
+      "forbidden_facts": [
+        "Paco Rabanne One Million Parfum-only concentration standard",
+        "Versace Eros contains real oud",
+        "One Million Elixir formulation in standard bottle",
+        "Versace Eros niche-house exclusive distribution"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-012",
+      "query": "Armani Acqua di Gio vs Dolce & Gabbana Light Blue",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 25,
+          "max": 60,
+          "currency": "BHD",
+          "note": "ounass.com + noon.com Giorgio Armani Acqua di Gio EDT 100ml converted to BHD"
+        },
+        "product_1": {
+          "min": 22,
+          "max": 55,
+          "currency": "BHD",
+          "note": "ounass.com + bn.boots.com D&G Light Blue EDT 100ml Bahrain price"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Acqua di Gio's iconic fresh-aquatic profile suits the Gulf heat and remains the benchmark summer scent",
+      "forbidden_facts": [
+        "D&G Light Blue is a unisex oud composition",
+        "Acqua di Gio Profumo formulation in standard EDT bottle",
+        "Light Blue contains real ambergris",
+        "Acqua di Gio niche-tier longevity rivals Creed Aventus"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-013",
+      "query": "Jo Malone Wood Sage & Sea Salt vs Le Labo Santal 33",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 35,
+          "max": 80,
+          "currency": "BHD",
+          "note": "ounass.com + bloomingdales.ae Jo Malone Wood Sage & Sea Salt 100ml converted to BHD; premium niche-adjacent"
+        },
+        "product_1": {
+          "min": 80,
+          "max": 180,
+          "currency": "BHD",
+          "note": "ounass.com + noon.com Le Labo Santal 33 100ml converted to BHD; true niche tier"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Le Labo Santal 33's distinctive smoky-sandalwood signature and niche cachet justify the premium for collectors",
+      "forbidden_facts": [
+        "Jo Malone Wood Sage & Sea Salt is a Le Labo sub-brand",
+        "Le Labo Santal 33 designer drugstore price tier",
+        "Jo Malone Wood Sage contains real ambergris standard",
+        "Le Labo Santal 33 alcohol-free attar oil base"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-014",
+      "query": "Mancera Cedrat Boise vs Montale Intense Cafe",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 35,
+          "max": 85,
+          "currency": "BHD",
+          "note": "noon.com + ounass.com Mancera Cedrat Boise 120ml converted to BHD; niche house"
+        },
+        "product_1": {
+          "min": 35,
+          "max": 85,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Montale Intense Cafe 100ml converted to BHD; niche house"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Mancera Cedrat Boise's versatile fresh-woody profile suits both day and Gulf-evening wear more broadly",
+      "forbidden_facts": [
+        "Montale Intense Cafe is a Mancera budget sub-line",
+        "Mancera Cedrat Boise designer drugstore tier",
+        "Montale Intense Cafe contains real oud agarwood pure",
+        "Mancera Cedrat Boise alcohol-free attar base"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-015",
+      "query": "Carolina Herrera Good Girl vs Lancome La Vie Est Belle",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 28,
+          "max": 65,
+          "currency": "BHD",
+          "note": "ounass.com + bn.boots.com Carolina Herrera Good Girl EDP 80ml converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 28,
+          "max": 65,
+          "currency": "BHD",
+          "note": "ounass.com + noon.com Lancome La Vie Est Belle EDP 75ml converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Good Girl's bold tonka-jasmine evening profile and iconic heel bottle have stronger GCC presence",
+      "forbidden_facts": [
+        "La Vie Est Belle is a fresh-aquatic summer scent",
+        "Good Girl Supreme formulation in standard bottle",
+        "La Vie Est Belle contains real oud",
+        "Good Girl niche-house exclusive at Le Labo counters"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-016",
+      "query": "Lattafa Yara vs Ana Abiyedh Rouge",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 5,
+          "max": 16,
+          "currency": "BHD",
+          "note": "bahrain.sharafdg.com + noon.com Lattafa Yara 100ml converted/Bahrain price; viral value women's scent"
+        },
+        "product_1": {
+          "min": 6,
+          "max": 18,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Lattafa Ana Abiyedh Rouge 60ml converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Lattafa Yara's sweet-fruity gourmand profile is the GCC viral crowd-pleaser with broad daily appeal",
+      "forbidden_facts": [
+        "Ana Abiyedh Rouge is a Maison Francis Kurkdjian reformulation",
+        "Lattafa Yara niche-tier longevity rivals Baccarat Rouge",
+        "Ana Abiyedh Rouge contains real saffron oud attar pure",
+        "Lattafa Yara alcohol-free oil-based attar only"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-017",
+      "query": "Nishane Hacivat vs Xerjoff Naxos",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 80,
+          "max": 180,
+          "currency": "BHD",
+          "note": "ounass.com + noon.com Nishane Hacivat 50ml converted to BHD; true niche tier"
+        },
+        "product_1": {
+          "min": 90,
+          "max": 220,
+          "currency": "BHD",
+          "note": "ounass.com + noon.com Xerjoff Naxos 50ml converted to BHD; ultra-premium niche"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "Xerjoff Naxos's honey-tobacco-lavender richness and prestige cachet make it the standout for niche collectors",
+      "forbidden_facts": [
+        "Nishane Hacivat is a designer drugstore-tier scent",
+        "Xerjoff Naxos contains real ambergris and 100% natural oud",
+        "Hacivat is a Creed Aventus reformulation",
+        "Xerjoff Naxos alcohol-free attar oil base standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "frag-018",
+      "query": "Maison Margiela Replica Jazz Club vs By Kilian Angels' Share",
+      "category": "fragrances",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 35,
+          "max": 90,
+          "currency": "BHD",
+          "note": "ounass.com + bloomingdales.ae Maison Margiela Replica Jazz Club 100ml converted to BHD"
+        },
+        "product_1": {
+          "min": 90,
+          "max": 220,
+          "currency": "BHD",
+          "note": "ounass.com + noon.com By Kilian Angels' Share 50ml converted to BHD; ultra-premium niche"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 1,
+      "expected_winner_rationale": "By Kilian Angels' Share's cognac-cinnamon gourmand depth and luxury positioning justify the premium for winter wear",
+      "forbidden_facts": [
+        "Replica Jazz Club is a By Kilian sub-line",
+        "By Kilian Angels' Share designer drugstore tier",
+        "Replica Jazz Club contains real oud",
+        "By Kilian Angels' Share alcohol-free attar base standard"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-005",
+      "query": "Skechers Go Walk vs New Balance 574",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 18,
+          "max": 45,
+          "currency": "BHD",
+          "note": "noon.com + sharafdg.com.bh Skechers Go Walk trainers converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 30,
+          "max": 65,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae New Balance 574 converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Skechers Go Walk's lightweight cushioning suits long mall-walking and daily comfort at a lower price",
+      "forbidden_facts": [
+        "New Balance 574 is a carbon-plate running shoe",
+        "Skechers Go Walk Gore-Tex waterproof standard",
+        "New Balance 574 made in Bahrain",
+        "Skechers Go Walk contains Boost foam"
+      ],
+      "max_wall_seconds": 30.0
+    },
+    {
+      "id": "fash-006",
+      "query": "Levi's 501 jeans vs Lee Brooklyn jeans",
+      "category": "fashion",
+      "region": "bahrain",
+      "expected_prices": {
+        "product_0": {
+          "min": 20,
+          "max": 50,
+          "currency": "BHD",
+          "note": "noon.com + Levi's GCC store Levi's 501 jeans converted/Bahrain price"
+        },
+        "product_1": {
+          "min": 14,
+          "max": 40,
+          "currency": "BHD",
+          "note": "noon.com + amazon.ae Lee Brooklyn straight jeans converted to BHD"
+        }
+      },
+      "expected_specs": {
+        "product_0": {},
+        "product_1": {}
+      },
+      "expected_winner_index": 0,
+      "expected_winner_rationale": "Levi's 501's iconic durable denim and consistent fit make it the benchmark everyday jean despite the premium",
+      "forbidden_facts": [
+        "Lee Brooklyn is selvedge raw Japanese denim standard",
+        "Levi's 501 stretch jeggings fabric standard",
+        "Lee Brooklyn made in Bahrain",
+        "Levi's 501 contains performance cooling fabric"
       ],
       "max_wall_seconds": 30.0
     }
