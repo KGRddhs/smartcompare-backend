@@ -6,6 +6,7 @@ Endpoints:
     - 1 product found: returns product info, frontend asks for second
     - 2+ products found: auto-runs full comparison via structured_comparison_service
 """
+import hashlib
 import logging
 import time
 import uuid
@@ -193,7 +194,8 @@ async def identify_and_compare(
     p1 = products[0]
     p2 = products[1]
     query = f"{p1['brand']} {p1['name']} vs {p2['brand']} {p2['name']}"
-    logger.info(f"[IMAGE] Auto-comparing: {query}")
+    query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]
+    logger.info(f"[IMAGE] Auto-comparing: query_hash={query_hash} length={len(query)}")
 
     try:
         service = StructuredComparisonService()
