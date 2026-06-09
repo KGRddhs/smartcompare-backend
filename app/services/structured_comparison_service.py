@@ -736,6 +736,25 @@ def _should_escalate_price_scrape(
     return should_escalate(confidence)
 
 
+def _sanity_check_thresholds(
+    sources: List[Dict[str, Any]],
+) -> Tuple[float, float]:
+    """B0-B Item 2 — confidence-driven Tier-1/Tier-2 sanity-check band.
+
+    Replaces the legacy ``is_luxury_brand()`` band selection. Returns
+    ``(high_threshold, low_threshold)`` for the Tier-3 sanity-check ratio:
+    a Tier-1/Tier-2 amount outside ``[low * tier3, high * tier3]`` triggers
+    a Tier-3 swap. Low-confidence sources (single weak source / sources
+    disagree / low retailer score) get the tighter luxury-equivalent band
+    (1.8 / 0.6); medium-or-better confidence gets the looser default
+    (2.0 / 0.5).
+    """
+    confidence = compute_price_confidence(sources)
+    if confidence.get("level") == "low":
+        return 1.8, 0.6
+    return 2.0, 0.5
+
+
 def _build_escalation_scrapers(
     *,
     candidate_urls: List[Tuple[str, str]],
@@ -2390,11 +2409,17 @@ class StructuredComparisonService:
         if price and price.get("amount"):
             if price.get("retailer_score", 0) >= 1.0:
                 pass  # Official domain — skip sanity check
-            elif (is_high_value_query(full_name) or is_luxury_brand(full_name)) and price.get("retailer_score", 0) < 1.0:
-                if is_luxury_brand(full_name):
-                    high_threshold, low_threshold = 1.8, 0.6
-                else:
-                    high_threshold, low_threshold = 2.0, 0.5
+            elif is_high_value_query(full_name) and price.get("retailer_score", 0) < 1.0:
+                # B0-B Item 2 — confidence-driven threshold band (was
+                # is_luxury_brand-gated). Build a single-source list from the
+                # winning Tier-1 candidate and let compute_price_confidence
+                # decide whether we need the tighter luxury-equivalent band.
+                tier1_sources = [{
+                    "src": "serper_shopping",
+                    "amount": price["amount"],
+                    "retailer_score": price.get("retailer_score", 0),
+                }]
+                high_threshold, low_threshold = _sanity_check_thresholds(tier1_sources)
                 tier3_estimate, usage = await extract_price_from_training_data(brand, name, variant, region)
                 self._track_gpt_cost(usage)
                 sanitize_gpt_price(tier3_estimate)
@@ -2651,10 +2676,17 @@ class StructuredComparisonService:
                 if tier3_estimate and tier3_estimate.get("amount"):
                     tier2_bhd = _convert_to_bhd(price["amount"], currency)
                     tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
-                    if is_luxury_brand(full_name):
-                        high_threshold, low_threshold = 1.8, 0.6
-                    else:
-                        high_threshold, low_threshold = 2.0, 0.5
+                    # B0-B Item 2 — confidence-driven threshold band (was
+                    # is_luxury_brand-gated). Tier-2 GPT extracts have no
+                    # retailer_score; treat as a single-source candidate so
+                    # _sanity_check_thresholds picks the band consistently
+                    # across categories instead of hardcoded luxury-only.
+                    tier2_sources = [{
+                        "src": "gpt_organic_extract",
+                        "amount": price["amount"],
+                        "retailer_score": 0,
+                    }]
+                    high_threshold, low_threshold = _sanity_check_thresholds(tier2_sources)
                     # Preserve the upstream gpt_* source_method when the
                     # Tier-2 sanity check swaps in the Tier-3 estimate, so
                     # quality_ranker's PRICE_SOURCE_RANK lookup sees the
