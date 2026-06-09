@@ -128,3 +128,67 @@ def test_score_source_handles_www_prefix():
     without_www = score_source("https://lulu.com.bh/x", category="electronics")
     assert with_www == 3.0
     assert without_www == 3.0
+
+
+# ---------- F1.5 — registry expansion (Bahrain retailer gaps) ----------
+# Domains verified live 2026-06-10 (real Bahrain e-commerce sites):
+#   alosraonline.com  — Alosra supermarket (BMMI), grocery e-commerce
+#   nasserpharmacy.com — Nasser Pharmacy, Bahrain's largest pharmacy chain
+#                        (10k+ products: supplements/skincare/makeup/haircare/fragrances)
+#   bahrainpharmacy.com — Bahrain Pharmacy & General Store
+# RATIFICATION REQUIRED before merge (F1.5 checkpoint).
+
+def test_alosra_grocery_bahrain_tier():
+    """alosraonline.com is a Bahrain grocery retailer (weight 3.0)."""
+    assert score_source("https://www.alosraonline.com/milk", category="grocery") == 3.0
+
+
+def test_alosra_excluded_from_electronics():
+    """Grocery-only Bahrain retailer must not score for electronics."""
+    assert score_source("https://www.alosraonline.com/x", category="electronics") == 0.5
+
+
+def test_nasser_pharmacy_supplements_and_beauty():
+    """nasserpharmacy.com covers supplements + skincare/makeup/haircare/fragrances."""
+    for cat in ("supplements", "skincare", "makeup", "haircare", "fragrances"):
+        assert score_source(
+            "https://www.nasserpharmacy.com/p/vitamin-d", category=cat
+        ) == 3.0
+
+
+def test_bahrain_pharmacy_supplements():
+    assert score_source(
+        "https://bahrainpharmacy.com/wellness/omega-3", category="supplements"
+    ) == 3.0
+
+
+def test_grocery_sources_now_include_alosra():
+    sources = get_sources_for_category("grocery")
+    domains = [s.domain for s in sources]
+    assert "alosraonline.com" in domains
+    # Pre-existing grocery sources still present (no regression).
+    assert "talabat.com" in domains
+    assert "spinneysbahrain.com" in domains
+
+
+def test_supplements_sources_now_include_pharmacies():
+    sources = get_sources_for_category("supplements")
+    domains = [s.domain for s in sources]
+    assert "nasserpharmacy.com" in domains
+    assert "bahrainpharmacy.com" in domains
+    # Pre-existing supplements sources still present.
+    assert "bn.boots.com" in domains
+    assert "iherb.com" in domains
+
+
+def test_new_bahrain_retailers_ordered_first():
+    """New Bahrain retailers must keep the bahrain-first tier invariant."""
+    sources = get_sources_for_category("supplements")
+    tiers = [s.tier for s in sources]
+    first_gcc = tiers.index("gcc") if "gcc" in tiers else len(tiers)
+    first_global = tiers.index("global") if "global" in tiers else len(tiers)
+    first_non_bahrain = min(first_gcc, first_global)
+    # nasserpharmacy / bahrainpharmacy are bahrain-tier → before any gcc/global.
+    for d in ("nasserpharmacy.com", "bahrainpharmacy.com"):
+        idx = next(i for i, s in enumerate(sources) if s.domain == d)
+        assert idx < first_non_bahrain

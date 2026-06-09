@@ -43,6 +43,21 @@ SOURCE_REGISTRY: List[Source] = [
     Source("talabat.com", "bahrain", ("grocery",), 3.0),
     Source("spinneysbahrain.com", "bahrain", ("grocery",), 3.0),
     Source("megamart.bh", "bahrain", ("grocery",), 3.0),
+    # F1.5 expansion (verified live 2026-06-10) — Bahrain grocery + pharmacy
+    # gaps. RATIFICATION REQUIRED (F1.5 checkpoint) before merge.
+    Source("alosraonline.com", "bahrain", ("grocery",), 3.0),  # Alosra (BMMI)
+    Source(
+        "nasserpharmacy.com",
+        "bahrain",
+        ("supplements", "skincare", "makeup", "haircare", "fragrances"),
+        3.0,
+    ),  # Nasser Pharmacy — Bahrain's largest chain, 10k+ health/beauty SKUs
+    Source(
+        "bahrainpharmacy.com",
+        "bahrain",
+        ("supplements", "skincare", "makeup", "haircare"),
+        3.0,
+    ),  # Bahrain Pharmacy & General Store
 
     # === GCC SECONDARY (weight 1.5) ===
     Source("noon.com", "gcc", (), 1.5),
