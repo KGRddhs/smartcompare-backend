@@ -1221,6 +1221,27 @@ class ScoringService:
             popularity_scores = [MISSING_SCORE] * len(popularity_scores)
             for rs in raw_scores:
                 rs["_popularity_missing"] = True
+        # B0-A v2.2 — extend the v2.1 array-level collapse to spec_scores.
+        # _normalize_dimension's flag-aware tie guard only fires when both
+        # sides have `_spec_missing=True` set on raw_scores; partial-coverage
+        # extraction (both products have 1-2 spec fields populated that
+        # average to the same value) yields matching non-zero spec_raw
+        # WITHOUT setting _spec_missing → flag check passes → falls through
+        # to `return 70.0` genuine-tie branch. Phase 2 live verification
+        # (B0-D 24-query Q02 fashion/Q03 other/Q17 fashion) surfaced 3
+        # residual (70,70) phantoms via this exact path. Same array-level
+        # collapse semantic as reliability/popularity above: B0-D corpus
+        # evidence shows zero genuine non-MISSING ties → tied-non-MISSING
+        # === phantom. spec_secondary_scores below benefit transitively
+        # since they're computed from the post-collapse spec_scores.
+        if (
+            len(spec_scores) >= 2
+            and len(set(spec_scores)) == 1
+            and spec_scores[0] != MISSING_SCORE
+        ):
+            spec_scores = [MISSING_SCORE] * len(spec_scores)
+            for rs in raw_scores:
+                rs["_spec_missing"] = True
 
         # Compute spec_secondary: blended spec and review for variety
         spec_secondary_scores = []

@@ -219,14 +219,37 @@ class TestPriceScoring:
                result["scores"]["product_1"]["breakdown"]["value_score"]
 
     def test_missing_price_gets_default(self, service):
+        # B0-A v2.2: use DISTINCT specs for the two products so the
+        # array-level spec_scores collapse does NOT fire (zero genuine non-
+        # MISSING ties per B0-D's 24-query bias corpus). Pre-v2.2 this test
+        # used identical specs from the _make_product default; that yielded
+        # tied non-MISSING spec_scores which v2.2 now correctly treats as
+        # phantom → MISSING. The intent of this test ("specs provide
+        # fallback for missing price") is preserved by making spec_raw
+        # distinct between products.
         products = [
-            _make_product(price_amount=799),
-            _make_product(price_amount=None),
+            _make_product(price_amount=799, specs={
+                "display": "6.1-inch OLED",
+                "processor": "A17 Pro",
+                "ram": "8 GB",
+                "storage": "256 GB",
+                "battery": "3274 mAh",
+                "weight": "171 g",
+            }),
+            _make_product(price_amount=None, specs={
+                "display": "6.7-inch AMOLED",
+                "processor": "Snapdragon 8 Gen 3",
+                "ram": "12 GB",
+                "storage": "512 GB",
+                "battery": "5000 mAh",
+                "weight": "232 g",
+            }),
         ]
         products[1]["price"] = {"amount": None}
         result = service.compute_scores(products)
         # value_score maps to "value" signal (spec+price combo).
-        # When price is missing but specs exist, value falls back to spec_score (not MISSING_SCORE).
+        # When price is missing but specs exist (and differ from peer), value
+        # falls back to spec_score (not MISSING_SCORE).
         breakdown = result["scores"]["product_1"]["breakdown"]
         assert breakdown["value_score"] != MISSING_SCORE  # specs provide fallback
 
