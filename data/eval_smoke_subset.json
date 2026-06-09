@@ -1,0 +1,32 @@
+{
+  "_metadata": {
+    "purpose": "Curated 20-query smoke subset of data/validation_gold_truth.json for the pre-merge regression gate (Bundle B Phase B.6, F4.4).",
+    "selected_from": "data/validation_gold_truth.json",
+    "count": 20,
+    "coverage": "all 9 categories; mix of expected_winner_index 0 and 1; budget/mid/premium/luxury price tiers; supplements (iHerb), grocery (local), electronics (Serper Shopping), fragrances (luxury Tier-3) pipelines all represented",
+    "authored_at": "2026-06-10",
+    "author": "F4-eval (Bundle B S1 Lane F4)"
+  },
+  "ids": [
+    "elec-001",
+    "elec-005",
+    "elec-007",
+    "supp-001",
+    "supp-002",
+    "frag-001",
+    "frag-006",
+    "make-001",
+    "make-003",
+    "skin-002",
+    "skin-004",
+    "hair-001",
+    "hair-002",
+    "fash-002",
+    "fash-004",
+    "groc-001",
+    "groc-003",
+    "other-001",
+    "other-003",
+    "other-005"
+  ]
+}

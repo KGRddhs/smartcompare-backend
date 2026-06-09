@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bundle B Phase B.6 — async eval-loop runner + grader.
+"""Bundle B Phase B.6 - async eval-loop runner + grader.
 
 Plan: docs/plans/2026-06-10-bundle-b-intelligence-layer-plan.md Lane F4
 Gold: data/validation_gold_truth.json
@@ -20,7 +20,7 @@ contract, reads the *deterministic* winner (scoring_v2.overall_score.
 winner_idx), persists to eval_runs, and supports regression/absolute gate
 modes + a smoke20 subset. New code targets this module.
 
-🚨 COST: a full cold-cache run of all 50/200 queries burns ~600–1,000
+COST GUARD: a full cold-cache run of all 50/200 queries burns ~600-1,000
 Serper credits. NEVER run the full set against prod without explicit
 dispatcher GO. All tests mock the httpx transport. The CLI defaults to the
 smoke20 subset and refuses the full set unless --allow-full is passed.
@@ -31,9 +31,9 @@ Usage (mocked in tests; live runs are dispatcher-gated):
     python -m scripts.eval_runner --mode regression --baseline-run-id <uuid>
 
 Exit codes:
-    0 — gate satisfied
-    1 — gate failed (pass-rate / axis regression below threshold)
-    3 — runtime / network / config error preventing the run
+    0 - gate satisfied
+    1 - gate failed (pass-rate / axis regression below threshold)
+    3 - runtime / network / config error preventing the run
 """
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ DEFAULT_GOLD = REPO_ROOT / "data" / "validation_gold_truth.json"
 DEFAULT_SMOKE_SUBSET = REPO_ROOT / "data" / "eval_smoke_subset.json"
 DEFAULT_PROD_URL = "https://web-production-58776.up.railway.app"
 
-# Per-query weighted-pass weights (F4.2 — calibratable constant). Distinct
+# Per-query weighted-pass weights (F4.2  -  calibratable constant). Distinct
 # from gold-truth _metadata.axis_weights, which document the axis-average
 # TARGETS; these weights compose the per-query pass score. Must sum to 1.0.
 AXIS_WEIGHTS: Dict[str, float] = {
@@ -107,7 +107,7 @@ def gold_truth_version(gold_path: Path | str = DEFAULT_GOLD) -> str:
     """Git SHA of the gold-truth file content (team-lead Q3 decision).
 
     `git rev-parse HEAD:<relpath>` resolves the blob SHA of the file as of
-    HEAD — pins the exact gold content without a content hash. Falls back to
+    HEAD  -  pins the exact gold content without a content hash. Falls back to
     'unknown' when not in a git tree (e.g. a tarball deploy)."""
     gold_path = Path(gold_path)
     try:
@@ -150,7 +150,7 @@ def _products_specs(body: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def extract_winner_index(body: Dict[str, Any]) -> Optional[int]:
-    """Deterministic winner — scoring_v2.overall_score.winner_idx.
+    """Deterministic winner  -  scoring_v2.overall_score.winner_idx.
 
     Per dispatcher brief this is read from scoring_v2 (the deterministic
     scorer), NOT overview.winner.product_index (which is prose-derived and
@@ -232,7 +232,7 @@ def collect_verdict_text(body: Dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Grading functions (pure — F4.2 contract)
+# Grading functions (pure  -  F4.2 contract)
 # ---------------------------------------------------------------------------
 
 def grade_price(actual_amount: Optional[float], expected: Dict[str, Any]) -> bool:
@@ -257,7 +257,7 @@ def grade_price(actual_amount: Optional[float], expected: Dict[str, Any]) -> boo
 
 
 def _normalize_spec_value(value: Any) -> str:
-    """Lowercase, strip, and collapse 'NN unit' → 'NNunit' so '128GB' and
+    """Lowercase, strip, and collapse 'NN unit' -> 'NNunit' so '128GB' and
     '128 GB' compare equal (case + unit-spacing tolerant)."""
     s = str(value).lower().strip()
     return "".join(s.split())
@@ -265,7 +265,7 @@ def _normalize_spec_value(value: Any) -> str:
 
 def grade_specs(actual_specs: Optional[Dict[str, Any]], expected: Dict[str, Any]) -> float:
     """Fraction of expected spec keys whose actual value matches (case- and
-    unit-spacing-tolerant substring). Empty expected → 1.0 (no-op)."""
+    unit-spacing-tolerant substring). Empty expected -> 1.0 (no-op)."""
     if not expected:
         return 1.0
     actual_specs = actual_specs or {}
@@ -282,7 +282,7 @@ def grade_specs(actual_specs: Optional[Dict[str, Any]], expected: Dict[str, Any]
 def grade_winner(actual_winner_index: Optional[int], expected_winner_index: Optional[int]) -> bool:
     """True iff the deterministic winner index equals the expected index.
 
-    expected None → vacuously True (gold leaves winner unspecified)."""
+    expected None -> vacuously True (gold leaves winner unspecified)."""
     if expected_winner_index is None:
         return True
     if actual_winner_index is None:
@@ -292,7 +292,7 @@ def grade_winner(actual_winner_index: Optional[int], expected_winner_index: Opti
 
 def grade_factual(response_text: str, forbidden_facts: Sequence[str]) -> bool:
     """True iff NO forbidden fact substring appears in the verdict/review
-    text (case-insensitive). Empty forbidden list → True."""
+    text (case-insensitive). Empty forbidden list -> True."""
     if not forbidden_facts:
         return True
     haystack = (response_text or "").lower()
@@ -346,7 +346,7 @@ class GradedQuery:
 
 @dataclasses.dataclass
 class EvalReport:
-    """Aggregate of a full eval run — mirrors the eval_runs row columns."""
+    """Aggregate of a full eval run  -  mirrors the eval_runs row columns."""
     queries_total: int
     queries_passing: int
     pass_rate: float
@@ -369,7 +369,7 @@ async def run_query(client: httpx.AsyncClient, record: Dict[str, Any]) -> QueryR
     """Hit /api/v1/text/compare for one gold record (?nocache=true).
 
     Records http status, wall-time (ms), parsed JSON, and any network/parse
-    error. Never raises — failures are captured on the result so the run
+    error. Never raises  -  failures are captured on the result so the run
     completes."""
     params = {
         "q": record["query"],
@@ -536,7 +536,7 @@ def select_queries(gold: Dict[str, Any], subset: Optional[str] = None,
     """Return the query list, optionally filtered to the smoke20 subset.
 
     subset='smoke20' reads data/eval_smoke_subset.json (a list of ids) and
-    returns those gold records in gold order. subset=None → all queries."""
+    returns those gold records in gold order. subset=None -> all queries."""
     queries = gold.get("queries") or []
     if subset == "smoke20":
         if not subset_path.exists():
@@ -556,7 +556,7 @@ def _format_report(report: EvalReport) -> str:
         "=" * 60,
         f"queries: {report.queries_passing}/{report.queries_total} passing  "
         f"pass_rate={report.pass_rate:.1%}",
-        f"axis avg — price={report.axis_avg_price:.3f} specs={report.axis_avg_specs:.3f} "
+        f"axis avg  -  price={report.axis_avg_price:.3f} specs={report.axis_avg_specs:.3f} "
         f"winner={report.axis_avg_winner:.3f} factual={report.axis_avg_factual:.3f}",
         f"wall p50={report.wall_p50_ms}ms p95={report.wall_p95_ms}ms "
         f"(cap {int(STREAM_HARD_CAP_SECONDS * 1000)}ms) "
@@ -603,7 +603,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("ERROR: no queries selected", file=sys.stderr)
         return 3
 
-    # Cost guard — the full set live needs an explicit opt-in.
+    # Cost guard  -  the full set live needs an explicit opt-in.
     if args.subset is None and not args.allow_full:
         print(
             f"REFUSING to run the full {len(queries)}-query set live without "
