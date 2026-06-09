@@ -357,3 +357,261 @@ def test_partial_coverage_specs_does_not_emit_30_30_or_70_70(service, category):
             f"[{category}] dim {dim_key!r} surfaced phantom pair "
             f"({a}, {b}) — v2 regression"
         )
+
+
+# ---------- v2.1: _score_specs returns None on zero coverage (site #4) ----------
+
+
+def test_score_specs_returns_none_on_zero_coverage(service):
+    """B0-A v2.1 site #4 — empty specs dict → _score_specs returns None
+    (was 0.0). Killing the 0.0 default at the source means downstream
+    _compute_raw_scores sees None and correctly sets _spec_missing flag,
+    so the v2 _normalize_dimension flag-aware guard fires."""
+    assert service._score_specs({}, "electronics") is None, (
+        "empty specs must return None, not 0.0 (regression: phantom-tie source)"
+    )
+
+
+def test_score_specs_with_n_a_fields_only_returns_none(service):
+    """Specs dict has fields populated with 'N/A' string only — counts as
+    zero coverage."""
+    specs_all_na = {"battery": "N/A", "processor": "N/A", "ram": "N/A"}
+    assert service._score_specs(specs_all_na, "electronics") is None, (
+        "all-N/A specs must return None (regression: phantom-tie source)"
+    )
+
+
+def test_score_specs_preserves_numeric_path(service):
+    """Sanity — specs WITH populated fields still produce numeric > 0
+    (so the None-return change doesn't break the populated path)."""
+    specs = {
+        "battery": "4000 mAh",
+        "processor": "A17 Pro",
+        "ram": "8 GB",
+        "storage": "256 GB",
+        "rear_camera": "48 MP",
+    }
+    result = service._score_specs(specs, "electronics")
+    assert result is not None and result > 0, (
+        f"populated specs must produce numeric > 0, got {result!r}"
+    )
+
+
+def test_compute_raw_scores_sets_spec_missing_when_score_specs_returns_none(service):
+    """Integration — empty specs → _score_specs returns None → spec_raw=None
+    AND _spec_missing=True (so dim-level aggregation propagates the missing
+    flag identically to the missing-specs-dict case)."""
+    product = {
+        "name": "Test",
+        "specs": {},  # _score_specs returns None
+        "rating": 4.0,
+        "price": {"amount": 50, "currency": "BHD"},
+        "fact_check": None,
+    }
+    raw = service._compute_raw_scores(product, "electronics")
+    assert raw.get("spec_raw") is None, (
+        f"spec_raw must be None when _score_specs returns None, "
+        f"got {raw.get('spec_raw')!r}"
+    )
+    assert raw.get("_spec_missing") is True, (
+        "_spec_missing flag must be set so dim aggregation propagates missing"
+    )
+
+
+# ---------- v2.1: _normalize_scores collapses tied non-MISSING reliability/popularity (site #3) ----------
+
+
+def test_normalize_scores_collapses_tied_reliability_to_missing(service):
+    """B0-A v2.1 site #3 — when both products' reliability raw signal
+    yields the SAME _normalize_direct value AND it's not already MISSING
+    (e.g. both score 0.3 from sparse fact_check coverage → 30.0/30.0),
+    collapse to MISSING_SCORE so silent omission downstream fires.
+
+    Empirically observed in B0-D's 24-query corpus: ZERO genuine non-MISSING
+    reliability ties. All such ties are phantom from sparse-coverage
+    fact_check averaging."""
+    raw_scores = [
+        {"reliability_raw": 0.3},  # sparse-coverage simulation (no _missing flag)
+        {"reliability_raw": 0.3},
+    ]
+    # Direct call to _normalize_scores to inspect the reliability_scores
+    # array before it's projected to dim breakdowns.
+    products_data = [
+        {"category": "fragrances", "price": {"amount": 100}},
+        {"category": "fragrances", "price": {"amount": 150}},
+    ]
+    normalized, _, _ = service._normalize_scores(
+        raw_scores, products_data, category="fragrances"
+    )
+    # versatility_score in fragrances maps to reliability signal.
+    for i in range(2):
+        score = normalized[i].get("versatility_score")
+        assert score == MISSING_SCORE, (
+            f"product_{i} versatility_score should collapse to MISSING_SCORE "
+            f"when both sides tied at 0.3 reliability raw, got {score!r}"
+        )
+
+
+def test_normalize_scores_collapses_tied_popularity_to_missing(service):
+    """B0-A v2.1 site #3 — same treatment for popularity_scores.
+
+    When both products' popularity raw signal yields the SAME _normalize_direct
+    value AND it's not MISSING (e.g. both hit the same low source_count fallback),
+    collapse to MISSING_SCORE."""
+    raw_scores = [
+        {"popularity_raw": 0.5},
+        {"popularity_raw": 0.5},
+    ]
+    products_data = [
+        {"category": "fragrances", "price": {"amount": 100}},
+        {"category": "fragrances", "price": {"amount": 150}},
+    ]
+    normalized, _, _ = service._normalize_scores(
+        raw_scores, products_data, category="fragrances"
+    )
+    # presentation_score in fragrances maps to popularity signal.
+    for i in range(2):
+        score = normalized[i].get("presentation_score")
+        assert score == MISSING_SCORE, (
+            f"product_{i} presentation_score should collapse to MISSING_SCORE "
+            f"when both sides tied at 0.5 popularity raw, got {score!r}"
+        )
+
+
+def test_normalize_scores_preserves_distinct_reliability(service):
+    """Sanity — when reliability raw values DIFFER, normalize_direct produces
+    distinct outputs and the collapse-to-MISSING guard does NOT fire."""
+    raw_scores = [
+        {"reliability_raw": 0.3},
+        {"reliability_raw": 0.8},
+    ]
+    products_data = [
+        {"category": "fragrances", "price": {"amount": 100}},
+        {"category": "fragrances", "price": {"amount": 150}},
+    ]
+    normalized, _, _ = service._normalize_scores(
+        raw_scores, products_data, category="fragrances"
+    )
+    a = normalized[0].get("versatility_score")
+    b = normalized[1].get("versatility_score")
+    assert a != b, (
+        f"distinct reliability raw should produce distinct versatility scores, "
+        f"got ({a}, {b})"
+    )
+    # Specifically: 0.3 * 100 = 30.0 vs 0.8 * 100 = 80.0
+    assert a == 30.0 and b == 80.0, f"expected (30.0, 80.0), got ({a}, {b})"
+
+
+def test_normalize_scores_preserves_missing_score_pass_through(service):
+    """Sanity — when reliability_raw is None for both products (truly missing),
+    _normalize_direct already returns MISSING_SCORE on both. The collapse
+    guard should NOT double-flip MISSING_SCORE to something else."""
+    raw_scores = [
+        {"reliability_raw": None, "_reliability_missing": True},
+        {"reliability_raw": None, "_reliability_missing": True},
+    ]
+    products_data = [
+        {"category": "fragrances", "price": {"amount": 100}},
+        {"category": "fragrances", "price": {"amount": 150}},
+    ]
+    normalized, _, _ = service._normalize_scores(
+        raw_scores, products_data, category="fragrances"
+    )
+    for i in range(2):
+        score = normalized[i].get("versatility_score")
+        assert score == MISSING_SCORE, (
+            f"product_{i} versatility_score must stay MISSING_SCORE, got {score!r}"
+        )
+
+
+# ---------- v2.1: B0-D bias-corpus shapes (cross-reference per team-lead) ----------
+
+
+def test_other_dishwasher_shape_no_phantom(service):
+    """Mimics B0-D 03_other.json: category=other, sparse data → pre-v2.1
+    surfaced function_score=(70,70), build_score=(30,30), reliability_score=
+    (70,70). Post-v2.1: all such dims must be MISSING_SCORE or absent."""
+    products = [
+        {
+            "brand": "X", "name": "A", "category": "other",
+            "specs": {}, "rating": None, "review_count": None,
+            "price": {"amount": 80, "currency": "BHD"}, "fact_check": {},
+        },
+        {
+            "brand": "Y", "name": "B", "category": "other",
+            "specs": {}, "rating": None, "review_count": None,
+            "price": {"amount": 100, "currency": "BHD"}, "fact_check": {},
+        },
+    ]
+    scoring_result = service.compute_scores(products)
+    forbidden = {(70.0, 70.0), (30.0, 30.0)}
+    breakdowns = [scoring_result["scores"][f"product_{i}"]["breakdown"] for i in range(2)]
+    for dim_key in CATEGORY_DIMENSIONS["other"]:
+        a, b = breakdowns[0].get(dim_key), breakdowns[1].get(dim_key)
+        assert (a, b) not in forbidden, (
+            f"[other] dim {dim_key!r} surfaced forbidden pair ({a}, {b}) "
+            "— B0-D 03_other phantom regression"
+        )
+
+
+def test_supplements_optimum_dymatize_clean_reference(service):
+    """Mimics B0-D 11_q.json clean reference (supplements with rich
+    extraction): when both products have meaningful spec coverage, the
+    v2.1 collapse-to-MISSING guard MUST NOT fire — dim scores should
+    vary as in the corpus (efficacy 100 vs 30, dosage 96 vs 30, etc.).
+
+    Drift-guard for the v2.1 reliability/popularity collapse — must not
+    over-trigger on healthy data."""
+    products = [
+        {
+            "brand": "Optimum",
+            "name": "Whey Gold Standard",
+            "category": "supplements",
+            "specs": {
+                "active_ingredient": "Whey protein isolate",
+                "dosage": "24g protein per scoop",
+                "form": "Powder",
+                "count": "5 lbs",
+                "serving_size": "30.4g",
+            },
+            "rating": 4.6,
+            "review_count": 1200,
+            "price": {"amount": 28, "currency": "BHD"},
+            "fact_check": {
+                "specs_verified": 4, "specs_likely": 1,
+                "specs_flagged": 0, "specs_unverified": 0,
+            },
+        },
+        {
+            "brand": "Dymatize",
+            "name": "ISO100",
+            "category": "supplements",
+            "specs": {
+                "active_ingredient": "Hydrolyzed whey isolate",
+                "dosage": "25g protein per scoop",
+                "form": "Powder",
+                "count": "5 lbs",
+                "serving_size": "32g",
+            },
+            "rating": 4.4,
+            "review_count": 800,
+            "price": {"amount": 38, "currency": "BHD"},
+            "fact_check": {
+                "specs_verified": 4, "specs_likely": 1,
+                "specs_flagged": 0, "specs_unverified": 0,
+            },
+        },
+    ]
+    scoring_result = service.compute_scores(products)
+    breakdowns = [scoring_result["scores"][f"product_{i}"]["breakdown"] for i in range(2)]
+    # At least one dim must show meaningful variation (not all MISSING).
+    distinct_pairs = 0
+    for dim_key in CATEGORY_DIMENSIONS["supplements"]:
+        a, b = breakdowns[0].get(dim_key), breakdowns[1].get(dim_key)
+        if a not in (None, MISSING_SCORE) and b not in (None, MISSING_SCORE) and a != b:
+            distinct_pairs += 1
+    assert distinct_pairs >= 2, (
+        f"supplements clean-reference must show ≥2 distinct dim variations "
+        f"(not over-collapsed by v2.1 guard), got {distinct_pairs}. "
+        f"Breakdowns: {breakdowns}"
+    )

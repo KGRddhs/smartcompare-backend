@@ -898,9 +898,16 @@ class ScoringService:
             scores["_price_missing"] = True
 
         # Spec signal (raw: category-specific aggregate)
+        # B0-A v2.1: _score_specs may return None when scored_fields == 0
+        # (zero coverage). Handle that path identically to the missing-
+        # specs-dict path so dim-level aggregation propagates the missing
+        # flag and the flag-aware tie guard fires uniformly.
         specs = product.get("specs")
         if specs and isinstance(specs, dict):
-            scores["spec_raw"] = self._score_specs(specs, category)
+            spec_score = self._score_specs(specs, category)
+            scores["spec_raw"] = spec_score
+            if spec_score is None:
+                scores["_spec_missing"] = True
         else:
             scores["spec_raw"] = None
             scores["_spec_missing"] = True
@@ -982,8 +989,19 @@ class ScoringService:
 
         return scores
 
-    def _score_specs(self, specs: Dict[str, Any], category: str) -> float:
-        """Score specs on a 0-1 scale based on category-specific logic."""
+    def _score_specs(self, specs: Dict[str, Any], category: str) -> Optional[float]:
+        """Score specs on a 0-1 scale based on category-specific logic.
+
+        B0-A v2.1 site #4: return None when scored_fields == 0 (zero
+        coverage: empty specs dict OR all fields are 'N/A'/empty). Pre-
+        v2.1 returned 0.0 which downstream `_normalize_dimension` then
+        compared with `max_val == min_val == 0` — the v2 guard caught
+        that case but it was fragile (e.g. partial-coverage equal-
+        average scenarios still leaked at non-zero). Killing the 0.0
+        default at the source means downstream sees None directly, sets
+        `_spec_missing=True`, and the flag-aware tie guard fires
+        uniformly.
+        """
         schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
         schema_fields = CATEGORY_SPEC_SCHEMAS[schema_key]
 
@@ -1014,7 +1032,7 @@ class ScoringService:
                 scored_fields += 1
 
         if scored_fields == 0:
-            return 0.0
+            return None  # B0-A v2.1: was `return 0.0` — phantom-tie source.
 
         total_fields = len(schema_fields)
         coverage_ratio = scored_fields / total_fields if total_fields > 0 else 0
@@ -1176,6 +1194,33 @@ class ScoringService:
         review_scores = [self._normalize_review(raw_scores, i) for i in range(len(raw_scores))]
         reliability_scores = [self._normalize_direct(raw_scores, i, "reliability_raw") for i in range(len(raw_scores))]
         popularity_scores = [self._normalize_direct(raw_scores, i, "popularity_raw") for i in range(len(raw_scores))]
+
+        # B0-A v2.1 site #3 — collapse tied non-MISSING reliability/popularity
+        # scores to MISSING_SCORE. _normalize_direct writes the raw value
+        # multiplied by 100 directly into the dim breakdown, bypassing the
+        # _normalize_dimension flag-aware tie guard. When BOTH products land
+        # on the same numeric (e.g. both reliability_raw=0.3 → 30.0), it's
+        # a phantom from sparse-coverage fact_check averaging — NEVER a
+        # genuine signal tie per B0-D's 24-query bias matrix evidence
+        # (ZERO genuine non-MISSING ties observed across the corpus).
+        # Collapse to MISSING_SCORE so downstream silent dim omission
+        # (build_dimensions_v2 § A.4.9) fires uniformly.
+        if (
+            len(reliability_scores) >= 2
+            and len(set(reliability_scores)) == 1
+            and reliability_scores[0] != MISSING_SCORE
+        ):
+            reliability_scores = [MISSING_SCORE] * len(reliability_scores)
+            for rs in raw_scores:
+                rs["_reliability_missing"] = True
+        if (
+            len(popularity_scores) >= 2
+            and len(set(popularity_scores)) == 1
+            and popularity_scores[0] != MISSING_SCORE
+        ):
+            popularity_scores = [MISSING_SCORE] * len(popularity_scores)
+            for rs in raw_scores:
+                rs["_popularity_missing"] = True
 
         # Compute spec_secondary: blended spec and review for variety
         spec_secondary_scores = []
