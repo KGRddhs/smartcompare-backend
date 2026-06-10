@@ -22,9 +22,24 @@ module.exports = {
     '^@react-native-async-storage/async-storage$': '<rootDir>/__mocks__/async-storage.ts',
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
     '^expo-screen-capture$': '<rootDir>/__mocks__/expo-screen-capture.ts',
+    // expo-image-manipulator ships untransformed ESM; any suite that
+    // transitively imports src/services/api.ts (JPEG transcoding) fails to
+    // load without this shim. B.1 F3.6.
+    '^expo-image-manipulator$': '<rootDir>/__mocks__/expo-image-manipulator.ts',
+    // react-native-ssl-public-key-pinning reads a native module at import
+    // time; no-op shim so suites importing certificatePinning.ts load. B.1 F3.6.
+    '^react-native-ssl-public-key-pinning$':
+      '<rootDir>/__mocks__/react-native-ssl-public-key-pinning.ts',
     '^expo-clipboard$': '<rootDir>/__mocks__/expo-clipboard.ts',
     '^expo-haptics$': '<rootDir>/__mocks__/expo-haptics.ts',
     '^expo-crypto$': '<rootDir>/__mocks__/expo-crypto.ts',
+    // expo-application + expo-device ship untransformed ESM; shimmed so
+    // suites importing deviceFingerprint.ts (via authService.ts) load. B.1 F3.6.
+    '^expo-application$': '<rootDir>/__mocks__/expo-application.ts',
+    '^expo-device$': '<rootDir>/__mocks__/expo-device.ts',
+    // expo-notifications ships untransformed ESM (imports from 'expo'); shimmed
+    // so suites importing Step17Notifications.tsx / OnboardingFlow.tsx load. B.1 F3.6.
+    '^expo-notifications$': '<rootDir>/__mocks__/expo-notifications.ts',
     '^expo-font$': '<rootDir>/__mocks__/expo-font.ts',
     '^@expo-google-fonts/cairo$': '<rootDir>/__mocks__/expo-google-fonts-cairo.ts',
     '^react-native-svg$': '<rootDir>/__mocks__/react-native-svg.ts',
