@@ -70,7 +70,11 @@ describe('NewOnboardingHost', () => {
         }}
       />
     );
-    fireEvent.press(getByTestId('onboarding-next'));
+    // Step 17 (Notifications) has its own CTA (s17-allow / s17-not-now) and is
+    // in STEPS_WITH_OWN_CTA, so the orchestrator's `onboarding-next` button is
+    // suppressed. "Not now" is the synchronous completion path (no permission
+    // request) and fires the orchestrator onComplete via onDone(false). B.1 F3.6.
+    fireEvent.press(getByTestId('s17-not-now'));
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
@@ -93,7 +97,11 @@ describe('NewOnboardingHost', () => {
         }}
       />
     );
-    fireEvent.press(getByTestId('onboarding-next'));
+    // Step 17 (Notifications) has its own CTA (s17-allow / s17-not-now) and is
+    // in STEPS_WITH_OWN_CTA, so the orchestrator's `onboarding-next` button is
+    // suppressed. "Not now" is the synchronous completion path (no permission
+    // request) and fires the orchestrator onComplete via onDone(false). B.1 F3.6.
+    fireEvent.press(getByTestId('s17-not-now'));
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 });
