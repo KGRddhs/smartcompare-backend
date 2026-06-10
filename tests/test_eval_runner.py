@@ -11,6 +11,8 @@ manually by the lane agent (announced to dispatcher), never in this suite.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -97,6 +99,90 @@ def test_load_gold_truth_returns_metadata_and_queries():
 def test_load_gold_truth_missing_file_raises():
     with pytest.raises(FileNotFoundError):
         eval_runner.load_gold_truth(REPO_ROOT / "data" / "does_not_exist.json")
+
+
+# ---------------------------------------------------------------------------
+# UTF-8 read-path integrity (Windows cp1252 codec-trap regression)
+# ---------------------------------------------------------------------------
+#
+# A gold file is UTF-8. If any read in the measurement layer decodes it via
+# the platform default (cp1252 on Windows), a forbidden-fact like "Mövenpick
+# robusta blend" loads as "MÃ¶venpick robusta blend" and then never substring-
+# matches a correct API response containing real "Mövenpick" - silently
+# passing a factual violation. These tests pin the read->grade path to UTF-8.
+
+def _write_utf8_gold(query_record: dict) -> str:
+    """Write a one-query gold file as UTF-8 (explicit), return its path."""
+    doc = {
+        "_metadata": {
+            "queries": 1,
+            "axis_weights": {
+                "price_accuracy": 0.25, "specs_correctness": 0.25,
+                "winner_correctness": 0.30, "factual_claim_integrity": 0.20,
+            },
+        },
+        "queries": [query_record],
+    }
+    fh = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+    json.dump(doc, fh, ensure_ascii=False)  # keep the ö as a real UTF-8 byte
+    fh.close()
+    return fh.name
+
+
+def test_forbidden_fact_with_non_ascii_survives_read_then_grades():
+    # Forbidden fact carries the umlaut; the response carries the SAME real
+    # umlaut. A UTF-8-clean read path detects the forbidden fact (grade False).
+    record = {
+        "id": "groc-codec", "query": "Nescafe Gold vs Mövenpick Gold",
+        "category": "grocery", "region": "bahrain",
+        "expected_prices": {}, "expected_specs": {},
+        "expected_winner_index": None,
+        "forbidden_facts": ["Mövenpick robusta blend"],
+        "max_wall_seconds": 30.0,
+    }
+    path = _write_utf8_gold(record)
+    try:
+        gold = eval_runner.load_gold_truth(path)
+        loaded_fact = gold["queries"][0]["forbidden_facts"][0]
+        # The byte 0xc3 0xb6 round-trips to a single ö (U+00F6), not "Ã¶".
+        assert loaded_fact == "Mövenpick robusta blend"
+        assert "ö" in loaded_fact and "Ã" not in loaded_fact
+        # And it actually grades: a response asserting the forbidden claim fails.
+        response_text = "This blend is the Mövenpick robusta blend, full-bodied."
+        assert eval_runner.grade_factual(response_text, gold["queries"][0]["forbidden_facts"]) is False
+        # Control: a clean response (no forbidden claim) passes.
+        assert eval_runner.grade_factual("A smooth arabica roast.", gold["queries"][0]["forbidden_facts"]) is True
+    finally:
+        os.unlink(path)
+
+
+def test_query_string_with_non_ascii_survives_read():
+    # The query field is what we send to the API; mojibake here degrades
+    # extraction. Confirm it round-trips through load_gold_truth intact.
+    record = {
+        "id": "groc-codec2", "query": "Nescafe Gold vs Mövenpick Gold instant coffee",
+        "category": "grocery", "region": "bahrain",
+        "expected_prices": {}, "expected_specs": {},
+        "expected_winner_index": None, "forbidden_facts": [], "max_wall_seconds": 30.0,
+    }
+    path = _write_utf8_gold(record)
+    try:
+        gold = eval_runner.load_gold_truth(path)
+        assert gold["queries"][0]["query"] == "Nescafe Gold vs Mövenpick Gold instant coffee"
+        assert "Ã" not in gold["queries"][0]["query"]
+    finally:
+        os.unlink(path)
+
+
+def test_real_gold_file_forbidden_facts_have_no_mojibake_markers():
+    # Guard the actual gold file: no forbidden_fact / query / note carries a
+    # double-encoded marker that would mean a producer wrote mojibake.
+    gold = eval_runner.load_gold_truth(GOLD_PATH)
+    markers = ("Ã", "â‚¬", "�")  # cp1252-of-utf8 tells + replacement char
+    for q in gold["queries"]:
+        blob = json.dumps(q, ensure_ascii=False)
+        for m in markers:
+            assert m not in blob, f"{q['id']} carries mojibake marker {m!r}"
 
 
 # ---------------------------------------------------------------------------

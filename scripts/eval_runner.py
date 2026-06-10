@@ -131,11 +131,17 @@ def gold_truth_version(gold_path: Path | str = DEFAULT_GOLD) -> str:
     except ValueError:
         rel = gold_path
     try:
+        # encoding='utf-8' is explicit: text=True alone decodes via the
+        # platform default (cp1252 on Windows), the codec trap that mis-reads
+        # UTF-8 bytes elsewhere in this layer. The SHA output is ASCII so this
+        # call is safe either way, but we pin the encoding structurally so no
+        # read in the measurement layer is ever decoder-dependent.
         out = subprocess.run(
             ["git", "rev-parse", f"HEAD:{rel.as_posix()}"],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=True,
         )
         return out.stdout.strip()
