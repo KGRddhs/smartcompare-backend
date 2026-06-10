@@ -332,37 +332,51 @@ def grade_price(actual_amount: Optional[float], expected: Dict[str, Any]) -> boo
     return lower <= actual_amount <= upper
 
 
+# Insert a space at every letter<->digit seam so '128GB' tokenizes the same
+# as '128 GB' (-> ['128','gb']). Applied before delimiter splitting.
 _DIGIT_LETTER_SEAM = re.compile(r"(?<=[0-9])(?=[a-z])|(?<=[a-z])(?=[0-9])")
 
+# Token delimiters: whitespace plus the punctuation that separates spec
+# tokens. Splitting on these makes hyphen/space variants equal -
+# '4K-UHD' and '4K UHD' both -> ['4','k','uhd'], 'Wi-Fi' / 'Wi Fi' -> ['wi','fi'].
+_SPEC_DELIMITERS = re.compile(r"[\s,/;:|()\-]+")
 
-def _spec_canonical(value: Any) -> str:
-    """Lowercase, insert a space at every digit<->letter seam, collapse
-    whitespace: '128GB' and '128 GB' both canonicalise to '128 gb'
-    (case + unit-spacing tolerant)."""
-    s = str(value).lower().strip()
-    s = _DIGIT_LETTER_SEAM.sub(" ", s)
-    return " ".join(s.split())
+
+def _tokenize_spec(value: Any) -> List[str]:
+    """Lowercase a spec value, insert a space at letter<->digit seams, then
+    split on whitespace and delimiters into comparable tokens.
+
+    '128GB'   -> ['128', 'gb']      '128 GB'  -> ['128', 'gb']
+    '4K-UHD'  -> ['4', 'k', 'uhd']  '4K UHD'  -> ['4', 'k', 'uhd']
+    '155 cm'  -> ['155', 'cm']      'iOS 17'  -> ['ios', '17']
+    Punctuation inside a token (the '.' in '1.5') is NOT a delimiter, so
+    '1.5' stays one token and never matches a token of '145'."""
+    s = _DIGIT_LETTER_SEAM.sub(" ", str(value).lower().strip())
+    return [t for t in _SPEC_DELIMITERS.split(s) if t]
 
 
 def _spec_value_matches(expected_value: Any, actual_value: Any) -> bool:
-    """Boundary-bounded containment of canonical expected within canonical
-    actual. 'iOS' matches 'iOS 17' (complete-token containment) and '8GB'
-    matches '8 GB' (unit-spacing tolerance); but '55' does NOT match
-    '155 cm' and '8GB' does NOT match '128GB' - bare substring credit
-    inflated the specs axis (F3 cross-QA finding, S1)."""
-    exp = _spec_canonical(expected_value)
+    """True iff the expected value's tokens appear as a CONTIGUOUS
+    subsequence of the actual value's tokens. Token-level (not substring)
+    matching is what keeps the unit-spacing + delimiter tolerance ('8GB' ==
+    '8 GB', '4K-UHD' == '4K UHD', 'iOS' in 'iOS 17') while rejecting the
+    bare-substring false positives F3 found ('55' not in '155 cm', '8GB'
+    not in '128GB'). Empty expected -> no match."""
+    exp = _tokenize_spec(expected_value)
     if not exp:
         return False
-    act = _spec_canonical(actual_value)
-    return re.search(
-        r"(?<![a-z0-9])" + re.escape(exp) + r"(?![a-z0-9])", act
-    ) is not None
+    act = _tokenize_spec(actual_value)
+    n = len(exp)
+    for i in range(len(act) - n + 1):
+        if act[i:i + n] == exp:
+            return True
+    return False
 
 
 def grade_specs(actual_specs: Optional[Dict[str, Any]], expected: Dict[str, Any]) -> float:
-    """Fraction of expected spec keys whose actual value matches
-    (boundary-bounded, case- and unit-spacing-tolerant). Empty
-    expected -> 1.0 (no-op)."""
+    """Fraction of expected spec keys whose actual value matches (token-
+    level, case- + unit-spacing- + delimiter-tolerant). Empty expected ->
+    1.0 (no-op)."""
     if not expected:
         return 1.0
     actual_specs = actual_specs or {}
