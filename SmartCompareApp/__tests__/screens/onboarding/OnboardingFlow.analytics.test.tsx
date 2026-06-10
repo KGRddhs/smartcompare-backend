@@ -65,7 +65,9 @@ describe('OnboardingFlow analytics — Task #53', () => {
   it('fires onboarding_step_completed on Continue tap with step_number', () => {
     const { getByTestId } = render(<OnboardingFlow onComplete={jest.fn()} />);
     trackEventsMock.mockClear();
-    fireEvent.press(getByTestId('onboarding-next'));
+    // Step 1 (Welcome) carries its own CTA (welcome-continue) and suppresses
+    // the orchestrator onboarding-next button.
+    fireEvent.press(getByTestId('welcome-continue'));
     const stepEvents = trackEventsMock.mock.calls.flatMap((c) => c[0] ?? []);
     const stepCompleted = stepEvents.find(
       (e: any) => e?.event_type === 'onboarding_step_completed'
@@ -99,7 +101,7 @@ describe('OnboardingFlow analytics — Task #53', () => {
     // "new" canary variant. Locked at first observation, never flips
     // mid-session even if features.ENABLE_NEW_ONBOARDING somehow toggles.
     const { getByTestId } = render(<OnboardingFlow onComplete={jest.fn()} />);
-    fireEvent.press(getByTestId('onboarding-next'));
+    fireEvent.press(getByTestId('welcome-continue'));
     const events = trackEventsMock.mock.calls.flatMap((c) => c[0] ?? []);
     expect(events.length).toBeGreaterThan(0);
     for (const e of events) {
@@ -112,7 +114,9 @@ describe('OnboardingFlow analytics — Task #53', () => {
       <OnboardingFlow onComplete={jest.fn()} initialStep={17} />
     );
     trackEventsMock.mockClear();
-    fireEvent.press(getByTestId('onboarding-next'));
+    // Step 17 finishes via its own CTA (s17-not-now) — onboarding-next is
+    // suppressed on STEPS_WITH_OWN_CTA steps.
+    fireEvent.press(getByTestId('s17-not-now'));
     const allEvents = trackEventsMock.mock.calls.flatMap((c) => c[0] ?? []);
     const completed = allEvents.find(
       (e: any) => e?.event_type === 'onboarding_completed'
