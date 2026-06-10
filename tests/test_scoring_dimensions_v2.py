@@ -209,6 +209,101 @@ class TestCrossCategoryFallback:
         assert {d["key"] for d in dims} == {"price", "reviews", "value"}
 
 
+class TestDimensionWinnerField:
+    """F2.4 — every v2 dimension must carry an authoritative `winner` index
+    (0 = product A wins this dim, 1 = product B, None = tie / limited data).
+
+    Root cause of the prod gap: none of the `_dim_*` builders emitted a
+    `winner` field, so `scoring_v2.dimensions[i].winner` was always absent
+    (→ None on the wire). The frontend `Dimension.winner?: 0 | 1 | null`
+    contract existed but went unpopulated; DimensionBars fell back to a
+    score heuristic. CAUTION: the winner derivation must NOT reintroduce
+    phantom ties — sub-threshold margins resolve to None, not a fake winner.
+    """
+
+    def _full_electronics_sr(self):
+        return _scoring_result(
+            "electronics",
+            (
+                {
+                    "performance_score": 88, "value_score": 70,
+                    "build_quality_score": 80, "feature_score": 75,
+                    "ecosystem_score": 60, "futureproof_score": 65,
+                },
+                {
+                    "performance_score": 70, "value_score": 65,
+                    "build_quality_score": 78, "feature_score": 72,
+                    "ecosystem_score": 55, "futureproof_score": 60,
+                },
+            ),
+        )
+
+    def test_every_dimension_has_winner_key(self):
+        from app.services.scoring_service import build_dimensions_v2
+
+        products = _make_products("electronics", "electronics")
+        dims = build_dimensions_v2(products, self._full_electronics_sr(), "electronics")
+        for d in dims:
+            assert "winner" in d, f"dim {d['key']!r} missing authoritative winner field"
+            assert d["winner"] in (0, 1, None)
+
+    def test_winner_is_zero_when_product_a_dominates(self):
+        from app.services.scoring_service import build_dimensions_v2
+
+        products = _make_products("electronics", "electronics")
+        dims = build_dimensions_v2(products, self._full_electronics_sr(), "electronics")
+        perf = next(d for d in dims if d["key"] == "performance")
+        # score_a 88 vs score_b 70 → A wins decisively.
+        assert perf["score_a"] > perf["score_b"]
+        assert perf["winner"] == 0
+
+    def test_winner_is_one_when_product_b_dominates(self):
+        from app.services.scoring_service import build_dimensions_v2
+
+        # B cheaper → price dim favours B (index 1).
+        products = _make_products("electronics", "electronics", price_a=200, price_b=100)
+        dims = build_dimensions_v2(products, self._full_electronics_sr(), "electronics")
+        price = next(d for d in dims if d["key"] == "price")
+        assert price["score_b"] > price["score_a"]
+        assert price["winner"] == 1
+
+    def test_winner_is_none_for_sub_threshold_tie(self):
+        """Margins under the tie threshold must resolve to None — NOT a
+        phantom winner (B0-A phantom-tie invariant)."""
+        from app.services.scoring_service import build_dimensions_v2
+
+        products = _make_products("electronics", "electronics")
+        sr = _scoring_result(
+            "electronics",
+            (
+                {"performance_score": 80, "build_quality_score": 81},
+                {"performance_score": 79, "build_quality_score": 80},
+            ),
+        )
+        dims = build_dimensions_v2(products, sr, "electronics")
+        perf = next(d for d in dims if d["key"] == "performance")
+        # 80 vs 79 → 1-pt gap, under the 3-pt tie threshold.
+        assert perf["winner"] is None
+
+    def test_winner_is_none_for_limited_data_row(self):
+        """A limited-data dim (both sides neutral display score, low
+        confidence) must not declare a winner."""
+        from app.services.scoring_service import build_dimensions_v2
+
+        # No price on either side → _dim_price emits the limited_data path
+        # (score_a == score_b == neutral, confidence low).
+        products = [
+            {"name": "A", "brand": "X", "category": "electronics", "specs": {},
+             "price": {"amount": 0, "currency": "BHD"}, "rating": 4.5},
+            {"name": "B", "brand": "Y", "category": "electronics", "specs": {},
+             "price": {"amount": 0, "currency": "BHD"}, "rating": 4.3},
+        ]
+        dims = build_dimensions_v2(products, self._full_electronics_sr(), "electronics")
+        price = next(d for d in dims if d["key"] == "price")
+        assert price["confidence"] == "low"
+        assert price["winner"] is None
+
+
 class TestLabelMap:
     """The label map covers all 9 categories x 6 dims grid (54 keys)."""
 

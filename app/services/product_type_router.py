@@ -80,7 +80,7 @@ PRODUCT_TYPE_SCHEMAS = {
     "electronics.smartwatch":["display", "sensors", "battery_days", "water_resistance", "connectivity", "weight", "compatibility"],
     "electronics.headphones":["driver_mm", "anc", "battery_hrs", "weight", "codecs", "bt_version", "water_resistance"],
     "electronics.speaker":   ["driver_count", "power_w", "battery_hrs", "connectivity", "water_resistance", "smart_assistant"],
-    "electronics.ac":        ["capacity_btu", "energy_class", "inverter", "noise_db", "modes", "filter", "wifi", "refrigerant"],
+    "electronics.ac":        ["capacity_btu", "energy_class", "inverter", "noise_db", "modes", "filter", "wifi", "refrigerant", "coverage_sqm"],
     "electronics.washer":    ["capacity_kg", "spin_rpm", "energy_class", "load_type", "programs", "noise_db", "inverter", "dimensions"],
     "electronics.refrigerator":["capacity_l", "doors", "energy_class", "ice_maker", "freezer_position", "noise_db"],
     "electronics.vacuum":    ["suction_pa", "battery_min", "weight", "dustbin_l", "filtration", "attachments"],

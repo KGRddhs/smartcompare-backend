@@ -1,0 +1,34 @@
+<!--
+  Trimmed iHerb search-results fixture (current data-ga-* variant).
+
+  Models the markup the legacy selector already parses today
+  (`a[data-ga-brand-name][data-ga-discount-price][title]`). Regression guard:
+  the F2.2 fallback must NOT change behaviour for pages that still expose the
+  GA attributes — the GA card path stays authoritative and the microdata
+  fallback only fires when GA cards are absent.
+-->
+<html>
+<body>
+  <div class="products">
+    <a data-ga-brand-name="NOW Foods"
+       data-ga-discount-price="3.852"
+       data-ga-rating="4.8"
+       data-ga-review-count="3120"
+       title="NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels"
+       href="https://bh.iherb.com/pr/now-foods-vitamin-d-3-5-000-iu-120-softgels/12345">
+      <meta itemprop="price" content="3.852" />
+      <span>NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels</span>
+    </a>
+
+    <a data-ga-brand-name="California Gold Nutrition"
+       data-ga-discount-price="1.565"
+       data-ga-rating="4.7"
+       data-ga-review-count="2050"
+       title="California Gold Nutrition, Vitamin D3, 125 mcg, 90 Softgels"
+       href="https://bh.iherb.com/pr/california-gold-nutrition-vitamin-d3-125-mcg/67890">
+      <meta itemprop="price" content="1.565" />
+      <span>California Gold Nutrition, Vitamin D3, 125 mcg, 90 Softgels</span>
+    </a>
+  </div>
+</body>
+</html>

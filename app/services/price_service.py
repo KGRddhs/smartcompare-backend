@@ -923,6 +923,68 @@ async def fetch_iherb_price(
                 "rating": rating,
                 "review_count": review_count,
             })
+
+        # F2.2 — schema.org microdata fallback. When iHerb drops/renames the
+        # proprietary data-ga-* anchor attributes the selector above yields
+        # zero cards; the standards-based `meta[itemprop="price"]` markers
+        # (one per `div.product-inner` card) survive. Parsing them here keeps
+        # the price local instead of falling through to the caller's
+        # Firecrawl/Scrape.do fan-out (the 5-15s cost). Only runs on a GA-card
+        # miss, so the GA path stays authoritative (no behaviour change when
+        # cards are present).
+        if not products:
+            for card in soup.select("div.product-inner"):
+                price_meta = card.select_one('meta[itemprop="price"]')
+                if price_meta is None:
+                    continue
+                price_str = (price_meta.get("content") or "").strip()
+                if not price_str:
+                    continue
+                try:
+                    price_val = float(price_str)
+                except (ValueError, TypeError):
+                    continue
+                anchor = card.select_one('a[href*="/pr/"]') or card.select_one("a[title]")
+                href = anchor.get("href", "") if anchor else ""
+                name_node = card.select_one('[itemprop="name"]')
+                if name_node is not None:
+                    title = (name_node.get("content") or name_node.get_text(strip=True) or "")
+                elif anchor is not None:
+                    title = anchor.get("title", "") or anchor.get_text(strip=True)
+                else:
+                    title = ""
+                title = title.strip()
+                if not title:
+                    continue
+                # iHerb titles are "Brand, rest...": derive brand from the head
+                # so the existing brand-match logic below works identically to
+                # the GA path (which carries data-ga-brand-name).
+                item_brand = title.split(",", 1)[0].strip()
+                rating = None
+                review_count = None
+                rating_node = card.select_one("[data-rating]")
+                if rating_node is not None:
+                    try:
+                        rv = float(rating_node.get("data-rating", ""))
+                        rating = rv if 0 < rv <= 5 else None
+                    except (ValueError, TypeError):
+                        pass
+                    try:
+                        review_count = int(rating_node.get("data-review-count", ""))
+                    except (ValueError, TypeError):
+                        pass
+                from app.services.content_safety_service import get_content_safety_service
+                if not get_content_safety_service().is_text_safe(f"{item_brand} {title}"):
+                    continue
+                products.append({
+                    "url": href if href.startswith("http") else f"https://{region_code}.iherb.com{href}",
+                    "brand": item_brand,
+                    "price": price_val,
+                    "title": title,
+                    "rating": rating,
+                    "review_count": review_count,
+                })
+
         if not products:
             return None
 
