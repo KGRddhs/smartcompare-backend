@@ -13,7 +13,10 @@
       "factual_claim_integrity": 0.2
     },
     "price_tolerance_pct": 15.0,
-    "notes": "expected_prices.{min,max} are Bahrain BHD retail ranges. expected_specs.product_N is a partial dict — only authored keys are required. forbidden_facts strings must NOT appear in any verdict text. expected_winner_index = 0 means product_0 wins; 1 means product_1 wins."
+    "notes": "expected_prices.{min,max} are Bahrain BHD retail ranges. expected_specs.product_N is a partial dict — only authored keys are required. forbidden_facts strings must NOT appear in any verdict text. expected_winner_index = 0 means product_0 wins; 1 means product_1 wins.",
+    "ratified_by": "ahmed",
+    "ratified_at": "2026-06-10T08:21:48Z",
+    "ratification_notes": "Bundle B S1 F5: all 150 new winner labels (ids 51+) ratified APPROVE ALL, zero flips. Original 50 unchanged. This 200-query set is the frozen S1 eval baseline input (gates F4.6)."
   },
   "queries": [
     {
