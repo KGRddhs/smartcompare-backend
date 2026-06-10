@@ -3,178 +3,182 @@
     "schema_version": 1,
     "initialised_at": "2026-06-08T08:20:13Z",
     "decision_rule": "Green-light if >=3 of 5 queries score >=3 unique-value (per docs/plans/2026-06-08-A-instagram-feasibility-test.md § 1).",
-    "doc": "docs/plans/2026-06-08-A-instagram-feasibility-test.md"
+    "doc": "docs/plans/2026-06-08-A-instagram-feasibility-test.md",
+    "completed_at": "2026-06-10",
+    "tester": "ahmed",
+    "scores_note": "Ahmed gave ranges for two queries (Birkenstock 2-3, Garden of Life 1-2); FLOOR values recorded so the gate decision is robust to rounding. Dyson given as 'maybe a 3' — recorded 3.",
+    "verdict": "GREEN-LIGHT (narrow)",
+    "verdict_detail": "3 of 5 queries >=3 even at floor scores (Tom Ford 3, Fenty 3, Dyson 3). Zero 4s/5s — social adds enrichment (wear-feel, who-its-for, GCC influencer UGC reviews), NOT prices or availability. Strongest in beauty/fragrance, weakest in supplements — matches the approved Apify category scoping (fragrances/makeup/skincare/fashion; supplements excluded). Apify integration CONFIRMED for Bundle B S3 Lane S3 at <=$0.005/comparison, category-scoped, with kill-switch review at S3 exit eval (if social signals do not move usefulness=true, flags off)."
   },
   "findings": [
     {
       "id": "frag-tomford-black-orchid",
       "category": "fragrances",
       "query": "Tom Ford Black Orchid",
-      "tested_at": null,
-      "tester": null,
+      "tested_at": "2026-06-10",
+      "tester": "ahmed",
       "instagram_brand_main": {
         "handle": "@tomfordbeauty",
-        "posts_reviewed": 0,
-        "unique_signals": [],
-        "notes": ""
+        "posts_reviewed": 30,
+        "unique_signals": [
+          "product specs and ingredients",
+          "models and one-sentence product descriptions",
+          "feel-of-product framing for makeup and fragrances",
+          "new product announcements"
+        ],
+        "notes": "Nothing mentioned about GCC availability."
       },
       "instagram_influencers": [
         {
-          "handle": "@TBD_gcc_reviewer_1",
-          "unique_signals": []
-        },
-        {
-          "handle": "@TBD_gcc_reviewer_2",
-          "unique_signals": []
-        },
-        {
-          "handle": "@TBD_gcc_reviewer_3",
-          "unique_signals": []
+          "handle": "(gcc aggregate)",
+          "unique_signals": [],
+          "notes": "Fragrance/beauty trend content only — products shown, no product-fact adds."
         }
       ],
       "tiktok": {
         "hashtag_reviewed": "#tomfordblackorchid",
-        "posts_reviewed": 0,
-        "unique_signals": []
+        "posts_reviewed": 30,
+        "unique_signals": [
+          "UGC showing products in use",
+          "user reviews"
+        ],
+        "notes": "Maybe useful; no price points."
       },
-      "score": null,
-      "decision_rationale": ""
+      "score": 3,
+      "decision_rationale": "They explain the feel and who the products are for — could be useful."
     },
     {
       "id": "make-fenty-pro-filtr",
       "category": "makeup",
       "query": "Fenty Pro Filt'r Foundation",
-      "tested_at": null,
-      "tester": null,
+      "tested_at": "2026-06-10",
+      "tester": "ahmed",
       "instagram_brand_main": {
         "handle": "@fentybeauty",
-        "posts_reviewed": 0,
-        "unique_signals": [],
-        "notes": ""
+        "posts_reviewed": 30,
+        "unique_signals": [
+          "richer product descriptions than Tom Ford",
+          "marketers and influencers showcasing products"
+        ],
+        "notes": "Same marketing pattern as Tom Ford; discounts surface on TikTok Shop and website."
       },
       "instagram_influencers": [
         {
-          "handle": "@TBD_gcc_reviewer_1",
-          "unique_signals": []
-        },
-        {
-          "handle": "@TBD_gcc_reviewer_2",
-          "unique_signals": []
-        },
-        {
-          "handle": "@TBD_gcc_reviewer_3",
-          "unique_signals": []
+          "handle": "(gcc aggregate)",
+          "unique_signals": [
+            "GCC influencers explaining and reviewing products",
+            "many present on BOTH TikTok and Instagram"
+          ],
+          "notes": "Mostly marketing their best-known products."
         }
       ],
       "tiktok": {
         "hashtag_reviewed": "#fentyprofiltr",
-        "posts_reviewed": 0,
-        "unique_signals": []
+        "posts_reviewed": 30,
+        "unique_signals": [
+          "product descriptions",
+          "discounts on TikTok Shop"
+        ],
+        "notes": ""
       },
-      "score": null,
-      "decision_rationale": ""
+      "score": 3,
+      "decision_rationale": "Same class as Tom Ford with more positive review texture."
     },
     {
       "id": "fash-birkenstock-arizona",
       "category": "fashion",
       "query": "Birkenstock Arizona",
-      "tested_at": null,
-      "tester": null,
+      "tested_at": "2026-06-10",
+      "tester": "ahmed",
       "instagram_brand_main": {
         "handle": "@birkenstock",
-        "posts_reviewed": 0,
-        "unique_signals": [],
+        "posts_reviewed": 30,
+        "unique_signals": [
+          "product showcases",
+          "Eid-related discount promotions"
+        ],
         "notes": ""
       },
       "instagram_influencers": [
         {
-          "handle": "@TBD_gcc_reviewer_1",
-          "unique_signals": []
-        },
-        {
-          "handle": "@TBD_gcc_reviewer_2",
-          "unique_signals": []
-        },
-        {
-          "handle": "@TBD_gcc_reviewer_3",
-          "unique_signals": []
+          "handle": "(gcc aggregate)",
+          "unique_signals": [
+            "product shots only",
+            "some price tags visible"
+          ],
+          "notes": "Display content, not review content."
         }
       ],
       "tiktok": {
         "hashtag_reviewed": "#birkenstockarizona",
-        "posts_reviewed": 0,
-        "unique_signals": []
+        "posts_reviewed": 30,
+        "unique_signals": [],
+        "notes": ""
       },
-      "score": null,
-      "decision_rationale": ""
+      "score": 2,
+      "decision_rationale": "Mostly display + seasonal promos; thin unique value. Ahmed range 2-3, floor 2 recorded."
     },
     {
       "id": "elec-dyson-airwrap",
       "category": "electronics",
       "query": "Dyson Airwrap",
-      "tested_at": null,
-      "tester": null,
+      "tested_at": "2026-06-10",
+      "tester": "ahmed",
       "instagram_brand_main": {
         "handle": "@dyson",
-        "posts_reviewed": 0,
-        "unique_signals": [],
+        "posts_reviewed": 30,
+        "unique_signals": [
+          "some prices shown in and under videos",
+          "multi-language content (Arabic, Russian, others)",
+          "link-in-bio on main page (common across all brands tested)"
+        ],
         "notes": ""
       },
       "instagram_influencers": [
         {
-          "handle": "@TBD_gcc_reviewer_1",
-          "unique_signals": []
-        },
-        {
-          "handle": "@TBD_gcc_reviewer_2",
-          "unique_signals": []
-        },
-        {
-          "handle": "@TBD_gcc_reviewer_3",
-          "unique_signals": []
+          "handle": "(gcc aggregate)",
+          "unique_signals": [],
+          "notes": ""
         }
       ],
       "tiktok": {
         "hashtag_reviewed": "#dysonairwrap",
-        "posts_reviewed": 0,
-        "unique_signals": []
+        "posts_reviewed": 30,
+        "unique_signals": [],
+        "notes": ""
       },
-      "score": null,
-      "decision_rationale": ""
+      "score": 3,
+      "decision_rationale": "Prices in video content + Arabic-language presence. Ahmed: 'maybe a 3'."
     },
     {
       "id": "supp-gardenoflife-omega3",
       "category": "supplements",
       "query": "Garden of Life Omega-3",
-      "tested_at": null,
-      "tester": null,
+      "tested_at": "2026-06-10",
+      "tester": "ahmed",
       "instagram_brand_main": {
         "handle": "@gardenoflife",
-        "posts_reviewed": 0,
+        "posts_reviewed": 30,
         "unique_signals": [],
-        "notes": ""
+        "notes": "Very little GCC-relevant info on Instagram."
       },
       "instagram_influencers": [
         {
-          "handle": "@TBD_gcc_reviewer_1",
-          "unique_signals": []
-        },
-        {
-          "handle": "@TBD_gcc_reviewer_2",
-          "unique_signals": []
-        },
-        {
-          "handle": "@TBD_gcc_reviewer_3",
-          "unique_signals": []
+          "handle": "(gcc aggregate)",
+          "unique_signals": [],
+          "notes": ""
         }
       ],
       "tiktok": {
         "hashtag_reviewed": "#gardenoflifeomega",
-        "posts_reviewed": 0,
-        "unique_signals": []
+        "posts_reviewed": 30,
+        "unique_signals": [
+          "influencer content with some price tags"
+        ],
+        "notes": ""
       },
-      "score": null,
-      "decision_rationale": ""
+      "score": 1,
+      "decision_rationale": "Weakest of the five; supports keeping supplements OUT of Apify scope. Ahmed range 1-2, floor 1 recorded."
     }
   ]
 }
