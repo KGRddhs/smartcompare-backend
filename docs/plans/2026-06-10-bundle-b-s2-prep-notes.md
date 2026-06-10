@@ -11,6 +11,31 @@ regression-gated against it (smoke20, >2pp per-axis drop fails).
 
 ---
 
+## 0. BINDING TABLE — every S1 finding → an owning task with an exit criterion (Ahmed directive 2026-06-10)
+
+> Ahmed's standing directive: **estimates and uncertainty are unacceptable as answers.**
+> Every finding below is BOUND to a session/lane — none are "noted for later."
+> S2.0's FIRST act: structure S2 with FIVE lanes (the original 4 + a new **Lane I5
+> "Yield & Wall"**) so the scrape-yield and latency work are first-class, not riders.
+
+| S1 finding (evidence) | Bound to | Exit criterion |
+|---|---|---|
+| **Electronics/AC scrape yield 0/14** (F1.7 §2) | **S2 Lane I5** — Shopify JSON-LD selector check vs shopalmoayyed/bh.asgharali markup; Firecrawl-rendered tier for lulu/carrefour SPAs; verify bahrain discovery returns candidate URLs at all | electronics tier1_5 hit_rate > 0; AC pairs (elec-013/014/015 class) price with `source_method != estimated` |
+| **Winner agreement 0.360 — below coin-flip** (baseline) | **S2 Lanes I1+I2** — few-shot exemplars + anti-patterns mined from the 158 baseline failures | winner axis ≥ 0.60 by S2 exit (measured vs row 4aee8e88) |
+| **Wall p95 30.7s OVER cap; ~27s pre-escalation baseline** (probe+baseline) | **S2 Lane I5** — reviews/verdict latency reduction (the ~9-10s sequential pair), fan_out cap decision, re-measure supplements post-F2.2 | p95 < 30s on the full-200 re-run; the 4 persistent-slow queries complete |
+| **Price axis 0.455 / estimate share** (baseline) | **S2 I5 (yield+wall) + S3 Lanes S1-S4 (new sources)** — estimates starve as real sources land | price axis ≥ 0.70 by S3 exit; estimate share tracked per run in eval metadata |
+| **Registry-vs-legacy attribution unknown** (F1.7 disposition) | **S2 Lane I5, first task (~10 min)** — per-source `tier15:source_hits:{domain}` line in `/admin/costs` | dashboard shows per-domain hits; registry domains visibly winning or the registry entries get fixed |
+| **Double-tap can't re-probe (estimates cache too)** (F1.7 §3) | **S2 Lane I5** — probe-only price-scoped cache-bust flag | deterministic routing-evidence probe documented in the eval runbook |
+| **Serper budget breaker didn't trip before depletion** (incident) | **S2 Lane I5** — reconcile ceiling with real account balance + 80%-burn Sentry alert | alert fires in a drill before the tank empties |
+| **Serper gl=bh shopping yield thin (upstream)** (F1.7 §2) | **S3** — new sources reduce dependence; the standing long-term item remains a real Bahrain merchant feed (`memory/project_bahrain_shopping_feed_gap.md`) | tracked; estimate-share trend is the proxy metric |
+
+S2 does NOT close the bundle: the **95% absolute gate binds at S3 exit**, and S3's lanes
+(Reddit/YouTube/Apify/direct scrapers + accuracy dashboard + production sampling) are the
+second half of the same binding. If any S2 exit criterion above is missed, it carries into
+S3 scope explicitly — nothing silently drops.
+
+---
+
 ## 1. Arabic content sources + `Source.usage` field (Lane I2 enabler — F1 carry-over)
 
 DEFERRED from F1.5 (Ahmed-ratified). 3 verified-real Arabic review-content sources NOT in
