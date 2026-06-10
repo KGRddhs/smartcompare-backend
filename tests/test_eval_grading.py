@@ -109,19 +109,36 @@ def test_specs_multi_word_complete_value_matches():
     assert er.grade_specs({"type": "Whey Protein"}, {"type": "Whey Protein Isolate"}) == 0.0
 
 
-def test_specs_regex_special_chars_are_literal():
-    # Spec values carry regex metacharacters ('1.5T' AC capacity, 'A+'
-    # grade, 'SPF50+'). re.escape must treat them literally — otherwise '.'
-    # would match any char and credit '1.5' inside '145'.
+def test_specs_special_chars_compare_literally():
+    # Spec values carry punctuation ('1.5T' AC capacity, 'A+' grade). The
+    # tokenizer must compare them literally - '1.5' must not be credited
+    # inside '145' (a '.'-as-wildcard bug, or a '1' '5' token split, would
+    # both be wrong).
     assert er.grade_specs({"cap": "1.5T split AC"}, {"cap": "1.5T"}) == 1.0
     assert er.grade_specs({"cap": "145 units"}, {"cap": "1.5"}) == 0.0
     assert er.grade_specs({"grade": "A+ rated"}, {"grade": "A+"}) == 1.0
 
 
+def test_specs_delimiter_variants_match():
+    # Hyphen-vs-space delimiter variants are pervasive in electronics specs
+    # (4K-UHD / 4K UHD, Wi-Fi / Wi Fi, USB-C / USB C). The tokenizer splits
+    # on whitespace AND delimiters so these compare equal - the boundary-
+    # regex predecessor failed this class (kept the hyphen as a literal),
+    # deflating the specs axis on real gold queries.
+    assert er.grade_specs({"res": "4K UHD"}, {"res": "4K-UHD"}) == 1.0
+    assert er.grade_specs({"res": "4K-UHD"}, {"res": "4K UHD"}) == 1.0
+    assert er.grade_specs({"net": "Wi Fi 6"}, {"net": "Wi-Fi 6"}) == 1.0
+    assert er.grade_specs({"port": "USB C 3.2"}, {"port": "USB-C"}) == 1.0
+    # But a delimiter split must NOT let a partial token match: 'USB' alone
+    # is a token of 'USB-C', so that direction matches; the reverse (longer
+    # expected) does not.
+    assert er.grade_specs({"port": "USB"}, {"port": "USB-C"}) == 0.0
+
+
 def test_specs_empty_expected_value_does_not_credit():
-    # The boundary rewrite changed empty-expected from "matches everything"
-    # (old substring free credit) to "matches nothing" — the safer
-    # semantics. No gold entry has an empty spec value, but pin the contract.
+    # The rewrite changed empty-expected from "matches everything" (old
+    # substring free credit) to "matches nothing" - the safer semantics.
+    # No gold entry has an empty spec value, but pin the contract.
     assert er.grade_specs({"k": "128GB"}, {"k": ""}) == 0.0
     assert er.grade_specs({"k": "128GB"}, {"k": "   "}) == 0.0
 
