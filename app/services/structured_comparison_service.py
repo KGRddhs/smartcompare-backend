@@ -540,7 +540,6 @@ from app.services.image_service import get_product_image_url
 # first (score_source >= 1.5) with the legacy whitelist sets as fallback.
 from app.services.source_router import (
     build_site_discovery_query,
-    get_sources_for_category,
     score_source,
 )
 
