@@ -72,26 +72,66 @@ describe('OnboardingFlow — Bundle E 17-step traversal', () => {
     expect(startedCalls[0][0][0].event_data.step_number).toBe(1);
   });
 
-  it('Continue advances through every step 1 → 17 and fires onComplete on Finish', () => {
-    const onComplete = jest.fn();
-    const { getByTestId } = render(
-      <OnboardingFlow onComplete={onComplete} initialData={seededData} />,
-    );
+  it('Continue advances through the production sequence and fires onComplete on Finish', () => {
+    // Production mounts OnboardingFlow with isAuthenticated={true} (Step 16
+    // sign-in is skipped — App.tsx only reaches the onboarding stack when the
+    // user is already authed). Several steps carry their OWN CTA and suppress
+    // the orchestrator 'onboarding-next' (STEPS_WITH_OWN_CTA = 1,3,5,12,13,14,
+    // 15,16,17); Step 14 auto-advances on a stage timer. This helper presses
+    // the correct advance affordance per step so the traversal is faithful to
+    // how the flow actually runs. B.1 F3.6.
+    jest.useFakeTimers();
+    try {
+      const onComplete = jest.fn();
+      const { getByTestId } = render(
+        <OnboardingFlow
+          onComplete={onComplete}
+          initialData={seededData}
+          isAuthenticated
+        />,
+      );
 
-    // Walk step 1 → step 17. After step 17, Finish fires onComplete.
-    for (let s = 1; s <= 17; s++) {
-      expect(getByTestId(`onboarding-step-${s}`)).toBeTruthy();
-      act(() => {
-        fireEvent.press(getByTestId('onboarding-next'));
-      });
+      // Authed sequence: Step 16 dropped.
+      const SEQUENCE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17];
+      // Per-step advance testID; steps absent here use 'onboarding-next'.
+      const OWN_CTA: Record<number, string> = {
+        1: 'welcome-continue',
+        3: 's3-continue',
+        5: 'trust-continue',
+        12: 's12-continue',
+        13: 's13-cta',
+        15: 's15-cta',
+        17: 's17-not-now',
+      };
+
+      for (const step of SEQUENCE) {
+        expect(getByTestId(`onboarding-step-${step}`)).toBeTruthy();
+        if (step === 14) {
+          // Theatrical loading auto-advances via 4 stage timers + min-display
+          // floor; drain all pending timers to reach onComplete.
+          act(() => {
+            jest.runOnlyPendingTimers();
+            jest.runOnlyPendingTimers();
+            jest.runOnlyPendingTimers();
+            jest.runOnlyPendingTimers();
+            jest.runOnlyPendingTimers();
+          });
+          continue;
+        }
+        const testID = OWN_CTA[step] ?? 'onboarding-next';
+        act(() => {
+          fireEvent.press(getByTestId(testID));
+        });
+      }
+
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      const arg = onComplete.mock.calls[0][0];
+      expect(arg.language).toBe('en');
+      expect(arg.country).toBe('BH');
+      expect(arg.priorities).toEqual(['quality']);
+    } finally {
+      jest.useRealTimers();
     }
-
-    expect(onComplete).toHaveBeenCalledTimes(1);
-    // onComplete receives the accumulated flow data
-    const arg = onComplete.mock.calls[0][0];
-    expect(arg.language).toBe('en');
-    expect(arg.country).toBe('BH');
-    expect(arg.priorities).toEqual(['quality']);
   });
 
   it('onboarding_step_completed payload reflects FINISHED step, not next step', () => {
@@ -100,9 +140,10 @@ describe('OnboardingFlow — Bundle E 17-step traversal', () => {
     const { getByTestId } = render(
       <OnboardingFlow onComplete={jest.fn()} initialData={seededData} />,
     );
-    // Press Continue on step 1
+    // Step 1 (Welcome) is in STEPS_WITH_OWN_CTA — it advances via its own
+    // 'welcome-continue' button, not the orchestrator's 'onboarding-next'.
     act(() => {
-      fireEvent.press(getByTestId('onboarding-next'));
+      fireEvent.press(getByTestId('welcome-continue'));
     });
     // Should now be on step 2; event must reflect step 1.
     const completedCalls = trackEvents.mock.calls.filter((c) =>
@@ -122,8 +163,11 @@ describe('OnboardingFlow — Bundle E 17-step traversal', () => {
       />,
     );
     expect(getByTestId('onboarding-step-17')).toBeTruthy();
+    // Step 17 (Notifications) has its own CTAs (s17-allow / s17-not-now) and
+    // suppresses 'onboarding-next'. "Not now" is the synchronous completion
+    // path that fires the orchestrator onComplete via onDone(false).
     act(() => {
-      fireEvent.press(getByTestId('onboarding-next'));
+      fireEvent.press(getByTestId('s17-not-now'));
     });
     const completedFlow = trackEvents.mock.calls.filter((c) =>
       c[0]?.[0]?.event_type === 'onboarding_completed',
