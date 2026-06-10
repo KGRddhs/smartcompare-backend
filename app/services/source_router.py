@@ -58,6 +58,21 @@ SOURCE_REGISTRY: List[Source] = [
         ("supplements", "skincare", "makeup", "haircare"),
         3.0,
     ),  # Bahrain Pharmacy & General Store
+    # F1.5 addendum (deeper verified-source discovery, live 2026-06-10) —
+    # appliance/AC + fragrance + premium-grocery gap-fillers. Each is a real
+    # BH e-commerce site with BHD prices + checkout + product pages.
+    Source(
+        "shopalmoayyed.com", "bahrain", ("electronics",), 3.0
+    ),  # Y.K. Almoayyed & Sons (Shopify) — AC/appliances/electronics
+    Source(
+        "bh.asgharali.com", "bahrain", ("fragrances",), 3.0
+    ),  # Asgharali Perfumes BH (Shopify)
+    Source(
+        "jalilaperfumes.com", "bahrain", ("fragrances",), 3.0
+    ),  # Jalila Perfumes BH (custom PHP, product pages + BHD)
+    Source(
+        "bateel.bh", "bahrain", ("grocery",), 3.0
+    ),  # Bateel BH — premium dates / gourmet
 
     # === GCC SECONDARY (weight 1.5) ===
     Source("noon.com", "gcc", (), 1.5),

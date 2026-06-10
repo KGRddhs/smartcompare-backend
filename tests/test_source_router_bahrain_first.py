@@ -192,3 +192,79 @@ def test_new_bahrain_retailers_ordered_first():
     for d in ("nasserpharmacy.com", "bahrainpharmacy.com"):
         idx = next(i for i, s in enumerate(sources) if s.domain == d)
         assert idx < first_non_bahrain
+
+
+# ---------- F1.5 addendum — deeper verified Bahrain source discovery ----------
+# All verified LIVE 2026-06-10 (real BH e-commerce, BHD prices, cart/checkout,
+# product pages spot-checked). Ahmed pre-authorized verified additions.
+#   shopalmoayyed.com — Y.K. Almoayyed & Sons (Shopify), electronics/appliances/AC
+#                       (fills the 0%-hit AC/appliance class)
+#   bh.asgharali.com  — Asgharali Perfumes BH (Shopify), fragrances
+#   jalilaperfumes.com — Jalila Perfumes BH (custom PHP, product pages + BHD), fragrances
+#   bateel.bh         — Bateel BH, premium dates (grocery)
+# REJECTED: goldenbahrain.com — price-listing PORTAL not e-commerce, disclaims
+#           price accuracy (would feed unreliable data into the scrape pool).
+
+def test_shopalmoayyed_electronics_bahrain():
+    assert score_source(
+        "https://www.shopalmoayyed.com/products/admiral-refrigerator-450l",
+        category="electronics",
+    ) == 3.0
+
+
+def test_shopalmoayyed_excluded_from_fragrances():
+    assert score_source(
+        "https://www.shopalmoayyed.com/products/x", category="fragrances"
+    ) == 0.5
+
+
+def test_asgharali_fragrances_bahrain_subdomain():
+    """bh.asgharali.com is registered as the BH subdomain (the brand's global
+    asgharali.com is a different surface)."""
+    assert score_source(
+        "https://bh.asgharali.com/products/bakhoor-estabraq", category="fragrances"
+    ) == 3.0
+
+
+def test_jalila_perfumes_fragrances_bahrain():
+    assert score_source(
+        "https://www.jalilaperfumes.com/product-details.php?id=2234",
+        category="fragrances",
+    ) == 3.0
+
+
+def test_bateel_grocery_bahrain():
+    assert score_source(
+        "https://bateel.bh/products/sokari-dates-450g", category="grocery"
+    ) == 3.0
+
+
+def test_fragrances_now_have_bahrain_tier_sources():
+    """Fragrance tier was thin (no bahrain-tier source). Addendum adds two."""
+    sources = get_sources_for_category("fragrances")
+    domains = [s.domain for s in sources]
+    bh_frag = [s for s in sources if s.tier == "bahrain"]
+    assert len(bh_frag) >= 2
+    assert "bh.asgharali.com" in domains
+    assert "jalilaperfumes.com" in domains
+
+
+def test_goldenbahrain_not_added():
+    """REJECTED candidate — must NOT be in the registry (price portal, not a
+    checkout retailer; disclaims price accuracy)."""
+    assert score_source("https://www.goldenbahrain.com/price-lists/x", category="electronics") == 0.5
+
+
+def test_addendum_retailers_keep_tier_first_ordering():
+    for cat, domain in (
+        ("electronics", "shopalmoayyed.com"),
+        ("fragrances", "bh.asgharali.com"),
+        ("grocery", "bateel.bh"),
+    ):
+        sources = get_sources_for_category(cat)
+        tiers = [s.tier for s in sources]
+        first_gcc = tiers.index("gcc") if "gcc" in tiers else len(tiers)
+        first_global = tiers.index("global") if "global" in tiers else len(tiers)
+        first_non_bahrain = min(first_gcc, first_global)
+        idx = next(i for i, s in enumerate(sources) if s.domain == domain)
+        assert idx < first_non_bahrain
