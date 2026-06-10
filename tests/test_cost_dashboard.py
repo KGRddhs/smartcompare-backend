@@ -15,6 +15,15 @@ def mock_admin_key():
         yield
 
 
+@pytest.fixture(autouse=True)
+def stub_tier15_hit_rate():
+    """F1.6 — /admin/costs now calls get_tier15_hit_rate (Redis). Default-stub
+    it so the existing endpoint tests stay fast + network-free; the two
+    dedicated tier1_5 tests below override this with their own patch."""
+    with patch("app.api.admin_routes.get_tier15_hit_rate", return_value={}):
+        yield
+
+
 class TestCostDashboard:
     def test_returns_provider_budgets(self):
         mock_summary = {
@@ -97,6 +106,38 @@ class TestCostDashboard:
             # Period should be YYYY-MM format
             assert len(data["period"]) == 7
             assert data["period"][4] == "-"
+
+    def test_tier1_5_hit_rate_block_present(self):
+        """F1.6 — /admin/costs surfaces a tier1_5_hit_rate block (7-day,
+        per-category) from the Redis escalation counters."""
+        mock_summary = {"providers": {}, "circuit_breakers": {}}
+        fake_agg = {
+            "electronics": {"attempts": 8, "hits": 6, "hit_rate": 0.75},
+            "grocery": {"attempts": 2, "hits": 0, "hit_rate": 0.0},
+        }
+        with patch("app.api.admin_routes.get_usage_summary", return_value=mock_summary), \
+             patch("app.api.admin_routes.get_supabase_client", return_value=None), \
+             patch("app.api.admin_routes.get_tier15_hit_rate", return_value=fake_agg):
+            resp = client.get("/api/v1/admin/costs", headers={"X-Admin-Key": ADMIN_KEY})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "tier1_5_hit_rate" in data
+            block = data["tier1_5_hit_rate"]
+            assert block["window_days"] == 7
+            assert block["by_category"]["electronics"]["hit_rate"] == 0.75
+            assert block["by_category"]["grocery"]["attempts"] == 2
+
+    def test_tier1_5_hit_rate_fail_open(self):
+        """If the aggregate raises (Redis hiccup), the endpoint still 200s
+        with an empty by_category block."""
+        mock_summary = {"providers": {}, "circuit_breakers": {}}
+        with patch("app.api.admin_routes.get_usage_summary", return_value=mock_summary), \
+             patch("app.api.admin_routes.get_supabase_client", return_value=None), \
+             patch("app.api.admin_routes.get_tier15_hit_rate", side_effect=Exception("redis down")):
+            resp = client.get("/api/v1/admin/costs", headers={"X-Admin-Key": ADMIN_KEY})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["tier1_5_hit_rate"]["by_category"] == {}
 
     def test_openai_cost_with_data(self):
         """When Supabase returns comparison data, costs are summed."""

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from typing import Optional
 
 from app.services.api_budget_service import get_usage_summary
+from app.services.cache_service import get_tier15_hit_rate
 from app.services.database_service import get_supabase_client, get_admin_supabase_client
 from app.middleware.rate_limiter import limiter
 from app.services.analytics_service import (
@@ -122,6 +123,19 @@ async def api_costs(request: Request, _=Depends(verify_admin_key)):
     summary["fixed_costs_monthly"] = 30.00  # Railway $5 + Supabase $25
     summary["estimated_monthly_total"] = round(summary["fixed_costs_monthly"] + openai_cost, 2)
     summary["period"] = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    # B.0 (Lane F1, F1.6) — Tier 1.5 escalation hit-rate, per-category 7-day
+    # window. attempts = escalations that entered the scrape pool; hits =
+    # scraped/structured winners returned (vs GPT-estimate fall-through).
+    # Fail-open: zeroed block when Redis is down.
+    try:
+        summary["tier1_5_hit_rate"] = {
+            "window_days": 7,
+            "by_category": get_tier15_hit_rate(days=7),
+        }
+    except Exception as e:
+        logger.warning(f"[ADMIN] tier1_5_hit_rate aggregate failed: {e}")
+        summary["tier1_5_hit_rate"] = {"window_days": 7, "by_category": {}}
 
     return summary
 

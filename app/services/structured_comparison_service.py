@@ -35,7 +35,12 @@ from app.services.extraction_service import (
 )
 from app.services.database_service import get_user_demographics
 from app.services.serper_service import search_product_prices, search_price_organic, search_web
-from app.services.cache_service import get_cached, set_cached
+from app.services.cache_service import (
+    get_cached,
+    set_cached,
+    record_tier15_attempt,
+    record_tier15_hit,
+)
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
 from app.services.api_budget_service import (
@@ -2651,6 +2656,8 @@ class StructuredComparisonService:
             # scrapes (e.g. ssense.com via Scrape.do) can blow 20+s and have
             # to fall through to Tier 2 to honor the per-product wall budget. ---
             if candidate_urls:
+                # F1.6 — count one Tier 1.5 escalation attempt (fail-open).
+                record_tier15_attempt(category)
                 try:
                     scrapers = _build_escalation_scrapers(
                         candidate_urls=candidate_urls,
@@ -2694,6 +2701,8 @@ class StructuredComparisonService:
                                     winning_price.get("url", "") or f"https://{win_domain}", category
                                 ),
                             }
+                        # F1.6 — count one Tier 1.5 hit + the winning domain.
+                        record_tier15_hit(category, win_domain or None)
                         set_cached(cache_key, winning_price, PRICE_CACHE_TTL)
                         self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
                         winning_price["_cached"] = False
