@@ -17,12 +17,28 @@ Cost: one compare per query (~$0.01 each, 24 ≈ $0.24) when run with
 --nocache against a live backend. Run ONCE; the report is the evidence
 artifact (NOT committed).
 
-Usage:
-  # Local uvicorn leg (your worktree code):
-  uvicorn app.main:app --port 8000   # in another shell
-  python scripts/bias_matrix_probe.py --base-url http://localhost:8000
+*** LOCAL-LEG CAP OVERRIDE — REQUIRED (S1-close runbook) ***
+A local uvicorn pays the developer machine's RTT to OpenAI/Serper (e.g.
+Bahrain→US) on EVERY call, which Railway does not. That inflates per-query
+walls 5-10s past the prod-tuned STREAM_HARD_CAP_SECONDS=30, so EVERY query
+trips the cap upstream of the escalation block and the probe reports 0/24
+with `no-escalation` everywhere — an ENVIRONMENTAL timeout, NOT a wiring
+verdict (observed run 1, 2026-06-10: all 24 died at 25-27s walls). To
+isolate wiring behavior from local latency, the LOCAL leg MUST export a
+relaxed cap for the uvicorn process only:
+  # local leg:
+  STREAM_HARD_CAP_SECONDS=60 uvicorn app.main:app --port 8000   # cap override
+  python scripts/bias_matrix_probe.py --base-url http://localhost:8000 --concurrency 2
+The PROD leg runs with the prod cap UNTOUCHED (the cap is a prod SLO; do
+NOT raise it on Railway just to pass the probe — F4's p95-vs-cap watch is
+the standing guard there).
 
-  # Prod / post-merge leg:
+Usage:
+  # Local uvicorn leg (your worktree code) — note the cap override above:
+  STREAM_HARD_CAP_SECONDS=60 uvicorn app.main:app --port 8000   # in another shell
+  python scripts/bias_matrix_probe.py --base-url http://localhost:8000 --concurrency 2
+
+  # Prod / post-merge leg (prod cap untouched):
   python scripts/bias_matrix_probe.py \
       --base-url https://web-production-58776.up.railway.app
 
