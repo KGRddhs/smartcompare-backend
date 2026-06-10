@@ -142,10 +142,13 @@ describe('Bundle D contract — ProfileScreen', () => {
     expect(SRC).not.toMatch(/ai_sharing_enabled\s*!==\s*false/);
   });
 
-  it('Edit style profile navigates to Onboarding with mode=edit + source=styleProfile', () => {
-    expect(SRC).toMatch(
-      /navigation\.navigate\(\s*['"]Onboarding['"]\s*,\s*\{\s*mode\s*:\s*['"]edit['"]\s*,\s*source\s*:\s*['"]styleProfile['"]/
-    );
+  it('Edit style profile navigates to EditPreferences (Bundle E F-S1.5c c.2.i ruling)', () => {
+    // SUPERSEDED Bundle D contract: the edit-style entry used to navigate
+    // Onboarding{mode:'edit', source:'styleProfile'}. Bundle E F-S1.5c routed
+    // both Profile→Tune and EditProfile→"Edit style profile" to the lighter
+    // EditPreferences flow instead (Onboarding mode='edit' stays in code for
+    // full re-onboarding but is no longer the edit-style entry).
+    expect(SRC).toMatch(/navigation\.navigate\(\s*['"]EditPreferences['"]/);
   });
 
   it('renders ToggleRow component (Bundle A Switch→ToggleRow swap survives redesign)', () => {
@@ -168,10 +171,11 @@ describe('Bundle D contract — ProfileScreen', () => {
 describe('Bundle D contract — EditProfileScreen', () => {
   const SRC = readScreen('EditProfileScreen');
 
-  it('Edit Style Profile button navigates Onboarding with mode=edit', () => {
-    expect(SRC).toMatch(
-      /navigation\.navigate\(\s*['"]Onboarding['"]\s*,\s*\{\s*mode\s*:\s*['"]edit['"]/
-    );
+  it('Edit Style Profile button navigates to EditPreferences (Bundle E F-S1.5c)', () => {
+    // SUPERSEDED Bundle D contract (navigated Onboarding{mode:'edit'}).
+    // Bundle E F-S1.5c routes "Edit style profile" to the lighter
+    // EditPreferences flow. See EditProfileScreen.tsx:119.
+    expect(SRC).toMatch(/navigation\.navigate\(\s*['"]EditPreferences['"]/);
   });
 
   it('renders the editProfile.editStyleProfile i18n key', () => {
