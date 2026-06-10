@@ -63,15 +63,31 @@ DEFAULT_GOLD = REPO_ROOT / "data" / "validation_gold_truth.json"
 DEFAULT_SMOKE_SUBSET = REPO_ROOT / "data" / "eval_smoke_subset.json"
 DEFAULT_PROD_URL = "https://web-production-58776.up.railway.app"
 
-# Per-query weighted-pass weights (F4.2  -  calibratable constant). Distinct
-# from gold-truth _metadata.axis_weights, which document the axis-average
-# TARGETS; these weights compose the per-query pass score. Must sum to 1.0.
+# Axis weights for the per-query weighted-pass score AND the run-level
+# aggregate. The CANONICAL source is the gold file's _metadata.axis_weights
+# (loaded via load_axis_weights), so every run pins the weights it used via
+# the gold_truth_version git SHA - one source of truth, no docs-vs-reality
+# drift. This module constant is the FALLBACK only, used when metadata is
+# absent/malformed; it mirrors the gold file's current values in short-key
+# form. The gold file stores LONG axis names (price_accuracy, ...), mapped
+# to these short names by _AXIS_LONG_TO_SHORT. Must sum to 1.0.
 AXIS_WEIGHTS: Dict[str, float] = {
-    "price": 0.30,
-    "specs": 0.30,
-    "winner": 0.25,
-    "factual": 0.15,
+    "price": 0.25,
+    "specs": 0.25,
+    "winner": 0.30,
+    "factual": 0.20,
 }
+
+# Gold-file _metadata.axis_weights long key -> short axis name used in code.
+_AXIS_LONG_TO_SHORT: Dict[str, str] = {
+    "price_accuracy": "price",
+    "specs_correctness": "specs",
+    "winner_correctness": "winner",
+    "factual_claim_integrity": "factual",
+}
+
+# The exact 4 short axis names every weights dict must carry (after mapping).
+_AXIS_NAMES = frozenset({"price", "specs", "winner", "factual"})
 
 # A query passes when its weighted axis score clears this floor.
 QUERY_PASS_THRESHOLD = 0.80
@@ -126,6 +142,59 @@ def gold_truth_version(gold_path: Path | str = DEFAULT_GOLD) -> str:
     except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
         logger.warning("[eval_runner] gold_truth_version unavailable: %s", exc)
         return "unknown"
+
+
+def load_axis_weights(gold: Dict[str, Any]) -> Dict[str, float]:
+    """Resolve the canonical per-axis weights from the gold file.
+
+    The gold file's _metadata.axis_weights is the single source of truth.
+    It stores LONG axis names (price_accuracy, specs_correctness,
+    winner_correctness, factual_claim_integrity); this maps them to the
+    short names used in code and validates the result.
+
+    Semantics (team-lead ruling):
+      - _metadata.axis_weights ABSENT entirely  -> fallback to AXIS_WEIGHTS
+        (the gold file's current values in short form) + a logged warning.
+      - PRESENT but malformed (unknown keys, missing an axis, or sum not
+        1.0 +/- 1e-6)  -> hard-fail with ValueError. A silently mis-
+        normalized gate is worse than no gate.
+    """
+    metadata = gold.get("_metadata") if isinstance(gold, dict) else None
+    raw = (metadata or {}).get("axis_weights")
+    if not raw:
+        logger.warning(
+            "[eval_runner] gold _metadata.axis_weights absent - using fallback "
+            "AXIS_WEIGHTS %s", AXIS_WEIGHTS,
+        )
+        return dict(AXIS_WEIGHTS)
+
+    mapped: Dict[str, float] = {}
+    for long_key, value in raw.items():
+        short = _AXIS_LONG_TO_SHORT.get(long_key)
+        if short is None:
+            raise ValueError(
+                f"gold _metadata.axis_weights has unknown axis key {long_key!r}; "
+                f"expected one of {sorted(_AXIS_LONG_TO_SHORT)}"
+            )
+        try:
+            mapped[short] = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"gold _metadata.axis_weights[{long_key!r}] is non-numeric: {value!r}"
+            ) from exc
+
+    if set(mapped) != _AXIS_NAMES:
+        raise ValueError(
+            f"gold _metadata.axis_weights must cover exactly {sorted(_AXIS_NAMES)} "
+            f"(after long->short mapping); got {sorted(mapped)}"
+        )
+
+    total = sum(mapped.values())
+    if abs(total - 1.0) > 1e-6:
+        raise ValueError(
+            f"gold _metadata.axis_weights must sum to 1.0 (+/-1e-6); got {total}"
+        )
+    return mapped
 
 
 # ---------------------------------------------------------------------------
@@ -300,14 +369,18 @@ def grade_factual(response_text: str, forbidden_facts: Sequence[str]) -> bool:
 
 
 def weighted_pass_score(price_pass: bool, specs_score: float,
-                        winner_pass: bool, factual_pass: bool) -> float:
-    """Compose the per-query weighted score from the 4 axes (AXIS_WEIGHTS).
-    Boolean axes contribute 1.0/0.0; specs contributes its fraction."""
+                        winner_pass: bool, factual_pass: bool,
+                        weights: Optional[Dict[str, float]] = None) -> float:
+    """Compose the per-query weighted score from the 4 axes. Boolean axes
+    contribute 1.0/0.0; specs contributes its fraction. `weights` defaults
+    to AXIS_WEIGHTS (the fallback) but the orchestrator threads in the
+    canonical weights loaded from the gold file."""
+    w = weights if weights is not None else AXIS_WEIGHTS
     return (
-        (1.0 if price_pass else 0.0) * AXIS_WEIGHTS["price"]
-        + specs_score * AXIS_WEIGHTS["specs"]
-        + (1.0 if winner_pass else 0.0) * AXIS_WEIGHTS["winner"]
-        + (1.0 if factual_pass else 0.0) * AXIS_WEIGHTS["factual"]
+        (1.0 if price_pass else 0.0) * w["price"]
+        + specs_score * w["specs"]
+        + (1.0 if winner_pass else 0.0) * w["winner"]
+        + (1.0 if factual_pass else 0.0) * w["factual"]
     )
 
 
@@ -406,8 +479,11 @@ async def run_query(client: httpx.AsyncClient, record: Dict[str, Any]) -> QueryR
     )
 
 
-def grade_run_result(run_result: QueryRunResult, record: Dict[str, Any]) -> GradedQuery:
-    """Apply the 4 graders to a raw run result against its gold record."""
+def grade_run_result(run_result: QueryRunResult, record: Dict[str, Any],
+                     weights: Optional[Dict[str, float]] = None) -> GradedQuery:
+    """Apply the 4 graders to a raw run result against its gold record.
+    `weights` (canonical, from the gold file) is threaded into the weighted
+    pass score; defaults to AXIS_WEIGHTS when not supplied."""
     body = run_result.response or {}
     expected_prices = record.get("expected_prices") or {}
     expected_specs = record.get("expected_specs") or {}
@@ -437,7 +513,8 @@ def grade_run_result(run_result: QueryRunResult, record: Dict[str, Any]) -> Grad
         collect_verdict_text(body), record.get("forbidden_facts") or []
     )
 
-    weighted = weighted_pass_score(price_pass, specs_score, winner_pass, factual_pass)
+    weighted = weighted_pass_score(price_pass, specs_score, winner_pass, factual_pass,
+                                   weights=weights)
     passing = run_result.error is None and weighted >= QUERY_PASS_THRESHOLD
     cap = float(record.get("max_wall_seconds", 25.0))
     return GradedQuery(
@@ -508,9 +585,12 @@ async def run_eval(
     base_url: str,
     transport: Optional[httpx.BaseTransport] = None,
     concurrency: int = DEFAULT_CONCURRENCY,
+    weights: Optional[Dict[str, float]] = None,
 ) -> EvalReport:
     """Execute every query against base_url with a bounded-concurrency pool,
-    grade each, and aggregate. `transport` lets tests inject a MockTransport."""
+    grade each, and aggregate. `transport` lets tests inject a MockTransport.
+    `weights` (canonical, from the gold file via load_axis_weights) is
+    threaded into per-query grading; defaults to AXIS_WEIGHTS."""
     semaphore = asyncio.Semaphore(concurrency)
     client_kwargs: Dict[str, Any] = {"base_url": base_url}
     if transport is not None:
@@ -520,7 +600,7 @@ async def run_eval(
         async def _one(record: Dict[str, Any]) -> GradedQuery:
             async with semaphore:
                 run_result = await run_query(client, record)
-            return grade_run_result(run_result, record)
+            return grade_run_result(run_result, record, weights=weights)
 
         graded = await asyncio.gather(*[_one(q) for q in queries])
 
@@ -595,7 +675,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         gold = load_gold_truth(args.gold)
         queries = select_queries(gold, subset=args.subset)
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        # Canonical weights from the gold file (long->short mapped + validated).
+        # A malformed _metadata.axis_weights hard-fails here rather than
+        # silently grading on a mis-normalized weight set.
+        axis_weights = load_axis_weights(gold)
+    except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 3
 
@@ -614,9 +698,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 3
 
     print(f"# eval run: base={args.base_url} n={len(queries)} mode={args.mode} "
-          f"subset={args.subset or 'full'}")
+          f"subset={args.subset or 'full'} weights={axis_weights}")
     report = asyncio.run(run_eval(queries, base_url=args.base_url,
-                                  concurrency=args.concurrency))
+                                  concurrency=args.concurrency,
+                                  weights=axis_weights))
 
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
@@ -631,7 +716,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         run_id = eval_persistence.persist_eval_run(
             report, run_kind=args.run_kind,
             gold_version=gold_truth_version(args.gold),
-            metadata={"base_url": args.base_url, "subset": args.subset or "full"},
+            metadata={"base_url": args.base_url, "subset": args.subset or "full",
+                      "axis_weights_used": axis_weights},
         )
         print(f"# eval_runs row: {run_id}")
 

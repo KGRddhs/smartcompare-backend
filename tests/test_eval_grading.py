@@ -1,4 +1,4 @@
-"""Unit tests for the 4 pure grading functions — Bundle B Phase B.6 (F4.2).
+"""Unit tests for the 4 pure grading functions  -  Bundle B Phase B.6 (F4.2).
 
 Plan: docs/plans/2026-06-10-bundle-b-intelligence-layer-plan.md Lane F4.2
 
@@ -10,7 +10,8 @@ Contract (dispatcher brief):
   grade_specs   -> float  fraction matched (case/unit-tolerant)
   grade_winner  -> bool   index equality vs deterministic winner
   grade_factual -> bool   no forbidden_fact substring (case-insensitive)
-  weighted pass: price .30 / specs .30 / winner .25 / factual .15
+  weighted pass: canonical weights from gold _metadata.axis_weights
+                 (currently price .25 / specs .25 / winner .30 / factual .20)
 """
 from __future__ import annotations
 
@@ -28,13 +29,13 @@ def test_price_inside_band_passes():
 
 
 def test_price_at_lower_tolerance_edge_passes():
-    # min=100 → lower bound 85.0; 85 passes, 84.9 fails.
+    # min=100 -> lower bound 85.0; 85 passes, 84.9 fails.
     assert er.grade_price(85.0, {"min": 100, "max": 200}) is True
     assert er.grade_price(84.9, {"min": 100, "max": 200}) is False
 
 
 def test_price_at_upper_tolerance_edge_passes():
-    # max=200 → upper bound 230.0; 230 passes, 230.1 fails.
+    # max=200 -> upper bound 230.0; 230 passes, 230.1 fails.
     assert er.grade_price(230.0, {"min": 100, "max": 200}) is True
     assert er.grade_price(230.1, {"min": 100, "max": 200}) is False
 
@@ -74,7 +75,7 @@ def test_specs_case_insensitive():
 
 
 def test_specs_substring_match():
-    # gold "iOS" is a substring of actual "iOS 17" → match.
+    # gold "iOS" is a substring of actual "iOS 17" -> match.
     assert er.grade_specs({"os": "iOS 17"}, {"os": "iOS"}) == 1.0
 
 
@@ -155,6 +156,14 @@ def test_weights_sum_to_one():
     assert sum(er.AXIS_WEIGHTS.values()) == pytest.approx(1.0)
 
 
+def test_fallback_constant_matches_gold_current_values():
+    # The module-level AXIS_WEIGHTS is the FALLBACK, mirroring the gold
+    # file's current _metadata.axis_weights (short-key form). Canonical
+    # source is the gold file; this constant is only used when metadata is
+    # absent/malformed.
+    assert er.AXIS_WEIGHTS == {"price": 0.25, "specs": 0.25, "winner": 0.30, "factual": 0.20}
+
+
 def test_weighted_all_pass_is_one():
     assert er.weighted_pass_score(True, 1.0, True, True) == pytest.approx(1.0)
 
@@ -164,14 +173,97 @@ def test_weighted_all_fail_is_zero():
 
 
 def test_weighted_winner_only_fail_drops_by_winner_weight():
-    # Everything passes except winner (.25 weight) → 0.75.
-    assert er.weighted_pass_score(True, 1.0, False, True) == pytest.approx(0.75)
+    # Everything passes except winner (.30 weight under canonical gold
+    # weights) -> 0.70.
+    assert er.weighted_pass_score(True, 1.0, False, True) == pytest.approx(0.70)
 
 
 def test_weighted_specs_half_contributes_half_its_weight():
-    # price+winner+factual pass (.70), specs=0.5 → +0.15 → 0.85.
-    assert er.weighted_pass_score(True, 0.5, True, True) == pytest.approx(0.85)
+    # price+winner+factual pass (.25+.30+.20=.75), specs=0.5 -> +.125 -> 0.875.
+    assert er.weighted_pass_score(True, 0.5, True, True) == pytest.approx(0.875)
+
+
+def test_weighted_accepts_explicit_weights_override():
+    # weighted_pass_score takes an optional weights dict; passing the old
+    # plan-draft weights reproduces the old result, proving it's threaded.
+    plan_draft = {"price": 0.30, "specs": 0.30, "winner": 0.25, "factual": 0.15}
+    assert er.weighted_pass_score(True, 1.0, False, True, weights=plan_draft) == pytest.approx(0.75)
 
 
 def test_query_pass_threshold_is_080():
     assert er.QUERY_PASS_THRESHOLD == 0.80
+
+
+# ---------------------------------------------------------------------------
+# load_axis_weights  -  canonical weights from gold _metadata (F4 correction)
+# ---------------------------------------------------------------------------
+
+from pathlib import Path  # noqa: E402
+
+_GOLD_PATH = Path(__file__).resolve().parent.parent / "data" / "validation_gold_truth.json"
+
+_LONG = {
+    "price_accuracy": 0.25,
+    "specs_correctness": 0.25,
+    "winner_correctness": 0.30,
+    "factual_claim_integrity": 0.20,
+}
+
+
+def test_load_axis_weights_maps_long_keys_to_short():
+    weights = er.load_axis_weights({"_metadata": {"axis_weights": dict(_LONG)}})
+    assert weights == {"price": 0.25, "specs": 0.25, "winner": 0.30, "factual": 0.20}
+
+
+def test_load_axis_weights_real_gold_file_is_canonical():
+    import json
+    import io
+    gold = json.loads(io.open(_GOLD_PATH, encoding="utf-8").read())
+    weights = er.load_axis_weights(gold)
+    assert weights == {"price": 0.25, "specs": 0.25, "winner": 0.30, "factual": 0.20}
+    assert sum(weights.values()) == pytest.approx(1.0)
+
+
+def test_load_axis_weights_absent_metadata_falls_back_with_warning(caplog):
+    with caplog.at_level("WARNING"):
+        weights = er.load_axis_weights({"_metadata": {}})
+    assert weights == er.AXIS_WEIGHTS
+    assert any("axis_weights" in r.message and "fallback" in r.message.lower()
+               for r in caplog.records)
+
+
+def test_load_axis_weights_no_metadata_key_falls_back():
+    weights = er.load_axis_weights({})
+    assert weights == er.AXIS_WEIGHTS
+
+
+def test_load_axis_weights_wrong_keys_hard_fails():
+    # PRESENT but malformed (unknown key) -> ValueError, not silent fallback.
+    bad = {"_metadata": {"axis_weights": {"price_accuracy": 0.5, "bogus_axis": 0.5}}}
+    with pytest.raises(ValueError):
+        er.load_axis_weights(bad)
+
+
+def test_load_axis_weights_missing_one_axis_hard_fails():
+    # Only 3 of 4 axes present -> ValueError (not exactly the 4-key set).
+    bad = {"_metadata": {"axis_weights": {
+        "price_accuracy": 0.34, "specs_correctness": 0.33, "winner_correctness": 0.33}}}
+    with pytest.raises(ValueError):
+        er.load_axis_weights(bad)
+
+
+def test_load_axis_weights_bad_sum_hard_fails():
+    bad = {"_metadata": {"axis_weights": {
+        "price_accuracy": 0.5, "specs_correctness": 0.5,
+        "winner_correctness": 0.5, "factual_claim_integrity": 0.5}}}
+    with pytest.raises(ValueError):
+        er.load_axis_weights(bad)
+
+
+def test_load_axis_weights_sum_within_epsilon_passes():
+    # 0.25+0.25+0.30+0.20 with a 1e-9 perturbation still validates.
+    w = {"_metadata": {"axis_weights": {
+        "price_accuracy": 0.25, "specs_correctness": 0.25,
+        "winner_correctness": 0.30, "factual_claim_integrity": 0.20 + 1e-9}}}
+    weights = er.load_axis_weights(w)
+    assert weights["factual"] == pytest.approx(0.20)

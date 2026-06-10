@@ -39,6 +39,7 @@ from scripts.eval_runner import (
     DEFAULT_PROD_URL,
     STREAM_HARD_CAP_SECONDS,
     gold_truth_version,
+    load_axis_weights,
     load_gold_truth,
     run_eval,
     select_queries,
@@ -71,6 +72,7 @@ async def main() -> Optional[str]:
     try:
         gold = load_gold_truth()
         queries = select_queries(gold, subset=None)  # full set nightly
+        axis_weights = load_axis_weights(gold)  # canonical weights (hard-fail if malformed)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[cron_eval_nightly] gold load failed: %s", exc)
         return None
@@ -80,7 +82,7 @@ async def main() -> Optional[str]:
     )
 
     try:
-        report = await run_eval(queries, base_url=base_url)
+        report = await run_eval(queries, base_url=base_url, weights=axis_weights)
     except Exception as exc:  # noqa: BLE001 - a failed run must not crash the worker
         logger.warning("[cron_eval_nightly] eval run failed: %s", exc)
         return None
@@ -100,7 +102,8 @@ async def main() -> Optional[str]:
             STREAM_HARD_CAP_SECONDS,
         )
 
-    metadata: Dict[str, Any] = {"base_url": base_url, "subset": "full", "source": "nightly_cron"}
+    metadata: Dict[str, Any] = {"base_url": base_url, "subset": "full",
+                                "source": "nightly_cron", "axis_weights_used": axis_weights}
     try:
         run_id = persist_eval_run(
             report, run_kind="nightly",
