@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from scripts import cron_eval_nightly
-from scripts.eval_runner import EvalReport
+from scripts.eval_runner import EvalReport, load_gold_truth
 
 
 def _report(p95_over_cap=False, wall_p95_ms=20000) -> EvalReport:
@@ -47,10 +47,10 @@ def test_flag_on_runs_full_set_and_persists(monkeypatch):
         asyncio.run(cron_eval_nightly.main())
 
     run_mock.assert_awaited_once()
-    # full set (50 queries) passed to run_eval
+    # Full set passed to run_eval — count-agnostic vs the real gold file.
     _, kwargs = run_mock.await_args
     queries_arg = run_mock.await_args.args[0]
-    assert len(queries_arg) == 50
+    assert len(queries_arg) == len(load_gold_truth()["queries"])
     assert kwargs["base_url"] == "https://web-production-58776.up.railway.app"
 
     # persisted with run_kind='nightly' + the git SHA

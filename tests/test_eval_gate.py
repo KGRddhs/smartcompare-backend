@@ -159,4 +159,5 @@ def test_select_queries_smoke20_returns_subset():
 
 def test_select_queries_full_returns_all():
     gold = load_gold_truth(GOLD_PATH)
-    assert len(select_queries(gold, subset=None)) == 50
+    # Count-agnostic: full selection == whatever the gold file holds.
+    assert len(select_queries(gold, subset=None)) == len(gold["queries"])

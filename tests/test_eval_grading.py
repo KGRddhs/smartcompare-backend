@@ -75,8 +75,55 @@ def test_specs_case_insensitive():
 
 
 def test_specs_substring_match():
-    # gold "iOS" is a substring of actual "iOS 17" -> match.
+    # gold "iOS" is a complete token of actual "iOS 17" -> match.
     assert er.grade_specs({"os": "iOS 17"}, {"os": "iOS"}) == 1.0
+
+
+def test_specs_boundary_rejects_numeric_substring():
+    # F3 cross-QA finding: '55' must NOT be credited inside '155 cm'.
+    assert er.grade_specs({"display": "155 cm"}, {"display": "55"}) == 0.0
+
+
+def test_specs_boundary_rejects_partial_capacity():
+    # '8GB' must NOT be credited inside '128GB'.
+    assert er.grade_specs({"storage": "128GB"}, {"storage": "8GB"}) == 0.0
+
+
+def test_specs_unit_spacing_survives_boundary_fix():
+    # The tolerances the boundary fix must NOT break.
+    assert er.grade_specs({"storage": "8 GB"}, {"storage": "8GB"}) == 1.0
+    assert er.grade_specs({"storage": "128 GB storage"}, {"storage": "128GB"}) == 1.0
+
+
+def test_specs_boundary_rejects_more_numeric_substrings():
+    # Further boundary rejects beyond F3's two: a number inside a longer
+    # number must not credit (e.g. SPF '46' inside '146').
+    assert er.grade_specs({"spf": "146"}, {"spf": "46"}) == 0.0
+    assert er.grade_specs({"battery": "1500 mAh"}, {"battery": "500"}) == 0.0
+
+
+def test_specs_multi_word_complete_value_matches():
+    # A complete multi-word expected value found as a run in the actual
+    # matches; a longer expected than the actual does not.
+    assert er.grade_specs({"type": "Whey Protein Isolate"}, {"type": "Whey Protein"}) == 1.0
+    assert er.grade_specs({"type": "Whey Protein"}, {"type": "Whey Protein Isolate"}) == 0.0
+
+
+def test_specs_regex_special_chars_are_literal():
+    # Spec values carry regex metacharacters ('1.5T' AC capacity, 'A+'
+    # grade, 'SPF50+'). re.escape must treat them literally — otherwise '.'
+    # would match any char and credit '1.5' inside '145'.
+    assert er.grade_specs({"cap": "1.5T split AC"}, {"cap": "1.5T"}) == 1.0
+    assert er.grade_specs({"cap": "145 units"}, {"cap": "1.5"}) == 0.0
+    assert er.grade_specs({"grade": "A+ rated"}, {"grade": "A+"}) == 1.0
+
+
+def test_specs_empty_expected_value_does_not_credit():
+    # The boundary rewrite changed empty-expected from "matches everything"
+    # (old substring free credit) to "matches nothing" — the safer
+    # semantics. No gold entry has an empty spec value, but pin the contract.
+    assert er.grade_specs({"k": "128GB"}, {"k": ""}) == 0.0
+    assert er.grade_specs({"k": "128GB"}, {"k": "   "}) == 0.0
 
 
 def test_specs_half_match_returns_half():

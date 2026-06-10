@@ -43,6 +43,7 @@ import dataclasses
 import json
 import logging
 import os
+import re
 import statistics
 import subprocess
 import sys
@@ -331,16 +332,37 @@ def grade_price(actual_amount: Optional[float], expected: Dict[str, Any]) -> boo
     return lower <= actual_amount <= upper
 
 
-def _normalize_spec_value(value: Any) -> str:
-    """Lowercase, strip, and collapse 'NN unit' -> 'NNunit' so '128GB' and
-    '128 GB' compare equal (case + unit-spacing tolerant)."""
+_DIGIT_LETTER_SEAM = re.compile(r"(?<=[0-9])(?=[a-z])|(?<=[a-z])(?=[0-9])")
+
+
+def _spec_canonical(value: Any) -> str:
+    """Lowercase, insert a space at every digit<->letter seam, collapse
+    whitespace: '128GB' and '128 GB' both canonicalise to '128 gb'
+    (case + unit-spacing tolerant)."""
     s = str(value).lower().strip()
-    return "".join(s.split())
+    s = _DIGIT_LETTER_SEAM.sub(" ", s)
+    return " ".join(s.split())
+
+
+def _spec_value_matches(expected_value: Any, actual_value: Any) -> bool:
+    """Boundary-bounded containment of canonical expected within canonical
+    actual. 'iOS' matches 'iOS 17' (complete-token containment) and '8GB'
+    matches '8 GB' (unit-spacing tolerance); but '55' does NOT match
+    '155 cm' and '8GB' does NOT match '128GB' - bare substring credit
+    inflated the specs axis (F3 cross-QA finding, S1)."""
+    exp = _spec_canonical(expected_value)
+    if not exp:
+        return False
+    act = _spec_canonical(actual_value)
+    return re.search(
+        r"(?<![a-z0-9])" + re.escape(exp) + r"(?![a-z0-9])", act
+    ) is not None
 
 
 def grade_specs(actual_specs: Optional[Dict[str, Any]], expected: Dict[str, Any]) -> float:
-    """Fraction of expected spec keys whose actual value matches (case- and
-    unit-spacing-tolerant substring). Empty expected -> 1.0 (no-op)."""
+    """Fraction of expected spec keys whose actual value matches
+    (boundary-bounded, case- and unit-spacing-tolerant). Empty
+    expected -> 1.0 (no-op)."""
     if not expected:
         return 1.0
     actual_specs = actual_specs or {}
@@ -349,7 +371,7 @@ def grade_specs(actual_specs: Optional[Dict[str, Any]], expected: Dict[str, Any]
         actual_value = actual_specs.get(key)
         if actual_value is None:
             continue
-        if _normalize_spec_value(expected_value) in _normalize_spec_value(actual_value):
+        if _spec_value_matches(expected_value, actual_value):
             matched += 1
     return matched / len(expected)
 

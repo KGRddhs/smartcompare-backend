@@ -93,7 +93,8 @@ def test_load_gold_truth_returns_metadata_and_queries():
     gold = eval_runner.load_gold_truth(GOLD_PATH)
     assert "_metadata" in gold
     assert isinstance(gold["queries"], list)
-    assert len(gold["queries"]) == 50
+    # Count-agnostic: the gold set grows (50 -> 200 in S1); shape, not size.
+    assert len(gold["queries"]) >= 50
 
 
 def test_load_gold_truth_missing_file_raises():
