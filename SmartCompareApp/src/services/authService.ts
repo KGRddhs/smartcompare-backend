@@ -480,31 +480,15 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
     console.log('[GOOGLE-DIAG]', diagHead);
     Sentry.addBreadcrumb({ category: 'b4_diag', level: 'info', message: '[GOOGLE-DIAG] ' + diagHead });
 
-    // Decode the idToken payload to extract the nonce claim Google embedded.
-    // base64url-decode payload (middle segment), parse JSON, read .nonce.
-    // Safe failure mode: if decode fails or no nonce present, send without —
-    // the backend's `if nonce:` guard will skip the Supabase nonce param.
-    let tokenNonce: string | undefined;
-    try {
-      const payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-      const padded = payloadB64 + '='.repeat((4 - (payloadB64.length % 4)) % 4);
-      // atob is available in Hermes/iOS RN; falls back to global if not.
-      const decoded = typeof atob === 'function' ? atob(padded) : '';
-      if (decoded) {
-        const claims = JSON.parse(decoded);
-        if (typeof claims.nonce === 'string' && claims.nonce.length > 0) {
-          tokenNonce = claims.nonce;
-        }
-      }
-    } catch (decodeErr: any) {
-      Sentry.addBreadcrumb({ category: 'b4_diag', level: 'warning', message: 'nonce decode failed: ' + (decodeErr?.message || 'unknown') });
-    }
-
+    // B4 resolution (2026-05-26): Google sign-in is fixed server-side via the
+    // Supabase "Skip nonce checks" toggle. @react-native-google-signin embeds a
+    // HASHED nonce in the id_token without exposing the raw value, so the FE
+    // can never satisfy Supabase's SHA-256(raw) == claim parity — the only
+    // working configuration is to skip the check. The FE therefore sends NO
+    // nonce: the previous decode-and-echo block was dead at best (skip ON →
+    // Supabase ignores it) and auth-breaking at worst (skip OFF → hash-of-hash
+    // mismatch). Final body is exactly { provider, id_token }.
     const body: Record<string, string> = { provider: 'google', id_token: idToken };
-    if (tokenNonce) {
-      body.nonce = tokenNonce;
-      Sentry.addBreadcrumb({ category: 'b4_diag', level: 'info', message: `nonce echoed from id_token claim (len=${tokenNonce.length})` });
-    }
 
     let response: Response;
     try {
