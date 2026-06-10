@@ -1,0 +1,10 @@
+---
+name: testclient_blocking_redis_anyio_portal_hang
+description: A synchronous/blocking Redis (or any network) call inside an async FastAPI endpoint HANGS Starlette TestClient when the host is unreachable in-sandbox — the anyio portal blocks on the connect-timeout. Batch calls + fail-open fast; tests should mock the dependency.
+type: feedback
+---
+A blocking network call (e.g. Upstash Redis REST GET/MGET via `redis_client`) inside an async FastAPI endpoint will HANG Starlette's TestClient when the host is unreachable (no egress / DNS getaddrinfo fails in the sandbox). TestClient bridges sync→async through an anyio portal on a single worker thread; the blocking call sits on `portal.call(...).result()` waiting on the connect-timeout, and per-test `--timeout=N --timeout_method=thread` often CANNOT interrupt a C-level socket wait, so the whole suite stalls.
+
+**Why:** Bundle B S1 F1.6 (2026-06-10) added a `tier1_5_hit_rate` block to `/admin/costs` that looped 63 individual Redis GETs (9 categories x 7 days x 2 counters). Under TestClient with Upstash unreachable in-sandbox, each GET blocked on its connect-timeout sequentially → the pre-existing cost-dashboard tests (which exercise the endpoint with real Redis unmocked) hung for 3min+ and the thread-timeout didn't save them. Root cause was NOT latency-in-prod (where Redis is reachable and fast) — it was sandbox-no-egress + blocking-in-async-portal + too many serial calls.
+
+**How to apply:** (1) BATCH multi-key Redis reads into ONE call (MGET, not a GET loop) so the endpoint adds one round-trip, and (2) make the aggregate FAIL-OPEN FAST — wrap in try/except returning a zeroed result so a Redis outage can't hang or 500 the endpoint. (3) Any TestClient test of an endpoint that newly calls Redis/network MUST mock that dependency (autouse fixture stubbing the aggregate fn) — don't rely on the sandbox reaching the real service. Diagnostic tell: a pytest hang whose faulthandler dump ends at `anyio/from_thread.py ... portal.call ... _condition.wait / waiter.acquire()` = blocking call in the async portal.
