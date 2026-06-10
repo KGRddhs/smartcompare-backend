@@ -6,8 +6,8 @@ import os
 import json
 import hashlib
 import logging
-from datetime import datetime
-from typing import Optional, Dict, Any
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,112 @@ def _redis_expire(key: str, seconds: int) -> bool:
     except Exception as e:
         logger.error(f"Redis EXPIRE error: {e}")
         return False
+
+
+# ============================================
+# B.0 (Lane F1, F1.6) — Tier 1.5 hit-rate metrics
+# ============================================
+# Per-category + per-source escalation counters, fire-and-forget + fail-open.
+# An "attempt" = Tier 1.5 escalation entered the page-scrape candidate pool;
+# a "hit" = a scraped/structured winner was returned (vs falling through to a
+# GPT estimate). Surfaced as `tier1_5_hit_rate` on /admin/costs.
+
+_TIER15_METRIC_TTL = 30 * 86400  # 30 days
+
+
+def _utc_daystamp(offset_days: int = 0) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=offset_days)).strftime("%Y%m%d")
+
+
+def record_tier15_attempt(category: str) -> None:
+    """Count one Tier 1.5 escalation attempt for `category` (today, UTC)."""
+    if not redis_client:
+        return
+    key = f"tier15:attempts:{category}:{_utc_daystamp()}"
+    if _redis_incr(key) == 1:
+        _redis_expire(key, _TIER15_METRIC_TTL)
+
+
+def record_tier15_hit(category: str, domain: Optional[str] = None) -> None:
+    """Count one Tier 1.5 scraped/structured hit for `category` (+ winning
+    `domain`, when known), today (UTC)."""
+    if not redis_client:
+        return
+    cat_key = f"tier15:hits:{category}:{_utc_daystamp()}"
+    if _redis_incr(cat_key) == 1:
+        _redis_expire(cat_key, _TIER15_METRIC_TTL)
+    if domain:
+        src_key = f"tier15:source_hits:{domain}:{_utc_daystamp()}"
+        if _redis_incr(src_key) == 1:
+            _redis_expire(src_key, _TIER15_METRIC_TTL)
+
+
+def get_tier15_hit_rate(days: int = 7, categories: Optional[List[str]] = None) -> Dict[str, Dict[str, Any]]:
+    """Aggregate the trailing `days`-window attempts/hits per category.
+
+    Returns `{category: {attempts, hits, hit_rate}}`. Fail-open: a missing or
+    down Redis yields a well-formed zeroed block (never raises).
+
+    All counter keys are fetched in a SINGLE `mget` so the /admin/costs
+    endpoint adds one Redis round-trip, not days*categories*2 blocking calls.
+    """
+    if categories is None:
+        categories = [
+            "electronics", "grocery", "supplements", "makeup", "skincare",
+            "haircare", "fragrances", "fashion", "other",
+        ]
+    daystamps = [_utc_daystamp(i) for i in range(days)]
+
+    # Build the full key list (attempts + hits, per category per day) and the
+    # zeroed result up front so we can early-return on any Redis failure.
+    out: Dict[str, Dict[str, Any]] = {
+        cat: {"attempts": 0, "hits": 0, "hit_rate": 0.0} for cat in categories
+    }
+    if not redis_client:
+        return out
+
+    keys: List[str] = []
+    for cat in categories:
+        for ds in daystamps:
+            keys.append(f"tier15:attempts:{cat}:{ds}")
+            keys.append(f"tier15:hits:{cat}:{ds}")
+
+    try:
+        values = redis_client.mget(*keys)
+    except TypeError:
+        # Some clients take a single iterable rather than *args.
+        try:
+            values = redis_client.mget(keys)
+        except Exception as e:
+            logger.warning(f"[TIER15] hit-rate mget failed: {e}")
+            return out
+    except Exception as e:
+        logger.warning(f"[TIER15] hit-rate mget failed: {e}")
+        return out
+
+    # values aligns 1:1 with `keys` (attempts, hits interleaved per cat/day).
+    idx = 0
+    for cat in categories:
+        attempts = 0
+        hits = 0
+        for _ in daystamps:
+            a = values[idx] if idx < len(values) else None
+            h = values[idx + 1] if idx + 1 < len(values) else None
+            idx += 2
+            try:
+                attempts += int(a) if a else 0
+            except (TypeError, ValueError):
+                pass
+            try:
+                hits += int(h) if h else 0
+            except (TypeError, ValueError):
+                pass
+        out[cat] = {
+            "attempts": attempts,
+            "hits": hits,
+            "hit_rate": round(hits / attempts, 4) if attempts > 0 else 0.0,
+        }
+    return out
 
 
 # ============================================

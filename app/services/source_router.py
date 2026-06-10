@@ -43,6 +43,36 @@ SOURCE_REGISTRY: List[Source] = [
     Source("talabat.com", "bahrain", ("grocery",), 3.0),
     Source("spinneysbahrain.com", "bahrain", ("grocery",), 3.0),
     Source("megamart.bh", "bahrain", ("grocery",), 3.0),
+    # F1.5 expansion (verified live 2026-06-10) — Bahrain grocery + pharmacy
+    # gaps. RATIFICATION REQUIRED (F1.5 checkpoint) before merge.
+    Source("alosraonline.com", "bahrain", ("grocery",), 3.0),  # Alosra (BMMI)
+    Source(
+        "nasserpharmacy.com",
+        "bahrain",
+        ("supplements", "skincare", "makeup", "haircare", "fragrances"),
+        3.0,
+    ),  # Nasser Pharmacy — Bahrain's largest chain, 10k+ health/beauty SKUs
+    Source(
+        "bahrainpharmacy.com",
+        "bahrain",
+        ("supplements", "skincare", "makeup", "haircare"),
+        3.0,
+    ),  # Bahrain Pharmacy & General Store
+    # F1.5 addendum (deeper verified-source discovery, live 2026-06-10) —
+    # appliance/AC + fragrance + premium-grocery gap-fillers. Each is a real
+    # BH e-commerce site with BHD prices + checkout + product pages.
+    Source(
+        "shopalmoayyed.com", "bahrain", ("electronics",), 3.0
+    ),  # Y.K. Almoayyed & Sons (Shopify) — AC/appliances/electronics
+    Source(
+        "bh.asgharali.com", "bahrain", ("fragrances",), 3.0
+    ),  # Asgharali Perfumes BH (Shopify)
+    Source(
+        "jalilaperfumes.com", "bahrain", ("fragrances",), 3.0
+    ),  # Jalila Perfumes BH (custom PHP, product pages + BHD)
+    Source(
+        "bateel.bh", "bahrain", ("grocery",), 3.0
+    ),  # Bateel BH — premium dates / gourmet
 
     # === GCC SECONDARY (weight 1.5) ===
     Source("noon.com", "gcc", (), 1.5),
@@ -115,3 +145,20 @@ def score_source(url: str, category: str) -> float:
             if not s.categories or category in s.categories:
                 return s.weight
     return 0.5
+
+
+def build_site_discovery_query(
+    product_query: str, category: str, tier: str = "bahrain", limit: int = 4
+) -> str:
+    """Serper query targeting registry sources of one tier for a category.
+
+    Returns '<query> site:a OR site:b ...' — empty string when the tier has
+    no sources for the category (the caller then skips the discovery call).
+    Domains preserve registry order (Bahrain-first within the tier).
+    """
+    domains = [
+        s.domain for s in get_sources_for_category(category) if s.tier == tier
+    ][:limit]
+    if not domains:
+        return ""
+    return f"{product_query} " + " OR ".join(f"site:{d}" for d in domains)

@@ -1,0 +1,44 @@
+{
+  "_metadata": {
+    "name": "Bundle B F1.7 — Bahrain-consultation bias matrix (24 queries)",
+    "purpose": "Verify the B.0 Bahrain-first source registry is consulted on every non-luxury escalating query. Each entry below is NON-LUXURY (mainstream / mid-tier / appliance / grocery), so the Tier 1.5 escalation should fire a Bahrain `site:` discovery query and — when a registry retailer has the product — yield a route:'registry' price-value trace. The runner asserts >=1 route:'registry' across the matrix and at least one per category that has a bahrain-tier registry source, and records the before/after gpt_training-priced count.",
+    "derived_from": "data/validation_gold_truth.json (Sprint A 50q corpus); .qa-bias-rerun/ was an empty transient artifact, rebuilt here.",
+    "built": "2026-06-10",
+    "weighted_toward": "0%-Bahrain-hit classes (AC/appliances, grocery local, supplements) + mainstream electronics + non-luxury fragrances",
+    "all_non_luxury": true
+  },
+  "queries": [
+    {"id": "elec-001", "query": "iPhone 15 vs Galaxy S24", "category": "electronics", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "elec-003", "query": "Dyson V15 vs Shark Stratos", "category": "electronics", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "elec-004", "query": "Carrier 1.5T AC vs LG 1.5T AC", "category": "electronics", "region": "bahrain", "expect_bahrain_registry": true, "note": "AC/appliance — 0%-hit class; shopalmoayyed.com addition targets this"},
+    {"id": "elec-006", "query": "PS5 vs Xbox Series X", "category": "electronics", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "elec-007", "query": "MacBook Air M3 vs Dell XPS 13", "category": "electronics", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "elec-008", "query": "Xiaomi 14 vs Nothing Phone 2", "category": "electronics", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "elec-010", "query": "Apple Watch Series 9 vs Samsung Galaxy Watch 6", "category": "electronics", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "elec-012", "query": "Kindle Paperwhite vs Kobo Clara Colour", "category": "electronics", "region": "bahrain", "expect_bahrain_registry": true},
+
+    {"id": "supp-001", "query": "NOW Foods D3 vs Solgar D3", "category": "supplements", "region": "bahrain", "expect_bahrain_registry": true, "note": "iHerb + bn.boots.com + nasserpharmacy/bahrainpharmacy"},
+    {"id": "supp-002", "query": "Optimum Nutrition Whey vs Dymatize ISO100", "category": "supplements", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "supp-003", "query": "Centrum Multivitamin vs One A Day", "category": "supplements", "region": "bahrain", "expect_bahrain_registry": true},
+
+    {"id": "groc-001", "query": "Bertolli olive oil vs Carbonell olive oil", "category": "grocery", "region": "bahrain", "expect_bahrain_registry": true, "note": "local grocery — alosraonline/talabat/spinneys/lulu"},
+    {"id": "groc-002", "query": "Twinings Earl Grey vs Ahmad Tea Earl Grey", "category": "grocery", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "groc-004", "query": "Nescafe Gold vs Movenpick Gold instant coffee", "category": "grocery", "region": "bahrain", "expect_bahrain_registry": true},
+
+    {"id": "frag-002", "query": "Dior Sauvage vs YSL Y EDP", "category": "fragrances", "region": "bahrain", "expect_bahrain_registry": true, "note": "mainstream designer — jalilaperfumes/asgharali/nasserpharmacy"},
+    {"id": "frag-003", "query": "Hugo Boss Bottled vs Davidoff Cool Water", "category": "fragrances", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "frag-006", "query": "Lattafa Khamrah vs Armaf Club de Nuit Intense Man", "category": "fragrances", "region": "bahrain", "expect_bahrain_registry": true, "note": "clone/value tier — non-luxury"},
+
+    {"id": "make-001", "query": "Fenty Pro Filt'r Foundation vs Maybelline Fit Me", "category": "makeup", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "make-003", "query": "Maybelline Sky High vs L'Oreal Telescopic", "category": "makeup", "region": "bahrain", "expect_bahrain_registry": true},
+
+    {"id": "skin-001", "query": "CeraVe Cleanser vs La Roche-Posay Toleriane Cleanser", "category": "skincare", "region": "bahrain", "expect_bahrain_registry": true},
+    {"id": "skin-002", "query": "The Ordinary Niacinamide vs Paula's Choice 10% Niacinamide", "category": "skincare", "region": "bahrain", "expect_bahrain_registry": true},
+
+    {"id": "hair-002", "query": "Pantene Pro-V shampoo vs Head & Shoulders Classic Clean", "category": "haircare", "region": "bahrain", "expect_bahrain_registry": true, "note": "mass haircare — bn.boots.com/lulu/carrefour"},
+
+    {"id": "fash-002", "query": "Nike Air Force 1 vs Adidas Stan Smith", "category": "fashion", "region": "bahrain", "expect_bahrain_registry": false, "note": "fashion bahrain-tier thin (behbehani only) — registry consult expected but a hit is not guaranteed"},
+
+    {"id": "other-005", "query": "Instant Pot Duo vs Ninja Foodi", "category": "other", "region": "bahrain", "expect_bahrain_registry": false, "note": "category=other has only all-category bahrain sources (lulu/carrefour/geant); kitchen appliance"}
+  ]
+}
