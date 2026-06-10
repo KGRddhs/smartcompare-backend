@@ -51,7 +51,19 @@ except ImportError:
 
 
 DEFAULT_MATRIX = Path(__file__).resolve().parent.parent / ".qa-bias-rerun" / "bias_matrix_24.json"
+# A price is "gpt_training-priced" (the metric the bundle drives down) when it
+# fell through to a GPT estimate rather than a scraped/structured source. The
+# codebase stamps either the literal "estimated" or a specific gpt_* method
+# (gpt_training_estimate / gpt_organic_extract / ...). Scraped methods
+# (page_scrape*, firecrawl*, scrapedo*, *local_bhd, converted_usd, serper*)
+# do NOT count.
 _ESTIMATE_METHODS = {"estimated", "gpt_training_estimate", "gpt_estimate"}
+
+
+def _is_estimate_method(method) -> bool:
+    if not isinstance(method, str):
+        return False
+    return method in _ESTIMATE_METHODS or method.startswith("gpt_")
 
 
 def _price_routes(response: Dict[str, Any]) -> List[Optional[str]]:
@@ -110,7 +122,7 @@ async def _run_one(client: httpx.AsyncClient, base_url: str, entry: Dict[str, An
     out["source_methods"] = methods
     out["escalated"] = any(rt for rt in routes)
     out["has_registry_route"] = any(rt == "registry" for rt in routes)
-    out["estimated_count"] = sum(1 for m in methods if m in _ESTIMATE_METHODS)
+    out["estimated_count"] = sum(1 for m in methods if _is_estimate_method(m))
     out["product_count"] = len(methods)
     return out
 

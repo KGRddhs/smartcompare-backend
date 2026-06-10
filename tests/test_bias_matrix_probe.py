@@ -84,6 +84,21 @@ def test_estimate_methods_set_matches_enum():
     assert "page_scrape_jsonld" not in probe._ESTIMATE_METHODS
 
 
+def test_is_estimate_method_covers_estimated_and_gpt_prefix():
+    # Literal "estimated" + any gpt_* method count as GPT-priced.
+    assert probe._is_estimate_method("estimated") is True
+    assert probe._is_estimate_method("gpt_training_estimate") is True
+    assert probe._is_estimate_method("gpt_organic_extract") is True
+    # Scraped / structured methods do NOT count.
+    for scraped in ("page_scrape_jsonld", "firecrawl_brand_domain",
+                    "scrapedo_rendered", "converted_usd", "local_bhd",
+                    "serper_shopping", "confirmed_multi_source"):
+        assert probe._is_estimate_method(scraped) is False
+    # None / non-str safe.
+    assert probe._is_estimate_method(None) is False
+    assert probe._is_estimate_method(123) is False
+
+
 # ---------- matrix fixture integrity ----------
 
 def test_matrix_fixture_has_24_queries():
