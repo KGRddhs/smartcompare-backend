@@ -26,6 +26,7 @@ These items DO NOT block TestFlight internal testing (≤100 invited testers) �
 6. **Path-restricted commits in team sessions:** `git commit -m "msg" -- <paths>` — NOT `git commit -- <paths> -m "msg"` (the `--` is a path separator).
 7. **Push before deleting branches.** `git push` before `git branch -d`. Orphaned commits are recoverable via `git cherry-pick` from reflog within ~30 days but invisible to teammates.
 8. **Multi-agent stalls: escalate after 30 min OR 3 silent nudges.** 4-Opus teams stop processing inbox while staying "available". If silent >30 min with uncommitted state despite `SendMessage` nudges → dispatcher takeover. Earlier trigger: if 3+ consecutive nudges produce zero tool-call evidence (no commit, grep, file read), spawn replacement OR take over directly via dispatcher session. Direct takeover is faster when user explicitly authorizes. Pattern surfaced Session 47 + reinforced Bundle E S2 2026-05-30 (frontend-v2 stalled across #40/#42/#43/#44; direct dispatcher edit+commit+OTA closed multiple rounds).
+9. **Team comms (Bundle B S1): ACK-every-ruling from session START** — teammates check inbox between EVERY task and ACK dispatcher rulings before proceeding (2 of 5 agents built past unread corrections; diagnostic tell: a close-out that re-asks an answered question). Announce multi-turn runs ("suite going, ~10 min") before going quiet. Dispatcher verifies contested "complete" claims against the actual commit (`git show`), never the report. Before strike-counting an idle agent: fetch their branch + check WIP mtimes — idle can mean working.
 
 ## Critical: Two app/ Directories
 
@@ -73,7 +74,7 @@ IDE/LSP TS diagnostics on Windows are unreliable (`typescript-lsp` plugin bug, s
 ### Migrations
 Supabase DDL (`migrations/*.sql`): preferred path is **Supabase MCP** (`mcp__plugin_supabase_supabase__apply_migration`) — tracks migration history table. Fallback: [SQL Editor](https://supabase.com/dashboard/project/qulajmyxdbdkchvecmvc/sql/new). **Gotcha:** SQL Editor wraps multi-statement scripts in one transaction, so a failing view rolls back the ALTER TABLE before it — always verify schema after apply (`information_schema.columns`). Before `CREATE TABLE IF NOT EXISTS`, check existing schema — stale tables with different columns cause silent index/policy failures.
 
-Applied 010–026 (all via MCP since 013). Files in `migrations/*.sql`; rollbacks in `migrations/rollback/*.sql`. Load-bearing: **020** `comparisons.schema_version` (v1=legacy/hidden, v2=renderable; default 2 — gates history list/get filter). **021** `users.device_fingerprint_hash` + partial idx (anti-farming; matches `^[a-f0-9]{64}$`). **023** (Bundle B/C/D) drops `weekly_invites_used`, adds `lifetime_invites_consumed INT` — referral cap **3 LIFETIME per device**. **024** adds `'top_tier'` to `users.preferences.budget` CHECK enum (5-tier; backwards-compat).
+Applied 010–032 (all via MCP since 013; 027–032 = Bundle B B.1, dispatcher-applied 2026-06-10). Files in `migrations/*.sql`; rollbacks in `migrations/rollback/*.sql`. **Index predicates must be IMMUTABLE** — no `now()`/`CURRENT_*` in `CREATE INDEX ... WHERE` (passes syntax, fails at apply with 42P17; static guard `tests/test_migration_index_predicate_immutability.py` catches it; 028's canon composite is `idx_pwe_workflow_time`, never recreate `idx_pwe_recent`). When dispatcher corrects DDL at apply, re-align the repo SQL+rollback to the APPLIED schema immediately (verify live `pg_indexes` first). Load-bearing: **020** `comparisons.schema_version` (v1=legacy/hidden, v2=renderable; default 2 — gates history list/get filter). **021** `users.device_fingerprint_hash` + partial idx (anti-farming; matches `^[a-f0-9]{64}$`). **023** (Bundle B/C/D) drops `weekly_invites_used`, adds `lifetime_invites_consumed INT` — referral cap **3 LIFETIME per device**. **024** adds `'top_tier'` to `users.preferences.budget` CHECK enum (5-tier; backwards-compat).
 
 ## Architecture
 
@@ -181,7 +182,7 @@ Applied 010–026 (all via MCP since 013). Files in `migrations/*.sql`; rollback
 
 ### External APIs (use wisely — every call costs money)
 - **OpenAI GPT-4o-mini** — Spec/price/review extraction, product identification. Combine calls.
-- **Serper** — Google Search + Shopping API ($0.001/call). Don't search for what you already have. ~2,500 credits remaining (rotated 2026-02-28); cached = free, only `nocache=true` burns credits. Rotate via new free account at serper.dev.
+- **Serper** — Google Search + Shopping API ($0.001/call). Don't search for what you already have. Key `3d304e...` (rotated 2026-06-10 after mid-baseline depletion); cached = free, only `nocache=true` burns credits. **Rotation playbook:** new free account at serper.dev → set Railway env (CLI `railway variables --set`) + explicit `railway redeploy` + sync LOCAL `.env` and worktree copies in the same pass (local was found 2 rotations stale) → verify liveness via `GET /api/v1/text/prices/<product>` (NEVER a full compare — it rides the 30s cap edge and can't discriminate key-dead from slow-run) → resolve the Sentry Search-error issues with a root-cause comment. Budget caution: escalation-heavy cold queries burn ~10-15 credits each post-B.0 (bahrain discovery adds a call per product); a full 200-query eval ≈ 600–1,000 credits.
 - **Supabase** — PostgreSQL + Auth. Tables: users, comparisons, search_logs, product_* (specs/prices/reviews), comparison_feedback, user_events, user_usage, admin_audit_log, referral_invites/redemptions, bahrain_approved_drugs. Full schema in `migrations/010-026`.
 - **Upstash Redis** — Response caching (prices 24h, specs/reviews 7d).
 
@@ -325,6 +326,9 @@ python -m pytest tests/ -v --timeout=180
 - `conftest.py` auto-loads `.env` via python-dotenv.
 - ~100 test files (`test_<feature>.py`, one per service). 80%+ coverage target for new features.
 - No regressions: all existing tests must pass before merging.
+- **Eval gate (Bundle B B.6):** pre-merge `python -m scripts.eval_runner --subset smoke20 --mode regression --baseline-run-id 4aee8e88-da97-41b3-974b-3e75c2c9c10e` (S1 baseline = 21.0%). Measurement runs ALWAYS `--concurrency 1` (walls are load-sensitive); full-200 needs `--allow-full` + dispatcher GO (~600-1,000 Serper credits). Runbooks: `docs/runbooks/qaren-eval.md` + `qaren-gold-set.md`.
+- **Known RED-by-design:** `tests/test_value_math.py` (24 TDD stubs for unimplemented Bundle C v1.1 fns) — not a regression. Gate batches must exclude network-dependent "free" tests (e.g. `test_rate_limiting_complete.py` does a real GET).
+- **Windows codec trap:** always pass `encoding='utf-8'` to `subprocess.run`/`open`/`read_text` — `text=True` alone decodes cp1252 and manufactures mojibake from clean UTF-8 (bit 3 independent tools on 2026-06-10). Byte-compare BOTH sides before reporting any non-ASCII diff.
 
 ### Dependency Scanning (pre-deploy)
 ```bash
