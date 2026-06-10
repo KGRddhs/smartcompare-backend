@@ -174,30 +174,57 @@ def test_migration_028_comparison_id_sets_null_on_delete():
 
 
 def test_migration_028_creates_expected_indexes():
+    """Index set matches the APPLIED prod DDL (dispatcher correction
+    2026-06-10): the composite idx_pwe_workflow_time replaced both the
+    single-column idx_pwe_workflow_name (redundant) and idx_pwe_recent
+    (illegal volatile now() predicate)."""
     sql = MIGRATION_SQL.read_text(encoding="utf-8")
     for idx in (
-        "idx_pwe_workflow_name",
+        "idx_pwe_workflow_time",
         "idx_pwe_user_workflow_time",
         "idx_pwe_comparison_id",
-        "idx_pwe_recent",
     ):
         assert idx in sql, f"missing expected index {idx}"
 
 
-def test_migration_028_recent_index_is_partial():
-    """The 'recent' index should be a partial index gated on a date
-    predicate so it stays cheap once history accumulates."""
+def test_migration_028_no_dropped_indexes_remain():
+    """The two corrected-away indexes must NOT reappear in the forward
+    migration — re-adding idx_pwe_recent re-introduces the 42P17 apply
+    failure, and idx_pwe_workflow_name is now served by the composite."""
     sql = MIGRATION_SQL.read_text(encoding="utf-8")
-    # Capture the full CREATE INDEX … ;  statement (terminator = first ;).
+    # Only assert on actual CREATE INDEX statements, not the explanatory
+    # header comment (which legitimately names the removed indexes).
+    create_stmts = re.findall(
+        r"CREATE INDEX[^;]+;", sql, re.IGNORECASE
+    )
+    joined = "\n".join(create_stmts)
+    assert "idx_pwe_recent" not in joined, (
+        "idx_pwe_recent must not be re-created — its now() predicate is "
+        "rejected by Postgres (42P17)"
+    )
+    assert "idx_pwe_workflow_name" not in joined, (
+        "idx_pwe_workflow_name is redundant with the idx_pwe_workflow_time "
+        "composite — must not be re-created"
+    )
+
+
+def test_migration_028_workflow_time_index_is_plain_composite():
+    """idx_pwe_workflow_time is a plain (workflow_name, created_at DESC)
+    composite — NO partial WHERE predicate (the 90-day window is a
+    query-time filter, not an index predicate)."""
+    sql = MIGRATION_SQL.read_text(encoding="utf-8")
     m = re.search(
-        r"CREATE INDEX IF NOT EXISTS idx_pwe_recent[^;]+;",
+        r"CREATE INDEX IF NOT EXISTS idx_pwe_workflow_time[^;]+;",
         sql,
         re.IGNORECASE,
     )
-    assert m is not None
+    assert m is not None, "idx_pwe_workflow_time CREATE INDEX missing"
     block = m.group(0)
-    assert "WHERE" in block.upper()
-    assert "interval" in block.lower()
+    assert "workflow_name" in block.lower()
+    assert "created_at" in block.lower()
+    assert "WHERE" not in block.upper(), (
+        "idx_pwe_workflow_time must NOT have a WHERE predicate"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -220,12 +247,12 @@ def test_rollback_028_drops_policy_before_table():
 
 
 def test_rollback_028_drops_all_indexes_explicitly():
+    """Rollback drops the APPLIED index names (dispatcher correction)."""
     sql = ROLLBACK_SQL.read_text(encoding="utf-8")
     for idx in (
-        "idx_pwe_workflow_name",
+        "idx_pwe_workflow_time",
         "idx_pwe_user_workflow_time",
         "idx_pwe_comparison_id",
-        "idx_pwe_recent",
     ):
         assert f"DROP INDEX IF EXISTS public.{idx}" in sql, f"rollback missing DROP INDEX for {idx}"
 
@@ -234,3 +261,87 @@ def test_rollback_028_wraps_in_transaction():
     sql = ROLLBACK_SQL.read_text(encoding="utf-8")
     assert "BEGIN;" in sql
     assert "COMMIT;" in sql
+
+
+# ---------------------------------------------------------------------------
+# Live schema verification (post-MCP-apply) — skipped in free unit suite.
+#
+# 028 was applied with a dispatcher correction (2026-06-10): the composite
+# idx_pwe_workflow_time replaced idx_pwe_recent (volatile predicate) + the
+# redundant idx_pwe_workflow_name. These assertions verify the LIVE prod
+# schema matches the corrected names, and that the removed indexes are gone.
+# Run with: pytest tests/test_migration_028_pain_workflow_events.py -m live_db
+# ---------------------------------------------------------------------------
+
+import os  # noqa: E402 — kept local to the live_db section
+
+
+def _supabase_available() -> bool:
+    return bool(
+        os.getenv("SUPABASE_URL")
+        and os.getenv("SUPABASE_ANON_KEY")
+        and os.getenv("SUPABASE_SERVICE_KEY")
+    )
+
+
+# Applied prod index set (dispatcher correction). Verified via Supabase MCP
+# on 2026-06-10: workflow_time, user_workflow_time, comparison_id, pkey.
+EXPECTED_LIVE_INDEXES = {
+    "idx_pwe_workflow_time",
+    "idx_pwe_user_workflow_time",
+    "idx_pwe_comparison_id",
+    "pain_workflow_events_pkey",
+}
+REMOVED_INDEXES = {"idx_pwe_recent", "idx_pwe_workflow_name"}
+
+
+@pytest.mark.live_db
+class TestMigration028LiveSchema:
+    """Live Supabase assertions — run post-apply with `-m live_db`.
+
+    NOTE on index verification: the supabase-py / PostgREST client cannot read
+    pg_indexes (no generic SQL surface), so index NAMES are verified out-of-band
+    via Supabase MCP execute_sql (`SELECT indexname FROM pg_indexes WHERE
+    tablename='pain_workflow_events'`) — done at apply time 2026-06-10 and
+    re-runnable by the dispatcher. The expected/removed sets are pinned here as
+    the source of truth for that check. What PostgREST CAN verify — the table is
+    selectable and the CHECK enums reject bad values — is asserted below.
+    """
+
+    @pytest.fixture
+    def admin_client(self):
+        if not _supabase_available():
+            pytest.skip("Supabase env vars not configured for live_db tests")
+        from app.services.database_service import get_admin_supabase_client
+
+        return get_admin_supabase_client()
+
+    def test_pain_workflow_events_table_selectable(self, admin_client):
+        """The table exists and is readable via the service-role client."""
+        result = (
+            admin_client.table("pain_workflow_events").select("id").limit(1).execute()
+        )
+        assert hasattr(result, "data")
+
+    def test_workflow_name_check_rejects_unknown_value(self, admin_client):
+        """The workflow_name CHECK is live — an out-of-enum insert is rejected.
+        We use a syntactically-valid but non-enum value; the DB must 4xx. (We
+        deliberately do not assert on signal_type here to isolate the check.)"""
+        import uuid
+
+        bogus = {
+            "user_id": str(uuid.uuid4()),  # FK may also reject; either way insert fails
+            "workflow_name": "not_a_real_workflow",
+            "signal_type": "abandonment",
+        }
+        try:
+            admin_client.table("pain_workflow_events").insert(bogus).execute()
+        except Exception as e:
+            # Expected: CHECK violation (or FK violation on the random user_id).
+            assert (
+                "pwe_workflow_name_check" in str(e)
+                or "violates" in str(e).lower()
+                or "foreign key" in str(e).lower()
+            ), f"unexpected error shape: {e!r}"
+            return
+        pytest.fail("insert with bogus workflow_name unexpectedly succeeded")

@@ -82,9 +82,24 @@ CREATE POLICY pwe_own_select
 --   1) Workflow weight aggregator: SUM by workflow_name → date bucket
 --   2) Per-user pain history (analytics dashboard): user_id + workflow_name + time DESC
 --   3) Comparison-to-workflow join: comparison_id lookup
+--
+-- DISPATCHER CORRECTION 2026-06-10 (applied prod DDL): the original draft had
+-- a single-column idx_pwe_workflow_name AND a partial idx_pwe_recent gated on
+-- `WHERE created_at > now() - interval '90 days'`. Postgres rejects volatile
+-- functions in an index predicate (now() is STABLE, not IMMUTABLE → ERROR
+-- 42P17), so the whole transaction rolled back. The fix collapses both into a
+-- single composite idx_pwe_workflow_time (workflow_name, created_at DESC):
+--   * its leading column serves the workflow-weight aggregator (was
+--     idx_pwe_workflow_name — now redundant, dropped),
+--   * (workflow_name, created_at DESC) serves the recent-events scan via a
+--     normal `WHERE created_at > ...` at query time (was idx_pwe_recent — the
+--     90-day window is a query-time filter, not a partial-index predicate).
+-- Net: same query coverage, one fewer index, no volatile predicate. If index
+-- size ever matters at volume, revisit with BRIN or a scheduled reindex.
+-- This file now matches the live prod schema exactly.
 
-CREATE INDEX IF NOT EXISTS idx_pwe_workflow_name
-  ON public.pain_workflow_events (workflow_name);
+CREATE INDEX IF NOT EXISTS idx_pwe_workflow_time
+  ON public.pain_workflow_events (workflow_name, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_pwe_user_workflow_time
   ON public.pain_workflow_events (user_id, workflow_name, created_at DESC);
@@ -92,12 +107,6 @@ CREATE INDEX IF NOT EXISTS idx_pwe_user_workflow_time
 CREATE INDEX IF NOT EXISTS idx_pwe_comparison_id
   ON public.pain_workflow_events (comparison_id)
   WHERE comparison_id IS NOT NULL;
-
--- Partial index for the prior-aggregator job — recent events only.
--- Drops index size by ~90% once history accumulates beyond 90 days.
-CREATE INDEX IF NOT EXISTS idx_pwe_recent
-  ON public.pain_workflow_events (workflow_name, created_at DESC)
-  WHERE created_at > now() - interval '90 days';
 
 -- Documentation comments — visible via psql \d+ and Supabase dashboard.
 COMMENT ON TABLE public.pain_workflow_events IS

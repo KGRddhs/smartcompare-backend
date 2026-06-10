@@ -27,6 +27,7 @@ import {
   StreamingStage,
 } from './StreamingProductCard';
 import { LoadingTipsCarousel } from './LoadingTipsCarousel';
+import { trackEvent } from '../services/api';
 import { colors, spacing, typography } from '../theme';
 
 const STAGE_ORDER: StreamingStage[] = [
@@ -68,6 +69,18 @@ interface Props {
   tipsAfterMs?: number;
   /** 5 tips per design § 3 — parent injects locale-resolved strings. */
   tips?: string[];
+  /**
+   * Comparison id for pain-workflow events, when known. During streaming this
+   * is usually undefined (the row isn't saved yet) — events still record with
+   * a null comparison_id and the stage in event_data. B.1 F3.5.
+   */
+  comparisonId?: string;
+  /**
+   * Opt out of pain-workflow instrumentation (e.g. tests that don't want the
+   * /events network call). Defaults to on — the cards only emit on real user
+   * actions (expand tap / screenshot / abandon-before-verdict).
+   */
+  trackPainEvents?: boolean;
 }
 
 const DEFAULT_TIPS_AFTER_MS = 8000;
@@ -79,9 +92,21 @@ export function ResultsLoadingView({
   products,
   tipsAfterMs = DEFAULT_TIPS_AFTER_MS,
   tips,
+  comparisonId,
+  trackPainEvents = true,
 }: Props) {
   const { t } = useTranslation();
   const [showTips, setShowTips] = useState(false);
+
+  // Pain-workflow signal sink — threaded to every ghost card. Records the
+  // current SSE stage as context; comparison_id is usually null at loading
+  // time (the row isn't persisted yet). trackEvent is fire-and-forget and
+  // swallows errors, so this never affects the loading UX. B.1 F3.5.
+  const onPainSignal = trackPainEvents
+    ? (signal: 'spec_expand' | 'result_abandon' | 'screenshot') => {
+        trackEvent(signal, { stage: reachedStage }, comparisonId);
+      }
+    : undefined;
 
   useEffect(() => {
     const id = setTimeout(() => setShowTips(true), tipsAfterMs);
@@ -139,6 +164,7 @@ export function ResultsLoadingView({
                 stage={reachedStage}
                 product={products?.[idx] ?? { name }}
                 testID={`ghost-card-${idx}-card`}
+                onSignal={onPainSignal}
               />
             </View>
           ))}

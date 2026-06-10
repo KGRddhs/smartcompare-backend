@@ -21,9 +21,43 @@ VALID_MATTERED_MOST = [
     "price", "specs", "reviews", "brand", "value", "warranty", "ratings"
 ]
 
+# Allowlist of event_type values accepted by POST /events. This MUST be a
+# SUPERSET of every event_type the mobile app fires via trackEvent/trackEvents
+# (api.ts) — an unknown type 422-rejects the WHOLE batch, silently dropping
+# the events server-side. tests/test_events_allowlist_superset.py greps the FE
+# src/ call sites and fails if any literal event_type is missing here.
+#
+# NOTE: comparison_wall_time is intentionally NOT here — it is a Sentry
+# captureMessage (wallTimeInstrumentation.ts), not an /events write.
 VALID_EVENT_TYPES = [
+    # Generic / legacy.
     "save", "share", "source_click", "tab_switch",
-    "feedback_submit", "result_view_duration"
+    "feedback_submit", "result_view_duration",
+    # Home compare-entry funnel (Bundle B two-input UX, HomeScreen.tsx).
+    "compare_entry_view",
+    "compare_entry_paywall_banner_view",
+    "compare_entry_paywall_banner_tap",
+    "compare_entry_content_block",
+    "compare_entry_submit",
+    "compare_entry_paste_split",
+    "compare_entry_mode_autoswitch",
+    "compare_entry_ready",
+    # Results screen (ResultsScreen.tsx) — share funnel + demographics modal.
+    "share_sheet_opened",
+    "share_completed",
+    "demographics_submitted",
+    "demographics_dismissed",
+    # Onboarding funnel (OnboardingScreen.tsx / onboarding/OnboardingFlow.tsx).
+    "onboarding_started",
+    "onboarding_step_completed",
+    "onboarding_completed",
+    # Bundle B B.1 (F3.5) — pain-workflow signals emitted from the mobile
+    # StreamingProductCard. These land in user_events; the backend
+    # pain_workflow derivation (B.2, pain_workflow_service) maps them onto
+    # pain_workflow_events.signal_type later.
+    "spec_expand",      # user expanded the spec list past the 3-row preview (too_many_specs)
+    "result_abandon",   # card unmounted before the verdict stage (abandonment mid-stream)
+    "screenshot",       # user screenshotted the comparison (share-intent / decision-capture)
 ]
 
 MAX_BATCH_SIZE = 50

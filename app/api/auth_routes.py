@@ -769,7 +769,7 @@ async def save_preferences(
 
     preferences["_sources"] = _flip_inferred_sources(preferences, existing_prefs)
 
-    result = await save_user_preferences(user_id, preferences)
+    result = await save_user_preferences(user_id, preferences, change_source="manual_edit")
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to save preferences"))
     return result
@@ -994,7 +994,7 @@ async def save_demographics(
     if cohort_svc.should_seed(existing_prefs):
         seeded = cohort_svc.seed_preferences(payload)
         if seeded:
-            await save_user_preferences(user_id, seeded)
+            await save_user_preferences(user_id, seeded, change_source="cohort_default")
 
     return {
         "success": True,

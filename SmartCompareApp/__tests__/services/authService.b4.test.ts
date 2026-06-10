@@ -71,12 +71,16 @@ jest.mock(
 
 // Sentry mock left in place even though authService no longer calls it on
 // the no-nonce path — defensive against future re-adds firing breadcrumbs
-// we'd want to assert on.
+// we'd want to assert on. authService's Google error paths call
+// Sentry.captureMessage (B4 diagnostics), so the mock MUST export it or the
+// suite throws "captureMessage is not a function". B.1 F3.6.
 const mockAddBreadcrumb = jest.fn();
+const mockCaptureMessage = jest.fn();
 jest.mock(
   '@sentry/react-native',
   () => ({
     addBreadcrumb: (...args: unknown[]) => mockAddBreadcrumb(...args),
+    captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
     captureException: jest.fn(),
     init: jest.fn(),
   }),
@@ -227,7 +231,12 @@ describe('signInWithGoogle — session persistence + error paths', () => {
     const result = await signInWithGoogle();
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('Authentication failed');
+    // B4 diagnostic instrumentation is intentionally still in authService.ts
+    // (Google Sign-In remains under investigation — CLAUDE.md Known Bugs).
+    // The backend-reject path wraps the server reason in a [B4-DIAG] string
+    // rather than returning the bare reason; assert on the stable parts.
+    expect(result.error).toContain('[B4-DIAG] backend rejected token');
+    expect(result.error).toContain('Authentication failed');
     // No SecureStore write attempted when success=false.
     expect(saveTokenSpy).not.toHaveBeenCalled();
   });
@@ -238,7 +247,10 @@ describe('signInWithGoogle — session persistence + error paths', () => {
     const result = await signInWithGoogle();
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('Failed to get Google ID token');
+    // No-idToken path returns the [B4-DIAG] diagnostic (intentionally still in
+    // authService.ts pending Google Sign-In resolution). Assert the stable
+    // prefix rather than the full dynamic message.
+    expect(result.error).toContain('[B4-DIAG] no idToken from native SDK');
     // No POST attempted when token absent.
     expect(mockFetch).not.toHaveBeenCalled();
   });

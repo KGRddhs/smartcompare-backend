@@ -8,6 +8,8 @@ from typing import Optional, Dict
 from supabase import create_client, Client
 
 from app.services.cache_service import redis_client
+from app.services.database_service import record_preference_history
+from app.utils.async_utils import fire_and_forget
 
 logger = logging.getLogger(__name__)
 
@@ -448,13 +450,26 @@ async def get_user_preferences(user_id: str) -> Dict:
         return {"success": False, "error": "Failed to load preferences"}
 
 
-async def save_user_preferences(user_id: str, preferences: Dict) -> Dict:
+async def save_user_preferences(
+    user_id: str,
+    preferences: Dict,
+    change_source: str = "manual_edit",
+) -> Dict:
     """Save user preferences and mark preferences_completed=true.
 
     Uses the service-role admin client by design — `users` has RLS, and
     the same row UPDATE works under either admin or user-scoped clients,
     but admin avoids token-refresh races during onboarding (Bundle D
     Task 1.B.2 investigation 2026-05-23 — see commit message).
+
+    After a successful UPDATE, fire-and-forget a snapshot into
+    user_preference_history (Migration 029, Bundle B B.1) so the eval loop
+    can correlate preference changes with verdict quality over time.
+    `change_source` identifies which path produced the change (PUT
+    /preferences edit -> 'manual_edit'; cohort modal seed ->
+    'cohort_default'). The history write is non-blocking and fail-soft:
+    a failure there never affects the preferences save itself, and it only
+    fires on the success path so a failed UPDATE leaves no phantom snapshot.
     """
     try:
         admin = get_admin_client()
@@ -462,6 +477,10 @@ async def save_user_preferences(user_id: str, preferences: Dict) -> Dict:
             "preferences": preferences,
             "preferences_completed": True,
         }).eq("id", user_id).execute()
+        fire_and_forget(
+            record_preference_history(user_id, preferences, change_source),
+            "record_preference_history",
+        )
         return {"success": True, "message": "Preferences saved"}
     except Exception as e:
         # Bundle D Task 1.B.2 — log exception class + repr so Sentry shows

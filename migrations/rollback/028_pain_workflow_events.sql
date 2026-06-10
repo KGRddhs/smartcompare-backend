@@ -20,11 +20,13 @@ BEGIN;
 DROP POLICY IF EXISTS pwe_own_select ON public.pain_workflow_events;
 
 -- Indexes are dropped automatically when the table is dropped, but
--- explicit DROP makes the rollback diff easier to read.
-DROP INDEX IF EXISTS public.idx_pwe_recent;
+-- explicit DROP makes the rollback diff easier to read. Names match the
+-- applied prod DDL (dispatcher correction 2026-06-10): the composite
+-- idx_pwe_workflow_time replaced both idx_pwe_recent (volatile predicate)
+-- and idx_pwe_workflow_name (redundant) — see the forward migration header.
+DROP INDEX IF EXISTS public.idx_pwe_workflow_time;
 DROP INDEX IF EXISTS public.idx_pwe_comparison_id;
 DROP INDEX IF EXISTS public.idx_pwe_user_workflow_time;
-DROP INDEX IF EXISTS public.idx_pwe_workflow_name;
 
 DROP TABLE IF EXISTS public.pain_workflow_events;
 
