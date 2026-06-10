@@ -208,9 +208,10 @@ def test_weighted_winner_dominates_marginal():
 # Gold-truth integrity (the file we'll actually run against)
 # ---------------------------------------------------------------------------
 
-def test_gold_truth_has_50_queries():
+def test_gold_truth_has_200_queries():
+    # Bundle B F5: gold set expanded 50 -> 200 (50 original + 150 new).
     gold = json.loads((REPO_ROOT / "data" / "validation_gold_truth.json").read_text(encoding="utf-8"))
-    assert len(gold["queries"]) == 50
+    assert len(gold["queries"]) == 200
 
 
 def test_gold_truth_queries_unique_ids():
@@ -229,7 +230,7 @@ def test_gold_truth_covers_all_9_categories():
 def test_gold_truth_metadata_block():
     gold = json.loads((REPO_ROOT / "data" / "validation_gold_truth.json").read_text(encoding="utf-8"))
     meta = gold["_metadata"]
-    assert meta["queries"] == 50
+    assert meta["queries"] == 200  # Bundle B F5: expanded 50 -> 200
     assert meta["pass_threshold_per_query"] == 0.80
     assert meta["gate_aggregate_pass_rate"] == 0.80
     assert meta["price_tolerance_pct"] == 15.0
