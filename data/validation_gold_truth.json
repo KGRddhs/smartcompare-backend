@@ -1550,10 +1550,10 @@
       "region": "bahrain",
       "expected_prices": {
         "product_0": {
-          "min": 180,
-          "max": 320,
+          "min": 150,
+          "max": 340,
           "currency": "BHD",
-          "note": "bahrain.sharafdg.com + goldenbahrain.com price list — Carrier splits BHD 163.5+ floor; 1.5T inverter mid-band"
+          "note": "bahrain.sharafdg.com Carrier Inverter 53QHCT12DN OptiMax 1.5HP split listing (verified retailer); band widened — goldenbahrain.com floor disclaims price accuracy so NOT relied on (F5 re-check vs F1 registry rejection); cross-ref shopalmoayyed.com inverter tier ~260 BHD"
         },
         "product_1": {
           "min": 150,
@@ -1598,7 +1598,7 @@
           "min": 160,
           "max": 280,
           "currency": "BHD",
-          "note": "bahrain.sharafdg.com Midea 1.5T MST4MB218HRN1 (18000 BTU inverter R410A) + goldenbahrain.com Midea BHD 150+ floor"
+          "note": "bahrain.sharafdg.com Midea 1.5T MST4MB218HRN1 (18000 BTU inverter R410A) verified listing — primary anchor; goldenbahrain.com floor NOT relied on (disclaims accuracy, F1 rejected from registry); band brackets cross-ref shopalmoayyed.com inverter tier ~260 BHD"
         }
       },
       "expected_specs": {
@@ -1629,16 +1629,16 @@
       "region": "bahrain",
       "expected_prices": {
         "product_0": {
-          "min": 200,
-          "max": 360,
+          "min": 180,
+          "max": 400,
           "currency": "BHD",
-          "note": "goldenbahrain.com Daikin splits BHD 165.25+ floor; 1.5T inverter premium-band Bahrain"
+          "note": "bahrain.sharafdg.com Daikin 1.5T FTN20AV1K (18000 BTU) verified listing; shopalmoayyed.com (Daikin's official Bahrain distributor) inverter tier cross-ref ~260 BHD for 1.5T. Band WIDENED — goldenbahrain.com floor NOT relied on (disclaims price accuracy, F1 rejected from registry, F5 re-check); Daikin premium 1.5T runs ~250-380 BHD GCC"
         },
         "product_1": {
-          "min": 180,
-          "max": 340,
+          "min": 170,
+          "max": 360,
           "currency": "BHD",
-          "note": "goldenbahrain.com LG splits BHD 159.5+ floor; bahrain.sharafdg.com LG 1.5T I23TCP listing"
+          "note": "bahrain.sharafdg.com LG 1.5T I23TCP verified listing — primary anchor; goldenbahrain.com floor NOT relied on (disclaims accuracy, F1 rejected); cross-ref shopalmoayyed.com inverter split tier"
         }
       },
       "expected_specs": {
