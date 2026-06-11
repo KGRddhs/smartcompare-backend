@@ -1277,7 +1277,12 @@ Primary concern: {concern}
                     {"role": "user", "content": user_msg}
                 ],
                 max_tokens=1000,
-                temperature=0.2,
+                # S2 Decision D — temperature=0 on the VERDICT call. I4 A/B
+                # (docs/plans/2026-06-12-s2-shadow-results.md, temp0 arm) proved
+                # it recovers the entire winner-variance bucket (18/18 on
+                # bias45) at zero cost/latency. VERDICT ONLY — specs/price/
+                # reviews/parser temperatures are unchanged.
+                temperature=0,
                 response_format={"type": "json_object"},
             )
         except Exception as primary_err:  # noqa: BLE001
@@ -1295,7 +1300,7 @@ Primary concern: {concern}
                         {"role": "user", "content": user_msg}
                     ],
                     max_tokens=1000,
-                    temperature=0.2,
+                    temperature=0,  # S2 Decision D — verdict call (fallback path)
                     response_format={"type": "json_object"},
                 )
             else:
