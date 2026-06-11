@@ -55,10 +55,10 @@ class ScoringV2(BaseModel):
 
     @model_validator(mode="after")
     def _validate_dimensions_invariants(self) -> "ScoringV2":
-        if len(self.dimensions) > 6:
+        if len(self.dimensions) > 8:
             raise ValueError(
-                f"dimensions[] has {len(self.dimensions)} entries — max 6 allowed "
-                f"(3 core + 0..3 contextual)"
+                f"dimensions[] has {len(self.dimensions)} entries — max 8 allowed "
+                f"(3 core + 0..5 contextual)"
             )
         core_keys = {d.key for d in self.dimensions if d.is_core}
         if core_keys != CORE_DIMENSION_KEYS:

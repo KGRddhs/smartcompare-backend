@@ -2400,12 +2400,14 @@ def build_dimensions_v2(
     same_category = cat_a == cat_b and cat_a is not None
     if same_category and category in CATEGORY_DIMENSIONS:
         # CATEGORY_DIMENSIONS[category] is exactly 6 keys; pick the first
-        # 3 that aren't already covered by the core price/reviews/value
-        # builders so the v2 tab caps at 6 rows total.
+        # 5 that aren't already covered by the core price/reviews/value
+        # builders so the v2 tab caps at 8 rows total (3 core + 5
+        # contextual). S2 I3.4 (Decision A, 2026-06-11) raised the cap
+        # 6→8 so electronics surfaces ecosystem + futureproof rows.
         core_covered = {"price", "value", "reviews"}
         added = 0
         for dim_key in CATEGORY_DIMENSIONS[category]:
-            if added >= 3:
+            if added >= 5:
                 break
             # Strip the `_score` suffix to compare against the core keys.
             public = dim_key[:-6] if dim_key.endswith("_score") else dim_key
@@ -2433,4 +2435,4 @@ def build_dimensions_v2(
     # dim's own scores + confidence, sub-threshold → None (no phantom tie).
     for d in dims:
         d["winner"] = _dim_winner(d.get("score_a"), d.get("score_b"), d.get("confidence"))
-    return dims[:6]
+    return dims[:8]
