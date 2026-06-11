@@ -2622,8 +2622,24 @@ class StructuredComparisonService:
             # post-fetch (registry-first `score_source >= 1.5`, legacy whitelist
             # fallback) before entering the pool. Dispatcher invariant #1.
             official_domain = get_official_domain(full_name)
-            retailer_query = f"{full_name} farfetch OR ssense OR net-a-porter"
-            gcc_query = f"{full_name} ounass OR bloomingdales dubai OR namshi"
+            # I5.5 (Bundle B S2) — category-aware authorized/gcc discovery.
+            # These were hard-coded FASHION/luxury strings (farfetch/ssense/
+            # net-a-porter + ounass/bloomingdales/namshi) sent for EVERY
+            # category — nonsense for an AC. Build them from the registry per
+            # category instead: an AC now looks at noon/amazon.ae/sharafdg
+            # (gcc electronics) + brand officials (global tier), while fashion
+            # still gets ounass/bloomingdales/tryano (its own gcc tier).
+            # Counterfeit safety unchanged — every candidate is still gated
+            # post-fetch by score_source >= 1.5. Defensive fallback to the bare
+            # product name keeps the discovery slot non-empty for any category
+            # with no sources in a tier (noon/amazon.ae are all-category, so in
+            # practice both tiers are always non-empty).
+            retailer_query = build_site_discovery_query(
+                full_name, category, tier="global", limit=8
+            ) or full_name
+            gcc_query = build_site_discovery_query(
+                full_name, category, tier="gcc", limit=8
+            ) or full_name
 
             discovery_tasks = []
             # Bahrain registry discovery FIRST (gated by has_budget("serper")
