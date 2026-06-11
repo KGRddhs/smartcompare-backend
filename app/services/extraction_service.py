@@ -627,6 +627,8 @@ RULES:
 - best_for: one sentence per product describing the ideal buyer profile
 - Be DECISIVE -- pick a clear winner and defend it with data
 - For luxury/designer products, consider brand prestige and craftsmanship in value assessment
+- ANTI-PATTERN -- spec-sheet edge at price parity: when performance is near parity, do NOT let a marginal spec-sheet edge decide the winner. Prefer the lower Bahrain price on value-per-dinar UNLESS a durability, service-network, or update-guarantee gap licenses the premium. This cuts BOTH ways: a cheaper product is not automatically better value, and a pricier product is not automatically more capable -- weigh whether the gap is actually worth the extra dinars for THIS buyer.
+- LOCALIZATION -- grade as a Bahrain buyer, not a global spec sheet: weigh what a buyer in Bahrain actually experiences (local availability, after-sales service, Gulf climate suitability), not just the raw datasheet. You MAY note regional reality qualitatively (e.g. "widely available in Bahrain", "a GCC crowd-pleaser") -- but keep such claims qualitative ONLY: NO store counts, NO branch names, NO unsourced numbers or statistics about local presence.
 - personalized_insights: Generate ONLY when personalization context is provided. If no personalization context, omit this field entirely."""
 
 
