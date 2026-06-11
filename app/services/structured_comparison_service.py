@@ -557,6 +557,7 @@ from app.services.image_service import get_product_image_url
 from app.services.source_router import (
     build_site_discovery_query,
     score_source,
+    source_usage,
 )
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -871,6 +872,10 @@ def _harvest_candidate_urls(
             link = item.get("link", "")
             if not link or not validate_scrape_url(link):
                 continue
+            # S2 I2.5 — review-only registry domains carry no prices; keep them
+            # out of the price scrape pool (usage in price/both only).
+            if source_usage(link, category) == "review":
+                continue
             weight = score_source(link, category)
             if weight >= 1.5:
                 link_domain = urlparse(link).netloc.replace("www.", "").lower()
@@ -899,6 +904,8 @@ def _harvest_candidate_urls(
                 link = item.get("link", "")
                 if not link:
                     continue
+                if source_usage(link, category) == "review":
+                    continue  # S2 I2.5 — review-only domain, no prices
                 link_domain = urlparse(link).netloc.replace("www.", "")
                 weight = score_source(link, category)
                 if weight >= 1.5:
@@ -917,6 +924,8 @@ def _harvest_candidate_urls(
                 link = item.get("link", "")
                 if not link:
                     continue
+                if source_usage(link, category) == "review":
+                    continue  # S2 I2.5 — review-only domain, no prices
                 link_domain = urlparse(link).netloc.replace("www.", "")
                 weight = score_source(link, category)
                 if weight >= 1.5:

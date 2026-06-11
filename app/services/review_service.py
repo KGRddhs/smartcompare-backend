@@ -343,3 +343,78 @@ async def fetch_retailer_quotes(
     if quotes:
         set_cached(cache_key, {"quotes": quotes}, _RETAILER_QUOTES_CACHE_TTL)
     return quotes
+
+
+# ---------- S2 I2.5: review-content consultation from usage="review" sources ----------
+
+# Cache per product 14d — editorial review content is stable.
+_REVIEW_SOURCE_CACHE_TTL = 14 * 24 * 60 * 60
+
+
+def _review_source_cache_key(brand: str, name: str, variant: str | None, category: str) -> str:
+    parts = [brand or "", name or "", variant or "", category or ""]
+    return "review_source_snippets:" + "|".join(p.strip().lower() for p in parts)
+
+
+async def fetch_review_source_snippets(
+    brand: str,
+    name: str,
+    variant: str | None,
+    category: str,
+    track_serper_cost_fn=None,
+) -> list:
+    """S2 I2.5 — consult registry sources flagged usage in ("review","both")
+    for editorial review snippets (e.g. the Arabic GCC sources sayidaty.net /
+    khaleejtimes.com / gulfnews.com for beauty/fashion).
+
+    ONE Serper `site:`-filtered organic search across the category's review
+    sources. Budget-gated (`has_budget("serper")`), cached per product 14d.
+    Returns a list of ``{domain, text}`` (max 3) or ``[]`` on miss / no review
+    sources / budget-exhausted / timeout — NEVER raises, NEVER critical-path.
+    The caller wraps this in asyncio.wait_for so a slow Serper call cannot drag
+    the reviews race past its budget.
+    """
+    from app.services.source_router import get_sources_for_category
+
+    review_sources = get_sources_for_category(category, usage="review")
+    if not review_sources:
+        return []  # category has no review-content sources — no-op
+
+    cache_key = _review_source_cache_key(brand, name, variant, category)
+    cached = get_cached(cache_key)
+    if cached and isinstance(cached, dict) and isinstance(cached.get("snippets"), list):
+        return cached["snippets"]
+
+    if not has_budget("serper"):
+        logger.info("[I2.5] review-source consult skipped — serper budget exhausted")
+        return []
+
+    domains = [s.domain for s in review_sources][:5]
+    site_filter = " OR ".join(f"site:{d}" for d in domains)
+    product_query = f"{brand} {name} {variant or ''} review".strip()
+    query = f"{product_query} {site_filter}".strip()
+
+    try:
+        result = await search_web(query, num_results=6)
+        record_usage("serper")
+        if track_serper_cost_fn:
+            track_serper_cost_fn()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[I2.5] review-source consult fetch failed: %s", e)
+        return []
+
+    organic = (result or {}).get("organic", []) or []
+    snippets = []
+    for item in organic:
+        snippet = (item.get("snippet") or "").strip()
+        if len(snippet) < 20:
+            continue
+        link = item.get("link", "") or ""
+        link_domain = urlparse(link).netloc.replace("www.", "").lower()
+        snippets.append({"domain": link_domain, "text": snippet})
+        if len(snippets) >= 3:
+            break
+
+    if snippets:
+        set_cached(cache_key, {"snippets": snippets}, _REVIEW_SOURCE_CACHE_TTL)
+    return snippets
