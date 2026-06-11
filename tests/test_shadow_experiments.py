@@ -353,3 +353,363 @@ def test_aggregate_arm_excludes_errored_from_cost_and_latency():
     assert r.mean_cost_usd == pytest.approx(0.008)
     assert r.mean_verdict_ms == 1500.0
     assert r.n_covered == 2
+
+
+# ---------------------------------------------------------------------------
+# Pricing
+# ---------------------------------------------------------------------------
+
+def test_call_cost_usd_gpt4o():
+    # (1000 * 2.50 + 500 * 10.00) / 1e6 = 0.0075
+    assert se.call_cost_usd("gpt-4o", 1000, 500) == pytest.approx(0.0075)
+
+
+def test_call_cost_usd_mini():
+    # (1000 * 0.15 + 1000 * 0.60) / 1e6 = 0.00075
+    assert se.call_cost_usd("gpt-4o-mini", 1000, 1000) == pytest.approx(0.00075)
+
+
+def test_call_cost_usd_o3_mini():
+    # (1000 * 1.10 + 1000 * 4.40) / 1e6 = 0.0055
+    assert se.call_cost_usd("o3-mini", 1000, 1000) == pytest.approx(0.0055)
+
+
+def test_call_cost_usd_unknown_model_falls_back_to_mini():
+    assert se.call_cost_usd("ghost-model", 1000, 1000) == pytest.approx(0.00075)
+
+
+def test_multiagent_cost_split_prices_each_leg_at_own_rate():
+    # 3 mini analysts: 3000 pt + 600 ct ; 4o editor: 2000 pt + 400 ct
+    res = se.ArmCallResult(
+        verdict={"winner_index": 0, "_shadow_cost_split": {
+            "gpt-4o-mini": {"pt": 3000, "ct": 600},
+            "gpt-4o": {"pt": 2000, "ct": 400},
+        }},
+        prompt_tokens=5000, completion_tokens=1000, model="multiagent",
+    )
+    mini = se.call_cost_usd("gpt-4o-mini", 3000, 600)
+    editor = se.call_cost_usd("gpt-4o", 2000, 400)
+    assert se._arm_call_cost(res) == pytest.approx(mini + editor)
+
+
+def test_arm_call_cost_single_model_uses_model_rate():
+    res = se.ArmCallResult(verdict={"winner_index": 1}, prompt_tokens=1000,
+                           completion_tokens=500, model="gpt-4o")
+    assert se._arm_call_cost(res) == pytest.approx(0.0075)
+
+
+# ---------------------------------------------------------------------------
+# build_verdict_inputs skip paths (L2 + scoring mocked — no DB, no network)
+# ---------------------------------------------------------------------------
+
+def _gold(queries):
+    return {"_metadata": {"axis_weights": {
+        "price_accuracy": 0.25, "specs_correctness": 0.25,
+        "winner_correctness": 0.30, "factual_claim_integrity": 0.20}},
+        "queries": queries}
+
+
+def test_build_verdict_inputs_skips_error_and_missing(monkeypatch, tmp_path):
+    gold = _gold([
+        {"id": "ok-1", "query": "Apple iPhone 15 vs Samsung Galaxy S24",
+         "category": "electronics", "region": "bahrain",
+         "expected_winner_index": 0, "forbidden_facts": []},
+        {"id": "err-1", "query": "X vs Y", "category": "electronics"},
+        {"id": "nosplit-1", "query": "single product", "category": "electronics"},
+    ])
+    baseline = {
+        "ok-1": {"error": None, "price_pass": True, "specs_score": 1.0,
+                 "winner_pass": False, "factual_pass": True},
+        "err-1": {"error": "http_400", "price_pass": False, "specs_score": 0.0,
+                  "winner_pass": False, "factual_pass": False},
+        "nosplit-1": {"error": None, "price_pass": True, "specs_score": 1.0,
+                      "winner_pass": False, "factual_pass": True},
+    }
+    # Mock L2 to return matchable rows for the electronics products.
+    l2_rows = [
+        {"brand": "Apple", "name": "iPhone 15", "variant": None,
+         "category": "electronics", "specs": {"os": "iOS"}, "reviews": {},
+         "price": {"amount": 300.0, "currency": "BHD"}},
+        {"brand": "Samsung", "name": "Galaxy S24", "variant": None,
+         "category": "electronics", "specs": {"os": "Android"}, "reviews": {},
+         "price": {"amount": 280.0, "currency": "BHD"}},
+    ]
+    monkeypatch.setattr(se, "_fetch_l2_rows_for_category", lambda cat: l2_rows)
+    monkeypatch.setattr(se, "_compute_scores_summary_offline", lambda pd: "SCORES")
+
+    built, skipped = se.build_verdict_inputs(gold, baseline, ["ok-1", "err-1", "nosplit-1"])
+    assert [b.id for b in built] == ["ok-1"]
+    assert built[0].scores_summary == "SCORES"
+    assert built[0].product_data[0]["full_name"] == "Apple iPhone 15"
+    reasons = {s["id"]: s["reason"] for s in skipped}
+    assert reasons["err-1"].startswith("baseline_error")
+    assert reasons["nosplit-1"] == "unsplittable_query"
+
+
+def test_build_verdict_inputs_skips_l2_unmatched(monkeypatch):
+    gold = _gold([{"id": "u-1", "query": "Obscure Thing vs Other Thing",
+                   "category": "other", "region": "bahrain",
+                   "expected_winner_index": 1, "forbidden_facts": []}])
+    baseline = {"u-1": {"error": None, "price_pass": True, "specs_score": 1.0,
+                        "winner_pass": False, "factual_pass": True}}
+    # L2 has nothing matching.
+    monkeypatch.setattr(se, "_fetch_l2_rows_for_category", lambda cat: [])
+    monkeypatch.setattr(se, "_compute_scores_summary_offline", lambda pd: "")
+    built, skipped = se.build_verdict_inputs(gold, baseline, ["u-1"])
+    assert built == []
+    assert skipped[0]["reason"] == "l2_unmatched"
+    assert skipped[0]["matched_a"] is False
+
+
+def test_build_verdict_inputs_caches_l2_per_category(monkeypatch):
+    gold = _gold([
+        {"id": "e-1", "query": "Apple iPhone 15 vs Samsung Galaxy S24",
+         "category": "electronics", "region": "bahrain",
+         "expected_winner_index": 0, "forbidden_facts": []},
+        {"id": "e-2", "query": "Apple iPhone 15 vs Samsung Galaxy S24",
+         "category": "electronics", "region": "bahrain",
+         "expected_winner_index": 0, "forbidden_facts": []},
+    ])
+    baseline = {
+        "e-1": {"error": None, "price_pass": True, "specs_score": 1.0,
+                "winner_pass": False, "factual_pass": True},
+        "e-2": {"error": None, "price_pass": True, "specs_score": 1.0,
+                "winner_pass": False, "factual_pass": True},
+    }
+    rows = [
+        {"brand": "Apple", "name": "iPhone 15", "variant": None,
+         "category": "electronics", "specs": {}, "reviews": {}, "price": None},
+        {"brand": "Samsung", "name": "Galaxy S24", "variant": None,
+         "category": "electronics", "specs": {}, "reviews": {}, "price": None},
+    ]
+    calls = {"n": 0}
+
+    def _fetch(cat):
+        calls["n"] += 1
+        return rows
+
+    monkeypatch.setattr(se, "_fetch_l2_rows_for_category", _fetch)
+    monkeypatch.setattr(se, "_compute_scores_summary_offline", lambda pd: "")
+    built, _ = se.build_verdict_inputs(gold, baseline, ["e-1", "e-2"])
+    assert len(built) == 2
+    assert calls["n"] == 1  # electronics L2 fetched ONCE, reused for e-2
+
+
+# ---------------------------------------------------------------------------
+# inputs round-trip
+# ---------------------------------------------------------------------------
+
+def test_verdict_inputs_jsonl_roundtrip(tmp_path):
+    vi = se.VerdictInput(
+        id="t-1", category="electronics", query="A vs B", region="bahrain",
+        comparison_type="value", expected_winner_index=1, forbidden_facts=["x"],
+        product_data=[{"brand": "A"}, {"brand": "B"}], scores_summary="S",
+        baseline_price_pass=True, baseline_specs_score=0.5,
+        baseline_winner_pass=False, baseline_factual_pass=True,
+    )
+    p = tmp_path / "in.jsonl"
+    se.write_verdict_inputs([vi], p)
+    loaded = se.read_verdict_inputs(p)
+    assert len(loaded) == 1
+    assert loaded[0].id == "t-1"
+    assert loaded[0].forbidden_facts == ["x"]
+    assert loaded[0].product_data[1]["brand"] == "B"
+
+
+# ---------------------------------------------------------------------------
+# Report formatting
+# ---------------------------------------------------------------------------
+
+def test_write_evidence_report_emits_table_and_blocks(tmp_path):
+    base = se.aggregate_arm("baseline_4o", [
+        se.ArmGrade(id="a", category="x", price_pass=True, specs_score=1.0,
+                    winner_pass=False, factual_pass=True, weighted_score=0.7,
+                    passing=False, baseline_winner_pass=False, baseline_weighted=0.7,
+                    winner_flipped_to_correct=False, winner_flipped_to_wrong=False,
+                    verdict_ms=1000, cost_usd=0.0075),
+    ])
+    o3 = se.aggregate_arm("o3_mini", [
+        se.ArmGrade(id="a", category="x", price_pass=True, specs_score=1.0,
+                    winner_pass=True, factual_pass=True, weighted_score=1.0,
+                    passing=True, baseline_winner_pass=False, baseline_weighted=0.7,
+                    winner_flipped_to_correct=True, winner_flipped_to_wrong=False,
+                    verdict_ms=2200, cost_usd=0.0055),
+    ])
+    out = tmp_path / "results.md"
+    se.write_evidence_report({"baseline_4o": base, "o3_mini": o3}, out,
+                             coverage_note="covered 1 of 1")
+    text = out.read_text(encoding="utf-8")
+    assert "Lane I4 Shadow Experiment Results" in text
+    assert "| baseline_4o |" in text
+    assert "| o3_mini |" in text
+    assert "covered 1 of 1" in text
+    # delta line present in the o3 block
+    assert "vs baseline_4o:" in text
+
+
+def test_format_arm_report_shows_delta_vs_baseline():
+    base = se.aggregate_arm("baseline_4o", [
+        se.ArmGrade(id="a", category="x", price_pass=True, specs_score=1.0,
+                    winner_pass=False, factual_pass=True, weighted_score=0.7,
+                    passing=False, baseline_winner_pass=False, baseline_weighted=0.7,
+                    winner_flipped_to_correct=False, winner_flipped_to_wrong=False,
+                    verdict_ms=1000, cost_usd=0.0075),
+    ])
+    arm = se.aggregate_arm("reviews_trim", [
+        se.ArmGrade(id="a", category="x", price_pass=True, specs_score=1.0,
+                    winner_pass=True, factual_pass=True, weighted_score=1.0,
+                    passing=True, baseline_winner_pass=False, baseline_weighted=0.7,
+                    winner_flipped_to_correct=True, winner_flipped_to_wrong=False,
+                    verdict_ms=800, cost_usd=0.0050),
+    ])
+    block = se.format_arm_report(arm, baseline=base)
+    assert "vs baseline_4o:" in block
+    assert "latency -200ms" in block
+
+
+# ---------------------------------------------------------------------------
+# Arm call mechanics with a MOCKED OpenAI client (no live calls, no $)
+# ---------------------------------------------------------------------------
+
+class _FakeUsage:
+    def __init__(self, pt, ct):
+        self.prompt_tokens = pt
+        self.completion_tokens = ct
+        self.total_tokens = pt + ct
+
+
+class _FakeMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class _FakeChoice:
+    def __init__(self, content):
+        self.message = _FakeMessage(content)
+
+
+class _FakeResponse:
+    def __init__(self, content, pt=1000, ct=300):
+        self.choices = [_FakeChoice(content)]
+        self.usage = _FakeUsage(pt, ct)
+
+
+class _FakeChatCompletions:
+    def __init__(self, content_by_model):
+        self.content_by_model = content_by_model
+        self.calls = []
+
+    async def create(self, **kwargs):
+        self.calls.append(kwargs)
+        model = kwargs["model"]
+        content = self.content_by_model.get(model, '{"winner_index": 0}')
+        return _FakeResponse(content)
+
+
+class _FakeChat:
+    def __init__(self, completions):
+        self.completions = completions
+
+
+class _FakeClient:
+    def __init__(self, content_by_model):
+        self.chat = _FakeChat(_FakeChatCompletions(content_by_model))
+
+
+def _one_input(expected=1):
+    return se.VerdictInput(
+        id="t-1", category="electronics", query="A vs B", region="bahrain",
+        comparison_type="value", expected_winner_index=expected, forbidden_facts=[],
+        product_data=[{"brand": "A", "name": "1", "specs": {}, "reviews": {}},
+                      {"brand": "B", "name": "2", "specs": {}, "reviews": {}}],
+        scores_summary="A leads reviews 8 to 6",
+        baseline_price_pass=True, baseline_specs_score=1.0,
+        baseline_winner_pass=False, baseline_factual_pass=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_arm_baseline_4o_mocked_grades_winner_flip(monkeypatch):
+    # mock the system-prompt builder so we don't import the heavy prompt stack
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+    client = _FakeClient({"gpt-4o": '{"winner_index": 1, "winner_reason": "A wins by 2"}'})
+    report = await se.run_arm("baseline_4o", [_one_input(expected=1)],
+                              weights=_WEIGHTS, concurrency=2, client=client)
+    assert report.n_covered == 1
+    assert report.arm_winner_rate == 1.0
+    assert report.net_winner_flips == 1
+    # cost metered from fake usage (1000 pt + 300 ct at gpt-4o rate)
+    assert report.mean_cost_usd == pytest.approx(se.call_cost_usd("gpt-4o", 1000, 300))
+    # the call actually requested json_object on gpt-4o
+    call = client.chat.completions.calls[0]
+    assert call["model"] == "gpt-4o"
+    assert call["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+async def test_arm_o3_mini_uses_max_completion_tokens_no_temperature(monkeypatch):
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+    client = _FakeClient({"o3-mini": '{"winner_index": 0}'})
+    await se.run_arm("o3_mini", [_one_input(expected=0)], weights=_WEIGHTS, client=client)
+    call = client.chat.completions.calls[0]
+    assert call["model"] == "o3-mini"
+    # reasoning-model contract: max_completion_tokens, NO temperature/max_tokens
+    assert "max_completion_tokens" in call
+    assert "temperature" not in call
+    assert "max_tokens" not in call
+
+
+@pytest.mark.asyncio
+async def test_arm_multiagent_runs_four_calls_and_blends_cost(monkeypatch):
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+    # 3 mini analysts + 1 4o editor
+    client = _FakeClient({
+        "gpt-4o-mini": "spec/price/review note",
+        "gpt-4o": '{"winner_index": 1, "winner_reason": "synthesis"}',
+    })
+    report = await se.run_arm("multiagent", [_one_input(expected=1)],
+                              weights=_WEIGHTS, client=client)
+    # 4 calls total: 3 analysts (mini) + 1 editor (4o)
+    models = [c["model"] for c in client.chat.completions.calls]
+    assert models.count("gpt-4o-mini") == 3
+    assert models.count("gpt-4o") == 1
+    assert report.arm_winner_rate == 1.0
+    # blended cost = 3x mini(1000/300) + 1x 4o(1000/300)
+    expected_cost = 3 * se.call_cost_usd("gpt-4o-mini", 1000, 300) \
+        + se.call_cost_usd("gpt-4o", 1000, 300)
+    assert report.mean_cost_usd == pytest.approx(expected_cost)
+    # the cost-split helper must NOT leak into the graded verdict prose
+    assert "_shadow_cost_split" not in str(report.per_query[0].__dict__)
+
+
+@pytest.mark.asyncio
+async def test_arm_error_is_captured_not_raised(monkeypatch):
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+
+    class _BoomCompletions:
+        async def create(self, **kwargs):
+            raise RuntimeError("openai 500")
+
+    client = _FakeClient({})
+    client.chat.completions = _BoomCompletions()
+    report = await se.run_arm("baseline_4o", [_one_input()],
+                              weights=_WEIGHTS, client=client)
+    assert report.n_errors == 1
+    assert report.per_query[0].error is not None
+    # errored row contributes zero cost + is excluded from latency mean
+    assert report.total_cost_usd == 0.0
+
+
+@pytest.mark.asyncio
+async def test_arm_reviews_trim_truncates_review_payload(monkeypatch):
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+    vi = _one_input(expected=0)
+    # give product 0 a large reviews blob so the trim has something to cut
+    vi.product_data[0]["reviews"] = {"consensus": "x" * 5000}
+    client = _FakeClient({"gpt-4o": '{"winner_index": 0}'})
+    await se.run_arm("reviews_trim", [vi], weights=_WEIGHTS, client=client)
+    call = client.chat.completions.calls[0]
+    # the trimmed user message must be shorter than an untrimmed serialization
+    user_msg = call["messages"][1]["content"]
+    assert "x" * 2500 not in user_msg or len(user_msg) < 6000
+    assert call["max_tokens"] == 600

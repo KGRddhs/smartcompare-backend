@@ -520,3 +520,725 @@ def aggregate_arm(arm: str, grades: List[ArmGrade]) -> ArmReport:
         n_errors=sum(1 for g in grades if g.error is not None),
         per_query=grades,
     )
+
+
+# ---------------------------------------------------------------------------
+# OpenAI pricing (per 1M tokens) — published rates, applied to METERED token
+# counts. Token counts are stored alongside the derived cost so the dollar
+# figure is reconstructible if a rate changes. Mirrors openai_service.py's
+# gpt-4o-mini convention ($0.15 in / $0.60 out).
+# ---------------------------------------------------------------------------
+
+MODEL_PRICING_PER_1M: Dict[str, Tuple[float, float]] = {
+    # model: (input_usd_per_1M, output_usd_per_1M)
+    "gpt-4o": (2.50, 10.00),
+    "gpt-4o-mini": (0.15, 0.60),
+    "o3-mini": (1.10, 4.40),
+}
+
+
+def call_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """Dollar cost of one call from metered token counts + the published rate.
+    Unknown models fall back to gpt-4o-mini pricing (and log a warning)."""
+    rate = MODEL_PRICING_PER_1M.get(model)
+    if rate is None:
+        logger.warning("[shadow] no pricing for model %s — using gpt-4o-mini rate", model)
+        rate = MODEL_PRICING_PER_1M["gpt-4o-mini"]
+    in_rate, out_rate = rate
+    return (prompt_tokens * in_rate + completion_tokens * out_rate) / 1_000_000
+
+
+# ---------------------------------------------------------------------------
+# L2 input reconstruction (the `prepare` step — DB reads only, ZERO Serper)
+# ---------------------------------------------------------------------------
+
+def _fetch_l2_rows_for_category(category: str) -> List[Dict[str, Any]]:
+    """Join product_specs + product_reviews + latest product_price for every
+    L2 product in a category, returning rows the matcher can search.
+
+    Reads via the service-role admin client (database_service). Reviews/price
+    are LEFT-joined: a product with specs but no reviews still appears (the
+    verdict tolerates empty reviews). Price is the most-recent bahrain row."""
+    from app.services.database_service import get_admin_supabase_client
+
+    client = get_admin_supabase_client()
+    specs_resp = (
+        client.table("product_specs")
+        .select("product_key, brand, name, variant, category, specs, fetched_at")
+        .eq("category", category)
+        .order("fetched_at", desc=True)
+        .execute()
+    )
+    specs_rows = specs_resp.data or []
+
+    # Build review + price lookups keyed by product_key (one DB round-trip each).
+    keys = [r["product_key"].replace("specs:", "") for r in specs_rows]
+    reviews_by_brandname: Dict[str, Dict[str, Any]] = {}
+    rev_resp = (
+        client.table("product_reviews")
+        .select("brand, name, variant, reviews, fetched_at")
+        .order("fetched_at", desc=True)
+        .execute()
+    )
+    for rr in (rev_resp.data or []):
+        bn = _norm(f"{rr.get('brand', '')} {rr.get('name', '')}")
+        reviews_by_brandname.setdefault(bn, rr.get("reviews") or {})
+
+    price_resp = (
+        client.table("product_prices")
+        .select("brand, name, variant, region, amount, currency, retailer, "
+                "url, source_method, estimated, fetched_at")
+        .eq("region", "bahrain")
+        .order("fetched_at", desc=True)
+        .execute()
+    )
+    price_by_brandname: Dict[str, Dict[str, Any]] = {}
+    for pr in (price_resp.data or []):
+        bn = _norm(f"{pr.get('brand', '')} {pr.get('name', '')}")
+        if bn in price_by_brandname:
+            continue  # keep the freshest only
+        price_by_brandname[bn] = {
+            "amount": float(pr["amount"]) if pr.get("amount") is not None else None,
+            "currency": pr.get("currency"),
+            "retailer": pr.get("retailer"),
+            "url": pr.get("url"),
+            "source_method": pr.get("source_method"),
+            "estimated": pr.get("estimated") or False,
+        }
+
+    out: List[Dict[str, Any]] = []
+    seen: set = set()
+    for sr in specs_rows:
+        bn = _norm(f"{sr.get('brand', '')} {sr.get('name', '')}")
+        if bn in seen:
+            continue  # freshest specs row per product only
+        seen.add(bn)
+        out.append({
+            "brand": sr.get("brand"),
+            "name": sr.get("name"),
+            "variant": sr.get("variant"),
+            "category": sr.get("category"),
+            "specs": sr.get("specs") or {},
+            "reviews": reviews_by_brandname.get(bn, {}),
+            "price": price_by_brandname.get(bn),
+        })
+    return out
+
+
+def _compute_scores_summary_offline(product_data: List[Dict[str, Any]]) -> str:
+    """Run the REAL deterministic scoring_service over the reconstructed
+    product_data and build the scores_summary string the verdict consumes.
+    Fully offline ($0) — scoring is pure arithmetic over specs/price/reviews."""
+    from app.services.scoring_service import get_scoring_service
+
+    svc = get_scoring_service()
+    scoring_result = svc.compute_scores(product_data)
+    names = [f"{p.get('brand', '')} {p.get('name', '')}".strip() for p in product_data]
+    return svc.build_scores_summary(scoring_result, names)
+
+
+def build_verdict_inputs(
+    gold: Dict[str, Any],
+    baseline: Dict[str, Dict[str, Any]],
+    ids: Sequence[str],
+) -> Tuple[List[VerdictInput], List[Dict[str, Any]]]:
+    """Reconstruct VerdictInput records for the requested ids from L2 + gold.
+
+    Returns (built_inputs, skipped) where skipped carries a reason per id that
+    could not be reconstructed (unmatched product, unsplittable query, missing
+    baseline). NEVER half-fabricates — an unmatched product skips the whole id.
+    Caches L2 rows per category so each category is read once."""
+    gold_by_id = {q["id"]: q for q in gold.get("queries", [])}
+    l2_cache: Dict[str, List[Dict[str, Any]]] = {}
+    built: List[VerdictInput] = []
+    skipped: List[Dict[str, Any]] = []
+
+    for qid in ids:
+        gold_rec = gold_by_id.get(qid)
+        base_rec = baseline.get(qid)
+        if gold_rec is None:
+            skipped.append({"id": qid, "reason": "no_gold_record"})
+            continue
+        if base_rec is None:
+            skipped.append({"id": qid, "reason": "no_baseline_grade"})
+            continue
+        if base_rec.get("error") is not None:
+            skipped.append({"id": qid, "reason": f"baseline_error:{base_rec['error']}"})
+            continue
+
+        split = _split_products_from_query(gold_rec["query"])
+        if split is None:
+            skipped.append({"id": qid, "reason": "unsplittable_query"})
+            continue
+        phrase_a, phrase_b = split
+        category = gold_rec.get("category", "other")
+
+        if category not in l2_cache:
+            try:
+                l2_cache[category] = _fetch_l2_rows_for_category(category)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("[shadow] L2 fetch failed for category %s: %s", category, exc)
+                l2_cache[category] = []
+        rows = l2_cache[category]
+
+        row_a = match_l2_product(phrase_a, category, rows)
+        row_b = match_l2_product(phrase_b, category, rows)
+        product_data = assemble_product_data(qid, gold_rec, row_a, row_b)
+        if product_data is None:
+            skipped.append({
+                "id": qid,
+                "reason": "l2_unmatched",
+                "matched_a": bool(row_a),
+                "matched_b": bool(row_b),
+                "phrase_a": phrase_a,
+                "phrase_b": phrase_b,
+            })
+            continue
+
+        try:
+            scores_summary = _compute_scores_summary_offline(product_data)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[shadow] scores_summary failed for %s: %s", qid, exc)
+            scores_summary = ""
+
+        built.append(VerdictInput(
+            id=qid,
+            category=category,
+            query=gold_rec["query"],
+            region=gold_rec.get("region", "bahrain"),
+            comparison_type=gold_rec.get("comparison_type", "value"),
+            expected_winner_index=gold_rec.get("expected_winner_index"),
+            forbidden_facts=gold_rec.get("forbidden_facts") or [],
+            product_data=product_data,
+            scores_summary=scores_summary,
+            baseline_price_pass=bool(base_rec.get("price_pass")),
+            baseline_specs_score=float(base_rec.get("specs_score") or 0.0),
+            baseline_winner_pass=bool(base_rec.get("winner_pass")),
+            baseline_factual_pass=bool(base_rec.get("factual_pass")),
+        ))
+    return built, skipped
+
+
+def write_verdict_inputs(inputs: List[VerdictInput], path: Path | str) -> None:
+    """Cache reconstructed inputs to jsonl so `run` is fully offline of the DB."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        for vi in inputs:
+            fh.write(json.dumps(vi.to_json(), ensure_ascii=False) + "\n")
+
+
+def read_verdict_inputs(path: Path | str) -> List[VerdictInput]:
+    path = Path(path)
+    out: List[VerdictInput] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            out.append(VerdictInput.from_json(json.loads(line)))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Verdict arms (the `run` step — the ONLY part that calls OpenAI)
+# ---------------------------------------------------------------------------
+#
+# An arm is `async (VerdictInput) -> ArmCallResult`. Each arm varies exactly
+# one thing about the verdict call (model, agent structure, review-context
+# size). They share the production verdict CONTRACT: build the system prompt
+# the same way generate_comparison does (COMPARISON_SYSTEM + personality +
+# pain-workflow), wrap product_data in the same <USER_INPUT> envelope, request
+# json_object, parse winner_index + prose. This keeps every arm an honest
+# swap of the one variable, not a different prompt.
+
+@dataclasses.dataclass
+class ArmCallResult:
+    verdict: Dict[str, Any]
+    prompt_tokens: int
+    completion_tokens: int
+    model: str
+    error: Optional[str] = None
+
+
+def _build_verdict_system_prompt(vi: VerdictInput) -> str:
+    """Mirror generate_comparison's system-prompt composition (extraction_
+    service.py:1175-1216) so arms grade the production reasoning, not a
+    bespoke prompt. Personality + pain-workflow + scoring-context blocks."""
+    from app.services.extraction_service import COMPARISON_SYSTEM
+    from app.services.prompt_personalities import build_personality_prompt
+
+    system_msg = COMPARISON_SYSTEM
+    system_msg += build_personality_prompt(vi.category)
+    try:
+        from app.services.pain_workflow_loader import (
+            build_pain_workflow_block,
+            build_decision_style_block,
+        )
+        system_msg += build_pain_workflow_block(None)
+        system_msg += build_decision_style_block(None)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[shadow] pain_workflow injection failed: %s", exc)
+
+    if vi.scores_summary:
+        system_msg += f"""
+
+## Scoring Context
+{vi.scores_summary}
+
+## Verdict Requirements
+1. WINNER REASON: State the winner with the score margin in under 20 words. Cite the single most important numeric advantage.
+2. KEY TRADEOFF: Name the other product's strongest advantage -- what the user gives up by choosing the winner.
+3. VALUE CONTEXT: Explain the value proposition. If cross-tier, acknowledge that each serves a different market segment -- do NOT penalize luxury for being expensive.
+4. BEST FOR: One sentence per product describing the ideal buyer.
+
+Your verdict MUST be consistent with the scores above. If Product A wins on reviews, your text must reflect that. Do NOT contradict the scoring data.
+If this is a cross-tier comparison, frame it as "different products for different needs" rather than "expensive vs cheap."
+"""
+    return system_msg
+
+
+def _build_verdict_user_msg(vi: VerdictInput,
+                            review_context_chars: Optional[int] = None) -> str:
+    """The <USER_INPUT> envelope generate_comparison sends. review_context_chars
+    optionally trims each product's reviews payload (the I4.4 reviews-trim
+    lever — measured against the untrimmed baseline arm)."""
+    pd = [dict(p) for p in vi.product_data]
+    if review_context_chars is not None:
+        for p in pd:
+            reviews = p.get("reviews")
+            if isinstance(reviews, dict):
+                # Serialize, truncate, keep as a string so the model still sees
+                # the leading (most salient) review content but fewer tokens.
+                blob = json.dumps(reviews, ensure_ascii=False)
+                if len(blob) > review_context_chars:
+                    p["reviews"] = blob[:review_context_chars]
+    return f"""<USER_INPUT>
+PRODUCT 1:
+{json.dumps(pd[0], indent=2)}
+
+PRODUCT 2:
+{json.dumps(pd[1], indent=2)}
+
+User's region: {vi.region}
+Primary concern: {vi.comparison_type}
+</USER_INPUT>"""
+
+
+def _parse_verdict_json(content: str) -> Dict[str, Any]:
+    """Parse the model's JSON verdict, tolerating ``` fences (generate_
+    comparison:1278-1283)."""
+    result = (content or "").strip()
+    if result.startswith("```"):
+        result = result.split("```")[1]
+        if result.startswith("json"):
+            result = result[4:]
+    return json.loads(result)
+
+
+async def _chat_json(client, model: str, system_msg: str, user_msg: str,
+                     *, max_tokens: int = 1000,
+                     temperature: float = 0.2) -> Tuple[Dict[str, Any], int, int]:
+    """One json_object chat call. Returns (parsed, prompt_tokens, completion_tokens).
+
+    o3-mini is a reasoning model: it rejects `temperature` and uses
+    `max_completion_tokens` instead of `max_tokens`. Branch on the model
+    family so the same helper drives every arm."""
+    kwargs: Dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg},
+        ],
+        "response_format": {"type": "json_object"},
+    }
+    if model.startswith("o3") or model.startswith("o1") or model.startswith("o4"):
+        # Reasoning models: no temperature, token budget is max_completion_tokens,
+        # and reasoning tokens eat into it — give headroom over the 4o budget.
+        kwargs["max_completion_tokens"] = max(max_tokens * 4, 4000)
+    else:
+        kwargs["max_tokens"] = max_tokens
+        kwargs["temperature"] = temperature
+    resp = await client.chat.completions.create(**kwargs)
+    content = resp.choices[0].message.content
+    usage = getattr(resp, "usage", None)
+    pt = getattr(usage, "prompt_tokens", 0) if usage else 0
+    ct = getattr(usage, "completion_tokens", 0) if usage else 0
+    return _parse_verdict_json(content), pt, ct
+
+
+async def arm_baseline_4o(vi: VerdictInput, client) -> ArmCallResult:
+    """Control arm: gpt-4o verdict — the production verdict model. Re-running
+    it (rather than reusing the baseline grade) controls for temperature
+    variance + L2-reconstructed-input drift, so every other arm is compared
+    on an apples-to-apples re-run, not against the original prod response."""
+    system_msg = _build_verdict_system_prompt(vi)
+    user_msg = _build_verdict_user_msg(vi)
+    try:
+        verdict, pt, ct = await _chat_json(client, "gpt-4o", system_msg, user_msg)
+        return ArmCallResult(verdict, pt, ct, "gpt-4o")
+    except Exception as exc:  # noqa: BLE001
+        return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
+
+
+async def arm_o3_mini(vi: VerdictInput, client) -> ArmCallResult:
+    """I4.2 — o3-mini verdict on identical inputs. Promotion bar: quality-up
+    AND cost-neutral-or-better vs arm_baseline_4o."""
+    system_msg = _build_verdict_system_prompt(vi)
+    user_msg = _build_verdict_user_msg(vi)
+    try:
+        verdict, pt, ct = await _chat_json(client, "o3-mini", system_msg, user_msg)
+        return ArmCallResult(verdict, pt, ct, "o3-mini")
+    except Exception as exc:  # noqa: BLE001
+        return ArmCallResult({}, 0, 0, "o3-mini", error=f"{type(exc).__name__}:{exc}")
+
+
+async def arm_reviews_trim(vi: VerdictInput, client) -> ArmCallResult:
+    """I4.4 Decision-D lever: trim review context ([:2500] chars) on the gpt-4o
+    verdict. Measured against arm_baseline_4o on winner/factual + latency.
+    NOTE: this measures the verdict-stage effect of the trim only; the
+    pipeline-wide -1-2s wall claim (extract_reviews max_tokens 1000->600) is an
+    UPSTREAM change I5 owns — flagged in the report as out-of-harness-scope."""
+    system_msg = _build_verdict_system_prompt(vi)
+    user_msg = _build_verdict_user_msg(vi, review_context_chars=2500)
+    try:
+        verdict, pt, ct = await _chat_json(client, "gpt-4o", system_msg, user_msg,
+                                           max_tokens=600)
+        return ArmCallResult(verdict, pt, ct, "gpt-4o")
+    except Exception as exc:  # noqa: BLE001
+        return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
+
+
+# --- Multi-agent arm (I4.3): 3 mini analysts + 4o editor --------------------
+
+_ANALYST_PROMPTS = {
+    "spec": "You are a SPECIFICATIONS analyst. Given two products, write 2-3 "
+            "terse factual sentences comparing ONLY their specs/performance for "
+            "a Bahrain buyer. Cite concrete numbers. No verdict, no price talk.",
+    "price": "You are a PRICE/VALUE analyst. Given two products with Bahrain "
+             "prices, write 2-3 terse sentences on value-per-dinar. State which "
+             "is cheaper and whether the premium (if any) is justified. No final verdict.",
+    "review": "You are a REVIEW-CONSENSUS analyst. Given two products' review "
+              "summaries, write 2-3 terse sentences on what real owners say. "
+              "Note durability/satisfaction signals. No verdict.",
+}
+
+
+async def _run_analyst(client, role: str, vi: VerdictInput) -> Tuple[str, int, int]:
+    """One gpt-4o-mini analyst pass. Returns (text, prompt_tok, completion_tok)."""
+    user_msg = _build_verdict_user_msg(vi)
+    resp = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": _ANALYST_PROMPTS[role]},
+            {"role": "user", "content": user_msg},
+        ],
+        max_tokens=200,
+        temperature=0.2,
+    )
+    usage = getattr(resp, "usage", None)
+    pt = getattr(usage, "prompt_tokens", 0) if usage else 0
+    ct = getattr(usage, "completion_tokens", 0) if usage else 0
+    return (resp.choices[0].message.content or ""), pt, ct
+
+
+async def arm_multiagent(vi: VerdictInput, client) -> ArmCallResult:
+    """I4.3 — 3x gpt-4o-mini analysts (spec/price/review) run in parallel, then
+    a gpt-4o editor synthesizes the final verdict JSON from their notes + the
+    scores. Promotion bar: >=5% lift vs arm_baseline_4o. Envelope rule: this
+    (+~$0.005) and self-critique cannot BOTH promote inside $0.015."""
+    try:
+        analyst_results = await asyncio.gather(
+            _run_analyst(client, "spec", vi),
+            _run_analyst(client, "price", vi),
+            _run_analyst(client, "review", vi),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return ArmCallResult({}, 0, 0, "multiagent", error=f"analyst:{type(exc).__name__}:{exc}")
+
+    analyst_notes = {
+        "spec_analysis": analyst_results[0][0],
+        "price_analysis": analyst_results[1][0],
+        "review_analysis": analyst_results[2][0],
+    }
+    analyst_pt = sum(r[1] for r in analyst_results)
+    analyst_ct = sum(r[2] for r in analyst_results)
+
+    editor_system = _build_verdict_system_prompt(vi) + """
+
+## Analyst Notes
+You are the EDITOR. Three specialist analysts have reviewed these products.
+Synthesize their notes (below) + the scoring context into the final verdict
+JSON. Weigh value-per-dinar and Bahrain-market reality, not just the spec sheet.
+"""
+    editor_user = f"""<ANALYST_NOTES>
+{json.dumps(analyst_notes, indent=2)}
+</ANALYST_NOTES>
+
+{_build_verdict_user_msg(vi)}"""
+    try:
+        verdict, ed_pt, ed_ct = await _chat_json(client, "gpt-4o", editor_system, editor_user)
+    except Exception as exc:  # noqa: BLE001
+        return ArmCallResult({}, analyst_pt, analyst_ct, "multiagent",
+                             error=f"editor:{type(exc).__name__}:{exc}")
+
+    # Cost is the SUM across all 4 calls; we report it as a blended multiagent
+    # cost by pricing each leg at its own model rate (done in run_arm via the
+    # per-leg token split). Here we return aggregate tokens tagged "multiagent"
+    # and stash the split for accurate pricing.
+    total_pt = analyst_pt + ed_pt
+    total_ct = analyst_ct + ed_ct
+    result = ArmCallResult(verdict, total_pt, total_ct, "multiagent")
+    # Attach the per-model token split for precise blended pricing.
+    result.verdict.setdefault("_shadow_cost_split", {
+        "gpt-4o-mini": {"pt": analyst_pt, "ct": analyst_ct},
+        "gpt-4o": {"pt": ed_pt, "ct": ed_ct},
+    })
+    return result
+
+
+ARMS: Dict[str, Callable] = {
+    "baseline_4o": arm_baseline_4o,
+    "o3_mini": arm_o3_mini,
+    "reviews_trim": arm_reviews_trim,
+    "multiagent": arm_multiagent,
+}
+
+
+def _arm_call_cost(res: ArmCallResult) -> float:
+    """Dollar cost of an arm call. Multiagent prices each leg at its own model
+    rate via the _shadow_cost_split stashed in the verdict; single-model arms
+    price the metered tokens at the arm's model rate."""
+    split = res.verdict.get("_shadow_cost_split") if isinstance(res.verdict, dict) else None
+    if split:
+        total = 0.0
+        for model, tok in split.items():
+            total += call_cost_usd(model, tok.get("pt", 0), tok.get("ct", 0))
+        return total
+    return call_cost_usd(res.model, res.prompt_tokens, res.completion_tokens)
+
+
+async def run_arm(arm_name: str, inputs: List[VerdictInput], *,
+                  weights: Dict[str, float], concurrency: int = 4,
+                  client=None) -> ArmReport:
+    """Run one arm over the reconstructed inputs and grade each result.
+
+    concurrency bounds parallel OpenAI calls. The eval-runner gold grader is
+    single-source — winner+factual re-graded, price+specs inherited."""
+    arm_fn = ARMS[arm_name]
+    own_client = client is None
+    if own_client:
+        from app.services.extraction_service import get_client
+        client = get_client()
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _one(vi: VerdictInput) -> ArmGrade:
+        async with semaphore:
+            start = time.monotonic()
+            res = await arm_fn(vi, client)
+            verdict_ms = int((time.monotonic() - start) * 1000)
+        cost = _arm_call_cost(res) if res.error is None else 0.0
+        # Strip the cost-split helper before grading so it never leaks into prose.
+        if isinstance(res.verdict, dict):
+            res.verdict.pop("_shadow_cost_split", None)
+        return grade_arm_verdict(
+            vi, res.verdict, verdict_ms=verdict_ms, cost_usd=cost,
+            weights=weights, error=res.error,
+        )
+
+    grades = await asyncio.gather(*[_one(vi) for vi in inputs])
+    return aggregate_arm(arm_name, list(grades))
+
+
+# ---------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------
+
+def format_arm_report(report: ArmReport, *, baseline: Optional[ArmReport] = None) -> str:
+    """Human-readable per-arm block for the console + evidence doc."""
+    lines = [
+        f"## arm: {report.arm}",
+        f"covered={report.n_covered}  passing={report.n_passing} "
+        f"({report.pass_rate:.1%})  errors={report.n_errors}",
+        f"winner: baseline_rate={report.baseline_winner_rate:.3f} -> "
+        f"arm_rate={report.arm_winner_rate:.3f}  "
+        f"flips +{report.winner_flips_to_correct}/-{report.winner_flips_to_wrong} "
+        f"(net {report.net_winner_flips:+d})",
+        f"axes: price={report.axis_avg_price:.3f} specs={report.axis_avg_specs:.3f} "
+        f"winner={report.axis_avg_winner:.3f} factual={report.axis_avg_factual:.3f}",
+        f"cost: mean=${report.mean_cost_usd:.5f}/call total=${report.total_cost_usd:.4f}",
+        f"latency(verdict-call): mean={report.mean_verdict_ms:.0f}ms "
+        f"p50={report.p50_verdict_ms}ms p95={report.p95_verdict_ms}ms",
+    ]
+    if baseline is not None and report.arm != baseline.arm:
+        d_winner = report.axis_avg_winner - baseline.axis_avg_winner
+        d_factual = report.axis_avg_factual - baseline.axis_avg_factual
+        d_cost = report.mean_cost_usd - baseline.mean_cost_usd
+        d_ms = report.mean_verdict_ms - baseline.mean_verdict_ms
+        lines.append(
+            f"vs {baseline.arm}: winner {d_winner:+.3f}  factual {d_factual:+.3f}  "
+            f"cost {d_cost:+.5f}/call  latency {d_ms:+.0f}ms"
+        )
+    return "\n".join(lines)
+
+
+def write_evidence_report(reports: Dict[str, ArmReport], path: Path | str, *,
+                          baseline_arm: str = "baseline_4o",
+                          coverage_note: str = "") -> None:
+    """Write the I4.5 per-arm evidence markdown (feeds the G5 promotion review).
+
+    Promotion bars (from the plan §4):
+      - o3_mini: quality-up AND cost-neutral-or-better vs baseline_4o
+      - multiagent: >=5% winner lift vs baseline_4o
+      - reviews_trim: adopt only if winner/factual hold AND latency improves
+    """
+    path = Path(path)
+    base = reports.get(baseline_arm)
+    lines: List[str] = [
+        "# Bundle B S2 — Lane I4 Shadow Experiment Results",
+        "",
+        f"> Generated by `scripts/shadow_experiments.py`. Grading via the "
+        f"eval_runner gold graders (winner + factual re-graded from each arm's "
+        f"verdict; price + specs inherited from the S1 baseline grade — a "
+        f"verdict swap cannot move the extraction-set axes). Baseline anchor: "
+        f"eval_runs `4aee8e88` (21.0% weighted).",
+        "",
+        "## Coverage",
+        coverage_note or "_(coverage note not supplied)_",
+        "",
+        "## Summary table",
+        "",
+        "| arm | covered | winner rate | net flips | factual | mean $/call | mean verdict ms | promotion bar |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    _bars = {
+        "baseline_4o": "control (gpt-4o, prod model)",
+        "o3_mini": "quality-up AND cost <=baseline",
+        "multiagent": ">=5% winner lift",
+        "reviews_trim": "winner+factual hold AND latency down",
+    }
+    for arm_name, r in reports.items():
+        lines.append(
+            f"| {arm_name} | {r.n_covered} | {r.arm_winner_rate:.3f} | "
+            f"{r.net_winner_flips:+d} | {r.axis_avg_factual:.3f} | "
+            f"${r.mean_cost_usd:.5f} | {r.mean_verdict_ms:.0f} | {_bars.get(arm_name, '')} |"
+        )
+    lines.append("")
+    for arm_name, r in reports.items():
+        lines.append(format_arm_report(r, baseline=base))
+        lines.append("")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def _resolve_ids(gold: Dict[str, Any], baseline: Dict[str, Dict[str, Any]],
+                 subset: str) -> List[str]:
+    if subset == "bias45":
+        return select_bias45(baseline)
+    if subset == "graded200":
+        return select_graded200(baseline)
+    if subset == "smoke20":
+        sub_path = REPO_ROOT / "data" / "eval_smoke_subset.json"
+        ids = set(json.loads(sub_path.read_text(encoding="utf-8")).get("ids") or [])
+        # only the http-200 smoke ids are reconstructable
+        return [i for i in ids if baseline.get(i, {}).get("error") is None]
+    raise ValueError(f"unknown subset {subset!r}")
+
+
+def _cmd_prepare(args) -> int:
+    gold = load_gold_truth(args.gold)
+    baseline = load_baseline_grades(args.baseline)
+    ids = _resolve_ids(gold, baseline, args.subset)
+    print(f"# prepare: subset={args.subset} candidate_ids={len(ids)} (offline, no Serper/OpenAI)")
+    inputs, skipped = build_verdict_inputs(gold, baseline, ids)
+    write_verdict_inputs(inputs, args.out)
+    print(f"# reconstructed {len(inputs)} verdict inputs -> {args.out}")
+    if skipped:
+        print(f"# skipped {len(skipped)}:")
+        by_reason: Dict[str, int] = {}
+        for s in skipped:
+            key = s["reason"].split(":")[0]
+            by_reason[key] = by_reason.get(key, 0) + 1
+        for reason, n in sorted(by_reason.items(), key=lambda kv: -kv[1]):
+            print(f"#   {reason}: {n}")
+        if args.skipped_out:
+            Path(args.skipped_out).write_text(
+                "\n".join(json.dumps(s, ensure_ascii=False) for s in skipped),
+                encoding="utf-8",
+            )
+            print(f"# skipped detail -> {args.skipped_out}")
+    return 0
+
+
+def _cmd_run(args) -> int:
+    gold = load_gold_truth(args.gold)
+    weights = load_axis_weights(gold)
+    inputs = read_verdict_inputs(args.inputs)
+    if args.limit:
+        inputs = inputs[: args.limit]
+    if not inputs:
+        print("ERROR: no inputs (run `prepare` first)", file=sys.stderr)
+        return 3
+    arm = args.arm
+    if arm not in ARMS:
+        print(f"ERROR: unknown arm {arm!r} (have {sorted(ARMS)})", file=sys.stderr)
+        return 3
+    print(f"# run arm={arm} n_inputs={len(inputs)} concurrency={args.concurrency} "
+          f"— LIVE OpenAI calls, metered cost")
+    report = asyncio.run(run_arm(arm, inputs, weights=weights, concurrency=args.concurrency))
+    print(format_arm_report(report))
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({
+                "arm": report.arm,
+                "n_covered": report.n_covered,
+                "summary": {k: getattr(report, k) for k in (
+                    "arm_winner_rate", "baseline_winner_rate", "net_winner_flips",
+                    "winner_flips_to_correct", "winner_flips_to_wrong",
+                    "axis_avg_factual", "mean_cost_usd", "total_cost_usd",
+                    "mean_verdict_ms", "p50_verdict_ms", "p95_verdict_ms", "n_errors",
+                )},
+                "per_query": [dataclasses.asdict(g) for g in report.per_query],
+            }, ensure_ascii=False, indent=2))
+        print(f"# arm result -> {args.out}")
+    return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--gold", default=str(DEFAULT_GOLD))
+    parser.add_argument("--baseline", default=str(BASELINE_GRADES),
+                        help="S1 per-query graded jsonl (default points at the "
+                             "main repo's .qa-bias-rerun copy)")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_prep = sub.add_parser("prepare", help="reconstruct verdict inputs from L2 (offline)")
+    p_prep.add_argument("--subset", choices=["bias45", "graded200", "smoke20"],
+                        default="bias45")
+    p_prep.add_argument("--out", default=".shadow/inputs.jsonl")
+    p_prep.add_argument("--skipped-out", default=None)
+    p_prep.set_defaults(func=_cmd_prepare)
+
+    p_run = sub.add_parser("run", help="run one verdict arm over cached inputs (LIVE OpenAI)")
+    p_run.add_argument("--arm", required=True, choices=sorted(ARMS))
+    p_run.add_argument("--inputs", default=".shadow/inputs.jsonl")
+    p_run.add_argument("--concurrency", type=int, default=4)
+    p_run.add_argument("--limit", type=int, default=0, help="cap inputs (smoke test)")
+    p_run.add_argument("--out", default=None, help="write per-query arm result JSON")
+    p_run.set_defaults(func=_cmd_run)
+
+    args = parser.parse_args(argv)
+    try:
+        return args.func(args)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
