@@ -111,7 +111,10 @@ def _render_exemplar(ex: Dict[str, Any]) -> List[str]:
     consumes whatever shape the ratified exemplar content ships."""
     lines: List[str] = []
     title = ex.get("title") or "EXAMPLE -- do not copy"
-    lines.append(f"EXAMPLE (do not copy -- teaches the reasoning move only): {title}")
+    # ABRIDGED marker (dispatcher order): these cases show only the teaching
+    # fields, NOT the full verdict schema — mirror that in the label so the
+    # model never mistakes an abridged example for the required output shape.
+    lines.append(f"ABRIDGED EXAMPLE (do not copy -- teaches the reasoning move only): {title}")
     setup = _first(ex, "setup", "context", "scenario", "pairing")
     if setup:
         lines.append(f"Setup: {setup}")
@@ -185,6 +188,16 @@ def build_exemplar_block(category: str) -> str:
 
     for ex in exemplars:
         lines.extend(_render_exemplar(ex))
+        lines.append("")
+
+    # Reinforcement line (dispatcher order, render-side): the abridged examples
+    # show only the teaching fields — the model must still emit the COMPLETE
+    # verdict schema. Rendered only when exemplars are present (it references
+    # "the examples above").
+    if exemplars:
+        lines.append(
+            "The examples above are abridged. Always emit the COMPLETE verdict schema."
+        )
         lines.append("")
 
     return "\n".join(lines)

@@ -344,3 +344,62 @@ def test_block_is_stable_per_category_for_prompt_cache(tmp_path, monkeypatch):
     b = vel.build_exemplar_block("haircare")
     assert a == b
     assert a != ""
+
+
+# ---------------------------------------------------------------------------
+# ABRIDGED marker + COMPLETE-schema reinforcement (dispatcher order)
+# ---------------------------------------------------------------------------
+
+def test_abridged_marker_in_exemplar_label(tmp_path, monkeypatch):
+    """The exemplar label must carry the ABRIDGED marker so the model never
+    mistakes an abridged teaching case for the required output shape."""
+    _write(tmp_path, monkeypatch, {
+        "skincare": {
+            "exemplars": [
+                {"title": "EXAMPLE -- do not copy", "setup": "Budget vs prestige serum",
+                 "verdict_json": {"winner_index": 0, "winner_reason": "Same 10% niacinamide at 50% less."},
+                 "teaches": "H1", "_provenance": "x"}
+            ],
+            "anti_patterns": [],
+        }
+    })
+    block = vel.build_exemplar_block("skincare")
+    assert "ABRIDGED EXAMPLE" in block
+
+
+def test_complete_schema_reinforcement_after_exemplars(tmp_path, monkeypatch):
+    """When exemplars are present, the reinforcement line renders AFTER them,
+    verbatim, instructing the model to emit the full schema."""
+    _write(tmp_path, monkeypatch, {
+        "makeup": {
+            "exemplars": [
+                {"title": "EXAMPLE -- do not copy", "setup": "Drugstore vs luxury foundation",
+                 "verdict_json": {"winner_index": 0, "winner_reason": "Matches 40-shade range at 70% less."},
+                 "teaches": "H1", "_provenance": "x"}
+            ],
+            "anti_patterns": [],
+        }
+    })
+    block = vel.build_exemplar_block("makeup")
+    reinforcement = "The examples above are abridged. Always emit the COMPLETE verdict schema."
+    assert reinforcement in block
+    # It must come AFTER the exemplar content.
+    assert block.index("ABRIDGED EXAMPLE") < block.index(reinforcement)
+
+
+def test_no_reinforcement_when_only_anti_patterns(tmp_path, monkeypatch):
+    """The reinforcement references 'the examples above' — it must NOT render
+    when there are anti-patterns but zero exemplars (the G2 skeleton state)."""
+    _write(tmp_path, monkeypatch, {
+        "electronics": {
+            "exemplars": [],
+            "anti_patterns": [
+                {"name": "identical on paper = identical in Bahrain",
+                 "rule": "A spec tie can break on local service availability.", "teaches": "H4"}
+            ],
+        }
+    })
+    block = vel.build_exemplar_block("electronics")
+    assert block != ""
+    assert "The examples above are abridged" not in block
+    assert "ABRIDGED EXAMPLE" not in block  # no exemplars rendered
