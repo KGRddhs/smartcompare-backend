@@ -69,6 +69,27 @@ def test_anti_patterns_render_into_block():
         assert "ANTI-PATTERN" in block.upper(), f"{cat}: no AP rendered"
 
 
+def test_g2_state_ap_only_no_examples_preamble_no_reinforcement():
+    """F1 (G2 ultracode): the SHIPPED file has exemplars[] EMPTY + per-category
+    anti_patterns POPULATED. An AP-only category must render the AP block ONLY —
+    NO 'examples below' preamble (incoherent with zero examples) and NO
+    'examples above are abridged' reinforcement. Reads the REAL shipped file."""
+    data = _load()
+    # Every populated category in the shipped file is AP-only at G2.
+    ap_only = [
+        c for c, e in data.items()
+        if not c.startswith("_") and (e.get("anti_patterns") and not e.get("exemplars"))
+    ]
+    assert ap_only, "expected AP-only categories in the shipped G2 file"
+    for cat in ap_only:
+        block = vel.build_exemplar_block(cat)
+        assert block != ""
+        assert "ANTI-PATTERN" in block.upper()           # APs render
+        assert "examples below" not in block.lower()       # NO examples preamble
+        assert "examples above are abridged" not in block.lower()  # NO reinforcement
+        assert "Avoid these failure modes:" in block
+
+
 def test_anti_patterns_forbidden_words_clean():
     forbidden = ["estimated", "reference price", "couldn't", "try again", "failed to"]
     for cat in EXPECTED:

@@ -155,9 +155,14 @@ def build_exemplar_block(category: str) -> str:
     anti-patterns for `category`.
 
     Returns "" when the file is unavailable, the category is absent, or both
-    arrays are empty — so callers can append blindly (the G2 skeleton ships
-    every category with empty arrays, so this returns "" until I1 content
-    lands at G3).
+    arrays are empty — callers can append blindly.
+
+    G2 vs G3 state (the shipped file ships exemplars[] EMPTY but per-category
+    anti_patterns POPULATED): at G2 this renders ONLY the anti-pattern block
+    (section title + "Avoid these failure modes:" lines) — no examples-preamble
+    and no reinforcement line, since there are no examples below. When I1's
+    exemplar content lands at G3, the examples-preamble, the abridged exemplars,
+    and the COMPLETE-schema reinforcement all render too.
     """
     data = _load_exemplars()
     if not data:
@@ -174,11 +179,7 @@ def build_exemplar_block(category: str) -> str:
 
     lines: List[str] = [
         "",
-        "## Verdict calibration examples (Bahrain-buyer reasoning)",
-        "The examples below are synthetic teaching cases. Mirror the REASONING",
-        "MOVE they demonstrate (when value-per-dinar wins vs when a premium is",
-        "licensed; how a Bahrain buyer weighs local availability and Gulf",
-        "climate) -- never copy their brands, numbers, or wording.",
+        "## Verdict calibration (Bahrain-buyer reasoning)",
         "",
     ]
 
@@ -190,15 +191,22 @@ def build_exemplar_block(category: str) -> str:
                 lines.append(f"- {rendered}")
         lines.append("")
 
-    for ex in exemplars:
-        lines.extend(_render_exemplar(ex))
-        lines.append("")
-
-    # Reinforcement line (dispatcher order, render-side): the abridged examples
-    # show only the teaching fields — the model must still emit the COMPLETE
-    # verdict schema. Rendered only when exemplars are present (it references
-    # "the examples above").
+    # F1: the examples-preamble (and the exemplars + reinforcement) render ONLY
+    # when there are exemplars below — never for the AP-only / G2-skeleton state
+    # (a "the examples below..." header with zero examples is incoherent).
     if exemplars:
+        lines.extend([
+            "The examples below are synthetic teaching cases. Mirror the REASONING",
+            "MOVE they demonstrate (when value-per-dinar wins vs when a premium is",
+            "licensed; how a Bahrain buyer weighs local availability and Gulf",
+            "climate) -- never copy their brands, numbers, or wording.",
+            "",
+        ])
+        for ex in exemplars:
+            lines.extend(_render_exemplar(ex))
+            lines.append("")
+        # Reinforcement: abridged examples show only the teaching fields — the
+        # model must still emit the COMPLETE verdict schema.
         lines.append(
             "The examples above are abridged. Always emit the COMPLETE verdict schema."
         )

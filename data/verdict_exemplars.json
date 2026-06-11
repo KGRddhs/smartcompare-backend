@@ -1,7 +1,7 @@
 {
   "_schema": {
     "version": 1,
-    "note": "Few-shot verdict exemplars + per-category anti-patterns. exemplars[] authored by Lane I1 (synthetic rewrites of the 45-id pure-bias patterns, NEVER verbatim gold pairs — Decision E). anti_patterns[] authored by Lane I2. Consumed by app/services/verdict_exemplar_loader.build_exemplar_block(category), injected into the verdict prompt static-per-category prefix. EMPTY-but-valid skeleton ships at G2 so the mechanism merges before content (G3).",
+    "note": "Few-shot verdict exemplars + per-category anti-patterns. exemplars[] authored by Lane I1 (synthetic rewrites of the 45-id pure-bias patterns, NEVER verbatim gold pairs — Decision E). anti_patterns[] authored by Lane I2. Consumed by app/services/verdict_exemplar_loader.build_exemplar_block(category), injected into the verdict prompt static-per-category prefix. AT G2 this file ships with exemplars[] EMPTY but anti_patterns[] POPULATED — so the per-category APs are LIVE at G2 while the exemplar examples fill at G3 (Lane I1, from data/verdict_exemplars.staged.json).",
     "exemplar_format": "COMPACT Option A (dispatcher ruling 2026-06-11): ~200 tok each, rendered as a labeled ABRIDGED teaching block — NOT a full verdict_json dump. Only the four teaching fields are rendered.",
     "exemplar_fields": {
       "title": "label string, must signal 'EXAMPLE -- do not copy'",

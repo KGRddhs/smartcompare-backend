@@ -55,7 +55,10 @@ def test_unknown_category_returns_empty_block(monkeypatch, tmp_path):
 
 
 def test_empty_arrays_return_empty_block(monkeypatch, tmp_path):
-    """Category present but both arrays empty (the G2 skeleton state) → ""."""
+    """Category present but BOTH arrays empty → "". NOTE: this is NOT the G2
+    shipped state — at G2 anti_patterns[] is POPULATED (exemplars[] empty), so
+    the shipped file renders the AP block. This covers a content-less category
+    (e.g. supplements/haircare/fashion, which carry neither at G2)."""
     f = tmp_path / "verdict_exemplars.json"
     f.write_text(json.dumps({"makeup": {"exemplars": [], "anti_patterns": []}}),
                  encoding="utf-8")

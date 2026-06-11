@@ -2,10 +2,14 @@
 
 build_verdict_prompt() must inject build_exemplar_block(category) AFTER the
 category personality and BEFORE the pain-workflow block, inside the
-static-per-category prefix (OpenAI prompt-cache discipline). On the empty
-exemplar file (the G2 skeleton state) the injection is a no-op. With content
-present, the rendered exemplar/AP text must appear and must obey the
-forbidden-words audit.
+static-per-category prefix (OpenAI prompt-cache discipline). When a category
+carries NEITHER exemplars nor anti-patterns the injection is a no-op. With
+content present (APs at G2, +exemplars at G3) the rendered text must appear and
+must obey the forbidden-words audit.
+
+NOTE: the SHIPPED G2 file is NOT all-empty — it ships anti_patterns[] populated
+(exemplars[] empty), so production renders the AP block at G2. The all-empty
+cases here exercise the degenerate no-op path, not the G2 shipped state.
 """
 
 import json
@@ -31,7 +35,8 @@ def _seed(tmp_path, monkeypatch, data):
 
 
 def test_empty_file_injection_is_noop(monkeypatch, tmp_path):
-    """G2 skeleton: every category empty → prompt identical to no-exemplar."""
+    """Degenerate case (NOT the G2 shipped state): a category with BOTH arrays
+    empty → no exemplar section rendered, prompt identical to no-exemplar."""
     _seed(tmp_path, monkeypatch, {
         "electronics": {"exemplars": [], "anti_patterns": []},
     })
@@ -39,7 +44,7 @@ def test_empty_file_injection_is_noop(monkeypatch, tmp_path):
         products=[{"name": "X", "category_used": "electronics"}],
     )
     # No exemplar section header rendered
-    assert "Verdict calibration examples" not in with_block
+    assert "Verdict calibration" not in with_block
 
 
 def test_exemplar_block_injected_for_category(monkeypatch, tmp_path):
@@ -69,7 +74,7 @@ def test_exemplar_block_injected_for_category(monkeypatch, tmp_path):
     prompt = extraction_service.build_verdict_prompt(
         products=[{"name": "A serum", "category_used": "skincare"}],
     )
-    assert "Verdict calibration examples" in prompt
+    assert "Verdict calibration" in prompt
     assert "Budget vitamin C serum" in prompt
     assert "15%" in prompt
     assert "climate-neutral verdicts" in prompt
@@ -95,7 +100,7 @@ def test_exemplar_injected_before_pain_workflow(monkeypatch, tmp_path):
         products=[{"name": "AC", "category_used": "electronics"}],
         user_cohort={"age_group": "25-34", "gender": "Male", "nationality": "Bahraini"},
     )
-    exemplar_pos = prompt.find("Verdict calibration examples")
+    exemplar_pos = prompt.find("Verdict calibration")
     pain_pos = prompt.find("Buyer pain-workflow constraints")
     assert exemplar_pos != -1
     # pain-workflow block present for a known cohort
@@ -120,7 +125,7 @@ def test_exemplar_injected_after_personality(monkeypatch, tmp_path):
         products=[{"name": "Foundation", "category_used": "makeup"}],
     )
     base_pos = prompt.find("You are a product comparison expert")
-    exemplar_pos = prompt.find("Verdict calibration examples")
+    exemplar_pos = prompt.find("Verdict calibration")
     assert base_pos != -1 and exemplar_pos != -1
     assert base_pos < exemplar_pos
 
