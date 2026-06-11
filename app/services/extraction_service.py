@@ -1106,6 +1106,7 @@ def build_verdict_prompt(
     products,
     comparison_quality: str = "normal",
     user_cohort: Optional[Dict[str, Any]] = None,
+    category: Optional[str] = None,
 ) -> str:
     """Bundle C § 2e A.4.5 + A-L4.2 — assemble the verdict-call system
     prompt. Composition order:
@@ -1120,12 +1121,24 @@ def build_verdict_prompt(
     "nationality": "Bahraini"}. Missing fields fall back to the global
     survey rank — no exception, no crash.
 
-    Returns the full system_msg string.
+    `category` (I5.10): an explicit category overrides the product-derived
+    one. The prod verdict path (`generate_comparison`) receives `category` as
+    an argument and passes it here so prod and the audited prompt are byte-for-
+    byte identical even when the product dicts don't carry `category_used`.
+    When None, the category is derived from `products[0]` as before.
+
+    Returns the full system_msg string. This is the SINGLE assembly point for
+    the static-per-category verdict prefix — prod calls it (I5.10) so audits
+    grep what production runs and downstream injections (I2 exemplars) land
+    once.
     """
-    category = "other"
-    if products:
-        first = products[0] or {}
-        category = (first.get("category_used") or first.get("category") or "other").strip().lower()
+    if category:
+        category = category.strip().lower()
+    else:
+        category = "other"
+        if products:
+            first = products[0] or {}
+            category = (first.get("category_used") or first.get("category") or "other").strip().lower()
     base = COMPARISON_SYSTEM
     try:
         from app.services.prompt_personalities import build_personality_prompt
@@ -1172,24 +1185,21 @@ async def generate_comparison(
         from app.services.model_router_service import model_router
         verdict_model = await model_router.get_model(priority="high")
 
-        # Build system message with comparison instructions + personality + scoring
-        from app.services.prompt_personalities import build_personality_prompt
-        system_msg = COMPARISON_SYSTEM
-        system_msg += build_personality_prompt(category)
-
-        # A-L4.2 — inject pain-workflow constraints + decision-style hint
-        # before the per-call scoring/preferences blocks. Demographics_profile
-        # carries the (age_group, gender, nationality) needed for cohort
-        # match; missing keys fall back to the global survey rank.
-        try:
-            from app.services.pain_workflow_loader import (
-                build_pain_workflow_block,
-                build_decision_style_block,
-            )
-            system_msg += build_pain_workflow_block(demographics_profile)
-            system_msg += build_decision_style_block(demographics_profile)
-        except Exception as exc:  # noqa: BLE001 — best-effort, never blocks verdict
-            logger.warning("pain_workflow injection in generate_comparison failed: %s", exc)
+        # I5.10 — assemble the static-per-category prefix via the SINGLE
+        # build_verdict_prompt entry point (COMPARISON_SYSTEM + personality +
+        # pain-workflow + decision-style) so audits grep what prod runs and
+        # downstream injections (I2 exemplars) land in one place. Passing the
+        # explicit `category` keeps the output byte-identical to the prior
+        # inline assembly; comparison_quality stays "normal" (prod never
+        # injected the weird-comparison clause — that's I3's missing-data
+        # epic). The per-call dynamic blocks (scoring/preferences/cohort) are
+        # appended below, exactly as before.
+        system_msg = build_verdict_prompt(
+            products=[product1, product2],
+            comparison_quality="normal",
+            user_cohort=demographics_profile,
+            category=category,
+        )
 
         if scores_summary:
             system_msg += f"""
