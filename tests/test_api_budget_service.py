@@ -528,3 +528,134 @@ class TestSerperImageKey:
 
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         assert _serper_image_key() == f"budget:serper_images:{today}"
+
+
+# ============================================================================
+# I5.0 (Bundle B S2) — 80%-burn alert + ceiling reconciliation
+# ============================================================================
+# Protects every measurement run this session: the S1 baseline depleted the
+# key mid-run. has_budget() only warns at warn_at (~91% for serper); the burn
+# alert fires a log + Sentry capture_message ONCE when a provider crosses 80%
+# of its ceiling, de-duped via a Redis sentinel so it does not spam.
+
+
+class TestBurnAlertThreshold:
+    def test_burn_fraction_constant_is_80pct(self):
+        from app.services.api_budget_service import WARN_BURN_FRACTION
+        assert WARN_BURN_FRACTION == 0.80
+
+    def test_serper_80pct_threshold_value(self):
+        # 2200 ceiling * 0.80 = 1760 credits.
+        from app.services.api_budget_service import _burn_threshold
+        assert _burn_threshold("serper") == 1760
+
+    def test_get_burn_status_below_threshold(self, mock_redis_helpers):
+        from app.services.api_budget_service import get_burn_status
+        mock_redis_helpers["store"][_budget_key("serper")] = "1000"
+        status = get_burn_status("serper")
+        assert status["used"] == 1000
+        assert status["limit"] == 2200
+        assert status["threshold"] == 1760
+        assert status["over_threshold"] is False
+        # fraction is dashboard-rounded to 4 decimals.
+        assert status["fraction"] == round(1000 / 2200, 4)
+
+    def test_get_burn_status_at_threshold(self, mock_redis_helpers):
+        from app.services.api_budget_service import get_burn_status
+        mock_redis_helpers["store"][_budget_key("serper")] = "1760"
+        status = get_burn_status("serper")
+        assert status["over_threshold"] is True
+
+    def test_get_burn_status_unknown_provider(self, mock_redis_helpers):
+        from app.services.api_budget_service import get_burn_status
+        status = get_burn_status("nonexistent")
+        assert status["over_threshold"] is False
+        assert status["limit"] == 0
+
+    def test_get_burn_status_fail_open_on_redis_error(self):
+        from app.services.api_budget_service import get_burn_status
+        with patch("app.services.api_budget_service._redis_get", side_effect=Exception("down")):
+            status = get_burn_status("serper")
+            # Fail-safe: no usage observed, never raises.
+            assert status["used"] == 0
+            assert status["over_threshold"] is False
+
+
+class TestBurnAlertFires:
+    def test_alert_fires_when_crossing_80pct(self, mock_redis_helpers):
+        """Drill test (binding-table exit criterion): crossing 80% fires a
+        Sentry capture_message + WARNING log exactly once."""
+        from app.services import api_budget_service as abs_mod
+        # Seed just below threshold so the next increment crosses it.
+        mock_redis_helpers["store"][_budget_key("serper")] = "1759"
+
+        fake_sentry = MagicMock()
+        with patch.dict("sys.modules", {"sentry_sdk": fake_sentry}):
+            with patch.object(abs_mod.logger, "warning") as m_warn:
+                abs_mod.record_usage("serper", 1)  # 1759 -> 1760, crosses 80%
+
+        # Sentry alerted at warning level.
+        assert fake_sentry.capture_message.called
+        _args, _kwargs = fake_sentry.capture_message.call_args
+        msg = _args[0] if _args else _kwargs.get("message", "")
+        assert "serper" in msg.lower()
+        assert "80%" in msg or "burn" in msg.lower()
+        # WARNING log emitted with a burn marker.
+        assert any("BURN" in str(c.args[0]).upper() or "burn" in str(c.args).lower()
+                   for c in m_warn.call_args_list)
+
+    def test_alert_does_not_fire_below_threshold(self, mock_redis_helpers):
+        from app.services import api_budget_service as abs_mod
+        mock_redis_helpers["store"][_budget_key("serper")] = "100"
+
+        fake_sentry = MagicMock()
+        with patch.dict("sys.modules", {"sentry_sdk": fake_sentry}):
+            abs_mod.record_usage("serper", 1)  # 100 -> 101, far below 1760
+
+        assert not fake_sentry.capture_message.called
+
+    def test_alert_fires_once_then_deduped(self, mock_redis_helpers):
+        """The sentinel must suppress repeat alerts on every subsequent call
+        within the same budget window."""
+        from app.services import api_budget_service as abs_mod
+        mock_redis_helpers["store"][_budget_key("serper")] = "1759"
+
+        fake_sentry = MagicMock()
+        with patch.dict("sys.modules", {"sentry_sdk": fake_sentry}):
+            abs_mod.record_usage("serper", 1)   # crosses -> alert #1
+            abs_mod.record_usage("serper", 1)   # 1761 -> still over, deduped
+            abs_mod.record_usage("serper", 5)   # 1766 -> still over, deduped
+
+        assert fake_sentry.capture_message.call_count == 1
+
+    def test_record_usage_still_increments_when_sentry_missing(self, mock_redis_helpers):
+        """Alert path must never break the counter even if sentry_sdk import
+        fails (ImportError swallowed)."""
+        from app.services import api_budget_service as abs_mod
+        mock_redis_helpers["store"][_budget_key("serper")] = "1759"
+
+        # Force ImportError on `import sentry_sdk`.
+        import builtins
+        real_import = builtins.__import__
+
+        def fake_import(name, *a, **k):
+            if name == "sentry_sdk":
+                raise ImportError("no sentry")
+            return real_import(name, *a, **k)
+
+        with patch("builtins.__import__", side_effect=fake_import):
+            abs_mod.record_usage("serper", 1)
+
+        assert mock_redis_helpers["store"][_budget_key("serper")] == "1760"
+
+    def test_burn_alert_never_raises_on_redis_error(self, mock_redis_helpers):
+        """If the sentinel read/write errors, record_usage must still complete
+        (alert is best-effort, fail-open)."""
+        from app.services import api_budget_service as abs_mod
+        mock_redis_helpers["store"][_budget_key("serper")] = "1759"
+
+        # _maybe_fire_burn_alert reads the sentinel via _redis_get; make that
+        # specific path raise while the counter incrby (on the client) succeeds.
+        with patch("app.services.api_budget_service._redis_get", side_effect=Exception("down")):
+            # Should not raise.
+            abs_mod.record_usage("serper", 1)

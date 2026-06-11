@@ -53,6 +53,13 @@ CB_FAILURE_THRESHOLD = 3           # consecutive failures to trip
 CB_RECOVERY_TIMEOUT = 600          # 10 min cooldown
 CB_HALF_OPEN_MAX_CALLS = 1         # 1 test call in half-open
 
+# I5.0 (Bundle B S2) — 80%-burn alert. has_budget() only warns at `warn_at`
+# (~91% for serper), which leaves almost no runway before a measurement run
+# depletes the key (the S1 baseline incident). This earlier tripwire fires a
+# log + Sentry capture_message ONCE when a provider crosses 80% of its
+# ceiling, de-duped via a Redis sentinel so it does not spam every call.
+WARN_BURN_FRACTION = 0.80
+
 # Circuit breaker states
 CB_CLOSED = "closed"
 CB_OPEN = "open"
@@ -100,19 +107,87 @@ def has_budget(provider: str) -> bool:
         return True  # fail-open
 
 
+def _burn_threshold(provider: str) -> int:
+    """80%-of-ceiling credit count for `provider` (0 for unknown providers)."""
+    config = PROVIDER_CONFIGS.get(provider)
+    if not config:
+        return 0
+    return int(config["monthly_limit"] * WARN_BURN_FRACTION)
+
+
+def _burn_sentinel_key(provider: str) -> str:
+    """Redis sentinel marking the 80%-burn alert as already fired for the
+    current budget window (lifetime, or this month for resetting providers).
+    Tying it to the same window-stamp as the budget key means a monthly reset
+    (new month key) naturally re-arms the alert."""
+    return f"budget:{provider}:burn_alert_fired:{_budget_key(provider)}"
+
+
+def _maybe_fire_burn_alert(provider: str, used: int) -> None:
+    """Fire a one-shot log + Sentry alert when `used` is at/over the 80% burn
+    threshold for `provider`. De-duped via a Redis sentinel so it alerts once
+    per budget window, not on every subsequent call. Best-effort: any failure
+    (sentry missing, Redis down) is swallowed — never breaks usage recording.
+    """
+    try:
+        threshold = _burn_threshold(provider)
+        if threshold <= 0 or used < threshold:
+            return
+        # De-dup: only fire on the FIRST crossing within this budget window.
+        sentinel = _burn_sentinel_key(provider)
+        if _redis_get(sentinel) is not None:
+            return
+
+        config = PROVIDER_CONFIGS.get(provider, {})
+        limit = config.get("monthly_limit", 0)
+        pct = round(100 * used / limit, 1) if limit else 0.0
+        msg = (
+            f"[BUDGET] {provider} burn alert: {used}/{limit} credits "
+            f"({pct}%) — crossed 80% ceiling"
+        )
+        logger.warning(msg)
+
+        # Sentry capture_message at warning level (matches error_handler's
+        # local-import-guard pattern so it no-ops when Sentry isn't installed).
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_message(msg, level="warning")
+        except ImportError:
+            pass
+
+        # Mark fired AFTER alerting, with the budget-window TTL so a lifetime
+        # provider stays latched until the key is manually reset (rotation),
+        # while a monthly provider re-arms on the next month's key.
+        ttl = _CB_TTL if config.get("is_lifetime") else _MONTHLY_TTL
+        _redis_set(sentinel, str(int(time.time())), ex=ttl)
+    except Exception as e:  # noqa: BLE001 — alerting must never break recording
+        logger.warning(f"[BUDGET] burn-alert check failed for {provider}: {e}")
+
+
 def record_usage(provider: str, count: int = 1) -> None:
-    """Record API usage after successful call (atomic operation)."""
+    """Record API usage after successful call (atomic operation).
+
+    After the counter increments, checks the 80%-burn tripwire (I5.0) on the
+    post-increment value so the alert fires at the exact crossing call.
+    """
     try:
         key = _budget_key(provider)
+        new_value = None
         from app.services.cache_service import redis_client
         if redis_client:
-            redis_client.incrby(key, count)
+            new_value = redis_client.incrby(key, count)
         else:
             for _ in range(count):
-                _redis_incr(key)
+                new_value = _redis_incr(key)
         config = PROVIDER_CONFIGS.get(provider, {})
         if not config.get("is_lifetime"):
             _redis_expire(key, _MONTHLY_TTL)
+        # I5.0 — 80%-burn tripwire on the fresh counter value.
+        if new_value is not None:
+            try:
+                _maybe_fire_burn_alert(provider, int(new_value))
+            except (TypeError, ValueError):
+                pass
     except Exception as e:
         logger.warning(f"[BUDGET] Error recording {provider}: {e}")
 
@@ -201,6 +276,33 @@ def get_remaining(provider: str) -> int:
     except Exception:
         pass
     return max(0, config["monthly_limit"] - used)
+
+
+def get_burn_status(provider: str) -> Dict[str, Any]:
+    """I5.0 diagnostic — current burn state vs the 80% ceiling for `provider`.
+
+    Read-only; fail-safe (no usage observed, never raises) on Redis error or
+    unknown provider. Returns
+    `{used, limit, threshold, fraction, over_threshold}` for the dashboard and
+    the alert drill.
+    """
+    config = PROVIDER_CONFIGS.get(provider)
+    limit = config["monthly_limit"] if config else 0
+    threshold = _burn_threshold(provider)
+    used = 0
+    try:
+        raw = _redis_get(_budget_key(provider))
+        if raw is not None:
+            used = int(raw)
+    except Exception:
+        pass
+    return {
+        "used": used,
+        "limit": limit,
+        "threshold": threshold,
+        "fraction": round(used / limit, 4) if limit else 0.0,
+        "over_threshold": bool(threshold and used >= threshold),
+    }
 
 
 def get_breaker_state(provider: str) -> str:
