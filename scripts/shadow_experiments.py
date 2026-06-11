@@ -552,52 +552,94 @@ def call_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> flo
 # L2 input reconstruction (the `prepare` step — DB reads only, ZERO Serper)
 # ---------------------------------------------------------------------------
 
+# An L2 dump (env SHADOW_L2_DUMP -> jsonl path) is the sandbox-safe input path:
+# each line is one already-joined product row {brand,name,variant,category,
+# specs,reviews,price}. Generated out-of-band via the Supabase MCP channel (see
+# scripts/dump_l2_for_shadow.sql + the runbook), then read here with no network.
+# Falls back to a live DB read when the env is unset (and the box has network).
+_L2_DUMP_CACHE: Optional[Dict[str, List[Dict[str, Any]]]] = None
+
+
+def _load_l2_dump(path: Path | str) -> Dict[str, List[Dict[str, Any]]]:
+    """Load a pre-exported L2 dump jsonl, grouped by category for the matcher.
+    Each line: {brand,name,variant,category,specs,reviews,price}."""
+    by_cat: Dict[str, List[Dict[str, Any]]] = {}
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        row = json.loads(line)
+        by_cat.setdefault((row.get("category") or "other"), []).append(row)
+    return by_cat
+
+
 def _fetch_l2_rows_for_category(category: str) -> List[Dict[str, Any]]:
     """Join product_specs + product_reviews + latest product_price for every
     L2 product in a category, returning rows the matcher can search.
 
-    Reads via the service-role admin client (database_service). Reviews/price
-    are LEFT-joined: a product with specs but no reviews still appears (the
-    verdict tolerates empty reviews). Price is the most-recent bahrain row."""
+    If SHADOW_L2_DUMP is set, reads from that pre-exported jsonl (sandbox-safe,
+    no network — this is the normal path on the restricted box). Otherwise hits
+    the live DB via the service-role admin client. Reviews/price are LEFT-joined
+    (a product with specs but no reviews still appears; the verdict tolerates
+    empty reviews). Price is the most-recent bahrain row."""
+    global _L2_DUMP_CACHE
+    if _L2_DUMP_CACHE is None:
+        _L2_DUMP_CACHE = _load_all_l2_rows()
+    # Return the requested category FIRST, then every other category as a
+    # cross-category fallback so a product the parser re-categorized (e.g. an
+    # air cooler authored under gold 'other' but stored under 'electronics')
+    # is still matchable. match_l2_product's category-bonus keeps the
+    # same-category row preferred when both exist.
+    primary = _L2_DUMP_CACHE.get(category, [])
+    others = [r for cat, rows in _L2_DUMP_CACHE.items() if cat != category for r in rows]
+    return primary + others
+
+
+def _load_all_l2_rows() -> Dict[str, List[Dict[str, Any]]]:
+    """Load EVERY fresh L2 product (all categories) once, grouped by category.
+
+    Reads from SHADOW_L2_DUMP when set (sandbox-safe), else the live DB. Three
+    full-table reads total (specs / reviews / bahrain-prices), joined on
+    lower(brand|name). Freshest row wins per product per table."""
+    dump_path = os.getenv("SHADOW_L2_DUMP")
+    if dump_path:
+        return _load_l2_dump(dump_path)
+
     from app.services.database_service import get_admin_supabase_client
 
     client = get_admin_supabase_client()
-    specs_resp = (
+    specs_rows = (
         client.table("product_specs")
-        .select("product_key, brand, name, variant, category, specs, fetched_at")
-        .eq("category", category)
+        .select("brand, name, variant, category, specs, fetched_at")
         .order("fetched_at", desc=True)
         .execute()
-    )
-    specs_rows = specs_resp.data or []
-
-    # Build review + price lookups keyed by product_key (one DB round-trip each).
-    keys = [r["product_key"].replace("specs:", "") for r in specs_rows]
-    reviews_by_brandname: Dict[str, Dict[str, Any]] = {}
-    rev_resp = (
+    ).data or []
+    rev_rows = (
         client.table("product_reviews")
-        .select("brand, name, variant, reviews, fetched_at")
+        .select("brand, name, reviews, fetched_at")
         .order("fetched_at", desc=True)
         .execute()
-    )
-    for rr in (rev_resp.data or []):
-        bn = _norm(f"{rr.get('brand', '')} {rr.get('name', '')}")
-        reviews_by_brandname.setdefault(bn, rr.get("reviews") or {})
-
-    price_resp = (
+    ).data or []
+    price_rows = (
         client.table("product_prices")
-        .select("brand, name, variant, region, amount, currency, retailer, "
-                "url, source_method, estimated, fetched_at")
+        .select("brand, name, region, amount, currency, retailer, url, "
+                "source_method, estimated, fetched_at")
         .eq("region", "bahrain")
         .order("fetched_at", desc=True)
         .execute()
-    )
-    price_by_brandname: Dict[str, Dict[str, Any]] = {}
-    for pr in (price_resp.data or []):
+    ).data or []
+
+    reviews_by_bn: Dict[str, Dict[str, Any]] = {}
+    for rr in rev_rows:
+        bn = _norm(f"{rr.get('brand', '')} {rr.get('name', '')}")
+        reviews_by_bn.setdefault(bn, rr.get("reviews") or {})
+
+    price_by_bn: Dict[str, Dict[str, Any]] = {}
+    for pr in price_rows:
         bn = _norm(f"{pr.get('brand', '')} {pr.get('name', '')}")
-        if bn in price_by_brandname:
-            continue  # keep the freshest only
-        price_by_brandname[bn] = {
+        if bn in price_by_bn:
+            continue
+        price_by_bn[bn] = {
             "amount": float(pr["amount"]) if pr.get("amount") is not None else None,
             "currency": pr.get("currency"),
             "retailer": pr.get("retailer"),
@@ -606,23 +648,24 @@ def _fetch_l2_rows_for_category(category: str) -> List[Dict[str, Any]]:
             "estimated": pr.get("estimated") or False,
         }
 
-    out: List[Dict[str, Any]] = []
+    by_cat: Dict[str, List[Dict[str, Any]]] = {}
     seen: set = set()
     for sr in specs_rows:
         bn = _norm(f"{sr.get('brand', '')} {sr.get('name', '')}")
         if bn in seen:
             continue  # freshest specs row per product only
         seen.add(bn)
-        out.append({
+        cat = sr.get("category") or "other"
+        by_cat.setdefault(cat, []).append({
             "brand": sr.get("brand"),
             "name": sr.get("name"),
             "variant": sr.get("variant"),
-            "category": sr.get("category"),
+            "category": cat,
             "specs": sr.get("specs") or {},
-            "reviews": reviews_by_brandname.get(bn, {}),
-            "price": price_by_brandname.get(bn),
+            "reviews": reviews_by_bn.get(bn, {}),
+            "price": price_by_bn.get(bn),
         })
-    return out
+    return by_cat
 
 
 def _compute_scores_summary_offline(product_data: List[Dict[str, Any]]) -> str:
@@ -1148,7 +1191,19 @@ def _resolve_ids(gold: Dict[str, Any], baseline: Dict[str, Dict[str, Any]],
     raise ValueError(f"unknown subset {subset!r}")
 
 
+def _ensure_env() -> None:
+    """Load the worktree .env with override=True so its keys win over any stale
+    shell-inherited values (the worktree was found 2 rotations stale before).
+    Idempotent + safe to call before any live DB / OpenAI access."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(override=True)
+    except Exception:  # noqa: BLE001 — dotenv optional in some envs
+        pass
+
+
 def _cmd_prepare(args) -> int:
+    _ensure_env()
     gold = load_gold_truth(args.gold)
     baseline = load_baseline_grades(args.baseline)
     ids = _resolve_ids(gold, baseline, args.subset)
@@ -1173,7 +1228,32 @@ def _cmd_prepare(args) -> int:
     return 0
 
 
+def _cmd_dump(args) -> int:
+    """Export all fresh L2 rows to a jsonl (one product per line, specs+reviews
+    +bahrain-price joined). Reusable as SHADOW_L2_DUMP so later prepare runs
+    need no DB access. DB read only — zero Serper, zero OpenAI."""
+    _ensure_env()
+    # Force the live path (ignore any SHADOW_L2_DUMP already set).
+    prior = os.environ.pop("SHADOW_L2_DUMP", None)
+    try:
+        by_cat = _load_all_l2_rows()
+    finally:
+        if prior is not None:
+            os.environ["SHADOW_L2_DUMP"] = prior
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with open(out_path, "w", encoding="utf-8") as fh:
+        for cat, rows in sorted(by_cat.items()):
+            for row in rows:
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+                n += 1
+    print(f"# dumped {n} L2 products across {len(by_cat)} categories -> {out_path}")
+    return 0
+
+
 def _cmd_run(args) -> int:
+    _ensure_env()
     gold = load_gold_truth(args.gold)
     weights = load_axis_weights(gold)
     inputs = read_verdict_inputs(args.inputs)
@@ -1223,6 +1303,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_prep.add_argument("--out", default=".shadow/inputs.jsonl")
     p_prep.add_argument("--skipped-out", default=None)
     p_prep.set_defaults(func=_cmd_prepare)
+
+    p_dump = sub.add_parser("dump", help="export all fresh L2 rows to a jsonl "
+                            "(SHADOW_L2_DUMP input — sandbox-safe reuse)")
+    p_dump.add_argument("--out", default=".shadow/l2_dump.jsonl")
+    p_dump.set_defaults(func=_cmd_dump)
 
     p_run = sub.add_parser("run", help="run one verdict arm over cached inputs (LIVE OpenAI)")
     p_run.add_argument("--arm", required=True, choices=sorted(ARMS))

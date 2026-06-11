@@ -18,6 +18,16 @@ import pytest
 from scripts import shadow_experiments as se
 
 
+@pytest.fixture(autouse=True)
+def _reset_l2_cache():
+    """The all-category L2 dump is cached at module level (one DB/dump read per
+    process). Clear it before every test so a real load never leaks into the
+    pure-logic tests and SHADOW_L2_DUMP monkeypatches take effect cleanly."""
+    se._L2_DUMP_CACHE = None
+    yield
+    se._L2_DUMP_CACHE = None
+
+
 # ---------------------------------------------------------------------------
 # Baseline grade loading + subset selection
 # ---------------------------------------------------------------------------
@@ -493,6 +503,54 @@ def test_build_verdict_inputs_caches_l2_per_category(monkeypatch):
     built, _ = se.build_verdict_inputs(gold, baseline, ["e-1", "e-2"])
     assert len(built) == 2
     assert calls["n"] == 1  # electronics L2 fetched ONCE, reused for e-2
+
+
+# ---------------------------------------------------------------------------
+# L2 dump path + cross-category fallback
+# ---------------------------------------------------------------------------
+
+def test_load_l2_dump_groups_by_category(tmp_path):
+    dump = tmp_path / "l2.jsonl"
+    dump.write_text(
+        json.dumps({"brand": "A", "name": "1", "category": "electronics",
+                    "specs": {}, "reviews": {}, "price": None}) + "\n"
+        + json.dumps({"brand": "B", "name": "2", "category": "grocery",
+                      "specs": {}, "reviews": {}, "price": None}) + "\n",
+        encoding="utf-8",
+    )
+    by_cat = se._load_l2_dump(dump)
+    assert set(by_cat) == {"electronics", "grocery"}
+    assert by_cat["electronics"][0]["brand"] == "A"
+
+
+def test_fetch_l2_uses_dump_env_no_db(monkeypatch, tmp_path):
+    dump = tmp_path / "l2.jsonl"
+    dump.write_text(
+        json.dumps({"brand": "Bionaire", "name": "air cooler",
+                    "category": "electronics", "specs": {}, "reviews": {},
+                    "price": None}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SHADOW_L2_DUMP", str(dump))
+    # category 'other' should STILL find the electronics row via cross-cat fallback
+    rows = se._fetch_l2_rows_for_category("other")
+    assert any(r["name"] == "air cooler" for r in rows)
+
+
+def test_fetch_l2_cross_category_fallback_prefers_requested_first(monkeypatch, tmp_path):
+    dump = tmp_path / "l2.jsonl"
+    dump.write_text(
+        json.dumps({"brand": "X", "name": "thing", "category": "grocery",
+                    "specs": {}, "reviews": {}, "price": None}) + "\n"
+        + json.dumps({"brand": "Y", "name": "gadget", "category": "electronics",
+                      "specs": {}, "reviews": {}, "price": None}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SHADOW_L2_DUMP", str(dump))
+    rows = se._fetch_l2_rows_for_category("electronics")
+    # requested category rows come first, others appended for fallback matching
+    assert rows[0]["category"] == "electronics"
+    assert any(r["category"] == "grocery" for r in rows)
 
 
 # ---------------------------------------------------------------------------
