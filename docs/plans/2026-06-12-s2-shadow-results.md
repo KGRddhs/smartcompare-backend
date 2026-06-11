@@ -99,7 +99,19 @@ SPLIT (noise, n=2): groc-002 groc-023
 
 **Input reconstruction (zero Serper).** The S1 baseline (eval_runs `4aee8e88`, `?nocache=true`, 2026-06-10) skips the L2 cache *reads* but its *writes* still fire: after fresh extraction the orchestrator unconditionally calls `save_specs` / `save_price` / `save_reviews` (`structured_comparison_service.py:2466-69` etc). So the specs/prices/reviews the baseline verdicts saw are in the L2 `product_*` tables, keyed by brand+name. The harness joins them (brand+name, with a cross-category fallback for parser re-categorization), assembles the `product_data[i]` dicts, and computes `scores_summary` with the REAL deterministic `scoring_service` (offline, $0). Each arm then re-runs only the verdict LLM call.
 
-**Coverage.** bias45: **45/45 reconstructed**. graded200: 153/154 (the broader set is prepared but not yet arm-run — see §6). The 46 S1 error rows (39 http_400 + 6 http_502 + 1 timeout) have NO reconstructable verdict input — no verdict ran on them — so they are **out of this lane's scope**; they are Lane I5's recovery domain. Every number here is over the http-200 graded population only.
+**Coverage — explicit JOIN accounting (dispatcher directive 1).** The verdict inputs are reconstructed by a **brand+name token JOIN** of the gold query's two product phrases against the L2 rows. Coverage:
+
+| set | http-200 graded | matched | coverage | unmatched ids |
+|---|---|---|---|---|
+| bias45 (pure winner-bias) | 45 | **45** | 100% | — |
+| graded200 (all http-200) | 154 | **154** | 100% | — |
+
+**No silent drops.** Every miss is reported by the harness (`prepare --skipped-out` writes id + query + which side(s) failed + the matched-flags). The JOIN is variant-tolerant by construction (token-subsequence either direction handles "iPhone 15" vs "Apple iPhone 15"; a cross-category fallback handles parser re-categorization). One abbreviation case surfaced and was fixed, not dropped:
+- **elec-006 "PS5 vs Xbox Series X":** the gold phrase "PS5" shares ZERO tokens with the L2 row "Sony PlayStation 5" — token overlap failed *honestly* (reported as `matched_a: false`). Added a small audited alias map (`_ALIAS_EXPANSIONS`: PS5→PlayStation 5, +PS4, defensive only) — PS5 is the **only** zero-token-overlap phrase in the entire gold-200 (verified by scanning all 400 product phrases against the 522-row L2 dump). With the alias, elec-006 matches and graded200 is 154/154.
+
+Coverage is **well above the ~130 floor** the dispatcher set for paid arms — no flag needed. The 46 S1 error rows (39 http_400 + 6 http_502 + 1 timeout) have NO reconstructable verdict input — no verdict ran on them — so they are **out of this lane's scope** (Lane I5's recovery domain). Every number in this report is over the http-200 graded population only.
+
+bias45 arms are run (§1); graded200 arms prepared (154/154) but not yet arm-run — see §6.
 
 **What this harness can and cannot measure honestly:**
 - **CAN:** winner-axis and factual-axis deltas across verdict configs, real per-call cost (metered tokens), verdict-call latency.

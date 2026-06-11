@@ -144,6 +144,27 @@ def test_match_l2_product_no_shared_token_returns_none():
     assert se.match_l2_product("Dyson V15", "electronics", rows) is None
 
 
+def test_match_l2_product_alias_expansion_ps5():
+    # gold phrase 'PS5' shares ZERO raw tokens with 'Sony PlayStation 5' —
+    # the alias expansion recovers the join.
+    rows = [{"brand": "Sony", "name": "PlayStation 5", "category": "electronics"}]
+    m = se.match_l2_product("PS5", "electronics", rows)
+    assert m is not None and m["name"] == "PlayStation 5"
+
+
+def test_expand_aliases_is_additive():
+    out = se._expand_aliases({"ps5"})
+    assert "ps5" in out  # original kept
+    assert "playstation" in out and "5" in out  # expansion added
+
+
+def test_match_l2_product_alias_does_not_overmatch():
+    # 'PS5' must NOT match an unrelated playstation-free row just because of
+    # the expansion — still needs a genuine shared token with the L2 row.
+    rows = [{"brand": "Microsoft", "name": "Xbox Series X", "category": "electronics"}]
+    assert se.match_l2_product("PS5", "electronics", rows) is None
+
+
 def test_match_l2_product_category_breaks_tie():
     rows = [
         {"brand": "Dove", "name": "soap", "category": "grocery"},
