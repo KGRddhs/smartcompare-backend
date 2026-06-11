@@ -217,6 +217,20 @@ def test_abridged_marker_reaches_the_assembled_prompt(canonical_content):
         )
 
 
+def test_complete_schema_reinforcement_line_present(canonical_content):
+    """The dispatcher-endorsed shape-drift guard: the I2 renderer emits an
+    explicit 'emit the COMPLETE verdict schema' reinforcement AFTER the abridged
+    exemplars, so the compact examples never nudge the model toward shorter
+    output (dropping best_for/pros/cons — the specs-axis risk). This is the
+    render-side counterpart to the file-side strict-subset integrity test.
+    String confirmed against the I2 loader (dee67da)."""
+    for cat in CATEGORIES:
+        block = loader.build_exemplar_block(cat)
+        assert "emit the COMPLETE verdict schema" in block, (
+            f"{cat}: COMPLETE-schema reinforcement line missing from the block"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Output-contract integrity — the abridged exemplar CANNOT be mistaken for a
 # real verdict response (dispatcher directive #2b)
