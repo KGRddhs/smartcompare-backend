@@ -60,20 +60,64 @@ def reset_cache() -> None:
 # Rendering helpers
 # ---------------------------------------------------------------------------
 
+# COMPACT Option A (dispatcher ruling 2026-06-11): exemplars carry only the
+# four teaching fields, rendered as a labeled ABRIDGED block (~200 tok each) —
+# NOT a full verdict_json dump. Fields may sit at the exemplar top level OR
+# under a nested `verdict` / `verdict_json` block; we read either.
+_COMPACT_FIELDS = ("winner_index", "winner_reason", "key_tradeoff", "value_context")
+
+
+def _compact_source(ex: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the dict that holds the compact verdict fields. Prefer a nested
+    `verdict`/`verdict_json` block; fall back to the exemplar top level."""
+    for key in ("verdict", "verdict_json"):
+        nested = ex.get(key)
+        if isinstance(nested, dict):
+            return nested
+    return ex
+
+
+def _render_value_context(vc: Any) -> Optional[str]:
+    """Render the per-product value_context dict as one readable line."""
+    if isinstance(vc, dict):
+        parts = []
+        for pk in ("product_0", "product_1"):
+            val = vc.get(pk)
+            if val:
+                parts.append(f"{pk}: {val}")
+        if parts:
+            return " | ".join(parts)
+        return None
+    if isinstance(vc, str) and vc.strip():
+        return vc.strip()
+    return None
+
+
 def _render_exemplar(ex: Dict[str, Any]) -> List[str]:
-    """Render ONE exemplar into prompt lines. `_provenance` (the source
-    pattern id) is internal-only and MUST NOT surface in the prompt."""
+    """Render ONE exemplar as a labeled ABRIDGED teaching block (COMPACT
+    Option A). `_provenance` (the source pattern id) is internal-only and MUST
+    NOT surface in the prompt."""
     lines: List[str] = []
     title = ex.get("title") or "EXAMPLE -- do not copy"
     lines.append(f"EXAMPLE (do not copy -- teaches the reasoning move only): {title}")
     setup = ex.get("setup")
     if setup:
         lines.append(f"Setup: {setup}")
-    verdict = ex.get("verdict_json")
-    if verdict is not None:
-        # Compact, deterministic JSON (sort_keys so the per-category prefix is
-        # byte-stable for OpenAI prompt-caching).
-        lines.append("Verdict: " + json.dumps(verdict, sort_keys=True, ensure_ascii=False))
+
+    src = _compact_source(ex)
+    # winner_index — render as a 1-based "Product N wins" so it reads naturally.
+    wi = src.get("winner_index")
+    if isinstance(wi, int) and wi in (0, 1):
+        lines.append(f"Winner: Product {wi + 1}")
+    reason = src.get("winner_reason")
+    if reason:
+        lines.append(f"Why: {reason}")
+    tradeoff = src.get("key_tradeoff")
+    if tradeoff:
+        lines.append(f"Tradeoff: {tradeoff}")
+    vc_line = _render_value_context(src.get("value_context"))
+    if vc_line:
+        lines.append(f"Value: {vc_line}")
     return lines
 
 

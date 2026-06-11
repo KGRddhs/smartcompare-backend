@@ -117,6 +117,75 @@ def test_exemplar_renders_into_block(tmp_path, monkeypatch):
     assert "_provenance" not in block
 
 
+def test_compact_option_a_full_block(tmp_path, monkeypatch):
+    """COMPACT Option A (dispatcher ruling 2026-06-11): exemplars render the
+    four teaching fields as a labeled abridged block — winner as 'Product N'
+    (1-based), Why/Tradeoff/Value lines — NOT a raw verdict_json dump."""
+    _write(tmp_path, monkeypatch, {
+        "makeup": {
+            "exemplars": [
+                {
+                    "title": "EXAMPLE -- do not copy",
+                    "setup": "Affordable glow serum vs prestige glow serum",
+                    "verdict_json": {
+                        "winner_index": 0,
+                        "winner_reason": "Same lit-from-within glow at 70% lower price.",
+                        "key_tradeoff": "The prestige pick has a richer applicator and packaging.",
+                        "value_context": {
+                            "product_0": "Outstanding value-per-dinar for the same finish.",
+                            "product_1": "A luxury splurge — pay for the brand experience.",
+                        },
+                    },
+                    "teaches": "H1",
+                    "_provenance": "make-016",
+                }
+            ],
+            "anti_patterns": [],
+        }
+    })
+    block = vel.build_exemplar_block("makeup")
+    # Winner rendered 1-based as "Product 1" (winner_index 0)
+    assert "Product 1" in block
+    # The four teaching labels surface
+    assert "Why:" in block
+    assert "Tradeoff:" in block
+    assert "Value:" in block
+    # value_context per-product dict rendered readably
+    assert "value-per-dinar" in block
+    assert "luxury splurge" in block
+    # NOT a raw JSON dump — no JSON braces from the verdict object
+    assert '"winner_index"' not in block
+    assert '{"' not in block
+
+
+def test_compact_fields_at_top_level_also_render(tmp_path, monkeypatch):
+    """Robustness: if I1 ships the compact fields at the exemplar top level
+    (no nested verdict block), they still render."""
+    _write(tmp_path, monkeypatch, {
+        "grocery": {
+            "exemplars": [
+                {
+                    "title": "EXAMPLE -- do not copy",
+                    "setup": "Regional staple vs imported brand",
+                    "winner_index": 1,
+                    "winner_reason": "The import wins on a 30% longer shelf life.",
+                    "key_tradeoff": "The local staple is cheaper and more widely stocked.",
+                    "value_context": {
+                        "product_0": "Everyday-value staple.",
+                        "product_1": "Premium import for a specific need.",
+                    },
+                    "teaches": "H2",
+                }
+            ],
+            "anti_patterns": [],
+        }
+    })
+    block = vel.build_exemplar_block("grocery")
+    assert "Product 2" in block  # winner_index 1 -> Product 2
+    assert "30% longer shelf life" in block
+    assert "Everyday-value staple" in block
+
+
 def test_anti_pattern_renders_into_block(tmp_path, monkeypatch):
     _write(tmp_path, monkeypatch, {
         "electronics": {
