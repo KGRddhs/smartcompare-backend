@@ -111,10 +111,14 @@ def _render_exemplar(ex: Dict[str, Any]) -> List[str]:
     consumes whatever shape the ratified exemplar content ships."""
     lines: List[str] = []
     title = ex.get("title") or "EXAMPLE -- do not copy"
-    # ABRIDGED marker (dispatcher order): these cases show only the teaching
-    # fields, NOT the full verdict schema — mirror that in the label so the
-    # model never mistakes an abridged example for the required output shape.
-    lines.append(f"ABRIDGED EXAMPLE (do not copy -- teaches the reasoning move only): {title}")
+    # ABRIDGED marker — dispatcher-ratified VERBATIM string, identical to the
+    # marker I1 carries in every exemplar's setup. These cases show only the
+    # teaching fields, NOT the full verdict schema, so the model must never
+    # copy their structure or content.
+    lines.append(
+        f"EXAMPLE -- abridged, do not copy structure or content "
+        f"(teaches the reasoning move only): {title}"
+    )
     setup = _first(ex, "setup", "context", "scenario", "pairing")
     if setup:
         lines.append(f"Setup: {setup}")

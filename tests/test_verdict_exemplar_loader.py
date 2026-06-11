@@ -235,11 +235,13 @@ def test_object_shaped_provenance_never_leaks(tmp_path, monkeypatch):
                                           "product_1": "Worth it for the lactose-sensitive."},
                     },
                     "teaches": "H1",
+                    # Dispatcher-confirmed ratified shape: _provenance is an
+                    # OBJECT {source_pattern_id, synthetic: true/false,
+                    # rewrite_note}. Loader is type-agnostic (never reads it).
                     "_provenance": {
-                        "source_id": "supp-013",
-                        "gold_query": "Optimum Nutrition vs Dymatize ISO100",
-                        "pattern": "H1 value-per-dinar",
-                        "notes": "synthetic rewrite, different brands",
+                        "source_pattern_id": "supp-013",
+                        "synthetic": True,
+                        "rewrite_note": "rewritten from Optimum Nutrition vs Dymatize ISO100; different brands",
                     },
                 }
             ],
@@ -248,13 +250,16 @@ def test_object_shaped_provenance_never_leaks(tmp_path, monkeypatch):
     })
     block = vel.build_exemplar_block("supplements")
     assert block != ""
-    # None of the object-shaped provenance keys/values may leak.
+    # None of the object-shaped provenance keys/values may leak. (Note: the
+    # word "synthetic" legitimately appears in the block HEADER — "synthetic
+    # teaching cases" — so we assert the provenance KEY name + the rewrite_note
+    # VALUE, not the bare word.)
     assert "supp-013" not in block
     assert "_provenance" not in block
-    assert "source_id" not in block
-    assert "gold_query" not in block
+    assert "source_pattern_id" not in block
+    assert "rewrite_note" not in block
     assert "Optimum Nutrition vs Dymatize" not in block
-    assert "synthetic rewrite" not in block
+    assert "different brands" not in block  # rewrite_note value content
     # The legitimate teaching content still renders.
     assert "24g protein" in block
 
@@ -364,7 +369,9 @@ def test_abridged_marker_in_exemplar_label(tmp_path, monkeypatch):
         }
     })
     block = vel.build_exemplar_block("skincare")
-    assert "ABRIDGED EXAMPLE" in block
+    # Dispatcher-ratified verbatim marker (matches I1's exemplar setups).
+    assert "abridged, do not copy structure or content" in block
+    assert "abridged" in block.lower()
 
 
 def test_complete_schema_reinforcement_after_exemplars(tmp_path, monkeypatch):
@@ -384,7 +391,7 @@ def test_complete_schema_reinforcement_after_exemplars(tmp_path, monkeypatch):
     reinforcement = "The examples above are abridged. Always emit the COMPLETE verdict schema."
     assert reinforcement in block
     # It must come AFTER the exemplar content.
-    assert block.index("ABRIDGED EXAMPLE") < block.index(reinforcement)
+    assert block.index("abridged, do not copy structure or content") < block.index(reinforcement)
 
 
 def test_no_reinforcement_when_only_anti_patterns(tmp_path, monkeypatch):
@@ -402,4 +409,4 @@ def test_no_reinforcement_when_only_anti_patterns(tmp_path, monkeypatch):
     block = vel.build_exemplar_block("electronics")
     assert block != ""
     assert "The examples above are abridged" not in block
-    assert "ABRIDGED EXAMPLE" not in block  # no exemplars rendered
+    assert "abridged, do not copy structure or content" not in block  # no exemplars rendered
