@@ -1010,6 +1010,71 @@ async def arm_reviews_trim(vi: VerdictInput, client) -> ArmCallResult:
         return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
 
 
+# --- Prompt-arm (dispatcher directive 2): baseline-prompt vs exemplar/AP-prompt
+# -----------------------------------------------------------------------------
+# The $0-Serper offline pre-read on the I1/I2 few-shot 45-id flip BEFORE the
+# live nocache G3 indicator. Same gpt-4o model + same L2 inputs as
+# arm_baseline_4o — the ONLY thing that varies is the verdict system prompt:
+# this arm injects I2's exemplar + anti-pattern block (built from I1's content).
+# That isolates winner-axis movement to the prompt change alone.
+#
+# WIRING (do at G2/G3, when I2's loader + I1's content are on main):
+#   I2 ships `app/services/verdict_exemplar_loader.py` mirroring
+#   pain_workflow_loader: `build_exemplar_block(category) -> str` (returns "" on
+#   miss). _build_exemplar_block_for_arm tries that import and falls back to ""
+#   so this scaffold compiles + tests pass NOW; at G2 confirm the import
+#   resolves and the block is non-empty for a seeded category. If I2 names the
+#   symbol differently, update the import here only.
+
+def _build_exemplar_block_for_arm(category: str) -> str:
+    """Return I2's exemplar+AP block for a category, or "" if the I2 mechanism
+    isn't on main yet (pre-G2). Tries the contracted symbol
+    `verdict_exemplar_loader.build_exemplar_block`; the SHADOW_EXEMPLAR_OFF env
+    forces the empty path (lets the arm run as a pure baseline control on demand)."""
+    if os.getenv("SHADOW_EXEMPLAR_OFF"):
+        return ""
+    try:
+        from app.services.verdict_exemplar_loader import build_exemplar_block  # type: ignore
+    except Exception:  # noqa: BLE001 — mechanism not merged yet (pre-G2)
+        logger.warning("[shadow] verdict_exemplar_loader not importable yet "
+                       "(pre-G2) — prompt-arm runs with EMPTY exemplar block")
+        return ""
+    try:
+        return build_exemplar_block(category) or ""
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[shadow] build_exemplar_block(%s) failed: %s", category, exc)
+        return ""
+
+
+async def arm_prompt_exemplars(vi: VerdictInput, client) -> ArmCallResult:
+    """Directive 2 — gpt-4o verdict WITH I2's exemplar/AP block injected into the
+    system prompt (after personality, before pain-workflow — the I2 injection
+    point). Compared against arm_baseline_4o (identical model + inputs, no
+    exemplars) so any winner-axis delta is attributable to the prompt change
+    alone. Runs as a baseline-equivalent control when the block is empty
+    (pre-G2 / SHADOW_EXEMPLAR_OFF) — flagged in the report when that happens."""
+    base_system = _build_verdict_system_prompt(vi)
+    exemplar_block = _build_exemplar_block_for_arm(vi.category)
+    # Inject the exemplar block into the system prompt. _build_verdict_system_prompt
+    # composes COMPARISON_SYSTEM + personality + pain-workflow + scoring-context;
+    # I2's production injection lands the block after personality and BEFORE
+    # pain-workflow. The harness can't splice mid-string without re-implementing
+    # the composer, so it appends the block as a clearly-delimited section — the
+    # content is identical; only ordering differs from prod, and ordering does
+    # not change which exemplars the model sees. (When prod unifies on
+    # build_verdict_prompt at I5.10 + I2 injects there, a later harness rev can
+    # call that path directly for byte-exact prod parity.)
+    system_msg = base_system
+    if exemplar_block:
+        system_msg += "\n\n" + exemplar_block
+    user_msg = _build_verdict_user_msg(vi)
+    try:
+        verdict, pt, ct = await _chat_json(client, "gpt-4o", system_msg, user_msg)
+        return ArmCallResult(verdict, pt, ct, "gpt-4o")
+    except Exception as exc:  # noqa: BLE001
+        return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
+
+
 # --- Multi-agent arm (I4.3): 3 mini analysts + 4o editor --------------------
 
 _ANALYST_PROMPTS = {
@@ -1104,6 +1169,9 @@ ARMS: Dict[str, Callable] = {
     "o3_mini": arm_o3_mini,
     "reviews_trim": arm_reviews_trim,
     "multiagent": arm_multiagent,
+    # Directive-2 prompt-arm. Runnable now (empty block, = baseline control)
+    # and live the moment I2's verdict_exemplar_loader + I1's content land.
+    "prompt_exemplars": arm_prompt_exemplars,
 }
 
 

@@ -851,3 +851,62 @@ async def test_arm_reviews_trim_truncates_review_payload(monkeypatch):
     user_msg = call["messages"][1]["content"]
     assert "x" * 2500 not in user_msg or len(user_msg) < 6000
     assert call["max_tokens"] == 600
+
+
+# ---------------------------------------------------------------------------
+# Prompt-arm (directive 2) — exemplar/AP block injection
+# ---------------------------------------------------------------------------
+
+def test_build_exemplar_block_off_env_returns_empty(monkeypatch):
+    monkeypatch.setenv("SHADOW_EXEMPLAR_OFF", "1")
+    assert se._build_exemplar_block_for_arm("electronics") == ""
+
+
+def test_build_exemplar_block_falls_back_when_loader_missing(monkeypatch):
+    # pre-G2: verdict_exemplar_loader not importable -> empty block, no crash
+    monkeypatch.delenv("SHADOW_EXEMPLAR_OFF", raising=False)
+    import builtins
+    real_import = builtins.__import__
+
+    def _blocked_import(name, *a, **k):
+        if name == "app.services.verdict_exemplar_loader":
+            raise ImportError("not merged yet")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", _blocked_import)
+    assert se._build_exemplar_block_for_arm("electronics") == ""
+
+
+@pytest.mark.asyncio
+async def test_arm_prompt_exemplars_injects_block_into_system(monkeypatch):
+    # mock the base system prompt + the exemplar block; assert the block lands
+    # in the system message the model receives
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "BASE_SYS")
+    monkeypatch.setattr(se, "_build_exemplar_block_for_arm",
+                        lambda cat: "EXEMPLAR_BLOCK_FOR_" + cat)
+    client = _FakeClient({"gpt-4o": '{"winner_index": 1, "winner_reason": "x"}'})
+    report = await se.run_arm("prompt_exemplars", [_one_input(expected=1)],
+                              weights=_WEIGHTS, client=client)
+    call = client.chat.completions.calls[0]
+    sys_msg = call["messages"][0]["content"]
+    assert "BASE_SYS" in sys_msg
+    assert "EXEMPLAR_BLOCK_FOR_electronics" in sys_msg
+    assert call["model"] == "gpt-4o"
+    assert report.arm_winner_rate == 1.0  # picked gold winner -> graded correct
+
+
+@pytest.mark.asyncio
+async def test_arm_prompt_exemplars_empty_block_runs_as_baseline(monkeypatch):
+    # pre-G2 / OFF: empty block -> system message is just the base (no appended
+    # section), arm still runs and grades (= baseline control)
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "BASE_SYS")
+    monkeypatch.setattr(se, "_build_exemplar_block_for_arm", lambda cat: "")
+    client = _FakeClient({"gpt-4o": '{"winner_index": 0}'})
+    await se.run_arm("prompt_exemplars", [_one_input(expected=0)],
+                     weights=_WEIGHTS, client=client)
+    sys_msg = client.chat.completions.calls[0]["messages"][0]["content"]
+    assert sys_msg == "BASE_SYS"  # no appended block
+
+
+def test_prompt_exemplars_registered_in_arms():
+    assert "prompt_exemplars" in se.ARMS
