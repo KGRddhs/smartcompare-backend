@@ -217,6 +217,48 @@ def test_field_name_aliases_tolerated(tmp_path, monkeypatch):
     assert "buy-it-for-life" in block            # value -> Value
 
 
+def test_object_shaped_provenance_never_leaks(tmp_path, monkeypatch):
+    """Dispatcher ruled I1's _provenance is OBJECT-shaped. The loader renders
+    only title/setup + the 4 compact fields, so _provenance (string OR object)
+    is stripped by omission — pin it never surfaces in the prompt."""
+    _write(tmp_path, monkeypatch, {
+        "supplements": {
+            "exemplars": [
+                {
+                    "title": "EXAMPLE -- do not copy",
+                    "setup": "Budget whey vs premium isolate",
+                    "verdict_json": {
+                        "winner_index": 0,
+                        "winner_reason": "Same 24g protein per scoop at 35% lower cost.",
+                        "key_tradeoff": "The isolate has less lactose.",
+                        "value_context": {"product_0": "Best cost-per-gram protein.",
+                                          "product_1": "Worth it for the lactose-sensitive."},
+                    },
+                    "teaches": "H1",
+                    "_provenance": {
+                        "source_id": "supp-013",
+                        "gold_query": "Optimum Nutrition vs Dymatize ISO100",
+                        "pattern": "H1 value-per-dinar",
+                        "notes": "synthetic rewrite, different brands",
+                    },
+                }
+            ],
+            "anti_patterns": [],
+        }
+    })
+    block = vel.build_exemplar_block("supplements")
+    assert block != ""
+    # None of the object-shaped provenance keys/values may leak.
+    assert "supp-013" not in block
+    assert "_provenance" not in block
+    assert "source_id" not in block
+    assert "gold_query" not in block
+    assert "Optimum Nutrition vs Dymatize" not in block
+    assert "synthetic rewrite" not in block
+    # The legitimate teaching content still renders.
+    assert "24g protein" in block
+
+
 def test_anti_pattern_renders_into_block(tmp_path, monkeypatch):
     _write(tmp_path, monkeypatch, {
         "electronics": {
