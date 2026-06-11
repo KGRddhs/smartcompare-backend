@@ -196,11 +196,74 @@ def test_provenance_never_leaks_into_prompt(canonical_content):
         assert "source_pattern_id" not in block
 
 
-def test_label_present_on_every_exemplar(canonical_content):
-    """Every exemplar carries the 'EXAMPLE — do not copy' contamination guard
-    in its setup (belt-and-suspenders with the loader's title render)."""
+def test_abridged_marker_present_on_every_exemplar(canonical_content):
+    """Dispatcher directive: every exemplar carries the ABRIDGED marker
+    ('EXAMPLE — abridged, do not copy structure or content') in its setup so a
+    JSON-mode output contract never pattern-matches a partial object."""
     for cat in CATEGORIES:
         for ex in canonical_content[cat]["exemplars"]:
-            assert "EXAMPLE — do not copy" in ex["setup"], (
-                f"{cat}: exemplar missing the do-not-copy label"
+            assert "EXAMPLE — abridged, do not copy structure or content" in ex["setup"], (
+                f"{cat}: exemplar missing the abridged do-not-copy marker"
             )
+
+
+def test_abridged_marker_reaches_the_assembled_prompt(canonical_content):
+    """The abridged marker must survive injection into the verdict prompt, not
+    just live in the file — so the model actually sees the disclaimer."""
+    for cat in CATEGORIES:
+        block = loader.build_exemplar_block(cat)
+        assert "abridged" in block.lower(), (
+            f"{cat}: 'abridged' marker absent from the rendered exemplar block"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Output-contract integrity — the abridged exemplar CANNOT be mistaken for a
+# real verdict response (dispatcher directive #2b)
+# ---------------------------------------------------------------------------
+
+# The full verdict OUTPUT contract the model must emit (COMPARISON_SYSTEM
+# :582-611). An abridged exemplar carries only the discriminator fields and is
+# missing the rest — so it can never satisfy the real output contract.
+_FULL_VERDICT_REQUIRED = {
+    "winner_index", "winner_declaration", "winner_reason", "key_tradeoff",
+    "value_context", "best_for",
+    "product_0_pros", "product_0_cons", "product_1_pros", "product_1_cons",
+    "specs_comparison",
+}
+# The compact teaching subset an abridged exemplar is allowed to show.
+_ABRIDGED_ALLOWED = {
+    "winner_index", "winner_declaration", "winner_reason", "key_tradeoff",
+    "value_context",
+}
+
+
+def test_abridged_verdict_is_strict_subset_never_full_output(canonical_content):
+    """Each exemplar verdict_json is a STRICT subset of the discriminator
+    fields — it omits best_for / pros / cons / specs_comparison, so it can
+    never be confused with (or satisfy) the real :582-611 output contract."""
+    for cat in CATEGORIES:
+        for ex in canonical_content[cat]["exemplars"]:
+            keys = set(ex["verdict_json"].keys())
+            assert keys <= _ABRIDGED_ALLOWED, (
+                f"{cat}: abridged verdict has out-of-scope keys {keys - _ABRIDGED_ALLOWED}"
+            )
+            # It must be MISSING the output-only fields — proving it is not a
+            # complete verdict response.
+            output_only = _FULL_VERDICT_REQUIRED - _ABRIDGED_ALLOWED
+            assert not (keys & output_only), (
+                f"{cat}: abridged verdict leaked output-only fields {keys & output_only}"
+            )
+
+
+def test_real_verdict_output_contract_untouched():
+    """The production verdict path still demands the FULL output schema — the
+    exemplar block changes the prompt PREFIX, never the response_format or the
+    pros/cons contract. Guarded by the standing test_verdict_response_format
+    suite; here we assert COMPARISON_SYSTEM still specifies the full field set
+    so an abridged example can't have quietly narrowed the contract."""
+    from app.services.extraction_service import COMPARISON_SYSTEM
+    for required in ("best_for", "product_0_pros", "product_1_cons", "specs_comparison"):
+        assert required in COMPARISON_SYSTEM, (
+            f"the real verdict schema lost required field {required!r}"
+        )

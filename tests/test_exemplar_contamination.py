@@ -90,6 +90,16 @@ def _surface_text(ex: dict) -> str:
     return " ".join(parts).lower()
 
 
+def test_abridged_marker_present(content):
+    """Every exemplar carries the dispatcher-mandated abridged marker so a
+    JSON-mode output contract never pattern-matches a partial object."""
+    for cat in CATEGORIES:
+        for ex in content[cat]["exemplars"]:
+            assert "EXAMPLE — abridged, do not copy structure or content" in ex["setup"], (
+                f"{cat}: missing abridged marker"
+            )
+
+
 def test_every_provenance_id_resolves_to_gold(content, gold_ids):
     for cat in CATEGORIES:
         for ex in content[cat]["exemplars"]:
