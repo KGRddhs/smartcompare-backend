@@ -186,6 +186,37 @@ def test_compact_fields_at_top_level_also_render(tmp_path, monkeypatch):
     assert "Everyday-value staple" in block
 
 
+def test_field_name_aliases_tolerated(tmp_path, monkeypatch):
+    """Loader is consumer of canonical content: accept common field-name
+    variants ('context' for setup, 'reason'/'tradeoff'/'value') so it renders
+    whatever shape the ratified exemplar content ships."""
+    _write(tmp_path, monkeypatch, {
+        "fashion": {
+            "exemplars": [
+                {
+                    "title": "EXAMPLE -- do not copy",
+                    "context": "Heritage leather bag vs trend-driven tote",
+                    "verdict_json": {
+                        "winner_index": 0,
+                        "reason": "Full-grain leather lasts 5x longer than coated canvas.",
+                        "tradeoff": "The trend tote is half the price.",
+                        "value": {"product_0": "A buy-it-for-life investment.",
+                                  "product_1": "Fashion-forward but disposable."},
+                    },
+                    "teaches": "H6",
+                }
+            ],
+            "anti_patterns": [],
+        }
+    })
+    block = vel.build_exemplar_block("fashion")
+    assert "Heritage leather bag" in block      # context -> Setup
+    assert "Product 1" in block                  # winner_index 0
+    assert "5x longer" in block                  # reason -> Why
+    assert "half the price" in block             # tradeoff -> Tradeoff
+    assert "buy-it-for-life" in block            # value -> Value
+
+
 def test_anti_pattern_renders_into_block(tmp_path, monkeypatch):
     _write(tmp_path, monkeypatch, {
         "electronics": {

@@ -93,29 +93,43 @@ def _render_value_context(vc: Any) -> Optional[str]:
     return None
 
 
+def _first(d: Dict[str, Any], *keys: str) -> Any:
+    """Return the first present, truthy value among `keys` (schema-alias
+    tolerance: 'content is canon, loader is consumer' — accept the common
+    field-name variants I1's ratified schema might use)."""
+    for k in keys:
+        v = d.get(k)
+        if v not in (None, ""):
+            return v
+    return None
+
+
 def _render_exemplar(ex: Dict[str, Any]) -> List[str]:
     """Render ONE exemplar as a labeled ABRIDGED teaching block (COMPACT
     Option A). `_provenance` (the source pattern id) is internal-only and MUST
-    NOT surface in the prompt."""
+    NOT surface in the prompt. Field-name aliases are accepted so the loader
+    consumes whatever shape the ratified exemplar content ships."""
     lines: List[str] = []
     title = ex.get("title") or "EXAMPLE -- do not copy"
     lines.append(f"EXAMPLE (do not copy -- teaches the reasoning move only): {title}")
-    setup = ex.get("setup")
+    setup = _first(ex, "setup", "context", "scenario", "pairing")
     if setup:
         lines.append(f"Setup: {setup}")
 
     src = _compact_source(ex)
     # winner_index — render as a 1-based "Product N wins" so it reads naturally.
     wi = src.get("winner_index")
+    if wi is None:
+        wi = ex.get("winner_index")
     if isinstance(wi, int) and wi in (0, 1):
         lines.append(f"Winner: Product {wi + 1}")
-    reason = src.get("winner_reason")
+    reason = _first(src, "winner_reason", "reason")
     if reason:
         lines.append(f"Why: {reason}")
-    tradeoff = src.get("key_tradeoff")
+    tradeoff = _first(src, "key_tradeoff", "tradeoff")
     if tradeoff:
         lines.append(f"Tradeoff: {tradeoff}")
-    vc_line = _render_value_context(src.get("value_context"))
+    vc_line = _render_value_context(_first(src, "value_context", "value"))
     if vc_line:
         lines.append(f"Value: {vc_line}")
     return lines
