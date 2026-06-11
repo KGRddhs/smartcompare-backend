@@ -96,6 +96,57 @@ BASELINE_GRADES = REPO_ROOT / ".qa-bias-rerun" / "baseline_s1_per_query.jsonl"
 # below is the 2026-06-10 snapshot used for cross-checking.
 BIAS45_SNAPSHOT_2026_06_10: Tuple[str, ...] = ()  # populated by tools/_dump on demand
 
+# Structural-vs-variance decomposition of the 45-id pure-bias set, derived from
+# the 4-arm bias45 agreement analysis (commit ec436fc):
+#   STRUCTURAL = all 4 verdict configs (4o / o3-mini / multiagent / reviews-trim)
+#                picked the SAME wrong winner -> a real reasoning bias, the I1/I2
+#                few-shot target.
+#   VARIANCE   = all 4 configs picked the gold winner -> the S1 baseline got them
+#                wrong on a one-shot at T=0.2; they flip on any re-run.
+#   SPLIT      = configs disagreed -> true run-to-run noise.
+# The dispatcher requires every variance-reduction arm's winner rate reported
+# split by these buckets (does T=0 / best-of-3 recover the VARIANCE bucket
+# without disturbing STRUCTURAL?).
+STRUCTURAL_IDS: frozenset = frozenset({
+    "elec-012", "elec-018", "elec-024", "fash-006", "fash-008", "fash-011",
+    "fash-013", "fash-014", "frag-010", "frag-011", "frag-014", "frag-018",
+    "groc-004", "groc-011", "groc-014", "make-011", "make-014", "other-009",
+    "other-010", "other-012", "other-019", "skin-009", "skin-013", "supp-020",
+})
+VARIANCE_IDS: frozenset = frozenset({
+    "elec-033", "fash-009", "fash-016", "frag-007", "frag-016", "groc-009",
+    "hair-001", "hair-014", "hair-021", "make-003", "make-009", "make-013",
+    "make-016", "other-011", "skin-005", "skin-010", "skin-015", "skin-018",
+    "supp-013",
+})
+SPLIT_IDS: frozenset = frozenset({"groc-002", "groc-023"})
+
+
+def split_winner_rate(grades: Sequence["ArmGrade"]) -> Dict[str, Dict[str, Any]]:
+    """Winner rate within each agreement bucket (structural / variance / split /
+    other) for an arm's graded rows. 'other' catches any id not in the three
+    buckets (shouldn't happen on bias45, but keeps the accounting total)."""
+    buckets = {
+        "structural": STRUCTURAL_IDS,
+        "variance": VARIANCE_IDS,
+        "split": SPLIT_IDS,
+    }
+    out: Dict[str, Dict[str, Any]] = {}
+    classified: set = set()
+    for name, ids in buckets.items():
+        rows = [g for g in grades if g.id in ids]
+        classified.update(g.id for g in rows)
+        n = len(rows)
+        wins = sum(1 for g in rows if g.winner_pass)
+        out[name] = {"n": n, "winner_correct": wins,
+                     "winner_rate": round(wins / n, 4) if n else 0.0}
+    other = [g for g in grades if g.id not in classified]
+    if other:
+        wins = sum(1 for g in other if g.winner_pass)
+        out["other"] = {"n": len(other), "winner_correct": wins,
+                        "winner_rate": round(wins / len(other), 4)}
+    return out
+
 
 # ---------------------------------------------------------------------------
 # Baseline grades (the labels we measure deltas against)
@@ -982,6 +1033,70 @@ async def arm_baseline_4o(vi: VerdictInput, client) -> ArmCallResult:
         return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
 
 
+async def arm_temp0(vi: VerdictInput, client) -> ArmCallResult:
+    """Variance-reduction arm (dispatcher orders): gpt-4o verdict at
+    temperature=0 (greedy decode). Identical prompt + inputs to arm_baseline_4o
+    — the ONLY change is T=0.2 -> T=0. The shadow agreement analysis showed
+    ~19/45 pure-bias failures are sampling variance at the prod T=0.2; greedy
+    decode should recover much of that variance bucket at zero added cost.
+    Same model rate, same call count — a free quality lever if it holds."""
+    system_msg = _build_verdict_system_prompt(vi)
+    user_msg = _build_verdict_user_msg(vi)
+    try:
+        verdict, pt, ct = await _chat_json(client, "gpt-4o", system_msg, user_msg,
+                                           temperature=0.0)
+        return ArmCallResult(verdict, pt, ct, "gpt-4o")
+    except Exception as exc:  # noqa: BLE001
+        return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
+
+
+async def arm_best_of_3(vi: VerdictInput, client) -> ArmCallResult:
+    """Variance-reduction arm (dispatcher orders): run the gpt-4o verdict 3x at
+    the production T=0.2 and take the MAJORITY winner_index. Same prompt +
+    inputs as arm_baseline_4o; the 3 samples vote on the winner. The verdict
+    PROSE is taken from the sample whose winner_index matches the majority
+    (so the returned text is self-consistent with the voted winner). Cost = 3x
+    a single 4o call; the question the A/B answers is whether majority voting
+    buys enough variance-bucket flips to justify 3x verdict cost vs the free
+    T=0 arm. Reports its own (3x) cost."""
+    system_msg = _build_verdict_system_prompt(vi)
+    user_msg = _build_verdict_user_msg(vi)
+    try:
+        samples = await asyncio.gather(
+            _chat_json(client, "gpt-4o", system_msg, user_msg),
+            _chat_json(client, "gpt-4o", system_msg, user_msg),
+            _chat_json(client, "gpt-4o", system_msg, user_msg),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
+
+    verdicts = [s[0] for s in samples]
+    total_pt = sum(s[1] for s in samples)
+    total_ct = sum(s[2] for s in samples)
+
+    # Majority vote on winner_index (None votes excluded; tie -> first sample's pick).
+    from collections import Counter
+    votes = []
+    for v in verdicts:
+        wi = v.get("winner_index")
+        if wi is None:
+            wi = v.get("winner_idx")
+        if wi is not None:
+            votes.append(wi)
+    if votes:
+        winner_idx, _ = Counter(votes).most_common(1)[0]
+        # Return the prose of the FIRST sample that voted with the majority,
+        # so the text is consistent with the declared winner.
+        chosen = next((v for v in verdicts
+                       if (v.get("winner_index", v.get("winner_idx")) == winner_idx)),
+                      verdicts[0])
+        chosen = dict(chosen)
+        chosen["winner_index"] = winner_idx
+    else:
+        chosen = verdicts[0]
+    return ArmCallResult(chosen, total_pt, total_ct, "gpt-4o")
+
+
 async def arm_o3_mini(vi: VerdictInput, client) -> ArmCallResult:
     """I4.2 — o3-mini verdict on identical inputs. Promotion bar: quality-up
     AND cost-neutral-or-better vs arm_baseline_4o."""
@@ -1169,6 +1284,10 @@ ARMS: Dict[str, Callable] = {
     "o3_mini": arm_o3_mini,
     "reviews_trim": arm_reviews_trim,
     "multiagent": arm_multiagent,
+    # Variance-reduction arms (dispatcher orders, driven by the agreement
+    # finding): T=0 greedy decode + best-of-3 majority vote.
+    "temp0": arm_temp0,
+    "best_of_3": arm_best_of_3,
     # Directive-2 prompt-arm. Runnable now (empty block, = baseline control)
     # and live the moment I2's verdict_exemplar_loader + I1's content land.
     "prompt_exemplars": arm_prompt_exemplars,
@@ -1399,6 +1518,15 @@ def _cmd_run(args) -> int:
           f"— LIVE OpenAI calls, metered cost")
     report = asyncio.run(run_arm(arm, inputs, weights=weights, concurrency=args.concurrency))
     print(format_arm_report(report))
+
+    # Structural-vs-variance split (dispatcher requirement for the variance arms).
+    split = split_winner_rate(report.per_query)
+    print("split (winner rate by agreement bucket):")
+    for bucket in ("structural", "variance", "split", "other"):
+        b = split.get(bucket)
+        if b and b["n"]:
+            print(f"  {bucket:<11} {b['winner_correct']}/{b['n']} = {b['winner_rate']:.3f}")
+
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             fh.write(json.dumps({
@@ -1410,6 +1538,7 @@ def _cmd_run(args) -> int:
                     "axis_avg_factual", "mean_cost_usd", "total_cost_usd",
                     "mean_verdict_ms", "p50_verdict_ms", "p95_verdict_ms", "n_errors",
                 )},
+                "split_by_agreement_bucket": split,
                 "per_query": [dataclasses.asdict(g) for g in report.per_query],
             }, ensure_ascii=False, indent=2))
         print(f"# arm result -> {args.out}")

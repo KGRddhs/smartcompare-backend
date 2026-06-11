@@ -910,3 +910,105 @@ async def test_arm_prompt_exemplars_empty_block_runs_as_baseline(monkeypatch):
 
 def test_prompt_exemplars_registered_in_arms():
     assert "prompt_exemplars" in se.ARMS
+
+
+# ---------------------------------------------------------------------------
+# Variance-reduction arms: T=0 + best-of-3 majority
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_arm_temp0_sets_temperature_zero(monkeypatch):
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+    client = _FakeClient({"gpt-4o": '{"winner_index": 1}'})
+    await se.run_arm("temp0", [_one_input(expected=1)], weights=_WEIGHTS, client=client)
+    call = client.chat.completions.calls[0]
+    assert call["model"] == "gpt-4o"
+    assert call["temperature"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_arm_best_of_3_runs_three_calls_and_majority_votes(monkeypatch):
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+
+    # 3 samples: winner 1, 1, 0 -> majority = 1
+    seq = ['{"winner_index": 1, "winner_reason": "a"}',
+           '{"winner_index": 1, "winner_reason": "b"}',
+           '{"winner_index": 0, "winner_reason": "c"}']
+    idx = {"i": 0}
+
+    class _Seq:
+        async def create(self, **kwargs):
+            content = seq[idx["i"] % len(seq)]
+            idx["i"] += 1
+            return _FakeResponse(content)
+
+    client = _FakeClient({})
+    client.chat.completions = _Seq()
+    report = await se.run_arm("best_of_3", [_one_input(expected=1)],
+                              weights=_WEIGHTS, client=client)
+    assert idx["i"] == 3  # exactly 3 verdict calls
+    assert report.arm_winner_rate == 1.0  # majority winner=1 == gold=1
+    # cost = 3x a single call's metered tokens
+    assert report.mean_cost_usd == pytest.approx(3 * se.call_cost_usd("gpt-4o", 1000, 300))
+
+
+@pytest.mark.asyncio
+async def test_arm_best_of_3_majority_picks_wrong_when_two_agree_wrong(monkeypatch):
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+    # 0,0,1 -> majority 0; gold expects 1 -> winner wrong
+    seq = ['{"winner_index": 0}', '{"winner_index": 0}', '{"winner_index": 1}']
+    idx = {"i": 0}
+
+    class _Seq:
+        async def create(self, **kwargs):
+            content = seq[idx["i"] % len(seq)]
+            idx["i"] += 1
+            return _FakeResponse(content)
+
+    client = _FakeClient({})
+    client.chat.completions = _Seq()
+    report = await se.run_arm("best_of_3", [_one_input(expected=1)],
+                              weights=_WEIGHTS, client=client)
+    assert report.arm_winner_rate == 0.0
+
+
+def test_variance_arms_registered():
+    assert "temp0" in se.ARMS
+    assert "best_of_3" in se.ARMS
+
+
+# ---------------------------------------------------------------------------
+# Structural / variance split reporting
+# ---------------------------------------------------------------------------
+
+def test_structural_variance_id_sets_are_disjoint_and_sized():
+    assert len(se.STRUCTURAL_IDS) == 24
+    assert len(se.VARIANCE_IDS) == 19
+    assert len(se.SPLIT_IDS) == 2
+    assert not (se.STRUCTURAL_IDS & se.VARIANCE_IDS)
+    assert not (se.STRUCTURAL_IDS & se.SPLIT_IDS)
+    assert not (se.VARIANCE_IDS & se.SPLIT_IDS)
+
+
+def test_split_winner_rate_buckets_correctly():
+    grades = [
+        se.ArmGrade(id="elec-012", category="electronics", price_pass=True,
+                    specs_score=1.0, winner_pass=False, factual_pass=True,
+                    weighted_score=0.7, passing=False, baseline_winner_pass=False,
+                    baseline_weighted=0.7, winner_flipped_to_correct=False,
+                    winner_flipped_to_wrong=False, verdict_ms=1000, cost_usd=0.01),
+        se.ArmGrade(id="hair-001", category="haircare", price_pass=True,
+                    specs_score=1.0, winner_pass=True, factual_pass=True,
+                    weighted_score=1.0, passing=True, baseline_winner_pass=False,
+                    baseline_weighted=0.7, winner_flipped_to_correct=True,
+                    winner_flipped_to_wrong=False, verdict_ms=1000, cost_usd=0.01),
+        se.ArmGrade(id="groc-002", category="grocery", price_pass=True,
+                    specs_score=1.0, winner_pass=True, factual_pass=True,
+                    weighted_score=1.0, passing=True, baseline_winner_pass=False,
+                    baseline_weighted=0.7, winner_flipped_to_correct=True,
+                    winner_flipped_to_wrong=False, verdict_ms=1000, cost_usd=0.01),
+    ]
+    split = se.split_winner_rate(grades)
+    assert split["structural"]["n"] == 1 and split["structural"]["winner_rate"] == 0.0
+    assert split["variance"]["n"] == 1 and split["variance"]["winner_rate"] == 1.0
+    assert split["split"]["n"] == 1 and split["split"]["winner_rate"] == 1.0
