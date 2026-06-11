@@ -7,8 +7,8 @@ from starlette.requests import Request
 from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from typing import Optional
 
-from app.services.api_budget_service import get_usage_summary
-from app.services.cache_service import get_tier15_hit_rate
+from app.services.api_budget_service import get_usage_summary, get_burn_status
+from app.services.cache_service import get_tier15_hit_rate, get_tier15_source_hits
 from app.services.database_service import get_supabase_client, get_admin_supabase_client
 from app.middleware.rate_limiter import limiter
 from app.services.analytics_service import (
@@ -127,15 +127,30 @@ async def api_costs(request: Request, _=Depends(verify_admin_key)):
     # B.0 (Lane F1, F1.6) — Tier 1.5 escalation hit-rate, per-category 7-day
     # window. attempts = escalations that entered the scrape pool; hits =
     # scraped/structured winners returned (vs GPT-estimate fall-through).
-    # Fail-open: zeroed block when Redis is down.
+    # I5.1 (Bundle B S2) adds `by_source` — which registry/legacy domains
+    # produced the wins (the F1.7 attribution residual; counters already
+    # write per-domain). Fail-open: zeroed block when Redis is down.
     try:
         summary["tier1_5_hit_rate"] = {
             "window_days": 7,
             "by_category": get_tier15_hit_rate(days=7),
+            "by_source": get_tier15_source_hits(days=7),
         }
     except Exception as e:
         logger.warning(f"[ADMIN] tier1_5_hit_rate aggregate failed: {e}")
-        summary["tier1_5_hit_rate"] = {"window_days": 7, "by_category": {}}
+        summary["tier1_5_hit_rate"] = {
+            "window_days": 7, "by_category": {}, "by_source": {}
+        }
+
+    # I5.0 (Bundle B S2) — Serper burn status vs the 80% ceiling. This is the
+    # run-integrity canary: a measurement run that crosses 80% trips the
+    # Sentry/log alert in api_budget_service; this surfaces the live number so
+    # the balance can be reconciled before a full gold-200 re-run.
+    try:
+        summary["serper_burn"] = get_burn_status("serper")
+    except Exception as e:
+        logger.warning(f"[ADMIN] serper_burn status failed: {e}")
+        summary["serper_burn"] = {}
 
     return summary
 

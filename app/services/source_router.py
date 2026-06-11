@@ -107,6 +107,26 @@ def _normalize_domain(host: str) -> str:
     return host
 
 
+def match_registry_apex(host: str) -> str:
+    """Collapse a winning retailer host to its registry apex, if any.
+
+    `uae.sharafdg.com` -> `sharafdg.com`; `www.noon.com` -> `noon.com`;
+    `talabat.com` -> `talabat.com`. An off-registry host is returned unchanged
+    (lowercased, www-stripped). Suffix-match mirrors `score_source` so a
+    regional subdomain of a registry source is counted under the apex — fixes
+    the by_source subdomain undercount (G1 finding F2: writer recorded the raw
+    subdomain while the reader probed apex keys only).
+    """
+    if not host:
+        return host
+    domain = _normalize_domain(str(host))
+    for s in SOURCE_REGISTRY:
+        registry_domain = s.domain.lower()
+        if domain == registry_domain or domain.endswith("." + registry_domain):
+            return registry_domain
+    return domain
+
+
 def get_sources_for_category(category: str) -> List[Source]:
     """Return sources ordered by tier (bahrain -> gcc -> global), filtered by category.
 

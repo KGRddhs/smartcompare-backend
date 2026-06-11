@@ -50,14 +50,58 @@ cap; sequential re-runs passed 8 of 12 prior failures), and parallel in-flight r
 inflate p95 and can perturb pass/fail near the band edges. Use 1 when the numbers must
 be trustworthy; 3 only for a quick smoke.
 
+## Tier 1.5 routing evidence (I5.1, Bundle B S2)
+
+Two surfaces make the registry-vs-legacy escalation attribution observable without
+guessing:
+
+1. **Per-domain dashboard line.** `/admin/costs → tier1_5_hit_rate.by_source` is a
+   **bucketed** `{"registry": {domain: hits}, "legacy": {domain: hits}}` map (7-day window,
+   hit-count descending) built from the `tier15:source_hits:{domain}:{YYYYMMDD}` counters
+   that `record_tier15_hit` writes. The winning host is normalized to its registry apex at
+   record time (`uae.sharafdg.com` → `sharafdg.com`, G1 finding F2), and the reader probes
+   BOTH the registry apexes AND the legacy whitelist so `legacy_fallback` wins
+   (farfetch/ssense/net-a-porter-class) are visible (G1 finding F3 — this is what answers
+   the F1.7 registry-vs-legacy attribution question). `by_category` (the F1.6 hit-rate
+   block) sits beside it. This is the exit-review yield evidence — read it during/after any
+   measurement run to see WHICH domains (`shopalmoayyed.com`, `talabat.com`, …) and WHICH
+   bucket produced the scraped winners.
+
+2. **Price-only cache-bust probe (`PRICE_CACHE_BUST=true`).** F1.7 §3 found the cold→warm
+   double-tap can't surface a registry route because cached Tier-3 GPT estimates
+   short-circuit the second run's escalation. Setting `PRICE_CACHE_BUST=true` force-misses
+   BOTH the Redis price read and the L2 DB price read in `_get_price`, so the Tier-1.5
+   escalation re-runs deterministically. Specs/reviews caches are UNTOUCHED (they gate on
+   the unchanged `nocache` arg), so the wall still fits the 30s cap. **It is a probe, not a
+   runtime flag — keep it UNSET on Railway normally**; the dispatcher flips it only for a
+   routing-evidence pass and unsets it after. The flag is read fresh per call (no process
+   cache), so it takes effect without a redeploy. Verify a single product cheaply via
+   `GET /api/v1/text/prices/<product>` with the flag on, then read `by_source` to confirm
+   the route landed.
+
 ## Cost guard
 
 The CLI refuses the full set live without `--allow-full`. smoke20 (20 queries) is the
 safe default. All unit/integration tests mock the httpx transport — zero network, zero
 cost. Operational lesson (2026-06-10): a full baseline DEPLETED the Serper key mid-run —
 before any full run, sanity-check the key's remaining credits, and reconcile
-`api_budget_service`'s serper ceiling with the real account balance (S2 item: 80%-burn
-alert).
+`api_budget_service`'s serper ceiling with the real account balance.
+
+**Serper 80%-burn alert (I5.0, shipped Bundle B S2).** `api_budget_service.record_usage`
+fires a WARNING log + `sentry_sdk.capture_message` (level=warning) ONCE when a provider
+crosses 80% of its ceiling (serper: 1760/2200), de-duped via a Redis sentinel so it does
+not spam. `/admin/costs → serper_burn` surfaces the live `{used, limit, threshold,
+fraction, over_threshold}` number — the run-integrity canary to check before a full
+gold-200 re-run. The sentinel is **LATCHED with no expiry** for lifetime providers
+(serper/firecrawl) so the alert fires exactly once until the key is rotated (the counter
+reset on rotation re-arms it); a monthly provider's sentinel is bounded by the
+month-stamped key and re-arms next month. (G1 finding F1 fixed an inverted TTL that gave
+lifetime providers a 1h sentinel → hourly re-fire.)
+
+**Runway at the 80% trip:** the 20% headroom between the alert (1760) and the 2200 ceiling
+is **440 credits ≈ 30–44 escalating cold queries** (post-B.0 escalation-heavy cold ≈
+10–15 credits each). So the alert is roughly one smoke20's worth of cushion before
+exhaustion — treat it as "rotate before the next measurement run," not "plenty left."
 
 ## Nightly cron (deliberately deferred)
 
