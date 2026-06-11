@@ -155,10 +155,13 @@ def _maybe_fire_burn_alert(provider: str, used: int) -> None:
         except ImportError:
             pass
 
-        # Mark fired AFTER alerting, with the budget-window TTL so a lifetime
-        # provider stays latched until the key is manually reset (rotation),
-        # while a monthly provider re-arms on the next month's key.
-        ttl = _CB_TTL if config.get("is_lifetime") else _MONTHLY_TTL
+        # Mark fired AFTER alerting. A LIFETIME provider (serper/firecrawl — the
+        # S1-depletion case) must stay LATCHED until the key is manually reset
+        # on rotation → no expiry (ex=None). A MONTHLY provider re-arms via its
+        # month-stamped sentinel key anyway, so a bounded _MONTHLY_TTL is fine.
+        # (G1 finding F1: this ternary was inverted — lifetime got the 1h
+        # _CB_TTL, so the alert re-fired hourly until rotation.)
+        ttl = None if config.get("is_lifetime") else _MONTHLY_TTL
         _redis_set(sentinel, str(int(time.time())), ex=ttl)
     except Exception as e:  # noqa: BLE001 — alerting must never break recording
         logger.warning(f"[BUDGET] burn-alert check failed for {provider}: {e}")

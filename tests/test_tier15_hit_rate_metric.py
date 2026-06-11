@@ -168,14 +168,15 @@ def test_source_hits_sums_multiple_days(fake_redis):
 
 
 def test_source_hits_default_domains_from_registry(fake_redis):
-    """With no explicit domain list, the aggregator probes the source
-    registry's domains so the dashboard works without a hand-maintained list."""
+    """With no explicit domain list, the aggregator probes the source registry
+    (registry bucket) so the dashboard works without a hand-maintained list.
+    F3: default return is now bucketed {registry, legacy}."""
     today = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%d")
     # shopalmoayyed.com is a registry Bahrain electronics source.
     fake_redis.store[f"tier15:source_hits:shopalmoayyed.com:{today}"] = 7
 
     out = cs.get_tier15_source_hits(days=7)
-    assert out.get("shopalmoayyed.com") == 7
+    assert out["registry"].get("shopalmoayyed.com") == 7
 
 
 def test_source_hits_sorted_descending(fake_redis):
@@ -200,3 +201,69 @@ def test_source_hits_fail_open_without_redis(monkeypatch):
 def test_source_hits_empty_when_no_hits(fake_redis):
     out = cs.get_tier15_source_hits(days=7, domains=["talabat.com", "noon.com"])
     assert out == {}
+
+
+# ---------- G1 finding F2: subdomain win must land under registry apex ----------
+# The writer recorded the raw winning host (uae.sharafdg.com) while the reader
+# probed apex keys (sharafdg.com) → 3 hits showed as by_source 0. The fix
+# normalizes the recorded domain to the matched registry apex at the
+# record_tier15_hit call site (source_router.match_registry_apex, suffix-match
+# like score_source).
+
+def test_match_registry_apex_normalizes_subdomain():
+    from app.services.source_router import match_registry_apex
+    # A regional subdomain of a registry apex collapses to the apex.
+    assert match_registry_apex("uae.sharafdg.com") == "sharafdg.com"
+    assert match_registry_apex("www.noon.com") == "noon.com"
+    # An exact apex stays itself.
+    assert match_registry_apex("talabat.com") == "talabat.com"
+    # An unknown / off-registry host is returned unchanged (lowercased, www-stripped).
+    assert match_registry_apex("uae.example-random.com") == "uae.example-random.com"
+
+
+def test_record_tier15_hit_normalizes_subdomain_to_apex(fake_redis):
+    """When the winning retailer host is a registry-apex subdomain, the
+    source_hits counter must land under the apex so by_source counts it."""
+    today = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%d")
+    # record_tier15_hit normalizes the domain it receives (the caller passes the
+    # raw host; cache_service applies match_registry_apex).
+    cs.record_tier15_hit("electronics", "uae.sharafdg.com")
+    # Lands under the apex, NOT under the raw subdomain.
+    assert fake_redis.store.get(f"tier15:source_hits:sharafdg.com:{today}") == 1
+    assert f"tier15:source_hits:uae.sharafdg.com:{today}" not in fake_redis.store
+
+
+# ---------- G1 finding F3: by_source must SEE legacy_fallback wins ----------
+# The reader defaulted to registry domains only, so legacy-whitelist wins
+# (farfetch/ssense/net-a-porter-class, recorded with route="legacy_fallback")
+# were written but never read — the F1.7 registry-vs-legacy question was
+# unanswerable by construction. Fix: bucketed return {registry, legacy}, with
+# the default domain set covering BOTH registry apexes and the legacy whitelist.
+
+def test_source_hits_bucketed_shape(fake_redis):
+    today = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%d")
+    fake_redis.store[f"tier15:source_hits:shopalmoayyed.com:{today}"] = 4   # registry
+    fake_redis.store[f"tier15:source_hits:farfetch.com:{today}"] = 2        # legacy whitelist
+    out = cs.get_tier15_source_hits(days=7)
+    assert set(out.keys()) == {"registry", "legacy"}
+    assert out["registry"].get("shopalmoayyed.com") == 4
+    assert out["legacy"].get("farfetch.com") == 2
+
+
+def test_source_hits_legacy_win_visible(fake_redis):
+    """A legacy-fallback win must appear in the legacy bucket (the whole point
+    of F3)."""
+    today = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%d")
+    fake_redis.store[f"tier15:source_hits:net-a-porter.com:{today}"] = 3
+    out = cs.get_tier15_source_hits(days=7)
+    assert out["legacy"].get("net-a-porter.com") == 3
+
+
+def test_source_hits_explicit_domains_still_supported_flat(fake_redis):
+    """Passing an explicit `domains=` list keeps the simple flat {domain: hits}
+    return — back-compat for callers that probe a known set (the bucketing only
+    applies to the default registry+legacy probe)."""
+    today = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%d")
+    fake_redis.store[f"tier15:source_hits:talabat.com:{today}"] = 5
+    out = cs.get_tier15_source_hits(days=7, domains=["talabat.com", "noon.com"])
+    assert out == {"talabat.com": 5}

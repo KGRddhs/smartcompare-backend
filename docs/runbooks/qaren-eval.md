@@ -56,11 +56,16 @@ Two surfaces make the registry-vs-legacy escalation attribution observable witho
 guessing:
 
 1. **Per-domain dashboard line.** `/admin/costs → tier1_5_hit_rate.by_source` is a
-   `{domain: hits}` map (7-day window, hit-count descending) built from the
-   `tier15:source_hits:{domain}:{YYYYMMDD}` counters that `record_tier15_hit` already
-   writes. `by_category` (the F1.6 hit-rate block) sits beside it. This is the exit-review
-   yield evidence — read it during/after any measurement run to see WHICH domains
-   (`shopalmoayyed.com`, `talabat.com`, …) produced the scraped winners.
+   **bucketed** `{"registry": {domain: hits}, "legacy": {domain: hits}}` map (7-day window,
+   hit-count descending) built from the `tier15:source_hits:{domain}:{YYYYMMDD}` counters
+   that `record_tier15_hit` writes. The winning host is normalized to its registry apex at
+   record time (`uae.sharafdg.com` → `sharafdg.com`, G1 finding F2), and the reader probes
+   BOTH the registry apexes AND the legacy whitelist so `legacy_fallback` wins
+   (farfetch/ssense/net-a-porter-class) are visible (G1 finding F3 — this is what answers
+   the F1.7 registry-vs-legacy attribution question). `by_category` (the F1.6 hit-rate
+   block) sits beside it. This is the exit-review yield evidence — read it during/after any
+   measurement run to see WHICH domains (`shopalmoayyed.com`, `talabat.com`, …) and WHICH
+   bucket produced the scraped winners.
 
 2. **Price-only cache-bust probe (`PRICE_CACHE_BUST=true`).** F1.7 §3 found the cold→warm
    double-tap can't surface a registry route because cached Tier-3 GPT estimates
@@ -87,8 +92,16 @@ fires a WARNING log + `sentry_sdk.capture_message` (level=warning) ONCE when a p
 crosses 80% of its ceiling (serper: 1760/2200), de-duped via a Redis sentinel so it does
 not spam. `/admin/costs → serper_burn` surfaces the live `{used, limit, threshold,
 fraction, over_threshold}` number — the run-integrity canary to check before a full
-gold-200 re-run. The alert re-arms on a monthly provider's next-month key and stays
-latched (1h sentinel TTL) for lifetime providers like serper.
+gold-200 re-run. The sentinel is **LATCHED with no expiry** for lifetime providers
+(serper/firecrawl) so the alert fires exactly once until the key is rotated (the counter
+reset on rotation re-arms it); a monthly provider's sentinel is bounded by the
+month-stamped key and re-arms next month. (G1 finding F1 fixed an inverted TTL that gave
+lifetime providers a 1h sentinel → hourly re-fire.)
+
+**Runway at the 80% trip:** the 20% headroom between the alert (1760) and the 2200 ceiling
+is **440 credits ≈ 30–44 escalating cold queries** (post-B.0 escalation-heavy cold ≈
+10–15 credits each). So the alert is roughly one smoke20's worth of cushion before
+exhaustion — treat it as "rotate before the next measurement run," not "plenty left."
 
 ## Nightly cron (deliberately deferred)
 

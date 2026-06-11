@@ -128,13 +128,23 @@ def record_tier15_attempt(category: str) -> None:
 
 def record_tier15_hit(category: str, domain: Optional[str] = None) -> None:
     """Count one Tier 1.5 scraped/structured hit for `category` (+ winning
-    `domain`, when known), today (UTC)."""
+    `domain`, when known), today (UTC).
+
+    G1 finding F2: the winning host is normalized to its registry apex
+    (uae.sharafdg.com -> sharafdg.com) before recording, so a regional
+    subdomain win lands under the apex the reader probes. Off-registry hosts
+    (legacy-fallback wins) record under their own normalized host."""
     if not redis_client:
         return
     cat_key = f"tier15:hits:{category}:{_utc_daystamp()}"
     if _redis_incr(cat_key) == 1:
         _redis_expire(cat_key, _TIER15_METRIC_TTL)
     if domain:
+        try:
+            from app.services.source_router import match_registry_apex
+            domain = match_registry_apex(domain)
+        except Exception:  # noqa: BLE001 — normalization is best-effort
+            domain = str(domain).lower()
         src_key = f"tier15:source_hits:{domain}:{_utc_daystamp()}"
         if _redis_incr(src_key) == 1:
             _redis_expire(src_key, _TIER15_METRIC_TTL)
@@ -224,32 +234,43 @@ def _registry_domains() -> List[str]:
         return []
 
 
-def get_tier15_source_hits(
-    days: int = 7, domains: Optional[List[str]] = None
-) -> Dict[str, int]:
-    """I5.1 — aggregate the trailing `days`-window per-domain Tier-1.5 hits.
+def _legacy_domains() -> List[str]:
+    """Legacy-whitelist domains a Tier-1.5 win can be recorded under when the
+    registry-first gate falls through to `route="legacy_fallback"` (the old
+    OFFICIAL_BRAND_DOMAINS / AUTHORIZED_LUXURY_RETAILERS / GCC_LUXURY_RETAILERS
+    sets). G1 finding F3: by_source was structurally blind to these — the
+    reader only probed registry apexes, so legacy wins were written but never
+    read. Best-effort import — empty list if unavailable."""
+    try:
+        from app.services.price_service import (
+            OFFICIAL_BRAND_DOMAINS,
+            AUTHORIZED_LUXURY_RETAILERS,
+            GCC_LUXURY_RETAILERS,
+        )
+        registry = set(_registry_domains())
+        seen: Dict[str, None] = {}
+        for group in (OFFICIAL_BRAND_DOMAINS, AUTHORIZED_LUXURY_RETAILERS, GCC_LUXURY_RETAILERS):
+            for d in group:
+                dl = str(d).lower()
+                # A domain that is ALSO a registry apex belongs to the registry
+                # bucket — keep the legacy bucket to genuinely-legacy domains.
+                if dl not in registry:
+                    seen.setdefault(dl, None)
+        return list(seen.keys())
+    except Exception as e:  # noqa: BLE001 — legacy import is best-effort
+        logger.warning(f"[TIER15] legacy domain import failed: {e}")
+        return []
 
-    Returns `{domain: hits}` for domains with hits>0 only, sorted by hit count
-    descending (top winner first) so /admin/costs surfaces WHICH registry vs
-    legacy domains produced the scraped wins (the F1.7 attribution residual).
 
-    `domains=None` probes the source registry. The winning domain recorded by
-    `record_tier15_hit` is the scraped *retailer* host, which is usually — but
-    not always — a registry domain (a redirect can land on an off-registry
-    host); those exotic hosts won't appear here, which is acceptable for a
-    yield dashboard. Single `mget`; fail-open to `{}` on a down Redis.
-    """
-    if domains is None:
-        domains = _registry_domains()
+def _aggregate_source_hits(domains: List[str], daystamps: List[str]) -> Dict[str, int]:
+    """Single-`mget` sum of tier15:source_hits:{domain}:{day} over the window,
+    returning `{domain: hits}` for hits>0, descending. Fail-open to `{}`."""
     if not redis_client or not domains:
         return {}
-
-    daystamps = [_utc_daystamp(i) for i in range(days)]
     keys: List[str] = []
     for d in domains:
         for ds in daystamps:
             keys.append(f"tier15:source_hits:{d.lower()}:{ds}")
-
     try:
         values = redis_client.mget(*keys)
     except TypeError:
@@ -275,9 +296,40 @@ def get_tier15_source_hits(
                 pass
         if total > 0:
             totals[d.lower()] = total
-
     # Sort descending by hit count (stable on ties → registry order preserved).
     return dict(sorted(totals.items(), key=lambda kv: kv[1], reverse=True))
+
+
+def get_tier15_source_hits(
+    days: int = 7, domains: Optional[List[str]] = None
+):
+    """I5.1 — aggregate the trailing `days`-window per-domain Tier-1.5 hits, so
+    /admin/costs surfaces WHICH domains produced the scraped wins (the F1.7
+    registry-vs-legacy attribution residual).
+
+    Two return shapes:
+    - `domains=<explicit list>` → flat `{domain: hits}` (hits>0, descending) —
+      back-compat for callers probing a known set.
+    - `domains=None` (default) → bucketed `{"registry": {...}, "legacy": {...}}`
+      probing BOTH the registry apexes AND the legacy whitelist, so
+      legacy_fallback wins are VISIBLE (G1 finding F3 — the reader was
+      registry-only and structurally blind to them).
+
+    The winning host is normalized to its registry apex at record time
+    (`record_tier15_hit`, F2). Single `mget` per bucket; fail-open on Redis
+    down.
+    """
+    daystamps = [_utc_daystamp(i) for i in range(days)]
+
+    if domains is not None:
+        # Explicit probe — flat back-compat shape.
+        return _aggregate_source_hits(domains, daystamps)
+
+    # Default probe — bucketed registry vs legacy.
+    return {
+        "registry": _aggregate_source_hits(_registry_domains(), daystamps),
+        "legacy": _aggregate_source_hits(_legacy_domains(), daystamps),
+    }
 
 
 # ============================================

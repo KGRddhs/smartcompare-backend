@@ -659,3 +659,57 @@ class TestBurnAlertFires:
         with patch("app.services.api_budget_service._redis_get", side_effect=Exception("down")):
             # Should not raise.
             abs_mod.record_usage("serper", 1)
+
+
+class TestBurnAlertSentinelTTL:
+    """G1 ultracode finding F1 — the sentinel TTL ternary was INVERTED:
+    lifetime providers (serper/firecrawl — the S1-depletion case) got the 1h
+    _CB_TTL, so the sentinel expired after an hour and the alert re-fired
+    HOURLY until rotation. The original dedup test couldn't catch it because
+    the mock-redis never expires keys — so these tests assert the `ex` value
+    passed to _redis_set directly, independent of mock expiry behavior.
+
+    Correct semantics: a LIFETIME provider stays latched (no expiry) until the
+    key is manually reset on rotation; a MONTHLY provider re-arms via its
+    month-stamped sentinel key, bounded by _MONTHLY_TTL."""
+
+    def _sentinel_set_ex(self, m_set, provider):
+        """Return the `ex` kwarg _redis_set was called with for `provider`'s
+        burn sentinel (None if the call wasn't made)."""
+        from app.services.api_budget_service import _burn_sentinel_key
+        sentinel = _burn_sentinel_key(provider)
+        for call in m_set.call_args_list:
+            args, kwargs = call
+            key = args[0] if args else kwargs.get("key")
+            if key == sentinel:
+                return kwargs.get("ex", args[2] if len(args) > 2 else None)
+        return "NO_CALL"
+
+    def test_lifetime_sentinel_has_no_expiry_latched(self, mock_redis_helpers):
+        """serper is lifetime → sentinel must be latched (ex=None), NOT 1h."""
+        from app.services import api_budget_service as abs_mod
+        from app.services.api_budget_service import _CB_TTL
+        mock_redis_helpers["store"][_budget_key("serper")] = "1759"
+        fake_sentry = MagicMock()
+        with patch.dict("sys.modules", {"sentry_sdk": fake_sentry}):
+            abs_mod.record_usage("serper", 1)  # crosses 1760 → fires + sets sentinel
+        ex = self._sentinel_set_ex(mock_redis_helpers["set"], "serper")
+        assert ex != "NO_CALL", "lifetime crossing must set the sentinel"
+        # The bug: ex == _CB_TTL (3600). The fix: latched (None) — never the 1h.
+        assert ex != _CB_TTL, "F1: lifetime sentinel must NOT use the 1h _CB_TTL"
+        assert ex is None, "lifetime sentinel must be latched (no expiry) until rotation"
+
+    def test_monthly_sentinel_is_bounded_not_latched(self, mock_redis_helpers):
+        """A monthly provider's sentinel is bounded by _MONTHLY_TTL (it re-arms
+        on next month's key anyway). scrapedo is the monthly provider."""
+        from app.services import api_budget_service as abs_mod
+        from app.services.api_budget_service import _MONTHLY_TTL, _burn_threshold
+        # Seed scrapedo just below its 80% threshold so the next call crosses.
+        thr = _burn_threshold("scrapedo")
+        mock_redis_helpers["store"][_budget_key("scrapedo")] = str(thr - 1)
+        fake_sentry = MagicMock()
+        with patch.dict("sys.modules", {"sentry_sdk": fake_sentry}):
+            abs_mod.record_usage("scrapedo", 1)
+        ex = self._sentinel_set_ex(mock_redis_helpers["set"], "scrapedo")
+        assert ex != "NO_CALL", "monthly crossing must set the sentinel"
+        assert ex == _MONTHLY_TTL, "monthly sentinel must be bounded by _MONTHLY_TTL"
