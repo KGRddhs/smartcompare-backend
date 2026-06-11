@@ -1160,8 +1160,10 @@ def build_verdict_prompt(
     # S2 I2.1 — inject few-shot verdict exemplars + per-category anti-patterns.
     # Keyed on `category` (NOT the user cohort) so it stays inside the
     # static-per-category prefix — OpenAI prompt-cache discipline (D2). Sits
-    # AFTER personality, BEFORE the cohort-varying pain-workflow block. Returns
-    # "" until I1's exemplar content lands, so this is a no-op on the empty file.
+    # AFTER personality, BEFORE the cohort-varying pain-workflow block. At G2
+    # this injects the per-category anti-patterns (the shipped file ships them
+    # POPULATED); the exemplar examples are EMPTY until I1's content lands at
+    # G3, at which point the abridged exemplars + reinforcement also inject.
     try:
         from app.services.verdict_exemplar_loader import build_exemplar_block
         base += build_exemplar_block(category)
@@ -1182,6 +1184,58 @@ def build_verdict_prompt(
     if comparison_quality == "weird":
         base += _WEIRD_VERDICT_INSTRUCTION
     return base
+
+
+def _extract_review_source_quotes(product: Optional[Dict]) -> List[Dict[str, Any]]:
+    """Pull the I2.5 review-source editorial quotes off a product, if present.
+
+    They live at product["reviews"]["review_source_quotes"] (attached by the
+    review_service consult path when ENABLE_REVIEW_SOURCE_CONSULT is set).
+    Returns [] when absent (flag OFF / consult missed) — the common case."""
+    if not isinstance(product, dict):
+        return []
+    reviews = product.get("reviews")
+    if not isinstance(reviews, dict):
+        return []
+    quotes = reviews.get("review_source_quotes")
+    if isinstance(quotes, list):
+        return [q for q in quotes if isinstance(q, dict) and q.get("text")]
+    return []
+
+
+def _build_review_source_quotes_block(
+    product1: Optional[Dict], product2: Optional[Dict]
+) -> str:
+    """S2 I2.5 (F5) — render the review-source editorial quotes as a labeled
+    verdict input. Returns "" when neither product carries quotes (flag OFF /
+    consult missed) so the prompt is byte-identical to the no-consult path."""
+    q1 = _extract_review_source_quotes(product1)
+    q2 = _extract_review_source_quotes(product2)
+    if not q1 and not q2:
+        return ""
+
+    def _fmt(quotes: List[Dict[str, Any]]) -> List[str]:
+        out = []
+        for q in quotes[:3]:
+            domain = (q.get("domain") or "").strip()
+            text = (q.get("text") or "").strip()
+            if text:
+                out.append(f'  - ({domain}) "{text}"' if domain else f'  - "{text}"')
+        return out
+
+    lines = [
+        "",
+        "## Regional editorial review notes (GCC sources)",
+        "These are editorial review snippets from GCC sources for additional"
+        " local context. Treat them as supporting signal, NOT as the verdict.",
+    ]
+    if q1:
+        lines.append("Product 1:")
+        lines.extend(_fmt(q1))
+    if q2:
+        lines.append("Product 2:")
+        lines.extend(_fmt(q2))
+    return "\n".join(lines)
 
 
 async def generate_comparison(
@@ -1258,6 +1312,14 @@ PRODUCT 2:
 User's region: {region}
 Primary concern: {concern}
 </USER_INPUT>"""
+
+        # S2 I2.5 (F5) — when the review-source consult ran (flag ON), surface
+        # its editorial quotes as a DELIBERATE, LABELED verdict input rather
+        # than letting them ride json.dumps(product) unlabeled. Flag OFF =
+        # no quotes present = this block is empty = zero change to the prompt.
+        review_quotes_block = _build_review_source_quotes_block(product1, product2)
+        if review_quotes_block:
+            user_msg += review_quotes_block
 
         # Bundle C § 1a A.3.1 — `response_format={"type": "json_object"}`
         # forces OpenAI's structured-output guarantee: the model MUST return

@@ -246,24 +246,37 @@ async def get_reviews(
     if retailer_ratings:
         reviews["source_ratings"] = retailer_ratings
 
+    # F3 (G2): persist the COMPLETED extraction BEFORE the optional consult.
+    # The consult can run inside the outer 10s reviews-race wait_for; if that
+    # cap fires DURING the consult, this coroutine is cancelled — so the cache
+    # write MUST happen first, otherwise the finished extract_reviews result is
+    # lost (PYTHON-FASTAPI-J pattern). After this point the extraction is safe
+    # regardless of what the consult does.
+    extraction_persisted = False
+    if reviews and not reviews.get("error"):
+        set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
+        from app.services.product_data_service import save_reviews
+        asyncio.create_task(save_reviews(cache_key, brand, name, variant, reviews))
+        extraction_persisted = True
+
     # S2 I2.5 — optional review-content consultation from usage="review" GCC
     # sources. Flag-gated (ENABLE_REVIEW_SOURCE_CONSULT, default OFF → no-op),
-    # never critical-path: any miss/timeout yields [] and reviews ships as-is.
+    # never critical-path: any miss/timeout yields [] and the already-persisted
+    # reviews ship as-is. consult_review_sources is itself wait_for-capped
+    # (active mode) / synchronous (passive mode).
     try:
         consult = await consult_review_sources(
             brand, name, variant, category, search_results,
             track_serper_cost_fn=track_serper_cost_fn,
         )
         if consult and isinstance(reviews, dict):
-            reviews["_review_source_snippets"] = consult
+            reviews["review_source_quotes"] = consult
+            # Re-cache the enriched copy so a subsequent cache hit carries the
+            # quotes too (the pre-consult write already protected the baseline).
+            if extraction_persisted:
+                set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
     except Exception as e:  # noqa: BLE001 — defensive; consult is best-effort
         logger.warning("[I2.5] consult_review_sources wiring error: %s", e)
-
-    if reviews and not reviews.get("error"):
-        set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
-        # Save to L2 DB (fire-and-forget)
-        from app.services.product_data_service import save_reviews
-        asyncio.create_task(save_reviews(cache_key, brand, name, variant, reviews))
 
     reviews["_cached"] = False
     return reviews
@@ -409,8 +422,12 @@ async def fetch_review_source_snippets(
     query = f"{product_query} {site_filter}".strip()
 
     try:
+        # F4 (G2): NO manual record_usage("serper") here — search_web already
+        # records the budget meter internally (serper_service.py:94), and only
+        # on success. A manual call here double-counted the credit AND counted
+        # failed calls. track_serper_cost_fn is the separate per-request cost
+        # tracker (not the budget meter) so it stays.
         result = await search_web(query, num_results=6)
-        record_usage("serper")
         if track_serper_cost_fn:
             track_serper_cost_fn()
     except Exception as e:  # noqa: BLE001
@@ -437,16 +454,21 @@ async def fetch_review_source_snippets(
 def review_source_consult_mode() -> Optional[str]:
     """Read ENABLE_REVIEW_SOURCE_CONSULT fresh each call (default OFF).
 
-    Returns "active" | "passive" | None. "active" fires the dedicated
-    budget-gated Serper site-search; "passive" reuses the already-fetched
-    unified search organic (zero extra Serper). Any other / unset value =
-    None (feature OFF). Read fresh (not process-cached) so I4 can A/B both
-    modes at G5 by toggling the env var.
+    Returns "active" | "passive" | None.
+    - "active" (EXPLICIT only) → fires the dedicated budget-gated Serper
+      site-search. This is the ONLY value that spends a Serper credit, so it is
+      deliberately NOT reachable via a generic truthy flip.
+    - "passive" OR any other truthy value ("true"/"1"/"on") → reuses the
+      already-fetched unified search organic (zero extra Serper). F3 (G2):
+      truthy defaults to the SAFE passive mode so a careless `=true` flip can't
+      silently start burning Serper credits.
+    - unset / "false" / anything else → None (feature OFF).
+    Read fresh (not process-cached) so I4 can A/B both modes at G5.
     """
     raw = os.environ.get("ENABLE_REVIEW_SOURCE_CONSULT", "").strip().lower()
-    if raw in ("active", "true", "1", "on"):
+    if raw == "active":
         return "active"
-    if raw == "passive":
+    if raw in ("passive", "true", "1", "on"):
         return "passive"
     return None
 

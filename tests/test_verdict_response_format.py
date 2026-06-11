@@ -194,3 +194,61 @@ async def test_429_fallback_verdict_temperature_zero():
         assert call.kwargs.get("temperature") == 0, (
             f"fallback verdict call temperature must be 0, got {call.kwargs.get('temperature')!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# S2 I2.5 (F5) — review_source_quotes is a DELIBERATE, LABELED verdict input
+# ---------------------------------------------------------------------------
+
+
+def _user_msg_of(mock_client):
+    """Return the verdict user message from the (first) create call."""
+    call = mock_client.chat.completions.create.call_args_list[0]
+    for m in call.kwargs["messages"]:
+        if m["role"] == "user":
+            return m["content"]
+    raise AssertionError("no user message in verdict call")
+
+
+@pytest.mark.asyncio
+async def test_review_source_quotes_present_when_consult_ran():
+    """When the consult populated product.reviews.review_source_quotes (flag
+    ON), the verdict user message carries a LABELED editorial-quotes block —
+    not just buried in the json.dumps(product) blob."""
+    fake = _mock_chat_response('{"winner_index": 0, "product_0_pros": ["x"]}')
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=fake)
+
+    p1 = {"name": "A", "brand": "X", "reviews": {
+        "review_source_quotes": [
+            {"domain": "sayidaty.net", "text": "Held up beautifully through a humid Gulf afternoon."}
+        ]
+    }}
+    p2 = {"name": "B", "brand": "Y"}
+
+    with patch("app.services.extraction_service.get_client", return_value=mock_client):
+        await extraction_service.generate_comparison(product1=p1, product2=p2, region="bahrain")
+
+    user_msg = _user_msg_of(mock_client)
+    assert "Regional editorial review notes" in user_msg   # the deliberate label
+    assert "sayidaty.net" in user_msg
+    assert "humid Gulf afternoon" in user_msg
+
+
+@pytest.mark.asyncio
+async def test_review_source_quotes_absent_when_consult_off():
+    """Flag OFF / consult missed (no review_source_quotes) → NO labeled block;
+    the prompt is byte-identical to the no-consult path (zero change)."""
+    fake = _mock_chat_response('{"winner_index": 0, "product_0_pros": ["x"]}')
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=fake)
+
+    with patch("app.services.extraction_service.get_client", return_value=mock_client):
+        await extraction_service.generate_comparison(
+            product1={"name": "A", "brand": "X"},
+            product2={"name": "B", "brand": "Y"},
+            region="bahrain",
+        )
+
+    user_msg = _user_msg_of(mock_client)
+    assert "Regional editorial review notes" not in user_msg

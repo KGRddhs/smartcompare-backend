@@ -22,6 +22,40 @@ from app.services.review_service import (
 
 
 @pytest.mark.asyncio
+async def test_consult_records_serper_budget_exactly_once():
+    """F4 (G2): search_web records the serper budget meter internally — the
+    consult path must NOT add a second manual record_usage (that double-counted
+    AND counted failures). We spy on record_usage (NOT mock it away) and have
+    the search_web stub call it ONCE to mimic serper_service's internal record;
+    total must stay 1, proving the consult adds zero."""
+    from unittest.mock import MagicMock
+    import app.services.review_service as rs
+
+    record_spy = MagicMock()
+
+    async def fake_search_web(query, num_results=6):
+        # Mimic serper_service.search_web: it records the meter ONCE on success.
+        rs.record_usage("serper")
+        return {"organic": [{"link": "https://sayidaty.net/a",
+                             "snippet": "A sufficiently long editorial review snippet about wear."}]}
+
+    with patch("app.services.review_service.search_web", new=AsyncMock(side_effect=fake_search_web)), \
+         patch("app.services.review_service.get_cached", return_value=None), \
+         patch("app.services.review_service.set_cached", return_value=True), \
+         patch("app.services.review_service.has_budget", return_value=True), \
+         patch("app.services.review_service.record_usage", new=record_spy):
+        snippets = await rs.fetch_review_source_snippets("Maybelline", "Fit Me", None, "makeup")
+
+    assert len(snippets) == 1
+    # EXACTLY one serper record — search_web's internal one, none added by consult.
+    serper_records = [c for c in record_spy.call_args_list if c.args and c.args[0] == "serper"]
+    assert len(serper_records) == 1, (
+        f"expected exactly 1 serper budget record, got {len(serper_records)} "
+        "(double-count regressed)"
+    )
+
+
+@pytest.mark.asyncio
 async def test_returns_snippets_from_review_sources():
     async def fake_search_web(query, num_results=6):
         # The query must target the Arabic review sources for a makeup product.
@@ -160,13 +194,24 @@ def test_mode_off_by_default(monkeypatch):
 
 
 @pytest.mark.parametrize("val,expected", [
-    ("active", "active"), ("true", "active"), ("1", "active"), ("on", "active"),
-    ("passive", "passive"),
-    ("", None), ("nope", None), ("off", None),
+    # F3 (G2): ONLY explicit "active" selects the Serper-burning active mode.
+    ("active", "active"),
+    # Generic truthy flips default to the SAFE passive mode (zero extra Serper).
+    ("true", "passive"), ("1", "passive"), ("on", "passive"), ("passive", "passive"),
+    # Falsy / unknown → OFF.
+    ("", None), ("nope", None), ("off", None), ("false", None),
 ])
 def test_mode_parsing(monkeypatch, val, expected):
     monkeypatch.setenv("ENABLE_REVIEW_SOURCE_CONSULT", val)
     assert review_source_consult_mode() == expected
+
+
+def test_truthy_flip_does_not_select_active(monkeypatch):
+    """F3 regression: a careless `=true` must NOT start burning Serper — it
+    selects passive (zero-extra-Serper), never active."""
+    for truthy in ("true", "1", "on", "TRUE", "On"):
+        monkeypatch.setenv("ENABLE_REVIEW_SOURCE_CONSULT", truthy)
+        assert review_source_consult_mode() == "passive"
 
 
 @pytest.mark.asyncio
