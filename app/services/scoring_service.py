@@ -1870,6 +1870,9 @@ def _dim_price(products: list[dict]) -> dict:
 def _dim_reviews(products: list[dict]) -> dict:
     a, b = products[0], products[1]
     ra, rb = a.get("rating"), b.get("rating")
+    # Non-numeric rating shapes (e.g. {} from upstream extraction) are missing data
+    ra = ra if isinstance(ra, (int, float)) else None
+    rb = rb if isinstance(rb, (int, float)) else None
     caption_key = None  # Bundle C § 2b A.4.4
     if ra is None or rb is None:
         score_a = score_b = _NEUTRAL_DISPLAY_SCORE
@@ -1913,6 +1916,9 @@ def _dim_value(products: list[dict], is_cross_tier: bool = False) -> dict:
     pb_raw = _get_price(b)
     ra = a.get("rating")
     rb = b.get("rating")
+    # Non-numeric rating shapes (e.g. {} from upstream extraction) are missing data
+    ra = ra if isinstance(ra, (int, float)) else None
+    rb = rb if isinstance(rb, (int, float)) else None
 
     # Honest-fallback: if any side lacks price or rating, the value ratio
     # is undefined. Return neutral display score with low confidence so

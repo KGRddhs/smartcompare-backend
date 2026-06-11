@@ -200,12 +200,15 @@ class TestPreferenceValidation:
             brand_attitude="best_of_both",
         )
         d = req.model_dump()
-        assert d == {
+        expected_set_fields = {
             "priorities": ["price", "quality"],
             "budget": "mid",
             "lifestyle": ["vegan"],
             "brand_attitude": "best_of_both",
         }
+        assert expected_set_fields.items() <= d.items()
+        # Unset optional fields (notifications, ai_sharing) dump as None, not omitted
+        assert all(v is None for k, v in d.items() if k not in expected_set_fields)
 
 
 # ============================================
