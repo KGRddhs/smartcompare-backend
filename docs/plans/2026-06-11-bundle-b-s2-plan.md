@@ -121,6 +121,8 @@ Conflict map: I1/I2 share `data/verdict_exemplars.json` (schema contract I1.1) �
 5. **smoke20 regression vs `4aee8e88`** (`python -m scripts.eval_runner --subset smoke20 --mode regression --baseline-run-id 4aee8e88-da97-41b3-974b-3e75c2c9c10e`, concurrency 1) + prod curl smoke (`/health` + one full compare + SSE happy-path — the L3-assembly lesson).
 6. Sentry check (`is:unresolved`) + `/admin/costs` Serper canary.
 
+**Known-RED ledger (S2 gates — dispatcher-verified on main, 2026-06-11):** the free-tier gate batch is GREEN when failures ⊆ this ledger; any failure outside it blocks the merge. (1) `tests/test_value_math.py` — Bundle-C-v1.1 TDD stubs (CLAUDE.md-documented). (2) Four pre-existing fails, stash-proven by I2 + reproduced on main by dispatcher: `test_category_selection.py::TestSpecPromptBuilding::test_skincare_prompt_contains_skincare_fields` (L2.12 subtype-router drift) + `test_extraction_prompt_bundle_c.py::test_response_builder_strips_inference_source` (owner: I2, at natural touch points) · `test_phase1_includes_reviews.py::test_phase1_runs_reviews_in_parallel_with_specs_price` + `test_unified_search.py::TestUnifiedSearchSharing::test_specs_calls_own_search_when_no_results` (owner: I5, at natural touch points). `test_personalization.py` is NOT on the ledger — fixed on main `08e4dc5`. `TestCostTrackingLive` is live_unit-marked and auto-deselected.
+
 ## 8. Comms contract (S1 discipline PLUS — binding from session start)
 
 - **ACK-every-ruling:** check inbox between EVERY task; ACK dispatcher rulings BEFORE proceeding. A close-out that re-asks an answered question = the diagnostic tell.
