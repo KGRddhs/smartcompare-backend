@@ -1822,7 +1822,14 @@ def _get_currency(product: dict) -> str:
 _DIM_WINNER_TIE_MARGIN = 3.0
 
 
-def _dim_winner(score_a, score_b, confidence: str | None = None) -> int | None:
+def _dim_winner(
+    score_a,
+    score_b,
+    confidence: str | None = None,
+    *,
+    was_missing_a: bool = False,
+    was_missing_b: bool = False,
+) -> int | None:
     """Authoritative per-dimension winner index for the v2 dimensions tab.
 
     Returns 0 (product A wins this dim), 1 (product B wins), or None
@@ -1830,10 +1837,21 @@ def _dim_winner(score_a, score_b, confidence: str | None = None) -> int | None:
     contract reads this directly instead of re-deriving from the bars.
 
     None when: either score is missing/MISSING_SCORE, confidence is "low"
-    (limited-data rows must not declare a winner), or the absolute margin
-    is under the tie threshold.
+    (limited-data rows must not declare a winner), EXACTLY ONE side's data
+    was missing (S2 I3.5 — Decision B: crowning the real-score side over a
+    MISSING side is false certainty — we don't know the other product on
+    this dim), or the absolute margin is under the tie threshold.
+
+    `was_missing_a`/`was_missing_b` are explicit per-side gap flags plumbed
+    from the dim builders (more robust than sniffing the MISSING_SCORE=50
+    sentinel, which can coincide with a legitimately calibrated 50).
     """
     if score_a is None or score_b is None:
+        return None
+    # S2 I3.5 — any side's data missing → no winner. Catches the asymmetric
+    # one-sided case Decision B targets (the both-missing case was already
+    # suppressed by the MISSING_SCORE-sentinel check below + upstream omission).
+    if was_missing_a or was_missing_b:
         return None
     if score_a in (MISSING_SCORE,) and score_b in (MISSING_SCORE,):
         return None
@@ -2133,6 +2151,12 @@ def _dim_from_category_lookup(
     if score_a in (None, MISSING_SCORE) and score_b in (None, MISSING_SCORE):
         return None
 
+    # S2 I3.5 — per-side missing markers so build_dimensions_v2 can suppress
+    # the winner when EXACTLY ONE side is a data gap (Decision B). At this
+    # point at most one side is missing (both-missing already returned None).
+    was_missing_a = score_a in (None, MISSING_SCORE)
+    was_missing_b = score_b in (None, MISSING_SCORE)
+
     label = _DIMENSION_LABELS.get(dim_key, dim_key.replace("_score", "").replace("_", " ").title())
     # L1.3: emit user-friendly key without the `_score` suffix
     public_key = dim_key[:-6] if dim_key.endswith("_score") else dim_key
@@ -2147,6 +2171,8 @@ def _dim_from_category_lookup(
         "delta_text": _compose_delta_text(public_key, products_data or [], score_a, score_b),
         "confidence": "medium",
         "is_core": False,
+        "was_missing_a": was_missing_a,
+        "was_missing_b": was_missing_b,
     }
 
 
@@ -2433,8 +2459,23 @@ def build_dimensions_v2(
     # this, so on prod every scoring_v2.dimensions[i].winner was None and
     # DimensionBars fell back to a score heuristic. Derive it from each
     # dim's own scores + confidence, sub-threshold → None (no phantom tie).
+    # S2 I3.5 — pass the per-side was_missing markers (set by
+    # _dim_from_category_lookup; absent → False for the core builders, which
+    # already gate missing data via confidence='low') so a one-sided-missing
+    # dim never crowns a winner (Decision B: no false certainty).
     for d in dims:
-        d["winner"] = _dim_winner(d.get("score_a"), d.get("score_b"), d.get("confidence"))
+        d["winner"] = _dim_winner(
+            d.get("score_a"),
+            d.get("score_b"),
+            d.get("confidence"),
+            was_missing_a=bool(d.get("was_missing_a", False)),
+            was_missing_b=bool(d.get("was_missing_b", False)),
+        )
+        # Internal-only markers — strip before the dict ships in the response
+        # so the frontend Dimension contract stays clean (winner already
+        # encodes the suppression decision).
+        d.pop("was_missing_a", None)
+        d.pop("was_missing_b", None)
     return dims[:8]
 
 
