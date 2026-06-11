@@ -130,6 +130,9 @@ CATEGORY_SPEC_SCHEMAS = {
         "volume",           # ml/oz
         "waterproof",       # yes/no
         "long_lasting",     # hours or yes/no
+        "heat_stability",   # S2 I2.4 (H8) — Gulf-climate wear: sweat/humidity/
+                            # transfer resistance, melt point. Verdict-awareness
+                            # signal only; NO scoring dimension.
     ],
 
     "skincare": [
@@ -143,6 +146,9 @@ CATEGORY_SPEC_SCHEMAS = {
         "vegan",               # yes/no
         "volume",              # ml/oz
         "ph_level",            # pH balance
+        "heat_stability",      # S2 I2.4 (H8) — Gulf-climate suitability:
+                               # active stability in heat, formula behaviour in
+                               # humidity. Verdict-awareness signal only.
     ],
 
     "haircare": [
@@ -169,6 +175,9 @@ CATEGORY_SPEC_SCHEMAS = {
         "occasion",         # day, evening, formal, casual
         "volume",           # ml/oz
         "concentration",    # eau de toilette, eau de parfum, parfum
+        "heat_stability",   # S2 I2.4 (H8) — Gulf-climate performance: longevity
+                            # and projection in heat/humidity. Verdict-awareness
+                            # signal only; NO scoring dimension.
     ],
 
     "fashion": [
