@@ -208,6 +208,78 @@ def get_tier15_hit_rate(days: int = 7, categories: Optional[List[str]] = None) -
     return out
 
 
+def _registry_domains() -> List[str]:
+    """Domains to probe for per-domain source-hit aggregation. Defaults to the
+    Bahrain-first source registry so the dashboard works without a
+    hand-maintained list. Best-effort import — empty list if unavailable."""
+    try:
+        from app.services.source_router import SOURCE_REGISTRY
+        # De-dup while preserving registry order (Bahrain-first).
+        seen: Dict[str, None] = {}
+        for s in SOURCE_REGISTRY:
+            seen.setdefault(s.domain.lower(), None)
+        return list(seen.keys())
+    except Exception as e:  # noqa: BLE001 — registry import is best-effort
+        logger.warning(f"[TIER15] registry domain import failed: {e}")
+        return []
+
+
+def get_tier15_source_hits(
+    days: int = 7, domains: Optional[List[str]] = None
+) -> Dict[str, int]:
+    """I5.1 — aggregate the trailing `days`-window per-domain Tier-1.5 hits.
+
+    Returns `{domain: hits}` for domains with hits>0 only, sorted by hit count
+    descending (top winner first) so /admin/costs surfaces WHICH registry vs
+    legacy domains produced the scraped wins (the F1.7 attribution residual).
+
+    `domains=None` probes the source registry. The winning domain recorded by
+    `record_tier15_hit` is the scraped *retailer* host, which is usually — but
+    not always — a registry domain (a redirect can land on an off-registry
+    host); those exotic hosts won't appear here, which is acceptable for a
+    yield dashboard. Single `mget`; fail-open to `{}` on a down Redis.
+    """
+    if domains is None:
+        domains = _registry_domains()
+    if not redis_client or not domains:
+        return {}
+
+    daystamps = [_utc_daystamp(i) for i in range(days)]
+    keys: List[str] = []
+    for d in domains:
+        for ds in daystamps:
+            keys.append(f"tier15:source_hits:{d.lower()}:{ds}")
+
+    try:
+        values = redis_client.mget(*keys)
+    except TypeError:
+        try:
+            values = redis_client.mget(keys)
+        except Exception as e:
+            logger.warning(f"[TIER15] source-hits mget failed: {e}")
+            return {}
+    except Exception as e:
+        logger.warning(f"[TIER15] source-hits mget failed: {e}")
+        return {}
+
+    idx = 0
+    totals: Dict[str, int] = {}
+    for d in domains:
+        total = 0
+        for _ in daystamps:
+            v = values[idx] if idx < len(values) else None
+            idx += 1
+            try:
+                total += int(v) if v else 0
+            except (TypeError, ValueError):
+                pass
+        if total > 0:
+            totals[d.lower()] = total
+
+    # Sort descending by hit count (stable on ties → registry order preserved).
+    return dict(sorted(totals.items(), key=lambda kv: kv[1], reverse=True))
+
+
 # ============================================
 # GENERIC CACHE FUNCTIONS
 # ============================================
