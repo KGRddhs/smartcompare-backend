@@ -127,6 +127,7 @@ Conflict map: I1/I2 share `data/verdict_exemplars.json` (schema contract I1.1) �
 - Serper liveness check = `GET /api/v1/text/prices/<product>`, NEVER a full compare. No full-200 or subset eval runs without dispatcher GO.
 - Never blind the instrument (no suppressing escalation to make walls fit). No Railway env/flag changes from lanes — dispatcher only.
 - Dispatcher: fetch-before-ruling on any destructive call; verify contested "complete" via `git show`; 30-min/3-nudge stall rule → takeover or replacement.
+- **LANE_STATE.md (Ahmed ruling 2026-06-11):** each lane maintains an UNTRACKED `LANE_STATE.md` at its worktree root — sections: Done (task ids + commit SHAs) / In-flight / Next / Blockers+questions / Last-updated (UTC). Refresh it (a) after every completed plan-task, (b) before announcing a long run, (c) when blocked. Never committed (path-restricted commits keep it out). Purpose: instant stall diagnosis (content+mtime beats WIP-mtime archaeology) and zero-cost handoff to a takeover/replacement agent — the S1 stall lesson made structural.
 
 ## 9. Budget plan
 
