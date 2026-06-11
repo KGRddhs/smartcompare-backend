@@ -2629,8 +2629,14 @@ class StructuredComparisonService:
             # Bahrain registry discovery FIRST (gated by has_budget("serper")
             # implicitly — search_web no-ops without a key). Skipped only when
             # the category has zero Bahrain-tier registry sources.
+            # I5.4 (Bundle B S2) — limit=8 (was 4) so the whole live
+            # bahrain-electronics registry is queryable in this single Serper
+            # call. After I5.3's dead-domain purge there are 6 live electronics
+            # rows; limit=4 sliced off shopalmoayyed.com (index 5, the F1.5
+            # appliance/AC JSON-LD source) — the electronics 0/14 starvation.
+            # Same one Serper call, just a longer `site:a OR site:b ...` chain.
             bahrain_query = build_site_discovery_query(
-                full_name, category, tier="bahrain", limit=4
+                full_name, category, tier="bahrain", limit=8
             )
             if bahrain_query:
                 discovery_tasks.append(("bahrain", search_web(bahrain_query)))
