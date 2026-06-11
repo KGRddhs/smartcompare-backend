@@ -170,11 +170,19 @@ class TestSpecPromptBuilding:
         assert "coverage" in prompt
 
     def test_skincare_prompt_contains_skincare_fields(self):
+        # L2.12: the prompt schema comes from the PRODUCT-TYPE subtype router,
+        # not the broad CATEGORY_SPEC_SCHEMAS list — so the asserted fields must
+        # be ones the resolved subtype actually carries. A serum query resolves
+        # deterministically to skincare.serum; assert that subtype's
+        # skincare-specific fields. (Ledgered pre-existing test fixed in the
+        # I2.4 schema-edit pass: the old "Moisturizing Cream" query fell through
+        # to skincare.sunscreen, which lacks skin_concern/active_ingredient.)
         from app.services.extraction_service import _build_specs_prompt
-        result = _build_specs_prompt("CeraVe", "Moisturizing Cream", "", "skincare", "test context")
+        result = _build_specs_prompt("CeraVe", "Vitamin C Serum", "", "skincare", "test context")
         prompt = result["system"] if isinstance(result, dict) else result
-        assert "skin_concern" in prompt
-        assert "active_ingredient" in prompt
+        assert "hero_active" in prompt
+        assert "fragrance_free" in prompt
+        assert "skin_type" in prompt
 
     def test_haircare_prompt_contains_haircare_fields(self):
         from app.services.extraction_service import _build_specs_prompt

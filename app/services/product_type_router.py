@@ -91,15 +91,19 @@ PRODUCT_TYPE_SCHEMAS = {
     "supplements.preworkout":["caffeine_mg", "beta_alanine_g", "creatine_g", "citrulline_g", "servings"],
     "supplements.fish_oil":  ["epa_mg", "dha_mg", "third_party_tested", "molecularly_distilled", "serving_size", "count"],
     "supplements.multivitamin":["vitamins_count", "minerals_count", "form", "iron_included", "serving_size", "count"],
-    "fragrances.edp":        ["concentration", "longevity_hrs", "sillage", "projection_m", "scent_family", "notes_top", "notes_heart", "notes_base", "volume_ml", "season", "occasion"],
-    "fragrances.edt":        ["concentration", "longevity_hrs", "sillage", "scent_family", "notes_top", "notes_heart", "notes_base", "volume_ml", "season", "occasion"],
-    "fragrances.niche":      ["concentration", "longevity_hrs", "sillage", "projection_m", "scent_family", "notes_top", "notes_heart", "notes_base", "perfumer", "house_year_founded", "volume_ml"],
-    "makeup.foundation":     ["shade_range_count", "finish", "coverage", "skin_type", "spf", "fragrance_free", "vegan", "vol_ml"],
-    "makeup.lipstick":       ["finish", "color", "longevity_hrs", "transfer_proof", "moisturising", "vegan", "vol_g"],
-    "makeup.mascara":        ["brush_type", "formula", "smudge_proof", "water_proof", "lash_effect", "vegan", "color"],
-    "skincare.serum":        ["hero_active", "secondary_actives", "ph", "comedogenic", "fragrance_free", "skin_type", "vol_ml"],
-    "skincare.sunscreen":    ["spf", "pa_rating", "filter_type", "finish", "water_resist_min", "fragrance_free", "white_cast"],
-    "skincare.cleanser":     ["cleanser_type", "ph", "skin_type", "actives", "fragrance_free", "vol_ml"],
+    # S2 I2.4 (H8) — `heat_stability` appended to every makeup/skincare/
+    # fragrances subtype so the Gulf-climate signal extracts on the subtype
+    # path (which overrides the category list for nearly all real queries).
+    # Verdict-awareness signal only — NO scoring dimension touched.
+    "fragrances.edp":        ["concentration", "longevity_hrs", "sillage", "projection_m", "scent_family", "notes_top", "notes_heart", "notes_base", "volume_ml", "season", "occasion", "heat_stability"],
+    "fragrances.edt":        ["concentration", "longevity_hrs", "sillage", "scent_family", "notes_top", "notes_heart", "notes_base", "volume_ml", "season", "occasion", "heat_stability"],
+    "fragrances.niche":      ["concentration", "longevity_hrs", "sillage", "projection_m", "scent_family", "notes_top", "notes_heart", "notes_base", "perfumer", "house_year_founded", "volume_ml", "heat_stability"],
+    "makeup.foundation":     ["shade_range_count", "finish", "coverage", "skin_type", "spf", "fragrance_free", "vegan", "vol_ml", "heat_stability"],
+    "makeup.lipstick":       ["finish", "color", "longevity_hrs", "transfer_proof", "moisturising", "vegan", "vol_g", "heat_stability"],
+    "makeup.mascara":        ["brush_type", "formula", "smudge_proof", "water_proof", "lash_effect", "vegan", "color", "heat_stability"],
+    "skincare.serum":        ["hero_active", "secondary_actives", "ph", "comedogenic", "fragrance_free", "skin_type", "vol_ml", "heat_stability"],
+    "skincare.sunscreen":    ["spf", "pa_rating", "filter_type", "finish", "water_resist_min", "fragrance_free", "white_cast", "heat_stability"],
+    "skincare.cleanser":     ["cleanser_type", "ph", "skin_type", "actives", "fragrance_free", "vol_ml", "heat_stability"],
     "haircare.shampoo":      ["sulfate_free", "paraben_free", "silicone_free", "target_concern", "hair_type", "vol_ml", "scent"],
     "fashion.bag":           ["material", "lining", "hardware", "closure", "dimensions", "strap_drop", "origin", "weight"],
     "fashion.shoe":          ["upper_material", "sole", "closure", "sizing_run", "width", "last_shape", "origin"],

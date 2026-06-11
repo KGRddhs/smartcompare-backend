@@ -5,6 +5,7 @@ FIX M5: _clean_review_citations processes review_summary.highlights[].point form
 FIX M6: Removed dead code processing detailed_praises/detailed_complaints (never populated).
 """
 import asyncio
+import os
 import re
 import logging
 from typing import Optional, List, Dict, Any
@@ -245,11 +246,37 @@ async def get_reviews(
     if retailer_ratings:
         reviews["source_ratings"] = retailer_ratings
 
+    # F3 (G2): persist the COMPLETED extraction BEFORE the optional consult.
+    # The consult can run inside the outer 10s reviews-race wait_for; if that
+    # cap fires DURING the consult, this coroutine is cancelled — so the cache
+    # write MUST happen first, otherwise the finished extract_reviews result is
+    # lost (PYTHON-FASTAPI-J pattern). After this point the extraction is safe
+    # regardless of what the consult does.
+    extraction_persisted = False
     if reviews and not reviews.get("error"):
         set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
-        # Save to L2 DB (fire-and-forget)
         from app.services.product_data_service import save_reviews
         asyncio.create_task(save_reviews(cache_key, brand, name, variant, reviews))
+        extraction_persisted = True
+
+    # S2 I2.5 — optional review-content consultation from usage="review" GCC
+    # sources. Flag-gated (ENABLE_REVIEW_SOURCE_CONSULT, default OFF → no-op),
+    # never critical-path: any miss/timeout yields [] and the already-persisted
+    # reviews ship as-is. consult_review_sources is itself wait_for-capped
+    # (active mode) / synchronous (passive mode).
+    try:
+        consult = await consult_review_sources(
+            brand, name, variant, category, search_results,
+            track_serper_cost_fn=track_serper_cost_fn,
+        )
+        if consult and isinstance(reviews, dict):
+            reviews["review_source_quotes"] = consult
+            # Re-cache the enriched copy so a subsequent cache hit carries the
+            # quotes too (the pre-consult write already protected the baseline).
+            if extraction_persisted:
+                set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
+    except Exception as e:  # noqa: BLE001 — defensive; consult is best-effort
+        logger.warning("[I2.5] consult_review_sources wiring error: %s", e)
 
     reviews["_cached"] = False
     return reviews
@@ -343,3 +370,171 @@ async def fetch_retailer_quotes(
     if quotes:
         set_cached(cache_key, {"quotes": quotes}, _RETAILER_QUOTES_CACHE_TTL)
     return quotes
+
+
+# ---------- S2 I2.5: review-content consultation from usage="review" sources ----------
+
+# Cache per product 14d — editorial review content is stable.
+_REVIEW_SOURCE_CACHE_TTL = 14 * 24 * 60 * 60
+
+
+def _review_source_cache_key(brand: str, name: str, variant: str | None, category: str) -> str:
+    parts = [brand or "", name or "", variant or "", category or ""]
+    return "review_source_snippets:" + "|".join(p.strip().lower() for p in parts)
+
+
+async def fetch_review_source_snippets(
+    brand: str,
+    name: str,
+    variant: str | None,
+    category: str,
+    track_serper_cost_fn=None,
+) -> list:
+    """S2 I2.5 — consult registry sources flagged usage in ("review","both")
+    for editorial review snippets (e.g. the Arabic GCC sources sayidaty.net /
+    khaleejtimes.com / gulfnews.com for beauty/fashion).
+
+    ONE Serper `site:`-filtered organic search across the category's review
+    sources. Budget-gated (`has_budget("serper")`), cached per product 14d.
+    Returns a list of ``{domain, text}`` (max 3) or ``[]`` on miss / no review
+    sources / budget-exhausted / timeout — NEVER raises, NEVER critical-path.
+    The caller wraps this in asyncio.wait_for so a slow Serper call cannot drag
+    the reviews race past its budget.
+    """
+    from app.services.source_router import get_sources_for_category
+
+    review_sources = get_sources_for_category(category, usage="review")
+    if not review_sources:
+        return []  # category has no review-content sources — no-op
+
+    cache_key = _review_source_cache_key(brand, name, variant, category)
+    cached = get_cached(cache_key)
+    if cached and isinstance(cached, dict) and isinstance(cached.get("snippets"), list):
+        return cached["snippets"]
+
+    if not has_budget("serper"):
+        logger.info("[I2.5] review-source consult skipped — serper budget exhausted")
+        return []
+
+    domains = [s.domain for s in review_sources][:5]
+    site_filter = " OR ".join(f"site:{d}" for d in domains)
+    product_query = f"{brand} {name} {variant or ''} review".strip()
+    query = f"{product_query} {site_filter}".strip()
+
+    try:
+        # F4 (G2): NO manual record_usage("serper") here — search_web already
+        # records the budget meter internally (serper_service.py:94), and only
+        # on success. A manual call here double-counted the credit AND counted
+        # failed calls. track_serper_cost_fn is the separate per-request cost
+        # tracker (not the budget meter) so it stays.
+        result = await search_web(query, num_results=6)
+        if track_serper_cost_fn:
+            track_serper_cost_fn()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[I2.5] review-source consult fetch failed: %s", e)
+        return []
+
+    organic = (result or {}).get("organic", []) or []
+    snippets = []
+    for item in organic:
+        snippet = (item.get("snippet") or "").strip()
+        if len(snippet) < 20:
+            continue
+        link = item.get("link", "") or ""
+        link_domain = urlparse(link).netloc.replace("www.", "").lower()
+        snippets.append({"domain": link_domain, "text": snippet})
+        if len(snippets) >= 3:
+            break
+
+    if snippets:
+        set_cached(cache_key, {"snippets": snippets}, _REVIEW_SOURCE_CACHE_TTL)
+    return snippets
+
+
+def review_source_consult_mode() -> Optional[str]:
+    """Read ENABLE_REVIEW_SOURCE_CONSULT fresh each call (default OFF).
+
+    Returns "active" | "passive" | None.
+    - "active" (EXPLICIT only) → fires the dedicated budget-gated Serper
+      site-search. This is the ONLY value that spends a Serper credit, so it is
+      deliberately NOT reachable via a generic truthy flip.
+    - "passive" OR any other truthy value ("true"/"1"/"on") → reuses the
+      already-fetched unified search organic (zero extra Serper). F3 (G2):
+      truthy defaults to the SAFE passive mode so a careless `=true` flip can't
+      silently start burning Serper credits.
+    - unset / "false" / anything else → None (feature OFF).
+    Read fresh (not process-cached) so I4 can A/B both modes at G5.
+    """
+    raw = os.environ.get("ENABLE_REVIEW_SOURCE_CONSULT", "").strip().lower()
+    if raw == "active":
+        return "active"
+    if raw in ("passive", "true", "1", "on"):
+        return "passive"
+    return None
+
+
+def passive_review_snippets(
+    search_results: Optional[Dict], category: str
+) -> list:
+    """PASSIVE mode (zero extra Serper): scan the already-fetched unified
+    search organic for hits on the category's usage="review" registry domains.
+    Returns up to 3 {domain, text} entries, [] on miss."""
+    from app.services.source_router import get_sources_for_category
+
+    review_sources = get_sources_for_category(category, usage="review")
+    if not review_sources or not search_results:
+        return []
+    review_domains = {s.domain.lower() for s in review_sources}
+    organic = (search_results or {}).get("organic", []) or []
+    snippets = []
+    for item in organic:
+        link = item.get("link", "") or ""
+        link_domain = urlparse(link).netloc.replace("www.", "").lower()
+        # match registry domain (incl. subdomains)
+        matched = any(
+            link_domain == d or link_domain.endswith("." + d) for d in review_domains
+        )
+        if not matched:
+            continue
+        snippet = (item.get("snippet") or "").strip()
+        if len(snippet) < 20:
+            continue
+        snippets.append({"domain": link_domain, "text": snippet})
+        if len(snippets) >= 3:
+            break
+    return snippets
+
+
+async def consult_review_sources(
+    brand: str,
+    name: str,
+    variant: str | None,
+    category: str,
+    search_results: Optional[Dict],
+    track_serper_cost_fn=None,
+    timeout: float = 4.0,
+) -> list:
+    """S2 I2.5 mode dispatcher. OFF (default) -> []; passive -> scan existing
+    organic (sync, instant); active -> dedicated budget-gated Serper call
+    (wait_for-capped). NEVER raises, NEVER critical-path — any error/timeout
+    yields []."""
+    mode = review_source_consult_mode()
+    if mode is None:
+        return []
+    try:
+        if mode == "passive":
+            return passive_review_snippets(search_results, category)
+        # active
+        return await asyncio.wait_for(
+            fetch_review_source_snippets(
+                brand, name, variant, category,
+                track_serper_cost_fn=track_serper_cost_fn,
+            ),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        logger.info("[I2.5] review-source consult timed out (mode=%s)", mode)
+        return []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[I2.5] review-source consult error (mode=%s): %s", mode, e)
+        return []

@@ -130,6 +130,9 @@ CATEGORY_SPEC_SCHEMAS = {
         "volume",           # ml/oz
         "waterproof",       # yes/no
         "long_lasting",     # hours or yes/no
+        "heat_stability",   # S2 I2.4 (H8) — Gulf-climate wear: sweat/humidity/
+                            # transfer resistance, melt point. Verdict-awareness
+                            # signal only; NO scoring dimension.
     ],
 
     "skincare": [
@@ -143,6 +146,9 @@ CATEGORY_SPEC_SCHEMAS = {
         "vegan",               # yes/no
         "volume",              # ml/oz
         "ph_level",            # pH balance
+        "heat_stability",      # S2 I2.4 (H8) — Gulf-climate suitability:
+                               # active stability in heat, formula behaviour in
+                               # humidity. Verdict-awareness signal only.
     ],
 
     "haircare": [
@@ -169,6 +175,9 @@ CATEGORY_SPEC_SCHEMAS = {
         "occasion",         # day, evening, formal, casual
         "volume",           # ml/oz
         "concentration",    # eau de toilette, eau de parfum, parfum
+        "heat_stability",   # S2 I2.4 (H8) — Gulf-climate performance: longevity
+                            # and projection in heat/humidity. Verdict-awareness
+                            # signal only; NO scoring dimension.
     ],
 
     "fashion": [
@@ -618,6 +627,8 @@ RULES:
 - best_for: one sentence per product describing the ideal buyer profile
 - Be DECISIVE -- pick a clear winner and defend it with data
 - For luxury/designer products, consider brand prestige and craftsmanship in value assessment
+- ANTI-PATTERN -- spec-sheet edge at price parity: when performance is near parity, do NOT let a marginal spec-sheet edge decide the winner. Prefer the lower Bahrain price on value-per-dinar UNLESS a durability, service-network, or update-guarantee gap licenses the premium. This cuts BOTH ways: a cheaper product is not automatically better value, and a pricier product is not automatically more capable -- weigh whether the gap is actually worth the extra dinars for THIS buyer.
+- LOCALIZATION -- grade as a Bahrain buyer, not a global spec sheet: weigh what a buyer in Bahrain actually experiences (local availability, after-sales service, Gulf climate suitability), not just the raw datasheet. You MAY note regional reality qualitatively (e.g. "widely available in Bahrain", "a GCC crowd-pleaser") -- but keep such claims qualitative ONLY: NO store counts, NO branch names, NO unsourced numbers or statistics about local presence.
 - personalized_insights: Generate ONLY when personalization context is provided. If no personalization context, omit this field entirely."""
 
 
@@ -1146,6 +1157,19 @@ def build_verdict_prompt(
     except Exception:  # noqa: BLE001 — personality helper is best-effort
         pass
 
+    # S2 I2.1 — inject few-shot verdict exemplars + per-category anti-patterns.
+    # Keyed on `category` (NOT the user cohort) so it stays inside the
+    # static-per-category prefix — OpenAI prompt-cache discipline (D2). Sits
+    # AFTER personality, BEFORE the cohort-varying pain-workflow block. At G2
+    # this injects the per-category anti-patterns (the shipped file ships them
+    # POPULATED); the exemplar examples are EMPTY until I1's content lands at
+    # G3, at which point the abridged exemplars + reinforcement also inject.
+    try:
+        from app.services.verdict_exemplar_loader import build_exemplar_block
+        base += build_exemplar_block(category)
+    except Exception as exc:  # noqa: BLE001 — exemplar injection is best-effort
+        logger.warning("verdict exemplar injection failed: %s", exc)
+
     # A-L4.2 — inject top-3 pain-workflow constraints + decision-style hint
     try:
         from app.services.pain_workflow_loader import (
@@ -1160,6 +1184,58 @@ def build_verdict_prompt(
     if comparison_quality == "weird":
         base += _WEIRD_VERDICT_INSTRUCTION
     return base
+
+
+def _extract_review_source_quotes(product: Optional[Dict]) -> List[Dict[str, Any]]:
+    """Pull the I2.5 review-source editorial quotes off a product, if present.
+
+    They live at product["reviews"]["review_source_quotes"] (attached by the
+    review_service consult path when ENABLE_REVIEW_SOURCE_CONSULT is set).
+    Returns [] when absent (flag OFF / consult missed) — the common case."""
+    if not isinstance(product, dict):
+        return []
+    reviews = product.get("reviews")
+    if not isinstance(reviews, dict):
+        return []
+    quotes = reviews.get("review_source_quotes")
+    if isinstance(quotes, list):
+        return [q for q in quotes if isinstance(q, dict) and q.get("text")]
+    return []
+
+
+def _build_review_source_quotes_block(
+    product1: Optional[Dict], product2: Optional[Dict]
+) -> str:
+    """S2 I2.5 (F5) — render the review-source editorial quotes as a labeled
+    verdict input. Returns "" when neither product carries quotes (flag OFF /
+    consult missed) so the prompt is byte-identical to the no-consult path."""
+    q1 = _extract_review_source_quotes(product1)
+    q2 = _extract_review_source_quotes(product2)
+    if not q1 and not q2:
+        return ""
+
+    def _fmt(quotes: List[Dict[str, Any]]) -> List[str]:
+        out = []
+        for q in quotes[:3]:
+            domain = (q.get("domain") or "").strip()
+            text = (q.get("text") or "").strip()
+            if text:
+                out.append(f'  - ({domain}) "{text}"' if domain else f'  - "{text}"')
+        return out
+
+    lines = [
+        "",
+        "## Regional editorial review notes (GCC sources)",
+        "These are editorial review snippets from GCC sources for additional"
+        " local context. Treat them as supporting signal, NOT as the verdict.",
+    ]
+    if q1:
+        lines.append("Product 1:")
+        lines.extend(_fmt(q1))
+    if q2:
+        lines.append("Product 2:")
+        lines.extend(_fmt(q2))
+    return "\n".join(lines)
 
 
 async def generate_comparison(
@@ -1237,6 +1313,14 @@ User's region: {region}
 Primary concern: {concern}
 </USER_INPUT>"""
 
+        # S2 I2.5 (F5) — when the review-source consult ran (flag ON), surface
+        # its editorial quotes as a DELIBERATE, LABELED verdict input rather
+        # than letting them ride json.dumps(product) unlabeled. Flag OFF =
+        # no quotes present = this block is empty = zero change to the prompt.
+        review_quotes_block = _build_review_source_quotes_block(product1, product2)
+        if review_quotes_block:
+            user_msg += review_quotes_block
+
         # Bundle C § 1a A.3.1 — `response_format={"type": "json_object"}`
         # forces OpenAI's structured-output guarantee: the model MUST return
         # valid JSON honoring every declared key. qa-bundle-c D.1.3 evidence
@@ -1255,7 +1339,12 @@ Primary concern: {concern}
                     {"role": "user", "content": user_msg}
                 ],
                 max_tokens=1000,
-                temperature=0.2,
+                # S2 Decision D — temperature=0 on the VERDICT call. I4 A/B
+                # (docs/plans/2026-06-12-s2-shadow-results.md, temp0 arm) proved
+                # it recovers the entire winner-variance bucket (18/18 on
+                # bias45) at zero cost/latency. VERDICT ONLY — specs/price/
+                # reviews/parser temperatures are unchanged.
+                temperature=0,
                 response_format={"type": "json_object"},
             )
         except Exception as primary_err:  # noqa: BLE001
@@ -1273,7 +1362,7 @@ Primary concern: {concern}
                         {"role": "user", "content": user_msg}
                     ],
                     max_tokens=1000,
-                    temperature=0.2,
+                    temperature=0,  # S2 Decision D — verdict call (fallback path)
                     response_format={"type": "json_object"},
                 )
             else:
