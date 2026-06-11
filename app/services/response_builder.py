@@ -13,6 +13,7 @@ from app.services.scoring_service import (
     build_dimensions_v2,
     calibrate_score,
     compute_confidence,
+    count_missing_dim_cells,
 )
 
 logger = logging.getLogger(__name__)
@@ -1029,6 +1030,15 @@ def build_comparison_response(
                     "",
                 ) if product_data and 0 <= winner_index < len(product_data) else "",
                 (user_preferences or {}).get("budget"),
+            ),
+            # S2 I3.6 — missing-dimension coverage metric. Counts the
+            # MISSING_SCORE cells across both products' per-dim breakdowns
+            # (the genuine data gap BEFORE display omission). The KPI dial
+            # for Ahmed's Decision B "no missing data / no false certainty";
+            # the eval runner aggregates this per-run so the Tier-3 fill's
+            # reduction is measured, not asserted.
+            "missing_dim_cells": count_missing_dim_cells(
+                scoring_result or {}, category_used
             ),
         },
     }

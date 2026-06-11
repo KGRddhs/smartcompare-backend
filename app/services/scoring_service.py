@@ -2436,3 +2436,54 @@ def build_dimensions_v2(
     for d in dims:
         d["winner"] = _dim_winner(d.get("score_a"), d.get("score_b"), d.get("confidence"))
     return dims[:8]
+
+
+def count_missing_dim_cells(
+    scoring_result: dict,
+    category: str,
+) -> dict:
+    """S2 I3.6 — count the MISSING_SCORE dimension cells across BOTH
+    products' per-dim breakdowns. The KPI dial for Ahmed's Decision B
+    ("no missing data, no false certainty"): the Tier-3 spec-synthesis
+    fallback FILLS gaps and the render suppression HIDES one-sided ones,
+    but neither is measurable unless the gaps are counted.
+
+    Counts the genuine data gap BEFORE display omission — build_dimensions_v2
+    silently drops both-sided-missing dims, so counting the post-omission
+    dimensions[] would under-report. Mirrors compute_dimension_winners'
+    dim selection + `breakdown.get(dim, MISSING_SCORE)` default exactly so
+    a "missing cell" here is the same gap that surfaces as a winner of
+    "N/A" there.
+
+    Returns {"count": int, "total": int, "fraction": float}.
+    `total` is len(dims) * 2 (both products); `fraction` is count/total,
+    0.0 when total == 0 (fewer than 2 products, or empty result).
+    """
+    scores = (scoring_result or {}).get("scores", {}) or {}
+    b0_dict = scores.get("product_0") or {}
+    b1_dict = scores.get("product_1") or {}
+    # Fewer than 2 products → no cells to examine.
+    if not b0_dict or not b1_dict:
+        return {"count": 0, "total": 0, "fraction": 0.0}
+
+    cat = category if category in CATEGORY_DIMENSIONS else "other"
+    b0 = b0_dict.get("breakdown", {}) or {}
+    b1 = b1_dict.get("breakdown", {}) or {}
+
+    dims = CATEGORY_DIMENSIONS[cat]
+    # Same fallback as compute_dimension_winners: if the breakdown keys
+    # don't match the category dims, examine whatever keys are present so a
+    # mis-tagged category still measures real gaps.
+    if b0 and not any(d in b0 for d in dims):
+        dims = list(b0.keys())
+
+    count = 0
+    for dim in dims:
+        if b0.get(dim, MISSING_SCORE) == MISSING_SCORE:
+            count += 1
+        if b1.get(dim, MISSING_SCORE) == MISSING_SCORE:
+            count += 1
+
+    total = len(dims) * 2
+    fraction = (count / total) if total else 0.0
+    return {"count": count, "total": total, "fraction": round(fraction, 4)}
