@@ -25,6 +25,11 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+# I1 content lives in the staging artifact pre-G3 (dispatcher order) and in the
+# canonical file once the G3 fill copies it into I2's merged skeleton. Validate
+# whichever exists — staged first so Decision E is provably honored on-branch
+# BEFORE G3, then the live file afterwards.
+_STAGED = _REPO_ROOT / "data" / "verdict_exemplars.staged.json"
 _CANONICAL = _REPO_ROOT / "data" / "verdict_exemplars.json"
 _GOLD = _REPO_ROOT / "data" / "validation_gold_truth.json"
 
@@ -68,9 +73,10 @@ _GOLD_BRANDS = {
 
 @pytest.fixture(scope="module")
 def content() -> dict:
-    if not _CANONICAL.exists():
-        pytest.skip("data/verdict_exemplars.json not yet committed (lands at G3)")
-    return json.loads(_CANONICAL.read_text(encoding="utf-8"))
+    src = _STAGED if _STAGED.exists() else _CANONICAL
+    if not src.exists():
+        pytest.skip("no verdict exemplar content yet (staged artifact or G3 fill)")
+    return json.loads(src.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")

@@ -8,7 +8,8 @@
     "guardrail_C": "Decision C: H2/H4/climate GCC claims qualitative only (no store counts, branch names, unsourced numbers).",
     "label": "Every exemplar setup carries EXAMPLE — abridged, do not copy structure or content.",
     "verdict_schema_ref": "extraction_service.py:582-611 (personalized_insights omitted)",
-    "token_budget": "worst block 670 tok / +$0.00168 per call vs +$0.002 gate (scripts/audit_exemplar_token_cost.py)"
+    "token_budget": "worst block 670 tok / +$0.00168 per call vs +$0.002 gate (scripts/audit_exemplar_token_cost.py)",
+    "STAGED_ARTIFACT": "I1 staging artifact (dispatcher order). NOT the live file. At G3, copy each category exemplars[] into I2-merged data/verdict_exemplars.json skeleton (which carries I2 anti_patterns[]). Loader reads verdict_exemplars.json, never this."
   },
   "electronics": {
     "exemplars": [
