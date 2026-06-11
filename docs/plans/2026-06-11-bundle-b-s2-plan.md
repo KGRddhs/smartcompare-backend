@@ -76,6 +76,8 @@ Zero prod-path changes. Scripts + harness only. This lane is Ahmed's Decision D 
 
 **Exit:** evidence report with measured verdicts on o3-mini / multi-agent / reviews-trim / any extra arms — decisions made on numbers, not vibes.
 
+> **I4 RESULTS ADDENDUM (2026-06-11, `docs/plans/2026-06-12-s2-shadow-results.md` @ ec436fc, bias45, zero Serper, ~$2.30):** baseline_4o 0.444 · **o3-mini REJECTED** (0.444, +4.2s, NOT cheaper — reasoning tokens) · **multiagent REJECTED** (+2.2% < 5% bar) · **reviews_trim verdict-neutral with winner+factual HOLDING → upstream trim handed to I5 as a cleared Decision-D wall lever.** Promotion slot under $0.015 stays open for I3-critique on its own evidence. **Decomposition finding (changes the session's aim): bias45 = 24 STRUCTURAL (all arms same wrong winner — the real few-shot target) + 19 VARIANCE (T=0.2 sampling; flip free on re-runs) + 2 noise. H1 template ids are variance-class; H4/H2/H8 are structural — exemplar iteration prioritizes those.** Follow-ups ordered: T=0 + best-of-3 arms (variance recovery ≈ zero cost); exemplar arm post-G2/G3; graded200 deferred to G5 demand. **G3 scoring amended: I1.6 reports BOTH full-45 (≥60%) AND structural-24 (primary, ≥50%).**
+
 ## 5. Lane I5 — "Yield & Wall" (`feature/s2-i5-yield-wall` · worktree `smartcompare-S2-I5`)
 
 The error-recovery + scrape-yield + latency lane — co-load-bearing for the winner gate. Work is ORDERED; ship in two merge waves.
