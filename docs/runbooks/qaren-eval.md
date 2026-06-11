@@ -117,3 +117,27 @@ decision deferred to S3 per plan F4.5. To enable: set `ENABLE_EVAL_CRON=true` +
 The Sprint A merge-gate script coexists UNTOUCHED (sync requests, prose winner,
 fractional scores). This runner is the Bundle B canonical (async, deterministic winner
 from scoring_v2, persistence, gate modes). Consolidation decision is S3/Lane S5 scope.
+
+## S2 I2.5 — Review-source consultation flag (ENABLE_REVIEW_SOURCE_CONSULT)
+
+`ENABLE_REVIEW_SOURCE_CONSULT` gates the optional GCC editorial review-source
+consultation (Arabic sources sayidaty.net / khaleejtimes.com / gulfnews.com,
+registered `usage="review"`). **Default OFF** — promotion decided at G5 on I4's
+A/B. Modes (`review_service.review_source_consult_mode`):
+
+- **unset / `false`** → OFF (no consult, zero change). This is prod/eval default.
+- **`active`** (EXPLICIT only) → fires ONE budget-gated Serper `site:` search
+  across the category's review sources. The ONLY mode that spends a Serper
+  credit, so it is deliberately NOT reachable via a generic truthy flip.
+- **`passive` / `true` / `1` / `on`** → reuses the already-fetched unified
+  search organic for review-domain hits (ZERO extra Serper). A careless `=true`
+  flip lands here, not on the credit-spending path (F3 safety).
+
+When ON and quotes are found, they attach to `reviews.review_source_quotes` and
+surface in the verdict as a labeled "Regional editorial review notes" block
+(supporting signal, not the verdict). **Cache caveat:** review-source quotes are
+cached 14 days per product (`review_source_snippets:` key); a cache HIT within
+that TTL serves the cached reviews and BYPASSES the consult entirely — so an
+A/B toggle won't re-consult a product seen <14d ago unless `nocache=true`. The
+baseline extraction is always persisted BEFORE the consult runs, so a consult
+timeout never loses the reviews leg.
