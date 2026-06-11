@@ -1146,6 +1146,17 @@ def build_verdict_prompt(
     except Exception:  # noqa: BLE001 — personality helper is best-effort
         pass
 
+    # S2 I2.1 — inject few-shot verdict exemplars + per-category anti-patterns.
+    # Keyed on `category` (NOT the user cohort) so it stays inside the
+    # static-per-category prefix — OpenAI prompt-cache discipline (D2). Sits
+    # AFTER personality, BEFORE the cohort-varying pain-workflow block. Returns
+    # "" until I1's exemplar content lands, so this is a no-op on the empty file.
+    try:
+        from app.services.verdict_exemplar_loader import build_exemplar_block
+        base += build_exemplar_block(category)
+    except Exception as exc:  # noqa: BLE001 — exemplar injection is best-effort
+        logger.warning("verdict exemplar injection failed: %s", exc)
+
     # A-L4.2 — inject top-3 pain-workflow constraints + decision-style hint
     try:
         from app.services.pain_workflow_loader import (

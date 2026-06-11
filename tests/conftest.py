@@ -71,3 +71,18 @@ def _reset_pain_workflow_cache():
         return
     pwl.reset_cache()
     yield
+
+
+# S2 I2.1 — same posture for the verdict_exemplar_loader lru_cache. Tests that
+# monkeypatch _EXEMPLAR_FILE leave a populated cache behind; without a reset
+# the verdict-prompt exemplar-injection assertions read a stale file.
+@pytest.fixture(autouse=True)
+def _reset_verdict_exemplar_cache():
+    """Clear verdict_exemplar_loader lru_cache before each test."""
+    try:
+        from app.services import verdict_exemplar_loader as vel
+    except Exception:  # pragma: no cover — defensive import
+        yield
+        return
+    vel.reset_cache()
+    yield
