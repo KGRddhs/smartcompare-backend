@@ -339,3 +339,141 @@ class TestPersistCritique:
                 comparison_id=None, critique=_critique_result(), regenerated=False,
             )
         assert called["insert"] is False
+
+
+# ---------------------------------------------------------------------------
+# I3.1 orchestration — critique_and_maybe_regenerate (the ssc.py-facing helper)
+# ---------------------------------------------------------------------------
+# Encapsulates flag-check → critique → ONE regen so the orchestrator's call
+# site stays ~3 lines. Returns a CritiqueOutcome (final_comparison,
+# critique, regenerated, critique_usage). NEVER raises; OFF / failure → the
+# original verdict, regenerated=False, critique=None.
+
+_ORIGINAL = dict(_VERDICT)
+_REGENERATED = {**_VERDICT, "winner_reason": "Regenerated: 25% faster at the same 30 BHD gap."}
+
+
+def _high_payload():
+    return {
+        "bias_score": 9, "vagueness_score": 9, "hedging_score": 9,
+        "missing_citation_score": 9, "pain_workflow_align_score": 9,
+    }
+
+
+def _low_payload():
+    return {
+        "bias_score": 9, "vagueness_score": 4, "hedging_score": 9,
+        "missing_citation_score": 9, "pain_workflow_align_score": 9,
+    }
+
+
+class TestCritiqueAndMaybeRegenerate:
+
+    @pytest.mark.asyncio
+    async def test_flag_off_returns_original_no_critique(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_SELF_CRITIQUE", raising=False)
+        regen_called = {"n": 0}
+
+        async def _regen(_critique):
+            regen_called["n"] += 1
+            return _REGENERATED
+
+        outcome = await vcs.critique_and_maybe_regenerate(
+            comparison=_ORIGINAL, product_names=_PRODUCT_NAMES, regenerate=_regen,
+        )
+        assert outcome.final_comparison is _ORIGINAL
+        assert outcome.critique is None
+        assert outcome.regenerated is False
+        assert regen_called["n"] == 0  # no critique call, no regen when OFF
+
+    @pytest.mark.asyncio
+    async def test_flag_on_high_scores_no_regen(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_SELF_CRITIQUE", "true")
+        regen_called = {"n": 0}
+
+        async def _regen(_critique):
+            regen_called["n"] += 1
+            return _REGENERATED
+
+        with _patch_client(_mock_openai_response(_high_payload())):
+            outcome = await vcs.critique_and_maybe_regenerate(
+                comparison=_ORIGINAL, product_names=_PRODUCT_NAMES, regenerate=_regen,
+            )
+        assert outcome.final_comparison is _ORIGINAL
+        assert outcome.critique is not None
+        assert outcome.regenerated is False
+        assert regen_called["n"] == 0
+        # critique usage surfaced for cost tracking
+        assert outcome.critique_usage["prompt_tokens"] > 0
+
+    @pytest.mark.asyncio
+    async def test_flag_on_low_score_regenerates_once(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_SELF_CRITIQUE", "true")
+        regen_called = {"n": 0}
+
+        async def _regen(critique):
+            regen_called["n"] += 1
+            assert critique.needs_regen is True  # feedback passed through
+            return _REGENERATED
+
+        with _patch_client(_mock_openai_response(_low_payload())):
+            outcome = await vcs.critique_and_maybe_regenerate(
+                comparison=_ORIGINAL, product_names=_PRODUCT_NAMES, regenerate=_regen,
+            )
+        assert regen_called["n"] == 1  # EXACTLY ONE regen (hard cap)
+        assert outcome.final_comparison is _REGENERATED
+        assert outcome.regenerated is True
+        assert outcome.critique.needs_regen is True
+
+    @pytest.mark.asyncio
+    async def test_regen_hard_cap_never_twice(self, monkeypatch):
+        """Even if the regenerated verdict would also score low, we do NOT
+        re-critique / re-regenerate — the cap is exactly one."""
+        monkeypatch.setenv("ENABLE_SELF_CRITIQUE", "true")
+        regen_called = {"n": 0}
+
+        async def _regen(_critique):
+            regen_called["n"] += 1
+            return _REGENERATED
+
+        # Even with a persistently-low critique response, only one regen.
+        with _patch_client(_mock_openai_response(_low_payload())):
+            outcome = await vcs.critique_and_maybe_regenerate(
+                comparison=_ORIGINAL, product_names=_PRODUCT_NAMES, regenerate=_regen,
+            )
+        assert regen_called["n"] == 1
+
+    @pytest.mark.asyncio
+    async def test_critique_failure_serves_original(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_SELF_CRITIQUE", "true")
+        regen_called = {"n": 0}
+
+        async def _regen(_critique):
+            regen_called["n"] += 1
+            return _REGENERATED
+
+        with _patch_client(RuntimeError("openai down")):
+            outcome = await vcs.critique_and_maybe_regenerate(
+                comparison=_ORIGINAL, product_names=_PRODUCT_NAMES, regenerate=_regen,
+            )
+        assert outcome.final_comparison is _ORIGINAL
+        assert outcome.critique is None
+        assert outcome.regenerated is False
+        assert regen_called["n"] == 0  # failed critique → no regen
+
+    @pytest.mark.asyncio
+    async def test_regen_failure_falls_back_to_original(self, monkeypatch):
+        """If the regeneration callback itself raises, serve the original
+        verdict (never block) — critique still recorded as needs_regen."""
+        monkeypatch.setenv("ENABLE_SELF_CRITIQUE", "true")
+
+        async def _regen(_critique):
+            raise RuntimeError("regen verdict call failed")
+
+        with _patch_client(_mock_openai_response(_low_payload())):
+            outcome = await vcs.critique_and_maybe_regenerate(
+                comparison=_ORIGINAL, product_names=_PRODUCT_NAMES, regenerate=_regen,
+            )
+        assert outcome.final_comparison is _ORIGINAL  # fell back
+        assert outcome.regenerated is False
+        assert outcome.critique is not None  # critique itself succeeded

@@ -269,3 +269,88 @@ async def persist_critique(
         client.table("verdict_critiques").insert(row).execute()
     except Exception as exc:  # noqa: BLE001 — observability write, never fatal
         logger.warning("[SELF_CRITIQUE] verdict_critiques persist failed (%s)", exc)
+
+
+@dataclasses.dataclass
+class CritiqueOutcome:
+    """Result of the orchestrator-facing critique-and-maybe-regenerate flow.
+
+    `final_comparison` is the verdict the caller should ship (the
+    regenerated one if a regeneration fired and succeeded, else the
+    original — ALWAYS a valid verdict). `critique` is the CritiqueResult
+    (None when the flag is OFF or the critique failed). `regenerated` is
+    whether the ONE regeneration actually fired AND succeeded.
+    `critique_usage` carries the critique-call token usage for I3.3 cost
+    tracking (zeros when no critique ran)."""
+    final_comparison: Dict[str, Any]
+    critique: Optional[CritiqueResult]
+    regenerated: bool
+    critique_usage: Dict[str, int]
+
+
+async def critique_and_maybe_regenerate(
+    *,
+    comparison: Dict[str, Any],
+    product_names: List[str],
+    regenerate,
+    pain_workflow_context: Optional[str] = None,
+) -> CritiqueOutcome:
+    """Orchestrator-facing helper (keeps the ssc.py call site ~3 lines).
+
+    Flag-gated by ENABLE_SELF_CRITIQUE (OFF → no-op: returns the original
+    verdict, no critique call, zero cost). When ON: score the verdict; if
+    any axis is below threshold, call `regenerate(critique)` EXACTLY ONCE
+    (hard cap — the regenerated verdict is NOT re-critiqued) and ship its
+    result. NEVER raises and NEVER blocks the response:
+      - critique failure → original verdict, critique=None, regenerated=False.
+      - regeneration callback failure → original verdict, regenerated=False,
+        critique preserved (so the low scores are still recorded).
+
+    `regenerate` is an async callable taking the CritiqueResult and
+    returning a new verdict dict — the caller supplies the closure that
+    re-runs generate_comparison with the critique feedback.
+    """
+    zero_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    if not is_self_critique_enabled():
+        return CritiqueOutcome(
+            final_comparison=comparison, critique=None,
+            regenerated=False, critique_usage=zero_usage,
+        )
+
+    critique = await critique_verdict(
+        comparison=comparison,
+        product_names=product_names,
+        pain_workflow_context=pain_workflow_context,
+    )
+    if critique is None:
+        # Critique failed — serve the original, no regen.
+        return CritiqueOutcome(
+            final_comparison=comparison, critique=None,
+            regenerated=False, critique_usage=zero_usage,
+        )
+
+    usage = dict(critique.usage)
+    if not critique.needs_regen:
+        return CritiqueOutcome(
+            final_comparison=comparison, critique=critique,
+            regenerated=False, critique_usage=usage,
+        )
+
+    # Exactly ONE regeneration. The regenerated verdict is shipped as-is —
+    # never re-critiqued (hard cap bounds cost + latency + loop risk).
+    try:
+        regenerated_comparison = await regenerate(critique)
+        if regenerated_comparison and isinstance(regenerated_comparison, dict):
+            return CritiqueOutcome(
+                final_comparison=regenerated_comparison, critique=critique,
+                regenerated=True, critique_usage=usage,
+            )
+        # Regen returned nothing usable — fall back to original.
+        logger.info("[SELF_CRITIQUE] regeneration returned no verdict — serving original")
+    except Exception as exc:  # noqa: BLE001 — regen must never block the response
+        logger.warning("[SELF_CRITIQUE] regeneration failed (%s) — serving original", exc)
+
+    return CritiqueOutcome(
+        final_comparison=comparison, critique=critique,
+        regenerated=False, critique_usage=usage,
+    )

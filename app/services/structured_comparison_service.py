@@ -1402,6 +1402,22 @@ class StructuredComparisonService:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
 
+            # I3.1 — optional self-critique pass (flag-gated OFF; no-op in prod
+            # until ENABLE_SELF_CRITIQUE flips). May regenerate the verdict ONCE
+            # when a quality axis scores low. Cost + latency tracked inside.
+            comparison = await self._apply_self_critique(
+                comparison=comparison,
+                product_names=product_names,
+                regen_args=dict(
+                    product1=product_data[0], product2=product_data[1], region=region,
+                    concern=parsed.get("comparison_type", "value") if not vision_products else "value",
+                    user_preferences=user_preferences, scores_summary=scores_summary,
+                    category=detected_category, demographics_profile=demographics_profile,
+                ),
+                pain_workflow_context=scores_summary,
+                stage_timings=orchestrator_timings,
+            )
+
             # Trust validation
             from app.services.trust_validation_service import validate_verdict
             verdict_validation = validate_verdict(comparison, scoring_result, detected_category)
@@ -1460,6 +1476,12 @@ class StructuredComparisonService:
             _metadata_override: Dict[str, Any] = {}
             if getattr(self, "_source_trace", None):
                 _metadata_override["source_trace"] = self._source_trace
+            # I3.2 — thread the self-critique outcome (internal key) so the
+            # post-save path can persist it once the comparison_id exists.
+            # Present only when the flag is ON and a critique actually ran.
+            _crit_meta = self._verdict_critique_metadata()
+            if _crit_meta:
+                _metadata_override["_verdict_critique"] = _crit_meta
 
             result = build_comparison_response(
                 product_data=product_data,
@@ -1828,6 +1850,21 @@ class StructuredComparisonService:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
 
+            # I3.1 — optional self-critique pass (flag-gated OFF; no-op in prod).
+            # Same flow as the sync path; may regenerate the verdict ONCE.
+            comparison = await self._apply_self_critique(
+                comparison=comparison,
+                product_names=product_names,
+                regen_args=dict(
+                    product1=product_data[0], product2=product_data[1], region=region,
+                    concern=parsed.get("comparison_type", "value") if not vision_products else "value",
+                    user_preferences=user_preferences, scores_summary=scores_summary,
+                    category=detected_category, demographics_profile=demographics_profile,
+                ),
+                pain_workflow_context=scores_summary,
+                stage_timings=orchestrator_timings,
+            )
+
             from app.services.trust_validation_service import validate_verdict
             verdict_validation = validate_verdict(comparison, scoring_result, detected_category)
 
@@ -1895,6 +1932,12 @@ class StructuredComparisonService:
             _metadata_override: Dict[str, Any] = {}
             if getattr(self, "_source_trace", None):
                 _metadata_override["source_trace"] = self._source_trace
+            # I3.2 — thread the self-critique outcome (internal key) so the
+            # post-save path can persist it once the comparison_id exists.
+            # Present only when the flag is ON and a critique actually ran.
+            _crit_meta = self._verdict_critique_metadata()
+            if _crit_meta:
+                _metadata_override["_verdict_critique"] = _crit_meta
 
             complete_response = build_comparison_response(
                 product_data=product_data,
@@ -3071,6 +3114,97 @@ class StructuredComparisonService:
             save_price(cache_key, brand, name, variant, region, price),
             label="save_price",
         )
+
+    async def _apply_self_critique(
+        self,
+        *,
+        comparison: Dict[str, Any],
+        product_names: List[str],
+        regen_args: Dict[str, Any],
+        pain_workflow_context: Optional[str] = None,
+        stage_timings: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """I3.1/I3.3 — run the flag-gated self-critique pass and return the
+        (possibly regenerated) verdict.
+
+        No-op + zero cost when ENABLE_SELF_CRITIQUE is OFF (the prod default)
+        — `critique_and_maybe_regenerate` short-circuits before any API call.
+        On a low-scoring axis it regenerates the verdict ONCE via a closure
+        that re-runs generate_comparison with the critique feedback appended
+        to the scoring context. NEVER raises — a critique/regeneration
+        failure serves the original verdict.
+
+        Cost: the critique call's tokens are tracked into self.total_cost via
+        _track_gpt_cost (≤$0.002/cmp gate); the regeneration call tracks its
+        own cost inside the closure. Latency: records `critique_ms` into
+        stage_timings when DEBUG_STAGE_TIMINGS is on. The CritiqueResult is
+        stashed on self for the metadata/persistence thread.
+        """
+        from app.services import verdict_critique_service as _vcs
+
+        self._verdict_critique_outcome = None
+        if not _vcs.is_self_critique_enabled():
+            return comparison
+
+        async def _regenerate(critique: "_vcs.CritiqueResult") -> Dict[str, Any]:
+            # Re-run the verdict with the critique's low-axis feedback folded
+            # into the scoring context (scores_summary is appended to the
+            # verdict system prompt by generate_comparison).
+            feedback = (
+                "\n\n## Self-critique feedback (regenerate to fix)\n"
+                f"The previous verdict scored low on: {critique.regen_reason}. "
+                "Rewrite the verdict to be more specific, decisive, balanced, "
+                "and grounded in the numbers — keep the same JSON schema."
+            )
+            args = dict(regen_args)
+            args["scores_summary"] = (args.get("scores_summary") or "") + feedback
+            regen_comparison, regen_usage = await generate_comparison(
+                args["product1"], args["product2"], args["region"],
+                args.get("concern", "value"),
+                user_preferences=args.get("user_preferences"),
+                scores_summary=args.get("scores_summary"),
+                category=args.get("category", "other"),
+                demographics_profile=args.get("demographics_profile"),
+            )
+            self._track_gpt_cost(regen_usage)
+            return regen_comparison
+
+        t_crit = time.perf_counter() if stage_timings is not None else None
+        outcome = await _vcs.critique_and_maybe_regenerate(
+            comparison=comparison,
+            product_names=product_names,
+            regenerate=_regenerate,
+            pain_workflow_context=pain_workflow_context,
+        )
+        if stage_timings is not None and t_crit is not None:
+            stage_timings["critique_ms"] = round((time.perf_counter() - t_crit) * 1000, 1)
+
+        # Track the critique call's own cost (zero when the flag was OFF or
+        # critique short-circuited — _track_gpt_cost on all-zero usage still
+        # bumps api/gpt counters, so only call it when a critique actually ran).
+        if outcome.critique is not None:
+            self._track_gpt_cost(outcome.critique_usage)
+
+        self._verdict_critique_outcome = outcome
+        return outcome.final_comparison
+
+    def _verdict_critique_metadata(self) -> Optional[Dict[str, Any]]:
+        """Serialize the stashed self-critique outcome for the response
+        metadata `_verdict_critique` key (consumed by the post-save
+        persistence path). None when no critique ran (flag OFF / failure)."""
+        outcome = getattr(self, "_verdict_critique_outcome", None)
+        if outcome is None or outcome.critique is None:
+            return None
+        c = outcome.critique
+        return {
+            "axis_scores": dict(c.axis_scores),
+            "needs_regen": c.needs_regen,
+            "low_axes": list(c.low_axes),
+            "regen_reason": c.regen_reason,
+            "critic_model": c.critic_model,
+            "critic_tokens_used": c.tokens_used,
+            "regenerated": outcome.regenerated,
+        }
 
     def _track_gpt_cost(self, usage: dict):
         """Track real GPT cost from token usage."""
