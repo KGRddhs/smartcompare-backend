@@ -877,6 +877,39 @@ def _parse_verdict_json(content: str) -> Dict[str, Any]:
     return json.loads(result)
 
 
+# Bounded retry on 429 / rate-limit: the OpenAI org has a low gpt-4o TPM cap,
+# so concurrent ~3k-token verdict calls trip 429s. A transient rate-limit must
+# NOT score as an arm error (it would corrupt the factual axis — errored rows
+# score factual=False). Exponential backoff + jitter, then surface the error.
+_MAX_RETRIES = 6
+
+
+async def _create_with_retry(client, **kwargs):
+    """client.chat.completions.create with backoff on 429/rate-limit. Honors
+    the Retry-After hint when the SDK exposes it; otherwise exponential."""
+    import random
+
+    delay = 2.0
+    last_exc: Optional[Exception] = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return await client.chat.completions.create(**kwargs)
+        except Exception as exc:  # noqa: BLE001
+            msg = str(exc).lower()
+            is_rate = "429" in msg or "rate limit" in msg or "ratelimit" in msg \
+                or type(exc).__name__ == "RateLimitError"
+            if not is_rate or attempt == _MAX_RETRIES - 1:
+                last_exc = exc
+                raise
+            wait = delay + random.uniform(0, 1.5)
+            logger.info("[shadow] 429 backoff %.1fs (attempt %d/%d)",
+                        wait, attempt + 1, _MAX_RETRIES)
+            await asyncio.sleep(wait)
+            delay = min(delay * 2, 30.0)
+    if last_exc:
+        raise last_exc
+
+
 async def _chat_json(client, model: str, system_msg: str, user_msg: str,
                      *, max_tokens: int = 1000,
                      temperature: float = 0.2) -> Tuple[Dict[str, Any], int, int]:
@@ -900,7 +933,7 @@ async def _chat_json(client, model: str, system_msg: str, user_msg: str,
     else:
         kwargs["max_tokens"] = max_tokens
         kwargs["temperature"] = temperature
-    resp = await client.chat.completions.create(**kwargs)
+    resp = await _create_with_retry(client, **kwargs)
     content = resp.choices[0].message.content
     usage = getattr(resp, "usage", None)
     pt = getattr(usage, "prompt_tokens", 0) if usage else 0
@@ -968,7 +1001,8 @@ _ANALYST_PROMPTS = {
 async def _run_analyst(client, role: str, vi: VerdictInput) -> Tuple[str, int, int]:
     """One gpt-4o-mini analyst pass. Returns (text, prompt_tok, completion_tok)."""
     user_msg = _build_verdict_user_msg(vi)
-    resp = await client.chat.completions.create(
+    resp = await _create_with_retry(
+        client,
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": _ANALYST_PROMPTS[role]},
@@ -1312,7 +1346,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_run = sub.add_parser("run", help="run one verdict arm over cached inputs (LIVE OpenAI)")
     p_run.add_argument("--arm", required=True, choices=sorted(ARMS))
     p_run.add_argument("--inputs", default=".shadow/inputs.jsonl")
-    p_run.add_argument("--concurrency", type=int, default=4)
+    # default 2: the org's gpt-4o TPM cap trips 429s above this on ~3k-tok
+    # verdict calls. _create_with_retry backs off, but lower concurrency keeps
+    # the run smooth. Measurement runs can use 1 for full determinism.
+    p_run.add_argument("--concurrency", type=int, default=2)
     p_run.add_argument("--limit", type=int, default=0, help="cap inputs (smoke test)")
     p_run.add_argument("--out", default=None, help="write per-query arm result JSON")
     p_run.set_defaults(func=_cmd_run)

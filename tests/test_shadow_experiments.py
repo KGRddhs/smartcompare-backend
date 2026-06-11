@@ -629,6 +629,11 @@ def test_format_arm_report_shows_delta_vs_baseline():
 # Arm call mechanics with a MOCKED OpenAI client (no live calls, no $)
 # ---------------------------------------------------------------------------
 
+async def _no_sleep(*_a, **_k):
+    """Stub asyncio.sleep so retry/backoff tests run instantly."""
+    return None
+
+
 class _FakeUsage:
     def __init__(self, pt, ct):
         self.prompt_tokens = pt
@@ -738,6 +743,60 @@ async def test_arm_multiagent_runs_four_calls_and_blends_cost(monkeypatch):
     assert report.mean_cost_usd == pytest.approx(expected_cost)
     # the cost-split helper must NOT leak into the graded verdict prose
     assert "_shadow_cost_split" not in str(report.per_query[0].__dict__)
+
+
+@pytest.mark.asyncio
+async def test_create_with_retry_backs_off_then_succeeds(monkeypatch):
+    # first 2 calls raise 429, 3rd succeeds — must NOT surface as an error
+    monkeypatch.setattr(se.asyncio, "sleep", _no_sleep)
+    attempts = {"n": 0}
+
+    class _Flaky:
+        async def create(self, **kwargs):
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                raise RuntimeError("Error code: 429 - rate limit reached")
+            return _FakeResponse('{"winner_index": 0}')
+
+    client = _FakeClient({})
+    client.chat.completions = _Flaky()
+    resp = await se._create_with_retry(client, model="gpt-4o", messages=[])
+    assert attempts["n"] == 3
+    assert resp.choices[0].message.content == '{"winner_index": 0}'
+
+
+@pytest.mark.asyncio
+async def test_create_with_retry_non_rate_error_raises_immediately(monkeypatch):
+    monkeypatch.setattr(se.asyncio, "sleep", _no_sleep)
+    attempts = {"n": 0}
+
+    class _Boom:
+        async def create(self, **kwargs):
+            attempts["n"] += 1
+            raise ValueError("bad request 400")
+
+    client = _FakeClient({})
+    client.chat.completions = _Boom()
+    with pytest.raises(ValueError):
+        await se._create_with_retry(client, model="gpt-4o", messages=[])
+    assert attempts["n"] == 1  # no retry on a non-rate error
+
+
+@pytest.mark.asyncio
+async def test_create_with_retry_gives_up_after_max(monkeypatch):
+    monkeypatch.setattr(se.asyncio, "sleep", _no_sleep)
+    attempts = {"n": 0}
+
+    class _AlwaysRate:
+        async def create(self, **kwargs):
+            attempts["n"] += 1
+            raise RuntimeError("429 ratelimit")
+
+    client = _FakeClient({})
+    client.chat.completions = _AlwaysRate()
+    with pytest.raises(RuntimeError):
+        await se._create_with_retry(client, model="gpt-4o", messages=[])
+    assert attempts["n"] == se._MAX_RETRIES
 
 
 @pytest.mark.asyncio
