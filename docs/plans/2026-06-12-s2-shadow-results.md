@@ -21,6 +21,8 @@
 
 **Consequence for the session:** the 45-id few-shot indicator (I1.6, target ≥60% flip) will over-credit any intervention, because ~19/45 flip regardless of what I1/I2 ship. Read the I1/I2 indicator against the **24 structural ids**, not the full 45 — and report the few-shot exit BOTH ways (this is already the Decision-E "exclude template ids" discipline, sharpened by data). See §4.
 
+**The cheapest win in the session — temperature=0 (measured, §3a).** Acting on the variance finding, the **T=0 greedy-decode arm recovers the variance bucket completely: 18/18 of the completed variance ids flip to correct, 0/22 structural** (same model, same prompt, same inputs, **same cost + same latency** as the prod T=0.2 verdict). Flipping the production verdict call from `temperature=0.2` to `0.0` recovers ~19 of the 48 net winner-flips the gate needs, for **$0** — independent of, and complementary to, the few-shot work on the 24 structural ids. **Recommendation: adopt T=0 on the verdict; skip best-of-3** (3× cost can't beat T=0 on the only bucket either touches). The structural-24 stay the I1/I2 target.
+
 ---
 
 ## 1. Per-arm results (bias45, n=45, concurrency 1, retry-resilient)
@@ -86,11 +88,32 @@ SPLIT (noise, n=2): groc-002 groc-023
 
 ---
 
+## 3a. Variance-reduction arms (dispatcher orders) — T=0 + best-of-3
+
+The §3 agreement finding predicted a cheap lever: if ~19/45 failures are sampling variance at the production T=0.2, greedy decoding should recover them at zero cost. The dispatcher ordered two arms to test it, reported split by the structural-24 / variance-19 buckets.
+
+**T=0 arm (`temp0`) — gpt-4o at temperature=0, identical prompt + inputs + cost + call-count to `baseline_4o`:**
+
+| bucket | completed | winner-correct | rate |
+|---|---|---|---|
+| **variance** | 18 | 18 | **1.000** |
+| **structural** | 22 | 0 | **0.000** |
+
+(42/45 completed; 3 ids — other-011 variance, other-012 + other-019 structural — errored on an OpenAI **quota** depletion mid-run, not on quality. The split is decisive without them: T=0 recovered *every completed variance id* and *zero* structural ids.)
+
+**Read:** T=0 is a **complete, free fix for the variance bucket** and does nothing for the structural bucket — exactly the split the agreement analysis predicted. Same model, same prompt, same per-call cost ($0.0124), same latency (6.0s mean) as the prod verdict. The 24 structural failures remain the I1/I2 few-shot target; the ~19 variance failures are recoverable today by one config change.
+
+**best-of-3 arm (`best_of_3`) — NOT RUN (OpenAI quota depleted mid-session).** It is also **moot for the promotion decision**: it is the same model + prompt at 3× the cost, so (a) it cannot beat T=0's 1.000 on the variance bucket — the only bucket either touches — and (b) it cannot move the structural bucket (same reasoning, just sampled thrice). Under the $0.015 envelope, a 3×-cost arm that can't beat a 1×-cost arm on the same axis is a clear reject. Will run for completeness if dispatcher wants the number once quota is restored; recommendation stands without it.
+
+**Promotion recommendation (verdict variance):** **adopt `temperature=0` on the verdict call** (`generate_comparison` `temperature=0.2 → 0.0`) — $0, one line, recovers the variance bucket; **skip best-of-3.** Smoke20-gate the swap when Serper is restored (Decision D: adopt measured winners that hold smoke20). Hand-off owner: whoever owns `extraction_service.generate_comparison` in the prod-swap (I5.10 unifies that path; coordinate there).
+
+---
+
 ## 4. Recommendations to I1/I2 (few-shot lanes) and G6
 
 1. **Score the I1.6 45-id indicator against the 24 structural ids, not the full 45.** ~19 of 45 flip on any re-run; including them inflates apparent few-shot lift and risks a false ≥60% pass. Report the indicator BOTH ways (full-45 and structural-24) — this is the Decision-E "exclude template ids" rule made precise: the contamination isn't only the template ids, it's the whole variance bucket.
 2. **Prioritize H4/H2/H8 exemplars over H1 for net new flips.** H1 ids mostly self-correct; the structural wins are concentrated in local-presence / GCC-resonance / climate reasoning. The H1 discriminator pair is still worth teaching (it stabilizes the noisy half and guards the H3 mirror), but the *incremental* flips come from the structural themes.
-3. **A variance-reduction lever exists independent of few-shots: lower verdict temperature.** The control arm runs at the production T=0.2. ~19/45 failures are sampling variance at that temperature. Dropping the verdict to T=0 (or a best-of-N + scoring-consistency pick) would recover much of the variance bucket at ~zero added cost — a candidate for I3/G5 to weigh against the few-shot path. (Not in my scope to ship; flagging it as a measured, cheap option the data surfaced.)
+3. **A variance-reduction lever, now MEASURED (§3a): set the verdict to temperature=0.** The control runs at the production T=0.2; ~19/45 failures are sampling variance at that temperature. The T=0 arm recovered the variance bucket completely (18/18 completed, 0/22 structural) at zero added cost or latency. **This is complementary to few-shots, not competing** — T=0 takes the ~19 variance ids, I1/I2 few-shots take the 24 structural. Adopt both. (Prod swap is one line in `generate_comparison`; owner is the verdict-path lane, smoke20-gated post-Serper.)
 4. **G6 expectation-setting:** of the 45-id "+48 net flips needed" arithmetic in the dossier, ~19 are already achievable by re-run/temperature alone, and ~24 need genuine reasoning help (few-shots + the localization directive). The full winner-gate math (dossier §1: I1/I2 + I5 error-recovery co-load-bearing) is unchanged — but the I1/I2 contribution should be modeled as "stabilize ~19 variance + win some fraction of 24 structural," not "+27–31 from the 45."
 
 ---
@@ -136,6 +159,8 @@ SHADOW_L2_DUMP=.shadow/l2_dump.jsonl python -m scripts.shadow_experiments \
 ## 6. Open / not-yet-run
 
 - **Prompt-arm (`prompt_exemplars`) — directive 2, SCAFFOLDED, pending G2/G3.** gpt-4o verdict WITH I2's exemplar/AP block injected vs `arm_baseline_4o` (identical model + inputs, no exemplars) — isolates the winner-axis delta to the few-shot prompt change alone, $0 Serper, as the offline pre-read on the 45-id flip BEFORE the live nocache G3 indicator. The arm fn + tests are committed and registered in `ARMS`; it runs TODAY as a baseline-equivalent control (empty block, verified). It goes live the moment **G2** (I2 `verdict_exemplar_loader.build_exemplar_block`) + **G3** (I1 content) land on main — the loader import resolves and the block is non-empty, no further code change. At that point: ONE unified pass re-runs all 5 arms (4 here + prompt-arm) on the same bias45 inputs for an internally-consistent matrix.
-- **graded200 arm runs (154 inputs/arm):** inputs prepared (154/154); arms NOT yet run (est ~$5 across the arms, ~40 min at concurrency 1). The bias45 result is the decisive promotion signal (single-axis, unambiguous); the graded200 run would add a broader-population winner-rate but is unlikely to change the promotion calls. **Recommend running it only if G5 wants the wider number** — flagged for dispatcher GO before the spend; fold into the unified pass.
-- **Temperature sweep (T=0 / best-of-N):** surfaced by the variance finding (§4.3) as a cheap variance-reduction lever; not in I4 scope to ship, handed to I3/G5.
+- **T=0 arm — DONE (§3a).** Decisive: variance 18/18, structural 0/22. Recommendation: adopt `temperature=0`, skip best-of-3.
+- **best-of-3 arm — BLOCKED on OpenAI quota** (account hit `insufficient_quota` mid-session, parallel to the Serper depletion). Moot for the promotion call (3× cost can't beat T=0 on the variance bucket; can't move structural). Run for completeness only if dispatcher wants the number once OpenAI credits are restored.
+- **graded200 arm runs (154 inputs/arm):** inputs prepared (154/154); DEFERRED by dispatcher until G5 demands it, and then run WITH the exemplar arm post-G2/G3 so the wider number includes the prompt change. Also currently OpenAI-quota-blocked.
 - **reviews-trim UPSTREAM latency:** handed to I5 (verdict-stage quality cost cleared here = nil).
+- **⚠ Cross-cutting blocker:** all remaining LIVE arm runs need OpenAI credit restored (account depleted) — flagged to dispatcher alongside the Serper rotation.
