@@ -33,6 +33,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
+from app.services.database_service import get_admin_supabase_client
 from app.services.openai_service import get_client
 
 logger = logging.getLogger(__name__)
@@ -222,3 +223,49 @@ async def critique_verdict(
     except Exception as exc:  # noqa: BLE001 — critique must NEVER block the verdict
         logger.warning("[SELF_CRITIQUE] critique pass failed (%s) — serving original", exc)
         return None
+
+
+async def persist_critique(
+    *,
+    comparison_id: Optional[str],
+    critique: CritiqueResult,
+    regenerated: bool,
+) -> None:
+    """I3.2 — write one verdict_critiques row (migration 030) via the
+    service-role client. Designed to be wrapped in _fire_and_forget by the
+    caller; this function NEVER raises (observability write — a DB outage
+    must not affect the served verdict).
+
+    `comparison_id` is the FK target (the saved comparisons.id). When None —
+    e.g. an anonymous comparison that was never persisted — the write is
+    skipped (no FK target, no dangling row).
+
+    migration 030 CHECK invariants honored:
+      - all 5 axis scores are 0..10 ints (CritiqueResult guarantees this).
+      - regen_reason is NON-NULL whenever regenerated=true.
+    """
+    if not comparison_id:
+        return
+    try:
+        row = {
+            "comparison_id": comparison_id,
+            "bias_score": critique.axis_scores.get("bias_score"),
+            "vagueness_score": critique.axis_scores.get("vagueness_score"),
+            "hedging_score": critique.axis_scores.get("hedging_score"),
+            "missing_citation_score": critique.axis_scores.get("missing_citation_score"),
+            "pain_workflow_align_score": critique.axis_scores.get("pain_workflow_align_score"),
+            "regenerated": regenerated,
+            # CHECK vc_regen_reason_when_regenerated: regenerated=true ⇒
+            # regen_reason NOT NULL. Fall back to the low-axis summary if the
+            # caller regenerated but didn't pass a reason through.
+            "regen_reason": (
+                critique.regen_reason
+                or ("; ".join(critique.low_axes) if critique.low_axes else "regenerated")
+            ) if regenerated else critique.regen_reason,
+            "critic_model": critique.critic_model,
+            "critic_tokens_used": critique.tokens_used,
+        }
+        client = get_admin_supabase_client()
+        client.table("verdict_critiques").insert(row).execute()
+    except Exception as exc:  # noqa: BLE001 — observability write, never fatal
+        logger.warning("[SELF_CRITIQUE] verdict_critiques persist failed (%s)", exc)

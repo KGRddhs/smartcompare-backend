@@ -236,3 +236,106 @@ class TestFailureServesOriginal:
                 comparison=_VERDICT, product_names=_PRODUCT_NAMES,
             )
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# I3.2 — persistence to verdict_critiques (migration 030)
+# ---------------------------------------------------------------------------
+
+def _critique_result(needs_regen=False, regenerated=False):
+    return vcs.CritiqueResult(
+        axis_scores={
+            "bias_score": 9, "vagueness_score": 8, "hedging_score": 9,
+            "missing_citation_score": 8, "pain_workflow_align_score": 9,
+        },
+        needs_regen=needs_regen,
+        low_axes=[],
+        regen_reason=None,
+        critic_model="gpt-4o-mini",
+        usage={"prompt_tokens": 900, "completion_tokens": 60},
+    )
+
+
+class TestPersistCritique:
+
+    @pytest.mark.asyncio
+    async def test_persist_maps_all_axis_columns(self):
+        captured = {}
+
+        def _fake_admin_client():
+            client = MagicMock()
+            def _insert(row):
+                captured.update(row)
+                exec_mock = MagicMock()
+                exec_mock.execute = MagicMock(return_value=MagicMock(data=[{"id": "x"}]))
+                return exec_mock
+            client.table.return_value.insert.side_effect = _insert
+            return client
+
+        with patch.object(vcs, "get_admin_supabase_client", _fake_admin_client):
+            await vcs.persist_critique(
+                comparison_id="cmp-123",
+                critique=_critique_result(),
+                regenerated=False,
+            )
+        assert captured["comparison_id"] == "cmp-123"
+        assert captured["bias_score"] == 9
+        assert captured["pain_workflow_align_score"] == 9
+        assert captured["critic_model"] == "gpt-4o-mini"
+        assert captured["critic_tokens_used"] == 960
+        assert captured["regenerated"] is False
+
+    @pytest.mark.asyncio
+    async def test_persist_regenerated_includes_reason(self):
+        """migration 030 CHECK: regenerated=true requires regen_reason."""
+        captured = {}
+
+        def _fake_admin_client():
+            client = MagicMock()
+            def _insert(row):
+                captured.update(row)
+                m = MagicMock(); m.execute = MagicMock(return_value=MagicMock(data=[{"id": "x"}]))
+                return m
+            client.table.return_value.insert.side_effect = _insert
+            return client
+
+        crit = _critique_result(needs_regen=True)
+        crit.regen_reason = "vagueness_score=4/10 (threshold 7)"
+        with patch.object(vcs, "get_admin_supabase_client", _fake_admin_client):
+            await vcs.persist_critique(
+                comparison_id="cmp-1", critique=crit, regenerated=True,
+            )
+        assert captured["regenerated"] is True
+        assert captured["regen_reason"]  # non-null when regenerated
+
+    @pytest.mark.asyncio
+    async def test_persist_swallows_db_error(self):
+        """A DB failure must NEVER propagate — persistence is observability."""
+        def _boom_client():
+            raise RuntimeError("supabase down")
+
+        with patch.object(vcs, "get_admin_supabase_client", _boom_client):
+            # Must not raise.
+            await vcs.persist_critique(
+                comparison_id="cmp-1", critique=_critique_result(), regenerated=False,
+            )
+
+    @pytest.mark.asyncio
+    async def test_persist_none_comparison_id_skips_write(self):
+        """No FK target → skip the write entirely (no crash, no partial row)."""
+        called = {"insert": False}
+
+        def _fake_admin_client():
+            client = MagicMock()
+            def _insert(row):
+                called["insert"] = True
+                m = MagicMock(); m.execute = MagicMock(return_value=MagicMock(data=[]))
+                return m
+            client.table.return_value.insert.side_effect = _insert
+            return client
+
+        with patch.object(vcs, "get_admin_supabase_client", _fake_admin_client):
+            await vcs.persist_critique(
+                comparison_id=None, critique=_critique_result(), regenerated=False,
+            )
+        assert called["insert"] is False
