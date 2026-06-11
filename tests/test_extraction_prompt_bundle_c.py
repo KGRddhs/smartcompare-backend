@@ -23,10 +23,13 @@ import pytest
 # Table from spec §2f
 EXPECTED_NON_NEGOTIABLE = {
     "electronics": {"battery", "processor", "ram", "rear_camera"},
-    "supplements": {"dosage", "form"},
+    # S2 I3.6 (Decision B): active_ingredient promoted preferred →
+    # non-negotiable for supplements + skincare (defining spec + gold anchor;
+    # routes blank Tier-1 extraction into the Tier-2/3 fill cascade).
+    "supplements": {"dosage", "form", "active_ingredient"},
     "fragrances":  {"concentration", "longevity"},
     "fashion":     {"material"},
-    "skincare":    {"volume", "ingredients"},
+    "skincare":    {"volume", "ingredients", "active_ingredient"},
     "haircare":    {"volume", "ingredients"},
     "makeup":      {"volume", "shade_range"},
     "grocery":     {"weight", "ingredients"},

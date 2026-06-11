@@ -40,11 +40,17 @@ def test_electronics_preferred():
 
 
 def test_supplements_split():
+    # S2 I3.6 (Decision B, 2026-06-11): active_ingredient promoted
+    # preferred → NON-NEGOTIABLE. The active ingredient (e.g. "Probiotic",
+    # "Vitamin C") is the single most defining spec for a supplement, and
+    # the gold set anchors on it — promoting it routes it into the
+    # Tier-2/Tier-3 fallback `missing` list so a blank Tier-1 extraction is
+    # filled rather than left at specs_score=0.0 (supp-010 root cause).
     assert set(CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE["supplements"]) == {
-        "dosage", "form",
+        "dosage", "form", "active_ingredient",
     }
     assert set(CRITICAL_SCHEMA_FIELDS_PREFERRED["supplements"]) == {
-        "count", "serving_size", "active_ingredient",
+        "count", "serving_size",
     }
 
 
@@ -67,11 +73,17 @@ def test_fashion_split():
 
 
 def test_skincare_split():
+    # S2 I3.6 (Decision B, 2026-06-11): active_ingredient promoted
+    # preferred → NON-NEGOTIABLE. The active (e.g. "Vitamin C", "Retinol")
+    # is the defining spec a skincare buyer compares on, and the gold set
+    # anchors on it — promotion routes it into the Tier-2/Tier-3 fallback
+    # `missing` list (skin-012 root cause: specs_score=0.0 because Tier-1
+    # left active_ingredient blank and the fallback never targeted it).
     assert set(CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE["skincare"]) == {
-        "volume", "ingredients",
+        "volume", "ingredients", "active_ingredient",
     }
     assert set(CRITICAL_SCHEMA_FIELDS_PREFERRED["skincare"]) == {
-        "skin_type", "active_ingredient", "spf",
+        "skin_type", "spf",
     }
 
 
