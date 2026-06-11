@@ -15,7 +15,7 @@ from app.services.source_router import Source, get_sources_for_category, score_s
 # ---------- score_source tier hierarchy ----------
 
 def test_bahrain_sources_score_higher_than_gcc_and_global():
-    bh_score = score_source("https://www.lulu.com.bh/product/123", category="electronics")
+    bh_score = score_source("https://www.luluhypermarket.com/product/123", category="electronics")
     gcc_score = score_source("https://www.noon.com/uae-en/product/456", category="electronics")
     global_score = score_source("https://www.amazon.com/dp/B0XXX", category="electronics")
     assert bh_score > gcc_score > global_score
@@ -37,16 +37,16 @@ def test_score_source_handles_subdomain():
 
 
 def test_score_source_category_filtering():
-    """sharafdg.com.bh is registered for electronics only.
+    """bahrain.sharafdg.com is registered for electronics only.
 
     Asking for a supplements URL against sharafdg should fall through to the
     unknown-source default 0.5 (not 3.0).
     """
     score_electronics = score_source(
-        "https://www.sharafdg.com.bh/product/p1", category="electronics"
+        "https://www.bahrain.sharafdg.com/product/p1", category="electronics"
     )
     score_supplements = score_source(
-        "https://www.sharafdg.com.bh/product/p1", category="supplements"
+        "https://www.bahrain.sharafdg.com/product/p1", category="supplements"
     )
     assert score_electronics == 3.0
     assert score_supplements == 0.5
@@ -62,7 +62,7 @@ def test_score_source_bn_boots_supplements():
 def test_score_source_lulu_works_across_all_categories():
     """Lulu has empty `categories` tuple → matches every category."""
     for cat in ("electronics", "supplements", "grocery", "fashion"):
-        assert score_source("https://www.lulu.com.bh/x", category=cat) == 3.0
+        assert score_source("https://www.luluhypermarket.com/x", category=cat) == 3.0
 
 
 # ---------- get_sources_for_category ----------
@@ -93,8 +93,8 @@ def test_get_sources_for_category_electronics_orders_bahrain_first():
 def test_get_sources_for_category_electronics_includes_sharaf_dg_bh_and_extra_bh():
     sources = get_sources_for_category("electronics")
     domains = [s.domain for s in sources]
-    assert "sharafdg.com.bh" in domains
-    assert "extra.com.bh" in domains
+    assert "bahrain.sharafdg.com" in domains
+    assert "extra.com" in domains
 
 
 def test_get_sources_for_category_grocery_includes_talabat_and_spinneys():
@@ -123,9 +123,9 @@ def test_get_sources_for_category_returns_only_source_dataclass():
 
 
 def test_score_source_handles_www_prefix():
-    """www.lulu.com.bh and lulu.com.bh should both score 3.0."""
-    with_www = score_source("https://www.lulu.com.bh/x", category="electronics")
-    without_www = score_source("https://lulu.com.bh/x", category="electronics")
+    """www.luluhypermarket.com and luluhypermarket.com should both score 3.0."""
+    with_www = score_source("https://www.luluhypermarket.com/x", category="electronics")
+    without_www = score_source("https://luluhypermarket.com/x", category="electronics")
     assert with_www == 3.0
     assert without_www == 3.0
 

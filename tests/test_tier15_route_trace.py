@@ -48,7 +48,7 @@ def _force_escalation(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_registry_winner_records_route(monkeypatch, clean_service):
-    """A Bahrain registry candidate (sharafdg.com.bh) winning the fan_out
+    """A Bahrain registry candidate (bahrain.sharafdg.com) winning the fan_out
     race records route='registry' + source_weight=3.0 in _tier15_routes."""
     from app.services import structured_comparison_service as scs_mod
 
@@ -58,7 +58,7 @@ async def test_registry_winner_records_route(monkeypatch, clean_service):
     monkeypatch.setattr(
         scs_mod, "search_web",
         AsyncMock(return_value={
-            "organic": [{"link": "https://www.sharafdg.com.bh/product/iphone-15"}],
+            "organic": [{"link": "https://www.bahrain.sharafdg.com/product/iphone-15"}],
         }),
     )
     # fan_out returns a winner whose retailer is the registry domain.
@@ -71,8 +71,8 @@ async def test_registry_winner_records_route(monkeypatch, clean_service):
                 "rank": 85,
                 "raw_data": {
                     "amount": 320.0, "currency": "BHD",
-                    "retailer": "sharafdg.com.bh",
-                    "url": "https://www.sharafdg.com.bh/product/iphone-15",
+                    "retailer": "bahrain.sharafdg.com",
+                    "url": "https://www.bahrain.sharafdg.com/product/iphone-15",
                 },
             },
             "alternates": [], "cancelled_count": 0, "elapsed_seconds": 1.0,
