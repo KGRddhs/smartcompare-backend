@@ -112,6 +112,26 @@ The §3 agreement finding predicted a cheap lever: if ~19/45 failures are sampli
 
 ---
 
+## 3b. G3 PRE-READ — does I1's exemplar content flip the structural-24? (the G3 quality gate)
+
+**Setup (dispatcher prod-parity ruling):** with G1 (I5.10 verdict-prompt unification) + G2 (I2 exemplar injection into `build_verdict_prompt`) live, the harness calls the REAL prod verdict prompt. The A/B varies ONLY the exemplar file, with **both arms at temperature=0** (T=0 ships in prod since G2 — the gate must isolate exemplar content under the shipped temperature, not the retired T=0.2). I1's content pulled fresh at their fixes-ready tip **50da55f** (`.shadow/i1_verdict_exemplars_FIXED.json`, sha256 fa00665a — 26 exemplars + 9 anti-patterns, 9 categories). Pre-flight confirmed the FIXED content injects (elec-018 prompt 9293→12100 chars, `ISOLATES EXEMPLARS: True`). bias45, 45/45, concurrency 1, 0 errors both arms, all 90 calls served `gpt-4o-2024-08-06`.
+
+| bucket | baseline @ T=0 (`temp0`, APs-only) | exemplars @ T=0 (`prompt_exemplars_t0`, I1 fixed) | delta |
+|---|---|---|---|
+| **structural-24** | 0/24 = 0.000 | **0/24 = 0.000** | **+0** |
+| variance-19 | 19/19 = 1.000 | 18/19 = 0.947 | −1 (noise: skin-005) |
+| split-2 | 1/2 | 1/2 | 0 |
+
+**Result: I1's exemplar content (as authored at 50da55f) flips ZERO structural-24 ids — and changes winner_pass on 0 of 24 structural ids at all.** Per-id verification: not one structural id changed; all five of I1's *directly-taught* structural ids stayed wrong (elec-018, elec-024 [H4]; make-011 [H2]; other-019, skin-009 [H8] — all `winner_pass: False → False`). The lone variance delta (skin-005 True→False) is sampling noise.
+
+**This is the pre-read doing exactly its job** — catching, for ~$1.10 and zero Serper, that the exemplars do not move the G3 quality gate BEFORE the live nocache 45-id indicator (which would burn ~300–500 Serper credits to discover the same thing). **The G3 gate, as currently authored, is not met by the few-shot content.**
+
+**Why this is plausible (not a harness artifact — verified):** the content is present and injected (the +2807-char prompt diff is real), the FIXED file carries 3 exemplars per taught category, and these are clean gold queries with unambiguous expected winners. The likely cause aligns with the dossier's own §5 honesty: H4/H2 structural failures have **no data layer** — the exemplars teach the reasoning *move* ("weight Bahrain service-network / local adoption"), but the model still lacks the underlying Bahrain-specific facts to act on it, so at T=0 it deterministically re-picks the same spec-sheet winner. A reasoning *nudge* without the *facts* doesn't flip a deterministic verdict.
+
+**Recommendation to G3:** the exemplars do not clear the gate on the structural-24 at prod parity. Options for I1/dispatcher (not my call): (a) iterate the exemplar content — sharpen the H4/H2/H8 reasoning cues to be more directive (I1's plan); (b) accept that the *true* structural fix needs the S3 data layer (curated Bahrain local-presence dataset) the dossier already scopes, and treat S2 few-shots as stabilization rather than structural-flip; (c) re-read against the full-45 if the variance-stabilization value alone justifies merge. The harness is ready to re-measure any new I1 tip at the same ~$1.10.
+
+---
+
 ## 4. Recommendations to I1/I2 (few-shot lanes) and G6
 
 1. **Score the I1.6 45-id indicator against the 24 structural ids, not the full 45.** ~19 of 45 flip on any re-run; including them inflates apparent few-shot lift and risks a false ≥60% pass. Report the indicator BOTH ways (full-45 and structural-24) — this is the Decision-E "exclude template ids" rule made precise: the contamination isn't only the template ids, it's the whole variance bucket.
