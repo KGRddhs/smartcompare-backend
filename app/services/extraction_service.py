@@ -862,7 +862,7 @@ Category: {category}
 </USER_INPUT>
 
 SEARCH CONTEXT:
-{search_context[:4000]}"""
+{search_context[:2500]}"""
 
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -870,7 +870,7 @@ SEARCH CONTEXT:
                 {"role": "system", "content": REVIEWS_EXTRACTION_SYSTEM},
                 {"role": "user", "content": user_msg}
             ],
-            max_tokens=1000,
+            max_tokens=600,  # I5 reviews-trim (Decision D, I4 A/B quality-cleared)
             temperature=0.2,
         )
 

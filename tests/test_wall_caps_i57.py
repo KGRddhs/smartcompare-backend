@@ -63,3 +63,15 @@ def test_price_outer_cap_exceeds_inner_fan_out_cap():
     assert "timeout=12.0" in price_src
     # 15.0 (outer) > 12.0 (inner) — headroom for Tier 1 + Tier 3 estimate work.
     assert 15.0 > 12.0
+
+
+def test_reviews_trim_context_and_tokens():
+    """I5 reviews-trim (Decision D, I4 A/B quality-cleared): extract_reviews
+    context [:4000]->[:2500] and max_tokens 1000->600. Other call sites untouched."""
+    import inspect
+    from app.services import extraction_service as es
+    source = inspect.getsource(es.extract_reviews)
+    assert "search_context[:2500]" in source, "reviews context must be trimmed to 2500"
+    assert "search_context[:4000]" not in source, "stale 4000 context must be gone"
+    assert "max_tokens=600" in source, "reviews max_tokens must be 600"
+    assert "max_tokens=1000" not in source, "stale 1000 tokens must be gone from extract_reviews"
