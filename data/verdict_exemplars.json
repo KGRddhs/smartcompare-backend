@@ -33,23 +33,23 @@
           }
         },
         "_provenance": {
-          "source_pattern_id": "elec-031",
+          "source_pattern_id": "elec-033",
           "synthetic": true,
-          "rewrite_note": "H1 running-cost-decides-value at spec parity; generic printer framing distinct from the verbatim Epson/HP and Brother/Canon gold pairs."
+          "rewrite_note": "H1 value-per-dinar at near-parity (running cost / total cost of ownership). Synthetic rewrite — same value-wins structure as in-set elec-033, different product (printer vs webcam), zero verbatim gold brands."
         }
       },
       {
         "title": "Compressor durability licenses the premium for long summers (H3)",
         "teaches": "H3",
-        "setup": "Two 1.5-ton inverter ACs cool a room equally on paper, but the pricier one has a more reliable compressor and quieter operation that hold up through long Bahrain summers. EXAMPLE — abridged, do not copy structure or content.",
+        "setup": "Two 1.5-ton inverter ACs cool a room equally on paper; the first is cheaper, but the second has a more reliable compressor and quieter operation that hold up through long Bahrain summers. EXAMPLE — abridged, do not copy structure or content.",
         "verdict_json": {
-          "winner_index": 0,
-          "winner_declaration": "Reliable-compressor AC",
+          "winner_index": 1,
+          "winner_declaration": "Reliable-compressor AC (the pricier unit)",
           "winner_reason": "More durable compressor justifies about 10% more for years of heavy summer cooling.",
-          "key_tradeoff": "The rival AC costs less up front and matches the same 1.5-ton cooling capacity.",
+          "key_tradeoff": "The cheaper AC costs less up front and matches the same 1.5-ton cooling capacity.",
           "value_context": {
-            "product_0": "The premium is licensed by compressor reliability that matters under sustained Gulf heat, not just brand name.",
-            "product_1": "Genuinely cheaper today, but a less proven compressor is a bigger risk over long summers."
+            "product_0": "Genuinely cheaper today, but a less proven compressor is a bigger risk over long summers.",
+            "product_1": "The premium is licensed by compressor reliability that matters under sustained Gulf heat, not just brand name."
           }
         },
         "_provenance": {
@@ -256,23 +256,23 @@
         }
       },
       {
-        "title": "Humidity hold matters in the Gulf (H8)",
-        "teaches": "H8",
-        "setup": "Two drugstore setting powders are close on price and finish, but one keeps shine under control noticeably longer through humid Gulf days. EXAMPLE — abridged, do not copy structure or content.",
+        "title": "Regional shade-match and humidity resonance win (H2)",
+        "teaches": "H2",
+        "setup": "A GCC-tailored setting powder and a global import are close on finish, but the regional brand matches Gulf skin tones better and holds through humid days, with strong regional brand resonance. EXAMPLE — abridged, do not copy structure or content.",
         "verdict_json": {
           "winner_index": 0,
-          "winner_declaration": "Stronger shine-control powder",
-          "winner_reason": "Controls shine well past 6 hours in humidity where the rival breaks down sooner.",
-          "key_tradeoff": "The rival powder has a slightly softer, more natural finish for dry-skin days.",
+          "winner_declaration": "Regional setting powder",
+          "winner_reason": "GCC-tailored shade range and humidity hold edge it for most local buyers at about 12 BHD.",
+          "key_tradeoff": "The global import has wider international name recognition and a slightly silkier base.",
           "value_context": {
-            "product_0": "Strong value for the Gulf climate, where humidity longevity is what you are really paying for.",
-            "product_1": "Good for drier conditions, but its shorter humid-day hold makes it a weaker match for summer here."
+            "product_0": "Strong value for GCC buyers: shade-match + humidity resonance the import does not tune for.",
+            "product_1": "A respected import, but you pay for the global name without the regional shade/climate fit."
           }
         },
         "_provenance": {
-          "source_pattern_id": "make-013",
+          "source_pattern_id": "make-011",
           "synthetic": true,
-          "rewrite_note": "H8 climate (humidity hold) — the short, unambiguous Gulf-climate clause flagged ideal in dossier §2."
+          "rewrite_note": "H2 regional-brand-resonance + GCC shade/humidity fit (structural-24 id). Synthetic rewrite of the make-011 regional-vs-import structure, different brands; qualitative GCC claims only (Decision C). Humidity kept as setup garnish."
         }
       }
     ],
@@ -326,9 +326,9 @@
           }
         },
         "_provenance": {
-          "source_pattern_id": "skin-003",
+          "source_pattern_id": "skin-005",
           "synthetic": true,
-          "rewrite_note": "H3/H6 gold-standard justifies premium; serum framing kept generic."
+          "rewrite_note": "H3/H6 gold-standard licenses the premium. Synthetic rewrite — same established-formulation-wins structure as in-set skin-005, different product, zero verbatim gold brands."
         }
       },
       {
@@ -462,9 +462,9 @@
           }
         },
         "_provenance": {
-          "source_pattern_id": "frag-001",
+          "source_pattern_id": "frag-007",
           "synthetic": true,
-          "rewrite_note": "H3 niche-longevity justifies premium; the H1/H3 fragrance discriminator pair."
+          "rewrite_note": "H3 premium-justified by longevity/projection. Synthetic rewrite — same niche-justifies-premium structure as in-set frag-007, different brands, zero verbatim gold brands."
         }
       },
       {
@@ -544,8 +544,8 @@
         }
       },
       {
-        "title": "Benchmark durability holds value despite the premium (H4)",
-        "teaches": "H4",
+        "title": "Benchmark durability licenses the premium (H3)",
+        "teaches": "H3",
         "setup": "An iconic denim jean is the benchmark for durable, consistent fit and is easy to find and replace, justifying a premium over a cheaper rival. EXAMPLE — abridged, do not copy structure or content.",
         "verdict_json": {
           "winner_index": 0,
@@ -560,7 +560,7 @@
         "_provenance": {
           "source_pattern_id": "fash-006",
           "synthetic": true,
-          "rewrite_note": "H4/H6 benchmark-durability + easy-rebuy; framing kept generic, availability qualitative."
+          "rewrite_note": "H3 premium-justified by benchmark durability + heritage fit (H6/H7 ride the same exemplar). Synthetic rewrite of the in-set fash-006 iconic-durable-denim structure, different brands; availability kept qualitative."
         }
       }
     ],
@@ -623,9 +623,9 @@
           }
         },
         "_provenance": {
-          "source_pattern_id": "other-004",
+          "source_pattern_id": "other-010",
           "synthetic": true,
-          "rewrite_note": "H4 pod-availability/everyday-fit; availability kept qualitative per Decision C."
+          "rewrite_note": "H4 local-presence/service licenses the everyday pick. Synthetic rewrite — same local-service-wins structure as in-set other-010, different product, qualitative GCC claims only (Decision C)."
         }
       }
     ],

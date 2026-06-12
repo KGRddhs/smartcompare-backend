@@ -172,13 +172,21 @@ def test_exemplar_block_is_cohort_independent(canonical_content):
 # ---------------------------------------------------------------------------
 
 def test_per_category_token_budget_held(canonical_content):
-    """Exemplar block per category stays within the dossier §3 ~700-tok
-    budget — the arithmetic behind the +<=$0.002/call gate."""
+    """B6: the BINDING gate is the per-call $-cost, not a raw token count. Assert
+    every category's exemplar block (my exemplars + I2's APs, as rendered) adds
+    <= $0.002/call at gpt-4o input pricing, with a token sanity ceiling alongside.
+    Wires the $-gate from scripts/audit_exemplar_token_cost directly into CI."""
+    usd_per_1k_4o = 0.0025          # gpt-4o input $/1K tokens
+    cost_gate_usd = 0.002           # dossier §3 ceiling
     for cat in CATEGORIES:
         block = loader.build_exemplar_block(cat)
         n = _toks(block)
+        cost = n / 1000.0 * usd_per_1k_4o
+        assert cost <= cost_gate_usd, (
+            f"{cat}: exemplar block +${cost:.5f}/call exceeds the ${cost_gate_usd} gate ({n} tok)"
+        )
         assert n <= _EXEMPLAR_TOK_BUDGET, (
-            f"{cat}: exemplar block {n} tok exceeds {_EXEMPLAR_TOK_BUDGET}"
+            f"{cat}: exemplar block {n} tok exceeds the {_EXEMPLAR_TOK_BUDGET} sanity ceiling"
         )
 
 

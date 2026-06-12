@@ -25,11 +25,8 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-# I1 content lives in the staging artifact pre-G3 (dispatcher staged-artifact
-# ruling: I2's empty skeleton is canon at G2, my content fills it at G3). The
-# guard validates whichever file holds the content — staged before G3, the live
-# canonical after the G3 fill — so Decision E stays provable across the handoff.
-_STAGED = _REPO_ROOT / "data" / "verdict_exemplars.staged.json"
+# Post-G3 the I1 content lives in the canonical file (the staging artifact is
+# deleted by the fill). The guard reads the canonical file only.
 _CANONICAL = _REPO_ROOT / "data" / "verdict_exemplars.json"
 _GOLD = _REPO_ROOT / "data" / "validation_gold_truth.json"
 
@@ -42,8 +39,10 @@ CATEGORIES = (
 # names Decision E forbids reusing verbatim). Generic category descriptors are
 # deliberately excluded — a same-structure rewrite must keep the product TYPE.
 _GOLD_BRANDS = {
-    "elec-031": ["brother", "canon", "hl-l2400dw", "i-sensys", "lbp122dw"],
-    "elec-015": ["daikin", "dualcool"],
+    # in-set 45 ids my exemplars are anchored to (B4 re-anchored elec-031→033,
+    # skin-003→005, frag-001→007, other-004→010; B5 added make-011).
+    "elec-033": ["logitech", "c920", "anker", "powerconf", "c200"],
+    "elec-015": ["daikin", "dualcool", "lg"],          # out-of-set, flagged (B4)
     "elec-018": ["samsung", "galaxy", "a55", "redmi", "xiaomi"],
     "groc-009": ["al foah", "bateel"],
     "groc-004": ["nescafe", "movenpick", "mövenpick"],
@@ -51,32 +50,33 @@ _GOLD_BRANDS = {
     "supp-013": ["now foods", "emergen-c"],
     "supp-020": ["now foods", "sports research", "bioperine"],
     "make-016": ["e.l.f", "halo glow", "charlotte tilbury", "flawless filter"],
-    "make-002": ["ruby woo", "charlotte tilbury", "pillow talk"],
-    "make-013": ["rimmel", "stay matte", "maybelline", "fit me"],
+    "make-002": ["mac", "ruby woo", "charlotte tilbury", "pillow talk"],  # out-of-set, flagged (B4)
+    "make-011": ["huda beauty", "easy bake", "laura mercier", "translucent"],
     "skin-018": ["the ordinary", "some by mi"],
-    "skin-003": ["drunk elephant", "c-firma", "skinceuticals", "ce ferulic"],
+    "skin-005": ["bioderma", "sensibio", "garnier", "micellar"],
     "skin-009": ["la roche-posay", "anthelios", "avene"],
     "hair-021": ["mielle", "rosemary mint", "the ordinary", "multi-peptide"],
     "hair-001": ["olaplex", "k18"],
     "hair-014": ["maui moisture", "ogx"],
     "frag-010": ["armaf", "club de nuit", "afnan", "9pm"],
-    "frag-001": ["tom ford", "black orchid", "creed", "aventus"],
+    "frag-007": ["lattafa", "asad", "rasasi", "hawas"],
     "frag-016": ["lattafa", "yara", "ana abiyedh"],
     "fash-016": ["michael kors", "fossil"],
     "fash-009": ["fossil", "citizen", "eco-drive"],
     "fash-006": ["levi", "501", "lee", "brooklyn"],
     "other-019": ["bionaire", "super general"],
     "other-009": ["ariston", "super general"],
-    "other-004": ["nespresso", "vertuo", "keurig", "k-mini"],
+    "other-010": ["dyson", "xiaomi", "mi vacuum"],
 }
 
 
 @pytest.fixture(scope="module")
 def content() -> dict:
-    src = _STAGED if _STAGED.exists() else _CANONICAL
-    if not src.exists():
-        pytest.skip("no verdict exemplar content yet (staged artifact or G3 fill)")
-    return json.loads(src.read_text(encoding="utf-8"))
+    # B6: read the CANONICAL file only — the staged artifact is deleted at G3
+    # fill, so preferring it would silently read nothing / stale content.
+    if not _CANONICAL.exists():
+        pytest.skip("data/verdict_exemplars.json not present (e.g. mid-rebase)")
+    return json.loads(_CANONICAL.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
@@ -113,25 +113,50 @@ def test_every_provenance_id_resolves_to_gold(content, gold_ids):
             assert pid in gold_ids, f"{cat}: provenance {pid!r} not a gold id"
 
 
-def test_every_authored_exemplar_flagged_synthetic(content):
+def test_gold_sourced_exemplars_flagged_synthetic(content):
+    """B3: the all-synthetic guard is scoped to GOLD-SOURCED rows. A
+    gold-pattern exemplar (the I1.2 seed) MUST be synthetic:true (a rewrite,
+    never a verbatim gold pair). A feedback-sourced exemplar (rotation) is
+    synthetic:false and truthfully so — it is exempt from this guard. This
+    matches the rotation cron's contract (test_cron_few_shot_rotation), so both
+    suites assert ONE coherent synthetic-vs-source rule."""
     for cat in CATEGORIES:
         for ex in content[cat]["exemplars"]:
-            assert ex["_provenance"]["synthetic"] is True, (
-                f"{cat}/{ex['_provenance']['source_pattern_id']}: synthetic must be True"
-            )
+            prov = ex["_provenance"]
+            if prov.get("source") == "comparison_feedback":
+                assert prov["synthetic"] is False, (
+                    f"{cat}: feedback-sourced exemplar must be synthetic:false"
+                )
+            else:
+                assert prov["synthetic"] is True, (
+                    f"{cat}/{prov['source_pattern_id']}: gold-sourced exemplar must be synthetic:true"
+                )
 
 
 def test_no_gold_brand_leaks_into_any_exemplar(content):
     """The core Decision E guard: zero distinctive gold-pair brand names in the
-    synthetic exemplar surface text."""
+    synthetic exemplar surface text. Every gold-sourced (synthetic) exemplar
+    MUST have a _GOLD_BRANDS entry so coverage can't silently lapse when a
+    provenance id changes (B4 re-anchor lesson)."""
     violations = []
+    missing_brand_map = []
     for cat in CATEGORIES:
         for ex in content[cat]["exemplars"]:
-            pid = ex["_provenance"]["source_pattern_id"]
+            prov = ex["_provenance"]
+            if prov.get("source") == "comparison_feedback":
+                continue  # mined rows are real, not gold-pattern rewrites
+            pid = prov["source_pattern_id"]
+            if pid not in _GOLD_BRANDS:
+                missing_brand_map.append(f"{cat}/{pid}")
+                continue
             text = _surface_text(ex)
-            for brand in _GOLD_BRANDS.get(pid, []):
+            for brand in _GOLD_BRANDS[pid]:
                 if brand.lower() in text:
                     violations.append(f"{cat}/{pid}: brand {brand!r} leaked")
+    assert not missing_brand_map, (
+        "gold-sourced ids missing a _GOLD_BRANDS entry (coverage gap): "
+        + ", ".join(missing_brand_map)
+    )
     assert not violations, "Decision E contamination: " + "; ".join(violations)
 
 
