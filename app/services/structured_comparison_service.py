@@ -427,6 +427,22 @@ def _debug_timings_enabled() -> bool:
     return _DEBUG_STAGE_TIMINGS
 
 
+def _price_cache_bust_enabled() -> bool:
+    """I5.1 (Bundle B S2) — diagnostic probe flag scoped to PRICE only.
+
+    When `PRICE_CACHE_BUST=true`, `_get_price` force-misses BOTH the Redis price
+    cache and the L2 DB price read so the Tier-1.5 escalation re-runs
+    deterministically (F1.7 §3: cached Tier-3 estimates otherwise short-circuit
+    the routing probe). Specs/reviews caches are untouched — they gate on the
+    unchanged `nocache` arg — so the wall still fits the 30s cap.
+
+    Read FRESH each call (NOT process-cached like _debug_timings_enabled) so a
+    probe session can flip the env mid-run without a redeploy. MUST be off
+    (unset/false) in normal operation — this is evidence-gathering, not runtime.
+    """
+    return os.environ.get("PRICE_CACHE_BUST", "false").lower() == "true"
+
+
 async def _timed_task(label: str, coro, timings_dict):
     """Await a coroutine and record its elapsed time into timings_dict[label + '_ms'].
     Safe inside asyncio.gather — each wrapper records its OWN per-task wall (independent
@@ -541,6 +557,7 @@ from app.services.image_service import get_product_image_url
 from app.services.source_router import (
     build_site_discovery_query,
     score_source,
+    source_usage,
 )
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -855,6 +872,10 @@ def _harvest_candidate_urls(
             link = item.get("link", "")
             if not link or not validate_scrape_url(link):
                 continue
+            # S2 I2.5 — review-only registry domains carry no prices; keep them
+            # out of the price scrape pool (usage in price/both only).
+            if source_usage(link, category) == "review":
+                continue
             weight = score_source(link, category)
             if weight >= 1.5:
                 link_domain = urlparse(link).netloc.replace("www.", "").lower()
@@ -883,6 +904,8 @@ def _harvest_candidate_urls(
                 link = item.get("link", "")
                 if not link:
                     continue
+                if source_usage(link, category) == "review":
+                    continue  # S2 I2.5 — review-only domain, no prices
                 link_domain = urlparse(link).netloc.replace("www.", "")
                 weight = score_source(link, category)
                 if weight >= 1.5:
@@ -901,6 +924,8 @@ def _harvest_candidate_urls(
                 link = item.get("link", "")
                 if not link:
                     continue
+                if source_usage(link, category) == "review":
+                    continue  # S2 I2.5 — review-only domain, no prices
                 link_domain = urlparse(link).netloc.replace("www.", "")
                 weight = score_source(link, category)
                 if weight >= 1.5:
@@ -2482,13 +2507,17 @@ class StructuredComparisonService:
             return {"amount": 0, "currency": "BHD", "estimated": True, "source_method": "validation_rejected"}
 
         cache_key = get_price_cache_key(brand, name, variant, region)
-        cached = get_cached(cache_key) if not nocache else None
+        # I5.1 — price-only cache-bust probe forces the price reads to miss so
+        # the routing escalation re-runs deterministically (specs/reviews stay
+        # warm — they gate on `nocache` in _fetch_product_data, not this flag).
+        price_nocache = nocache or _price_cache_bust_enabled()
+        cached = get_cached(cache_key) if not price_nocache else None
         if cached:
             cached["_cached"] = True
             return cached
 
         # L2: Check DB before tier cascade
-        if not nocache:
+        if not price_nocache:
             from app.services.product_data_service import get_cached_price
             db_price = await get_cached_price(cache_key, region)
             if db_price:

@@ -60,7 +60,9 @@ Owns B.3 self-critique + the Decision A/B scoring items (one coherent epic: "ver
 - **I3.5 Decision B (render): suppress one-sided MISSING wins:** plumb per-side `was_missing` into `_dim_winner`; winner=None when exactly one side is MISSING_SCORE. Pin both branches (one-sided vs both-sided missing) in tests.
 - **I3.6 Decision B (root): missing-data fill + measurement:** implement **A.4.8 Tier-3 batched GPT-4o spec synthesis** as the final fallback when Tier 2 is also blank (bounded: single batched call, inside existing wait_for budget; flag-gated `ENABLE_TIER3_SPEC_SYNTHESIS` default OFF until A/B'd); add a **missing-dim coverage metric** to eval metadata (count of MISSING_SCORE cells per run) so Decision B's "fully certain, no missing data" directive is measured, not asserted. Diagnose supp-010 + skin-012 (the two specs_score=0.0 sole-failures, dossier §1 edge) — root-cause and fix or document.
 
-**Exit:** critique shippable-but-OFF with cost/latency evidence · 8 rows live · one-sided MISSING suppressed · Tier-3 fill built + A/B'd · missing-dim metric in eval runs.
+> **I3.6 ADDENDUM (2026-06-11 dispatcher ruling, code-verified):** A.4.8 found ALREADY LIVE + unconditional (`tier3_synthesize_non_negotiables` ssc:253→:2343, `extract_specs_synthesized` openai_service:298 — shipped pre-S2; the v1.1-backlog "unimplemented" note was stale). Plan item marked PRE-SATISFIED; **NO retroactive flag** — default-OFF gating of live prod behavior would silently regress Decision B's direction. supp-010/skin-012 root cause: `active_ingredient` is PREFERRED-not-NON_NEGOTIABLE for supplements/skincare (extraction_service.py:213,218), so Tier-2/3 fallbacks never guarantee a fill attempt. **RULED: promote `active_ingredient` to NON_NEGOTIABLE for supplements + skincare only**, pinned with fill-attempt tests + DELIBERATE weird-classifier coverage-ratio test updates.
+
+**Exit:** critique shippable-but-OFF with cost/latency evidence · 8 rows live · one-sided MISSING suppressed · Tier-3 fill confirmed live + active_ingredient promoted · missing-dim metric in eval runs.
 
 ## 4. Lane I4 — Shadow experiments + A/B harness (`feature/s2-i4-shadow` · worktree `smartcompare-S2-I4`)
 
@@ -73,6 +75,8 @@ Zero prod-path changes. Scripts + harness only. This lane is Ahmed's Decision D 
 - **I4.5 Promotion evidence report:** one doc (`docs/plans/2026-06-XX-s2-shadow-results.md`) with per-arm quality/cost/latency table → feeds G5 promotion decisions.
 
 **Exit:** evidence report with measured verdicts on o3-mini / multi-agent / reviews-trim / any extra arms — decisions made on numbers, not vibes.
+
+> **I4 RESULTS ADDENDUM (2026-06-11, `docs/plans/2026-06-12-s2-shadow-results.md` @ ec436fc, bias45, zero Serper, ~$2.30):** baseline_4o 0.444 · **o3-mini REJECTED** (0.444, +4.2s, NOT cheaper — reasoning tokens) · **multiagent REJECTED** (+2.2% < 5% bar) · **reviews_trim verdict-neutral with winner+factual HOLDING → upstream trim handed to I5 as a cleared Decision-D wall lever.** Promotion slot under $0.015 stays open for I3-critique on its own evidence. **Decomposition finding (changes the session's aim): bias45 = 24 STRUCTURAL (all arms same wrong winner — the real few-shot target) + 19 VARIANCE (T=0.2 sampling; flip free on re-runs) + 2 noise. H1 template ids are variance-class; H4/H2/H8 are structural — exemplar iteration prioritizes those.** Follow-ups ordered: T=0 + best-of-3 arms (variance recovery ≈ zero cost); exemplar arm post-G2/G3; graded200 deferred to G5 demand. **G3 scoring amended: I1.6 reports BOTH full-45 (≥60%) AND structural-24 (primary, ≥50%).**
 
 ## 5. Lane I5 — "Yield & Wall" (`feature/s2-i5-yield-wall` · worktree `smartcompare-S2-I5`)
 
@@ -119,6 +123,10 @@ Conflict map: I1/I2 share `data/verdict_exemplars.json` (schema contract I1.1) �
 5. **smoke20 regression vs `4aee8e88`** (`python -m scripts.eval_runner --subset smoke20 --mode regression --baseline-run-id 4aee8e88-da97-41b3-974b-3e75c2c9c10e`, concurrency 1) + prod curl smoke (`/health` + one full compare + SSE happy-path — the L3-assembly lesson).
 6. Sentry check (`is:unresolved`) + `/admin/costs` Serper canary.
 
+**Known-RED ledger (S2 gates — dispatcher-verified on main, 2026-06-11):** the free-tier gate batch is GREEN when failures ⊆ this ledger; any failure outside it blocks the merge. (1) `tests/test_value_math.py` — Bundle-C-v1.1 TDD stubs (CLAUDE.md-documented). (2) Four pre-existing fails, stash-proven by I2 + reproduced on main by dispatcher: `test_category_selection.py::TestSpecPromptBuilding::test_skincare_prompt_contains_skincare_fields` (L2.12 subtype-router drift) + `test_extraction_prompt_bundle_c.py::test_response_builder_strips_inference_source` (owner: I2, at natural touch points) · `test_phase1_includes_reviews.py::test_phase1_runs_reviews_in_parallel_with_specs_price` + `test_unified_search.py::TestUnifiedSearchSharing::test_specs_calls_own_search_when_no_results` (owner: I5, at natural touch points). `test_personalization.py` is NOT on the ledger — fixed on main `08e4dc5`. `TestCostTrackingLive` is live_unit-marked and auto-deselected.
+
+**Ledger addendum (G1 adjudication, 2026-06-11 — pre-merge A/B at c5c5029 proves ALL of these pre-existing/environment-bound, ZERO from Wave A):** (3) Environment/load-sensitive class — flip with box conditions, not code: `test_smart_fallback` ×2, `test_tier15_timing` ×2, `test_phase1_per_race_timeouts` ×2 (asyncio-timing asserts under multi-agent box load), `test_camera_vision` ×3 + `test_share_routes` ×4 (TestClient/anyio class, pass in isolation), `test_referral_e2e::test_e2e_share_creates_invite_and_grants_loop1_credit`, `test_auth_interceptor` ×2 (pre-existing, I3 stash-proven). Suite-hygiene backlog: stabilize or mark timing-sensitive (S3/Lane S5 with prep-notes §5). (4) Stale static tests: `test_backend_cleanup::test_unused_imports_cleaned` (asserts `import os` absent from openai_service, but `os.getenv` is now legitimately used at :47 — test needs updating) · `test_security_regression::test_no_bare_console_log_in_auth` flags the DELIBERATE `[GOOGLE-DIAG]` console.log (authService.ts:480, Session 54 diagnostic) — do NOT "fix" by `__DEV__`-wrapping (blinds the TestFlight diagnostic); revisit when Google sign-in resolves.
+
 ## 8. Comms contract (S1 discipline PLUS — binding from session start)
 
 - **ACK-every-ruling:** check inbox between EVERY task; ACK dispatcher rulings BEFORE proceeding. A close-out that re-asks an answered question = the diagnostic tell.
@@ -127,6 +135,7 @@ Conflict map: I1/I2 share `data/verdict_exemplars.json` (schema contract I1.1) �
 - Serper liveness check = `GET /api/v1/text/prices/<product>`, NEVER a full compare. No full-200 or subset eval runs without dispatcher GO.
 - Never blind the instrument (no suppressing escalation to make walls fit). No Railway env/flag changes from lanes — dispatcher only.
 - Dispatcher: fetch-before-ruling on any destructive call; verify contested "complete" via `git show`; 30-min/3-nudge stall rule → takeover or replacement.
+- **LANE_STATE.md (Ahmed ruling 2026-06-11):** each lane maintains an UNTRACKED `LANE_STATE.md` at its worktree root — sections: Done (task ids + commit SHAs) / In-flight / Next / Blockers+questions / Last-updated (UTC). Refresh it (a) after every completed plan-task, (b) before announcing a long run, (c) when blocked. Never committed (path-restricted commits keep it out). Purpose: instant stall diagnosis (content+mtime beats WIP-mtime archaeology) and zero-cost handoff to a takeover/replacement agent — the S1 stall lesson made structural.
 
 ## 9. Budget plan
 

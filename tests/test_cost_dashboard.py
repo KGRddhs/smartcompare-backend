@@ -17,10 +17,16 @@ def mock_admin_key():
 
 @pytest.fixture(autouse=True)
 def stub_tier15_hit_rate():
-    """F1.6 — /admin/costs now calls get_tier15_hit_rate (Redis). Default-stub
-    it so the existing endpoint tests stay fast + network-free; the two
-    dedicated tier1_5 tests below override this with their own patch."""
-    with patch("app.api.admin_routes.get_tier15_hit_rate", return_value={}):
+    """F1.6 — /admin/costs now calls get_tier15_hit_rate (Redis). I5.1/I5.0 add
+    get_tier15_source_hits + get_burn_status (also Redis). Default-stub all
+    three so the existing endpoint tests stay fast + network-free; the
+    dedicated tests below override these with their own patch."""
+    with patch("app.api.admin_routes.get_tier15_hit_rate", return_value={}), \
+         patch("app.api.admin_routes.get_tier15_source_hits", return_value={}), \
+         patch("app.api.admin_routes.get_burn_status", return_value={
+             "used": 0, "limit": 2200, "threshold": 1760,
+             "fraction": 0.0, "over_threshold": False,
+         }):
         yield
 
 
@@ -129,7 +135,7 @@ class TestCostDashboard:
 
     def test_tier1_5_hit_rate_fail_open(self):
         """If the aggregate raises (Redis hiccup), the endpoint still 200s
-        with an empty by_category block."""
+        with an empty by_category + by_source block."""
         mock_summary = {"providers": {}, "circuit_breakers": {}}
         with patch("app.api.admin_routes.get_usage_summary", return_value=mock_summary), \
              patch("app.api.admin_routes.get_supabase_client", return_value=None), \
@@ -138,6 +144,49 @@ class TestCostDashboard:
             assert resp.status_code == 200
             data = resp.json()
             assert data["tier1_5_hit_rate"]["by_category"] == {}
+            assert data["tier1_5_hit_rate"]["by_source"] == {}
+
+    def test_tier1_5_by_source_block_present(self):
+        """I5.1 — /admin/costs surfaces the per-domain source-hit breakdown so
+        the registry-vs-legacy attribution residual is visible."""
+        mock_summary = {"providers": {}, "circuit_breakers": {}}
+        fake_sources = {"shopalmoayyed.com": 9, "talabat.com": 3}
+        with patch("app.api.admin_routes.get_usage_summary", return_value=mock_summary), \
+             patch("app.api.admin_routes.get_supabase_client", return_value=None), \
+             patch("app.api.admin_routes.get_tier15_hit_rate", return_value={}), \
+             patch("app.api.admin_routes.get_tier15_source_hits", return_value=fake_sources):
+            resp = client.get("/api/v1/admin/costs", headers={"X-Admin-Key": ADMIN_KEY})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["tier1_5_hit_rate"]["by_source"] == fake_sources
+
+    def test_serper_burn_block_present(self):
+        """I5.0 — /admin/costs surfaces the Serper burn status (run-integrity
+        canary for the 80% ceiling)."""
+        mock_summary = {"providers": {}, "circuit_breakers": {}}
+        fake_burn = {
+            "used": 1800, "limit": 2200, "threshold": 1760,
+            "fraction": 0.8182, "over_threshold": True,
+        }
+        with patch("app.api.admin_routes.get_usage_summary", return_value=mock_summary), \
+             patch("app.api.admin_routes.get_supabase_client", return_value=None), \
+             patch("app.api.admin_routes.get_burn_status", return_value=fake_burn):
+            resp = client.get("/api/v1/admin/costs", headers={"X-Admin-Key": ADMIN_KEY})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["serper_burn"] == fake_burn
+            assert data["serper_burn"]["over_threshold"] is True
+
+    def test_serper_burn_fail_open(self):
+        """If burn-status raises, the endpoint still 200s with an empty block."""
+        mock_summary = {"providers": {}, "circuit_breakers": {}}
+        with patch("app.api.admin_routes.get_usage_summary", return_value=mock_summary), \
+             patch("app.api.admin_routes.get_supabase_client", return_value=None), \
+             patch("app.api.admin_routes.get_burn_status", side_effect=Exception("redis down")):
+            resp = client.get("/api/v1/admin/costs", headers={"X-Admin-Key": ADMIN_KEY})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["serper_burn"] == {}
 
     def test_openai_cost_with_data(self):
         """When Supabase returns comparison data, costs are summed."""

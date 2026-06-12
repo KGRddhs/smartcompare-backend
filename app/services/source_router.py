@@ -11,7 +11,7 @@ mismatched Tier-1 Bahrain prices outvote a distant amazon.com listing.
 """
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
 
@@ -21,6 +21,11 @@ class Source:
     tier: str  # "bahrain" | "gcc" | "global"
     categories: Tuple[str, ...]  # empty tuple = all categories
     weight: float
+    # S2 I2.5 — what this source feeds. "price" (default) = price-discovery
+    # only; "review" = review-content only (no prices — kept OUT of the price
+    # scrape pool to avoid budget burn); "both" = usable for either. Default
+    # "price" on every legacy row → zero behaviour change.
+    usage: str = "price"
 
 
 SOURCE_REGISTRY: List[Source] = [
@@ -94,6 +99,26 @@ SOURCE_REGISTRY: List[Source] = [
     Source("fragrantica.com", "global", ("fragrances",), 1.0),
     Source("incidecoder.com", "global", ("skincare", "makeup", "haircare"), 1.0),
     Source("gsmarena.com", "global", ("electronics",), 1.0),
+
+    # === ARABIC REVIEW-CONTENT SOURCES (S2 I2.5, usage="review") ===
+    # Verified-real GCC editorial/review sites with NO product prices — kept
+    # OUT of the price scrape pool (usage="review") and consulted only by the
+    # review-content path. F1.5 carry-over (prep-notes §1, Ahmed-ratified).
+    Source(
+        "sayidaty.net", "gcc",
+        ("fashion", "makeup", "skincare", "haircare", "fragrances"),
+        1.5, usage="review",
+    ),
+    Source(
+        "khaleejtimes.com", "gcc",
+        ("fashion", "makeup", "skincare", "haircare", "fragrances"),
+        1.5, usage="review",
+    ),
+    Source(
+        "gulfnews.com", "gcc",
+        ("fashion", "makeup", "skincare", "haircare", "fragrances"),
+        1.5, usage="review",
+    ),
 ]
 
 
@@ -107,11 +132,48 @@ def _normalize_domain(host: str) -> str:
     return host
 
 
-def get_sources_for_category(category: str) -> List[Source]:
+def match_registry_apex(host: str) -> str:
+    """Collapse a winning retailer host to its registry apex, if any.
+
+    `uae.sharafdg.com` -> `sharafdg.com`; `www.noon.com` -> `noon.com`;
+    `talabat.com` -> `talabat.com`. An off-registry host is returned unchanged
+    (lowercased, www-stripped). Suffix-match mirrors `score_source` so a
+    regional subdomain of a registry source is counted under the apex — fixes
+    the by_source subdomain undercount (G1 finding F2: writer recorded the raw
+    subdomain while the reader probed apex keys only).
+    """
+    if not host:
+        return host
+    domain = _normalize_domain(str(host))
+    for s in SOURCE_REGISTRY:
+        registry_domain = s.domain.lower()
+        if domain == registry_domain or domain.endswith("." + registry_domain):
+            return registry_domain
+    return domain
+
+
+def _usage_allows(source_usage_value: str, wanted: str) -> bool:
+    """True when a source of `source_usage_value` may serve `wanted`.
+
+    "both" serves either; "price"/"review" serve only their own kind.
+    """
+    if source_usage_value == "both":
+        return True
+    return source_usage_value == wanted
+
+
+def get_sources_for_category(
+    category: str, usage: Optional[str] = None
+) -> List[Source]:
     """Return sources ordered by tier (bahrain -> gcc -> global), filtered by category.
 
     A source with empty `categories` matches every category. Otherwise the
     category must appear in the tuple.
+
+    S2 I2.5 — when `usage` is given ("price" or "review"), only sources usable
+    for that purpose are returned (a "both" source qualifies for either). The
+    default `usage=None` preserves the pre-S2 behaviour (all sources for the
+    category, regardless of usage).
     """
     result: List[Source] = []
     for tier in _TIER_ORDER:
@@ -120,8 +182,35 @@ def get_sources_for_category(category: str) -> List[Source]:
                 continue
             if s.categories and category not in s.categories:
                 continue
+            if usage is not None and not _usage_allows(s.usage, usage):
+                continue
             result.append(s)
     return result
+
+
+def source_usage(url: str, category: str) -> str:
+    """Return the registry usage ("price"|"review"|"both") for `url` under
+    `category`, or "price" for unknown / mis-categorized domains.
+
+    Mirrors `score_source`'s matching so the price-harvest gate can reject
+    review-only domains. Unknown domains default to "price" (conservative:
+    they never enter the registry harvest gate anyway since score_source
+    returns 0.5 < 1.5 for them).
+    """
+    try:
+        parsed = urlparse(url)
+    except (ValueError, TypeError):
+        return "price"
+    if not parsed.netloc:
+        return "price"
+
+    domain = _normalize_domain(parsed.netloc)
+    for s in SOURCE_REGISTRY:
+        registry_domain = s.domain.lower()
+        if domain == registry_domain or domain.endswith("." + registry_domain):
+            if not s.categories or category in s.categories:
+                return s.usage
+    return "price"
 
 
 def score_source(url: str, category: str) -> float:
@@ -155,9 +244,14 @@ def build_site_discovery_query(
     Returns '<query> site:a OR site:b ...' — empty string when the tier has
     no sources for the category (the caller then skips the discovery call).
     Domains preserve registry order (Bahrain-first within the tier).
+
+    S2 I2.5 — only price-usable sources are queried (review-only domains have
+    no prices, so including them is pure scrape-budget burn).
     """
     domains = [
-        s.domain for s in get_sources_for_category(category) if s.tier == tier
+        s.domain
+        for s in get_sources_for_category(category, usage="price")
+        if s.tier == tier
     ][:limit]
     if not domains:
         return ""

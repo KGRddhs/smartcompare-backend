@@ -12,6 +12,14 @@ from app.services.extraction_service import CATEGORY_SPEC_SCHEMAS
 
 logger = logging.getLogger(__name__)
 
+# S2 I2.4 — spec schema fields that are EXTRACTION/verdict-awareness signals
+# only and must NEVER enter deterministic scoring (design §4 hard rule: no new
+# scoring dimension). `_score_specs` strips these from the schema field list so
+# the coverage denominator and the per-field tally stay byte-identical to the
+# pre-S2 behaviour. `heat_stability` (H8 Gulf-climate signal) is the first such
+# key; the verdict prompt references it via the per-category H8 anti-pattern.
+NON_SCORING_SPEC_KEYS = frozenset({"heat_stability"})
+
 # Category-specific scoring dimensions (each category has 6)
 CATEGORY_DIMENSIONS = {
     "electronics": [
@@ -1003,7 +1011,13 @@ class ScoringService:
         uniformly.
         """
         schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
-        schema_fields = CATEGORY_SPEC_SCHEMAS[schema_key]
+        # S2 I2.4 — strip verdict-awareness-only keys (e.g. heat_stability) so
+        # they never affect coverage_ratio or the per-field tally. Keeps
+        # deterministic scoring byte-identical to pre-S2 (design §4).
+        schema_fields = [
+            f for f in CATEGORY_SPEC_SCHEMAS[schema_key]
+            if f not in NON_SCORING_SPEC_KEYS
+        ]
 
         higher = HIGHER_IS_BETTER_BY_CATEGORY.get(category, set())
         lower = LOWER_IS_BETTER_BY_CATEGORY.get(category, set())
@@ -1870,6 +1884,9 @@ def _dim_price(products: list[dict]) -> dict:
 def _dim_reviews(products: list[dict]) -> dict:
     a, b = products[0], products[1]
     ra, rb = a.get("rating"), b.get("rating")
+    # Non-numeric rating shapes (e.g. {} from upstream extraction) are missing data
+    ra = ra if isinstance(ra, (int, float)) else None
+    rb = rb if isinstance(rb, (int, float)) else None
     caption_key = None  # Bundle C § 2b A.4.4
     if ra is None or rb is None:
         score_a = score_b = _NEUTRAL_DISPLAY_SCORE
@@ -1913,6 +1930,9 @@ def _dim_value(products: list[dict], is_cross_tier: bool = False) -> dict:
     pb_raw = _get_price(b)
     ra = a.get("rating")
     rb = b.get("rating")
+    # Non-numeric rating shapes (e.g. {} from upstream extraction) are missing data
+    ra = ra if isinstance(ra, (int, float)) else None
+    rb = rb if isinstance(rb, (int, float)) else None
 
     # Honest-fallback: if any side lacks price or rating, the value ratio
     # is undefined. Return neutral display score with low confidence so
