@@ -201,7 +201,13 @@ def _seeded_existing():
             "anti_patterns": [{"name": "identical on paper", "rule": "r", "teaches": "H4"}],
         },
         "grocery": {
-            "exemplars": [{"title": "seed-groc", "teaches": "H1"}],
+            # realistic 3-exemplar seed (H1+H3 pair + a third) so seed-top-up
+            # behaviour is exercisable when feedback is sparse.
+            "exemplars": [
+                {"title": "seed-groc-h1", "teaches": "H1"},
+                {"title": "seed-groc-h3", "teaches": "H3"},
+                {"title": "seed-groc-h2", "teaches": "H2"},
+            ],
             "anti_patterns": [{"name": "global prestige", "rule": "r", "teaches": "H2"}],
         },
     }
@@ -244,28 +250,60 @@ def test_real_write_keeps_seed_for_unfed_categories(tmp_path):
     rot._write_exemplar_file(built, path=p, existing=existing)
 
     written = json.loads(p.read_text(encoding="utf-8"))
-    assert written["electronics"]["exemplars"][0]["title"] == "seed-elec"
-    assert written["grocery"]["exemplars"][0]["title"] == "seed-groc"
-    # makeup got the feedback exemplar
+    # unfed categories keep their FULL synthetic seed unchanged
+    assert [e["title"] for e in written["electronics"]["exemplars"]] == ["seed-elec"]
+    assert [e["title"] for e in written["grocery"]["exemplars"]] == [
+        "seed-groc-h1", "seed-groc-h3", "seed-groc-h2"
+    ]
+    # makeup (no prior seed) got the feedback exemplar
     assert written["makeup"]["exemplars"][0]["_provenance"]["source"] == "comparison_feedback"
 
 
-def test_fed_category_replaces_exemplars_keeps_its_aps(tmp_path):
-    """A category WITH feedback gets its exemplars[] replaced but KEEPS its own
-    anti_patterns."""
+def test_fed_category_prefers_mined_then_tops_up_seed_keeps_aps(tmp_path):
+    """A category WITH (sparse) feedback prefers its mined row(s) but TOPS UP
+    from the seed to keep ≥2 exemplars + the H1+H3 pair (LOW ruling), and KEEPS
+    its own anti_patterns."""
     existing = _seeded_existing()
     p = tmp_path / "verdict_exemplars.json"
     p.write_text(json.dumps(existing, ensure_ascii=False), encoding="utf-8")
 
-    # feedback for grocery (which has an existing seed + AP)
-    groc_row = _fb_row("grocery", ["X", "Y"], 1, "30% more value.", "t", "v0", "v1")
+    # ONE feedback row for grocery (which has a 3-exemplar H1/H3/H2 seed + AP)
+    groc_row = _fb_row("grocery", ["X", "Y"], 1, "30% more value.", "t",
+                       "value v0", "premium v1")
     built = rot._build_exemplars_from_feedback([groc_row], existing=existing)
     rot._write_exemplar_file(built, path=p, existing=existing)
 
     written = json.loads(p.read_text(encoding="utf-8"))
-    # grocery exemplars REPLACED by feedback (seed-groc gone)
-    titles = [e["title"] for e in written["grocery"]["exemplars"]]
-    assert "seed-groc" not in titles
-    assert written["grocery"]["exemplars"][0]["_provenance"]["source"] == "comparison_feedback"
+    exs = written["grocery"]["exemplars"]
+    titles = [e["title"] for e in exs]
+    tags = [e.get("teaches") for e in exs]
+    # the mined row is present (feedback preferred)
+    assert any(e["_provenance"].get("source") == "comparison_feedback" for e in exs)
+    # invariant: >= 2 exemplars AND the H1+H3 discriminator pair survives
+    assert len(exs) >= 2, f"degraded below 2 exemplars: {titles}"
+    assert "H1" in tags and "H3" in tags, f"H1+H3 pair lost: {tags}"
     # grocery's AP still preserved
     assert len(written["grocery"]["anti_patterns"]) == 1
+
+
+def test_one_feedback_row_keeps_min_two_and_pair(tmp_path):
+    """LOW ruling pin: a single mined row must NOT degrade a complete seed —
+    after the write the fed category has >= 2 exemplars AND the H1+H3 pair, with
+    the seed filling whichever discriminator side the mined row lacks."""
+    existing = _seeded_existing()
+    p = tmp_path / "verdict_exemplars.json"
+    p.write_text(json.dumps(existing, ensure_ascii=False), encoding="utf-8")
+
+    # one mined row whose value_context wording infers H1 (value side) → the
+    # seed must top up the H3 to complete the pair.
+    groc_row = _fb_row("grocery", ["X", "Y"], 0, "75% less per kilo.", "t",
+                       "value-per-dinar v0", "premium v1")
+    built = rot._build_exemplars_from_feedback([groc_row], existing=existing)
+    rot._write_exemplar_file(built, path=p, existing=existing)
+
+    exs = json.loads(p.read_text(encoding="utf-8"))["grocery"]["exemplars"]
+    tags = [e.get("teaches") for e in exs]
+    assert len(exs) >= 2
+    assert {"H1", "H3"} <= set(tags), f"discriminator pair incomplete: {tags}"
+    # the seed H3 is the one that filled the pair (mined row was H1)
+    assert any(e["title"] == "seed-groc-h3" for e in exs)

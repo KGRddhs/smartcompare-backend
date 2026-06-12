@@ -6,13 +6,18 @@ rewrites of these patterns ... never verbatim gold pairs — else the 0.60
 re-measure is trained-on-test").
 
 The exit criterion is "contamination rule provably honored (provenance
-block)". This module proves it mechanically against the gold set:
-  - every exemplar's _provenance.source_pattern_id resolves to a real gold id,
-  - every authored exemplar is flagged synthetic: true,
+block)". This module proves it mechanically against the gold set, scoping
+every gold-specific guard to GOLD-SOURCED exemplars (the I1.2 synthetic seed):
+  - every GOLD-SOURCED exemplar's _provenance.source_pattern_id resolves to a
+    real gold id (feedback-sourced rows anchor to a comparison_id UUID, exempt),
+  - every GOLD-SOURCED exemplar is flagged synthetic:true (feedback-sourced rows
+    are synthetic:false — truthful — and exempt),
   - NO gold-pair BRAND name leaks into the exemplar surface text. Generic
     category nouns (e.g. "vitamin c", "spf 50", "inverter ac") are NOT
     contamination — they describe the same product TYPE, which is the point of
     a same-structure rewrite. Only distinctive brand names are forbidden.
+The rotation cron (cron_few_shot_rotation) writes synthetic:false feedback rows;
+both suites assert ONE coherent synthetic-vs-source contract.
 
 Reads the committed data/verdict_exemplars.json (lands at G3) — skips cleanly
 until then so the lane suite stays green pre-G3.
@@ -107,9 +112,17 @@ def test_abridged_marker_present(content):
 
 
 def test_every_provenance_id_resolves_to_gold(content, gold_ids):
+    """Gold-sourced (synthetic) exemplars must anchor to a real gold id.
+    Feedback-sourced (rotation) exemplars are exempt — their source_pattern_id
+    is the feedback comparison_id (a UUID), not a gold id. Scoping matches the
+    rotation cron contract (B3/MEDIUM: the first committed rotation output would
+    otherwise red this on a mined row)."""
     for cat in CATEGORIES:
         for ex in content[cat]["exemplars"]:
-            pid = ex["_provenance"]["source_pattern_id"]
+            prov = ex["_provenance"]
+            if prov.get("source") == "comparison_feedback":
+                continue
+            pid = prov["source_pattern_id"]
             assert pid in gold_ids, f"{cat}: provenance {pid!r} not a gold id"
 
 

@@ -70,6 +70,9 @@ _MAX_FEEDBACK_ROWS = 2000
 # At most this many exemplars per category in the regenerated file - mirrors
 # the I1.2 authoring cap (H1 + H3 discriminator pair + one category third).
 _MAX_EXEMPLARS_PER_CATEGORY = 3
+# Floor for a fed category after seed top-up (LOW ruling): never let mined rows
+# alone leave a category below 2 exemplars / without the H1+H3 discriminator pair.
+_MIN_EXEMPLARS_PER_CATEGORY = 2
 
 # The 9 canonical categories (lowercase, matching category_used normalisation).
 _CATEGORIES = (
@@ -270,9 +273,16 @@ def _build_exemplars_from_feedback(
     existing_cats = [c for c in existing if not c.startswith("_")]
     for cat in dict.fromkeys(list(existing_cats) + list(mined.keys())):
         prev = existing.get(cat, {}) if isinstance(existing.get(cat), dict) else {}
+        seed_exemplars = prev.get("exemplars") or []
+        if cat in mined:
+            # FED category: mined rows preferred, then SEED TOP-UP to keep the
+            # category a complete teaching set (LOW ruling) — never let 1 mined
+            # row degrade a 3-exemplar H1+H3 seed.
+            merged = _topup_with_seed(mined[cat], seed_exemplars)
+        else:
+            merged = seed_exemplars  # unfed: keep the synthetic seed intact
         out[cat] = {
-            # feedback wins for fed categories; otherwise KEEP the existing seed.
-            "exemplars": mined[cat] if cat in mined else (prev.get("exemplars") or []),
+            "exemplars": merged,
             # ALWAYS preserve I2's anti_patterns — rotation never touches them.
             "anti_patterns": prev.get("anti_patterns", []),
         }
@@ -281,6 +291,39 @@ def _build_exemplars_from_feedback(
             if k not in ("exemplars", "anti_patterns"):
                 out[cat][k] = v
     return out
+
+
+def _topup_with_seed(
+    mined: List[Dict[str, Any]], seed: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """LOW ruling: a fed category prefers its mined rows but TOPS UP from the
+    existing synthetic seed to preserve the file-level teaching invariants:
+      - at least _MIN_EXEMPLARS_PER_CATEGORY exemplars, and
+      - the H1+H3 discriminator pair (fill a missing H1 or H3 from the seed).
+    Top-up never exceeds _MAX_EXEMPLARS_PER_CATEGORY and never duplicates an
+    H-tag the mined rows already provide for the pair."""
+    result = list(mined[:_MAX_EXEMPLARS_PER_CATEGORY])
+    have_tags = {ex.get("teaches") for ex in result}
+
+    # First close the discriminator pair: add a seed H1 / H3 if mined lacks it.
+    for needed in ("H1", "H3"):
+        if needed in have_tags or len(result) >= _MAX_EXEMPLARS_PER_CATEGORY:
+            continue
+        donor = next((s for s in seed if s.get("teaches") == needed), None)
+        if donor is not None:
+            result.append(donor)
+            have_tags.add(needed)
+
+    # Then satisfy the minimum-count floor from any remaining seed exemplars.
+    if len(result) < _MIN_EXEMPLARS_PER_CATEGORY:
+        for s in seed:
+            if len(result) >= max(_MIN_EXEMPLARS_PER_CATEGORY, 0):
+                break
+            if len(result) >= _MAX_EXEMPLARS_PER_CATEGORY:
+                break
+            if s not in result:
+                result.append(s)
+    return result
 
 
 def _write_exemplar_file(
