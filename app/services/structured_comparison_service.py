@@ -589,6 +589,14 @@ SPECS_CACHE_TTL = 7 * 24 * 60 * 60    # 7 days
 # with whatever fields we have so far and the client unblocks.
 STREAM_HARD_CAP_SECONDS = float(os.getenv("STREAM_HARD_CAP_SECONDS", "25.0"))
 
+# I5.6 lever-3 — per-race cap on the Phase-2 verified-rating fetch. The rating
+# cascade (Serper Tier 1→2→3 + GPT fallback) was the one UNCAPPED Phase-2 race;
+# 4s matches the measured warm rating floor with headroom while keeping a slow
+# cold cascade from dragging the Phase-2 gather past budget. On timeout the rating
+# falls back to the benign default + GPT-review-aggregate path (zero quality
+# change vs the pre-cap behavior, which made the user wait on the same slow call).
+_PHASE2_RATING_TIMEOUT = 4.0
+
 
 def build_settle_update_event(
     *,
@@ -2345,7 +2353,30 @@ class StructuredComparisonService:
 
         # D2 Intervention 1: reviews moved to Phase 1. Phase 2 now only runs
         # verified rating + smart-fallback (Bucket A bug 3c) in parallel.
-        phase2_tasks.append(_timed_task("rating", self._get_verified_rating(full_name), stage_timings))
+        # I5.6 lever-3 — cap the rating race at 4s. Previously UNCAPPED, unlike
+        # its Phase-2 sibling _smart_fallback_extract (5s wait_for), so a slow
+        # rating cascade (cold Serper Tier 1→2→3 + GPT fallback) could drag the
+        # whole Phase-2 gather wall past budget. On timeout we return the benign
+        # default rating dict (same shape as the rating_data default at the result
+        # loop) — the existing loop then treats it as "no verified rating" and the
+        # GPT-review-aggregate fallback (below) owns the value. Logged at info, not
+        # error: a rating timeout is an expected graceful-degrade, not a failure.
+        async def _rating_with_cap():
+            try:
+                return await asyncio.wait_for(
+                    self._get_verified_rating(full_name),
+                    timeout=_PHASE2_RATING_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                logger.info(
+                    "[RATING] cap %.1fs hit for %r — falling back to default "
+                    "(GPT-review-aggregate path owns the rating)",
+                    _PHASE2_RATING_TIMEOUT, full_name,
+                )
+                return {"rating": None, "review_count": None,
+                        "rating_verified": False, "rating_source": None}
+
+        phase2_tasks.append(_timed_task("rating", _rating_with_cap(), stage_timings))
         phase2_keys.append("_rating_data")
 
         # Smart-fallback (Bucket A bug 3c): identify critical schema fields still

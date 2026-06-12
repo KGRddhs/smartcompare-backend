@@ -197,3 +197,83 @@ async def test_profile_fetch_concurrent_with_product_gather_streaming():
         f"SEQUENTIAL (gap ≈ product delay {PRODUCT_DELAY}s); I5.6 lever-2 requires "
         f"concurrency (gap ≈ 0)"
     )
+
+
+# --- LEVER 3 -----------------------------------------------------------------
+# The Phase-2 verified-rating race (_get_verified_rating, ssc ~2348) runs UNCAPPED
+# inside the Phase-2 asyncio.gather, unlike its sibling _smart_fallback_extract
+# which is wrapped in asyncio.wait_for(timeout=5.0). A slow rating cascade (cold
+# Serper Tier 1→2→3 + GPT fallback) can therefore drag the whole Phase-2 wall —
+# and thus the per-product _fetch_product_data wall — well past budget. Lever 3
+# caps the rating race at ~4s: on timeout the race yields the benign default
+# rating ({rating: None, ...}), which the existing Phase-2 result loop already
+# treats as "no verified rating" and falls back to the GPT-review-aggregate path.
+# Zero quality change vs the status quo (a rating that would have taken >4s is one
+# the user was already waiting on; the GPT-aggregate fallback covers the gap).
+
+_RATING_CAP_SECONDS = 4.0
+
+
+@pytest.mark.asyncio
+async def test_phase2_rating_race_is_capped():
+    """A rating fetch that hangs far past the cap must NOT contribute its full
+    delay to the Phase-2 / _fetch_product_data wall. Pre-I5.6 lever-3: the rating
+    ran to completion and the wall ≈ the slow-rating delay (uncapped). Post: the
+    rating is cut at the cap and falls back to the benign default (None).
+
+    The wall ceiling is set FAR below the rating hang (so the assertion cleanly
+    separates capped from uncapped) but with generous headroom above the cap,
+    because this sandbox has Redis down + a depleted Serper key, so un-mocked
+    sibling budget/cache calls add several seconds of `getaddrinfo` retry latency
+    to the wall (documented env noise — same lever-1/2 caveat). The two facts that
+    PROVE the cap fired are (1) the wall is nowhere near the 60s hang and (2) the
+    slow rating's value never reached the result (benign default instead)."""
+    svc = StructuredComparisonService()
+    SLOW_RATING = 60.0  # uncapped, this alone would put the wall ~60s+
+
+    async def hanging_rating(*_a, **_k):
+        await asyncio.sleep(SLOW_RATING)
+        return {"rating": 4.7, "review_count": 100, "rating_verified": True,
+                "rating_source": {"name": "should-never-land"}}
+
+    async def fast_specs(*_a, **_k):
+        return {"display": "6.1 inch", "battery": "3000mAh"}
+
+    async def fast_price(*_a, **_k):
+        return {"amount": 100, "currency": "BHD", "source_method": "local_bhd"}
+
+    async def fast_reviews(*_a, **_k):
+        return {"review_summary": {"overall_sentiment": "positive"}}
+
+    product = {"brand": "Carrier", "name": "1.5T AC", "variant": None,
+               "category": "electronics", "search_query": "Carrier 1.5T AC"}
+
+    with patch("app.services.structured_comparison_service.search_web", new=AsyncMock(return_value={"organic": [], "shopping": []})), \
+         patch("app.services.structured_comparison_service.search_product_prices", new=AsyncMock(return_value={"shopping": [], "organic": []})), \
+         patch("app.services.structured_comparison_service.get_cached", return_value=None), \
+         patch("app.services.structured_comparison_service.get_product_image_url", new=AsyncMock(return_value=None)), \
+         patch("app.services.structured_comparison_service.collect_retailer_ratings", return_value=[]), \
+         patch.object(svc, "_get_price", new=AsyncMock(side_effect=fast_price)), \
+         patch.object(svc, "_get_specs", new=AsyncMock(side_effect=fast_specs)), \
+         patch.object(svc, "_get_reviews", new=AsyncMock(side_effect=fast_reviews)), \
+         patch.object(svc, "_get_verified_rating", new=AsyncMock(side_effect=hanging_rating)):
+        t0 = time.perf_counter()
+        result = await svc._fetch_product_data(product, "bahrain", include_specs=True,
+                                               include_reviews=True, nocache=True)
+        wall = time.perf_counter() - t0
+
+    # Cap fires: the wall is bounded WELL below the 60s rating hang. (Uncapped it
+    # would be ~60s+; capped it's cap + sandbox network-retry noise.)
+    assert wall < 30.0, (
+        f"_fetch_product_data took {wall:.1f}s — the uncapped rating race "
+        f"({SLOW_RATING}s) dragged the Phase-2 wall; I5.6 lever-3 requires the "
+        f"rating race capped at ~{_RATING_CAP_SECONDS}s"
+    )
+    # The slow rating never landed → benign default (None), GPT-aggregate fallback
+    # owns the rating from here (no reviews.average_rating mocked, so it stays None).
+    # This is the cap's functional proof: the 4.7 the hang would have returned is
+    # absent because wait_for cut it at the cap.
+    assert result.get("rating") is None, (
+        "a rating that blew the cap must not be applied — expected the benign "
+        f"default (None), got {result.get('rating')!r}"
+    )
