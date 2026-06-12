@@ -2134,7 +2134,12 @@ class StructuredComparisonService:
         # an INSUFFICIENT_DATA error.
         _PHASE1_TIMEOUTS = {
             "specs": 8.0,     # GPT-4o-mini extraction
-            "price": 18.0,    # Tier 1 + 1.5 cascade can land at ~15s
+            # I5.7 (Bundle B S2, Decision D pre-authorized): price 18s→15s. This
+            # OUTER cap wraps the whole _get_price path (Tier 1 + escalation
+            # decision + the now-12s inner fan_out race + Tier 3 estimate). It
+            # stays strictly above the 12s fan_out race (≥3s headroom for Tier 1 +
+            # estimate) so it never cuts a fan_out race that's still in budget.
+            "price": 15.0,    # Tier 1 + 1.5 cascade (inner fan_out race now 12s)
             "reviews": 10.0,  # Serper + GPT cleanup (measured 4-5s + headroom)
             "image_url": 5.0, # Serper Images + Tier 3 GPT fallback
         }
@@ -2803,9 +2808,14 @@ class StructuredComparisonService:
             # --- Race: fan_out_price_lookup runs all per-URL scrapers in
             # parallel, cancels pending tasks when 2 sources confirm within
             # 5% (or rank≥85 lands), returns the highest-ranked candidate.
-            # Bounded by asyncio.wait_for(timeout=15s) — Cloudflare-protected
+            # Bounded by asyncio.wait_for(timeout=12s) — Cloudflare-protected
             # scrapes (e.g. ssense.com via Scrape.do) can blow 20+s and have
-            # to fall through to Tier 2 to honor the per-product wall budget. ---
+            # to fall through to Tier 2 to honor the per-product wall budget.
+            # I5.7 (Bundle B S2, Decision D pre-authorized): tightened 15s→12s.
+            # The race already early-exits on 2-source-confirm / rank≥85, so the
+            # cap only bites the slow-scraper tail; trimming 3s off that tail is
+            # pure wall improvement. Escalation TRIGGERING
+            # (_should_escalate_price_scrape above) is UNCHANGED. ---
             if candidate_urls:
                 # F1.6 — count one Tier 1.5 escalation attempt (fail-open).
                 record_tier15_attempt(category)
@@ -2822,7 +2832,7 @@ class StructuredComparisonService:
                             scrapers=scrapers,
                             scraping_mode=scraping_mode,
                         ),
-                        timeout=15.0,
+                        timeout=12.0,
                     )
                     best = fan_result.get("best")
                     if best and best.get("raw_data") and best["raw_data"].get("amount"):
