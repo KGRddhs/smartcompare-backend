@@ -989,6 +989,31 @@ def test_prompt_exemplars_registered_in_arms():
     assert "prompt_exemplars" in se.ARMS
 
 
+@pytest.mark.asyncio
+async def test_prompt_exemplars_t0_uses_temperature_zero_and_swaps_file(monkeypatch, tmp_path):
+    # G3 pre-read arm: prompt-arm at T=0, exemplar file swapped via prod path
+    i1_file = tmp_path / "verdict_exemplars.json"
+    i1_file.write_text(json.dumps({
+        "electronics": {"exemplars": [],
+                        "anti_patterns": [{"name": "T0_SWAP_AP", "rule": "marker rule"}]}
+    }), encoding="utf-8")
+    monkeypatch.setenv("SHADOW_EXEMPLAR_FILE", str(i1_file))
+    monkeypatch.delenv("SHADOW_EXEMPLAR_OFF", raising=False)
+    client = _FakeClient({"gpt-4o": '{"winner_index": 1}'})
+    await se.run_arm("prompt_exemplars_t0", [_one_input(expected=1)],
+                     weights=_WEIGHTS, client=client)
+    call = client.chat.completions.calls[0]
+    assert call["temperature"] == 0.0  # T=0 prod parity
+    assert "T0_SWAP_AP" in call["messages"][0]["content"] or \
+           "marker rule" in call["messages"][0]["content"]
+
+
+def test_g3_preread_arms_registered():
+    # the G3 pre-read pair: temp0 (baseline@T=0) + prompt_exemplars_t0 (exemplars@T=0)
+    assert "temp0" in se.ARMS
+    assert "prompt_exemplars_t0" in se.ARMS
+
+
 # ---------------------------------------------------------------------------
 # Variance-reduction arms: T=0 + best-of-3 majority
 # ---------------------------------------------------------------------------

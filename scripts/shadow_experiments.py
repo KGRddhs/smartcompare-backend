@@ -1188,21 +1188,40 @@ def _swapped_exemplar_file(path: Optional[str]):
         vel.reset_cache()
 
 
-async def arm_prompt_exemplars(vi: VerdictInput, client) -> ArmCallResult:
-    """Directive 2 — gpt-4o verdict with I1's exemplar file injected via the REAL
-    prod `build_verdict_prompt` path. Compared against arm_baseline_4o (same
-    model + inputs, the on-disk APs-only file) so any winner-axis delta is
-    attributable to the exemplar CONTENT alone. SHADOW_EXEMPLAR_FILE selects
-    I1's filled JSON; absent/OFF -> reads the on-disk file (= baseline control)."""
+async def _prompt_exemplars_call(vi: VerdictInput, client, *, temperature: float) -> ArmCallResult:
+    """Shared body for the prompt-arm at a given temperature: build the prod
+    verdict prompt with I1's exemplar file swapped in (SHADOW_EXEMPLAR_FILE),
+    call gpt-4o at `temperature`. The exemplar content is the ONLY variable vs
+    the baseline at the same temperature."""
     exemplar_file = os.getenv("SHADOW_EXEMPLAR_FILE")
     with _swapped_exemplar_file(exemplar_file):
         system_msg = _build_verdict_system_prompt(vi)
     user_msg = _build_verdict_user_msg(vi)
     try:
-        verdict, pt, ct, rm = await _chat_json(client, "gpt-4o", system_msg, user_msg)
+        verdict, pt, ct, rm = await _chat_json(client, "gpt-4o", system_msg, user_msg,
+                                               temperature=temperature)
         return ArmCallResult(verdict, pt, ct, "gpt-4o", response_model=rm)
     except Exception as exc:  # noqa: BLE001
         return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
+
+
+async def arm_prompt_exemplars(vi: VerdictInput, client) -> ArmCallResult:
+    """Directive 2 — gpt-4o verdict (T=0.2) with I1's exemplar file injected via
+    the REAL prod `build_verdict_prompt` path. Pair with arm_baseline_4o (same
+    T=0.2, on-disk APs-only file) so the winner-axis delta is attributable to
+    the exemplar CONTENT alone."""
+    return await _prompt_exemplars_call(vi, client, temperature=0.2)
+
+
+async def arm_prompt_exemplars_t0(vi: VerdictInput, client) -> ArmCallResult:
+    """G3 PRE-READ arm (dispatcher prod-parity requirement): the prompt-arm at
+    temperature=0. T=0 is LIVE in prod since G2, so the G3 quality gate must
+    isolate the EXEMPLAR content under the SHIPPED temperature — not T=0.2.
+    Pair with `temp0` (baseline at T=0, on-disk APs-only file); the winner-axis
+    delta between them, split structural-24/variance-19, IS the G3 gate.
+    SHADOW_EXEMPLAR_FILE must point at I1's FIXED exemplar JSON (NOT a stale
+    tip — their B4/B5/B6 fixes change content G3 will ship)."""
+    return await _prompt_exemplars_call(vi, client, temperature=0.0)
 
 
 # --- Multi-agent arm (I4.3): 3 mini analysts + 4o editor --------------------
@@ -1307,12 +1326,14 @@ ARMS: Dict[str, Callable] = {
     "reviews_trim": arm_reviews_trim,
     "multiagent": arm_multiagent,
     # Variance-reduction arms (dispatcher orders, driven by the agreement
-    # finding): T=0 greedy decode + best-of-3 majority vote.
+    # finding): T=0 greedy decode + best-of-3 majority vote. temp0 doubles as
+    # the BASELINE side of the G3 pre-read (baseline@T=0, on-disk APs-only file).
     "temp0": arm_temp0,
     "best_of_3": arm_best_of_3,
-    # Directive-2 prompt-arm. Runnable now (empty block, = baseline control)
-    # and live the moment I2's verdict_exemplar_loader + I1's content land.
+    # Directive-2 prompt-arm: T=0.2 (prompt_exemplars) + the G3 PRE-READ T=0
+    # variant (prompt_exemplars_t0 — prod parity, paired with temp0).
     "prompt_exemplars": arm_prompt_exemplars,
+    "prompt_exemplars_t0": arm_prompt_exemplars_t0,
 }
 
 
