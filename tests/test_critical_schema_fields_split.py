@@ -152,3 +152,48 @@ def test_no_field_appears_in_both_layers():
         assert not overlap, (
             f"{category}: fields appear in both layers: {overlap}"
         )
+
+
+# ---------------------------------------------------------------------------
+# S2 I3.6 — coverage-math invariant (dispatcher condition for the
+# active_ingredient promotion): _product_spec_coverage MUST be unaffected by
+# the non-negotiable promotion. It counts filled spec VALUES against
+# _EXPECTED_SPEC_FIELD_COUNT[category] — it never reads the non-negotiable
+# set — so promoting active_ingredient preferred→non-negotiable cannot move
+# the weird-classifier coverage ratio. This pins that property so a future
+# edit that wires the non-negotiable set into coverage would fail loudly.
+# ---------------------------------------------------------------------------
+
+def test_product_spec_coverage_unaffected_by_promotion():
+    from app.services.structured_comparison_service import (
+        _product_spec_coverage,
+        _EXPECTED_SPEC_FIELD_COUNT,
+    )
+
+    # A supplements product with active_ingredient filled + one other field.
+    supp = {
+        "category": "supplements",
+        "specs": {"active_ingredient": "Probiotic", "dosage": "10B CFU"},
+    }
+    filled, expected = _product_spec_coverage(supp)
+    # 2 non-empty values; expected = the category's _EXPECTED count (NOT the
+    # non-negotiable list length, which active_ingredient just joined).
+    assert filled == 2, f"expected 2 filled values, got {filled}"
+    assert expected == _EXPECTED_SPEC_FIELD_COUNT["supplements"], (
+        "coverage denominator must be _EXPECTED_SPEC_FIELD_COUNT, NOT the "
+        f"non-negotiable set — got {expected}"
+    )
+
+    # Same property for skincare (the other promoted category).
+    skin = {
+        "category": "skincare",
+        "specs": {"active_ingredient": "Vitamin C", "volume": "30ml", "spf": "30"},
+    }
+    filled_s, expected_s = _product_spec_coverage(skin)
+    assert filled_s == 3
+    assert expected_s == _EXPECTED_SPEC_FIELD_COUNT["skincare"]
+
+    # And the denominator is byte-stable across categories regardless of how
+    # many fields are now non-negotiable (proves the decoupling explicitly).
+    assert _EXPECTED_SPEC_FIELD_COUNT["supplements"] == 5
+    assert _EXPECTED_SPEC_FIELD_COUNT["skincare"] == 5
