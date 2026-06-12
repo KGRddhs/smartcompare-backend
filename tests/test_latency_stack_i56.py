@@ -30,49 +30,53 @@ def run_async(coro):
 
 
 @pytest.mark.asyncio
-async def test_price_runs_concurrent_with_unified_search():
-    """_fetch_product_data overlaps the unified search with the price fetch:
-    wall ≈ max(unified_delay, price_delay), not the sum."""
+async def test_price_starts_concurrent_with_unified_search():
+    """_fetch_product_data must kick off the price fetch CONCURRENTLY with the
+    unified search — proven by their START timestamps being near-simultaneous,
+    not separated by the unified-search wall. This assertion is immune to
+    network noise from un-mocked sibling calls (image/rating) because it
+    measures WHEN the two start relative to each other, not the total wall.
+    Pre-I5.6: price started only AFTER `await search_web` returned (gap ≈ the
+    unified-search delay). Post-I5.6: gap ≈ 0."""
     svc = StructuredComparisonService()
 
     UNIFIED_DELAY = 1.0
-    PRICE_DELAY = 1.0
+    starts: dict = {}
 
     async def slow_unified(*_a, **_k):
+        # Record only the FIRST unified-search start (there may be >1 search_web
+        # call across the fetch; we only care when the FIRST one began, since
+        # that's the wall the price task overlaps).
+        starts.setdefault("unified", time.perf_counter())
         await asyncio.sleep(UNIFIED_DELAY)
         return {"organic": [], "shopping": []}
 
-    async def slow_price(*_a, **_k):
-        await asyncio.sleep(PRICE_DELAY)
+    async def timed_price(*_a, **_k):
+        starts.setdefault("price", time.perf_counter())
         return {"amount": 100, "currency": "BHD", "source_method": "local_bhd"}
 
-    async def fast_specs(*_a, **_k):
-        return {"ram": "12 GB"}
-
-    async def fast_reviews(*_a, **_k):
-        return {"summary": "ok", "pros": [], "cons": []}
-
-    async def fast_rating(*_a, **_k):
-        return {"rating": 4.5, "review_count": 100, "rating_verified": False,
-                "rating_source": {"name": "t", "url": None}}
+    async def fast(*_a, **_k):
+        return {}
 
     product = {"brand": "Carrier", "name": "1.5T AC", "variant": None,
                "category": "electronics", "search_query": "Carrier 1.5T AC"}
 
     with patch("app.services.structured_comparison_service.search_web", new=AsyncMock(side_effect=slow_unified)), \
+         patch("app.services.structured_comparison_service.search_product_prices", new=AsyncMock(return_value={"shopping": [], "organic": []})), \
          patch("app.services.structured_comparison_service.get_cached", return_value=None), \
-         patch.object(svc, "_get_price", new=AsyncMock(side_effect=slow_price)), \
-         patch.object(svc, "_get_specs", new=AsyncMock(side_effect=fast_specs)), \
-         patch.object(svc, "_get_reviews", new=AsyncMock(side_effect=fast_reviews)), \
-         patch.object(svc, "_get_rating", new=AsyncMock(side_effect=fast_rating)), \
-         patch.object(svc, "_get_product_image", new=AsyncMock(return_value=None)):
-        start = time.perf_counter()
+         patch("app.services.structured_comparison_service.get_product_image_url", new=AsyncMock(return_value=None)), \
+         patch.object(svc, "_get_price", new=AsyncMock(side_effect=timed_price)), \
+         patch.object(svc, "_get_specs", new=AsyncMock(side_effect=fast)), \
+         patch.object(svc, "_get_reviews", new=AsyncMock(side_effect=fast)):
         await svc._fetch_product_data(product, "bahrain", include_specs=True,
                                       include_reviews=True, nocache=True)
-        elapsed = time.perf_counter() - start
 
-    # Concurrent: ~max(1.0, 1.0)=1.0s + overhead. Sequential would be ~2.0s.
-    assert elapsed < 1.6, (
-        f"unified search + price ran SEQUENTIALLY ({elapsed:.2f}s ≈ sum); "
-        f"I5.6 requires them concurrent (≈max ≈ 1.0s)"
+    assert "unified" in starts and "price" in starts, "both must run"
+    gap = abs(starts["price"] - starts["unified"])
+    # Concurrent: both start within a few ms of each other. Sequential would
+    # put price's start ≈ UNIFIED_DELAY (1.0s) after unified's start.
+    assert gap < 0.3, (
+        f"price started {gap:.2f}s after the unified search — they ran "
+        f"SEQUENTIALLY (gap ≈ unified delay {UNIFIED_DELAY}s); I5.6 requires "
+        f"price to start concurrently (gap ≈ 0)"
     )

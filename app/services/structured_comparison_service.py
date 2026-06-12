@@ -2055,7 +2055,40 @@ class StructuredComparisonService:
         # Phase 2A.1 — per-product stage timings (only allocated when flag is on)
         stage_timings = {} if _debug_timings_enabled() else None
 
-        # === Unified web search ===
+        # L2.6 — per-race timeout caps (moved above the unified search for I5.6
+        # so the price race can start concurrently with the unified search; the
+        # dict is a plain literal with no dependencies). Each race is wrapped in
+        # asyncio.wait_for so a single slow tier (e.g., 15s Tier 1.5 fan-out for
+        # price) cannot drag the whole Phase 1 wall over the
+        # STREAM_HARD_CAP_SECONDS budget. On timeout the race result is None
+        # (handled below as `result[key] = None`); response_builder treats None
+        # as missing data and `_validate_renderable` decides whether to surface
+        # an INSUFFICIENT_DATA error.
+        _PHASE1_TIMEOUTS = {
+            "specs": 8.0,     # GPT-4o-mini extraction
+            "price": 18.0,    # Tier 1 + 1.5 cascade can land at ~15s
+            "reviews": 10.0,  # Serper + GPT cleanup (measured 4-5s + headroom)
+            "image_url": 5.0, # Serper Images + Tier 3 GPT fallback
+        }
+
+        # I5.6 (Bundle B S2) — start the price fetch CONCURRENTLY with the
+        # unified search. _get_price runs its OWN search_product_prices +
+        # Tier-1.5 cascade and has zero dependency on the unified-search result,
+        # so kicking it off here (before the unified search is awaited) overlaps
+        # the two walls instead of running them sequentially. Wrapped in the
+        # same per-race wait_for cap + _timed_task as before; awaited below
+        # inside the Phase-1 gather (added FIRST to phase1_tasks so the
+        # result-key order is unchanged). Zero quality change — pure latency.
+        _price_task = asyncio.ensure_future(asyncio.wait_for(
+            _timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings),
+            timeout=_PHASE1_TIMEOUTS["price"],
+        ))
+
+        # === Unified web search === (runs CONCURRENTLY with the price task
+        # started above — I5.6: the price Serper round-trip is already in flight
+        # via _price_task, so awaiting the unified search here overlaps the two
+        # instead of running them sequentially. specs/reviews still consume the
+        # resolved unified_search below.)
         unified_search = None
         if include_specs or include_reviews:
             specs_key = get_specs_cache_key(brand, name, variant)
@@ -2092,24 +2125,9 @@ class StructuredComparisonService:
             except Exception as e:
                 logger.warning(f"Drug DB lookup failed: {e}")
 
-        # L2.6 — per-race timeout caps. Each race is wrapped in
-        # asyncio.wait_for so a single slow tier (e.g., 15s Tier 1.5 fan-out
-        # for price) cannot drag the whole Phase 1 wall over the
-        # STREAM_HARD_CAP_SECONDS budget. On timeout the race result is None
-        # (handled below as `result[key] = None`); response_builder treats
-        # None as missing data and `_validate_renderable` decides whether to
-        # surface an INSUFFICIENT_DATA error.
-        _PHASE1_TIMEOUTS = {
-            "specs": 8.0,     # GPT-4o-mini extraction
-            "price": 18.0,    # Tier 1 + 1.5 cascade can land at ~15s
-            # reviews bumped 6.0 → 10.0 in the post-ec2751b hotfix —
-            # measured floor was 4-5s post-D2 (Session 51, per
-            # memory/feedback_measure_before_optimize.md), so the original
-            # 6s ceiling tripped on cold-cache + set pd['reviews']=None,
-            # exposing the .get('reviews', {}).get bug.
-            "reviews": 10.0,  # Serper + GPT cleanup (measured 4-5s + headroom)
-            "image_url": 5.0, # Serper Images + Tier 3 GPT fallback
-        }
+        # (_PHASE1_TIMEOUTS defined above the unified search for I5.6 — reviews
+        # was bumped 6.0 → 10.0 in the post-ec2751b hotfix because the measured
+        # post-D2 floor is 4-5s, per memory/feedback_measure_before_optimize.md.)
 
         if include_specs:
             phase1_tasks.append(asyncio.wait_for(
@@ -2118,10 +2136,11 @@ class StructuredComparisonService:
             ))
             phase1_keys.append("specs")
 
-        phase1_tasks.append(asyncio.wait_for(
-            _timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings),
-            timeout=_PHASE1_TIMEOUTS["price"],
-        ))
+        # I5.6 — price already started above (concurrent with the unified
+        # search); add the running task here so its result-key position
+        # (after specs) is unchanged. asyncio.gather awaits an already-running
+        # task fine — it just collects the result.
+        phase1_tasks.append(_price_task)
         phase1_keys.append("price")
 
         if include_reviews:
