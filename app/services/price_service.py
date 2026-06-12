@@ -662,6 +662,15 @@ def extract_price_from_shopping(
 # HTML / JSON-LD price extraction
 # ============================================
 
+
+def _is_product_type(item) -> bool:
+    """JSON-LD @type may be a string or a list (e.g. ["Product","Vehicle"])."""
+    t = item.get("@type") if isinstance(item, dict) else None
+    if isinstance(t, list):
+        return "Product" in t
+    return t == "Product"
+
+
 def extract_jsonld_price(html: str, brand: str, expected_currency: str) -> Optional[Dict[str, Any]]:
     """Parse JSON-LD Product schema from HTML for price data."""
     from bs4 import BeautifulSoup
@@ -682,15 +691,15 @@ def extract_jsonld_price(html: str, brand: str, expected_currency: str) -> Optio
 
         products = []
         if isinstance(data, dict):
-            if data.get("@type") == "Product":
+            if _is_product_type(data):
                 products.append(data)
             elif "@graph" in data:
                 for item in data["@graph"]:
-                    if isinstance(item, dict) and item.get("@type") == "Product":
+                    if isinstance(item, dict) and _is_product_type(item):
                         products.append(item)
         elif isinstance(data, list):
             for item in data:
-                if isinstance(item, dict) and item.get("@type") == "Product":
+                if isinstance(item, dict) and _is_product_type(item):
                     products.append(item)
 
         for product in products:
@@ -713,7 +722,8 @@ def extract_jsonld_price(html: str, brand: str, expected_currency: str) -> Optio
                 if currency.upper() != expected_currency.upper():
                     continue
                 try:
-                    price_val = float(offer.get("price", 0))
+                    # AggregateOffer carries lowPrice instead of price (I5.8)
+                    price_val = float(offer.get("price") or offer.get("lowPrice") or 0)
                 except (ValueError, TypeError):
                     continue
                 if price_val <= 0:
