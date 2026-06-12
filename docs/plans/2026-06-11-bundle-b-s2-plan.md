@@ -116,6 +116,8 @@ Conflict map: I1/I2 share `data/verdict_exemplars.json` (schema contract I1.1) �
 
 ## 7. Gates protocol (every gate, no exceptions)
 
+> **TIERED REVIEW MODEL (Ahmed-ratified 2026-06-12):** **Tier 1 — per-gate lane reviews** (the ultracode workflow in step 3 below + focused fix-delta re-reviews): catch lane-level bugs while the author context is warm and fixes are branch-cheap; preserves per-merge measurement attribution. Evidence: 9 adversarially-confirmed bugs caught pre-merge across G1+G2. **Tier 2 — integration review at G6**: one ultracode review of the WHOLE merged S2 before the exit measurement, targeting cross-lane interactions per-lane reviews cannot see (critique wiring × exemplar injection × latency restructuring × registry/discovery on the shared request path). Both tiers are mandatory; neither substitutes for the other. Carry this model into S3.
+
 1. Lane announces merge-ready with commit SHA + test evidence (free-tier suite green locally; `python -m py_compile` on touched files).
 2. Dispatcher verifies the claim against the actual commits (`git show` — never the report).
 3. **Ultracode verification workflow** on the lane diff: parallel reviewers (correctness / regression-risk / convention-adherence / plan-fidelity) + adversarial verify of findings + completeness critic vs this plan's lane exit criteria + the §0 binding table.
