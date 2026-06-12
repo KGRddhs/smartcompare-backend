@@ -19,8 +19,14 @@ every gold-specific guard to GOLD-SOURCED exemplars (the I1.2 synthetic seed):
 The rotation cron (cron_few_shot_rotation) writes synthetic:false feedback rows;
 both suites assert ONE coherent synthetic-vs-source contract.
 
-Reads the committed data/verdict_exemplars.json (lands at G3) — skips cleanly
-until then so the lane suite stays green pre-G3.
+POST-MEASUREMENT STATE (dispatcher ruling 2026-06-12): the canonical
+data/verdict_exemplars.json now ships with exemplars[] EMPTY (a T=0 attribution
+A/B found the worked exemplars add +0 over I2's anti_patterns). The 26 synthetic
+exemplars are parked verbatim in data/verdict_exemplars.s3_parked.json for an S3
+restore. The contamination guard's whole job — proving zero gold-pair brand
+leakage — therefore now runs against the PARKED file (the content S3 restores),
+plus a guard that the canonical exemplars[] are empty. The _GOLD_BRANDS map and
+all leak logic are unchanged. Skips cleanly if either file is absent.
 """
 from __future__ import annotations
 
@@ -30,9 +36,12 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-# Post-G3 the I1 content lives in the canonical file (the staging artifact is
-# deleted by the fill). The guard reads the canonical file only.
+# The canonical file now holds empty exemplars[]; the 26 synthetic exemplars are
+# parked for an S3 restore. The per-exemplar contamination guards read the
+# PARKED file (the content that would re-enter the prompt), and a separate guard
+# asserts the canonical exemplars[] are empty.
 _CANONICAL = _REPO_ROOT / "data" / "verdict_exemplars.json"
+_PARKED = _REPO_ROOT / "data" / "verdict_exemplars.s3_parked.json"
 _GOLD = _REPO_ROOT / "data" / "validation_gold_truth.json"
 
 CATEGORIES = (
@@ -77,11 +86,28 @@ _GOLD_BRANDS = {
 
 @pytest.fixture(scope="module")
 def content() -> dict:
-    # B6: read the CANONICAL file only — the staged artifact is deleted at G3
-    # fill, so preferring it would silently read nothing / stale content.
+    """The exemplar content under contamination test — the PARKED 26-exemplar
+    set (canonical exemplars[] are empty post-measurement; the parked set is
+    what an S3 restore re-injects, so it is what must stay contamination-clean)."""
+    if not _PARKED.exists():
+        pytest.skip("data/verdict_exemplars.s3_parked.json not present")
+    return json.loads(_PARKED.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def canonical_content() -> dict:
     if not _CANONICAL.exists():
         pytest.skip("data/verdict_exemplars.json not present (e.g. mid-rebase)")
     return json.loads(_CANONICAL.read_text(encoding="utf-8"))
+
+
+def test_canonical_exemplars_are_empty(canonical_content):
+    """Post-measurement: the live canonical file carries no exemplars (the
+    worked-example layer was redundant over the anti_patterns at T=0). The
+    synthetic content is preserved in the parked file, asserted clean below."""
+    for cat in CATEGORIES:
+        exs = canonical_content[cat].get("exemplars")
+        assert exs == [], f"{cat}: canonical exemplars[] must be empty (got {len(exs or [])})"
 
 
 @pytest.fixture(scope="module")

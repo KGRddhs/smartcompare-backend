@@ -1,29 +1,36 @@
-"""I1.3 — injection CONTENT tests for the few-shot verdict exemplars.
+"""I1.3 — injection CONTENT tests for the few-shot verdict layer.
 
 Plan: docs/plans/2026-06-11-bundle-b-s2-plan.md § I1.3
 Contract: I1.1 (schema) + I2.1 (verdict_exemplar_loader.build_exemplar_block,
 extraction_service.build_verdict_prompt injection).
 
-These assert the I1.2-authored exemplar CONTENT once injected:
-  - every category's exemplars surface in the assembled verdict prompt,
-  - the exemplar block sits inside the static-per-category prefix (BEFORE the
-    cohort-varying pain-workflow block) so OpenAI prompt-caching sees a
-    byte-identical prefix per category (D2 discipline),
-  - per-category token cost stays within the dossier §3 budget (~700 tok of
-    exemplars; +<=$0.002/call vs the gate),
-  - the forbidden-words audit is green on the assembled prompt
-    (test_comparison_quality_detector.py:180 pattern),
-  - _provenance never leaks into the prompt.
+POST-MEASUREMENT STATE (dispatcher ruling 2026-06-12):
+  The canonical `data/verdict_exemplars.json` now ships with `exemplars[]`
+  EMPTY in every category — a T=0 attribution A/B on FRESH inputs found the
+  worked exemplars add +0 over I2's anti_patterns (byte-identical 9/24
+  structural, 28/45 overall). I2's per-category `anti_patterns[]` carry the
+  structural signal and stay LIVE; the injection mechanism + rotation cron are
+  unchanged. The 26 synthetic exemplars are PARKED verbatim in
+  `data/verdict_exemplars.s3_parked.json` (the loader NEVER reads that path)
+  for re-evaluation once S3 ships a real Bahrain availability/service data
+  layer for value reasoning to anchor on.
 
-The exemplar file used is the I1-authored content (data/verdict_exemplars.json
-after G3). To stay independent of merge order, each test loads the canonical
-content into a temp file and points the loader at it via reset_cache() — so
-the suite is green on this branch BEFORE the I2 loader lands at G2, and keeps
-passing against the real file afterwards.
+So this module now asserts the empty-but-valid contract on the canonical file:
+  - every category's `exemplars[]` is empty, `anti_patterns[]` preserved,
+  - the anti_patterns that exist still surface in the assembled verdict prompt,
+  - with no exemplars the loader emits the anti-patterns-only block and NO
+    abridged/exemplar scaffolding (the "emit the COMPLETE verdict schema"
+    reinforcement is an exemplar-render artifact — correctly absent here),
+  - the block still sits inside the static-per-category cache prefix,
+  - per-category token cost stays within the dossier §3 budget,
+  - the forbidden-words audit is green, _provenance never leaks,
+  - the FULL output contract (COMPARISON_SYSTEM :582-611) is untouched.
+And it validates the PARKED content as still-correctly-shaped (the 2-3 per
+category H1/H3 discriminator set, abridged markers, strict-subset verdicts) so
+S3 inherits a verified, ready-to-restore exemplar file.
 
 Loader + injection live on the I2 branch (merged at G2). Until then, the
-`verdict_exemplar_loader` import will fail and the whole module skips — which
-is the correct RED-until-G2 posture for a cross-lane dependency.
+`verdict_exemplar_loader` import will fail and the whole module skips.
 """
 from __future__ import annotations
 
@@ -54,17 +61,18 @@ except Exception:  # pragma: no cover - tiktoken always present in this repo
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CANONICAL = _REPO_ROOT / "data" / "verdict_exemplars.json"
+# The 26 synthetic exemplars, parked verbatim for S3. The loader never reads it.
+_PARKED = _REPO_ROOT / "data" / "verdict_exemplars.s3_parked.json"
 
 CATEGORIES = (
     "electronics", "grocery", "supplements", "makeup", "skincare",
     "haircare", "fragrances", "fashion", "other",
 )
 
-# Per-category exemplar-BLOCK token budget. The merged loader renders BOTH my
-# exemplars AND I2's per-category anti_patterns in one block, so the gate is the
-# dossier §3 COMBINED figure: ~700 tok exemplars + ~100 tok APs ≈ 800, with
-# headroom for the longest category (electronics: 3 exemplars + 3 APs ≈ 781).
-# The authoritative cost gate (+<=$0.002/call) is scripts/audit_exemplar_token_cost.
+# Per-category exemplar-BLOCK token budget. With exemplars[] empty the live
+# block is anti-patterns-only (well under budget); the ceiling is kept at the
+# dossier §3 COMBINED figure so the gate still holds if exemplars are restored
+# from the parked file in S3 (electronics: 3 exemplars + 3 APs ≈ 781).
 _EXEMPLAR_TOK_BUDGET = 850
 
 # Forbidden phrases — mirrors test_comparison_quality_detector.py:180 plus the
@@ -77,11 +85,18 @@ _FORBIDDEN = (
 
 @pytest.fixture(scope="module")
 def canonical_content() -> dict:
-    """The I1-authored exemplar content. Skips if the file is absent (i.e.
-    content not yet committed at G3) so the suite is honest about coverage."""
+    """The live (empty-exemplars) canonical content."""
     if not _CANONICAL.exists():
         pytest.skip("data/verdict_exemplars.json not yet committed (lands at G3)")
     return json.loads(_CANONICAL.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def parked_content() -> dict:
+    """The parked 26-exemplar set (S3 restore source). Skips if absent."""
+    if not _PARKED.exists():
+        pytest.skip("data/verdict_exemplars.s3_parked.json not present")
+    return json.loads(_PARKED.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(autouse=True)
@@ -95,36 +110,49 @@ def _point_loader_at_canonical(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Content presence + structure
+# Live canonical: empty exemplars, anti_patterns preserved
 # ---------------------------------------------------------------------------
 
-def test_all_nine_categories_have_exemplars(canonical_content):
+def test_all_nine_categories_have_empty_exemplars(canonical_content):
+    """Post-measurement: every category's exemplars[] is empty in the canonical
+    file (the worked-example layer was redundant over the anti_patterns at T=0).
+    The block presence/anti_patterns are validated separately."""
     for cat in CATEGORIES:
         assert cat in canonical_content, f"missing category {cat}"
-        exs = canonical_content[cat].get("exemplars") or []
-        assert 2 <= len(exs) <= 3, f"{cat}: {len(exs)} exemplars (want 2-3)"
+        exs = canonical_content[cat].get("exemplars")
+        assert exs == [], f"{cat}: exemplars[] must be empty (got {len(exs or [])})"
 
 
-def test_each_category_has_h1_h3_discriminator_pair(canonical_content):
-    """The H1+H3 disjoint mirror pair is the core teaching signal (dossier §2):
-    teach WHEN value wins vs WHEN a premium is licensed, never a direction."""
+def test_anti_patterns_preserved_in_canonical(canonical_content):
+    """The structural-signal carrier — I2's per-category anti_patterns — must
+    remain intact in the canonical file. Categories that had APs keep them;
+    the AP-only-vs-empty split is exercised in test_per_category_anti_patterns."""
+    expected_ap_counts = {
+        "electronics": 3, "grocery": 1, "supplements": 0, "makeup": 2,
+        "skincare": 1, "haircare": 0, "fragrances": 2, "fashion": 0, "other": 0,
+    }
     for cat in CATEGORIES:
-        tags = [e.get("teaches") for e in canonical_content[cat]["exemplars"]]
-        assert "H1" in tags, f"{cat}: no H1 (value-per-dinar) exemplar"
-        assert "H3" in tags, f"{cat}: no H3 (premium-justified) exemplar"
+        aps = canonical_content[cat].get("anti_patterns")
+        assert isinstance(aps, list), f"{cat}: anti_patterns must be a list"
+        assert len(aps) == expected_ap_counts[cat], (
+            f"{cat}: {len(aps)} anti_patterns, expected {expected_ap_counts[cat]}"
+        )
 
 
-def test_exemplars_surface_in_verdict_prompt(canonical_content):
-    """Each category's exemplar titles + setups appear in the assembled
-    verdict prompt — proving injection wires content end to end."""
-    for cat in CATEGORIES:
+def test_present_anti_patterns_surface_in_verdict_prompt(canonical_content):
+    """For categories that DO carry anti_patterns, the rendered block is
+    non-empty and lands in the assembled verdict prompt — proving the live
+    teaching signal still wires end to end with exemplars empty."""
+    ap_cats = [c for c in CATEGORIES if canonical_content[c].get("anti_patterns")]
+    assert ap_cats, "expected at least one category with anti_patterns"
+    for cat in ap_cats:
         prompt = build_verdict_prompt(products=[{"category": cat}])
         block = loader.build_exemplar_block(cat)
-        assert block, f"{cat}: empty exemplar block"
-        assert block in prompt, f"{cat}: exemplar block not in verdict prompt"
-        # at least one authored setup string is present verbatim
-        first_setup = canonical_content[cat]["exemplars"][0]["setup"]
-        assert first_setup in prompt, f"{cat}: first exemplar setup missing from prompt"
+        assert block, f"{cat}: empty block despite present anti_patterns"
+        assert block in prompt, f"{cat}: anti-pattern block not in verdict prompt"
+        # at least one authored anti-pattern rule is present verbatim
+        first_rule = canonical_content[cat]["anti_patterns"][0]["rule"]
+        assert first_rule in prompt, f"{cat}: first anti-pattern rule missing from prompt"
 
 
 # ---------------------------------------------------------------------------
@@ -132,36 +160,35 @@ def test_exemplars_surface_in_verdict_prompt(canonical_content):
 # ---------------------------------------------------------------------------
 
 def test_exemplar_block_precedes_pain_workflow(canonical_content):
-    """The exemplar block must sit BEFORE the cohort-varying pain-workflow
-    section so it stays inside the static-per-category cache prefix (D2)."""
-    # A cohort triggers the pain-workflow block to render after the exemplars.
+    """The calibration block (anti-patterns-only now) must sit BEFORE the
+    cohort-varying pain-workflow section so it stays inside the
+    static-per-category cache prefix (D2)."""
     cohort = {"age_group": "25-34", "gender": "Male", "nationality": "Bahraini"}
+    # Use AP-carrying categories so the block is non-empty and the header renders.
     for cat in ("electronics", "makeup", "fragrances"):
         prompt = build_verdict_prompt(
             products=[{"category": cat}], user_cohort=cohort
         )
-        # Stable header prefix — the merged loader uses "## Verdict calibration
-        # (Bahrain-buyer reasoning)" (the word "examples" was dropped post-sim);
-        # match the prefix so the assertion survives that render drift.
         ex_idx = prompt.find("Verdict calibration")
         pain_idx = prompt.find("Buyer pain-workflow constraints")
-        assert ex_idx != -1, f"{cat}: exemplar header missing"
+        assert ex_idx != -1, f"{cat}: calibration header missing"
         if pain_idx != -1:
             assert ex_idx < pain_idx, (
-                f"{cat}: exemplar block must precede pain-workflow (cache prefix)"
+                f"{cat}: calibration block must precede pain-workflow (cache prefix)"
             )
 
 
 def test_exemplar_block_is_cohort_independent(canonical_content):
-    """The exemplar block is identical regardless of cohort — it is keyed on
-    category only, so the cached prefix is byte-stable per category."""
-    block_a = loader.build_exemplar_block("skincare")
-    block_b = loader.build_exemplar_block("skincare")
+    """The calibration block is identical regardless of cohort — it is keyed on
+    category only, so the cached prefix is byte-stable per category. Uses an
+    AP-carrying category so the block is non-empty."""
+    block_a = loader.build_exemplar_block("electronics")
+    block_b = loader.build_exemplar_block("electronics")
     assert block_a == block_b
     # And it does not vary with the cohort passed to the prompt builder.
-    p_no_cohort = build_verdict_prompt(products=[{"category": "skincare"}])
+    p_no_cohort = build_verdict_prompt(products=[{"category": "electronics"}])
     p_cohort = build_verdict_prompt(
-        products=[{"category": "skincare"}],
+        products=[{"category": "electronics"}],
         user_cohort={"age_group": "25-34", "gender": "Female", "nationality": "Bahraini"},
     )
     assert block_a in p_no_cohort and block_a in p_cohort
@@ -173,8 +200,9 @@ def test_exemplar_block_is_cohort_independent(canonical_content):
 
 def test_per_category_token_budget_held(canonical_content):
     """B6: the BINDING gate is the per-call $-cost, not a raw token count. Assert
-    every category's exemplar block (my exemplars + I2's APs, as rendered) adds
-    <= $0.002/call at gpt-4o input pricing, with a token sanity ceiling alongside.
+    every category's calibration block adds <= $0.002/call at gpt-4o input
+    pricing, with a token sanity ceiling alongside. With exemplars empty the
+    live block is well under budget; the ceiling still guards a future restore.
     Wires the $-gate from scripts/audit_exemplar_token_cost directly into CI."""
     usd_per_1k_4o = 0.0025          # gpt-4o input $/1K tokens
     cost_gate_usd = 0.002           # dossier §3 ceiling
@@ -183,10 +211,10 @@ def test_per_category_token_budget_held(canonical_content):
         n = _toks(block)
         cost = n / 1000.0 * usd_per_1k_4o
         assert cost <= cost_gate_usd, (
-            f"{cat}: exemplar block +${cost:.5f}/call exceeds the ${cost_gate_usd} gate ({n} tok)"
+            f"{cat}: calibration block +${cost:.5f}/call exceeds the ${cost_gate_usd} gate ({n} tok)"
         )
         assert n <= _EXEMPLAR_TOK_BUDGET, (
-            f"{cat}: exemplar block {n} tok exceeds the {_EXEMPLAR_TOK_BUDGET} sanity ceiling"
+            f"{cat}: calibration block {n} tok exceeds the {_EXEMPLAR_TOK_BUDGET} sanity ceiling"
         )
 
 
@@ -195,7 +223,8 @@ def test_per_category_token_budget_held(canonical_content):
 # ---------------------------------------------------------------------------
 
 def test_no_forbidden_words_in_injected_prompt(canonical_content):
-    """No 'estimated' / scary copy anywhere the exemplars reach the prompt."""
+    """No 'estimated' / scary copy anywhere the calibration block reaches the
+    prompt."""
     for cat in CATEGORIES:
         prompt = build_verdict_prompt(products=[{"category": cat}]).lower()
         for bad in _FORBIDDEN:
@@ -204,46 +233,67 @@ def test_no_forbidden_words_in_injected_prompt(canonical_content):
 
 def test_provenance_never_leaks_into_prompt(canonical_content):
     """_provenance is internal-only metadata (G6 reporting) — it must never
-    surface in the model-facing prompt."""
+    surface in the model-facing prompt. (Holds trivially with exemplars empty,
+    and continues to hold if exemplars are restored.)"""
     for cat in CATEGORIES:
         block = loader.build_exemplar_block(cat)
         assert "_provenance" not in block
         assert "source_pattern_id" not in block
 
 
-def test_abridged_marker_present_on_every_exemplar(canonical_content):
-    """Dispatcher directive: every exemplar carries the ABRIDGED marker
+# ---------------------------------------------------------------------------
+# Empty-exemplars render invariant: no abridged/exemplar scaffolding
+# ---------------------------------------------------------------------------
+
+def test_no_exemplar_scaffolding_when_empty(canonical_content):
+    """With exemplars[] empty, the loader renders the anti-patterns-only block
+    and emits NEITHER the abridged-example marker NOR the 'emit the COMPLETE
+    verdict schema' reinforcement — those exist solely to counter the
+    shortening pressure of worked examples, so they are correctly absent when
+    there are none. (Counterpart to the no-reinforcement-when-empty invariant
+    pinned in test_per_category_anti_patterns.)"""
+    for cat in CATEGORIES:
+        block = loader.build_exemplar_block(cat)
+        assert "abridged" not in block.lower(), (
+            f"{cat}: abridged-example scaffolding leaked with no exemplars"
+        )
+        assert "emit the COMPLETE verdict schema" not in block, (
+            f"{cat}: exemplar reinforcement line present with no exemplars"
+        )
+
+
+# ---------------------------------------------------------------------------
+# PARKED content stays correctly-shaped for an S3 restore
+# ---------------------------------------------------------------------------
+
+def test_parked_set_has_two_to_three_exemplars_per_category(parked_content):
+    """The parked file preserves the authored 2-3 exemplars per category so S3
+    can restore a verified set rather than re-authoring."""
+    for cat in CATEGORIES:
+        exs = parked_content[cat].get("exemplars") or []
+        assert 2 <= len(exs) <= 3, f"{cat} (parked): {len(exs)} exemplars (want 2-3)"
+
+
+def test_parked_each_category_has_h1_h3_discriminator_pair(parked_content):
+    """The H1+H3 disjoint mirror pair is the core teaching signal (dossier §2):
+    teach WHEN value wins vs WHEN a premium is licensed, never a direction. It
+    is preserved in the parked set for S3."""
+    for cat in CATEGORIES:
+        tags = [e.get("teaches") for e in parked_content[cat]["exemplars"]]
+        assert "H1" in tags, f"{cat} (parked): no H1 (value-per-dinar) exemplar"
+        assert "H3" in tags, f"{cat} (parked): no H3 (premium-justified) exemplar"
+
+
+def test_parked_abridged_marker_present_on_every_exemplar(parked_content):
+    """Every parked exemplar carries the ABRIDGED marker
     ('EXAMPLE — abridged, do not copy structure or content') in its setup so a
-    JSON-mode output contract never pattern-matches a partial object."""
+    JSON-mode output contract never pattern-matches a partial object on
+    restore."""
     for cat in CATEGORIES:
-        for ex in canonical_content[cat]["exemplars"]:
+        for ex in parked_content[cat]["exemplars"]:
             assert "EXAMPLE — abridged, do not copy structure or content" in ex["setup"], (
-                f"{cat}: exemplar missing the abridged do-not-copy marker"
+                f"{cat} (parked): exemplar missing the abridged do-not-copy marker"
             )
-
-
-def test_abridged_marker_reaches_the_assembled_prompt(canonical_content):
-    """The abridged marker must survive injection into the verdict prompt, not
-    just live in the file — so the model actually sees the disclaimer."""
-    for cat in CATEGORIES:
-        block = loader.build_exemplar_block(cat)
-        assert "abridged" in block.lower(), (
-            f"{cat}: 'abridged' marker absent from the rendered exemplar block"
-        )
-
-
-def test_complete_schema_reinforcement_line_present(canonical_content):
-    """The dispatcher-endorsed shape-drift guard: the I2 renderer emits an
-    explicit 'emit the COMPLETE verdict schema' reinforcement AFTER the abridged
-    exemplars, so the compact examples never nudge the model toward shorter
-    output (dropping best_for/pros/cons — the specs-axis risk). This is the
-    render-side counterpart to the file-side strict-subset integrity test.
-    String confirmed against the I2 loader (dee67da)."""
-    for cat in CATEGORIES:
-        block = loader.build_exemplar_block(cat)
-        assert "emit the COMPLETE verdict schema" in block, (
-            f"{cat}: COMPLETE-schema reinforcement line missing from the block"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -267,30 +317,31 @@ _ABRIDGED_ALLOWED = {
 }
 
 
-def test_abridged_verdict_is_strict_subset_never_full_output(canonical_content):
-    """Each exemplar verdict_json is a STRICT subset of the discriminator
+def test_parked_abridged_verdict_is_strict_subset_never_full_output(parked_content):
+    """Each parked exemplar verdict_json is a STRICT subset of the discriminator
     fields — it omits best_for / pros / cons / specs_comparison, so it can
-    never be confused with (or satisfy) the real :582-611 output contract."""
+    never be confused with (or satisfy) the real :582-611 output contract on
+    restore."""
     for cat in CATEGORIES:
-        for ex in canonical_content[cat]["exemplars"]:
+        for ex in parked_content[cat]["exemplars"]:
             keys = set(ex["verdict_json"].keys())
             assert keys <= _ABRIDGED_ALLOWED, (
-                f"{cat}: abridged verdict has out-of-scope keys {keys - _ABRIDGED_ALLOWED}"
+                f"{cat} (parked): abridged verdict has out-of-scope keys {keys - _ABRIDGED_ALLOWED}"
             )
             # It must be MISSING the output-only fields — proving it is not a
             # complete verdict response.
             output_only = _FULL_VERDICT_REQUIRED - _ABRIDGED_ALLOWED
             assert not (keys & output_only), (
-                f"{cat}: abridged verdict leaked output-only fields {keys & output_only}"
+                f"{cat} (parked): abridged verdict leaked output-only fields {keys & output_only}"
             )
 
 
 def test_real_verdict_output_contract_untouched():
     """The production verdict path still demands the FULL output schema — the
-    exemplar block changes the prompt PREFIX, never the response_format or the
+    calibration block changes the prompt PREFIX, never the response_format or the
     pros/cons contract. Guarded by the standing test_verdict_response_format
     suite; here we assert COMPARISON_SYSTEM still specifies the full field set
-    so an abridged example can't have quietly narrowed the contract."""
+    so emptying exemplars (or restoring them) can't have quietly narrowed it."""
     from app.services.extraction_service import COMPARISON_SYSTEM
     for required in ("best_for", "product_0_pros", "product_1_cons", "specs_comparison"):
         assert required in COMPARISON_SYSTEM, (
