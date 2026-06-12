@@ -477,3 +477,43 @@ class TestCritiqueAndMaybeRegenerate:
         assert outcome.final_comparison is _ORIGINAL  # fell back
         assert outcome.regenerated is False
         assert outcome.critique is not None  # critique itself succeeded
+
+
+@pytest.mark.asyncio
+async def test_regen_error_sentinel_serves_original(monkeypatch):
+    """G6 integration fix: generate_comparison's catch-all returns an
+    error-sentinel dict instead of raising — acceptance must treat it as
+    failure and serve the ORIGINAL verdict."""
+    monkeypatch.setenv("ENABLE_SELF_CRITIQUE", "true")
+    original = {"winner_index": 1, "winner_reason": "Costs 30% less at parity",
+                "winner_declaration": "B wins"}
+    low = _critique_result(needs_regen=True)
+
+    async def _regen(_critique):
+        return {"winner_index": 0, "error": "429 rate limit"}
+
+    with patch.object(vcs, "critique_verdict", new=AsyncMock(return_value=low)):
+        outcome = await vcs.critique_and_maybe_regenerate(
+            comparison=original, product_names=_PRODUCT_NAMES, regenerate=_regen,
+        )
+    assert outcome.final_comparison is original
+    assert outcome.regenerated is False
+
+
+@pytest.mark.asyncio
+async def test_regen_missing_winner_reason_serves_original(monkeypatch):
+    """A regen lacking the schema-required winner_reason is not a usable verdict."""
+    monkeypatch.setenv("ENABLE_SELF_CRITIQUE", "true")
+    original = {"winner_index": 1, "winner_reason": "Real reason with 30%",
+                "winner_declaration": "B wins"}
+    low = _critique_result(needs_regen=True)
+
+    async def _regen(_critique):
+        return {"winner_index": 0, "winner_declaration": "A wins", "winner_reason": ""}
+
+    with patch.object(vcs, "critique_verdict", new=AsyncMock(return_value=low)):
+        outcome = await vcs.critique_and_maybe_regenerate(
+            comparison=original, product_names=_PRODUCT_NAMES, regenerate=_regen,
+        )
+    assert outcome.final_comparison is original
+    assert outcome.regenerated is False

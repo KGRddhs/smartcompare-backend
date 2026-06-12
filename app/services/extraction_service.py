@@ -1195,6 +1195,23 @@ def build_verdict_prompt(
     return base
 
 
+
+def _scrub_consult_quotes_if_off(product: Optional[Dict]) -> Optional[Dict]:
+    """G6 integration fix: when ENABLE_REVIEW_SOURCE_CONSULT is OFF, strip
+    cache-carried review_source_quotes from the verdict payload copy so a
+    rolled-back flag rolls back fully (caches hold quotes up to 14d)."""
+    from app.services.review_service import review_source_consult_mode
+    if review_source_consult_mode():
+        return product
+    if not isinstance(product, dict):
+        return product
+    reviews = product.get("reviews")
+    if isinstance(reviews, dict) and "review_source_quotes" in reviews:
+        product = dict(product)
+        product["reviews"] = {k: v for k, v in reviews.items() if k != "review_source_quotes"}
+    return product
+
+
 def _extract_review_source_quotes(product: Optional[Dict]) -> List[Dict[str, Any]]:
     """Pull the I2.5 review-source editorial quotes off a product, if present.
 
@@ -1313,10 +1330,10 @@ If this is a cross-tier comparison, frame it as "different products for differen
         # User message: product data wrapped in tags
         user_msg = f"""<USER_INPUT>
 PRODUCT 1:
-{json.dumps(product1, indent=2)}
+{json.dumps(_scrub_consult_quotes_if_off(product1), indent=2)}
 
 PRODUCT 2:
-{json.dumps(product2, indent=2)}
+{json.dumps(_scrub_consult_quotes_if_off(product2), indent=2)}
 
 User's region: {region}
 Primary concern: {concern}
@@ -1326,9 +1343,14 @@ Primary concern: {concern}
         # its editorial quotes as a DELIBERATE, LABELED verdict input rather
         # than letting them ride json.dumps(product) unlabeled. Flag OFF =
         # no quotes present = this block is empty = zero change to the prompt.
-        review_quotes_block = _build_review_source_quotes_block(product1, product2)
-        if review_quotes_block:
-            user_msg += review_quotes_block
+        # G6 integration fix: gate on the FLAG, not quote presence — cached
+        # reviews carry review_source_quotes for up to 14d after a flag
+        # rollback, and must not steer verdicts when OFF.
+        from app.services.review_service import review_source_consult_mode
+        if review_source_consult_mode():
+            review_quotes_block = _build_review_source_quotes_block(product1, product2)
+            if review_quotes_block:
+                user_msg += review_quotes_block
 
         # Bundle C § 1a A.3.1 — `response_format={"type": "json_object"}`
         # forces OpenAI's structured-output guarantee: the model MUST return

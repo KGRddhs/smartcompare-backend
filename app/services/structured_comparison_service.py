@@ -3312,12 +3312,23 @@ class StructuredComparisonService:
             return regen_comparison
 
         t_crit = time.perf_counter() if stage_timings is not None else None
-        outcome = await _vcs.critique_and_maybe_regenerate(
-            comparison=comparison,
-            product_names=product_names,
-            regenerate=_regenerate,
-            pain_workflow_context=pain_workflow_context,
-        )
+        # G6 integration fix: bound critique+regen (~1-2s + 4-6s worst) so a
+        # flag-ON regen can never push a completed comparison past the outer
+        # 30s hard cap. Timeout serves the original verdict.
+        try:
+            outcome = await asyncio.wait_for(
+                _vcs.critique_and_maybe_regenerate(
+                    comparison=comparison,
+                    product_names=product_names,
+                    regenerate=_regenerate,
+                    pain_workflow_context=pain_workflow_context,
+                ),
+                timeout=8.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[SELF_CRITIQUE] critique+regen exceeded 8s — serving original verdict")
+            self._verdict_critique_outcome = None
+            return comparison
         if stage_timings is not None and t_crit is not None:
             stage_timings["critique_ms"] = round((time.perf_counter() - t_crit) * 1000, 1)
 

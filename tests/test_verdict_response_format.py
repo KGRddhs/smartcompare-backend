@@ -211,7 +211,10 @@ def _user_msg_of(mock_client):
 
 
 @pytest.mark.asyncio
-async def test_review_source_quotes_present_when_consult_ran():
+async def test_review_source_quotes_present_when_consult_ran(monkeypatch):
+    # G6 fix: rendering now gates on the FLAG (not quote presence) so cached
+    # quotes can't steer verdicts after a rollback — consult-ran implies ON.
+    monkeypatch.setenv("ENABLE_REVIEW_SOURCE_CONSULT", "passive")
     """When the consult populated product.reviews.review_source_quotes (flag
     ON), the verdict user message carries a LABELED editorial-quotes block —
     not just buried in the json.dumps(product) blob."""

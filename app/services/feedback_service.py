@@ -25,6 +25,10 @@ async def save_comparison_and_track_cohort(
     comparison's id. Errors swallowed — never break the user-facing flow.
     """
     try:
+        # G6 integration fix: _verdict_critique is an INTERNAL key — pop it
+        # before the comparisons insert so history + the public share read
+        # (which serve full_response verbatim) never carry critique internals.
+        _crit = (full_response.get("metadata") or {}).pop("_verdict_critique", None)
         saved = await save_comparison(
             full_response=full_response, query=query,
             input_type=input_type, user_id=user_id,
@@ -43,7 +47,6 @@ async def save_comparison_and_track_cohort(
             # into metadata._verdict_critique only when ENABLE_SELF_CRITIQUE
             # was ON and a critique ran; absent otherwise. Best-effort —
             # persist_critique swallows its own errors, never blocks.
-            _crit = (full_response.get("metadata") or {}).get("_verdict_critique")
             if isinstance(_crit, dict):
                 await _persist_verdict_critique(comparison_id, _crit)
             # Referral Loop 2 — only fires when the user has an unredeemed

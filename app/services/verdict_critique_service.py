@@ -340,7 +340,16 @@ async def critique_and_maybe_regenerate(
     # never re-critiqued (hard cap bounds cost + latency + loop risk).
     try:
         regenerated_comparison = await regenerate(critique)
-        if regenerated_comparison and isinstance(regenerated_comparison, dict):
+        # G6 integration fix: generate_comparison NEVER raises — on failure it
+        # returns the error-sentinel {"winner_index": 0, "error": "..."} dict.
+        # Accept a regen only if it is a real verdict (no error key, has the
+        # schema-required winner_reason); otherwise serve the original.
+        if (
+            regenerated_comparison
+            and isinstance(regenerated_comparison, dict)
+            and not regenerated_comparison.get("error")
+            and regenerated_comparison.get("winner_reason")
+        ):
             return CritiqueOutcome(
                 final_comparison=regenerated_comparison, critique=critique,
                 regenerated=True, critique_usage=usage,
