@@ -132,6 +132,26 @@ The §3 agreement finding predicted a cheap lever: if ~19/45 failures are sampli
 
 ---
 
+## 3c. KEEP-VS-EMPTY DECIDER — exemplars vs APs-only on FRESH inputs
+
+**Why this run exists:** G3 merged (exemplars now ship in `data/verdict_exemplars.json`), and the live nocache 45-id indicator on FRESH inputs flipped 9/24 structural — overturning §3b's stale-input 0/24. The §3b confound was real: §3b reconstructed verdict inputs from the **estimate-era** L2 (GPT-estimated prices), which give value-per-dinar reasoning nothing to bite on. The live runs repopulated L2 with today's real specs/prices/reviews. So the open question became attribution: of the fresh-input 9/24, how much is the **exemplars** vs the **anti-patterns** (which I1's content also ships)?
+
+**Setup:** fresh L2 dump (524 rows vs the stale 522) → fresh bias45 reconstruction, **verified fresh before any paid call** (all 45/45 product_data changed vs stale; 24/45 prices changed specifically). Two arms, both `prompt_exemplars_t0` @ T=0 on the SAME fresh inputs, differing ONLY by the exemplar file: **EXEMPLARS** (main's current file, 26 exemplars + 9 APs) vs **APs-ONLY** (exemplars[] stripped, anti_patterns kept). 45/45, 0 errors both, all 90 calls served `gpt-4o-2024-08-06`.
+
+| bucket | EXEMPLARS (exemplars+APs) | APs-ONLY (APs only) | delta |
+|---|---|---|---|
+| **structural-24** | 9/24 = 0.375 | 9/24 = 0.375 | **+0** |
+| variance-19 | 17/19 = 0.895 | 17/19 = 0.895 | +0 |
+| overall | 28/45 = 0.622 | 28/45 = 0.622 | +0 |
+
+**Result: the exemplars add EXACTLY ZERO over APs-only.** Verified real: the two arms saw genuinely different prompts (EXEMPLARS 12100 chars *with* the examples-preamble; APs-only 9293 chars *without* — diff +2807, so the worked examples were truly injected in one arm and absent in the other), yet at T=0 the winners are **byte-identical** — the same nine structural flips (elec-012, elec-024, fash-006, frag-011, groc-011, groc-014, make-011, other-012, other-019) and **zero of the 45 ids differ** between the arms.
+
+**Interpretation:** fresh real prices + the **anti-patterns** (one-line failure-mode counter-rules) + T=0 carry 100% of the structural gain. The exemplar *examples* are redundant on top — at deterministic decode, the AP rules already steer the verdict; the worked examples change nothing. The fresh-input unlock (0/24 → 9/24) is real and matches the live indicator, but it is an **anti-pattern** effect, not a few-shot-example effect.
+
+**Decision (dispatcher rule — exemplars add ≥2 structural → KEEP, ≤0 → empty): +0 → EMPTY.** I1 executes the 1-commit empty (`exemplars[]` emptied, the `anti_patterns` + the injection mechanism stay — they do the work). Run cost $1.15; session total ~$2.38 of the $3.50 ceiling.
+
+---
+
 ## 4. Recommendations to I1/I2 (few-shot lanes) and G6
 
 1. **Score the I1.6 45-id indicator against the 24 structural ids, not the full 45.** ~19 of 45 flip on any re-run; including them inflates apparent few-shot lift and risks a false ≥60% pass. Report the indicator BOTH ways (full-45 and structural-24) — this is the Decision-E "exclude template ids" rule made precise: the contamination isn't only the template ids, it's the whole variance bucket.
