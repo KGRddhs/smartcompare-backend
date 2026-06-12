@@ -476,13 +476,17 @@ class ArmGrade:
     verdict_ms: int
     cost_usd: float
     error: Optional[str] = None
+    # SERVED model id(s) from resp.model — proves the arm ran on the requested
+    # model, not a silent fallback (G5 evidence hygiene).
+    response_model: str = ""
 
 
 def grade_arm_verdict(vi: VerdictInput, verdict: Dict[str, Any],
                       *, verdict_ms: int, cost_usd: float,
                       weights: Dict[str, float],
                       query_pass_threshold: float = 0.80,
-                      error: Optional[str] = None) -> ArmGrade:
+                      error: Optional[str] = None,
+                      response_model: str = "") -> ArmGrade:
     """Grade one arm's verdict for one query: winner + factual re-graded from
     the verdict; price + specs held at the baseline labels. Compose the
     weighted score with the canonical axis weights so the number is directly
@@ -527,6 +531,7 @@ def grade_arm_verdict(vi: VerdictInput, verdict: Dict[str, Any],
         verdict_ms=verdict_ms,
         cost_usd=round(cost_usd, 6),
         error=error,
+        response_model=response_model,
     )
 
 
@@ -876,8 +881,12 @@ class ArmCallResult:
     verdict: Dict[str, Any]
     prompt_tokens: int
     completion_tokens: int
-    model: str
+    model: str  # the REQUESTED model (what the arm asked for)
     error: Optional[str] = None
+    # The SERVED model id from resp.model (e.g. 'o3-mini-2025-01-31') — the
+    # evidence that the call ran on the model it requested, not a silent
+    # fallback. Multiagent stores the editor's served model (its 4o leg).
+    response_model: str = ""
 
 
 def _build_verdict_system_prompt(vi: VerdictInput) -> str:
@@ -993,8 +1002,14 @@ async def _create_with_retry(client, **kwargs):
 
 async def _chat_json(client, model: str, system_msg: str, user_msg: str,
                      *, max_tokens: int = 1000,
-                     temperature: float = 0.2) -> Tuple[Dict[str, Any], int, int]:
-    """One json_object chat call. Returns (parsed, prompt_tokens, completion_tokens).
+                     temperature: float = 0.2) -> Tuple[Dict[str, Any], int, int, str]:
+    """One json_object chat call. Returns (parsed, prompt_tokens,
+    completion_tokens, response_model).
+
+    response_model is the SERVED model id from the API response (`resp.model`,
+    e.g. 'o3-mini-2025-01-31'), NOT the request param — this is the evidence
+    that proves an arm actually ran on the model it asked for (G5 hygiene: a
+    request param is not proof; a silent fallback would surface here).
 
     o3-mini is a reasoning model: it rejects `temperature` and uses
     `max_completion_tokens` instead of `max_tokens`. Branch on the model
@@ -1019,7 +1034,8 @@ async def _chat_json(client, model: str, system_msg: str, user_msg: str,
     usage = getattr(resp, "usage", None)
     pt = getattr(usage, "prompt_tokens", 0) if usage else 0
     ct = getattr(usage, "completion_tokens", 0) if usage else 0
-    return _parse_verdict_json(content), pt, ct
+    response_model = getattr(resp, "model", "") or ""
+    return _parse_verdict_json(content), pt, ct, response_model
 
 
 async def arm_baseline_4o(vi: VerdictInput, client) -> ArmCallResult:
@@ -1030,8 +1046,8 @@ async def arm_baseline_4o(vi: VerdictInput, client) -> ArmCallResult:
     system_msg = _build_verdict_system_prompt(vi)
     user_msg = _build_verdict_user_msg(vi)
     try:
-        verdict, pt, ct = await _chat_json(client, "gpt-4o", system_msg, user_msg)
-        return ArmCallResult(verdict, pt, ct, "gpt-4o")
+        verdict, pt, ct, rm = await _chat_json(client, "gpt-4o", system_msg, user_msg)
+        return ArmCallResult(verdict, pt, ct, "gpt-4o", response_model=rm)
     except Exception as exc:  # noqa: BLE001
         return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
 
@@ -1046,9 +1062,9 @@ async def arm_temp0(vi: VerdictInput, client) -> ArmCallResult:
     system_msg = _build_verdict_system_prompt(vi)
     user_msg = _build_verdict_user_msg(vi)
     try:
-        verdict, pt, ct = await _chat_json(client, "gpt-4o", system_msg, user_msg,
-                                           temperature=0.0)
-        return ArmCallResult(verdict, pt, ct, "gpt-4o")
+        verdict, pt, ct, rm = await _chat_json(client, "gpt-4o", system_msg, user_msg,
+                                               temperature=0.0)
+        return ArmCallResult(verdict, pt, ct, "gpt-4o", response_model=rm)
     except Exception as exc:  # noqa: BLE001
         return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
 
@@ -1076,6 +1092,7 @@ async def arm_best_of_3(vi: VerdictInput, client) -> ArmCallResult:
     verdicts = [s[0] for s in samples]
     total_pt = sum(s[1] for s in samples)
     total_ct = sum(s[2] for s in samples)
+    sample_models = {s[3] for s in samples if s[3]}  # served models across the 3 samples
 
     # Majority vote on winner_index (None votes excluded; tie -> first sample's pick).
     from collections import Counter
@@ -1097,7 +1114,8 @@ async def arm_best_of_3(vi: VerdictInput, client) -> ArmCallResult:
         chosen["winner_index"] = winner_idx
     else:
         chosen = verdicts[0]
-    return ArmCallResult(chosen, total_pt, total_ct, "gpt-4o")
+    return ArmCallResult(chosen, total_pt, total_ct, "gpt-4o",
+                         response_model=",".join(sorted(sample_models)))
 
 
 async def arm_o3_mini(vi: VerdictInput, client) -> ArmCallResult:
@@ -1106,8 +1124,8 @@ async def arm_o3_mini(vi: VerdictInput, client) -> ArmCallResult:
     system_msg = _build_verdict_system_prompt(vi)
     user_msg = _build_verdict_user_msg(vi)
     try:
-        verdict, pt, ct = await _chat_json(client, "o3-mini", system_msg, user_msg)
-        return ArmCallResult(verdict, pt, ct, "o3-mini")
+        verdict, pt, ct, rm = await _chat_json(client, "o3-mini", system_msg, user_msg)
+        return ArmCallResult(verdict, pt, ct, "o3-mini", response_model=rm)
     except Exception as exc:  # noqa: BLE001
         return ArmCallResult({}, 0, 0, "o3-mini", error=f"{type(exc).__name__}:{exc}")
 
@@ -1121,9 +1139,9 @@ async def arm_reviews_trim(vi: VerdictInput, client) -> ArmCallResult:
     system_msg = _build_verdict_system_prompt(vi)
     user_msg = _build_verdict_user_msg(vi, review_context_chars=2500)
     try:
-        verdict, pt, ct = await _chat_json(client, "gpt-4o", system_msg, user_msg,
-                                           max_tokens=600)
-        return ArmCallResult(verdict, pt, ct, "gpt-4o")
+        verdict, pt, ct, rm = await _chat_json(client, "gpt-4o", system_msg, user_msg,
+                                               max_tokens=600)
+        return ArmCallResult(verdict, pt, ct, "gpt-4o", response_model=rm)
     except Exception as exc:  # noqa: BLE001
         return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
 
@@ -1181,8 +1199,8 @@ async def arm_prompt_exemplars(vi: VerdictInput, client) -> ArmCallResult:
         system_msg = _build_verdict_system_prompt(vi)
     user_msg = _build_verdict_user_msg(vi)
     try:
-        verdict, pt, ct = await _chat_json(client, "gpt-4o", system_msg, user_msg)
-        return ArmCallResult(verdict, pt, ct, "gpt-4o")
+        verdict, pt, ct, rm = await _chat_json(client, "gpt-4o", system_msg, user_msg)
+        return ArmCallResult(verdict, pt, ct, "gpt-4o", response_model=rm)
     except Exception as exc:  # noqa: BLE001
         return ArmCallResult({}, 0, 0, "gpt-4o", error=f"{type(exc).__name__}:{exc}")
 
@@ -1202,8 +1220,9 @@ _ANALYST_PROMPTS = {
 }
 
 
-async def _run_analyst(client, role: str, vi: VerdictInput) -> Tuple[str, int, int]:
-    """One gpt-4o-mini analyst pass. Returns (text, prompt_tok, completion_tok)."""
+async def _run_analyst(client, role: str, vi: VerdictInput) -> Tuple[str, int, int, str]:
+    """One gpt-4o-mini analyst pass. Returns (text, prompt_tok, completion_tok,
+    served_model)."""
     user_msg = _build_verdict_user_msg(vi)
     resp = await _create_with_retry(
         client,
@@ -1218,7 +1237,7 @@ async def _run_analyst(client, role: str, vi: VerdictInput) -> Tuple[str, int, i
     usage = getattr(resp, "usage", None)
     pt = getattr(usage, "prompt_tokens", 0) if usage else 0
     ct = getattr(usage, "completion_tokens", 0) if usage else 0
-    return (resp.choices[0].message.content or ""), pt, ct
+    return (resp.choices[0].message.content or ""), pt, ct, (getattr(resp, "model", "") or "")
 
 
 async def arm_multiagent(vi: VerdictInput, client) -> ArmCallResult:
@@ -1242,6 +1261,7 @@ async def arm_multiagent(vi: VerdictInput, client) -> ArmCallResult:
     }
     analyst_pt = sum(r[1] for r in analyst_results)
     analyst_ct = sum(r[2] for r in analyst_results)
+    analyst_models = {r[3] for r in analyst_results if r[3]}
 
     editor_system = _build_verdict_system_prompt(vi) + """
 
@@ -1256,7 +1276,8 @@ JSON. Weigh value-per-dinar and Bahrain-market reality, not just the spec sheet.
 
 {_build_verdict_user_msg(vi)}"""
     try:
-        verdict, ed_pt, ed_ct = await _chat_json(client, "gpt-4o", editor_system, editor_user)
+        verdict, ed_pt, ed_ct, ed_model = await _chat_json(client, "gpt-4o",
+                                                            editor_system, editor_user)
     except Exception as exc:  # noqa: BLE001
         return ArmCallResult({}, analyst_pt, analyst_ct, "multiagent",
                              error=f"editor:{type(exc).__name__}:{exc}")
@@ -1267,7 +1288,11 @@ JSON. Weigh value-per-dinar and Bahrain-market reality, not just the spec sheet.
     # and stash the split for accurate pricing.
     total_pt = analyst_pt + ed_pt
     total_ct = analyst_ct + ed_ct
-    result = ArmCallResult(verdict, total_pt, total_ct, "multiagent")
+    # response_model records the served models across legs (editor 4o + analysts'
+    # mini) so the multiagent arm proves its legs ran on the requested models too.
+    served = {ed_model} | {m for m in analyst_models if m}
+    result = ArmCallResult(verdict, total_pt, total_ct, "multiagent",
+                           response_model=",".join(sorted(served)))
     # Attach the per-model token split for precise blended pricing.
     result.verdict.setdefault("_shadow_cost_split", {
         "gpt-4o-mini": {"pt": analyst_pt, "ct": analyst_ct},
@@ -1330,7 +1355,7 @@ async def run_arm(arm_name: str, inputs: List[VerdictInput], *,
             res.verdict.pop("_shadow_cost_split", None)
         return grade_arm_verdict(
             vi, res.verdict, verdict_ms=verdict_ms, cost_usd=cost,
-            weights=weights, error=res.error,
+            weights=weights, error=res.error, response_model=res.response_model,
         )
 
     grades = await asyncio.gather(*[_one(vi) for vi in inputs])
@@ -1497,6 +1522,80 @@ def _cmd_dump(args) -> int:
     return 0
 
 
+# Expected served model id for the o3-mini arm (OpenAI's dated snapshot). The
+# request param "o3-mini" routes to this; the verify command asserts the
+# RESPONSE carries it (not a silent fallback to a 4o snapshot).
+_EXPECTED_O3_MINI_SERVED = "o3-mini-2025-01-31"
+
+
+def _cmd_verify(args) -> int:
+    """LIVE model-routing verification (dispatcher G5-hygiene requirement).
+    Makes N (default 3) real o3-mini chat calls and asserts each RESPONSE's
+    `model` field == the expected served id (o3-mini-2025-01-31) — not just the
+    request param. Prints each response's served model + token usage so the
+    OpenAI dashboard movement can be cross-checked. Exit 0 = all served as
+    o3-mini; exit 1 = at least one call did NOT (silent fallback / wrong model);
+    exit 3 = the calls errored (e.g. quota)."""
+    _ensure_env()
+    from app.services.extraction_service import get_client
+
+    model = args.model
+    expected = args.expected or (_EXPECTED_O3_MINI_SERVED if model == "o3-mini" else None)
+    n = args.n
+    print(f"# VERIFY: {n} LIVE {model} calls — asserting resp.model"
+          + (f" == {expected!r}" if expected else " (recording only)"))
+
+    async def _probe(i: int) -> Dict[str, Any]:
+        client = get_client()
+        try:
+            _verdict, pt, ct, served = await _chat_json(
+                client, model,
+                "You are a terse assistant. Reply with a JSON object.",
+                'Return {"ok": true} and nothing else.',
+                max_tokens=200,
+            )
+            return {"i": i, "served_model": served, "prompt_tokens": pt,
+                    "completion_tokens": ct, "error": None}
+        except Exception as exc:  # noqa: BLE001
+            return {"i": i, "served_model": "", "prompt_tokens": 0,
+                    "completion_tokens": 0, "error": f"{type(exc).__name__}:{exc}"}
+
+    async def _run_all():
+        return await asyncio.gather(*[_probe(i) for i in range(n)])
+
+    results = asyncio.run(_run_all())
+
+    any_error = False
+    mismatch = False
+    for r in results:
+        if r["error"]:
+            any_error = True
+            print(f"  call {r['i']}: ERROR {r['error'][:120]}")
+            continue
+        ok = (expected is None) or (r["served_model"] == expected)
+        flag = "OK" if ok else "MISMATCH"
+        if not ok:
+            mismatch = True
+        print(f"  call {r['i']}: served_model={r['served_model']!r} "
+              f"tokens={r['prompt_tokens']}+{r['completion_tokens']} [{flag}]")
+
+    if args.out:
+        Path(args.out).write_text(json.dumps(results, ensure_ascii=False, indent=2),
+                                  encoding="utf-8")
+        print(f"# verify result -> {args.out}")
+
+    if any_error:
+        print("# RESULT: calls ERRORED (e.g. insufficient_quota) — cannot verify; "
+              "re-run when quota restored")
+        return 3
+    if mismatch:
+        print(f"# RESULT: at least one call did NOT serve {expected!r} — the "
+              f"arm's model attribution is WRONG; re-measure in the unified pass")
+        return 1
+    print(f"# RESULT: all {n} calls served the expected model — attribution VERIFIED")
+    return 0
+
+
 def _cmd_run(args) -> int:
     _ensure_env()
     gold = load_gold_truth(args.gold)
@@ -1523,6 +1622,21 @@ def _cmd_run(args) -> int:
         b = split.get(bucket)
         if b and b["n"]:
             print(f"  {bucket:<11} {b['winner_correct']}/{b['n']} = {b['winner_rate']:.3f}")
+
+    # SERVED-model tripwire: surface the distinct resp.model values across the
+    # run so a silent fallback (e.g. o3-mini arm actually served gpt-4o) is
+    # visible in the run output itself, not just the per-query JSON. Empty when
+    # all rows errored (no response).
+    served = {}
+    for g in report.per_query:
+        if g.response_model:
+            served[g.response_model] = served.get(g.response_model, 0) + 1
+    if served:
+        print("served models (resp.model — evidence the arm ran where it claimed):")
+        for model, n in sorted(served.items(), key=lambda kv: -kv[1]):
+            print(f"  {model}: {n}")
+    else:
+        print("served models: NONE captured (all rows errored or no response.model)")
 
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
@@ -1563,6 +1677,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                             "(SHADOW_L2_DUMP input — sandbox-safe reuse)")
     p_dump.add_argument("--out", default=".shadow/l2_dump.jsonl")
     p_dump.set_defaults(func=_cmd_dump)
+
+    p_verify = sub.add_parser("verify", help="LIVE model-routing verification: "
+                              "assert resp.model == expected served id (G5 hygiene)")
+    p_verify.add_argument("--model", default="o3-mini", help="request model to verify")
+    p_verify.add_argument("--expected", default=None,
+                          help="expected served resp.model (default: o3-mini-2025-01-31 for o3-mini)")
+    p_verify.add_argument("--n", type=int, default=3, help="number of live calls")
+    p_verify.add_argument("--out", default=None, help="write per-call JSON")
+    p_verify.set_defaults(func=_cmd_verify)
 
     p_run = sub.add_parser("run", help="run one verdict arm over cached inputs (LIVE OpenAI)")
     p_run.add_argument("--arm", required=True, choices=sorted(ARMS))

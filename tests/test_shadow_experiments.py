@@ -673,21 +673,26 @@ class _FakeChoice:
 
 
 class _FakeResponse:
-    def __init__(self, content, pt=1000, ct=300):
+    def __init__(self, content, pt=1000, ct=300, model=""):
         self.choices = [_FakeChoice(content)]
         self.usage = _FakeUsage(pt, ct)
+        self.model = model  # served model id (resp.model)
 
 
 class _FakeChatCompletions:
-    def __init__(self, content_by_model):
+    def __init__(self, content_by_model, served_model_by_request=None):
         self.content_by_model = content_by_model
+        # maps requested model -> served resp.model; defaults to echoing the
+        # requested model (the honest case). Override to simulate a fallback.
+        self.served_model_by_request = served_model_by_request or {}
         self.calls = []
 
     async def create(self, **kwargs):
         self.calls.append(kwargs)
         model = kwargs["model"]
         content = self.content_by_model.get(model, '{"winner_index": 0}')
-        return _FakeResponse(content)
+        served = self.served_model_by_request.get(model, model)
+        return _FakeResponse(content, model=served)
 
 
 class _FakeChat:
@@ -696,8 +701,9 @@ class _FakeChat:
 
 
 class _FakeClient:
-    def __init__(self, content_by_model):
-        self.chat = _FakeChat(_FakeChatCompletions(content_by_model))
+    def __init__(self, content_by_model, served_model_by_request=None):
+        self.chat = _FakeChat(_FakeChatCompletions(content_by_model,
+                                                   served_model_by_request))
 
 
 def _one_input(expected=1):
@@ -741,6 +747,58 @@ async def test_arm_o3_mini_uses_max_completion_tokens_no_temperature(monkeypatch
     assert "max_completion_tokens" in call
     assert "temperature" not in call
     assert "max_tokens" not in call
+
+
+# ---------------------------------------------------------------------------
+# Response-model capture (G5 evidence hygiene — proves the served model)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_chat_json_returns_served_response_model(monkeypatch):
+    # the fake echoes the requested model as resp.model -> _chat_json captures it
+    client = _FakeClient({"o3-mini": '{"winner_index": 0}'})
+    _v, _pt, _ct, served = await se._chat_json(client, "o3-mini", "S", "U")
+    assert served == "o3-mini"
+
+
+@pytest.mark.asyncio
+async def test_arm_records_served_response_model(monkeypatch):
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+    # served model echoes the request -> ArmGrade.response_model == 'o3-mini'
+    client = _FakeClient({"o3-mini": '{"winner_index": 0}'})
+    report = await se.run_arm("o3_mini", [_one_input(expected=0)],
+                              weights=_WEIGHTS, client=client)
+    assert report.per_query[0].response_model == "o3-mini"
+
+
+@pytest.mark.asyncio
+async def test_arm_records_SILENT_FALLBACK_in_response_model(monkeypatch):
+    # THE failure the dispatcher flagged: request o3-mini, but the API silently
+    # serves gpt-4o. response_model must record the FALLBACK so it's detectable.
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+    client = _FakeClient(
+        {"o3-mini": '{"winner_index": 0}'},
+        served_model_by_request={"o3-mini": "gpt-4o-2024-08-06"},  # silent fallback
+    )
+    report = await se.run_arm("o3_mini", [_one_input(expected=0)],
+                              weights=_WEIGHTS, client=client)
+    g = report.per_query[0]
+    assert g.response_model == "gpt-4o-2024-08-06"  # NOT o3-mini -> caught
+    assert g.response_model != "o3-mini"
+
+
+@pytest.mark.asyncio
+async def test_multiagent_response_model_records_all_legs(monkeypatch):
+    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "SYS")
+    client = _FakeClient({
+        "gpt-4o-mini": "analyst note",
+        "gpt-4o": '{"winner_index": 1}',
+    })
+    report = await se.run_arm("multiagent", [_one_input(expected=1)],
+                              weights=_WEIGHTS, client=client)
+    rm = report.per_query[0].response_model
+    # both the editor (4o) and analysts (mini) served models recorded
+    assert "gpt-4o" in rm and "gpt-4o-mini" in rm
 
 
 @pytest.mark.asyncio
