@@ -854,58 +854,77 @@ async def test_arm_reviews_trim_truncates_review_payload(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Prompt-arm (directive 2) — exemplar/AP block injection
+# Prompt-arm (directive 2) — exemplar-FILE swap via the real prod prompt path
 # ---------------------------------------------------------------------------
 
-def test_build_exemplar_block_off_env_returns_empty(monkeypatch):
+def test_swapped_exemplar_file_noop_when_path_none():
+    # path None -> context manager is a pure no-op (reads on-disk file)
+    with se._swapped_exemplar_file(None):
+        pass  # must not raise, must not touch the loader
+
+
+def test_swapped_exemplar_file_off_env_is_noop(monkeypatch):
     monkeypatch.setenv("SHADOW_EXEMPLAR_OFF", "1")
-    assert se._build_exemplar_block_for_arm("electronics") == ""
+    # even with a path, OFF forces the on-disk file (no swap)
+    with se._swapped_exemplar_file("/some/path.json"):
+        pass  # no-op, no raise
 
 
-def test_build_exemplar_block_falls_back_when_loader_missing(monkeypatch):
-    # pre-G2: verdict_exemplar_loader not importable -> empty block, no crash
+def test_swapped_exemplar_file_swaps_and_restores(monkeypatch, tmp_path):
+    # the context manager must point the loader at the given file inside the
+    # block and restore the original path + reset cache on exit
+    from app.services import verdict_exemplar_loader as vel
+    original = vel._EXEMPLAR_FILE
+    swap = tmp_path / "i1_exemplars.json"
+    swap.write_text("{}", encoding="utf-8")
     monkeypatch.delenv("SHADOW_EXEMPLAR_OFF", raising=False)
-    import builtins
-    real_import = builtins.__import__
-
-    def _blocked_import(name, *a, **k):
-        if name == "app.services.verdict_exemplar_loader":
-            raise ImportError("not merged yet")
-        return real_import(name, *a, **k)
-
-    monkeypatch.setattr(builtins, "__import__", _blocked_import)
-    assert se._build_exemplar_block_for_arm("electronics") == ""
+    with se._swapped_exemplar_file(str(swap)):
+        assert str(vel._EXEMPLAR_FILE) == str(swap)
+    # restored on exit
+    assert vel._EXEMPLAR_FILE == original
 
 
 @pytest.mark.asyncio
-async def test_arm_prompt_exemplars_injects_block_into_system(monkeypatch):
-    # mock the base system prompt + the exemplar block; assert the block lands
-    # in the system message the model receives
-    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "BASE_SYS")
-    monkeypatch.setattr(se, "_build_exemplar_block_for_arm",
-                        lambda cat: "EXEMPLAR_BLOCK_FOR_" + cat)
+async def test_arm_prompt_exemplars_uses_swapped_file_via_prod_path(monkeypatch, tmp_path):
+    # I1's filled exemplar file (a category with a recognizable anti-pattern)
+    # must reach the system prompt through the REAL build_verdict_prompt path.
+    i1_file = tmp_path / "verdict_exemplars.json"
+    i1_file.write_text(json.dumps({
+        "electronics": {
+            "exemplars": [],
+            # loader's _render_anti_pattern needs name + rule
+            "anti_patterns": [
+                {"name": "SHADOW_TEST_AP", "rule": "uniquely-detectable marker"}
+            ],
+        }
+    }), encoding="utf-8")
+    monkeypatch.setenv("SHADOW_EXEMPLAR_FILE", str(i1_file))
+    monkeypatch.delenv("SHADOW_EXEMPLAR_OFF", raising=False)
     client = _FakeClient({"gpt-4o": '{"winner_index": 1, "winner_reason": "x"}'})
     report = await se.run_arm("prompt_exemplars", [_one_input(expected=1)],
                               weights=_WEIGHTS, client=client)
-    call = client.chat.completions.calls[0]
-    sys_msg = call["messages"][0]["content"]
-    assert "BASE_SYS" in sys_msg
-    assert "EXEMPLAR_BLOCK_FOR_electronics" in sys_msg
-    assert call["model"] == "gpt-4o"
-    assert report.arm_winner_rate == 1.0  # picked gold winner -> graded correct
+    sys_msg = client.chat.completions.calls[0]["messages"][0]["content"]
+    # the swapped file's anti-pattern must have rendered into the prod prompt
+    assert "SHADOW_TEST_AP" in sys_msg or "uniquely-detectable marker" in sys_msg
+    assert report.arm_winner_rate == 1.0
 
 
 @pytest.mark.asyncio
-async def test_arm_prompt_exemplars_empty_block_runs_as_baseline(monkeypatch):
-    # pre-G2 / OFF: empty block -> system message is just the base (no appended
-    # section), arm still runs and grades (= baseline control)
-    monkeypatch.setattr(se, "_build_verdict_system_prompt", lambda vi: "BASE_SYS")
-    monkeypatch.setattr(se, "_build_exemplar_block_for_arm", lambda cat: "")
+async def test_arm_baseline_uses_ondisk_exemplar_file_not_swapped(monkeypatch, tmp_path):
+    # baseline_4o must NOT pick up SHADOW_EXEMPLAR_FILE — it reads whatever is
+    # on disk (the prod default). With a marker file set, baseline's prompt must
+    # NOT contain the marker (only the prompt-arm swaps).
+    i1_file = tmp_path / "verdict_exemplars.json"
+    i1_file.write_text(json.dumps({
+        "electronics": {"exemplars": [],
+                        "anti_patterns": [{"name": "ONLY_IN_SWAP_MARKER"}]}
+    }), encoding="utf-8")
+    monkeypatch.setenv("SHADOW_EXEMPLAR_FILE", str(i1_file))
     client = _FakeClient({"gpt-4o": '{"winner_index": 0}'})
-    await se.run_arm("prompt_exemplars", [_one_input(expected=0)],
+    await se.run_arm("baseline_4o", [_one_input(expected=0)],
                      weights=_WEIGHTS, client=client)
     sys_msg = client.chat.completions.calls[0]["messages"][0]["content"]
-    assert sys_msg == "BASE_SYS"  # no appended block
+    assert "ONLY_IN_SWAP_MARKER" not in sys_msg
 
 
 def test_prompt_exemplars_registered_in_arms():

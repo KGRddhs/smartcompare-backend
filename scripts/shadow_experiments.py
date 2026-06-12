@@ -881,24 +881,27 @@ class ArmCallResult:
 
 
 def _build_verdict_system_prompt(vi: VerdictInput) -> str:
-    """Mirror generate_comparison's system-prompt composition (extraction_
-    service.py:1175-1216) so arms grade the production reasoning, not a
-    bespoke prompt. Personality + pain-workflow + scoring-context blocks."""
-    from app.services.extraction_service import COMPARISON_SYSTEM
-    from app.services.prompt_personalities import build_personality_prompt
+    """Build the verdict system prompt by calling the REAL production
+    `build_verdict_prompt` (extraction_service.py) + the scoring-context block,
+    byte-faithful to `generate_comparison` (ssc unification, I5.10).
 
-    system_msg = COMPARISON_SYSTEM
-    system_msg += build_personality_prompt(vi.category)
-    try:
-        from app.services.pain_workflow_loader import (
-            build_pain_workflow_block,
-            build_decision_style_block,
-        )
-        system_msg += build_pain_workflow_block(None)
-        system_msg += build_decision_style_block(None)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[shadow] pain_workflow injection failed: %s", exc)
+    `build_verdict_prompt` already composes COMPARISON_SYSTEM + personality +
+    the I2 exemplar/anti-pattern block (from data/verdict_exemplars.json) +
+    pain-workflow — so whatever exemplar file is on disk is what every arm sees.
+    The prompt-arm swaps that file content (see arm_prompt_exemplars) rather
+    than appending a block, which keeps the A/B prod-faithful: baseline vs
+    exemplar-prompt differ ONLY by the exemplar file, exactly as prod would
+    differ before vs after I1's content lands. user_cohort=None (the shadow
+    inputs carry no demographics); category is passed explicitly so the prompt
+    is byte-identical to prod even when product dicts lack category_used."""
+    from app.services.extraction_service import build_verdict_prompt
 
+    system_msg = build_verdict_prompt(
+        products=vi.product_data,
+        comparison_quality="normal",
+        user_cohort=None,
+        category=vi.category,
+    )
     if vi.scores_summary:
         system_msg += f"""
 
@@ -1129,59 +1132,53 @@ async def arm_reviews_trim(vi: VerdictInput, client) -> ArmCallResult:
 # -----------------------------------------------------------------------------
 # The $0-Serper offline pre-read on the I1/I2 few-shot 45-id flip BEFORE the
 # live nocache G3 indicator. Same gpt-4o model + same L2 inputs as
-# arm_baseline_4o — the ONLY thing that varies is the verdict system prompt:
-# this arm injects I2's exemplar + anti-pattern block (built from I1's content).
-# That isolates winner-axis movement to the prompt change alone.
+# arm_baseline_4o — the ONLY variable is the verdict-prompt's exemplar content.
 #
-# WIRING (do at G2/G3, when I2's loader + I1's content are on main):
-#   I2 ships `app/services/verdict_exemplar_loader.py` mirroring
-#   pain_workflow_loader: `build_exemplar_block(category) -> str` (returns "" on
-#   miss). _build_exemplar_block_for_arm tries that import and falls back to ""
-#   so this scaffold compiles + tests pass NOW; at G2 confirm the import
-#   resolves and the block is non-empty for a seeded category. If I2 names the
-#   symbol differently, update the import here only.
+# PROD-FAITHFUL DESIGN (post-G1/G2): prod `generate_comparison` is unified onto
+# `build_verdict_prompt`, which injects the I2 exemplar block from
+# data/verdict_exemplars.json UNCONDITIONALLY. So the honest A/B is NOT "append
+# a block" — it is "swap the exemplar FILE the prod prompt reads":
+#   - arm_baseline_4o  -> reads the on-disk file (main's APs-only G2 skeleton)
+#   - arm_prompt_exemplars -> temporarily points the loader at I1's FILLED file
+#     (APs + exemplars, the G3 state), resets the lru_cache, builds the prod
+#     prompt, restores. Winner-axis delta is attributable to the exemplar
+#     content alone, byte-faithful to what prod will do before vs after G3.
+# Point SHADOW_EXEMPLAR_FILE at I1's data/verdict_exemplars.json (from their
+# branch/worktree). SHADOW_EXEMPLAR_OFF forces the baseline file (pure control).
 
-def _build_exemplar_block_for_arm(category: str) -> str:
-    """Return I2's exemplar+AP block for a category, or "" if the I2 mechanism
-    isn't on main yet (pre-G2). Tries the contracted symbol
-    `verdict_exemplar_loader.build_exemplar_block`; the SHADOW_EXEMPLAR_OFF env
-    forces the empty path (lets the arm run as a pure baseline control on demand)."""
-    if os.getenv("SHADOW_EXEMPLAR_OFF"):
-        return ""
+import contextlib
+
+
+@contextlib.contextmanager
+def _swapped_exemplar_file(path: Optional[str]):
+    """Temporarily point the verdict_exemplar_loader at `path` (I1's filled
+    exemplar JSON) + reset its lru_cache, restoring both on exit. No-op when
+    path is None/SHADOW_EXEMPLAR_OFF — the arm then reads the on-disk file."""
+    if not path or os.getenv("SHADOW_EXEMPLAR_OFF"):
+        yield
+        return
+    from app.services import verdict_exemplar_loader as vel
+    from pathlib import Path as _P
+
+    original = vel._EXEMPLAR_FILE
     try:
-        from app.services.verdict_exemplar_loader import build_exemplar_block  # type: ignore
-    except Exception:  # noqa: BLE001 — mechanism not merged yet (pre-G2)
-        logger.warning("[shadow] verdict_exemplar_loader not importable yet "
-                       "(pre-G2) — prompt-arm runs with EMPTY exemplar block")
-        return ""
-    try:
-        return build_exemplar_block(category) or ""
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[shadow] build_exemplar_block(%s) failed: %s", category, exc)
-        return ""
+        vel._EXEMPLAR_FILE = _P(path)
+        vel.reset_cache()
+        yield
+    finally:
+        vel._EXEMPLAR_FILE = original
+        vel.reset_cache()
 
 
 async def arm_prompt_exemplars(vi: VerdictInput, client) -> ArmCallResult:
-    """Directive 2 — gpt-4o verdict WITH I2's exemplar/AP block injected into the
-    system prompt (after personality, before pain-workflow — the I2 injection
-    point). Compared against arm_baseline_4o (identical model + inputs, no
-    exemplars) so any winner-axis delta is attributable to the prompt change
-    alone. Runs as a baseline-equivalent control when the block is empty
-    (pre-G2 / SHADOW_EXEMPLAR_OFF) — flagged in the report when that happens."""
-    base_system = _build_verdict_system_prompt(vi)
-    exemplar_block = _build_exemplar_block_for_arm(vi.category)
-    # Inject the exemplar block into the system prompt. _build_verdict_system_prompt
-    # composes COMPARISON_SYSTEM + personality + pain-workflow + scoring-context;
-    # I2's production injection lands the block after personality and BEFORE
-    # pain-workflow. The harness can't splice mid-string without re-implementing
-    # the composer, so it appends the block as a clearly-delimited section — the
-    # content is identical; only ordering differs from prod, and ordering does
-    # not change which exemplars the model sees. (When prod unifies on
-    # build_verdict_prompt at I5.10 + I2 injects there, a later harness rev can
-    # call that path directly for byte-exact prod parity.)
-    system_msg = base_system
-    if exemplar_block:
-        system_msg += "\n\n" + exemplar_block
+    """Directive 2 — gpt-4o verdict with I1's exemplar file injected via the REAL
+    prod `build_verdict_prompt` path. Compared against arm_baseline_4o (same
+    model + inputs, the on-disk APs-only file) so any winner-axis delta is
+    attributable to the exemplar CONTENT alone. SHADOW_EXEMPLAR_FILE selects
+    I1's filled JSON; absent/OFF -> reads the on-disk file (= baseline control)."""
+    exemplar_file = os.getenv("SHADOW_EXEMPLAR_FILE")
+    with _swapped_exemplar_file(exemplar_file):
+        system_msg = _build_verdict_system_prompt(vi)
     user_msg = _build_verdict_user_msg(vi)
     try:
         verdict, pt, ct = await _chat_json(client, "gpt-4o", system_msg, user_msg)
