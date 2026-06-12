@@ -69,25 +69,51 @@ def test_anti_patterns_render_into_block():
         assert "ANTI-PATTERN" in block.upper(), f"{cat}: no AP rendered"
 
 
-def test_g2_state_ap_only_no_examples_preamble_no_reinforcement():
-    """F1 (G2 ultracode): the SHIPPED file has exemplars[] EMPTY + per-category
-    anti_patterns POPULATED. An AP-only category must render the AP block ONLY —
-    NO 'examples below' preamble (incoherent with zero examples) and NO
-    'examples above are abridged' reinforcement. Reads the REAL shipped file."""
+def test_ap_carrying_categories_render_their_aps_post_g3():
+    """F1 (post-G3, was test_g2_state_ap_only): at G2 every populated category was
+    AP-only; after the I1 G3 fill those same categories ALSO carry exemplars, so
+    the AP block now renders ALONGSIDE the examples preamble + reinforcement. This
+    pins the surviving real-file behaviour: every AP-carrying category still
+    renders its anti-patterns (the I2.3 content is not dropped by the fill)."""
     data = _load()
-    # Every populated category in the shipped file is AP-only at G2.
-    ap_only = [
+    ap_cats = [
         c for c, e in data.items()
-        if not c.startswith("_") and (e.get("anti_patterns") and not e.get("exemplars"))
+        if not c.startswith("_") and e.get("anti_patterns")
     ]
-    assert ap_only, "expected AP-only categories in the shipped G2 file"
-    for cat in ap_only:
+    assert ap_cats, "expected AP-carrying categories in the shipped file"
+    for cat in ap_cats:
         block = vel.build_exemplar_block(cat)
         assert block != ""
-        assert "ANTI-PATTERN" in block.upper()           # APs render
-        assert "examples below" not in block.lower()       # NO examples preamble
-        assert "examples above are abridged" not in block.lower()  # NO reinforcement
+        assert "ANTI-PATTERN" in block.upper()         # I2.3 APs still render
         assert "Avoid these failure modes:" in block
+
+
+def test_ap_only_category_renders_aps_without_examples_scaffolding(tmp_path, monkeypatch):
+    """The G2 behavioural invariant, preserved against render drift: when a
+    category has anti_patterns but ZERO exemplars, the loader renders the AP
+    block ONLY — NO 'examples below' preamble (incoherent with zero examples)
+    and NO 'examples above are abridged' reinforcement. Pinned via a tmp fixture
+    (the real file no longer has any AP-only category post-G3, so the behaviour
+    must be exercised against a constructed file, not the shipped one)."""
+    f = tmp_path / "verdict_exemplars.json"
+    f.write_text(json.dumps({
+        "electronics": {
+            "exemplars": [],
+            "anti_patterns": [
+                {"name": "identical on paper = identical in Bahrain",
+                 "rule": "A spec tie can break on local service/consumables.",
+                 "teaches": "H4"}
+            ],
+        }
+    }), encoding="utf-8")
+    monkeypatch.setattr(vel, "_EXEMPLAR_FILE", f)
+    vel.reset_cache()
+    block = vel.build_exemplar_block("electronics")
+    assert block != ""
+    assert "ANTI-PATTERN" in block.upper()                       # APs render
+    assert "Avoid these failure modes:" in block
+    assert "examples below" not in block.lower()                  # NO examples preamble
+    assert "examples above are abridged" not in block.lower()     # NO reinforcement
 
 
 def test_anti_patterns_forbidden_words_clean():
