@@ -55,7 +55,9 @@ SOURCE_REGISTRY: List[Source] = [
     # replacement). behbehani.com + jumboelectronics.com verified alive (200), kept.
     Source("jumboelectronics.com", "bahrain", ("electronics",), 3.0),
     Source("talabat.com", "bahrain", ("grocery",), 3.0),
-    Source("spinneysbahrain.com", "bahrain", ("grocery",), 3.0),
+    # spinneysbahrain.com DELETED (I5.11 liveness gate 2026-06-12): NXDOMAIN;
+    # spinneys.com live but no Bahrain storefront evidence (Decision F: never
+    # fabricate). Re-add when a verified Bahrain-serving domain exists (S3).
     Source("megamart.bh", "bahrain", ("grocery",), 3.0),
     # F1.5 expansion (verified live 2026-06-10) — Bahrain grocery + pharmacy
     # gaps. RATIFICATION REQUIRED (F1.5 checkpoint) before merge.

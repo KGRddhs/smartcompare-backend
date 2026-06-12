@@ -97,11 +97,12 @@ def test_get_sources_for_category_electronics_includes_sharaf_dg_bh_and_extra_bh
     assert "extra.com" in domains
 
 
-def test_get_sources_for_category_grocery_includes_talabat_and_spinneys():
+def test_get_sources_for_category_grocery_includes_talabat():
     sources = get_sources_for_category("grocery")
     domains = [s.domain for s in sources]
     assert "talabat.com" in domains
-    assert "spinneysbahrain.com" in domains
+    # spinneysbahrain.com deleted by I5.11 liveness gate (NXDOMAIN, Decision F)
+    assert "spinneysbahrain.com" not in domains
     assert "megamart.bh" in domains
 
 
@@ -168,7 +169,8 @@ def test_grocery_sources_now_include_alosra():
     assert "alosraonline.com" in domains
     # Pre-existing grocery sources still present (no regression).
     assert "talabat.com" in domains
-    assert "spinneysbahrain.com" in domains
+    # spinneysbahrain.com deleted by I5.11 liveness gate (NXDOMAIN, Decision F)
+    assert "spinneysbahrain.com" not in domains
 
 
 def test_supplements_sources_now_include_pharmacies():
