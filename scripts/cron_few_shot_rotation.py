@@ -4,17 +4,26 @@
 Plan: docs/plans/2026-06-11-bundle-b-s2-plan.md § I1.4
 Pattern: scripts/cron_eval_nightly.py + scripts/cron_reengagement.py
 
-Regenerates data/verdict_exemplars.json from the top-decile of
-comparison_feedback rows - the verdicts real GCC users marked BOTH useful
+READ-MERGE-WRITE refresh of data/verdict_exemplars.json from the top-decile
+of comparison_feedback rows - the verdicts real GCC users marked BOTH useful
 (useful=true) AND correct on the winner axis (winner_correct='correct',
 migration 027). Those are the uncontaminated, field-validated teaching
 signal the S1 dossier (§3) names as the long-term curation source that
-replaces the I1.2 synthetic seed.
+gradually replaces the I1.2 synthetic seed.
+
+This is NOT a wholesale rewrite (B2 fix). The cron reads the existing file as
+the merge base and:
+  - REPLACES exemplars[] ONLY for categories that have qualifying feedback;
+  - KEEPS the existing synthetic seed for categories WITHOUT feedback;
+  - PRESERVES every category's anti_patterns (I2.3 content) verbatim — the
+    loader reads APs from the SAME file, so rotation must never drop them;
+  - PRESERVES the top-level _schema / _meta blocks (I2-owned), stamping only a
+    rotation-provenance note onto _meta.
 
 Cold-start posture: when zero qualifying rows exist (feedback table is
 empty in production as of migration 027), the cron writes NOTHING and the
-I1.2 synthetic seed stays in place. A feedback-starved week must never
-blank the production exemplar file.
+I1.2 synthetic seed + I2 anti_patterns stay in place. A feedback-starved week
+must never blank the production exemplar file.
 
 Privacy invariant: only the linked comparison's product_names + verdict
 text (winner_index / winner_reason / key_tradeoff / value_context) are
@@ -86,20 +95,21 @@ async def _fetch_top_decile_feedback(
     each joined to its comparison payload (product_names + full_response).
 
     Shape returned per row:
-        {"useful": True, "winner_correct": "correct",
+        {"useful": True, "winner_correct": "correct", "comparison_id": "...",
          "comparison": {"product_names": [...], "full_response": {...}}}
 
     Supabase PostgREST embeds the parent comparison via the FK relationship
     (`comparison:comparisons(...)`). Only the renderable v2 payload carries a
     usable verdict, so we filter schema_version implicitly by reading
     full_response.comparison downstream (a v1 row yields no verdict and is
-    skipped in _build_exemplars_from_feedback).
+    skipped in _build_exemplars_from_feedback). comparison_id is the
+    _provenance.source_pattern_id for mined exemplars (B3).
     """
     try:
         resp = (
             client.table("comparison_feedback")
             .select(
-                "useful, winner_correct, "
+                "useful, winner_correct, comparison_id, "
                 "comparison:comparisons(product_names, full_response)"
             )
             .eq("useful", True)
@@ -185,17 +195,22 @@ def _exemplar_from_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
     teaches = _infer_h_tag(value_context, winner_index)
+    # B3: source_pattern_id = the feedback comparison_id (the mined row's id),
+    # so the provenance is traceable like a gold-id is for the synthetic seed.
+    comparison_id = row.get("comparison_id") or comp.get("id")
     return {
         "_category": category,  # transient grouping key, stripped before write
         "title": f"{names[0]} vs {names[1]} (user-validated)",
         "teaches": teaches,
         "setup": (
             f"{names[0]} vs {names[1]}: a real comparison GCC users marked "
-            f"useful with the winner confirmed correct. EXAMPLE — do not copy."
+            f"useful with the winner confirmed correct. "
+            f"EXAMPLE — abridged, do not copy structure or content."
         ),
         "verdict_json": verdict_json,
         "_provenance": {
             "source": "comparison_feedback",
+            "source_pattern_id": str(comparison_id) if comparison_id else "feedback",
             "synthetic": False,
             "rewrite_note": (
                 "Mined from top-decile user feedback (useful + winner_correct); "
@@ -205,18 +220,38 @@ def _exemplar_from_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+def _load_existing(path: Path = _EXEMPLAR_FILE) -> Dict[str, Any]:
+    """Read the current exemplar file as the merge base. Returns {} on missing
+    or malformed file (rotation then writes a fresh seed-only file)."""
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[cron_few_shot_rotation] existing file unreadable: %s", exc)
+        return {}
+
+
 def _build_exemplars_from_feedback(
     rows: List[Dict[str, Any]],
+    existing: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Dict[str, List[Any]]]:
-    """Group qualifying feedback rows into the {category: {exemplars,
-    anti_patterns}} exemplar-file shape.
+    """READ-MERGE-WRITE (B2): overlay mined exemplars onto the EXISTING file so
+    nothing I2-owned is clobbered:
+      - PRESERVE every category's `anti_patterns` (I2.3 content) verbatim;
+      - PRESERVE top-level `_schema` / `_meta` blocks (handled by the caller);
+      - REPLACE `exemplars[]` ONLY for categories that have qualifying feedback;
+      - SEED `exemplars[]` from the existing synthetic seed for categories
+        WITHOUT feedback (so unfed categories keep their I1.2 seed, never blanked).
 
     Re-filters useful + winner_correct defensively (the fetch query already
-    constrains them, but a patched/again-source fetcher in tests may not).
-    anti_patterns are left EMPTY here - they are I2-owned static content that
-    rotation must not clobber; the I2 loader merges file APs separately.
+    constrains them, but a patched fetcher in tests may not).
     """
-    by_cat: Dict[str, List[Dict[str, Any]]] = {}
+    existing = existing if existing is not None else _load_existing()
+
+    # 1. Mine feedback exemplars per category.
+    mined: Dict[str, List[Dict[str, Any]]] = {}
     for row in rows:
         if row.get("useful") is not True:
             continue
@@ -226,35 +261,65 @@ def _build_exemplars_from_feedback(
         if ex is None:
             continue
         cat = ex.pop("_category")
-        bucket = by_cat.setdefault(cat, [])
+        bucket = mined.setdefault(cat, [])
         if len(bucket) < _MAX_EXEMPLARS_PER_CATEGORY:
             bucket.append(ex)
 
-    return {
-        cat: {"exemplars": exs, "anti_patterns": []}
-        for cat, exs in by_cat.items()
-    }
+    # 2. Merge: start from the union of existing categories + any new mined cat.
+    out: Dict[str, Dict[str, List[Any]]] = {}
+    existing_cats = [c for c in existing if not c.startswith("_")]
+    for cat in dict.fromkeys(list(existing_cats) + list(mined.keys())):
+        prev = existing.get(cat, {}) if isinstance(existing.get(cat), dict) else {}
+        out[cat] = {
+            # feedback wins for fed categories; otherwise KEEP the existing seed.
+            "exemplars": mined[cat] if cat in mined else (prev.get("exemplars") or []),
+            # ALWAYS preserve I2's anti_patterns — rotation never touches them.
+            "anti_patterns": prev.get("anti_patterns", []),
+        }
+        # preserve any other category-level keys I2 added (forward-compatible).
+        for k, v in prev.items():
+            if k not in ("exemplars", "anti_patterns"):
+                out[cat][k] = v
+    return out
 
 
-def _write_exemplar_file(data: Dict[str, Any], path: Path = _EXEMPLAR_FILE) -> None:
+def _write_exemplar_file(
+    data: Dict[str, Any],
+    path: Path = _EXEMPLAR_FILE,
+    existing: Optional[Dict[str, Any]] = None,
+) -> None:
     """Atomically rewrite the exemplar file. Writes to a temp sibling then
     replaces, so a crash mid-write never leaves a truncated JSON that would
-    break the loader on the next deploy."""
+    break the loader on the next deploy.
+
+    PRESERVES the existing top-level `_schema` block (I2-owned) and stamps a
+    rotation note onto `_meta` WITHOUT dropping anything else (B2: no clobber).
+    """
+    existing = existing if existing is not None else _load_existing(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
-    payload = {
-        "_meta": {
-            "version": 1,
-            "source": "cron_few_shot_rotation",
-            "note": (
-                "Regenerated from top-decile comparison_feedback "
-                "(useful + winner_correct='correct'). Product names + verdict "
-                "text only; no identity fields. anti_patterns are I2-owned "
-                "and merged separately by the loader."
-            ),
-        },
-        **data,
+
+    # Carry forward every existing top-level meta block (_schema, _meta, ...).
+    payload: Dict[str, Any] = {
+        k: v for k, v in existing.items() if k.startswith("_")
     }
+    # Stamp the rotation provenance onto _meta without removing prior keys.
+    meta = dict(payload.get("_meta") or {})
+    meta.update({
+        "version": meta.get("version", 1),
+        "last_rotation_source": "cron_few_shot_rotation",
+        "rotation_note": (
+            "exemplars[] regenerated from top-decile comparison_feedback "
+            "(useful + winner_correct='correct'); product names + verdict text "
+            "only, no identity fields. anti_patterns + _schema PRESERVED from the "
+            "prior file (read-merge-write — never clobbered). Categories without "
+            "feedback keep their existing synthetic seed."
+        ),
+    })
+    payload["_meta"] = meta
+    # Category entries (exemplars + preserved anti_patterns).
+    payload.update(data)
+
     tmp.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -285,8 +350,12 @@ async def main() -> Optional[int]:
         )
         return None
 
+    # Read the current file ONCE as the merge base (B2 read-merge-write) so the
+    # build + write steps preserve I2's anti_patterns + _schema consistently.
+    existing = _load_existing()
+
     try:
-        regenerated = _build_exemplars_from_feedback(rows)
+        regenerated = _build_exemplars_from_feedback(rows, existing=existing)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[cron_few_shot_rotation] build step failed: %s", exc)
         return None
@@ -300,7 +369,7 @@ async def main() -> Optional[int]:
         return None
 
     try:
-        _write_exemplar_file(regenerated)
+        _write_exemplar_file(regenerated, existing=existing)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[cron_few_shot_rotation] write step failed: %s", exc)
         return None

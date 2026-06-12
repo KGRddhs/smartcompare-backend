@@ -124,9 +124,10 @@ def test_empty_feedback_falls_back_to_seed(monkeypatch):
 
 
 def test_privacy_only_names_and_verdict(good_rows):
-    """The generated exemplars must contain ONLY product names + verdict text,
-    never user_id / device / email or any identity field."""
-    built = rot._build_exemplars_from_feedback(good_rows)
+    """The mined exemplars must contain ONLY product names + verdict text,
+    never user_id / device / email or any identity field. existing={} isolates
+    the feedback-mined output (the merge-base preservation is covered separately)."""
+    built = rot._build_exemplars_from_feedback(good_rows, existing={})
     blob = json.dumps(built)
     for forbidden in ("user_id", "device", "email", "fingerprint"):
         assert forbidden not in blob
@@ -163,8 +164,10 @@ def test_run_failure_does_not_raise(monkeypatch):
 
 def test_exemplar_schema_compatible(good_rows):
     """Generated exemplars must carry the I1.1 contract fields so the I2 loader
-    can render them: title, teaches, setup, verdict_json, _provenance."""
-    built = rot._build_exemplars_from_feedback(good_rows)
+    can render them: title, teaches, setup, verdict_json, _provenance. Isolate
+    feedback-mined exemplars with existing={} (so seed rows from the real file
+    aren't mixed in — those are synthetic:true by design)."""
+    built = rot._build_exemplars_from_feedback(good_rows, existing={})
     for cat, block in built.items():
         for ex in block["exemplars"]:
             assert {"title", "teaches", "setup", "verdict_json",
@@ -172,6 +175,97 @@ def test_exemplar_schema_compatible(good_rows):
             vj = ex["verdict_json"]
             assert vj["winner_index"] in (0, 1)
             assert "personalized_insights" not in vj
-            # rotation-sourced provenance is flagged non-synthetic
+            # B3: mined exemplars are synthetic:false (truthful) + carry the
+            # comparison_id as source_pattern_id + the abridged marker.
             assert ex["_provenance"]["synthetic"] is False
             assert ex["_provenance"]["source"] == "comparison_feedback"
+            assert ex["_provenance"].get("source_pattern_id")
+            assert "abridged, do not copy structure or content" in ex["setup"]
+
+
+# ---------------------------------------------------------------------------
+# B2 read-merge-write preservation — REAL write (not mocked), proving rotation
+# never clobbers I2's anti_patterns / _schema and never blanks unfed categories.
+# ---------------------------------------------------------------------------
+
+def _seeded_existing():
+    """An existing file shaped like the real post-G3 canonical: I2 _schema +
+    per-category anti_patterns + an I1 synthetic seed in exemplars[]."""
+    return {
+        "_schema": {"note": "I2 schema doc", "version": 1},
+        "_meta": {"version": 1, "custom_i2_key": "keep me"},
+        "electronics": {
+            "exemplars": [{"title": "seed-elec", "teaches": "H4",
+                           "_provenance": {"source_pattern_id": "elec-024",
+                                           "synthetic": True}}],
+            "anti_patterns": [{"name": "identical on paper", "rule": "r", "teaches": "H4"}],
+        },
+        "grocery": {
+            "exemplars": [{"title": "seed-groc", "teaches": "H1"}],
+            "anti_patterns": [{"name": "global prestige", "rule": "r", "teaches": "H2"}],
+        },
+    }
+
+
+def test_real_write_preserves_anti_patterns_and_schema(tmp_path):
+    """REAL write (no mock): I2's anti_patterns + the _schema block survive a
+    rotation that only has feedback for an unrelated category."""
+    existing = _seeded_existing()
+    p = tmp_path / "verdict_exemplars.json"
+    p.write_text(json.dumps(existing, ensure_ascii=False), encoding="utf-8")
+
+    makeup_row = _fb_row("makeup", ["A", "B"], 0, "65% less.", "t", "value v0",
+                         "premium v1")
+    makeup_row["comparison_id"] = "cmp-xyz"
+    built = rot._build_exemplars_from_feedback([makeup_row], existing=existing)
+    rot._write_exemplar_file(built, path=p, existing=existing)
+
+    written = json.loads(p.read_text(encoding="utf-8"))
+    # _schema preserved verbatim
+    assert written["_schema"]["note"] == "I2 schema doc"
+    # I2's category anti_patterns preserved
+    assert len(written["electronics"]["anti_patterns"]) == 1
+    assert len(written["grocery"]["anti_patterns"]) == 1
+    # custom _meta key preserved; rotation note stamped
+    assert written["_meta"]["custom_i2_key"] == "keep me"
+    assert "rotation_note" in written["_meta"]
+
+
+def test_real_write_keeps_seed_for_unfed_categories(tmp_path):
+    """Categories WITHOUT qualifying feedback keep their existing synthetic seed
+    — rotation never blanks them."""
+    existing = _seeded_existing()
+    p = tmp_path / "verdict_exemplars.json"
+    p.write_text(json.dumps(existing, ensure_ascii=False), encoding="utf-8")
+
+    # feedback only for makeup → electronics + grocery keep their seed
+    makeup_row = _fb_row("makeup", ["A", "B"], 0, "65% less.", "t", "v0", "v1")
+    built = rot._build_exemplars_from_feedback([makeup_row], existing=existing)
+    rot._write_exemplar_file(built, path=p, existing=existing)
+
+    written = json.loads(p.read_text(encoding="utf-8"))
+    assert written["electronics"]["exemplars"][0]["title"] == "seed-elec"
+    assert written["grocery"]["exemplars"][0]["title"] == "seed-groc"
+    # makeup got the feedback exemplar
+    assert written["makeup"]["exemplars"][0]["_provenance"]["source"] == "comparison_feedback"
+
+
+def test_fed_category_replaces_exemplars_keeps_its_aps(tmp_path):
+    """A category WITH feedback gets its exemplars[] replaced but KEEPS its own
+    anti_patterns."""
+    existing = _seeded_existing()
+    p = tmp_path / "verdict_exemplars.json"
+    p.write_text(json.dumps(existing, ensure_ascii=False), encoding="utf-8")
+
+    # feedback for grocery (which has an existing seed + AP)
+    groc_row = _fb_row("grocery", ["X", "Y"], 1, "30% more value.", "t", "v0", "v1")
+    built = rot._build_exemplars_from_feedback([groc_row], existing=existing)
+    rot._write_exemplar_file(built, path=p, existing=existing)
+
+    written = json.loads(p.read_text(encoding="utf-8"))
+    # grocery exemplars REPLACED by feedback (seed-groc gone)
+    titles = [e["title"] for e in written["grocery"]["exemplars"]]
+    assert "seed-groc" not in titles
+    assert written["grocery"]["exemplars"][0]["_provenance"]["source"] == "comparison_feedback"
+    # grocery's AP still preserved
+    assert len(written["grocery"]["anti_patterns"]) == 1
