@@ -80,3 +80,120 @@ async def test_price_starts_concurrent_with_unified_search():
         f"SEQUENTIALLY (gap ≈ unified delay {UNIFIED_DELAY}s); I5.6 requires "
         f"price to start concurrently (gap ≈ 0)"
     )
+
+
+# --- LEVER 2 -----------------------------------------------------------------
+# The behavioral-profile + demographics fetch (for a logged-in user) must run
+# CONCURRENTLY with the per-product data gather. Today both _compare_from_text_impl
+# (ssc ~1363) and the streaming path (ssc ~1777) await the full product-data
+# gather FIRST, THEN fetch behavior_profile + demographics in a separate gather.
+# But those two fetches depend ONLY on user_id (known from the start) — they have
+# zero dependency on product_data. Overlapping the profile fetch with the product
+# gather shaves the smaller of (profile-fetch wall, product wall) off the request
+# with zero quality change: scoring still consumes the same behavior_profile, and
+# the verdict still consumes the same demographics_profile.
+#
+# As with lever 1, these tests measure the START GAP between the profile fetch and
+# the product gather (gap≈0 = concurrent; gap≈product-delay = sequential) so the
+# assertion is immune to network noise from un-mocked sibling work.
+
+_EXPLICIT_PAIR = ("Carrier 1.5T AC", "LG 1.5T AC")
+
+
+def _patch_downstream(svc, starts, product_delay):
+    """Common patch set for the lever-2 start-gap tests. Records the start of the
+    product-data fetch (slow) and of the behavior/demographics fetches, then lets
+    the impl raise downstream (scoring/verdict un-mocked) — we only assert on the
+    captured START timestamps, which land before any later crash."""
+
+    async def slow_product(*_a, **_k):
+        starts.setdefault("product", time.perf_counter())
+        await asyncio.sleep(product_delay)
+        # Minimal renderable shape so the dual-failure guard doesn't early-return
+        # before the profile fetch line is reached.
+        return {"brand": "X", "name": "Y", "specs": {"k": "v"},
+                "price": {"amount": 1, "currency": "BHD"}}
+
+    async def timed_behavior(*_a, **_k):
+        starts.setdefault("behavior", time.perf_counter())
+        return None
+
+    async def timed_demographics(*_a, **_k):
+        starts.setdefault("demographics", time.perf_counter())
+        return None
+
+    return [
+        patch.object(svc, "_fetch_product_data", new=AsyncMock(side_effect=slow_product)),
+        patch.object(svc, "_fetch_behavior_profile", new=AsyncMock(side_effect=timed_behavior)),
+        patch("app.services.structured_comparison_service.get_user_demographics",
+              new=AsyncMock(side_effect=timed_demographics)),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_profile_fetch_concurrent_with_product_gather_sync():
+    """_compare_from_text_impl must kick off the behavior+demographics fetch
+    CONCURRENTLY with the product-data gather. Pre-I5.6 lever-2: the profile fetch
+    started only AFTER the product gather resolved (gap ≈ product delay).
+    Post: gap ≈ 0."""
+    svc = StructuredComparisonService()
+    PRODUCT_DELAY = 1.0
+    starts: dict = {}
+
+    patches = _patch_downstream(svc, starts, PRODUCT_DELAY)
+    try:
+        with patches[0], patches[1], patches[2]:
+            try:
+                await svc._compare_from_text_impl(
+                    "Carrier 1.5T AC vs LG 1.5T AC", "bahrain",
+                    user_id="user-123", explicit_pair=_EXPLICIT_PAIR, nocache=True,
+                )
+            except Exception:
+                # Downstream (scoring/verdict) is un-mocked and will raise after the
+                # profile fetch — we only care about the captured start timestamps.
+                pass
+    finally:
+        pass
+
+    assert "product" in starts, "product gather must run"
+    assert "behavior" in starts and "demographics" in starts, "profile fetch must run"
+    gap = max(abs(starts["behavior"] - starts["product"]),
+              abs(starts["demographics"] - starts["product"]))
+    assert gap < 0.3, (
+        f"profile fetch started {gap:.2f}s after the product gather — they ran "
+        f"SEQUENTIALLY (gap ≈ product delay {PRODUCT_DELAY}s); I5.6 lever-2 requires "
+        f"the behavior+demographics fetch to start concurrently (gap ≈ 0)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_profile_fetch_concurrent_with_product_gather_streaming():
+    """Streaming path: the behavior+demographics fetch must overlap the product
+    gather exactly like the sync path. Same START-GAP proof."""
+    svc = StructuredComparisonService()
+    PRODUCT_DELAY = 1.0
+    starts: dict = {}
+
+    patches = _patch_downstream(svc, starts, PRODUCT_DELAY)
+    with patches[0], patches[1], patches[2]:
+        try:
+            async for _ev, _payload in svc.compare_from_text_streaming(
+                "Carrier 1.5T AC vs LG 1.5T AC", "bahrain",
+                user_id="user-123", explicit_pair=_EXPLICIT_PAIR, nocache=True,
+            ):
+                # Stop once the profile fetch has been observed — no need to drive
+                # the stream through scoring/verdict.
+                if "behavior" in starts and "demographics" in starts:
+                    break
+        except Exception:
+            pass
+
+    assert "product" in starts, "product gather must run"
+    assert "behavior" in starts and "demographics" in starts, "profile fetch must run"
+    gap = max(abs(starts["behavior"] - starts["product"]),
+              abs(starts["demographics"] - starts["product"]))
+    assert gap < 0.3, (
+        f"[stream] profile fetch started {gap:.2f}s after the product gather — "
+        f"SEQUENTIAL (gap ≈ product delay {PRODUCT_DELAY}s); I5.6 lever-2 requires "
+        f"concurrency (gap ≈ 0)"
+    )

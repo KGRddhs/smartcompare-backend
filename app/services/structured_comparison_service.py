@@ -97,6 +97,22 @@ def _phase1_completely_failed(pd: Dict[str, Any]) -> bool:
     return pd.get("specs") is None and pd.get("price") is None
 
 
+async def _cancel_profile_task(task) -> None:
+    """I5.6 lever-2: cleanly cancel the early-started behavior/demographics fetch
+    task on an early-return path (INSUFFICIENT_DATA / stream timeout) so no
+    orphaned coroutine is left pending. Awaits the cancellation and swallows
+    CancelledError (plus any error the fetch itself raised) — both fetches are
+    already individually fail-soft (_fetch_behavior_profile returns None on error,
+    get_user_demographics likewise), so there is nothing to surface here."""
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
+
+
 def _product_price_amount(p):
     price = p.get("price")
     if isinstance(price, dict):
@@ -1243,6 +1259,11 @@ class StructuredComparisonService:
         self.serper_calls = 0
         self._shopping_items_cache = {}
 
+        # I5.6 lever-2 — bound to None at the top so the outer exception handler
+        # can always cancel it (an exception raised before the kickoff line would
+        # otherwise NameError on the cancel in the handler).
+        _profile_task = None
+
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
 
@@ -1329,6 +1350,22 @@ class StructuredComparisonService:
                 original_category = selected_category
             category_used = detected_category
 
+            # I5.6 lever-2 — start the behavioral-profile + demographics fetch
+            # CONCURRENTLY with the product-data gather. Both fetches depend ONLY
+            # on user_id (known here) and have zero dependency on product_data, so
+            # kicking them off now overlaps their Supabase round-trips with the
+            # product gather instead of running them sequentially after it. The
+            # task is awaited at its original site below (just before scoring), so
+            # scoring still consumes the same behavior_profile and the verdict the
+            # same demographics_profile — zero quality change, pure latency. The
+            # early-return paths between here and the await CANCEL this task so no
+            # orphaned coroutine is left pending.
+            if user_id:
+                _profile_task = asyncio.ensure_future(asyncio.gather(
+                    self._fetch_behavior_profile(user_id),
+                    get_user_demographics(user_id),
+                ))
+
             # Step 2: Fetch data for each product (parallel)
             product_data = await asyncio.gather(
                 self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
@@ -1347,6 +1384,7 @@ class StructuredComparisonService:
                     "for specs+price — refusing to score; query=%r region=%s",
                     query, region,
                 )
+                await _cancel_profile_task(_profile_task)
                 return {
                     "success": False,
                     "error": "Comparison data was incomplete — choose different products.",
@@ -1356,14 +1394,13 @@ class StructuredComparisonService:
                     "api_calls": self.api_calls,
                 }
 
-            # Fetch behavioral profile + demographics_profile if user is logged in
+            # Fetch behavioral profile + demographics_profile if user is logged in.
+            # I5.6 lever-2: the fetch was kicked off above (concurrent with the
+            # product gather); here we just await the already-running task.
             behavior_profile = None
             demographics_profile = None
-            if user_id:
-                behavior_profile, demographics_profile = await asyncio.gather(
-                    self._fetch_behavior_profile(user_id),
-                    get_user_demographics(user_id),
-                )
+            if _profile_task is not None:
+                behavior_profile, demographics_profile = await _profile_task
 
             # Step 3: Compute deterministic scores
             scoring_service = get_scoring_service()
@@ -1546,6 +1583,9 @@ class StructuredComparisonService:
 
         except Exception as e:
             logger.error(f"Comparison error: {e}", exc_info=True)
+            # I5.6 lever-2 — if the failure happened before the profile task was
+            # awaited, cancel it so no orphaned coroutine is left pending.
+            await _cancel_profile_task(_profile_task)
             return {"success": False, "error": str(e), "total_cost": self.total_cost}
 
     async def compare_from_text_streaming(
@@ -1569,6 +1609,10 @@ class StructuredComparisonService:
         self.gpt_calls = 0
         self.serper_calls = 0
         self._shopping_items_cache = {}
+
+        # I5.6 lever-2 — bound to None at the top so the outer exception handler
+        # can always cancel it (mirror of the sync path).
+        _profile_task = None
 
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
@@ -1659,6 +1703,18 @@ class StructuredComparisonService:
             # Step 2: Fetch product data
             yield ("status", {"message": "Fetching specs and prices...", "progress": 20})
 
+            # I5.6 lever-2 — start the behavioral-profile + demographics fetch
+            # CONCURRENTLY with the product-data gather (mirror of the sync path).
+            # Both fetches depend only on user_id and have zero dependency on
+            # product_data, so overlapping their Supabase round-trips with the
+            # product gather is pure latency. Awaited at the original site below;
+            # the timeout + INSUFFICIENT_DATA early-return paths cancel it.
+            if user_id:
+                _profile_task = asyncio.ensure_future(asyncio.gather(
+                    self._fetch_behavior_profile(user_id),
+                    get_user_demographics(user_id),
+                ))
+
             # Bundle E § Decision 8 — hard 25s cap on the data-fetch step.
             # Wraps both products' fetches together so a single hung scraper
             # can't extend the stream beyond the budget. On timeout we yield
@@ -1678,6 +1734,7 @@ class StructuredComparisonService:
                     "yielding settle_complete with partial response",
                     STREAM_HARD_CAP_SECONDS, query,
                 )
+                await _cancel_profile_task(_profile_task)
                 partial_response = {
                     "success": False,
                     "error": "Comparison timed out — please try again.",
@@ -1700,6 +1757,7 @@ class StructuredComparisonService:
                     "returned None for specs+price — query=%r region=%s",
                     query, region,
                 )
+                await _cancel_profile_task(_profile_task)
                 insufficient_response = {
                     "success": False,
                     "error": "Comparison data was incomplete — choose different products.",
@@ -1770,14 +1828,13 @@ class StructuredComparisonService:
                 ]
             })
 
-            # Fetch behavioral profile + demographics_profile
+            # Fetch behavioral profile + demographics_profile.
+            # I5.6 lever-2: the fetch was kicked off above (concurrent with the
+            # product gather); here we just await the already-running task.
             behavior_profile = None
             demographics_profile = None
-            if user_id:
-                behavior_profile, demographics_profile = await asyncio.gather(
-                    self._fetch_behavior_profile(user_id),
-                    get_user_demographics(user_id),
-                )
+            if _profile_task is not None:
+                behavior_profile, demographics_profile = await _profile_task
 
             # Step 3: Compute scores
             t_score = time.perf_counter() if orchestrator_timings is not None else None
@@ -1989,6 +2046,9 @@ class StructuredComparisonService:
 
         except Exception as e:
             logger.error(f"Streaming comparison error: {e}", exc_info=True)
+            # I5.6 lever-2 — cancel the profile task if the failure happened
+            # before it was awaited (mirror of the sync path).
+            await _cancel_profile_task(_profile_task)
             yield ("error", {
                 "success": False, "error": str(e), "total_cost": self.total_cost,
             })
