@@ -257,14 +257,54 @@ class TestAtLeast3CoreDimensions:
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — Max 6 dimensions (3 core + 0..3 contextual)
+# Test 4 — Max 8 dimensions (3 core + 0..5 contextual)
 # ---------------------------------------------------------------------------
+# S2 I3.4 (Decision A, ratified 2026-06-11): cap raised 6→8 so electronics
+# surfaces ecosystem + futureproof contextual rows. FE already supports
+# (HERO_CAP=4 + expander). Boundary moved: 8 pass, 9 raises.
 
-class TestMax6Dimensions:
-    """ScoringV2 caps dimensions[] at 6 — 3 universal core + up to 3
+class TestMax8Dimensions:
+    """ScoringV2 caps dimensions[] at 8 — 3 universal core + up to 5
     contextual extras (build, popularity, category-specific)."""
 
-    def test_six_dimensions_pass(self):
+    def test_eight_dimensions_pass(self):
+        dims = _core_dimensions() + [
+            Dimension(**_valid_dimension_kwargs(
+                key="build_quality", label="Build",
+                score_a=80, score_b=88,
+                delta_text="PBT keycaps, metal frame",
+                is_core=False,
+            )),
+            Dimension(**_valid_dimension_kwargs(
+                key="popularity", label="Popularity",
+                score_a=70, score_b=65,
+                delta_text="1200 reviews vs 800",
+                is_core=False,
+            )),
+            Dimension(**_valid_dimension_kwargs(
+                key="dpi", label="DPI",
+                score_a=85, score_b=78,
+                delta_text="16000 DPI vs 12000 DPI",
+                is_core=False,
+            )),
+            Dimension(**_valid_dimension_kwargs(
+                key="ecosystem", label="Ecosystem",
+                score_a=90, score_b=65,
+                delta_text="3 first-party accessories vs 1",
+                is_core=False,
+            )),
+            Dimension(**_valid_dimension_kwargs(
+                key="futureproof", label="Future-proofing",
+                score_a=78, score_b=82,
+                delta_text="4 years of OS updates vs 5",
+                is_core=False,
+            )),
+        ]
+        sv = ScoringV2(**_valid_scoring_v2_kwargs(dimensions=dims))
+        assert len(sv.dimensions) == 8
+
+    def test_six_dimensions_still_pass(self):
+        """The pre-S2 6-dim shape must remain valid (it's a subset of 8)."""
         dims = _core_dimensions() + [
             Dimension(**_valid_dimension_kwargs(
                 key="build_quality", label="Build",
@@ -288,7 +328,7 @@ class TestMax6Dimensions:
         sv = ScoringV2(**_valid_scoring_v2_kwargs(dimensions=dims))
         assert len(sv.dimensions) == 6
 
-    def test_seven_dimensions_raises(self):
+    def test_nine_dimensions_raises(self):
         dims = _core_dimensions() + [
             Dimension(**_valid_dimension_kwargs(
                 key="build_quality", label="Build",
@@ -306,6 +346,18 @@ class TestMax6Dimensions:
                 key="dpi", label="DPI",
                 score_a=85, score_b=78,
                 delta_text="16000 DPI vs 12000 DPI",
+                is_core=False,
+            )),
+            Dimension(**_valid_dimension_kwargs(
+                key="ecosystem", label="Ecosystem",
+                score_a=90, score_b=65,
+                delta_text="3 first-party accessories vs 1",
+                is_core=False,
+            )),
+            Dimension(**_valid_dimension_kwargs(
+                key="futureproof", label="Future-proofing",
+                score_a=78, score_b=82,
+                delta_text="4 years of OS updates vs 5",
                 is_core=False,
             )),
             Dimension(**_valid_dimension_kwargs(

@@ -269,6 +269,26 @@ def extract_specs(body: Dict[str, Any], product_idx: int) -> Dict[str, Any]:
     return {}
 
 
+def extract_missing_dim_cells(body: Dict[str, Any]) -> int:
+    """S2 I3.6 — read metadata.missing_dim_cells.count (the count of
+    MISSING_SCORE dimension cells the engine left unfilled). The KPI dial
+    for Ahmed's Decision B "no missing data / no false certainty".
+
+    Returns 0 when the metric is absent (older backend, or an error row
+    with no body) — the metric measures DATA gaps in answered runs, not
+    error starvation, so a missing metric is genuinely 0 for aggregation."""
+    if not isinstance(body, dict):
+        return 0
+    metadata = body.get("metadata")
+    if not isinstance(metadata, dict):
+        return 0
+    cells = metadata.get("missing_dim_cells")
+    if not isinstance(cells, dict):
+        return 0
+    count = cells.get("count", 0)
+    return int(count) if isinstance(count, (int, float)) else 0
+
+
 def collect_verdict_text(body: Dict[str, Any]) -> str:
     """All free-text the factual grader scans for forbidden facts: the
     overview verdict block, scoring_v2.factual_verdict lines, per-product
@@ -457,6 +477,10 @@ class GradedQuery:
     weighted_score: float
     passing: bool
     wall_over_cap: bool
+    # S2 I3.6 — count of MISSING_SCORE dimension cells from the response
+    # metadata (0 for error rows / older backends). Written to the --out
+    # JSONL + aggregated into the run-level missing-dim coverage metric.
+    missing_dim_cells: int = 0
 
 
 @dataclasses.dataclass
@@ -474,6 +498,11 @@ class EvalReport:
     per_query: List[GradedQuery]
     failing_ids: List[str]
     p95_over_cap: bool
+    # S2 I3.6 — run-level missing-dim coverage (sum + mean across queries).
+    # Persisted into the eval_runs metadata jsonb (NOT a DB column) so
+    # Decision B's "fully certain, no missing data" directive is measured.
+    missing_dim_cells_total: int = 0
+    missing_dim_cells_mean: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -572,6 +601,7 @@ def grade_run_result(run_result: QueryRunResult, record: Dict[str, Any],
         weighted_score=round(weighted, 4),
         passing=passing,
         wall_over_cap=(run_result.wall_ms / 1000.0) > cap,
+        missing_dim_cells=extract_missing_dim_cells(body),
     )
 
 
@@ -605,6 +635,9 @@ def aggregate(graded: List[GradedQuery]) -> EvalReport:
     p50 = _percentile(walls, 0.50) if walls else None
     p95 = _percentile(walls, 0.95) if walls else None
 
+    missing_total = sum(g.missing_dim_cells for g in graded)
+    missing_mean = round(missing_total / total, 4) if total else 0.0
+
     return EvalReport(
         queries_total=total,
         queries_passing=passing,
@@ -618,6 +651,8 @@ def aggregate(graded: List[GradedQuery]) -> EvalReport:
         per_query=graded,
         failing_ids=[g.id for g in graded if not g.passing],
         p95_over_cap=(p95 is not None and p95 > STREAM_HARD_CAP_SECONDS * 1000),
+        missing_dim_cells_total=missing_total,
+        missing_dim_cells_mean=missing_mean,
     )
 
 
@@ -683,6 +718,8 @@ def _format_report(report: EvalReport) -> str:
         f"wall p50={report.wall_p50_ms}ms p95={report.wall_p95_ms}ms "
         f"(cap {int(STREAM_HARD_CAP_SECONDS * 1000)}ms) "
         f"{'OVER-CAP' if report.p95_over_cap else 'within cap'}",
+        f"missing-dim cells  -  total={report.missing_dim_cells_total} "
+        f"mean={report.missing_dim_cells_mean:.2f}/query (I3.6 KPI dial)",
     ]
     if report.failing_ids:
         lines.append(f"failing: {', '.join(report.failing_ids)}")
@@ -759,7 +796,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             report, run_kind=args.run_kind,
             gold_version=gold_truth_version(args.gold),
             metadata={"base_url": args.base_url, "subset": args.subset or "full",
-                      "axis_weights_used": axis_weights},
+                      "axis_weights_used": axis_weights,
+                      # S2 I3.6 — missing-dim coverage (Decision B KPI dial).
+                      "missing_dim_cells_total": report.missing_dim_cells_total,
+                      "missing_dim_cells_mean": report.missing_dim_cells_mean},
         )
         print(f"# eval_runs row: {run_id}")
 

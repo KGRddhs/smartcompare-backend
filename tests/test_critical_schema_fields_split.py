@@ -40,11 +40,17 @@ def test_electronics_preferred():
 
 
 def test_supplements_split():
+    # S2 I3.6 (Decision B, 2026-06-11): active_ingredient promoted
+    # preferred → NON-NEGOTIABLE. The active ingredient (e.g. "Probiotic",
+    # "Vitamin C") is the single most defining spec for a supplement, and
+    # the gold set anchors on it — promoting it routes it into the
+    # Tier-2/Tier-3 fallback `missing` list so a blank Tier-1 extraction is
+    # filled rather than left at specs_score=0.0 (supp-010 root cause).
     assert set(CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE["supplements"]) == {
-        "dosage", "form",
+        "dosage", "form", "active_ingredient",
     }
     assert set(CRITICAL_SCHEMA_FIELDS_PREFERRED["supplements"]) == {
-        "count", "serving_size", "active_ingredient",
+        "count", "serving_size",
     }
 
 
@@ -67,11 +73,17 @@ def test_fashion_split():
 
 
 def test_skincare_split():
+    # S2 I3.6 (Decision B, 2026-06-11): active_ingredient promoted
+    # preferred → NON-NEGOTIABLE. The active (e.g. "Vitamin C", "Retinol")
+    # is the defining spec a skincare buyer compares on, and the gold set
+    # anchors on it — promotion routes it into the Tier-2/Tier-3 fallback
+    # `missing` list (skin-012 root cause: specs_score=0.0 because Tier-1
+    # left active_ingredient blank and the fallback never targeted it).
     assert set(CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE["skincare"]) == {
-        "volume", "ingredients",
+        "volume", "ingredients", "active_ingredient",
     }
     assert set(CRITICAL_SCHEMA_FIELDS_PREFERRED["skincare"]) == {
-        "skin_type", "active_ingredient", "spf",
+        "skin_type", "spf",
     }
 
 
@@ -140,3 +152,48 @@ def test_no_field_appears_in_both_layers():
         assert not overlap, (
             f"{category}: fields appear in both layers: {overlap}"
         )
+
+
+# ---------------------------------------------------------------------------
+# S2 I3.6 — coverage-math invariant (dispatcher condition for the
+# active_ingredient promotion): _product_spec_coverage MUST be unaffected by
+# the non-negotiable promotion. It counts filled spec VALUES against
+# _EXPECTED_SPEC_FIELD_COUNT[category] — it never reads the non-negotiable
+# set — so promoting active_ingredient preferred→non-negotiable cannot move
+# the weird-classifier coverage ratio. This pins that property so a future
+# edit that wires the non-negotiable set into coverage would fail loudly.
+# ---------------------------------------------------------------------------
+
+def test_product_spec_coverage_unaffected_by_promotion():
+    from app.services.structured_comparison_service import (
+        _product_spec_coverage,
+        _EXPECTED_SPEC_FIELD_COUNT,
+    )
+
+    # A supplements product with active_ingredient filled + one other field.
+    supp = {
+        "category": "supplements",
+        "specs": {"active_ingredient": "Probiotic", "dosage": "10B CFU"},
+    }
+    filled, expected = _product_spec_coverage(supp)
+    # 2 non-empty values; expected = the category's _EXPECTED count (NOT the
+    # non-negotiable list length, which active_ingredient just joined).
+    assert filled == 2, f"expected 2 filled values, got {filled}"
+    assert expected == _EXPECTED_SPEC_FIELD_COUNT["supplements"], (
+        "coverage denominator must be _EXPECTED_SPEC_FIELD_COUNT, NOT the "
+        f"non-negotiable set — got {expected}"
+    )
+
+    # Same property for skincare (the other promoted category).
+    skin = {
+        "category": "skincare",
+        "specs": {"active_ingredient": "Vitamin C", "volume": "30ml", "spf": "30"},
+    }
+    filled_s, expected_s = _product_spec_coverage(skin)
+    assert filled_s == 3
+    assert expected_s == _EXPECTED_SPEC_FIELD_COUNT["skincare"]
+
+    # And the denominator is byte-stable across categories regardless of how
+    # many fields are now non-negotiable (proves the decoupling explicitly).
+    assert _EXPECTED_SPEC_FIELD_COUNT["supplements"] == 5
+    assert _EXPECTED_SPEC_FIELD_COUNT["skincare"] == 5

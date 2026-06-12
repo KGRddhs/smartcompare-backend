@@ -173,3 +173,71 @@ async def test_tier2_only_fills_blank_fields_does_not_overwrite():
     # And the parallel calls collectively covered exactly the missing set.
     flat_called = {f for fields in called_with_fields for f in fields}
     assert flat_called == {"battery", "ram", "rear_camera"}
+
+
+# ---------------------------------------------------------------------------
+# S2 I3.6 (Decision B) — active_ingredient now NON-NEGOTIABLE for supp+skin,
+# so a blank active_ingredient enters the Tier-2 fill cascade. These pin the
+# fill-ATTEMPT coverage for the probiotic / vitamin-C-serum class that
+# scored specs_score=0.0 in the S1 baseline (supp-010, skin-012).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_tier2_targets_active_ingredient_for_probiotic():
+    """supp-010 class: a probiotic with blank active_ingredient. Post-
+    promotion, Tier 2 MUST attempt to fill active_ingredient (it's now
+    non-negotiable), where pre-S2 it was preferred-only and skipped."""
+    specs_so_far = {"dosage": "10 billion CFU", "form": "Capsule"}  # active_ingredient blank
+
+    called_with_fields: list = []
+
+    async def _fake_extract(*, brand, name, variant, category, fields, context):
+        called_with_fields.append(list(fields))
+        field = fields[0]
+        return {field: "Probiotic"} if field == "active_ingredient" else {}
+
+    async def _fake_search(*args, **kwargs):
+        return {"organic": [{"snippet": "Culturelle probiotic Lactobacillus"}]}
+
+    with patch("app.services.openai_service.extract_specs_targeted", new=_fake_extract):
+        with patch("app.services.serper_service.search_web", new=_fake_search):
+            out = await tier2_fill_non_negotiables(
+                brand="Culturelle", name="Daily Probiotic", variant=None,
+                category="supplements", specs_so_far=specs_so_far,
+            )
+    flat_called = {f for fields in called_with_fields for f in fields}
+    assert "active_ingredient" in flat_called, (
+        f"Tier 2 did not target active_ingredient for a probiotic — the I3.6 "
+        f"promotion is not wired: fields attempted={flat_called}"
+    )
+    assert out.get("active_ingredient") == "Probiotic"
+
+
+@pytest.mark.asyncio
+async def test_tier2_targets_active_ingredient_for_vitamin_c_serum():
+    """skin-012 class: a vitamin-C serum with blank active_ingredient.
+    Post-promotion Tier 2 attempts it (skincare non-negotiable now)."""
+    specs_so_far = {"volume": "30ml", "ingredients": "Aqua, Ascorbic Acid"}  # active_ingredient blank
+
+    called_with_fields: list = []
+
+    async def _fake_extract(*, brand, name, variant, category, fields, context):
+        called_with_fields.append(list(fields))
+        field = fields[0]
+        return {field: "Vitamin C"} if field == "active_ingredient" else {}
+
+    async def _fake_search(*args, **kwargs):
+        return {"organic": [{"snippet": "Garnier Vitamin C serum brightening"}]}
+
+    with patch("app.services.openai_service.extract_specs_targeted", new=_fake_extract):
+        with patch("app.services.serper_service.search_web", new=_fake_search):
+            out = await tier2_fill_non_negotiables(
+                brand="Garnier", name="Vitamin C Serum", variant=None,
+                category="skincare", specs_so_far=specs_so_far,
+            )
+    flat_called = {f for fields in called_with_fields for f in fields}
+    assert "active_ingredient" in flat_called, (
+        f"Tier 2 did not target active_ingredient for a vitamin-C serum — "
+        f"I3.6 promotion not wired: fields attempted={flat_called}"
+    )
+    assert out.get("active_ingredient") == "Vitamin C"

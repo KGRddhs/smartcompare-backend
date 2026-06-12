@@ -38,6 +38,14 @@ async def save_comparison_and_track_cohort(
                 event_data={"cohort_injected": bool(cohort_injected)},
                 comparison_id=comparison_id,
             )
+            # I3.2 — persist the self-critique row now that the FK target
+            # (comparison_id) exists. The orchestrator threads the critique
+            # into metadata._verdict_critique only when ENABLE_SELF_CRITIQUE
+            # was ON and a critique ran; absent otherwise. Best-effort —
+            # persist_critique swallows its own errors, never blocks.
+            _crit = (full_response.get("metadata") or {}).get("_verdict_critique")
+            if isinstance(_crit, dict):
+                await _persist_verdict_critique(comparison_id, _crit)
             # Referral Loop 2 — only fires when the user has an unredeemed
             # invite AND this is their first comparison AND abuse checks pass.
             # Self-contained no-op for organic users (most calls).
@@ -52,6 +60,37 @@ async def save_comparison_and_track_cohort(
                 logger.warning(f"Loop 2 trigger failed (silent): {loop2_exc}")
     except Exception as e:
         logger.warning(f"save_comparison_and_track_cohort failed (silent): {e}")
+
+
+async def _persist_verdict_critique(comparison_id: str, crit_meta: Dict) -> None:
+    """I3.2 — reconstruct a CritiqueResult from the response metadata
+    `_verdict_critique` dict and write the verdict_critiques row. Best-effort:
+    persist_critique swallows its own DB errors; this wrapper guards the
+    reconstruction so a malformed dict can't break the save flow."""
+    try:
+        from app.services.verdict_critique_service import (
+            CritiqueResult,
+            persist_critique,
+        )
+
+        tokens = int(crit_meta.get("critic_tokens_used", 0) or 0)
+        critique = CritiqueResult(
+            axis_scores=dict(crit_meta.get("axis_scores") or {}),
+            needs_regen=bool(crit_meta.get("needs_regen", False)),
+            low_axes=list(crit_meta.get("low_axes") or []),
+            regen_reason=crit_meta.get("regen_reason"),
+            critic_model=crit_meta.get("critic_model") or "gpt-4o-mini",
+            # tokens_used is a computed property; split back into prompt-only
+            # (the exact split isn't persisted — total is what the row stores).
+            usage={"prompt_tokens": tokens, "completion_tokens": 0},
+        )
+        await persist_critique(
+            comparison_id=comparison_id,
+            critique=critique,
+            regenerated=bool(crit_meta.get("regenerated", False)),
+        )
+    except Exception as exc:  # noqa: BLE001 — observability write, never fatal
+        logger.warning(f"verdict_critique persist failed (silent): {exc}")
 
 
 async def save_feedback(

@@ -344,3 +344,79 @@ async def test_run_eval_computes_wall_percentiles():
     assert report.wall_p50_ms is not None
     assert report.wall_p95_ms is not None
     assert report.wall_p95_ms >= report.wall_p50_ms
+
+
+# ---------------------------------------------------------------------------
+# S2 I3.6 — missing-dimension coverage metric in eval metadata
+# ---------------------------------------------------------------------------
+
+def _body_with_missing_cells(count: int, *, winner_idx: int = 0) -> dict:
+    """Response body carrying metadata.missing_dim_cells (the I3.6 KPI dial)."""
+    body = _make_response_body(winner_idx=winner_idx)
+    body["metadata"] = {
+        "missing_dim_cells": {"count": count, "total": 12,
+                              "fraction": round(count / 12, 4)},
+    }
+    return body
+
+
+def test_extract_missing_dim_cells_reads_count():
+    body = _body_with_missing_cells(3)
+    assert eval_runner.extract_missing_dim_cells(body) == 3
+
+
+def test_extract_missing_dim_cells_absent_returns_zero():
+    """A body without the metric (older backend / error row) → 0, no crash."""
+    assert eval_runner.extract_missing_dim_cells(_make_response_body()) == 0
+    assert eval_runner.extract_missing_dim_cells({}) == 0
+    assert eval_runner.extract_missing_dim_cells({"metadata": {}}) == 0
+
+
+def test_grade_run_result_captures_missing_dim_cells():
+    body = _body_with_missing_cells(4)
+    run_result = eval_runner.QueryRunResult(
+        id="q1", query="x", category="electronics",
+        http_status=200, wall_ms=1000, error=None, response=body,
+    )
+    record = {"id": "q1", "expected_prices": {}, "expected_specs": {},
+              "expected_winner_index": None, "forbidden_facts": []}
+    graded = eval_runner.grade_run_result(run_result, record)
+    assert graded.missing_dim_cells == 4
+
+
+def test_error_row_has_zero_missing_dim_cells():
+    """An errored query (no response body) reports 0 missing cells — the
+    metric measures DATA gaps in successful runs, not error starvation."""
+    run_result = eval_runner.QueryRunResult(
+        id="q-err", query="x", category="electronics",
+        http_status=400, wall_ms=30000, error="http_400", response=None,
+    )
+    record = {"id": "q-err", "expected_prices": {}, "expected_specs": {},
+              "expected_winner_index": None, "forbidden_facts": []}
+    graded = eval_runner.grade_run_result(run_result, record)
+    assert graded.missing_dim_cells == 0
+
+
+@pytest.mark.asyncio
+async def test_run_eval_aggregates_missing_dim_cells():
+    """EvalReport surfaces the run-level total + mean missing-dim cells so
+    persist_eval_run can write them into the eval_runs metadata jsonb."""
+    transport = _mock_transport(_body_with_missing_cells(2))
+    queries = [
+        {"id": f"q-{i}", "query": "x", "category": "electronics", "region": "bahrain",
+         "expected_prices": {}, "expected_specs": {}, "expected_winner_index": None,
+         "forbidden_facts": [], "max_wall_seconds": 25.0}
+        for i in range(4)
+    ]
+    report = await eval_runner.run_eval(queries, base_url="http://test",
+                                        transport=transport, concurrency=2)
+    # 4 queries × 2 cells = 8 total; mean 2.0.
+    assert report.missing_dim_cells_total == 8
+    assert report.missing_dim_cells_mean == pytest.approx(2.0)
+
+
+def test_aggregate_missing_dim_cells_empty_run():
+    """Aggregating an empty graded list → 0 total, 0.0 mean (no ZeroDiv)."""
+    report = eval_runner.aggregate([])
+    assert report.missing_dim_cells_total == 0
+    assert report.missing_dim_cells_mean == 0.0

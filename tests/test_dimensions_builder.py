@@ -404,18 +404,103 @@ class TestOrdering:
                 f"contextual dim at index {first_contextual}"
             )
 
-    def test_total_dimensions_capped_at_6(self):
-        """ScoringV2 enforces ≤6 dims at the model layer; the builder
-        must produce output that satisfies the consumer."""
+    def test_total_dimensions_capped_at_8(self):
+        """S2 I3.4 (Decision A): display cap raised 6→8. ScoringV2 enforces
+        ≤8 dims at the model layer; the builder must produce output that
+        satisfies the consumer. (Was capped at 6 pre-S2 — Ahmed ratified 8
+        so electronics surfaces ecosystem/futureproof rows.)"""
         products = [
             _mouse("Glorious Model O", 22.0, 4.6, 1200, dpi=12000, rgb=True, switches="Kailh"),
             _mouse("Ducky One 2 Mini", 52.0, 4.4, 800, dpi=8000, rgb=True, switches="Cherry"),
         ]
         result = build_dimensions_v2(products, _scoring_result_two_products(), "electronics")
-        assert len(result) <= 6, (
-            f"builder emitted {len(result)} dims > 6 — exceeds ScoringV2 cap. "
+        assert len(result) <= 8, (
+            f"builder emitted {len(result)} dims > 8 — exceeds ScoringV2 cap. "
             f"keys: {[d['key'] for d in result]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Test 6 — S2 I3.4 (Decision A): 8-row cap surfaces ecosystem/futureproof
+# ---------------------------------------------------------------------------
+
+def _electronics_scoring_result_full_breakdown():
+    """scoring_result with all 6 electronics category dims populated in the
+    per-product breakdown so build_dimensions_v2 can emit the full set of
+    contextual rows. Distinct A/B scores so each row is renderable."""
+    breakdown_a = {
+        "performance_score": 88, "value_score": 80, "build_quality_score": 84,
+        "feature_score": 86, "ecosystem_score": 90, "futureproof_score": 78,
+    }
+    breakdown_b = {
+        "performance_score": 75, "value_score": 85, "build_quality_score": 70,
+        "feature_score": 72, "ecosystem_score": 65, "futureproof_score": 82,
+    }
+    return {
+        "scores": {
+            "product_0": {"overall": 87, "breakdown": breakdown_a, "weights_used": {}},
+            "product_1": {"overall": 82, "breakdown": breakdown_b, "weights_used": {}},
+        },
+        "winner_index": 0,
+        "win_margin": 5,
+        "scoring_method": "category_weighted",
+    }
+
+
+class TestEightRowCapSurfacesEcosystemFutureproof:
+    """Decision A ratified 2026-06-11: dimension display cap 6→8 so
+    electronics gains ecosystem + futureproof rows (previously dropped by
+    the `added >= 3` / `dims[:6]` cap)."""
+
+    def test_electronics_emits_up_to_8_dims_with_full_breakdown(self):
+        products = [
+            _mouse("Glorious Model O", 22.0, 4.6, 1200, dpi=12000),
+            _mouse("Ducky One 2 Mini", 52.0, 4.4, 800, dpi=8000),
+        ]
+        result = build_dimensions_v2(
+            products, _electronics_scoring_result_full_breakdown(), "electronics"
+        )
+        # 3 core (price/reviews/value) + 5 contextual (performance,
+        # build_quality, feature, ecosystem, futureproof) = 8. value_score
+        # is skipped (covered by the core value dim).
+        assert len(result) == 8, (
+            f"expected 8 dims (3 core + 5 contextual), got {len(result)}: "
+            f"{[d['key'] for d in result]}"
+        )
+
+    def test_ecosystem_and_futureproof_rows_present(self):
+        products = [
+            _mouse("Glorious Model O", 22.0, 4.6, 1200, dpi=12000),
+            _mouse("Ducky One 2 Mini", 52.0, 4.4, 800, dpi=8000),
+        ]
+        result = build_dimensions_v2(
+            products, _electronics_scoring_result_full_breakdown(), "electronics"
+        )
+        emitted = {d["key"] for d in result}
+        assert "ecosystem" in emitted, (
+            f"ecosystem row absent — Decision A's intent missed: {emitted}"
+        )
+        assert "futureproof" in emitted, (
+            f"futureproof row absent — Decision A's intent missed: {emitted}"
+        )
+
+    def test_three_core_dims_still_first(self):
+        """Cap raise must not disturb the core-first ordering invariant."""
+        products = [
+            _mouse("Glorious Model O", 22.0, 4.6, 1200, dpi=12000),
+            _mouse("Ducky One 2 Mini", 52.0, 4.4, 800, dpi=8000),
+        ]
+        result = build_dimensions_v2(
+            products, _electronics_scoring_result_full_breakdown(), "electronics"
+        )
+        first_contextual = next(
+            (i for i, d in enumerate(result) if not d["is_core"]), len(result)
+        )
+        for i in range(first_contextual, len(result)):
+            assert not result[i]["is_core"], (
+                f"core dim leaked after contextual at index {i}: "
+                f"{[d['key'] for d in result]}"
+            )
 
 
 # ---------------------------------------------------------------------------

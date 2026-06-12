@@ -207,10 +207,17 @@ CATEGORY_SPEC_SCHEMAS = {
 # wall windows respectively, asyncio.wait_for).
 CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE: Dict[str, List[str]] = {
     "electronics": ["battery", "processor", "ram", "rear_camera"],
-    "supplements": ["dosage", "form"],
+    # S2 I3.6 (Decision B, 2026-06-11): active_ingredient promoted from
+    # preferred → non-negotiable for supplements + skincare. It's the single
+    # most defining spec for these categories (the active a buyer compares
+    # on — "Probiotic", "Vitamin C", "Retinol") and the gold set anchors on
+    # it; promotion routes a blank Tier-1 extraction into the Tier-2/Tier-3
+    # fill cascade rather than leaving it at specs_score=0.0 (supp-010 +
+    # skin-012 root cause). Other categories' sets unchanged.
+    "supplements": ["dosage", "form", "active_ingredient"],
     "fragrances":  ["concentration", "longevity"],
     "fashion":     ["material"],
-    "skincare":    ["volume", "ingredients"],
+    "skincare":    ["volume", "ingredients", "active_ingredient"],
     "haircare":    ["volume", "ingredients"],
     "makeup":      ["volume", "shade_range"],
     "grocery":     ["weight", "ingredients"],
@@ -219,12 +226,14 @@ CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE: Dict[str, List[str]] = {
 
 CRITICAL_SCHEMA_FIELDS_PREFERRED: Dict[str, List[str]] = {
     "electronics": ["front_camera", "water_resistance", "os", "weight"],
-    "supplements": ["count", "serving_size", "active_ingredient"],
+    # active_ingredient moved to non-negotiable (S2 I3.6) — removed here.
+    "supplements": ["count", "serving_size"],
     # Spec § 2f lists `notes_top/heart/base` as one item — we split into
     # the three discrete schema fields so Tier 1 fallback can target each.
     "fragrances":  ["sillage", "notes_top", "notes_heart", "notes_base", "season"],
     "fashion":     ["origin", "style", "closure_type", "care_instructions"],
-    "skincare":    ["skin_type", "active_ingredient", "spf"],
+    # active_ingredient moved to non-negotiable (S2 I3.6) — removed here.
+    "skincare":    ["skin_type", "spf"],
     "haircare":    ["hair_type", "scent", "sulfate_free"],
     "makeup":      ["finish", "coverage", "cruelty_free", "spf"],
     "grocery":     ["nutrition_protein", "nutrition_calories", "nutrition_fat",

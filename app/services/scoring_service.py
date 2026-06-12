@@ -1822,7 +1822,14 @@ def _get_currency(product: dict) -> str:
 _DIM_WINNER_TIE_MARGIN = 3.0
 
 
-def _dim_winner(score_a, score_b, confidence: str | None = None) -> int | None:
+def _dim_winner(
+    score_a,
+    score_b,
+    confidence: str | None = None,
+    *,
+    was_missing_a: bool = False,
+    was_missing_b: bool = False,
+) -> int | None:
     """Authoritative per-dimension winner index for the v2 dimensions tab.
 
     Returns 0 (product A wins this dim), 1 (product B wins), or None
@@ -1830,10 +1837,21 @@ def _dim_winner(score_a, score_b, confidence: str | None = None) -> int | None:
     contract reads this directly instead of re-deriving from the bars.
 
     None when: either score is missing/MISSING_SCORE, confidence is "low"
-    (limited-data rows must not declare a winner), or the absolute margin
-    is under the tie threshold.
+    (limited-data rows must not declare a winner), EXACTLY ONE side's data
+    was missing (S2 I3.5 — Decision B: crowning the real-score side over a
+    MISSING side is false certainty — we don't know the other product on
+    this dim), or the absolute margin is under the tie threshold.
+
+    `was_missing_a`/`was_missing_b` are explicit per-side gap flags plumbed
+    from the dim builders (more robust than sniffing the MISSING_SCORE=50
+    sentinel, which can coincide with a legitimately calibrated 50).
     """
     if score_a is None or score_b is None:
+        return None
+    # S2 I3.5 — any side's data missing → no winner. Catches the asymmetric
+    # one-sided case Decision B targets (the both-missing case was already
+    # suppressed by the MISSING_SCORE-sentinel check below + upstream omission).
+    if was_missing_a or was_missing_b:
         return None
     if score_a in (MISSING_SCORE,) and score_b in (MISSING_SCORE,):
         return None
@@ -2133,6 +2151,12 @@ def _dim_from_category_lookup(
     if score_a in (None, MISSING_SCORE) and score_b in (None, MISSING_SCORE):
         return None
 
+    # S2 I3.5 — per-side missing markers so build_dimensions_v2 can suppress
+    # the winner when EXACTLY ONE side is a data gap (Decision B). At this
+    # point at most one side is missing (both-missing already returned None).
+    was_missing_a = score_a in (None, MISSING_SCORE)
+    was_missing_b = score_b in (None, MISSING_SCORE)
+
     label = _DIMENSION_LABELS.get(dim_key, dim_key.replace("_score", "").replace("_", " ").title())
     # L1.3: emit user-friendly key without the `_score` suffix
     public_key = dim_key[:-6] if dim_key.endswith("_score") else dim_key
@@ -2147,6 +2171,8 @@ def _dim_from_category_lookup(
         "delta_text": _compose_delta_text(public_key, products_data or [], score_a, score_b),
         "confidence": "medium",
         "is_core": False,
+        "was_missing_a": was_missing_a,
+        "was_missing_b": was_missing_b,
     }
 
 
@@ -2400,12 +2426,14 @@ def build_dimensions_v2(
     same_category = cat_a == cat_b and cat_a is not None
     if same_category and category in CATEGORY_DIMENSIONS:
         # CATEGORY_DIMENSIONS[category] is exactly 6 keys; pick the first
-        # 3 that aren't already covered by the core price/reviews/value
-        # builders so the v2 tab caps at 6 rows total.
+        # 5 that aren't already covered by the core price/reviews/value
+        # builders so the v2 tab caps at 8 rows total (3 core + 5
+        # contextual). S2 I3.4 (Decision A, 2026-06-11) raised the cap
+        # 6→8 so electronics surfaces ecosystem + futureproof rows.
         core_covered = {"price", "value", "reviews"}
         added = 0
         for dim_key in CATEGORY_DIMENSIONS[category]:
-            if added >= 3:
+            if added >= 5:
                 break
             # Strip the `_score` suffix to compare against the core keys.
             public = dim_key[:-6] if dim_key.endswith("_score") else dim_key
@@ -2431,6 +2459,72 @@ def build_dimensions_v2(
     # this, so on prod every scoring_v2.dimensions[i].winner was None and
     # DimensionBars fell back to a score heuristic. Derive it from each
     # dim's own scores + confidence, sub-threshold → None (no phantom tie).
+    # S2 I3.5 — pass the per-side was_missing markers (set by
+    # _dim_from_category_lookup; absent → False for the core builders, which
+    # already gate missing data via confidence='low') so a one-sided-missing
+    # dim never crowns a winner (Decision B: no false certainty).
     for d in dims:
-        d["winner"] = _dim_winner(d.get("score_a"), d.get("score_b"), d.get("confidence"))
-    return dims[:6]
+        d["winner"] = _dim_winner(
+            d.get("score_a"),
+            d.get("score_b"),
+            d.get("confidence"),
+            was_missing_a=bool(d.get("was_missing_a", False)),
+            was_missing_b=bool(d.get("was_missing_b", False)),
+        )
+        # Internal-only markers — strip before the dict ships in the response
+        # so the frontend Dimension contract stays clean (winner already
+        # encodes the suppression decision).
+        d.pop("was_missing_a", None)
+        d.pop("was_missing_b", None)
+    return dims[:8]
+
+
+def count_missing_dim_cells(
+    scoring_result: dict,
+    category: str,
+) -> dict:
+    """S2 I3.6 — count the MISSING_SCORE dimension cells across BOTH
+    products' per-dim breakdowns. The KPI dial for Ahmed's Decision B
+    ("no missing data, no false certainty"): the Tier-3 spec-synthesis
+    fallback FILLS gaps and the render suppression HIDES one-sided ones,
+    but neither is measurable unless the gaps are counted.
+
+    Counts the genuine data gap BEFORE display omission — build_dimensions_v2
+    silently drops both-sided-missing dims, so counting the post-omission
+    dimensions[] would under-report. Mirrors compute_dimension_winners'
+    dim selection + `breakdown.get(dim, MISSING_SCORE)` default exactly so
+    a "missing cell" here is the same gap that surfaces as a winner of
+    "N/A" there.
+
+    Returns {"count": int, "total": int, "fraction": float}.
+    `total` is len(dims) * 2 (both products); `fraction` is count/total,
+    0.0 when total == 0 (fewer than 2 products, or empty result).
+    """
+    scores = (scoring_result or {}).get("scores", {}) or {}
+    b0_dict = scores.get("product_0") or {}
+    b1_dict = scores.get("product_1") or {}
+    # Fewer than 2 products → no cells to examine.
+    if not b0_dict or not b1_dict:
+        return {"count": 0, "total": 0, "fraction": 0.0}
+
+    cat = category if category in CATEGORY_DIMENSIONS else "other"
+    b0 = b0_dict.get("breakdown", {}) or {}
+    b1 = b1_dict.get("breakdown", {}) or {}
+
+    dims = CATEGORY_DIMENSIONS[cat]
+    # Same fallback as compute_dimension_winners: if the breakdown keys
+    # don't match the category dims, examine whatever keys are present so a
+    # mis-tagged category still measures real gaps.
+    if b0 and not any(d in b0 for d in dims):
+        dims = list(b0.keys())
+
+    count = 0
+    for dim in dims:
+        if b0.get(dim, MISSING_SCORE) == MISSING_SCORE:
+            count += 1
+        if b1.get(dim, MISSING_SCORE) == MISSING_SCORE:
+            count += 1
+
+    total = len(dims) * 2
+    fraction = (count / total) if total else 0.0
+    return {"count": count, "total": total, "fraction": round(fraction, 4)}
