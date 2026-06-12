@@ -51,3 +51,7 @@ data/surveys/*.csv
 
 # Agent intermediate drafts (e.g. ar-proofread.diff awaiting review)
 .drafts/
+
+# I4 shadow harness working artifacts: L2 dump, reconstructed verdict inputs,
+# per-arm result JSON. Regenerable from L2 via scripts/shadow_experiments.py.
+.shadow/
