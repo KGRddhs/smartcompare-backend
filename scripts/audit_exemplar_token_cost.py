@@ -36,8 +36,11 @@ _CANONICAL = _REPO_ROOT / "data" / "verdict_exemplars.json"
 _USD_PER_1K_INPUT_4O = 0.0025
 # The dossier §3 gate: exemplar prefill must add <= this per call.
 _COST_GATE_USD = 0.002
-# Per-category exemplar-block token budget (dossier §3).
-_TOK_BUDGET = 700
+# Per-category exemplar-BLOCK token budget. build_exemplar_block renders BOTH
+# the I1 exemplars AND I2's per-category anti_patterns, so this is the dossier §3
+# COMBINED figure: ~700 tok exemplars + ~100 tok APs ≈ 800, with headroom for the
+# longest category. The binding gate is _COST_GATE_USD (+<=$0.002/call) below.
+_TOK_BUDGET = 850
 
 CATEGORIES = (
     "electronics", "grocery", "supplements", "makeup", "skincare",

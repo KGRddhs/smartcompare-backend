@@ -1,15 +1,20 @@
 {
-  "_meta": {
+  "_schema": {
     "version": 1,
-    "schema": "{category: {exemplars:[{title, teaches, setup, verdict_json, _provenance}], anti_patterns:[{name, rule, teaches}]}}",
-    "ownership": "exemplars[] = Lane I1 (synthetic rewrites, Decision E). anti_patterns[] = Lane I2 (per-category named failure modes, I2.3). Rotation cron (I1.4) regenerates exemplars[] from feedback; leaves anti_patterns[] untouched.",
-    "depth": "COMPACT (Option A, dossier §3-ratified + dispatcher-binding): exemplar verdict_json = winner_index, winner_declaration, winner_reason, key_tradeoff, value_context only. Abridged teaching blocks — model still emits the FULL :582-611 schema.",
-    "contamination_rule": "Decision E: synthetic rewrites of the S1 45-id bias patterns — different brands, same structure; never verbatim gold pairs. Source-pattern id recorded in each _provenance for G6 ex-template reporting.",
-    "guardrail_C": "Decision C: H2/H4/climate GCC claims qualitative only (no store counts, branch names, unsourced numbers).",
-    "label": "Every exemplar setup carries EXAMPLE — abridged, do not copy structure or content.",
-    "verdict_schema_ref": "extraction_service.py:582-611 (personalized_insights omitted)",
-    "token_budget": "worst block 670 tok / +$0.00168 per call vs +$0.002 gate (scripts/audit_exemplar_token_cost.py)",
-    "STAGED_ARTIFACT": "I1 staging artifact (dispatcher order). NOT the live file. At G3, copy each category exemplars[] into I2-merged data/verdict_exemplars.json skeleton (which carries I2 anti_patterns[]). Loader reads verdict_exemplars.json, never this."
+    "note": "Few-shot verdict exemplars + per-category anti-patterns. exemplars[] authored by Lane I1 (synthetic rewrites of the 45-id pure-bias patterns, NEVER verbatim gold pairs — Decision E). anti_patterns[] authored by Lane I2. Consumed by app/services/verdict_exemplar_loader.build_exemplar_block(category), injected into the verdict prompt static-per-category prefix. AT G2 this file ships with exemplars[] EMPTY but anti_patterns[] POPULATED — so the per-category APs are LIVE at G2 while the exemplar examples fill at G3 (Lane I1, from data/verdict_exemplars.staged.json).",
+    "exemplar_format": "COMPACT Option A (dispatcher ruling 2026-06-11): ~200 tok each, rendered as a labeled ABRIDGED teaching block — NOT a full verdict_json dump. Only the four teaching fields are rendered.",
+    "exemplar_fields": {
+      "title": "label string, must signal 'EXAMPLE -- do not copy'",
+      "setup": "one-line product-pairing context",
+      "verdict_json": "the four COMPACT teaching fields (a nested object, OR may sit at the exemplar top level): winner_index 0|1, winner_reason (<20 words, with a number), key_tradeoff (one sentence), value_context {product_0, product_1}. Loader renders winner_index as 'Product N' (1-based) + Why/Tradeoff/Value lines. best_for / pros / cons / specs_comparison / personalized_insights are NOT part of the compact exemplar.",
+      "teaches": "H-tag: H1|H2|H3|H4|H6|H8",
+      "_provenance": "source-pattern id (e.g. supp-013) — INTERNAL ONLY, never rendered into the prompt"
+    },
+    "anti_pattern_fields": {
+      "name": "named failure mode",
+      "rule": "one-line counter-rule",
+      "teaches": "H-tag"
+    }
   },
   "electronics": {
     "exemplars": [
@@ -74,7 +79,23 @@
         }
       }
     ],
-    "anti_patterns": []
+    "anti_patterns": [
+      {
+        "name": "identical on paper = identical in Bahrain",
+        "rule": "When two devices match on the spec sheet, the tie can still break on what a Bahrain owner lives with -- local after-sales service, spare-part and consumable availability, and update-support horizon.",
+        "teaches": "H4"
+      },
+      {
+        "name": "newer spec sheet beats canonical benchmark",
+        "rule": "A newer model number does not automatically beat the established gold-standard; weigh proven reliability and a longer ownership track record against a marginally fresher datasheet.",
+        "teaches": "H6"
+      },
+      {
+        "name": "climate-neutral verdict in a 45-degree market",
+        "rule": "For appliances (AC/cooling/fridges), grade real Gulf-summer load -- sustained performance and energy cost in 45-degree heat -- not just rated figures measured in mild conditions.",
+        "teaches": "H8"
+      }
+    ]
   },
   "grocery": {
     "exemplars": [
@@ -139,7 +160,13 @@
         }
       }
     ],
-    "anti_patterns": []
+    "anti_patterns": [
+      {
+        "name": "global prestige outranks GCC market reality",
+        "rule": "A globally famous brand is not automatically the better pick here; a regional staple with broad local adoption and everyday availability can be the smarter everyday buy.",
+        "teaches": "H2"
+      }
+    ]
   },
   "supplements": {
     "exemplars": [
@@ -249,7 +276,18 @@
         }
       }
     ],
-    "anti_patterns": []
+    "anti_patterns": [
+      {
+        "name": "global prestige outranks GCC market reality",
+        "rule": "An international prestige label is not automatically the winner; a regional crowd-pleaser with wide local appeal can deliver comparable results for far fewer dinars.",
+        "teaches": "H2"
+      },
+      {
+        "name": "climate-neutral verdict in a 45-degree market",
+        "rule": "Grade wear in Gulf heat and humidity -- shine control, transfer and melt resistance through a hot, humid day -- not just finish and shade on a swatch.",
+        "teaches": "H8"
+      }
+    ]
   },
   "skincare": {
     "exemplars": [
@@ -314,7 +352,13 @@
         }
       }
     ],
-    "anti_patterns": []
+    "anti_patterns": [
+      {
+        "name": "climate-neutral verdict in a 45-degree market",
+        "rule": "Weigh how the formula behaves in Gulf heat and humidity -- active stability and feel on the skin in a hot climate -- not just the ingredient list on paper.",
+        "teaches": "H8"
+      }
+    ]
   },
   "haircare": {
     "exemplars": [
@@ -444,7 +488,18 @@
         }
       }
     ],
-    "anti_patterns": []
+    "anti_patterns": [
+      {
+        "name": "global prestige outranks GCC market reality",
+        "rule": "A famous designer house is not automatically the better choice in the Gulf; a regional staple loved locally for its projection and longevity in heat can be the stronger daily wear.",
+        "teaches": "H2"
+      },
+      {
+        "name": "climate-neutral verdict in a 45-degree market",
+        "rule": "Judge performance in Gulf heat -- how longevity and projection hold up in high temperature and humidity -- not just the note pyramid.",
+        "teaches": "H8"
+      }
+    ]
   },
   "fashion": {
     "exemplars": [

@@ -60,8 +60,12 @@ CATEGORIES = (
     "haircare", "fragrances", "fashion", "other",
 )
 
-# Per-category exemplar token budget (dossier §3: ~700 tok exemplars/cat).
-_EXEMPLAR_TOK_BUDGET = 700
+# Per-category exemplar-BLOCK token budget. The merged loader renders BOTH my
+# exemplars AND I2's per-category anti_patterns in one block, so the gate is the
+# dossier §3 COMBINED figure: ~700 tok exemplars + ~100 tok APs ≈ 800, with
+# headroom for the longest category (electronics: 3 exemplars + 3 APs ≈ 781).
+# The authoritative cost gate (+<=$0.002/call) is scripts/audit_exemplar_token_cost.
+_EXEMPLAR_TOK_BUDGET = 850
 
 # Forbidden phrases — mirrors test_comparison_quality_detector.py:180 plus the
 # Arabic scary/estimate vocab from the copy contract.
@@ -136,7 +140,10 @@ def test_exemplar_block_precedes_pain_workflow(canonical_content):
         prompt = build_verdict_prompt(
             products=[{"category": cat}], user_cohort=cohort
         )
-        ex_idx = prompt.find("Verdict calibration examples")
+        # Stable header prefix — the merged loader uses "## Verdict calibration
+        # (Bahrain-buyer reasoning)" (the word "examples" was dropped post-sim);
+        # match the prefix so the assertion survives that render drift.
+        ex_idx = prompt.find("Verdict calibration")
         pain_idx = prompt.find("Buyer pain-workflow constraints")
         assert ex_idx != -1, f"{cat}: exemplar header missing"
         if pain_idx != -1:
