@@ -95,7 +95,8 @@ async def test_per_race_timeouts_constants_are_defined_and_sane():
 
     source = inspect.getsource(StructuredComparisonService._fetch_product_data)
     assert "_PHASE1_TIMEOUTS" in source, "per-race timeout map missing"
-    assert "\"price\": 18.0" in source or "'price': 18.0" in source
+    # I5.7 (Decision D pre-authorized): price cap tightened 18.0 -> 15.0.
+    assert "\"price\": 15.0" in source or "'price': 15.0" in source
     assert "asyncio.wait_for" in source, (
         "races must be wrapped in asyncio.wait_for"
     )

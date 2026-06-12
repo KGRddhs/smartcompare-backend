@@ -17,7 +17,7 @@ def test_site_query_electronics_bahrain_tier():
     )
     # Bahrain electronics sources, registry order, OR-joined site: operators
     assert q.startswith("Carrier 1.5 ton AC ")
-    assert "site:lulu.com.bh" in q and "site:sharafdg.com.bh" in q
+    assert "site:luluhypermarket.com" in q and "site:bahrain.sharafdg.com" in q
     assert "site:noon.com" not in q  # gcc tier excluded
     assert q.count("site:") <= 4
 
@@ -54,7 +54,7 @@ def test_site_query_gcc_tier_targets_gcc_domains():
     # gcc-tier fragrance sources include ounass.com / tryano.com
     assert "site:ounass.com" in q or "site:tryano.com" in q
     # bahrain-tier domains must NOT appear
-    assert "site:lulu.com.bh" not in q
+    assert "site:luluhypermarket.com" not in q
 
 
 def test_site_query_empty_when_tier_has_no_category_source():

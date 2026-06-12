@@ -30,11 +30,24 @@ class Source:
 
 SOURCE_REGISTRY: List[Source] = [
     # === BAHRAIN PRIMARY (weight 3.0) ===
-    Source("lulu.com.bh", "bahrain", (), 3.0),
-    Source("carrefourbh.com", "bahrain", (), 3.0),
-    Source("sharafdg.com.bh", "bahrain", ("electronics",), 3.0),
-    Source("extra.com.bh", "bahrain", ("electronics",), 3.0),
-    Source("geant.com.bh", "bahrain", (), 3.0),
+    # I5.3 (Bundle B S2, 2026-06-11) — dead-domain replacement, Decision F
+    # (verify-or-delete, never fabricate). Liveness control-calibrated: the
+    # control set (google.com, shopalmoayyed.com) returned HTTP 200 in the SAME
+    # env, so a failure here is a real NXDOMAIN, not a sandbox DNS block. The
+    # replaced domains were curl exit-6 "Could not resolve host" + Python
+    # socket.gethostbyname gaierror; the replacements resolve to a real IP +
+    # HTTP 200. Evidence: docs/investigations/2026-06-11-i5.3-registry-liveness.md.
+    #   lulu.com.bh (NXDOMAIN)      -> luluhypermarket.com (192.185.171.105, 200;
+    #                                  Cloudflare-defended, scrapes via Firecrawl)
+    #   sharafdg.com.bh (NXDOMAIN)  -> bahrain.sharafdg.com (104.18.31.100, 200,
+    #                                  6 JSON-LD blocks + 258 BHD — rich scrape)
+    #   extra.com.bh (NXDOMAIN)     -> extra.com (104.18.14.223, 200, /ar-bh BHD)
+    #   carrefourbh.com + geant.com.bh DELETED (both NXDOMAIN; carrefour.com.bh
+    #     also NXDOMAIN — no live BH Carrefour/Geant domain exists to replace
+    #     with, and a dead site: row starves the limit=4 discovery window).
+    Source("luluhypermarket.com", "bahrain", (), 3.0),
+    Source("bahrain.sharafdg.com", "bahrain", ("electronics",), 3.0),
+    Source("extra.com", "bahrain", ("electronics",), 3.0),
     Source(
         "bn.boots.com",
         "bahrain",
@@ -43,10 +56,13 @@ SOURCE_REGISTRY: List[Source] = [
     ),
     Source("bolo.bh", "bahrain", ("supplements", "makeup", "skincare"), 3.0),
     Source("behbehani.com", "bahrain", ("electronics", "fashion"), 3.0),
-    Source("eroselectronics.com", "bahrain", ("electronics",), 3.0),
+    # I5.3 — eroselectronics.com DELETED (NXDOMAIN 2026-06-11; no live BH
+    # replacement). behbehani.com + jumboelectronics.com verified alive (200), kept.
     Source("jumboelectronics.com", "bahrain", ("electronics",), 3.0),
     Source("talabat.com", "bahrain", ("grocery",), 3.0),
-    Source("spinneysbahrain.com", "bahrain", ("grocery",), 3.0),
+    # spinneysbahrain.com DELETED (I5.11 liveness gate 2026-06-12): NXDOMAIN;
+    # spinneys.com live but no Bahrain storefront evidence (Decision F: never
+    # fabricate). Re-add when a verified Bahrain-serving domain exists (S3).
     Source("megamart.bh", "bahrain", ("grocery",), 3.0),
     # F1.5 expansion (verified live 2026-06-10) — Bahrain grocery + pharmacy
     # gaps. RATIFICATION REQUIRED (F1.5 checkpoint) before merge.

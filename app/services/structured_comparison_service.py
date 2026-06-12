@@ -97,6 +97,22 @@ def _phase1_completely_failed(pd: Dict[str, Any]) -> bool:
     return pd.get("specs") is None and pd.get("price") is None
 
 
+async def _cancel_profile_task(task) -> None:
+    """I5.6 lever-2: cleanly cancel the early-started behavior/demographics fetch
+    task on an early-return path (INSUFFICIENT_DATA / stream timeout) so no
+    orphaned coroutine is left pending. Awaits the cancellation and swallows
+    CancelledError (plus any error the fetch itself raised) — both fetches are
+    already individually fail-soft (_fetch_behavior_profile returns None on error,
+    get_user_demographics likewise), so there is nothing to surface here."""
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
+
+
 def _product_price_amount(p):
     price = p.get("price")
     if isinstance(price, dict):
@@ -573,6 +589,14 @@ SPECS_CACHE_TTL = 7 * 24 * 60 * 60    # 7 days
 # + verdict pipeline; on timeout the orchestrator yields a `settle_complete`
 # with whatever fields we have so far and the client unblocks.
 STREAM_HARD_CAP_SECONDS = float(os.getenv("STREAM_HARD_CAP_SECONDS", "25.0"))
+
+# I5.6 lever-3 — per-race cap on the Phase-2 verified-rating fetch. The rating
+# cascade (Serper Tier 1→2→3 + GPT fallback) was the one UNCAPPED Phase-2 race;
+# 4s matches the measured warm rating floor with headroom while keeping a slow
+# cold cascade from dragging the Phase-2 gather past budget. On timeout the rating
+# falls back to the benign default + GPT-review-aggregate path (zero quality
+# change vs the pre-cap behavior, which made the user wait on the same slow call).
+_PHASE2_RATING_TIMEOUT = 4.0
 
 
 def build_settle_update_event(
@@ -1252,6 +1276,11 @@ class StructuredComparisonService:
         self.serper_calls = 0
         self._shopping_items_cache = {}
 
+        # I5.6 lever-2 — bound to None at the top so the outer exception handler
+        # can always cancel it (an exception raised before the kickoff line would
+        # otherwise NameError on the cancel in the handler).
+        _profile_task = None
+
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
 
@@ -1338,6 +1367,22 @@ class StructuredComparisonService:
                 original_category = selected_category
             category_used = detected_category
 
+            # I5.6 lever-2 — start the behavioral-profile + demographics fetch
+            # CONCURRENTLY with the product-data gather. Both fetches depend ONLY
+            # on user_id (known here) and have zero dependency on product_data, so
+            # kicking them off now overlaps their Supabase round-trips with the
+            # product gather instead of running them sequentially after it. The
+            # task is awaited at its original site below (just before scoring), so
+            # scoring still consumes the same behavior_profile and the verdict the
+            # same demographics_profile — zero quality change, pure latency. The
+            # early-return paths between here and the await CANCEL this task so no
+            # orphaned coroutine is left pending.
+            if user_id:
+                _profile_task = asyncio.ensure_future(asyncio.gather(
+                    self._fetch_behavior_profile(user_id),
+                    get_user_demographics(user_id),
+                ))
+
             # Step 2: Fetch data for each product (parallel)
             product_data = await asyncio.gather(
                 self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
@@ -1356,6 +1401,7 @@ class StructuredComparisonService:
                     "for specs+price — refusing to score; query=%r region=%s",
                     query, region,
                 )
+                await _cancel_profile_task(_profile_task)
                 return {
                     "success": False,
                     "error": "Comparison data was incomplete — choose different products.",
@@ -1365,14 +1411,13 @@ class StructuredComparisonService:
                     "api_calls": self.api_calls,
                 }
 
-            # Fetch behavioral profile + demographics_profile if user is logged in
+            # Fetch behavioral profile + demographics_profile if user is logged in.
+            # I5.6 lever-2: the fetch was kicked off above (concurrent with the
+            # product gather); here we just await the already-running task.
             behavior_profile = None
             demographics_profile = None
-            if user_id:
-                behavior_profile, demographics_profile = await asyncio.gather(
-                    self._fetch_behavior_profile(user_id),
-                    get_user_demographics(user_id),
-                )
+            if _profile_task is not None:
+                behavior_profile, demographics_profile = await _profile_task
 
             # Step 3: Compute deterministic scores
             scoring_service = get_scoring_service()
@@ -1577,6 +1622,9 @@ class StructuredComparisonService:
 
         except Exception as e:
             logger.error(f"Comparison error: {e}", exc_info=True)
+            # I5.6 lever-2 — if the failure happened before the profile task was
+            # awaited, cancel it so no orphaned coroutine is left pending.
+            await _cancel_profile_task(_profile_task)
             return {"success": False, "error": str(e), "total_cost": self.total_cost}
 
     async def compare_from_text_streaming(
@@ -1600,6 +1648,10 @@ class StructuredComparisonService:
         self.gpt_calls = 0
         self.serper_calls = 0
         self._shopping_items_cache = {}
+
+        # I5.6 lever-2 — bound to None at the top so the outer exception handler
+        # can always cancel it (mirror of the sync path).
+        _profile_task = None
 
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
@@ -1690,6 +1742,18 @@ class StructuredComparisonService:
             # Step 2: Fetch product data
             yield ("status", {"message": "Fetching specs and prices...", "progress": 20})
 
+            # I5.6 lever-2 — start the behavioral-profile + demographics fetch
+            # CONCURRENTLY with the product-data gather (mirror of the sync path).
+            # Both fetches depend only on user_id and have zero dependency on
+            # product_data, so overlapping their Supabase round-trips with the
+            # product gather is pure latency. Awaited at the original site below;
+            # the timeout + INSUFFICIENT_DATA early-return paths cancel it.
+            if user_id:
+                _profile_task = asyncio.ensure_future(asyncio.gather(
+                    self._fetch_behavior_profile(user_id),
+                    get_user_demographics(user_id),
+                ))
+
             # Bundle E § Decision 8 — hard 25s cap on the data-fetch step.
             # Wraps both products' fetches together so a single hung scraper
             # can't extend the stream beyond the budget. On timeout we yield
@@ -1709,6 +1773,7 @@ class StructuredComparisonService:
                     "yielding settle_complete with partial response",
                     STREAM_HARD_CAP_SECONDS, query,
                 )
+                await _cancel_profile_task(_profile_task)
                 partial_response = {
                     "success": False,
                     "error": "Comparison timed out — please try again.",
@@ -1731,6 +1796,7 @@ class StructuredComparisonService:
                     "returned None for specs+price — query=%r region=%s",
                     query, region,
                 )
+                await _cancel_profile_task(_profile_task)
                 insufficient_response = {
                     "success": False,
                     "error": "Comparison data was incomplete — choose different products.",
@@ -1801,14 +1867,13 @@ class StructuredComparisonService:
                 ]
             })
 
-            # Fetch behavioral profile + demographics_profile
+            # Fetch behavioral profile + demographics_profile.
+            # I5.6 lever-2: the fetch was kicked off above (concurrent with the
+            # product gather); here we just await the already-running task.
             behavior_profile = None
             demographics_profile = None
-            if user_id:
-                behavior_profile, demographics_profile = await asyncio.gather(
-                    self._fetch_behavior_profile(user_id),
-                    get_user_demographics(user_id),
-                )
+            if _profile_task is not None:
+                behavior_profile, demographics_profile = await _profile_task
 
             # Step 3: Compute scores
             t_score = time.perf_counter() if orchestrator_timings is not None else None
@@ -2041,6 +2106,9 @@ class StructuredComparisonService:
 
         except Exception as e:
             logger.error(f"Streaming comparison error: {e}", exc_info=True)
+            # I5.6 lever-2 — cancel the profile task if the failure happened
+            # before it was awaited (mirror of the sync path).
+            await _cancel_profile_task(_profile_task)
             yield ("error", {
                 "success": False, "error": str(e), "total_cost": self.total_cost,
             })
@@ -2107,7 +2175,45 @@ class StructuredComparisonService:
         # Phase 2A.1 — per-product stage timings (only allocated when flag is on)
         stage_timings = {} if _debug_timings_enabled() else None
 
-        # === Unified web search ===
+        # L2.6 — per-race timeout caps (moved above the unified search for I5.6
+        # so the price race can start concurrently with the unified search; the
+        # dict is a plain literal with no dependencies). Each race is wrapped in
+        # asyncio.wait_for so a single slow tier (e.g., 15s Tier 1.5 fan-out for
+        # price) cannot drag the whole Phase 1 wall over the
+        # STREAM_HARD_CAP_SECONDS budget. On timeout the race result is None
+        # (handled below as `result[key] = None`); response_builder treats None
+        # as missing data and `_validate_renderable` decides whether to surface
+        # an INSUFFICIENT_DATA error.
+        _PHASE1_TIMEOUTS = {
+            "specs": 8.0,     # GPT-4o-mini extraction
+            # I5.7 (Bundle B S2, Decision D pre-authorized): price 18s→15s. This
+            # OUTER cap wraps the whole _get_price path (Tier 1 + escalation
+            # decision + the now-12s inner fan_out race + Tier 3 estimate). It
+            # stays strictly above the 12s fan_out race (≥3s headroom for Tier 1 +
+            # estimate) so it never cuts a fan_out race that's still in budget.
+            "price": 15.0,    # Tier 1 + 1.5 cascade (inner fan_out race now 12s)
+            "reviews": 10.0,  # Serper + GPT cleanup (measured 4-5s + headroom)
+            "image_url": 5.0, # Serper Images + Tier 3 GPT fallback
+        }
+
+        # I5.6 (Bundle B S2) — start the price fetch CONCURRENTLY with the
+        # unified search. _get_price runs its OWN search_product_prices +
+        # Tier-1.5 cascade and has zero dependency on the unified-search result,
+        # so kicking it off here (before the unified search is awaited) overlaps
+        # the two walls instead of running them sequentially. Wrapped in the
+        # same per-race wait_for cap + _timed_task as before; awaited below
+        # inside the Phase-1 gather (added FIRST to phase1_tasks so the
+        # result-key order is unchanged). Zero quality change — pure latency.
+        _price_task = asyncio.ensure_future(asyncio.wait_for(
+            _timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings),
+            timeout=_PHASE1_TIMEOUTS["price"],
+        ))
+
+        # === Unified web search === (runs CONCURRENTLY with the price task
+        # started above — I5.6: the price Serper round-trip is already in flight
+        # via _price_task, so awaiting the unified search here overlaps the two
+        # instead of running them sequentially. specs/reviews still consume the
+        # resolved unified_search below.)
         unified_search = None
         if include_specs or include_reviews:
             specs_key = get_specs_cache_key(brand, name, variant)
@@ -2144,24 +2250,9 @@ class StructuredComparisonService:
             except Exception as e:
                 logger.warning(f"Drug DB lookup failed: {e}")
 
-        # L2.6 — per-race timeout caps. Each race is wrapped in
-        # asyncio.wait_for so a single slow tier (e.g., 15s Tier 1.5 fan-out
-        # for price) cannot drag the whole Phase 1 wall over the
-        # STREAM_HARD_CAP_SECONDS budget. On timeout the race result is None
-        # (handled below as `result[key] = None`); response_builder treats
-        # None as missing data and `_validate_renderable` decides whether to
-        # surface an INSUFFICIENT_DATA error.
-        _PHASE1_TIMEOUTS = {
-            "specs": 8.0,     # GPT-4o-mini extraction
-            "price": 18.0,    # Tier 1 + 1.5 cascade can land at ~15s
-            # reviews bumped 6.0 → 10.0 in the post-ec2751b hotfix —
-            # measured floor was 4-5s post-D2 (Session 51, per
-            # memory/feedback_measure_before_optimize.md), so the original
-            # 6s ceiling tripped on cold-cache + set pd['reviews']=None,
-            # exposing the .get('reviews', {}).get bug.
-            "reviews": 10.0,  # Serper + GPT cleanup (measured 4-5s + headroom)
-            "image_url": 5.0, # Serper Images + Tier 3 GPT fallback
-        }
+        # (_PHASE1_TIMEOUTS defined above the unified search for I5.6 — reviews
+        # was bumped 6.0 → 10.0 in the post-ec2751b hotfix because the measured
+        # post-D2 floor is 4-5s, per memory/feedback_measure_before_optimize.md.)
 
         if include_specs:
             phase1_tasks.append(asyncio.wait_for(
@@ -2170,10 +2261,11 @@ class StructuredComparisonService:
             ))
             phase1_keys.append("specs")
 
-        phase1_tasks.append(asyncio.wait_for(
-            _timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings),
-            timeout=_PHASE1_TIMEOUTS["price"],
-        ))
+        # I5.6 — price already started above (concurrent with the unified
+        # search); add the running task here so its result-key position
+        # (after specs) is unchanged. asyncio.gather awaits an already-running
+        # task fine — it just collects the result.
+        phase1_tasks.append(_price_task)
         phase1_keys.append("price")
 
         if include_reviews:
@@ -2318,7 +2410,30 @@ class StructuredComparisonService:
 
         # D2 Intervention 1: reviews moved to Phase 1. Phase 2 now only runs
         # verified rating + smart-fallback (Bucket A bug 3c) in parallel.
-        phase2_tasks.append(_timed_task("rating", self._get_verified_rating(full_name), stage_timings))
+        # I5.6 lever-3 — cap the rating race at 4s. Previously UNCAPPED, unlike
+        # its Phase-2 sibling _smart_fallback_extract (5s wait_for), so a slow
+        # rating cascade (cold Serper Tier 1→2→3 + GPT fallback) could drag the
+        # whole Phase-2 gather wall past budget. On timeout we return the benign
+        # default rating dict (same shape as the rating_data default at the result
+        # loop) — the existing loop then treats it as "no verified rating" and the
+        # GPT-review-aggregate fallback (below) owns the value. Logged at info, not
+        # error: a rating timeout is an expected graceful-degrade, not a failure.
+        async def _rating_with_cap():
+            try:
+                return await asyncio.wait_for(
+                    self._get_verified_rating(full_name),
+                    timeout=_PHASE2_RATING_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                logger.info(
+                    "[RATING] cap %.1fs hit for %r — falling back to default "
+                    "(GPT-review-aggregate path owns the rating)",
+                    _PHASE2_RATING_TIMEOUT, full_name,
+                )
+                return {"rating": None, "review_count": None,
+                        "rating_verified": False, "rating_source": None}
+
+        phase2_tasks.append(_timed_task("rating", _rating_with_cap(), stage_timings))
         phase2_keys.append("_rating_data")
 
         # Smart-fallback (Bucket A bug 3c): identify critical schema fields still
@@ -2674,15 +2789,37 @@ class StructuredComparisonService:
             # post-fetch (registry-first `score_source >= 1.5`, legacy whitelist
             # fallback) before entering the pool. Dispatcher invariant #1.
             official_domain = get_official_domain(full_name)
-            retailer_query = f"{full_name} farfetch OR ssense OR net-a-porter"
-            gcc_query = f"{full_name} ounass OR bloomingdales dubai OR namshi"
+            # I5.5 (Bundle B S2) — category-aware authorized/gcc discovery.
+            # These were hard-coded FASHION/luxury strings (farfetch/ssense/
+            # net-a-porter + ounass/bloomingdales/namshi) sent for EVERY
+            # category — nonsense for an AC. Build them from the registry per
+            # category instead: an AC now looks at noon/amazon.ae/sharafdg
+            # (gcc electronics) + brand officials (global tier), while fashion
+            # still gets ounass/bloomingdales/tryano (its own gcc tier).
+            # Counterfeit safety unchanged — every candidate is still gated
+            # post-fetch by score_source >= 1.5. Defensive fallback to the bare
+            # product name keeps the discovery slot non-empty for any category
+            # with no sources in a tier (noon/amazon.ae are all-category, so in
+            # practice both tiers are always non-empty).
+            retailer_query = build_site_discovery_query(
+                full_name, category, tier="global", limit=8
+            ) or full_name
+            gcc_query = build_site_discovery_query(
+                full_name, category, tier="gcc", limit=8
+            ) or full_name
 
             discovery_tasks = []
             # Bahrain registry discovery FIRST (gated by has_budget("serper")
             # implicitly — search_web no-ops without a key). Skipped only when
             # the category has zero Bahrain-tier registry sources.
+            # I5.4 (Bundle B S2) — limit=8 (was 4) so the whole live
+            # bahrain-electronics registry is queryable in this single Serper
+            # call. After I5.3's dead-domain purge there are 6 live electronics
+            # rows; limit=4 sliced off shopalmoayyed.com (index 5, the F1.5
+            # appliance/AC JSON-LD source) — the electronics 0/14 starvation.
+            # Same one Serper call, just a longer `site:a OR site:b ...` chain.
             bahrain_query = build_site_discovery_query(
-                full_name, category, tier="bahrain", limit=4
+                full_name, category, tier="bahrain", limit=8
             )
             if bahrain_query:
                 discovery_tasks.append(("bahrain", search_web(bahrain_query)))
@@ -2723,9 +2860,14 @@ class StructuredComparisonService:
             # --- Race: fan_out_price_lookup runs all per-URL scrapers in
             # parallel, cancels pending tasks when 2 sources confirm within
             # 5% (or rank≥85 lands), returns the highest-ranked candidate.
-            # Bounded by asyncio.wait_for(timeout=15s) — Cloudflare-protected
+            # Bounded by asyncio.wait_for(timeout=12s) — Cloudflare-protected
             # scrapes (e.g. ssense.com via Scrape.do) can blow 20+s and have
-            # to fall through to Tier 2 to honor the per-product wall budget. ---
+            # to fall through to Tier 2 to honor the per-product wall budget.
+            # I5.7 (Bundle B S2, Decision D pre-authorized): tightened 15s→12s.
+            # The race already early-exits on 2-source-confirm / rank≥85, so the
+            # cap only bites the slow-scraper tail; trimming 3s off that tail is
+            # pure wall improvement. Escalation TRIGGERING
+            # (_should_escalate_price_scrape above) is UNCHANGED. ---
             if candidate_urls:
                 # F1.6 — count one Tier 1.5 escalation attempt (fail-open).
                 record_tier15_attempt(category)
@@ -2742,7 +2884,7 @@ class StructuredComparisonService:
                             scrapers=scrapers,
                             scraping_mode=scraping_mode,
                         ),
-                        timeout=15.0,
+                        timeout=12.0,
                     )
                     best = fan_result.get("best")
                     if best and best.get("raw_data") and best["raw_data"].get("amount"):

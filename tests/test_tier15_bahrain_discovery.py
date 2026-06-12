@@ -36,7 +36,7 @@ def _organic(*links):
 
 def test_bahrain_candidates_harvested_first():
     results_by_tier = {
-        "bahrain": _organic("https://www.sharafdg.com.bh/product/iphone-15"),
+        "bahrain": _organic("https://www.bahrain.sharafdg.com/product/iphone-15"),
         "official": _organic("https://www.apple.com/shop/iphone-15"),
         "authorized": _organic("https://www.amazon.com/dp/IPHONE"),
         "gcc": _organic("https://www.noon.com/uae-en/iphone-15"),
@@ -46,9 +46,9 @@ def test_bahrain_candidates_harvested_first():
     )
     links = [h[0] for h in harvested]
     # Bahrain link must come first in the ordered candidate list.
-    assert links[0] == "https://www.sharafdg.com.bh/product/iphone-15"
+    assert links[0] == "https://www.bahrain.sharafdg.com/product/iphone-15"
     # The bahrain domain appears ahead of the official apple.com candidate.
-    bh_idx = next(i for i, h in enumerate(harvested) if "sharafdg.com.bh" in h[0])
+    bh_idx = next(i for i, h in enumerate(harvested) if "bahrain.sharafdg.com" in h[0])
     off_idx = next(i for i, h in enumerate(harvested) if "apple.com" in h[0])
     assert bh_idx < off_idx
 
@@ -62,22 +62,22 @@ def test_bahrain_candidate_below_threshold_rejected():
     results_by_tier = {
         "bahrain": _organic(
             "https://www.dhgate.com/fake-iphone",          # score 0.5 -> reject
-            "https://www.lulu.com.bh/iphone-15",            # score 3.0 -> keep
+            "https://www.luluhypermarket.com/iphone-15",            # score 3.0 -> keep
         ),
     }
     harvested = _harvest_candidate_urls(
         results_by_tier, official_domain=None, category="electronics"
     )
     links = [h[0] for h in harvested]
-    assert "https://www.lulu.com.bh/iphone-15" in links
+    assert "https://www.luluhypermarket.com/iphone-15" in links
     assert "https://www.dhgate.com/fake-iphone" not in links
 
 
 def test_bahrain_category_mismatch_rejected():
-    """sharafdg.com.bh is electronics-only — under category=supplements it
+    """bahrain.sharafdg.com is electronics-only — under category=supplements it
     scores 0.5 and must NOT enter the pool from the bahrain tier."""
     results_by_tier = {
-        "bahrain": _organic("https://www.sharafdg.com.bh/protein-powder"),
+        "bahrain": _organic("https://www.bahrain.sharafdg.com/protein-powder"),
     }
     harvested = _harvest_candidate_urls(
         results_by_tier, official_domain=None, category="supplements"
@@ -159,7 +159,7 @@ def test_gcc_registry_pass_noon_all_category():
 
 def test_every_entry_has_route_and_weight():
     results_by_tier = {
-        "bahrain": _organic("https://www.lulu.com.bh/iphone-15"),
+        "bahrain": _organic("https://www.luluhypermarket.com/iphone-15"),
         "official": _organic("https://www.apple.com/shop/iphone-15"),
         "gcc": _organic("https://www.noon.com/uae-en/iphone-15"),
     }
@@ -268,7 +268,7 @@ async def test_bahrain_discovery_query_dispatched_first(monkeypatch, clean_servi
     # The FIRST discovery query must be the Bahrain site: query.
     first = seen_queries[0]
     assert "site:" in first, f"first discovery query not a site: query: {first!r}"
-    assert "site:lulu.com.bh" in first or "site:sharafdg.com.bh" in first, (
+    assert "site:luluhypermarket.com" in first or "site:bahrain.sharafdg.com" in first, (
         f"first discovery query is not Bahrain-tier: {first!r}"
     )
     # And it must precede the authorized/gcc retailer queries.
