@@ -956,6 +956,12 @@ async def fetch_page_price(
 # 2-product comparison on the same store is a single fetch.
 SHOPIFY_PRODUCTS_PATH = "/products.json?limit=250"
 _SHOPIFY_CATALOG_TTL = 6 * 3600  # 6h — catalogs are stable intraday
+# M2 — negative cache: a failed/non-Shopify/slow fetch is remembered for a
+# SHORT window so it isn't re-paid (~5s) on every escalating request (which ate
+# the 12s fan_out budget at full-200). 30min is short enough to recover from a
+# transient outage, long enough to stop the per-query re-cost storm.
+_SHOPIFY_NEG_TTL = 30 * 60
+_SHOPIFY_NEG_SENTINEL = {"_shopify_neg": True}
 
 
 async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
@@ -963,8 +969,9 @@ async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
 
     Returns the parsed dict (``{"products": [...]}``) or ``None`` on any
     failure (non-Shopify store, non-200, non-JSON, network error). Cached in
-    Redis for 6h, keyed by domain — a comparison's two products on the same
-    store share one fetch. Graceful-None throughout (never raises)."""
+    Redis for 6h on success; FAILURES are negative-cached for 30min (M2) so a
+    dead/slow store isn't re-fetched every escalation. Graceful-None throughout
+    (never raises)."""
     domain = (domain or "").replace("www.", "").strip().lower()
     if not domain:
         return None
@@ -972,7 +979,13 @@ async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
     cache_key = f"shopify_catalog:{domain}"
     cached = get_cached(cache_key)
     if cached is not None:
+        # M2 — a negative sentinel reads back as "known-failed" → None, no fetch.
+        if isinstance(cached, dict) and cached.get("_shopify_neg"):
+            return None
         return cached if isinstance(cached, dict) else None
+
+    def _negcache():
+        set_cached(cache_key, _SHOPIFY_NEG_SENTINEL, _SHOPIFY_NEG_TTL)
 
     url = f"https://{domain}{SHOPIFY_PRODUCTS_PATH}"
     try:
@@ -985,17 +998,21 @@ async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
         )
     except Exception as e:  # noqa: BLE001 — discovery is best-effort
         logger.info(f"[PRICE] Shopify catalog fetch failed for {domain}: {e}")
+        _negcache()
         return None
 
     if resp.status_code != 200:
         logger.info(f"[PRICE] Shopify catalog HTTP {resp.status_code} for {domain}")
+        _negcache()
         return None
     try:
         data = resp.json()
     except Exception:
         # Not a Shopify store (HTML, redirect to a storefront, etc.).
+        _negcache()
         return None
     if not isinstance(data, dict) or "products" not in data:
+        _negcache()
         return None
 
     # M1 — capture the store's REAL base currency (Shopify /meta.json) so the

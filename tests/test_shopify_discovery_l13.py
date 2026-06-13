@@ -221,3 +221,71 @@ class TestFetchShopifyPrice:
         monkeypatch.setattr(ps, "_fetch_shopify_catalog", fake_fetch_catalog)
         res = await fetch_shopify_price("shopalmoayyed.com", "Unrelated XYZ 999", "BHD")
         assert res is None
+
+
+# === M2 (gate MUST-FIX): negative-cache _fetch_shopify_catalog failures ===
+# A failed/slow catalog fetch must NOT be re-paid on every escalating request
+# (it re-cost ~5s each at full-200, eating the fan_out budget). After a failure,
+# a short-TTL negative sentinel is cached → the next call returns None WITHOUT
+# re-fetching.
+
+class TestShopifyCatalogNegativeCache:
+    @pytest.mark.asyncio
+    async def test_failure_is_negative_cached(self, monkeypatch):
+        from app.services import price_service as ps
+
+        store = {}
+        monkeypatch.setattr(ps, "get_cached", lambda k: store.get(k))
+        monkeypatch.setattr(ps, "set_cached", lambda k, v, ttl=0: store.__setitem__(k, v))
+
+        calls = {"n": 0}
+
+        class _Resp:
+            status_code = 500
+            text = ""
+            def json(self):
+                return {}
+
+        def _fake_curl_get(*a, **kw):
+            calls["n"] += 1
+            return _Resp()
+
+        # Patch curl_cffi.requests.get used inside _fetch_shopify_catalog.
+        import curl_cffi.requests as _cr
+        monkeypatch.setattr(_cr, "get", _fake_curl_get)
+
+        # First call: fetch attempted (HTTP 500 → None), failure negative-cached.
+        r1 = await ps._fetch_shopify_catalog("brokenstore.example")
+        assert r1 is None
+        first_calls = calls["n"]
+        assert first_calls >= 1
+
+        # Second call: must NOT re-fetch (served from the negative cache).
+        r2 = await ps._fetch_shopify_catalog("brokenstore.example")
+        assert r2 is None
+        assert calls["n"] == first_calls, (
+            "negative-cache miss: catalog re-fetched after a known failure"
+        )
+
+    @pytest.mark.asyncio
+    async def test_negative_sentinel_not_returned_as_catalog(self, monkeypatch):
+        """The negative sentinel must read back as None (not a fake catalog)."""
+        from app.services import price_service as ps
+
+        store = {}
+        monkeypatch.setattr(ps, "get_cached", lambda k: store.get(k))
+        monkeypatch.setattr(ps, "set_cached", lambda k, v, ttl=0: store.__setitem__(k, v))
+
+        class _Resp:
+            status_code = 404
+            text = ""
+            def json(self):
+                return {}
+
+        import curl_cffi.requests as _cr
+        monkeypatch.setattr(_cr, "get", lambda *a, **kw: _Resp())
+
+        await ps._fetch_shopify_catalog("missing.example")
+        # Whatever sentinel got stored, _match must treat a re-read as no catalog.
+        r = await ps._fetch_shopify_catalog("missing.example")
+        assert r is None
