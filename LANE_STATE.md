@@ -20,10 +20,12 @@ GATE FINDINGS BEING FIXED (2026-06-13). Gate found ZERO confirmed bugs in finder
 - `700b575` L5.2 — by_source subdomain attribution verified wired + end-to-end tests
 - `b386be8` L5.3 — lever-1 orphaned price task cancel cleanup (try/except → _cleanup_orphan_price_task)
 - `d9ba97c` L5.4 — engine-error adjudication (re-defer the elec-003 502 transient, evidence-complete)
+- `b6585bd` **GATE F1 fix** — fan_out absorbs outer cancel → distinguish via `current_task().cancelling()`, cancel remaining scrapers + re-raise. + F2/F3 reframes.
 
-## Regression evidence (gate-ready)
-- 3 touched test files together: 33/33 green.
-- Broader batch (streaming, phase1 guards, per-race timeouts, wall caps, tier15 route/registry, source router, settle window, cost dashboard): 95/95 green.
+## Regression evidence (post-gate-F1)
+- All L5 test files + ALL fan_out consumers: **65/65 green** (test_lever1_orphan_cancel_i56, test_retailer_quotes, test_tier15_hit_rate_metric, test_scatter_gather_price [Bundle-E Task 2.2 invariants], test_fan_out_integration, test_wall_caps_i57, test_tier15_route_trace, test_tier15_timing).
+- Streaming + phase1 batch: **37/37 green**.
+- F1 full-chain proof: outer cancel through real `wait_for(fan_out)` propagates, settles 0.000s (was ~4.7s), both scrapers cancelled (neither completed).
 - KNOWN pre-existing flake (NOT mine): `test_phase1_runs_reviews_in_parallel_with_specs_price` (<1.2s wall) — fails identically on clean HEAD; dummy-key 401 network-retry noise on un-mocked image/rating siblings (no .env in worktree). Load-sensitive-wall caveat.
 
 ### L5.4 adjudication (evidence-complete)
