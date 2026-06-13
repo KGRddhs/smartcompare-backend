@@ -1,0 +1,41 @@
+{
+  "_store_currency": "BHD",
+  "products": [
+    {
+      "title": "Super General 20 Kg Top Load Washing Machine (SGW2022)",
+      "handle": "super-general-20-kg-top-load-washing-machine-sgw2022",
+      "vendor": "Super General",
+      "variants": [
+        {
+          "price": "200.000",
+          "available": false,
+          "sku": "SGW2022"
+        }
+      ]
+    },
+    {
+      "title": "Panasonic Mixer Grinder Blender 2000W",
+      "handle": "panasonic-mixer-grinder-blender-2000w",
+      "vendor": "Panasonic",
+      "variants": [
+        {
+          "price": "55.000",
+          "available": false,
+          "sku": "MX-AE365KTZ"
+        }
+      ]
+    },
+    {
+      "title": "Food Processor MK-F510 with 9 Accessories for 25 Functions",
+      "handle": "food-processor-mk-f510-with-9-accessories-for-25-functions",
+      "vendor": "Panasonic",
+      "variants": [
+        {
+          "price": "60.000",
+          "available": true,
+          "sku": "MK-F510KTZ"
+        }
+      ]
+    }
+  ]
+}

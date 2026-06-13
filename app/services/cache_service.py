@@ -218,6 +218,111 @@ def get_tier15_hit_rate(days: int = 7, categories: Optional[List[str]] = None) -
     return out
 
 
+# ============================================
+# S3 L1.5 — real-price-coverage metric
+# ============================================
+# Per-category live gauge of how many priced products got a REAL price vs a GPT
+# estimate. The PROD-runtime counterpart to L4's eval estimate-share (no
+# double-build: L4 owns the % in the gold eval run via eval_runner; this owns
+# the live /admin/costs gauge). Fire-and-forget + fail-open, same shape as the
+# F1.6 tier1_5 counters. Surfaced as `real_price_coverage` on /admin/costs —
+# the dial that shows Ahmed's "facts not estimation" progress per category.
+
+# A source_method is "estimated" iff it contains "estimate" (gpt_training_
+# estimate / estimated). Everything else (local_bhd, page_scrape, shopify_json,
+# converted_usd, firecrawl, scrapedo_rendered, page_scrape_jsonld,
+# firecrawl_brand_domain, confirmed_multi_source, …) is a REAL price.
+
+def _price_outcome_bucket(source_method: Optional[str]) -> str:
+    """'estimated' when the method is missing or contains 'estimate', else 'real'."""
+    sm = (source_method or "").lower()
+    if not sm or "estimate" in sm:
+        return "estimated"
+    return "real"
+
+
+def record_price_outcome(category: str, source_method: Optional[str]) -> None:
+    """Count one priced-product outcome for `category` (today, UTC): a `real`
+    price or an `estimated` one, classified from `source_method`.
+
+    Fire-and-forget + fail-open — never raises, no-op when Redis is down.
+    """
+    if not redis_client:
+        return
+    bucket = _price_outcome_bucket(source_method)
+    key = f"price_outcome:{bucket}:{category}:{_utc_daystamp()}"
+    if _redis_incr(key) == 1:
+        _redis_expire(key, _TIER15_METRIC_TTL)
+
+
+def get_real_price_coverage(
+    days: int = 7, categories: Optional[List[str]] = None
+) -> Dict[str, Dict[str, Any]]:
+    """Aggregate the trailing `days`-window real/estimated price outcomes per
+    category.
+
+    Returns `{category: {real, estimated, total, real_share}}`. Fail-open: a
+    missing/down Redis yields a well-formed zeroed block (never raises). Single
+    `mget` for the whole window, like get_tier15_hit_rate.
+    """
+    if categories is None:
+        categories = [
+            "electronics", "grocery", "supplements", "makeup", "skincare",
+            "haircare", "fragrances", "fashion", "other",
+        ]
+    daystamps = [_utc_daystamp(i) for i in range(days)]
+
+    out: Dict[str, Dict[str, Any]] = {
+        cat: {"real": 0, "estimated": 0, "total": 0, "real_share": 0.0}
+        for cat in categories
+    }
+    if not redis_client:
+        return out
+
+    keys: List[str] = []
+    for cat in categories:
+        for ds in daystamps:
+            keys.append(f"price_outcome:real:{cat}:{ds}")
+            keys.append(f"price_outcome:estimated:{cat}:{ds}")
+
+    try:
+        values = redis_client.mget(*keys)
+    except TypeError:
+        try:
+            values = redis_client.mget(keys)
+        except Exception as e:
+            logger.warning(f"[PRICE_COVERAGE] mget failed: {e}")
+            return out
+    except Exception as e:
+        logger.warning(f"[PRICE_COVERAGE] mget failed: {e}")
+        return out
+
+    idx = 0
+    for cat in categories:
+        real = 0
+        estimated = 0
+        for _ in daystamps:
+            r = values[idx] if idx < len(values) else None
+            e = values[idx + 1] if idx + 1 < len(values) else None
+            idx += 2
+            try:
+                real += int(r) if r else 0
+            except (TypeError, ValueError):
+                pass
+            try:
+                estimated += int(e) if e else 0
+            except (TypeError, ValueError):
+                pass
+        total = real + estimated
+        out[cat] = {
+            "real": real,
+            "estimated": estimated,
+            "total": total,
+            "real_share": round(real / total, 4) if total > 0 else 0.0,
+        }
+    return out
+
+
 def _registry_domains() -> List[str]:
     """Domains to probe for per-domain source-hit aggregation. Defaults to the
     Bahrain-first source registry so the dashboard works without a

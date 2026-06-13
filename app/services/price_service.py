@@ -165,8 +165,16 @@ RETAILER_SEARCH_URLS = {
     "micro center": "https://www.microcenter.com/search/search_results.aspx?Ntt={query}",
     "noon": "https://www.noon.com/search?q={query}",
     "jarir": "https://www.jarir.com/sa-en/catalogsearch/result/?q={query}",
-    "extra": "https://www.extra.com/en-sa/search/?q={query}",
-    "sharaf dg": "https://uae.sharafdg.com/search/?q={query}",
+    # L1.3 (Bundle B S3) — Bahrain-correct retailer URLs. Pre-S3 these pointed
+    # at the wrong GCC country (extra=/en-sa Saudi, sharaf dg=uae.*), while the
+    # registry (source_router.py) uses bahrain.sharafdg.com. Align the direct
+    # URL builder so the Tier 1.5 cascade lands on the Bahrain storefront.
+    # Templates control-calibrated LIVE (HTTP 200 + BHD product content) in the
+    # same env — see L1_DIAGNOSTIC_bh_scrapeability.md. extra.com BH search uses
+    # the `text=` param (`q=` lands on /en-bh/error); sharafdg BH is WooCommerce
+    # `?s=...&post_type=product`.
+    "extra": "https://www.extra.com/en-bh/search?text={query}",
+    "sharaf dg": "https://bahrain.sharafdg.com/?s={query}&post_type=product",
     "ubuy": "https://www.ubuy.com.bh/en/search?q={query}",
     "lulu": "https://www.luluhypermarket.com/en-bh/search?q={query}",
     "carrefour": "https://www.carrefouruae.com/mafuae/en/search?q={query}",
@@ -189,6 +197,18 @@ RETAILER_SEARCH_URLS = {
     "nasser pharmacy": "https://www.nasserpharmacy.com/search?q={query}",
     "boots": "https://www.bn.boots.com/search?q={query}",
     "al deerah": "https://aldeerahpharmacy.com/catalogsearch/result/?q={query}",
+    # L1.3 (Bundle B S3) — verified-live Bahrain retailers (control-calibrated,
+    # HTTP 200 + BHD product content, L1_DIAGNOSTIC_bh_scrapeability.md). Both
+    # `shopalmoayyed` + `asgharali` are Shopify (static JSON-LD prices — the
+    # cascade scrapes them cleanly without render credits); bahrainpharmacy is
+    # WordPress `?s=`. Two key spellings each so the substring match in
+    # build_retailer_url catches both "Al Moayyed"/"shopalmoayyed" and
+    # "Asghar Ali"/"asgharali" source-name forms.
+    "almoayyed": "https://www.shopalmoayyed.com/search?q={query}",
+    "al moayyed": "https://www.shopalmoayyed.com/search?q={query}",
+    "asgharali": "https://bh.asgharali.com/search?q={query}",
+    "asghar ali": "https://bh.asgharali.com/search?q={query}",
+    "bahrain pharmacy": "https://bahrainpharmacy.com/?s={query}",
 }
 
 # Accessory keywords
@@ -671,8 +691,19 @@ def _is_product_type(item) -> bool:
     return t == "Product"
 
 
-def extract_jsonld_price(html: str, brand: str, expected_currency: str) -> Optional[Dict[str, Any]]:
-    """Parse JSON-LD Product schema from HTML for price data."""
+def extract_jsonld_price(
+    html: str, brand: str, expected_currency: str, query_name: str = "",
+) -> Optional[Dict[str, Any]]:
+    """Parse JSON-LD Product schema from HTML for price data.
+
+    `query_name` (S4 gate, optional) — the full query string. When a Product
+    matches only via the JSON-LD `brand` field (not its name), this is used to
+    require the matched product's NAME to actually relate to the query, so a
+    multi-Product same-brand page can't attribute the cheapest UNRELATED same-
+    brand item's price to the query. Empty `query_name` preserves the pre-S4
+    behaviour (brand-field match alone). NOTE: kept distinct from the per-loop
+    `product_name` (the candidate's own JSON-LD name) to avoid shadowing.
+    """
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(html, 'html.parser')
@@ -706,8 +737,44 @@ def extract_jsonld_price(html: str, brand: str, expected_currency: str) -> Optio
             product_name = product.get("name", "")
             brand_nospace = brand_lower.replace(" ", "")
             name_nospace = product_name.lower().replace(" ", "")
-            if brand_nospace not in name_nospace:
+            # L1.4 (Bundle B S3) — also match the JSON-LD `brand` field, not just
+            # the product name. Many BH retailers (verified: bahrain.ounass.com)
+            # carry the brand in a dedicated `brand` field ({"@type":"Brand",
+            # "name":"Jessie and James"} or a bare string) while the name is just
+            # "Orangey Dress" — pre-fix that valid BHD price was wrongly rejected.
+            ld_brand = product.get("brand")
+            if isinstance(ld_brand, dict):
+                ld_brand = ld_brand.get("name", "")
+            elif isinstance(ld_brand, list):
+                ld_brand = " ".join(
+                    (b.get("name", "") if isinstance(b, dict) else str(b))
+                    for b in ld_brand
+                )
+            brand_field_nospace = str(ld_brand or "").lower().replace(" ", "")
+            matched_in_name = brand_nospace in name_nospace
+            matched_in_brand_field = bool(
+                brand_field_nospace and brand_nospace in brand_field_nospace
+            )
+            if not matched_in_name and not matched_in_brand_field:
                 continue
+
+            # S4 — when the match is ONLY via the brand field (the product NAME
+            # didn't contain the brand), require the matched product's name to
+            # actually relate to the full query. Otherwise a multi-Product
+            # same-brand page lets the cheapest UNRELATED same-brand item's price
+            # be attributed to the query. Skipped when product_name is empty
+            # (pre-S4 callers) or when the brand already matched in the name.
+            if query_name and not matched_in_name:
+                cand_name = product_name  # the candidate's own JSON-LD name
+                # significant query numbers (e.g. "256") must appear in the name,
+                if not numbers_match(query_name, cand_name):
+                    continue
+                # AND a real word overlap between the query and the candidate.
+                q_words = normalize_words(query_name)
+                n_words = normalize_words(cand_name)
+                overlap = (len(q_words & n_words) / len(q_words)) if q_words else 0.0
+                if overlap < 0.3:
+                    continue
 
             offers = product.get("offers", {})
             if isinstance(offers, dict):
@@ -749,10 +816,12 @@ def extract_price_from_html(
     from bs4 import BeautifulSoup
     brand = product_name.split()[0] if product_name else ""
 
-    # Priority 1: JSON-LD
-    price_data = extract_jsonld_price(html, brand, currency)
+    # Priority 1: JSON-LD (S4 — pass the full query as query_name so a brand-
+    # field-only match still requires name-relatedness, no cheapest-unrelated-
+    # sibling grab).
+    price_data = extract_jsonld_price(html, brand, currency, query_name=product_name)
     if not price_data:
-        price_data = extract_jsonld_price(html, brand, "USD")
+        price_data = extract_jsonld_price(html, brand, "USD", query_name=product_name)
         if price_data:
             price_data["_needs_conversion"] = True
 
@@ -869,6 +938,256 @@ async def fetch_page_price(
         return {"_got_html": True}
 
     return None
+
+
+# ============================================
+# Shopify direct-discovery (/products.json)
+# ============================================
+# L1.3 part 2 (Bundle B S3 'Sources'). Diagnostic
+# (L1_DIAGNOSTIC_bh_scrapeability.md): the major BH retailers are JS-SPAs whose
+# prices are NOT in static curl HTML — but Shopify-platform BH stores
+# (shopalmoayyed.com, bh.asgharali.com) expose a static `/products.json`
+# catalog with real BHD prices. Hitting it directly gives a real BH price with
+# ZERO Serper + ZERO render credits — the cleanest real-price lever for the
+# winner axis. Match the catalog client-side with the existing title helpers.
+
+# Shopify caps /products.json at 250/page; one page is plenty for the small BH
+# storefronts (≈30 products) and keeps the call cheap. Cache the catalog so a
+# 2-product comparison on the same store is a single fetch.
+SHOPIFY_PRODUCTS_PATH = "/products.json?limit=250"
+_SHOPIFY_CATALOG_TTL = 6 * 3600  # 6h — catalogs are stable intraday
+# M2 — negative cache: a failed/non-Shopify/slow fetch is remembered for a
+# SHORT window so it isn't re-paid (~5s) on every escalating request (which ate
+# the 12s fan_out budget at full-200). 30min is short enough to recover from a
+# transient outage, long enough to stop the per-query re-cost storm.
+_SHOPIFY_NEG_TTL = 30 * 60
+_SHOPIFY_NEG_SENTINEL = {"_shopify_neg": True}
+
+
+async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
+    """Fetch + JSON-parse `https://{domain}/products.json` via curl_cffi.
+
+    Returns the parsed dict (``{"products": [...]}``) or ``None`` on any
+    failure (non-Shopify store, non-200, non-JSON, network error). Cached in
+    Redis for 6h on success; FAILURES are negative-cached for 30min (M2) so a
+    dead/slow store isn't re-fetched every escalation. Graceful-None throughout
+    (never raises)."""
+    domain = (domain or "").replace("www.", "").strip().lower()
+    if not domain:
+        return None
+
+    cache_key = f"shopify_catalog:{domain}"
+    cached = get_cached(cache_key)
+    if cached is not None:
+        # M2 — a negative sentinel reads back as "known-failed" → None, no fetch.
+        if isinstance(cached, dict) and cached.get("_shopify_neg"):
+            return None
+        return cached if isinstance(cached, dict) else None
+
+    def _negcache():
+        set_cached(cache_key, _SHOPIFY_NEG_SENTINEL, _SHOPIFY_NEG_TTL)
+
+    url = f"https://{domain}{SHOPIFY_PRODUCTS_PATH}"
+    try:
+        from curl_cffi import requests as curl_requests
+        resp = await asyncio.to_thread(
+            lambda: curl_requests.get(
+                url, impersonate="chrome", timeout=PAGE_SCRAPE_TIMEOUT,
+                allow_redirects=True,
+            )
+        )
+    except Exception as e:  # noqa: BLE001 — discovery is best-effort
+        logger.info(f"[PRICE] Shopify catalog fetch failed for {domain}: {e}")
+        _negcache()
+        return None
+
+    if resp.status_code != 200:
+        logger.info(f"[PRICE] Shopify catalog HTTP {resp.status_code} for {domain}")
+        _negcache()
+        return None
+    try:
+        data = resp.json()
+    except Exception:
+        # Not a Shopify store (HTML, redirect to a storefront, etc.).
+        _negcache()
+        return None
+    if not isinstance(data, dict) or "products" not in data:
+        _negcache()
+        return None
+
+    # M1 — capture the store's REAL base currency (Shopify /meta.json) so the
+    # matcher converts to BHD instead of blindly stamping it. A BH-targeted
+    # `.myshopify.com` can be USD/AED-base (discovery found USD stores). Best-
+    # effort: on any failure `_store_currency` stays absent → matcher skips the
+    # hit (no blind BHD). Cached with the catalog (one fetch per domain/6h).
+    data["_store_currency"] = await _fetch_shopify_currency(domain)
+
+    set_cached(cache_key, data, _SHOPIFY_CATALOG_TTL)
+    return data
+
+
+async def _fetch_shopify_currency(domain: str) -> Optional[str]:
+    """Shopify store base currency from ``/meta.json`` (ISO code, upper) or None.
+
+    Graceful-None on any failure — the caller then skips the hit rather than
+    stamping a fabricated currency (M1 Decision-F)."""
+    try:
+        from curl_cffi import requests as curl_requests
+        resp = await asyncio.to_thread(
+            lambda: curl_requests.get(
+                f"https://{domain}/meta.json", impersonate="chrome",
+                timeout=PAGE_SCRAPE_TIMEOUT, allow_redirects=True,
+            )
+        )
+        if resp.status_code != 200:
+            return None
+        cur = resp.json().get("currency")
+        return str(cur).upper() if cur else None
+    except Exception as e:  # noqa: BLE001 — best-effort
+        logger.info(f"[PRICE] Shopify currency probe failed for {domain}: {e}")
+        return None
+
+
+def _match_shopify_product(
+    catalog: Optional[Dict[str, Any]],
+    product_name: str,
+    currency: str,
+    domain: str,
+) -> Optional[Dict[str, Any]]:
+    """Find the best title-matching product in a Shopify `/products.json`
+    catalog and return its price dict, or ``None``.
+
+    Matching reuses the price_service title helpers so it behaves exactly like
+    the Serper-Shopping path: significant numbers must match
+    (``numbers_match``), key words must all appear (``strict_title_match``),
+    and the word-overlap ratio gates weak matches (>= 0.4).
+
+    M1 (S3 gate) — CURRENCY VERIFICATION (no blind BHD stamp). The Shopify
+    `/products.json` variant price is in the STORE'S base currency, which is NOT
+    always BHD even on a `.bh`/BH-targeted store (the discovery sweep found
+    USD-base `.myshopify.com` BH stores). `_fetch_shopify_catalog` records the
+    store's real base currency from `/meta.json` in ``catalog["_store_currency"]``.
+    Here: if it equals the target → keep; if it's a known other currency →
+    `_convert_to_bhd`; if it is UNKNOWN/undeterminable → return None (skip the
+    hit, let the cascade continue — Decision-F: never fabricate a currency, a
+    wrong-price stamp is worse than an honest estimate).
+    """
+    if not isinstance(catalog, dict):
+        return None
+    products = catalog.get("products")
+    if not isinstance(products, list) or not products:
+        return None
+
+    # M1 — resolve + validate the store's base currency up front.
+    store_currency = str(catalog.get("_store_currency") or "").upper()
+    target_currency = (currency or "BHD").upper()
+    if not store_currency:
+        # Currency undeterminable → do NOT stamp BHD. Skip (cascade continues).
+        logger.info(
+            "[PRICE] Shopify %s: store currency undeterminable — skipping hit "
+            "(no blind BHD stamp)", domain,
+        )
+        return None
+    needs_conversion = store_currency != target_currency
+    if needs_conversion:
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        if store_currency not in FALLBACK_RATES or target_currency != "BHD":
+            # Can't safely convert (unknown rate, or non-BHD target) → skip.
+            logger.info(
+                "[PRICE] Shopify %s: store currency %s not safely convertible to "
+                "%s — skipping hit", domain, store_currency, target_currency,
+            )
+            return None
+
+    domain = (domain or "").replace("www.", "").strip().lower()
+    p_words = normalize_words(product_name)
+    best: Optional[Dict[str, Any]] = None
+    best_score = 0.0
+
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        title = product.get("title") or ""
+        if not title:
+            continue
+
+        # Same gates as extract_price_from_shopping (counterfeit/accessory are
+        # not expected on a curated BH storefront but stay defensive).
+        if is_counterfeit_listing(title) or is_accessory(title):
+            continue
+        if not numbers_match(product_name, title):
+            continue
+        if not strict_title_match(product_name, title):
+            continue
+
+        t_words = normalize_words(title)
+        match_score = len(p_words & t_words) / len(p_words) if p_words else 0.0
+        if match_score < 0.4:
+            continue
+
+        variants = product.get("variants")
+        if not isinstance(variants, list) or not variants:
+            continue
+        variant = variants[0] if isinstance(variants[0], dict) else {}
+        amount = parse_price_string(str(variant.get("price", "")))
+        if amount is None or amount <= 0:
+            continue
+
+        # M1 — convert from the store's base currency to the BHD target.
+        if needs_conversion:
+            amount = _convert_to_bhd(amount, store_currency)
+            if amount is None or amount <= 0:
+                continue
+
+        if match_score > best_score:
+            handle = product.get("handle") or ""
+            url = (
+                f"https://{domain}/products/{handle}" if handle and domain
+                else f"https://{domain}/" if domain else ""
+            )
+            best = {
+                "amount": round(amount, 2),
+                "currency": target_currency,
+                "original_currency": store_currency,
+                "retailer": domain,
+                "url": url,
+                "in_stock": bool(variant.get("available", True)),
+                "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
+                "estimated": False,
+                "source_method": "shopify_json",
+                "title": title,
+                "match_score": round(match_score, 3),
+            }
+            best_score = match_score
+
+    return best
+
+
+async def fetch_shopify_price(
+    domain: str, product_name: str, currency: str = "BHD",
+) -> Optional[Dict[str, Any]]:
+    """Direct-discovery price for a Shopify-platform BH retailer.
+
+    Fetches the store's `/products.json`, matches `product_name`, and returns a
+    ``source_method="shopify_json"`` price dict (real BHD, no Serper/render) or
+    ``None``. L2 content-safety gated like the other Tier-1.5 entry points.
+    """
+    if not ENABLE_PAGE_SCRAPE:
+        return None
+    catalog = await _fetch_shopify_catalog(domain)
+    if not catalog:
+        return None
+    price = _match_shopify_product(catalog, product_name, currency, domain)
+    if not price:
+        return None
+
+    # L2 content safety — drop a candidate whose surface trips the blocklist.
+    from app.services.content_safety_service import get_content_safety_service
+    _surface = f"{price.get('title', '')} {price.get('retailer', '') or domain} {product_name}"
+    if not get_content_safety_service().is_text_safe(_surface):
+        logger.info("[content_safety] L2 dropped Shopify candidate for %s", domain)
+        return None
+    return price
 
 
 # ============================================
