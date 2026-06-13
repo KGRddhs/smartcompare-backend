@@ -296,6 +296,34 @@ for _s in LOWER_IS_BETTER_BY_CATEGORY.values():
 MISSING_SCORE = 50
 
 
+# S3 winner-mechanism Option A1 — normalization dampening (team-lead APPROVED as
+# DEFAULT, 2026-06-13). `_normalize_dimension` previously mapped the relative
+# position with `30 + ratio*70` (range 30–100), so the product with even a
+# SLIGHTLY higher raw spec number got 100 and the other got 30 — a 70pt swing
+# manufactured from noise (the corpus-pinned driver of the 47%-wrong-on-clean
+# winner gap). A1 narrows the spread to `45 + ratio*40` (range 45–85), and the
+# genuine-tie return to the new band midpoint (65). This compresses BOTH the
+# user-visible dim bars AND the winner/overall contribution (the FULL version).
+# `DISABLE_DIM_NORM_DAMPENING` (default OFF) is the escape hatch: reverts to the
+# legacy 30–100 spread + 70 tie if Ahmed wants the dramatic bars kept.
+_DIM_NORM_FLOOR_DAMPENED = 45.0
+_DIM_NORM_SPAN_DAMPENED = 40.0
+_DIM_NORM_TIE_DAMPENED = 65.0
+_DIM_NORM_FLOOR_LEGACY = 30.0
+_DIM_NORM_SPAN_LEGACY = 70.0
+_DIM_NORM_TIE_LEGACY = 70.0
+
+
+def _dim_norm_dampening_disabled() -> bool:
+    """Escape hatch reader — when ENV DISABLE_DIM_NORM_DAMPENING is set, revert
+    `_normalize_dimension` to the legacy 30–100 spread. Read live (not cached)
+    so a monkeypatch test + a Railway flip take effect without a restart."""
+    import os
+    return os.environ.get("DISABLE_DIM_NORM_DAMPENING", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 # Bundle C § 2a flag — when ON, missing signals propagate as None instead
 # of being injected with MISSING_SCORE=50. Cached at process init,
 # mirroring _DEBUG_STAGE_TIMINGS pattern in structured_comparison_service.
@@ -1760,14 +1788,24 @@ class ScoringService:
             )
             if max_val == 0 or both_sides_flagged_missing:
                 return MISSING_SCORE
-            return 70.0
+            # S3 A1 — genuine non-missing tie returns the band midpoint (65
+            # dampened / 70 legacy), NOT a manufactured extreme.
+            return (
+                _DIM_NORM_TIE_LEGACY if _dim_norm_dampening_disabled()
+                else _DIM_NORM_TIE_DAMPENED
+            )
 
         if higher_better:
             ratio = (current - min_val) / (max_val - min_val)
         else:
             ratio = (max_val - current) / (max_val - min_val)
 
-        return round(30 + ratio * 70, 1)
+        # S3 A1 — narrow the spread from 30+ratio*70 (range 30–100) to
+        # 45+ratio*40 (range 45–85) so a tiny raw-spec edge stops manufacturing
+        # a 70pt landslide. Escape hatch reverts to legacy.
+        if _dim_norm_dampening_disabled():
+            return round(_DIM_NORM_FLOOR_LEGACY + ratio * _DIM_NORM_SPAN_LEGACY, 1)
+        return round(_DIM_NORM_FLOOR_DAMPENED + ratio * _DIM_NORM_SPAN_DAMPENED, 1)
 
     def _normalize_review(self, raw_scores: List[Dict], idx: int) -> float:
         """Normalize review score: rating/5 * 100."""

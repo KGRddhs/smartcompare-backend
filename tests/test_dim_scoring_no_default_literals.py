@@ -66,12 +66,14 @@ def test_normalize_dimension_no_signal_returns_missing_score(service):
         )
 
 
-def test_normalize_dimension_genuine_tie_still_returns_70(service):
-    """Both products tied at NON-ZERO raw signal => keep 70.0 tie display.
+def test_normalize_dimension_genuine_tie_returns_band_midpoint(service):
+    """Both products tied at NON-ZERO raw signal => band-midpoint tie display.
 
     The fix must NOT regress on legitimate ties — if both products extracted
-    e.g. spec_raw=2.5, we still display 70.0 for both (tied, no information
-    about which is better).
+    e.g. spec_raw=2.5, we display the band midpoint for both (tied, no info
+    about which is better). S3 A1: midpoint is now 65.0 (dampened spread 45–85),
+    was 70.0 (legacy). The invariant — a genuine tie returns a real midpoint,
+    NOT MISSING_SCORE — is unchanged; only the literal moved.
     """
     raw_scores = [
         {"spec_raw": 2.5},
@@ -79,21 +81,22 @@ def test_normalize_dimension_genuine_tie_still_returns_70(service):
     ]
     for idx in (0, 1):
         result = service._normalize_dimension(raw_scores, idx, "spec_raw", higher_better=True)
-        assert result == 70.0, (
-            f"genuine non-zero tie should map to 70.0, got {result}"
+        assert result == 65.0, (
+            f"genuine non-zero tie should map to the band midpoint (65.0 under A1), got {result}"
         )
 
 
 def test_normalize_dimension_with_actual_signal_diff(service):
-    """Sanity — when signals differ, returns ratio-based score [30, 100]."""
+    """Sanity — when signals differ, returns ratio-based score in the dampened
+    band [45, 85] (S3 A1; was [30, 100])."""
     raw_scores = [
         {"spec_raw": 1.0},  # min
         {"spec_raw": 5.0},  # max
     ]
     score_a = service._normalize_dimension(raw_scores, 0, "spec_raw", higher_better=True)
     score_b = service._normalize_dimension(raw_scores, 1, "spec_raw", higher_better=True)
-    assert score_a == 30.0, f"min-side higher_better should map to 30.0 floor, got {score_a}"
-    assert score_b == 100.0, f"max-side higher_better should map to 100.0 ceiling, got {score_b}"
+    assert score_a == 45.0, f"min-side higher_better should map to the 45.0 dampened floor, got {score_a}"
+    assert score_b == 85.0, f"max-side higher_better should map to the 85.0 dampened ceiling, got {score_b}"
     assert score_a != score_b, "Drift: ratio path collapsed to single literal"
 
 
