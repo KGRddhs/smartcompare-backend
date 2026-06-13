@@ -8,7 +8,11 @@ from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from typing import Optional
 
 from app.services.api_budget_service import get_usage_summary, get_burn_status
-from app.services.cache_service import get_tier15_hit_rate, get_tier15_source_hits
+from app.services.cache_service import (
+    get_tier15_hit_rate,
+    get_tier15_source_hits,
+    get_real_price_coverage,
+)
 from app.services.database_service import get_supabase_client, get_admin_supabase_client
 from app.middleware.rate_limiter import limiter
 from app.services.analytics_service import (
@@ -141,6 +145,19 @@ async def api_costs(request: Request, _=Depends(verify_admin_key)):
         summary["tier1_5_hit_rate"] = {
             "window_days": 7, "by_category": {}, "by_source": {}
         }
+
+    # S3 L1.5 — real-price-coverage: per-category live ratio of REAL prices
+    # (page_scrape/shopify_json/local_bhd/converted_usd/...) vs GPT estimates.
+    # The prod-runtime dial for Ahmed's "facts not estimation" directive (the
+    # eval-side estimate-share is L4's, in eval_runner). Fail-open zeroed block.
+    try:
+        summary["real_price_coverage"] = {
+            "window_days": 7,
+            "by_category": get_real_price_coverage(days=7),
+        }
+    except Exception as e:
+        logger.warning(f"[ADMIN] real_price_coverage aggregate failed: {e}")
+        summary["real_price_coverage"] = {"window_days": 7, "by_category": {}}
 
     # I5.0 (Bundle B S2) — Serper burn status vs the 80% ceiling. This is the
     # run-integrity canary: a measurement run that crosses 80% trips the

@@ -40,6 +40,7 @@ from app.services.cache_service import (
     set_cached,
     record_tier15_attempt,
     record_tier15_hit,
+    record_price_outcome,
 )
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
@@ -2329,6 +2330,18 @@ class StructuredComparisonService:
                 result[key] = None
             else:
                 result[key] = phase1_results[i]
+
+        # S3 L1.5 — record the real-vs-estimate price outcome for this product
+        # (per-category /admin/costs gauge; the live counterpart to L4's eval
+        # estimate-share). Fire-and-forget + fail-open; only counts when a price
+        # was actually produced (None price = race timeout/error, not an
+        # estimate decision, so it's excluded from the ratio).
+        try:
+            _settled_price = result.get("price")
+            if isinstance(_settled_price, dict) and _settled_price.get("amount"):
+                record_price_outcome(category, _settled_price.get("source_method"))
+        except Exception:  # noqa: BLE001 — metric must never break the response
+            pass
 
         # L2.9 — emit a per-product source_trace record into the orchestrator
         # collector. Tier names are the labels the renderer surfaces; in the
