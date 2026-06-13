@@ -165,8 +165,16 @@ RETAILER_SEARCH_URLS = {
     "micro center": "https://www.microcenter.com/search/search_results.aspx?Ntt={query}",
     "noon": "https://www.noon.com/search?q={query}",
     "jarir": "https://www.jarir.com/sa-en/catalogsearch/result/?q={query}",
-    "extra": "https://www.extra.com/en-sa/search/?q={query}",
-    "sharaf dg": "https://uae.sharafdg.com/search/?q={query}",
+    # L1.3 (Bundle B S3) — Bahrain-correct retailer URLs. Pre-S3 these pointed
+    # at the wrong GCC country (extra=/en-sa Saudi, sharaf dg=uae.*), while the
+    # registry (source_router.py) uses bahrain.sharafdg.com. Align the direct
+    # URL builder so the Tier 1.5 cascade lands on the Bahrain storefront.
+    # Templates control-calibrated LIVE (HTTP 200 + BHD product content) in the
+    # same env — see L1_DIAGNOSTIC_bh_scrapeability.md. extra.com BH search uses
+    # the `text=` param (`q=` lands on /en-bh/error); sharafdg BH is WooCommerce
+    # `?s=...&post_type=product`.
+    "extra": "https://www.extra.com/en-bh/search?text={query}",
+    "sharaf dg": "https://bahrain.sharafdg.com/?s={query}&post_type=product",
     "ubuy": "https://www.ubuy.com.bh/en/search?q={query}",
     "lulu": "https://www.luluhypermarket.com/en-bh/search?q={query}",
     "carrefour": "https://www.carrefouruae.com/mafuae/en/search?q={query}",
@@ -189,6 +197,18 @@ RETAILER_SEARCH_URLS = {
     "nasser pharmacy": "https://www.nasserpharmacy.com/search?q={query}",
     "boots": "https://www.bn.boots.com/search?q={query}",
     "al deerah": "https://aldeerahpharmacy.com/catalogsearch/result/?q={query}",
+    # L1.3 (Bundle B S3) — verified-live Bahrain retailers (control-calibrated,
+    # HTTP 200 + BHD product content, L1_DIAGNOSTIC_bh_scrapeability.md). Both
+    # `shopalmoayyed` + `asgharali` are Shopify (static JSON-LD prices — the
+    # cascade scrapes them cleanly without render credits); bahrainpharmacy is
+    # WordPress `?s=`. Two key spellings each so the substring match in
+    # build_retailer_url catches both "Al Moayyed"/"shopalmoayyed" and
+    # "Asghar Ali"/"asgharali" source-name forms.
+    "almoayyed": "https://www.shopalmoayyed.com/search?q={query}",
+    "al moayyed": "https://www.shopalmoayyed.com/search?q={query}",
+    "asgharali": "https://bh.asgharali.com/search?q={query}",
+    "asghar ali": "https://bh.asgharali.com/search?q={query}",
+    "bahrain pharmacy": "https://bahrainpharmacy.com/?s={query}",
 }
 
 # Accessory keywords
