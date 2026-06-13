@@ -44,6 +44,34 @@ def _factual_verdict_present_in_scoring_v2(scoring_v2: Dict[str, Any]) -> bool:
     return bool(fv.get("line1")) or bool(fv.get("line2"))
 
 
+def _gpt_winner_lever_enabled() -> bool:
+    """S3 intervention #2 flag reader (default OFF). Read live so a Railway flip
+    / monkeypatch takes effect without a restart."""
+    return os.environ.get("ENABLE_GPT_WINNER", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _grounded_gpt_winner(comparison: Dict[str, Any]) -> Optional[int]:
+    """Return the verdict's INDEPENDENT winner index (0/1) ONLY when it is
+    grounded (model self-reported it justified the call from the supplied facts,
+    not a guess) and the index is a valid 0/1 int. None otherwise (older prompt,
+    parse miss, ungrounded guess, or malformed index) so the caller falls back
+    to the deterministic winner. The `grounded` gate is the no-estimation
+    guardrail — an admitted guess never overrides."""
+    if not isinstance(comparison, dict):
+        return None
+    if comparison.get("independent_winner_grounded") is not True:
+        return None
+    idx = comparison.get("independent_winner_index")
+    # Reject bools (bool is an int subclass) and non-0/1 values.
+    if isinstance(idx, bool) or not isinstance(idx, int):
+        return None
+    if idx not in (0, 1):
+        return None
+    return idx
+
+
 def derive_rating_from_scores(overall_score: float) -> float:
     """Derive a synthetic rating (1-5 scale) from overall score when no real rating exists."""
     rating = 2.5 + (overall_score / 100) * 2.3
@@ -935,6 +963,24 @@ def build_comparison_response(
     else:
         winner_index = _gpt_winner
     win_margin = scoring_result.get("win_margin", 0)
+
+    # S3 intervention #2 — GPT-qualitative-winner lever (FLAG-GATED default OFF).
+    # The deterministic spec-scorer has a capability ceiling (ranks spec numbers
+    # + cheapness; gold rewards qualitative quality it can't express). When
+    # ENABLE_GPT_WINNER is ON, let the verdict's INDEPENDENT winner override the
+    # deterministic pick — but ONLY when it is GROUNDED (the model self-reports
+    # it justified the call from the supplied facts, not a guess — the
+    # no-estimation guardrail) and the index is a valid 0/1. Otherwise the
+    # deterministic winner stands. Default OFF => byte-identical to today.
+    if _gpt_winner_lever_enabled():
+        indep = _grounded_gpt_winner(comparison)
+        if indep is not None and indep != winner_index:
+            logger.info(
+                "GPT_WINNER_OVERRIDE deterministic=%s gpt_independent=%s basis=%r",
+                winner_index, indep,
+                (comparison.get("independent_winner_basis") or "")[:120],
+            )
+            winner_index = indep
 
     # Build personalization metadata
     personalized = user_preferences is not None and bool(user_preferences)
