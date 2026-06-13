@@ -2191,9 +2191,16 @@ class StructuredComparisonService:
             "specs": 8.0,     # GPT-4o-mini extraction
             # I5.7 (Bundle B S2, Decision D pre-authorized): price 18s→15s. This
             # OUTER cap wraps the whole _get_price path (Tier 1 + escalation
-            # decision + the now-12s inner fan_out race + Tier 3 estimate). It
-            # stays strictly above the 12s fan_out race (≥3s headroom for Tier 1 +
-            # estimate) so it never cuts a fan_out race that's still in budget.
+            # decision + the now-12s inner fan_out race + Tier 3 estimate).
+            # S3 L1.3 (gate M2b): the pre-fan_out window now also runs the
+            # Shopify /products.json discovery, capped at 3s (wait_for 3.0). That
+            # fits inside the ~3s headroom above the 12s fan_out — and because a
+            # failed/slow catalog is negative-cached (30min, M2a), the 3s tax is
+            # a rare FIRST-COLD edge, not per-query; the fan_out's 2-source/rank
+            # early-exit absorbs the ~2s it might lose on that one query. KEPT at
+            # 15 (NOT raised to 18 — that would risk the 30s STREAM_HARD_CAP on
+            # Phase-2 + verdict). The 3s Shopify wait_for cancels its own inner
+            # gather on timeout, so nothing survives to be orphaned at the cap.
             "price": 15.0,    # Tier 1 + 1.5 cascade (inner fan_out race now 12s)
             "reviews": 10.0,  # Serper + GPT cleanup (measured 4-5s + headroom)
             "image_url": 5.0, # Serper Images + Tier 3 GPT fallback
@@ -2795,15 +2802,33 @@ class StructuredComparisonService:
             scraping_mode = os.environ.get("SCRAPING_MODE", "hard")
             candidate_urls: List[Tuple[str, str]] = []
 
-            # --- S3 L1.3: Shopify direct-discovery (FREE, before Serper) ---
+            # official_domain is needed by BOTH the Shopify authority gate (S3)
+            # and the discovery below — compute it once, up front.
+            official_domain = get_official_domain(full_name)
+
+            # --- S3 L1.3: Shopify direct-discovery (FREE, real BHD) ---
             # The major BH retailers are JS-SPAs whose prices aren't in static
             # curl HTML (L1_DIAGNOSTIC_bh_scrapeability.md), but Shopify-platform
             # BH stores expose a static /products.json catalog with real BHD
-            # prices. For any bahrain-tier Shopify registry source in this
-            # category, hit /products.json DIRECTLY (zero Serper, zero render
-            # credits) and short-circuit on a confident hit — this is the
-            # cleanest real-BH-price lever for the winner axis. On a miss we
-            # fall through to the unchanged Serper + fan_out path below.
+            # prices — hit it DIRECTLY (zero Serper, zero render credits).
+            #
+            # S3 gate (authority): a Shopify hit SHORT-CIRCUITS only when its
+            # domain IS the official/authoritative brand domain. The registry's
+            # Shopify stores (asgharali, almoayyed) are RESELLERS — a reseller
+            # hit must NOT pre-empt the official-brand discovery, and must not
+            # auto-win on lowest price. So a reseller hit is parked as a
+            # `shopify_fallback` and the normal discovery + ranked fan_out runs;
+            # the fallback is only used if the fan_out yields nothing (a real BH
+            # price still beats a GPT estimate).
+            #
+            # M2b gate (latency): the fetch is capped at 3s (was 8s) so it can
+            # never push the pre-fan_out budget past the 15s _price_task cap's
+            # ~3s headroom. M2a's negative-cache bounds a cold/dead store to
+            # 1-2 fetches per domain / 30min, so the 3s tax is a rare first-cold
+            # edge the fan_out's early-exit absorbs. The 3s wait_for cancels its
+            # inner gather on timeout (self-contained — completes well before the
+            # outer 15s cap, so no orphaned Shopify task survives L5's cancel).
+            shopify_fallback = None
             shopify_sources = get_shopify_sources_for_category(category)
             if shopify_sources:
                 try:
@@ -2815,7 +2840,7 @@ class StructuredComparisonService:
                             ),
                             return_exceptions=True,
                         ),
-                        timeout=8.0,
+                        timeout=3.0,
                     )
                 except asyncio.TimeoutError:
                     shop_results = []
@@ -2823,10 +2848,10 @@ class StructuredComparisonService:
                     logger.warning(f"[PRICE] Shopify discovery failed: {e}")
                     shop_results = []
 
-                # Most-authoritative = lowest real BHD price among valid hits
-                # (an in-catalog listing is the product's actual price; lowest
-                # mirrors the "most authoritative, not cheapest-marketplace"
-                # philosophy WITHIN a single trusted BH retailer set).
+                # Lowest valid BHD among the trusted Shopify set (the product's
+                # actual in-catalog price). NOTE: "lowest" here is only WITHIN
+                # the Shopify set; S3 ensures it never out-ranks the official
+                # brand below.
                 shop_best = None
                 for r in shop_results:
                     if isinstance(r, dict) and r.get("amount") and r["amount"] > 0:
@@ -2839,26 +2864,40 @@ class StructuredComparisonService:
                     win_domain = str(
                         shop_best.get("retailer") or ""
                     ).replace("www.", "").lower()
-                    self._tier15_routes[full_name] = {
-                        "route": "shopify_direct",
-                        "source_weight": score_source(
-                            shop_best.get("url", "") or f"https://{win_domain}",
-                            category,
-                        ),
-                    }
-                    record_tier15_attempt(category)
-                    record_tier15_hit(category, win_domain or None)
-                    set_cached(cache_key, shop_best, PRICE_CACHE_TTL)
-                    self._save_price_to_db(
-                        cache_key, brand, name, variant, region, shop_best
+                    off = (official_domain or "").replace("www.", "").lower()
+                    is_official_shopify = bool(off) and (
+                        win_domain == off or win_domain.endswith("." + off)
+                        or off.endswith("." + win_domain)
                     )
-                    shop_best["_cached"] = False
+                    if is_official_shopify:
+                        # Authoritative (official brand store) → short-circuit.
+                        self._tier15_routes[full_name] = {
+                            "route": "shopify_direct",
+                            "source_weight": score_source(
+                                shop_best.get("url", "") or f"https://{win_domain}",
+                                category,
+                            ),
+                        }
+                        record_tier15_attempt(category)
+                        record_tier15_hit(category, win_domain or None)
+                        set_cached(cache_key, shop_best, PRICE_CACHE_TTL)
+                        self._save_price_to_db(
+                            cache_key, brand, name, variant, region, shop_best
+                        )
+                        shop_best["_cached"] = False
+                        logger.info(
+                            "[PRICE] Shopify OFFICIAL-domain hit for %s: %.3f %s "
+                            "via %s (zero Serper/render)",
+                            full_name, shop_best["amount"], currency, win_domain,
+                        )
+                        return shop_best
+                    # Reseller hit → park as fallback; let discovery+fan_out run.
+                    shopify_fallback = shop_best
                     logger.info(
-                        "[PRICE] Shopify direct-discovery hit for %s: %.3f %s via %s "
-                        "(zero Serper/render)",
+                        "[PRICE] Shopify reseller hit for %s parked as fallback: "
+                        "%.3f %s via %s (ranked discovery still runs)",
                         full_name, shop_best["amount"], currency, win_domain,
                     )
-                    return shop_best
 
             # --- Discovery: all queries fire concurrently ---
             # B.0 (Lane F1): a Bahrain-first `site:` discovery query leads the
@@ -2868,7 +2907,7 @@ class StructuredComparisonService:
             # returns off-domain marketplace links — every candidate is gated
             # post-fetch (registry-first `score_source >= 1.5`, legacy whitelist
             # fallback) before entering the pool. Dispatcher invariant #1.
-            official_domain = get_official_domain(full_name)
+            # (official_domain computed above for the S3 Shopify authority gate.)
             # I5.5 (Bundle B S2) — category-aware authorized/gcc discovery.
             # These were hard-coded FASHION/luxury strings (farfetch/ssense/
             # net-a-porter + ounass/bloomingdales/namshi) sent for EVERY
@@ -3015,6 +3054,38 @@ class StructuredComparisonService:
                     )
                 except Exception as e:
                     logger.warning(f"[PRICE] Tier 1.5 fan_out_price_lookup failed: {e}")
+
+            # S3 — the ranked discovery/fan_out yielded nothing. A parked
+            # reseller Shopify hit (real BH price) is a better answer than a GPT
+            # estimate, so use it as the fallback now (it did NOT pre-empt the
+            # official-brand ranking — that already ran above and came up empty).
+            if shopify_fallback:
+                win_domain = str(
+                    shopify_fallback.get("retailer") or ""
+                ).replace("www.", "").lower()
+                shopify_fallback["source_method"] = shopify_fallback.get(
+                    "source_method", "shopify_json"
+                )
+                self._tier15_routes[full_name] = {
+                    "route": "shopify_fallback",
+                    "source_weight": score_source(
+                        shopify_fallback.get("url", "") or f"https://{win_domain}",
+                        category,
+                    ),
+                }
+                record_tier15_attempt(category)
+                record_tier15_hit(category, win_domain or None)
+                set_cached(cache_key, shopify_fallback, PRICE_CACHE_TTL)
+                self._save_price_to_db(
+                    cache_key, brand, name, variant, region, shopify_fallback
+                )
+                shopify_fallback["_cached"] = False
+                logger.info(
+                    "[PRICE] Shopify reseller FALLBACK used for %s: %.3f %s via %s "
+                    "(fan_out empty; real BH price beats estimate)",
+                    full_name, shopify_fallback["amount"], currency, win_domain,
+                )
+                return shopify_fallback
 
         # --- Tier 2: GPT extraction from search context ---
         if is_supplement:
