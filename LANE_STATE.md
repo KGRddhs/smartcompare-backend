@@ -5,10 +5,12 @@
 **Owner:** L5 (Opus)
 
 ## Current task
-L5.3 — lever-1 orphaned price task cancel cleanup (structured cancellation / try-finally).
+L5.4 — adjudicate the 1 TRUE engine error from S2 full-200 (`.qa-bias-rerun/s2_exit_full200.jsonl` in MAIN repo).
 
 ## Last commit SHA
 - L5.1 `575cacf` — fetch_retailer_quotes Serper budget double-count fixed (manual `record_usage` removed; search_web owns meter). 10/10 green.
+- L5.2 `700b575` — by_source subdomain attribution verified already-wired both sides + 2 end-to-end round-trip tests. 21/21 green.
+- L5.3 DONE (committing) — lever-1 (`_price_task = ensure_future(...)` at ssc:2207) had NO orphan cleanup. Between the speculative kickoff and the Phase-1 gather, a raise (unified search / drug lookup) OR external cancel (outer STREAM_HARD_CAP wait_for) left the price task running in background (scrapers burning). Fix: wrapped the pre-gather window + gather in `try/except BaseException` → `_cleanup_orphan_price_task()` (cancel+drain if not done) then re-raise. No-op on happy path (task already done at gather return → byte-identical behavior). TDD: 2 RED→GREEN tests (raise-in-window + parent-cancel) in `tests/test_lever1_orphan_cancel_i56.py`; I5.6 latency-stack 4/4 still green. NOTE: `test_phase1_runs_reviews_in_parallel_with_specs_price` fails on THIS box but PROVEN pre-existing (fails identically on clean HEAD — dummy-key 401 network-retry noise on un-mocked image/rating siblings pushes wall >1.2s; load-sensitive-wall caveat).
 - L5.2 DONE (committing) — VERIFIED already-wired on both sides, no re-wire needed:
   - WRITE: `record_tier15_hit` (cache_service.py:144-145) calls `match_registry_apex` on raw host before incrementing.
   - READ: `_aggregate_source_hits` probes apex keys via `_registry_domains()`.

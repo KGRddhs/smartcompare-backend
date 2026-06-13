@@ -2209,100 +2209,131 @@ class StructuredComparisonService:
             timeout=_PHASE1_TIMEOUTS["price"],
         ))
 
-        # === Unified web search === (runs CONCURRENTLY with the price task
-        # started above — I5.6: the price Serper round-trip is already in flight
-        # via _price_task, so awaiting the unified search here overlaps the two
-        # instead of running them sequentially. specs/reviews still consume the
-        # resolved unified_search below.)
-        unified_search = None
-        if include_specs or include_reviews:
-            specs_key = get_specs_cache_key(brand, name, variant)
-            reviews_key = get_reviews_cache_key(brand, name, variant)
-            specs_hit = get_cached(specs_key) if not nocache else None
-            reviews_hit = get_cached(reviews_key) if not nocache else None
-            if (include_specs and not specs_hit) or (include_reviews and not reviews_hit):
-                t0 = time.perf_counter() if stage_timings is not None else None
-                unified_search = await search_web(
-                    f"{search_query} specifications reviews price", num_results=10
-                )
-                if stage_timings is not None:
-                    stage_timings["unified_search_ms"] = round((time.perf_counter() - t0) * 1000, 1)
-                self._track_serper_cost()
+        async def _cleanup_orphan_price_task() -> None:
+            """L5.3 (S3) — cancel + drain the speculative lever-1 price task if it
+            never made it into (or through) the Phase-1 gather. Between the
+            ensure_future kickoff above and the gather there are await points (the
+            unified search; the supplements drug lookup) where a raise OR an
+            external cancel (e.g. the outer STREAM_HARD_CAP_SECONDS wait_for) would
+            otherwise leave _price_task running in the background — its scrapers
+            (Firecrawl / Scrape.do / curl) keep burning, result discarded. Mirrors
+            the lever-2 profile-task cleanup. No-op once the gather has resolved it
+            (the happy path), so zero behaviour change there."""
+            if not _price_task.done():
+                _price_task.cancel()
+                try:
+                    await _price_task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
 
-        if stage_timings is not None and "unified_search_ms" not in stage_timings:
-            stage_timings["unified_search_ms"] = 0.0  # cache hit or skipped — no Serper call
+        # I5.6 lever-1 orphan guard: any BaseException (incl. CancelledError)
+        # raised in the window before/within the Phase-1 gather must not strand
+        # the speculative price task. On the happy path _price_task is done by the
+        # time the gather returns, so the cleanup is a no-op and the result/timing
+        # path below is unchanged.
+        try:
+            # === Unified web search === (runs CONCURRENTLY with the price task
+            # started above — I5.6: the price Serper round-trip is already in flight
+            # via _price_task, so awaiting the unified search here overlaps the two
+            # instead of running them sequentially. specs/reviews still consume the
+            # resolved unified_search below.)
+            unified_search = None
+            if include_specs or include_reviews:
+                specs_key = get_specs_cache_key(brand, name, variant)
+                reviews_key = get_reviews_cache_key(brand, name, variant)
+                specs_hit = get_cached(specs_key) if not nocache else None
+                reviews_hit = get_cached(reviews_key) if not nocache else None
+                if (include_specs and not specs_hit) or (include_reviews and not reviews_hit):
+                    t0 = time.perf_counter() if stage_timings is not None else None
+                    unified_search = await search_web(
+                        f"{search_query} specifications reviews price", num_results=10
+                    )
+                    if stage_timings is not None:
+                        stage_timings["unified_search_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+                    self._track_serper_cost()
 
-        # === Phase 1: specs + price + reviews (parallel) ===
-        # D2 Intervention 1: reviews moved from Phase 2 to Phase 1. _get_reviews
-        # has no dependency on specs — it just needs unified_search +
-        # retailer_ratings (which can be None; reviews skips snippet
-        # enrichment in that case).
-        phase1_tasks = []
-        phase1_keys = []
+            if stage_timings is not None and "unified_search_ms" not in stage_timings:
+                stage_timings["unified_search_ms"] = 0.0  # cache hit or skipped — no Serper call
 
-        drug_context = ""
-        if include_specs and category == "supplements":
-            try:
-                drugs = await find_matching_drugs(search_query, limit=5)
-                drug_context = format_drug_context(drugs)
-                if drug_context:
-                    logger.info(f"Drug DB: found {len(drugs)} matches for '{search_query}'")
-            except Exception as e:
-                logger.warning(f"Drug DB lookup failed: {e}")
+            # === Phase 1: specs + price + reviews (parallel) ===
+            # D2 Intervention 1: reviews moved from Phase 2 to Phase 1. _get_reviews
+            # has no dependency on specs — it just needs unified_search +
+            # retailer_ratings (which can be None; reviews skips snippet
+            # enrichment in that case).
+            phase1_tasks = []
+            phase1_keys = []
 
-        # (_PHASE1_TIMEOUTS defined above the unified search for I5.6 — reviews
-        # was bumped 6.0 → 10.0 in the post-ec2751b hotfix because the measured
-        # post-D2 floor is 4-5s, per memory/feedback_measure_before_optimize.md.)
+            drug_context = ""
+            if include_specs and category == "supplements":
+                try:
+                    drugs = await find_matching_drugs(search_query, limit=5)
+                    drug_context = format_drug_context(drugs)
+                    if drug_context:
+                        logger.info(f"Drug DB: found {len(drugs)} matches for '{search_query}'")
+                except Exception as e:
+                    logger.warning(f"Drug DB lookup failed: {e}")
 
-        if include_specs:
+            # (_PHASE1_TIMEOUTS defined above the unified search for I5.6 — reviews
+            # was bumped 6.0 → 10.0 in the post-ec2751b hotfix because the measured
+            # post-D2 floor is 4-5s, per memory/feedback_measure_before_optimize.md.)
+
+            if include_specs:
+                phase1_tasks.append(asyncio.wait_for(
+                    _timed_task("specs", self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context), stage_timings),
+                    timeout=_PHASE1_TIMEOUTS["specs"],
+                ))
+                phase1_keys.append("specs")
+
+            # I5.6 — price already started above (concurrent with the unified
+            # search); add the running task here so its result-key position
+            # (after specs) is unchanged. asyncio.gather awaits an already-running
+            # task fine — it just collects the result.
+            phase1_tasks.append(_price_task)
+            phase1_keys.append("price")
+
+            if include_reviews:
+                # D2 Intervention 1: reviews moved from Phase 2 to Phase 1.
+                # retailer_ratings is None here because shopping_items_cache is
+                # populated DURING _get_price (Phase 1) so we can't pre-collect.
+                # _get_reviews accepts None and skips retailer_ratings enrichment.
+                phase1_tasks.append(asyncio.wait_for(
+                    _timed_task("reviews", self._get_reviews(
+                        brand, name, variant, search_query, nocache,
+                        category=category, retailer_ratings=None,
+                        search_results=unified_search,
+                    ), stage_timings),
+                    timeout=_PHASE1_TIMEOUTS["reviews"],
+                ))
+                phase1_keys.append("reviews")
+
+            # Bundle E S3 — image_url resolution runs in parallel with specs+price
+            # +reviews. Tier 1.5 piggyback happens AFTER Phase 1 returns (because
+            # the page-scrape image, when present, lives inside the price result
+            # which we don't have yet). Here we kick off Tier 1 (Serper Images) +
+            # Tier 3 (GPT) eagerly; the post-Phase1 piggyback short-circuit will
+            # override with the FREE result when available. Net: piggyback hit
+            # path costs zero extra wall (we discard the eager Tier 1/3 result),
+            # piggyback miss path saves zero wall too (Tier 1/3 already running).
             phase1_tasks.append(asyncio.wait_for(
-                _timed_task("specs", self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context), stage_timings),
-                timeout=_PHASE1_TIMEOUTS["specs"],
-            ))
-            phase1_keys.append("specs")
-
-        # I5.6 — price already started above (concurrent with the unified
-        # search); add the running task here so its result-key position
-        # (after specs) is unchanged. asyncio.gather awaits an already-running
-        # task fine — it just collects the result.
-        phase1_tasks.append(_price_task)
-        phase1_keys.append("price")
-
-        if include_reviews:
-            # D2 Intervention 1: reviews moved from Phase 2 to Phase 1.
-            # retailer_ratings is None here because shopping_items_cache is
-            # populated DURING _get_price (Phase 1) so we can't pre-collect.
-            # _get_reviews accepts None and skips retailer_ratings enrichment.
-            phase1_tasks.append(asyncio.wait_for(
-                _timed_task("reviews", self._get_reviews(
-                    brand, name, variant, search_query, nocache,
-                    category=category, retailer_ratings=None,
-                    search_results=unified_search,
+                _timed_task("image_url", get_product_image_url(
+                    full_name, region=region,
+                    page_scrape_image=None,  # piggyback evaluated post-Phase1 below
+                    organic_results=(unified_search.get("organic", []) if unified_search else None),
                 ), stage_timings),
-                timeout=_PHASE1_TIMEOUTS["reviews"],
+                timeout=_PHASE1_TIMEOUTS["image_url"],
             ))
-            phase1_keys.append("reviews")
+            phase1_keys.append("image_url")
 
-        # Bundle E S3 — image_url resolution runs in parallel with specs+price
-        # +reviews. Tier 1.5 piggyback happens AFTER Phase 1 returns (because
-        # the page-scrape image, when present, lives inside the price result
-        # which we don't have yet). Here we kick off Tier 1 (Serper Images) +
-        # Tier 3 (GPT) eagerly; the post-Phase1 piggyback short-circuit will
-        # override with the FREE result when available. Net: piggyback hit
-        # path costs zero extra wall (we discard the eager Tier 1/3 result),
-        # piggyback miss path saves zero wall too (Tier 1/3 already running).
-        phase1_tasks.append(asyncio.wait_for(
-            _timed_task("image_url", get_product_image_url(
-                full_name, region=region,
-                page_scrape_image=None,  # piggyback evaluated post-Phase1 below
-                organic_results=(unified_search.get("organic", []) if unified_search else None),
-            ), stage_timings),
-            timeout=_PHASE1_TIMEOUTS["image_url"],
-        ))
-        phase1_keys.append("image_url")
-
-        t1 = time.perf_counter() if stage_timings is not None else None
-        phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
+            t1 = time.perf_counter() if stage_timings is not None else None
+            phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
+        except BaseException:
+            # L5.3 — orphan guard: a raise (e.g. unified search) or a cancel
+            # (outer cap) in the pre-gather window, or a gather cancellation,
+            # must not strand the speculative lever-1 price task. Cancel +
+            # drain it, then re-raise so the caller's error/cancel semantics
+            # are unchanged.
+            await _cleanup_orphan_price_task()
+            raise
         if stage_timings is not None:
             # phase1_wall_ms = gather wall (max of parallel tasks);
             # specs_ms / price_ms / reviews_ms / image_url_ms = per-task wall.
