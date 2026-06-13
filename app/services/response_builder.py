@@ -784,6 +784,14 @@ def _build_scoring_v2(
     # in structured_comparison_service already computes the legs + per-
     # leg evidence dicts; we just thread them through.
     confidence_legs, confidence_details = _confidence_legs_and_details(product_data)
+    # S3 L3.4 — surface the qualitative winner_evidence the scoring layer
+    # produced (L3.2 price authority + L3.3 review density). Always a list of
+    # short strings (never coefficients/caps/% per no_backend_internals_in_reveals);
+    # coerce defensively so a malformed scoring_result can't ship a non-list.
+    raw_evidence = scoring_result.get("winner_evidence")
+    winner_evidence = (
+        [str(e) for e in raw_evidence] if isinstance(raw_evidence, list) else []
+    )
     scoring_v2 = {
         "overall_score": {
             "product_a": score_a,
@@ -793,6 +801,10 @@ def _build_scoring_v2(
         "win_margin": abs(score_a - score_b),
         "dimensions": dimensions,
         "factual_verdict": factual_verdict,
+        # S3 L3.4 — qualitative reasons backing the winner pick (price
+        # authority / Bahrain availability / review density). Empty list when
+        # the comparison had no discriminating real-data evidence.
+        "winner_evidence": winner_evidence,
         # Bundle C v1 hot-fix (round 2) — HeroRings.tsx reads
         # scoring_v2.comparison_quality per spec § 2e for weird-mode em-dash.
         # Also surface in scoring_v2 (in addition to metadata.comparison_quality

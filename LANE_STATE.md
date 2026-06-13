@@ -15,7 +15,9 @@ Consume signals that ALREADY EXIST in the response:
 - [x] **L3.1 winner-discriminator audit** (diagnostic, NON-credit) — DONE (findings below)
 - [x] **L3.2 Bahrain availability + price-authority into the winner pick** — DONE (evidence-weighted tie-break in compute_scores; GUARDS decisive-margin + both-MISSING; order-independent). 7 tests + 304 scoring-suite regression green.
 - [x] **L3.3 review-density into the verdict** — DONE. Two surfaces: (a) factual_verdict CITED review-density candidate (channel + humanized views) competing for line1, flag-gated; (b) review-density as the SECOND tie-break axis in apply_winner_evidence_tiebreak (price authority stays first). 7 tests + regression green.
-- [ ] L3.4 `winner_evidence` surfaced in scoring_v2 (qualitative reasons ONLY — no coefficients/caps/% per no_backend_internals_in_reveals) — NEXT
+- [x] **L3.4 `winner_evidence` surfaced in scoring_v2** — DONE. `_build_scoring_v2` threads `scoring_result["winner_evidence"]` into the `scoring_v2` payload (always-list, str-coerced, malformed→[]). End-to-end chain pin (compute_scores tie-break → scoring_v2) green. 6 tests + regression green.
+
+**ALL L3 TASKS COMPLETE (L3.1–L3.4).** Ready for gate. Awaiting team-lead GO for smoke20 (CREDIT GATE).
 
 ## L3.3 implementation (committed)
 - `scoring_service.py`: review-density as the 2nd evidence axis in `apply_winner_evidence_tiebreak` — helpers `_youtube_source_enabled` (flag), `_youtube_views`, `_youtube_channel`, `_review_density_leader` (decisive-gap detector: floor `_REVIEW_DENSITY_MIN_VIEWS=10k`, ratio `_REVIEW_DENSITY_DOMINANCE_RATIO=3.0`). Fires ONLY inside the tie band when price authority does NOT discriminate (both/neither real price) and one product has decisively more YouTube attention. Price authority is checked first (stronger BH signal). Flag OFF → no-op.
@@ -65,8 +67,21 @@ Consume signals that ALREADY EXIST in the response:
 - (init) Read §L3 + CLAUDE.md (scoring winner / factual_verdict / no_backend_internals) + L2 youtube contract (response_builder + extraction_service diffs on feature/s3-l2-youtube) + scoring_service.py (full) + response_builder _build_scoring_v2/_build_factual_verdict + orchestrator winner_index sites. Wrote LANE_STATE.
 - L3.1 GREEN (diagnostic, no commit): winner axis is below the always-pick-0 baseline; 47% of full-data rows still mis-pick. Mechanism = noisy weighted argmax + secondary both-MISSING coin-flip. Sent to team-lead. Scaffolding L3.2.
 
-## Last commit
-(none yet — diagnostic phase)
+## Commits
+- 19f36d5 L3.2 evidence-weighted winner tie-break (price authority)
+- d72b18e L3.3 review-density (YouTube) into verdict + winner tie-break
+- (this) L3.4 winner_evidence surfaced in scoring_v2
+
+## Test inventory (all GREEN, free-tier)
+- tests/test_winner_evidence_tiebreak.py (7) — L3.2
+- tests/test_review_density_verdict.py (7) — L3.3
+- tests/test_winner_evidence_scoring_v2.py (6) — L3.4 incl. end-to-end chain pin
+- 372+ existing scoring/verdict/response regression green; py_compile clean.
+
+## Gate-readiness notes (for dispatcher)
+- All L3 changes are ADDITIVE + behavior-gated: winner tie-break fires ONLY inside the 8pt tie band with discriminating real-price OR (flag-on) decisive review-density; outside that, argmax + responses are byte-identical to pre-L3. ENABLE_YOUTUBE_SOURCE OFF (prod default) → review-density paths are no-ops.
+- Touches shared files: scoring_service.py (compute_scores winner block + new module helpers), response_builder.py (_build_factual_verdict candidate list + _build_scoring_v2). Overlaps L2 (response_builder reviews section — DIFFERENT functions; L2 added _youtube_signal_for_response + a reviews-section key, I added _review_density_candidate + _build_scoring_v2 winner_evidence — no line overlap) and L1 (none expected; L1 is source_router/price_service/structured_comparison). Merge order L3 before L1 (4th).
+- I merge AFTER L2 (3rd). My L3.3 reads L2's reviews.youtube_review_signal by DATA SHAPE (no L2 helper import), so it lights up only once L2 is also merged + flag flipped — zero coupling risk at merge.
 
 ## Blockers
 (none)
