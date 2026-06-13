@@ -155,12 +155,8 @@ def test_normalize_dimension_routes_to_missing_when_both_sides_flagged_missing(s
 
 def test_normalize_dimension_preserves_genuine_tie_when_flags_not_set(service):
     """Sanity — when neither product has `_spec_missing` flag set (both
-    products genuinely supplied identical spec_raw=2.5), still emits the
-    band-midpoint tie display (NOT MISSING).
-
-    S3 A1: the band midpoint is now 65.0 (dampened spread 45–85), was 70.0
-    (legacy 30–100). The INVARIANT here — a genuine non-flagged tie returns a
-    real midpoint, not MISSING_SCORE — is unchanged; only the literal moved.
+    products genuinely supplied identical spec_raw=2.5), still emits 70.0
+    tie display.
     """
     raw_scores = [
         {"spec_raw": 2.5},  # no _spec_missing flag
@@ -168,9 +164,9 @@ def test_normalize_dimension_preserves_genuine_tie_when_flags_not_set(service):
     ]
     for idx in (0, 1):
         result = service._normalize_dimension(raw_scores, idx, "spec_raw", higher_better=True)
-        assert result == 65.0, (
-            f"genuine non-flagged tie must stay at the band midpoint (65.0 under "
-            f"A1 dampening), got {result} (regression: over-aggressive MISSING_SCORE routing)"
+        assert result == 70.0, (
+            f"genuine non-flagged tie must stay at 70.0, got {result} "
+            "(regression: over-aggressive MISSING_SCORE routing)"
         )
 
 
@@ -188,13 +184,11 @@ def test_normalize_dimension_routes_to_missing_when_only_one_side_flagged(servic
     ]
     # Only flag-set side gets MISSING_SCORE under "all" semantic; with strict
     # "any" semantic, both get MISSING. Spec uses `all()` per team-lead — so
-    # both sides flagged is the trigger. One-flag-only stays at the band
-    # midpoint (S3 A1: 65.0 dampened, was 70.0 legacy — invariant unchanged).
+    # both sides flagged is the trigger. One-flag-only stays at 70.0.
     for idx in (0, 1):
         result = service._normalize_dimension(raw_scores, idx, "spec_raw", higher_better=True)
-        assert result == 65.0, (
-            f"only-one-side-flagged should keep the band midpoint (65.0 under A1) "
-            f"per all() semantic, got {result}"
+        assert result == 70.0, (
+            f"only-one-side-flagged should keep 70.0 (per all() semantic), got {result}"
         )
 
 
@@ -674,8 +668,8 @@ def test_normalize_scores_preserves_distinct_spec(service):
     """Sanity — when spec_raw values DIFFER, _normalize_dimension produces
     distinct outputs and the collapse-to-MISSING guard does NOT fire."""
     raw_scores = [
-        {"spec_raw": 1.0},  # min → 45.0 (S3 A1 dampened floor; was 30.0)
-        {"spec_raw": 5.0},  # max → 85.0 (S3 A1 dampened ceil;  was 100.0)
+        {"spec_raw": 1.0},  # min → 30.0
+        {"spec_raw": 5.0},  # max → 100.0
     ]
     products_data = [
         {"category": "fashion", "price": {"amount": 100}},
@@ -689,9 +683,7 @@ def test_normalize_scores_preserves_distinct_spec(service):
     assert a != b, (
         f"distinct spec_raw should produce distinct craft scores, got ({a}, {b})"
     )
-    # S3 A1: dampened spread 45–85 (was 30–100). The invariant is distinctness;
-    # the literals moved with the narrower band.
-    assert a == 45.0 and b == 85.0, f"expected (45.0, 85.0) under A1, got ({a}, {b})"
+    assert a == 30.0 and b == 100.0, f"expected (30.0, 100.0), got ({a}, {b})"
 
 
 def test_normalize_scores_collapse_spec_propagates_to_spec_secondary(service):
