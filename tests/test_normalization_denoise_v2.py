@@ -114,6 +114,37 @@ def test_genuine_exact_tie_is_midpoint(service):
 
 
 # ---------------------------------------------------------------------------
+# Edge cases — div-by-zero guard + direction composition (team-lead flagged)
+# ---------------------------------------------------------------------------
+
+def test_magnitude_aware_ratio_both_zero_no_div_by_zero():
+    """max(hi,lo)==0 (both values 0) must NOT divide by zero — guard → 0.5
+    midpoint (same intent as the all-MISSING guard). Direct unit on the helper."""
+    from app.services.scoring_service import _magnitude_aware_ratio
+    assert _magnitude_aware_ratio(0.0, 0.0, 0.0, True) == 0.5
+    assert _magnitude_aware_ratio(0.0, 0.0, 0.0, False) == 0.5
+
+
+def test_both_zero_via_normalize_dimension_is_missing(service):
+    """Through _normalize_dimension, both-zero is caught by the max==min==0 guard
+    → MISSING_SCORE (the helper's 0.5 guard is defense-in-depth)."""
+    raw = [_raw(0.0), _raw(0.0)]
+    assert service._normalize_dimension(raw, 0, "spec_raw") == MISSING_SCORE
+
+
+def test_tolerance_governs_magnitude_direction_picks_side(service):
+    """The gap tolerance governs MAGNITUDE; higher_better/lower_better picks WHICH
+    side gets the lead. Same pair, opposite direction → mirrored around midpoint."""
+    raw = [_raw(100.0), _raw(10.0)]  # 90% gap, real lead
+    hb0 = service._normalize_dimension(raw, 0, "spec_raw", higher_better=True)
+    lb0 = service._normalize_dimension(raw, 0, "spec_raw", higher_better=False)
+    # higher_better: idx0 (the 100) leads (high); lower_better: idx0 loses (low).
+    assert hb0 > 70.0 and lb0 < 60.0, f"direction must flip the lead, got hb={hb0} lb={lb0}"
+    # Magnitude (distance from the 65 midpoint) is symmetric under the flip.
+    assert abs((hb0 - 65.0) + (lb0 - 65.0)) < 1.0, "magnitude symmetric around midpoint"
+
+
+# ---------------------------------------------------------------------------
 # Hatches — sweep knobs work
 # ---------------------------------------------------------------------------
 

@@ -52,6 +52,30 @@ def _gpt_winner_lever_enabled() -> bool:
     )
 
 
+def _eval_capture_debug_enabled() -> bool:
+    """S3 L3 v2 — EVAL_CAPTURE_DEBUG flag (default OFF). When ON, the response
+    serializes the RAW per-product scoring INPUTS (fact_check) under
+    overview.products[i]._debug_capture so the offline param sweep can re-run the
+    v2 scorer EXACTLY (the harness re-normalizes — A1/gap-tol change normalization
+    — so it needs raw inputs, not the post-norm breakdown). Flipped on Railway
+    ONLY for the one full-200 capture run; OFF in normal prod (zero user-facing
+    change, no payload bloat)."""
+    return os.environ.get("EVAL_CAPTURE_DEBUG", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _debug_capture_payload(pd: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Raw scoring inputs the captured body otherwise omits — currently the raw
+    fact_check (the reliability dim INPUT). specs/price.source_method/rating/
+    review_count/category already live in overview+specs, so fact_check is the
+    one missing input for an EXACT offline re-score. None when no fact_check."""
+    fc = pd.get("fact_check")
+    if not isinstance(fc, dict):
+        return None
+    return {"fact_check": fc}
+
+
 def _grounded_gpt_winner(comparison: Dict[str, Any]) -> Optional[int]:
     """Return the verdict's INDEPENDENT winner index (0/1) ONLY when it is
     grounded (model self-reported it justified the call from the supplied facts,
@@ -1081,6 +1105,14 @@ def build_comparison_response(
                             "",
                         ),
                         (user_preferences or {}).get("budget"),
+                    ),
+                    # S3 L3 v2 — raw scoring inputs for the offline param sweep,
+                    # emitted ONLY when EVAL_CAPTURE_DEBUG is set (the one capture
+                    # run). None otherwise → key carries None in normal prod; FE
+                    # ignores unknown keys. Kept additive + last so it never
+                    # shifts the user-facing shape.
+                    "_debug_capture": (
+                        _debug_capture_payload(pd) if _eval_capture_debug_enabled() else None
                     ),
                 }
                 for i, pd in enumerate(product_data)
