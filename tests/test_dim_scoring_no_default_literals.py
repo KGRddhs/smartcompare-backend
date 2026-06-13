@@ -87,16 +87,20 @@ def test_normalize_dimension_genuine_tie_returns_band_midpoint(service):
 
 
 def test_normalize_dimension_with_actual_signal_diff(service):
-    """Sanity — when signals differ, returns ratio-based score in the dampened
-    band [45, 85] (S3 A1; was [30, 100])."""
+    """Sanity — when signals differ MEANINGFULLY (1.0 vs 5.0 = 80% gap), the
+    dampened band [45, 85] opens a real lead, magnitude-aware (S3 L3 v2): the
+    winner is clearly above the loser, both inside the band, NOT collapsed to a
+    single literal. (Exact extremes are reserved for a near-100% gap; the excess
+    scaling moderates an 80% gap slightly inward.)"""
     raw_scores = [
         {"spec_raw": 1.0},  # min
         {"spec_raw": 5.0},  # max
     ]
     score_a = service._normalize_dimension(raw_scores, 0, "spec_raw", higher_better=True)
     score_b = service._normalize_dimension(raw_scores, 1, "spec_raw", higher_better=True)
-    assert score_a == 45.0, f"min-side higher_better should map to the 45.0 dampened floor, got {score_a}"
-    assert score_b == 85.0, f"max-side higher_better should map to the 85.0 dampened ceiling, got {score_b}"
+    assert 44.5 <= score_a <= 55.0, f"min-side near the dampened floor, got {score_a}"
+    assert 75.0 <= score_b <= 85.5, f"max-side near the dampened ceiling, got {score_b}"
+    assert score_b - score_a >= 25.0, "an 80% gap must open a clear lead"
     assert score_a != score_b, "Drift: ratio path collapsed to single literal"
 
 

@@ -689,9 +689,11 @@ def test_normalize_scores_preserves_distinct_spec(service):
     assert a != b, (
         f"distinct spec_raw should produce distinct craft scores, got ({a}, {b})"
     )
-    # S3 A1: dampened spread 45–85 (was 30–100). The invariant is distinctness;
-    # the literals moved with the narrower band.
-    assert a == 45.0 and b == 85.0, f"expected (45.0, 85.0) under A1, got ({a}, {b})"
+    # S3 L3 v2: dampened band 45–85 + magnitude-awareness. The invariant is
+    # distinctness + the winner clearly leading on a real (80%) gap; exact
+    # literals moved with the narrower band + excess scaling.
+    assert b > a, f"max-side must lead, got ({a}, {b})"
+    assert b - a >= 25.0, f"an 80% gap must open a clear lead, got ({a}, {b})"
 
 
 def test_normalize_scores_collapse_spec_propagates_to_spec_secondary(service):

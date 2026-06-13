@@ -316,12 +316,64 @@ _DIM_NORM_TIE_LEGACY = 70.0
 
 def _dim_norm_dampening_disabled() -> bool:
     """Escape hatch reader — when ENV DISABLE_DIM_NORM_DAMPENING is set, revert
-    `_normalize_dimension` to the legacy 30–100 spread. Read live (not cached)
-    so a monkeypatch test + a Railway flip take effect without a restart."""
+    `_normalize_dimension` to the legacy 30–100 spread (+ legacy 70 tie + NO
+    magnitude-awareness — full legacy behavior). Read live (not cached) so a
+    monkeypatch test + a Railway flip take effect without a restart."""
     import os
     return os.environ.get("DISABLE_DIM_NORM_DAMPENING", "").strip().lower() in (
         "1", "true", "yes", "on",
     )
+
+
+# S3 L3 v2 — MAGNITUDE-AWARENESS (team-lead root-cause fix). _normalize_dimension
+# mapped DIRECTION to the full band and ignored MAGNITUDE: relative min/max on a
+# 2-product pair gave the higher value the ceiling + the lower the floor by ANY
+# margin, so a +0.02% product got a decisive lead. The relative-gap tolerance
+# makes the dim reflect the SIZE of the gap: gaps within the tolerance read as a
+# ~tie (band midpoint); beyond it the lead opens scaled by the EXCESS gap
+# ((gap−tol)/(1−tol)), smoothly (no cliff at the tolerance). Sweep-tunable via
+# WINNER_DIM_GAP_TOLERANCE (deterministic post-data → offline-sweepable).
+_DEFAULT_DIM_GAP_TOLERANCE = 0.08  # 8% relative gap ≈ tie
+
+
+def _dim_gap_tolerance() -> float:
+    import os
+    raw = os.environ.get("WINNER_DIM_GAP_TOLERANCE")
+    if raw is None:
+        return _DEFAULT_DIM_GAP_TOLERANCE
+    try:
+        v = float(raw)
+        return min(0.95, max(0.0, v))
+    except (TypeError, ValueError):
+        return _DEFAULT_DIM_GAP_TOLERANCE
+
+
+def _magnitude_aware_ratio(current: float, lo: float, hi: float, higher_better: bool) -> float:
+    """Return the 0..1 position of `current` between lo/hi AFTER applying the
+    relative-gap tolerance: when the relative gap |hi−lo|/hi is within the
+    tolerance, BOTH map to 0.5 (a tie at the band midpoint); beyond it, the
+    effective ratio is scaled by how far past the tolerance the gap reaches so a
+    small-but-real gap barely opens and a large gap opens fully. hi > lo assumed
+    (caller handles hi==lo). Direction handled by `higher_better`."""
+    span = hi - lo
+    if span <= 0:
+        return 0.5
+    # Relative gap on the positive scale (hi is the larger magnitude).
+    denom = abs(hi) if hi != 0 else span
+    rel_gap = span / denom if denom > 0 else 1.0
+    tol = _dim_gap_tolerance()
+    if rel_gap <= tol:
+        return 0.5  # within tolerance → genuine tie at the band midpoint
+    # Excess factor in (0, 1]: how decisively the gap exceeds the tolerance.
+    excess = (rel_gap - tol) / (1.0 - tol) if tol < 1.0 else 1.0
+    excess = min(1.0, max(0.0, excess))
+    # Position of `current` within [lo, hi] (0 at lo, 1 at hi).
+    pos = (current - lo) / span
+    if not higher_better:
+        pos = 1.0 - pos
+    # Pull `pos` toward the 0.5 midpoint by (1 - excess): a marginal gap keeps
+    # both near 0.5; a decisive gap lets pos reach its extreme.
+    return 0.5 + (pos - 0.5) * excess
 
 
 # Bundle C § 2a flag — when ON, missing signals propagate as None instead
@@ -1605,16 +1657,20 @@ class ScoringService:
                 else _DIM_NORM_TIE_DAMPENED
             )
 
-        if higher_better:
-            ratio = (current - min_val) / (max_val - min_val)
-        else:
-            ratio = (max_val - current) / (max_val - min_val)
-
-        # S3 A1 — narrow the spread from 30+ratio*70 (range 30–100) to
-        # 45+ratio*40 (range 45–85) so a tiny raw-spec edge stops manufacturing
-        # a 70pt landslide. Escape hatch reverts to legacy.
+        # Legacy hatch path: raw direction-only ratio + 30–100 spread (no
+        # dampening, no magnitude-awareness — full legacy behavior).
         if _dim_norm_dampening_disabled():
+            if higher_better:
+                ratio = (current - min_val) / (max_val - min_val)
+            else:
+                ratio = (max_val - current) / (max_val - min_val)
             return round(_DIM_NORM_FLOOR_LEGACY + ratio * _DIM_NORM_SPAN_LEGACY, 1)
+
+        # S3 L3 v2 — MAGNITUDE-AWARE ratio (lever 2) into the dampened 45–85 band
+        # (lever 1). A tiny relative gap → ~0.5 (tie at the 65 midpoint); a real
+        # gap opens scaled by the excess past the tolerance. Kills the "+0.02%
+        # product gets a 40pt lead" noise while keeping genuine leads.
+        ratio = _magnitude_aware_ratio(current, min_val, max_val, higher_better)
         return round(_DIM_NORM_FLOOR_DAMPENED + ratio * _DIM_NORM_SPAN_DAMPENED, 1)
 
     def _normalize_review(self, raw_scores: List[Dict], idx: int) -> float:
