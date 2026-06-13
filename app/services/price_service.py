@@ -1219,6 +1219,24 @@ async def fan_out_price_lookup(
             try:
                 result = await fut
             except asyncio.CancelledError:
+                # L5.3 (S3, gate Finding 1): distinguish an OUTER/parent cancel
+                # (this whole coroutine is being cancelled — e.g. the lever-1
+                # _price_task cleanup or the outer STREAM_HARD_CAP wait_for) from
+                # an INDIVIDUAL inner-scraper cancel (the confirmation-cancel
+                # block below cancels pending scrapers). For the OUTER case a bare
+                # `continue` ABSORBS the cancel and keeps awaiting the remaining
+                # un-cancelled scrapers → Firecrawl/Scrape.do run to completion in
+                # the background (orphan-burn). `current_task().cancelling() > 0`
+                # is set only when THIS task received a cancel request (proven:
+                # inner-future cancel leaves it 0). On an outer cancel: cancel
+                # every still-pending scraper, then re-raise so the cancel
+                # propagates to the caller. The `finally` below drains them.
+                current = asyncio.current_task()
+                if current is not None and current.cancelling() > 0:
+                    for t in tasks:
+                        if not t.done():
+                            t.cancel()
+                    raise
                 cancelled_count += 1
                 continue
             except Exception as e:  # noqa: BLE001

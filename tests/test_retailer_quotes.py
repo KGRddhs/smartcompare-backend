@@ -172,12 +172,14 @@ async def test_fetch_calls_serper_cost_tracker_per_retailer():
 # ---------------------------------------------------------------------------
 # Carried bug (S2 leak ledger §5, "dormant"): fetch_retailer_quotes() called
 # record_usage("serper") manually AFTER search_web(), but search_web already
-# records the budget meter internally on success (serper_service.py:94). So
-# every successful retailer Serper call was metered TWICE against the
-# 2200-credit lifetime budget — identical to the F4/G2 bug that was fixed in
-# the sibling fetch_review_source_snippets (commit 9ee695c). 3 retailers x 2
-# products = 6 calls per compare → the budget burns at 2x the real rate, which
-# would silently false-trip the 80%-burn alert + lifetime ceiling.
+# records the budget meter internally on success (serper_service.py:94), so a
+# manual call double-meters each credit — identical to the F4/G2 bug fixed in
+# the sibling fetch_review_source_snippets (commit 9ee695c). This is LATENT
+# hygiene, NOT a live drain: fetch_retailer_quotes has ZERO production callers,
+# so the double-meter never reached prod. The fix prevents the 2x metering (3
+# retailers x 2 products = 6 calls/compare → 12) IF any future caller wires this
+# into the hot path. (rating_service.py:296 is a correct single-count — it meters
+# a direct httpx POST, not search_web.)
 #
 # The pre-existing tests below mocked search_web AWAY (so the internal meter
 # never fired) and asserted the MANUAL call — they encoded the buggy behavior.

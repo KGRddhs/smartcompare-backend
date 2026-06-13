@@ -5,15 +5,15 @@
 **Owner:** L5 (Opus)
 
 ## Current task
-ALL 4 L5 ITEMS CLOSED (L5.4 re-defer RATIFIED by team-lead 2026-06-13). team-lead is running the first ultracode gate-review on the L5 diff now. L5 is FIRST in merge order. Holding for the gate result — fix-before-merge on any review-confirmed bug.
+GATE FINDINGS BEING FIXED (2026-06-13). Gate found ZERO confirmed bugs in finders+adversarial-verify; completeness critic caught 1 real MEDIUM (F1) + 2 LOW framing (F2/F3). F1 REPRODUCED + FIXED (verify-first per team-lead). F2/F3 reframed. Awaiting focused re-review on the delta, then L5 merges first.
 
-## Disposition table (team-lead rulings ACK'd 2026-06-13)
+## Disposition table (team-lead rulings ACK'd 2026-06-13; gate findings folded in)
 | Item | Disposition | team-lead ruling | Evidence |
 |---|---|---|---|
-| L5.1 | **FIXED** (`575cacf`) | "proceed — caller-side double-count test" | manual `record_usage` removed from `fetch_retailer_quotes`; RED→GREEN `test_fetch_does_not_double_count_serper_budget` |
-| L5.2 | **VERIFY + CLOSE** (`700b575`) | "if genuinely wired at BOTH sites, do NOT re-wire; pin with e2e test = valid VERIFY+CLOSE" | write apex-normalizes (cache_service.py:144-145) + read probes apex (_aggregate_source_hits); 2 e2e round-trip tests prove uae.sharafdg.com→sharafdg.com record+read |
-| L5.3 | **FIXED** (`b386be8`) | "proceed — cancel-path TDD" | `try/except BaseException`→`_cleanup_orphan_price_task`; 2 RED→GREEN cancel tests; I5.6 concurrency preserved |
-| L5.4 | **RE-DEFER RATIFIED** (`d9ba97c`) — #12 CLOSED | team-lead ratified 2026-06-13: evidence-complete + sound; monitor S3 full-200 for elec-003 502 recurrence, focused crash investigation only if deterministic | elec-003 502 = isolated gateway transient (healthy neighbors, no Sentry capture, other-002 Dyson/Shark passed 200, query 3/200) |
+| L5.1 | **FIXED** (`575cacf`) + **F2 reframe** | gate F2 LOW: reframe as LATENT/dormant hygiene, not active 2x drain | manual `record_usage` removed from `fetch_retailer_quotes` (ZERO prod callers; rating_service.py:296 is a correct single-count direct-POST); RED→GREEN `test_fetch_does_not_double_count_serper_budget` |
+| L5.2 | **VERIFY + CLOSE** (`700b575`) | "if genuinely wired at BOTH sites, do NOT re-wire; pin with e2e test = valid VERIFY+CLOSE" | write apex-normalizes (cache_service.py:144-145) + read probes apex; 2 e2e round-trip tests prove uae.sharafdg.com→sharafdg.com record+read |
+| L5.3 | **FIXED** (`b386be8` + **F1 fan_out fix**) | gate F1 MEDIUM fix-before-merge: the `_price_task.cancel()` was ABSORBED inside fan_out's as_completed loop (price_service.py:1221 `except CancelledError: continue`) → scrapers ran to completion. VERIFIED (real-fan_out repro) + FIXED | `_cleanup_orphan_price_task` (ssc) + **fan_out distinguishes outer cancel via `current_task().cancelling()>0` → cancels remaining scrapers + re-raises**; 3 new real-fan_out tests (2 were RED, now GREEN) + confirmation-cancel regression guard GREEN; full-chain through `wait_for(fan_out)` verified (propagates, settle 0.000s, scrapers stop) |
+| L5.4 | **RE-DEFER RATIFIED** (`d9ba97c`) — #12 CLOSED + **F3 caveat** | team-lead ratified; gate F3 LOW: note "non-reproducible" is ASSERTED not demonstrated, flag elec-003 for specific S3 watch | elec-003 502 = isolated gateway transient (healthy neighbors, no Sentry capture, other-002 Dyson/Shark passed 200, query 3/200). CAVEAT: elec-003 never returned 200 in EITHER run (400 S1 / 502 S2); credit gate blocked an isolated re-run → non-reproducibility is inferred, not proven. WATCH elec-003 specifically at S3 full-200. |
 
 ## Commits (all pushed to origin/feature/s3-l5-carried-bugs)
 - `575cacf` L5.1 — fetch_retailer_quotes Serper budget double-count (manual record_usage removed)
@@ -38,6 +38,8 @@ S2 full-200 = `C:/Users/SynAckITPC/Documents/ai/smartcompare/.qa-bias-rerun/s2_e
 4. Position = query 3 of 200 → the L5.3 orphan-leak theory doesn't apply (no accumulation yet).
 
 Defensive coverage already shipped/present: L5.3 orphan-cancel hardens the cancel-path engine-error class; INSUFFICIENT_DATA 400-handling covers the all-MISSING path. Recommend: monitor for 502 recurrence in S3 full-200; if it reproduces deterministically on elec-003, open a focused crash investigation then. Fabricating a fix now = a fix for a hypothetical bug (feedback_curl_test_vs_production_code anti-pattern).
+
+**Gate F3 caveat (honest framing):** "non-reproducible" is ASSERTED, not demonstrated. elec-003 never returned 200 in EITHER measured run (400 in S1, 502 in S2) and the credit gate blocked an isolated cold re-run, so I could not positively show a 200. The evidence (healthy neighbors, no in-app Sentry capture, near-identical other-002 passing, query 3/200) makes a deterministic code crash unlikely but does not PROVE non-reproducibility. → **elec-003 is flagged for SPECIFIC watch at the S3 full-200**; a second 502/400 there escalates to a focused crash investigation.
 
 ## Last commit SHA
 - L5.1 `575cacf` — fetch_retailer_quotes Serper budget double-count fixed (manual `record_usage` removed; search_web owns meter). 10/10 green.
