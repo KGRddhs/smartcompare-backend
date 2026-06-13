@@ -335,7 +335,18 @@ async def fetch_retailer_quotes(
         try:
             q = f'{product_query} site:{site_filter}'.strip()
             result = await search_web(q, num_results=5)
-            record_usage("serper")
+            # L5.1 (S3): NO manual record_usage("serper") here — search_web
+            # records the budget meter internally on success (serper_service.py:94),
+            # so a manual call here would double-count. LATENT hygiene, not an
+            # active drain: this fetcher has ZERO production callers (dormant,
+            # ledger §5), so the double-meter never reached prod — the fix
+            # prevents it from double-counting if any future caller wires it into
+            # the hot path. Same bug class F4/G2 fixed in the (also-dormant)
+            # fetch_review_source_snippets (9ee695c). NB rating_service.py:296 is a
+            # CORRECT single-count: it meters a DIRECT httpx POST (not search_web),
+            # so its manual record_usage is the only meter for that call site.
+            # track_serper_cost_fn is the separate per-request cost tracker (not
+            # the budget meter) so it stays.
             if track_serper_cost_fn:
                 track_serper_cost_fn()
         except Exception as e:

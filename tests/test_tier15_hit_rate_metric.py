@@ -267,3 +267,51 @@ def test_source_hits_explicit_domains_still_supported_flat(fake_redis):
     fake_redis.store[f"tier15:source_hits:talabat.com:{today}"] = 5
     out = cs.get_tier15_source_hits(days=7, domains=["talabat.com", "noon.com"])
     assert out == {"talabat.com": 5}
+
+
+# ---------- L5.2 (Bundle B S3): by_source subdomain attribution — END-TO-END ----------
+# The S2 leak ledger §6 carried "by_source brand-subdomain attribution: verify
+# match_registry_apex (source_router.py:151) is wired at the by_source write +
+# read sites." Tracing confirms BOTH sides:
+#   WRITE: record_tier15_hit (cache_service.py:144-145) calls match_registry_apex
+#          on the raw winning host before incrementing the counter. The caller
+#          (structured_comparison_service.py:2900) passes the un-normalized
+#          retailer host (only `www.` stripped), so normalization is real.
+#   READ:  _aggregate_source_hits probes apex keys via _registry_domains().
+# The pre-existing tests above pin write-normalization and read-apex-probing
+# SEPARATELY but never chain them through the real reader. This test closes the
+# verification by exercising the full round-trip the ledger asks for: a
+# uae.sharafdg.com hit must surface, after reading, under sharafdg.com in the
+# default bucketed registry view. If either side regressed (writer stopped
+# normalizing OR reader stopped probing apex), the registry bucket would show
+# 0 for sharafdg.com and this test would fail.
+
+
+def test_subdomain_hit_attributes_to_apex_end_to_end(fake_redis):
+    """uae.sharafdg.com win → counted under sharafdg.com in the registry bucket.
+
+    Chains the WRITE (record_tier15_hit, apex-normalizes) through the READ
+    (get_tier15_source_hits default bucketed, apex-probing) — the exact L5.2
+    attribution path. No mocking of match_registry_apex: the real suffix-match
+    must carry the subdomain to its registry apex on both sides.
+    """
+    # A real win arrives on a regional subdomain of a registry apex.
+    cs.record_tier15_hit("electronics", "uae.sharafdg.com")
+
+    # The default (no explicit domains) read returns the bucketed registry view.
+    out = cs.get_tier15_source_hits(days=7)
+
+    # sharafdg.com IS a registry source → the win is attributed under the apex.
+    assert out["registry"].get("sharafdg.com") == 1
+    # And it is NOT stranded under the raw subdomain (which the registry reader
+    # never probes → would be an invisible, lost win).
+    assert "uae.sharafdg.com" not in out["registry"]
+    assert "uae.sharafdg.com" not in out["legacy"]
+
+
+def test_www_subdomain_hit_attributes_to_apex_end_to_end(fake_redis):
+    """www.noon.com win → counted under noon.com end-to-end (the common case)."""
+    cs.record_tier15_hit("grocery", "www.noon.com")
+    out = cs.get_tier15_source_hits(days=7)
+    assert out["registry"].get("noon.com") == 1
+    assert "www.noon.com" not in out["registry"]
