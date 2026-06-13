@@ -437,7 +437,16 @@ async def search_images(
             return response.json()
 
     except Exception as e:
-        logger.error(f"Image search error: {e}")
+        # Image search is NON-CRITICAL — the image pipeline (ProductImage's
+        # 4-state fallback) degrades to a placeholder, so a failure here NEVER
+        # breaks the comparison. Log at WARNING (not ERROR → Sentry noise:
+        # PYTHON-FASTAPI-M/-K, super-low actionability, 0 users) and include the
+        # exception TYPE so an empty str(e) (some httpx/transient errors carry no
+        # message) is still debuggable.
+        logger.warning(
+            f"Image search failed (non-critical, placeholder fallback): "
+            f"{type(e).__name__}: {e}"
+        )
         return {"images": [], "error": str(e)}
 
 
