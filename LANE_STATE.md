@@ -5,7 +5,20 @@
 **Owner:** L5 (Opus)
 
 ## Current task
-L5.4 — adjudicate the 1 TRUE engine error from S2 full-200 (`.qa-bias-rerun/s2_exit_full200.jsonl` in MAIN repo).
+L5.4 — DONE (awaiting team-lead ratification of re-defer). ADJUDICATION below.
+
+### L5.4 adjudication (evidence-complete)
+S2 full-200 = `C:/Users/SynAckITPC/Documents/ai/smartcompare/.qa-bias-rerun/s2_exit_full200.jsonl`. 11 error rows of 200:
+- **10× http_400** — ALL category `other`, ALL home-appliances (blenders/kettles/water-heaters/vacuums/IPL/irons/fans/microwaves/air-coolers), ALL wall ≈30.3-30.6s (at cap), contiguous block other-007→other-019. = the **Serper counter/key outage**: Sentry PYTHON-FASTAPI-6 shows 480 events of "Search error: 400 Bad Request google.serper.dev/search" (culprit get_gcc_prices). Depleted key → Serper 400 → both products no data → service returns success:false (INSUFFICIENT_DATA) → text_routes.py:171 raises HTTPException(400). By-design graceful degrade under outage, NOT an engine defect.
+- **1× http_502** — `elec-003` (Dyson V15 vs Shark Stratos), wall 17.3s (UNDER cap). = the lone TRUE engine error.
+
+**Root-cause of the 502 → isolated non-reproducible transient (gateway-level), re-defer (no code fix):**
+1. Healthy neighbors both sides: elec-001/002/004/005/006 all http 200, 15-19s, weighted up to 1.0 — engine healthy at that point in the run.
+2. NO captured in-app exception in Sentry (no Python unhandled/OOM/worker-crash issue exists; only the Serper-400 + an unrelated auth-refresh). A 502 with no `before_send` capture = the Railway proxy returned it because the worker connection dropped / upstream hiccup, not an app raise.
+3. NO product-specific deterministic crash: a near-identical Dyson-vs-Shark query **other-002 (Dyson Airwrap vs Shark FlexStyle) passed http 200 cleanly at 19s**. If V15/Stratos triggered a code crash, other-002 would crash too.
+4. Position = query 3 of 200 → the L5.3 orphan-leak theory doesn't apply (no accumulation yet).
+
+Defensive coverage already shipped/present: L5.3 orphan-cancel hardens the cancel-path engine-error class; INSUFFICIENT_DATA 400-handling covers the all-MISSING path. Recommend: monitor for 502 recurrence in S3 full-200; if it reproduces deterministically on elec-003, open a focused crash investigation then. Fabricating a fix now = a fix for a hypothetical bug (feedback_curl_test_vs_production_code anti-pattern).
 
 ## Last commit SHA
 - L5.1 `575cacf` — fetch_retailer_quotes Serper budget double-count fixed (manual `record_usage` removed; search_web owns meter). 10/10 green.
