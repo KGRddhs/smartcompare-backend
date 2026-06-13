@@ -471,6 +471,19 @@ def test_extract_price_source_method_none_when_no_price():
     assert eval_runner.extract_price_source_method({}, 0) is None
 
 
+def test_extract_price_source_method_empty_string_is_none():
+    """An empty/whitespace source_method is phantom provenance → None, so it
+    does not dilute the priced denominator (defensive: backend emits a real
+    enum, but a blank must not count as a produced price)."""
+    body = _make_response_body()
+    body["overview"]["products"][0]["price"] = {"amount": 300.0, "source_method": ""}
+    body["overview"]["products"][1]["price"] = {"amount": 300.0, "source_method": "   "}
+    assert eval_runner.extract_price_source_method(body, 0) is None
+    assert eval_runner.extract_price_source_method(body, 1) is None
+    # Both phantom → (0, 0), not (0, 2).
+    assert eval_runner.count_price_source_cells(body) == (0, 0)
+
+
 def test_count_price_cells_all_estimated():
     """Both products priced via the Tier-3 estimate → 2 estimated / 2 priced."""
     body = _body_with_price_methods("estimated", "estimated")

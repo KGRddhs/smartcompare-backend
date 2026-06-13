@@ -280,7 +280,12 @@ def extract_price_source_method(body: Dict[str, Any], product_idx: int) -> Optio
     if not isinstance(price, dict):
         return None
     method = price.get("source_method")
-    return method if isinstance(method, str) else None
+    # A non-string or empty/whitespace method means no real provenance was
+    # recorded — treat it as "no price produced" (in neither bucket) rather
+    # than diluting the priced denominator with a phantom cell.
+    if not isinstance(method, str) or not method.strip():
+        return None
+    return method
 
 
 def count_price_source_cells(body: Dict[str, Any]) -> tuple[int, int]:

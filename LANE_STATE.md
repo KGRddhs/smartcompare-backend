@@ -26,6 +26,7 @@
 - **NOTE for rotation playbook (post-merge doc update):** with L4.3, a key rotation no longer needs the manual `reset budget:serper:lifetime` + `DEL burn_alert_fired:*` — the counter+sentinel are now prefix-keyed and self-heal. Old `budget:serper:lifetime` (unscoped) key can be DEL'd once as cleanup.
 
 ### L4.1 shape (shipped)
+- Self-review hardening (follow-up commit): `extract_price_source_method` treats an empty/whitespace `source_method` as phantom provenance → None (doesn't dilute the priced denominator). +1 test (15 L4.1 tests total).
 - `extract_price_source_method(body, idx)` + `count_price_source_cells(body) -> (estimated, priced)` in eval_runner.py.
 - `GradedQuery.{estimated_price_cells, priced_cells}` (default 0); `EvalReport.{estimated_price_cells_total, priced_cells_total, estimate_share}`.
 - `estimate_share = sum(estimated) / sum(priced)` (0.0 guard on empty/all-error/no-price). Denominator = PRODUCED prices (non-null source_method); a no-price product is in neither bucket (honesty-of-produced, not coverage).
