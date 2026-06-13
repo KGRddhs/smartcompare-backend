@@ -70,12 +70,14 @@ Consume signals that ALREADY EXIST in the response:
 ## Commits
 - 19f36d5 L3.2 evidence-weighted winner tie-break (price authority)
 - d72b18e L3.3 review-density (YouTube) into verdict + winner tie-break
-- (this) L3.4 winner_evidence surfaced in scoring_v2
+- 2f95c77 L3.4 winner_evidence surfaced in scoring_v2
+- (this) L3.4 prod-fixture pins (lane1 captures)
 
 ## Test inventory (all GREEN, free-tier)
 - tests/test_winner_evidence_tiebreak.py (7) — L3.2
 - tests/test_review_density_verdict.py (7) — L3.3
 - tests/test_winner_evidence_scoring_v2.py (6) — L3.4 incl. end-to-end chain pin
+- tests/test_winner_evidence_prod_fixtures.py (10) — §L3.4 "pin with prod fixtures": all 9 lane1 captures → winner_evidence always-list; iphone15 decisive both-real-price capture → no spurious tilt
 - 372+ existing scoring/verdict/response regression green; py_compile clean.
 
 ## Gate-readiness notes (for dispatcher)
