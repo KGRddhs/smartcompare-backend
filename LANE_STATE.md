@@ -6,9 +6,26 @@
 **Merge order:** L5 → L4 → L2 → **L3** → L1 (I merge 4th, just before L1)
 
 # ============================================================================
-# L3 v2 — "GENUINE WINNER FROM SCORE" DESIGN (Ahmed pivot 2026-06-13) — DESIGN-FIRST, NOT BUILT
+# L3 v2 — "GENUINE WINNER FROM SCORE" — BUILT + TEST-GREEN (Ahmed pivot 2026-06-13)
 # ============================================================================
-Ahmed directive: "best for accuracy + genuine... recommendation based on pain, prompt system, reviews, preferences, logic." Winner must EMERGE from a genuine overall score, NOT a winner_index flip. Frontend already argmaxes scoring_v2.overall_score (ResultsScreen.tsx:634-641) → fix the score, everything agrees, ZERO FE change.
+Ahmed directive: "best for accuracy + genuine... recommendation based on pain, prompt system, reviews, preferences, logic." Winner EMERGES from the genuine overall score, NOT a winner_index flip. Frontend already argmaxes scoring_v2.overall_score (ResultsScreen.tsx:634-641) → fix the score, everything agrees, ZERO FE change.
+
+## BUILD STATUS — ALL BUILT + TEST-GREEN (commits 49c3476 → b525941, on feature/s3-l3-winner-evidence)
+- DROPPED: A2 value-neutralization, estimate-demotion FLIP, L3.2/L3.3 tie-break index-OVERRIDES + helpers + 4 v1 test files. Winner = plain argmax(authority-adjusted overall), no flips, no markers.
+- (a) PRICE-AUTHORITY score factor: `_price_authority_delta` (estimate −pts / converted_usd −pts*0.5 / real 0), hatch `WINNER_PRICE_AUTHORITY_POINTS` (default 4). Penalize-the-estimate; all-MISSING-guarded.
+- (b) lever 1 VALUE-FOR-MONEY: `VALUE_FORMULA_BY_PRIORITY` default 0.60/0.40 → 0.70/0.30.
+- (b) lever 2 VALUE-WEIGHT hatch: `_scale_value_weight` + `WINNER_VALUE_WEIGHT_SCALE` (default 1.0 no-op) → sweepable; FINAL default = Ahmed sign-off on the sweep.
+- A1 DAMPENING (reinstated — was never actually removed from _normalize_dimension): 45+ratio*40 band, tie→65, hatch `DISABLE_DIM_NORM_DAMPENING`.
+- MAGNITUDE-AWARENESS (the root fix): `_magnitude_aware_ratio` relative-gap tolerance — gap within `WINNER_DIM_GAP_TOLERANCE` (default 0.08) → tie at midpoint; beyond → lead scaled by excess (gap−tol)/(1−tol). Kills "+0.02% → 40pt lead" noise (verified: 1% battery gap now perf 50/50, was 85/45).
+- (c) COHORT-into-weights SCORING LAYER: `apply_cohort_adjustments` (±10% cap, reuses CATEGORY_PRIORITY_ADJUSTMENTS scaled 0.10/0.30); `compute_scores(cohort_profile=...)` applied only when no explicit prefs; scoring_method='cohort'. **REMAINING: orchestrator wire** (pass demographics-seeded prefs as cohort_profile via cohort_service.seed_preferences) — scoring layer ready+tested.
+- (d) MISSING_SCORE=50 collision fix: `compute_dimension_winners` reads explicit `missing_data` lists, NOT `==50` value-equality (a computed 50 = rating 2.5★ / reliability 0.5 is a REAL score). Band-independent.
+- (e) #2 GPT-winner → LOG-ONLY: response_builder logs `GPT_WINNER_DISAGREES` on grounded disagreement, NO index override. Shipped winner = genuine argmax; verdict explains it.
+- `build_winner_evidence`: qualitative genuine-winner reasons (real BH price / stronger reviews / overall lead), no internals.
+- OFFLINE SWEEP HARNESS (`.qa-i2-refute/offline_param_sweep.py`, ZERO Serper): re-scores ONE captured full-200 body-set over the 4-param grid (price-authority × gap-tolerance × value-weight × A1) vs gold, picks max-winner subject to no-regression guard (price≥.84/specs≥.87/factual≥.94/pass≥.425). VALIDATED end-to-end on a 4-row synthetic set. **fact_check gap noted**: the live capture omits per-product fact_check → re-score uses fact_check=None uniformly (relative ranking valid; add fact_check to the capture DEBUG for exact fidelity — still ONE live run).
+- Tests: 41 new v2 (genuine-score 8 / denoise 10 / cohort 5 / missing-collision 5 / value-weight 5 / #2 8) + ~398 core scoring regression GREEN.
+
+## 🔴 #1 S3.1 FOLLOW-UP — PAIN → SCORE WEIGHTS (deferred, team-lead-ratified)
+Pain (`pain_workflow_priors.json`) currently shapes the recommendation's EXPLANATION (verdict prose, extraction_service.py:1188 — LIVE), NOT the score weights. The 8 pain workflows are VERDICT-PROSE constraints ("lead with TL;DR", "max 3 differences", "cite source counts"), not a clean what-matters→dimension signal — only ~4/8 have any fuzzy dim affinity + some (value_budget) FIGHT the value-reduction. A proper pain→dimension-weight mapping (per-category, ±10% cap, validated against the other levers) is a dedicated design sub-project = THE #1 S3.1 item. Surfaced to Ahmed via team-lead.
 
 ## DROP (confirmed removable, all winner-index-flip mechanisms)
 - A2 value-axis neutralization (`_winner_without_value_dim` + `winner_value_neutralized` marker + the cross-tier recompute block in compute_scores L1164-1180). Reason: no-op on its own target case (proven), re-injects first-index bias (o0>=o1→0), UI contradiction. GONE.
