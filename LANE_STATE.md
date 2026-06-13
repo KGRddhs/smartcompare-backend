@@ -42,11 +42,18 @@ YouTube enrichment lives INSIDE `review_service.get_reviews()` as a `consult_you
 - ALL 65 L2 tests green. Full free-tier regression sweep running (needs dummy env: worktree has NO .env — OPENAI_API_KEY/SUPABASE_* must be set inline; 2 unrelated files instantiate OpenAI at import).
 
 ## Last commit
-7743aa1 (L2.4) — L2.5 commit pending regression-sweep confirmation
+4a6ce79 (L2.5) + test-isolation fix incoming (autouse get_cached fixture)
+
+## Regression sweep RESULT (real .env copied in, full free-tier)
+5963 passed / 53 failed / 6 skipped (345s). Disposition:
+- 24 = `test_value_math.py` — DOCUMENTED known-RED (Bundle C v1.1 TDD stubs; CLAUDE.md + S3 ledger: "don't chase, exclude from free gates"). Not mine.
+- 2 = `test_youtube_service.py` (MINE) — live-Redis isolation bug: 2 tests didn't patch get_cached so real Upstash returned a stale signal, masking the miss/error/budget paths. FIXED via module autouse fixture (get_cached->None + set_cached->no-op). 65/65 L2 green after fix WITH real .env.
+- 27 = pre-existing/flaky across auth/camera/http-cap/pharmacy/referral/security/share/source-registry/unified-search/personalization/extraction + 2 timing. PROVEN: 15 of 27 fail identically at base 38d8368; the other 12 are flaky network/load-sensitive (passed at base in a faster run). All OUTSIDE my blast radius. The 3 highest-proximity (bundle_c response-shape) fail identically at base.
+- Blast-radius targeted run: 144 passed / 1 failed (proven-pre-existing phase1 timing test).
+CONCLUSION: ZERO regressions from L2.
 
 ## Pre-merge gate notes (for the dispatcher)
-- Worktree has NO .env. For LIVE smoke: copy YOUTUBE_API_KEY (+ OPENAI/SERPER/SUPABASE/UPSTASH) from main repo .env per rotation playbook — ANNOUNCE first.
-- Free-tier sweep needs env vars set inline (conftest loads from .env which is absent here).
+- `.env` now COPIED into worktree (gitignored, NOT committed) — has YOUTUBE_API_KEY. Free-tier suite runs clean here now. For LIVE smoke: `.l2_live_smoke.py` ready (spends ~101 YouTube units; ANNOUNCE before running).
 - New env flags to register at close-out: `ENABLE_YOUTUBE_SOURCE` (default OFF), `YOUTUBE_DAILY_UNIT_BUDGET` (default 9000), `YOUTUBE_API_KEY` (already on Railway).
 - I merge 3rd (L5 → L4 → L2 → L3 → L1). My diff touches shared files (review_service get_reviews, extraction_service generate_comparison, response_builder reviews section, structured_comparison_service streaming event, api_budget_service) — all ADDITIVE + flag-gated OFF, so zero behavior change in prod until the Railway flip.
 

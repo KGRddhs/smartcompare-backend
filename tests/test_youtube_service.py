@@ -24,6 +24,19 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
+@pytest.fixture(autouse=True)
+def _no_live_cache():
+    """Isolate every test from a live Redis. fetch_youtube_review_signal does a
+    get_cached() lookup BEFORE the budget/http logic — with a real .env (live
+    Upstash) that would return a stale signal and mask the miss/error/budget
+    paths these tests assert. Default get_cached->None + set_cached->no-op for
+    the whole module; the two cache-specific tests re-patch get_cached inside
+    their own `with` block, which takes precedence while active."""
+    with patch("app.services.youtube_service.get_cached", return_value=None), \
+         patch("app.services.youtube_service.set_cached", return_value=True):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Realistic YouTube Data API v3 response fixtures (shapes verified against the
 # official docs: search.list item = {id:{videoId}, snippet:{title,channelTitle,
