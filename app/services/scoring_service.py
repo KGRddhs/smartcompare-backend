@@ -451,15 +451,23 @@ TIER_EXPECTATIONS = {
 # the 'quality' row. Used only inside _compute_value_score and never
 # exposed in API responses (critical rule #2: no internals in user-facing
 # diagnostic reveals).
+#
+# S3 L3 v2 (b) lever 1 — VALUE = VALUE-FOR-MONEY. The default coefficients
+# shifted spec 0.60/price 0.40 → 0.70/0.30 so "what you get" dominates "how
+# cheap": a marginally-cheaper product with equal specs no longer wins the value
+# dim on price alone (the S2-pinned cheaper-bias root cause — gold rewards the
+# pricier product 64% of priced rows). The explicit `price` priority still
+# leans price-heavy (a price-first shopper genuinely wants cheap). Coefficients
+# never surface in API responses (critical rule #2).
 VALUE_FORMULA_BY_PRIORITY = {
-    "price":             {"spec": 0.40, "price": 0.60},
-    "quality":           {"spec": 0.70, "price": 0.30},
-    "durability":        {"spec": 0.65, "price": 0.35},
-    "latest_features":   {"spec": 0.65, "price": 0.35},
-    "brand_reputation":  {"spec": 0.65, "price": 0.35},
-    "eco_friendly":      {"spec": 0.55, "price": 0.45},
-    "ease_of_use":       {"spec": 0.55, "price": 0.45},
-    "_default":          {"spec": 0.60, "price": 0.40},
+    "price":             {"spec": 0.45, "price": 0.55},
+    "quality":           {"spec": 0.75, "price": 0.25},
+    "durability":        {"spec": 0.70, "price": 0.30},
+    "latest_features":   {"spec": 0.70, "price": 0.30},
+    "brand_reputation":  {"spec": 0.70, "price": 0.30},
+    "eco_friendly":      {"spec": 0.60, "price": 0.40},
+    "ease_of_use":       {"spec": 0.60, "price": 0.40},
+    "_default":          {"spec": 0.70, "price": 0.30},
 }
 
 
@@ -556,30 +564,59 @@ def _product_source_method(p: Dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# S3 L3.2 — evidence-weighted winner tie-break (price-authority / Bahrain
-# availability). The L3.1 audit found the deterministic winner axis at .495 —
-# BELOW the always-pick-product_0 baseline (.655) — because the winner is a
-# pure argmax (`overalls.index(max(overalls))`) with no tie-break: when the two
-# weighted overalls land in a narrow band (common with sparse/MISSING signals),
-# `.index(max())` silently returns product_0. That first-index bias is noise.
+# S3 L3 v2 — PRICE-AUTHORITY AS A SCORE FACTOR (Ahmed pivot 2026-06-13).
+# "Facts beat estimates" lives IN the genuine overall score, not a winner_index
+# flip. A real Bahrain price (source_method in _PRICE_TRUST_SET) is the product's
+# HONEST score → no penalty. An `estimated` price is the UNCERTAIN score → a
+# modest penalty (display-honest shape: discount the estimate, don't inflate the
+# real). `converted_usd` is a real converted figure but not local data → a
+# SMALLER penalty. The penalty is applied to each product's `overall` BEFORE the
+# argmax, so the winner emerges from the score + the effect is visible +
+# consistent everywhere (rings/verdict/share/eval all argmax the same overall).
 #
-# This tie-break is NOT a fabricated score. It only fires inside the tie band
-# and only when ONE product has a real Bahrain price (source_method in the
-# trust set) and the other an estimate — i.e. there is genuine discriminating
-# evidence. Hard guards (F2.4 lesson):
-#   - decisive margin (> band) -> argmax stands (a real signal lead is never
-#     overridden);
-#   - both products MISSING-only -> NO tilt (defer to argmax; INSUFFICIENT_DATA
-#     is returned upstream by the orchestrator);
-#   - neither OR both have a real price -> no discriminating evidence -> no tilt.
+# MAGNITUDE: WINNER_PRICE_AUTHORITY_POINTS (the estimate penalty, on the 0-100
+# overall scale). Sized SMALLER than a decisive real-signal lead so a clearly-
+# better estimated product still wins; only genuine close calls tip to facts.
+# Tunable post-measurement via the env (offline sweep over captured bodies).
 # ---------------------------------------------------------------------------
 
-# Overall-score band (0-100 scale) within which the argmax pick is treated as
-# noise rather than signal, so the evidence tie-break may override it. 8 points
-# ≈ the width seen between two products whose only real difference is a sparse
-# spec field or a half-star rating — below the threshold where a deterministic
-# "winner" is defensible on score alone.
-_WINNER_TIE_BAND = 8.0
+_DEFAULT_PRICE_AUTHORITY_POINTS = 4.0
+_CONVERTED_USD_PENALTY_RATIO = 0.5  # converted_usd penalty = ratio * estimate penalty
+
+
+def _price_authority_points() -> float:
+    import os
+    raw = os.environ.get("WINNER_PRICE_AUTHORITY_POINTS")
+    if raw is None:
+        return _DEFAULT_PRICE_AUTHORITY_POINTS
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return _DEFAULT_PRICE_AUTHORITY_POINTS
+
+
+def _price_authority_delta(product: Dict[str, Any]) -> float:
+    """Return the additive authority adjustment (<= 0) for a product's `overall`,
+    keyed on price provenance. Real BH price → 0 (honest score stands);
+    `estimated` → −points; `converted_usd` → −(ratio*points) (real figure, not
+    local). All other non-trust methods treated as estimate-grade."""
+    method = _product_source_method(product)
+    if method in _PRICE_TRUST_SET:
+        return 0.0
+    pts = _price_authority_points()
+    if method == "converted_usd":
+        return -pts * _CONVERTED_USD_PENALTY_RATIO
+    return -pts
+
+
+# ---------------------------------------------------------------------------
+# S3 L3 v2 — build_winner_evidence: qualitative reasons describing the GENUINE
+# winner (the plain argmax of the authority-adjusted overall). NO winner_index
+# flip, NO coefficients/caps/percentages (no_backend_internals_in_reveals).
+# Reasons drawn from: real Bahrain price provenance, stronger review signal, and
+# spec-lead — whichever genuinely favour the winner. Empty list when nothing
+# clearly distinguishes the winner (close calls keep quiet rather than fabricate).
+# ---------------------------------------------------------------------------
 
 
 def _has_real_price(p: Dict[str, Any]) -> bool:
@@ -589,297 +626,62 @@ def _has_real_price(p: Dict[str, Any]) -> bool:
     return _product_source_method(p) in _PRICE_TRUST_SET
 
 
-# S3 L3.3 — review-density (YouTube attention) is the SECOND evidence axis for
-# the winner tie-break, after price authority. It only discriminates when one
-# product has MARKEDLY more review attention; a small gap is not signal.
-# `_REVIEW_DENSITY_MIN_VIEWS` is the floor below which a signal is ignored
-# (a handful of views is noise); `_REVIEW_DENSITY_DOMINANCE_RATIO` is how many
-# times more attention the leader needs before density is treated as decisive.
-_REVIEW_DENSITY_MIN_VIEWS = 10_000
-_REVIEW_DENSITY_DOMINANCE_RATIO = 3.0
+def _product_name_for_evidence(p: Dict[str, Any]) -> str:
+    name = (f"{p.get('brand', '')} {p.get('name', '')}".strip()
+            or (p.get('name') or '').strip())
+    return name or "the winning option"
 
 
-def _youtube_source_enabled() -> bool:
-    """Flag reader for ENABLE_YOUTUBE_SOURCE — mirrors L2's rollback safety so a
-    14d-cache-carried youtube_review_signal never steers the winner after the
-    flag is rolled back. Read live (not cached) so monkeypatch tests + a Railway
-    flip take effect without a process restart."""
-    import os
-    return os.environ.get("ENABLE_YOUTUBE_SOURCE", "").strip().lower() in (
-        "true", "1", "on", "yes",
-    )
-
-
-def _youtube_views(p: Dict[str, Any]) -> int:
-    """Total YouTube review views for a product, 0 when absent/malformed.
-    Reads L2's contract at reviews.youtube_review_signal.total_views."""
-    reviews = p.get("reviews")
-    if not isinstance(reviews, dict):
-        return 0
-    sig = reviews.get("youtube_review_signal")
-    if not isinstance(sig, dict):
-        return 0
+def _safe_rating_val(p: Dict[str, Any]) -> Optional[float]:
+    r = p.get("rating")
     try:
-        return int(sig.get("total_views") or 0)
+        return float(r) if isinstance(r, (int, float)) else None
     except (TypeError, ValueError):
-        return 0
-
-
-def _youtube_channel(p: Dict[str, Any]) -> str:
-    reviews = p.get("reviews")
-    if not isinstance(reviews, dict):
-        return ""
-    sig = reviews.get("youtube_review_signal")
-    if not isinstance(sig, dict):
-        return ""
-    return (sig.get("top_channel") or "").strip()
-
-
-def _review_density_leader(p0: Dict[str, Any], p1: Dict[str, Any]) -> Optional[int]:
-    """Return 0 / 1 if one product has DECISIVELY more YouTube review attention,
-    else None. Flag-gated: returns None when ENABLE_YOUTUBE_SOURCE is off so a
-    cache-carried signal can't steer the winner after a rollback.
-
-    'Decisive' = leader views >= floor AND leader >= dominance_ratio × the other
-    side's views (treating 0 on the other side as the floor so a one-sided
-    presence still needs to clear the absolute floor)."""
-    if not _youtube_source_enabled():
         return None
-    v0, v1 = _youtube_views(p0), _youtube_views(p1)
-    hi = max(v0, v1)
-    lo = min(v0, v1)
-    if hi < _REVIEW_DENSITY_MIN_VIEWS:
-        return None
-    # Compare the leader against the other side (floor the denominator so a
-    # near-zero runner-up doesn't make every gap look infinite — must still
-    # beat dominance_ratio × max(lo, floor-fraction)).
-    denom = max(lo, _REVIEW_DENSITY_MIN_VIEWS / _REVIEW_DENSITY_DOMINANCE_RATIO)
-    if hi < denom * _REVIEW_DENSITY_DOMINANCE_RATIO:
-        return None
-    return 0 if v0 > v1 else 1
 
 
-def _product_all_missing(result_product: Dict[str, Any], n_dims: int) -> bool:
-    """True iff EVERY dimension for this product was missing data — the
-    all-MISSING case the guard must not fabricate a tilt for. Reads the
-    `missing_data` list already computed in compute_scores (None when nothing
-    was missing)."""
-    md = result_product.get("missing_data")
-    return bool(md) and len(md) >= n_dims
-
-
-# S3 L3.2+ (Ahmed directive 2026-06-13) — estimate price-authority demotion.
-# _compute_raw_scores feeds price.amount into the value/price dimensions
-# REGARDLESS of source_method, so a GPT-*estimated* cheap price can inflate the
-# value dim and hand an estimated product a DECISIVE win over a real-priced
-# competitor — a fabricated number out-ranking real Bahrain data. The
-# band-limited tie-break can't catch that when the price gap pushes the margin
-# outside the band. This computes whether an estimate's win is PRICE-DRIVEN: if
-# the estimated product does NOT also lead the real-priced product on the
-# non-price evidence (everything except the value-derived dim), its win was
-# bought with the estimate and must defer to the real-priced product. The
-# real-priced product is NEVER demoted — facts always win over estimates.
-
-
-def _non_price_overall(
-    result_product: Dict[str, Any],
-    category: str,
-) -> Optional[float]:
-    """Mean of a product's NON-PRICE dimension scores (excludes the single
-    value-derived dim per _DIMENSION_SIGNAL_MAP), skipping MISSING cells. None
-    when no non-price signal exists. Used only to test whether an estimate's win
-    is purely price-driven; never surfaced."""
-    breakdown = (result_product or {}).get("breakdown") or {}
-    if not breakdown:
-        return None
-    dim_map = ScoringService._DIMENSION_SIGNAL_MAP.get(
-        category, ScoringService._DIMENSION_SIGNAL_MAP["other"]
-    )
-    vals = []
-    for dim, score in breakdown.items():
-        # The value-type dim is the only price-derived dimension — exclude it so
-        # the comparison reflects specs/reviews/reliability/popularity only.
-        if dim_map.get(dim) == "value":
-            continue
-        if score is None or score == MISSING_SCORE:
-            continue
-        try:
-            vals.append(float(score))
-        except (TypeError, ValueError):
-            continue
-    if not vals:
-        return None
-    return sum(vals) / len(vals)
-
-
-def apply_winner_evidence_tiebreak(
+def build_winner_evidence(
     products_data: List[Dict[str, Any]],
     result_products: Dict[str, Any],
-    overalls: List[float],
-    naive_winner_index: int,
-    win_margin: float,
-    n_dims: int,
-    category: str = "other",
-) -> tuple[int, List[str]]:
-    """S3 L3.2 + L3.3 + estimate-demotion — return (winner_index, winner_evidence).
+    winner_index: int,
+    category: str,
+) -> List[str]:
+    """S3 L3 v2 — qualitative reasons backing the GENUINE winner. Reasons only
+    (no numbers/coefficients/caps). Returns up to 2 reasons covering: real
+    Bahrain price (when the winner has one and the runner-up does not), stronger
+    reviews (clearly higher rating), and a clear overall lead. Empty when the
+    winner doesn't clearly distinguish on these axes (avoids fabricated reasons
+    on a genuine coin-flip)."""
+    if len(products_data) != 2:
+        return []
+    win = products_data[winner_index]
+    run = products_data[1 - winner_index]
+    reasons: List[str] = []
 
-    Two evidence axes, in priority order, both fire ONLY inside the tie band:
-      1. price authority (L3.2): one real Bahrain price vs an estimate.
-      2. review density (L3.3): decisively more YouTube review attention
-         (flag-gated on ENABLE_YOUTUBE_SOURCE).
-    Price authority is the stronger Bahrain-buyer signal, so it's checked first;
-    review density only breaks ties price can't.
+    # Price provenance — winner has a real BH price, runner-up an estimate.
+    if _has_real_price(win) and not _has_real_price(run):
+        reasons.append("has a confirmed Bahrain price while the other relies on an indicative figure")
 
-    Estimate-authority demotion (Ahmed directive — overrides the tie band): when
-    one product has a real price and the other an estimate, an estimate that wins
-    ONLY because of its (fabricated) cheap price — i.e. does not also lead on the
-    non-price evidence — is demoted in favour of the real-priced product, EVEN at
-    a decisive margin. A real-priced product is never demoted.
+    # Review strength — winner clearly higher rated.
+    rw, rr = _safe_rating_val(win), _safe_rating_val(run)
+    if rw is not None and rr is not None and rw - rr >= 0.3:
+        reasons.append("draws stronger reviewer ratings")
 
-    `winner_evidence` is a list of short qualitative reasons (NO coefficients,
-    caps, or score math — `no_backend_internals_in_reveals`). Empty when there
-    is no discriminating evidence on either axis.
+    # Overall lead — only as a fallback reason when no concrete axis fired but
+    # the winner has a clear score margin (keeps a reason for a genuine lead).
+    if not reasons:
+        ow = result_products.get(f"product_{winner_index}", {}).get("overall")
+        orun = result_products.get(f"product_{1 - winner_index}", {}).get("overall")
+        try:
+            if ow is not None and orun is not None and float(ow) - float(orun) >= 6.0:
+                reasons.append("leads on the overall picture")
+        except (TypeError, ValueError):
+            pass
 
-    Only two products are considered (the engine always compares a pair); for
-    any other arity this is a no-op returning the naive winner.
-    """
-    if len(products_data) != 2 or len(overalls) != 2:
-        return naive_winner_index, []
-
-    p0, p1 = products_data[0], products_data[1]
-    real0, real1 = _has_real_price(p0), _has_real_price(p1)
-
-    r0 = result_products.get("product_0", {})
-    r1 = result_products.get("product_1", {})
-    both_missing = _product_all_missing(r0, n_dims) and _product_all_missing(r1, n_dims)
-
-    # No discriminating PRICE evidence (neither or both have a real price): fall
-    # to the SECOND axis — review density (S3 L3.3). Only inside the tie band,
-    # only when one product has decisively more YouTube review attention, and
-    # never when both products are all-MISSING (no real signal to stand on).
-    if real0 == real1:
-        if win_margin > _WINNER_TIE_BAND or both_missing:
-            return naive_winner_index, []
-        dens_idx = _review_density_leader(p0, p1)
-        if dens_idx is None:
-            return naive_winner_index, []
-        dens_name = (
-            f"{products_data[dens_idx].get('brand', '')} "
-            f"{products_data[dens_idx].get('name', '')}".strip()
-        ) or "this option"
-        channel = _youtube_channel(products_data[dens_idx])
-        cite = f" (top YouTube review by {channel})" if channel else ""
-        return dens_idx, [
-            f"{dens_name} has substantially more YouTube review coverage{cite}"
-        ]
-
-    real_idx = 0 if real0 else 1
-
-    # Guard (F2.4): if BOTH products are all-MISSING, the comparison has no
-    # real signal at all — do not fabricate an availability tilt. (The real
-    # side here has a price but no specs/reviews; still, with both products
-    # fully MISSING on dimensions the pick is not defensible — defer.)
-    if both_missing:
-        return naive_winner_index, []
-
-    real_name = (
-        f"{products_data[real_idx].get('brand', '')} "
-        f"{products_data[real_idx].get('name', '')}".strip()
-    ) or "the available option"
-    est_idx = 1 - real_idx
-
-    # Estimate-authority demotion (Ahmed directive) — applies at ANY margin, so
-    # it's checked BEFORE the decisive-margin rule. Fires only when the naive
-    # winner is the ESTIMATED product: if that product does not also lead the
-    # real-priced product on the NON-PRICE evidence (specs/reviews/reliability/
-    # popularity), its win was bought with the fabricated price -> defer to the
-    # real-priced product. A real-priced winner is never touched.
-    if naive_winner_index == est_idx:
-        np_est = _non_price_overall(result_products.get(f"product_{est_idx}", {}), category)
-        np_real = _non_price_overall(result_products.get(f"product_{real_idx}", {}), category)
-        # The estimate keeps the win ONLY if it leads on non-price evidence by a
-        # real margin (>= the tie band, so a wash doesn't count as a lead). When
-        # non-price evidence is absent/tied/behind, the estimate's edge is price
-        # alone -> demote to the real-priced product.
-        est_leads_on_facts = (
-            np_est is not None
-            and np_real is not None
-            and (np_est - np_real) >= _WINNER_TIE_BAND
-        )
-        if not est_leads_on_facts:
-            return real_idx, [
-                f"{real_name} has a confirmed Bahrain price; the other's edge "
-                f"rests on an indicative figure, not local data"
-            ]
-
-    # Decisive margin: argmax already has a real signal lead — never override.
-    if win_margin > _WINNER_TIE_BAND:
-        # Still surface the availability fact as supporting evidence IF the
-        # real-price product is the one that won on score (so the verdict can
-        # cite it). Never tilt away from a decisive lead.
-        if naive_winner_index == real_idx:
-            return naive_winner_index, [
-                f"{real_name} has a confirmed Bahrain price"
-            ]
-        return naive_winner_index, []
-
-    # Tie band: the argmax pick is noise. Tilt to the real-data product.
-    evidence = [
-        f"{real_name} has a confirmed Bahrain price while the other relies on "
-        f"an indicative figure"
-    ]
-    return real_idx, evidence
-
-
-# ---------------------------------------------------------------------------
-# S3 winner-mechanism intervention #1 — value-axis neutralization (FLAG-GATED,
-# default OFF; ready-to-measure pending team-lead ruling). Mechanism (corpus-
-# pinned): the value/price dim rewards the CHEAPER product, but gold's winner is
-# the MORE EXPENSIVE product in 64% of priced rows — so the value axis fights
-# gold, worst on CROSS-TIER pairs (budget vs luxury) where the premium is most
-# often justified. On cross-tier, recompute the winner with the value-type dim's
-# weight removed (renormalized) so cheaper-is-better stops deciding the pick.
-# Within-tier untouched. Winner-only: per-product `overall`/breakdown (which the
-# response + eval price/specs read) are NOT mutated.
-#
-# Team-lead APPROVED as DEFAULT (Option A2, 2026-06-13). DEFAULT ON;
-# `DISABLE_WINNER_VALUE_NEUTRALIZATION` is the OFF-switch escape hatch.
-# ---------------------------------------------------------------------------
-
-
-def _winner_value_neutralization_enabled() -> bool:
-    """DEFAULT ON (team-lead A2 ruling). The env var is an OFF-switch only —
-    set DISABLE_WINNER_VALUE_NEUTRALIZATION to revert to the legacy
-    value-inclusive winner. Read live so a Railway flip / monkeypatch takes
-    effect without a restart."""
-    import os
-    return os.environ.get("DISABLE_WINNER_VALUE_NEUTRALIZATION", "").strip().lower() not in (
-        "1", "true", "yes", "on",
-    )
-
-
-def _winner_without_value_dim(
-    result_products: Dict[str, Any],
-    weights: Dict[str, float],
-    value_dim_keys: frozenset,
-) -> Optional[int]:
-    """Recompute the 2-product winner index from the per-product breakdowns with
-    the value-type dimension(s) removed from the weighting (renormalized). Returns
-    the new winner index, or None when it can't be computed (missing breakdowns /
-    no non-value weight left). Reads the breakdowns already in result_products —
-    does NOT mutate them."""
-    b0 = (result_products.get("product_0") or {}).get("breakdown") or {}
-    b1 = (result_products.get("product_1") or {}).get("breakdown") or {}
-    if not b0 or not b1:
-        return None
-    nv = {d: w for d, w in weights.items() if d not in value_dim_keys}
-    total = sum(nv.values())
-    if total <= 0:
-        return None
-    nv = {d: w / total for d, w in nv.items()}
-    o0 = sum(b0.get(d, MISSING_SCORE) * w for d, w in nv.items())
-    o1 = sum(b1.get(d, MISSING_SCORE) * w for d, w in nv.items())
-    return 0 if o0 >= o1 else 1
+    if not reasons:
+        return []
+    name = _product_name_for_evidence(win)
+    return [f"{name} {r}" for r in reasons[:2]]
 
 
 def _product_fact_check_pcts(p: Dict[str, Any]) -> tuple[int, int]:
@@ -1149,47 +951,43 @@ class ScoringService:
                 "missing_data": missing_dims if missing_dims else None,
             }
 
-        # Determine winner
+        # S3 L3 v2 — PRICE-AUTHORITY AS A SCORE FACTOR (Ahmed pivot 2026-06-13).
+        # "Facts beat estimates" now lives IN the genuine `overall` score, NOT a
+        # winner_index flip. Apply the per-product authority delta (estimate /
+        # converted_usd penalty; real BH price unpenalized) to `overall` BEFORE
+        # the argmax. v1's A2 value-neutralization + estimate-demotion + tie-break
+        # index-overrides are DROPPED — the winner is now the plain argmax of the
+        # genuine score, which the frontend's argmax(scoring_v2.overall_score)
+        # matches automatically (ResultsScreen.tsx) — zero FE change.
+        if len(products_data) == 2:
+            n_dims = len(dims)
+            for i in range(len(products_data)):
+                pk = f"product_{i}"
+                # Guard: don't penalize an all-MISSING product — its `overall`
+                # is the MISSING-driven sentinel, not a genuine score, and the
+                # orchestrator returns INSUFFICIENT_DATA for the both-missing
+                # case anyway. Penalizing it would break the MISSING invariant.
+                md = result_products[pk].get("missing_data")
+                if md and len(md) >= n_dims:
+                    continue
+                delta = _price_authority_delta(products_data[i])
+                if delta:
+                    adjusted = round(max(0.0, min(100.0, result_products[pk]["overall"] + delta)), 1)
+                    result_products[pk]["overall"] = adjusted
+
+        # Determine winner — plain argmax of the genuine (authority-adjusted)
+        # overall. No flip overrides anywhere.
         overalls = [result_products[f"product_{i}"]["overall"] for i in range(len(products_data))]
         winner_index = overalls.index(max(overalls))
         win_margin = round(abs(overalls[0] - overalls[1]), 1) if len(overalls) >= 2 else 0
 
-        # S3 winner-mechanism intervention #1 — value-axis neutralization
-        # (FLAG-GATED, default OFF; ready-to-measure pending team-lead ruling).
-        # On a CROSS-TIER comparison the value/price dim's "cheaper wins" pull is
-        # statistically anti-correlated with gold (gold's winner is the pricier
-        # product 64% of priced rows). When the flag is ON + cross-tier, recompute
-        # the winner with the value-type dim removed so cheaper-is-better stops
-        # deciding the pick. Winner-only — per-product overall/breakdown unchanged.
-        winner_value_neutralized = False
-        if (
-            len(products_data) == 2
-            and is_cross_tier
-            and _winner_value_neutralization_enabled()
-        ):
-            dim_signal_map = self._DIMENSION_SIGNAL_MAP.get(
-                category, self._DIMENSION_SIGNAL_MAP["other"]
-            )
-            value_dim_keys = frozenset(
-                d for d, sig in dim_signal_map.items() if sig == "value"
-            )
-            nv_winner = _winner_without_value_dim(result_products, weights, value_dim_keys)
-            if nv_winner is not None and nv_winner != winner_index:
-                winner_index = nv_winner
-                win_margin = round(abs(overalls[0] - overalls[1]), 1)
-                winner_value_neutralized = True
-
-        # S3 L3.2 — evidence-weighted tie-break. Within the tie band the plain
-        # argmax pick is noise (L3.1: winner axis below the always-pick-0
-        # baseline); when exactly one product has a real Bahrain price and the
-        # other an estimate, tilt the winner to the real-data side and surface a
-        # qualitative `winner_evidence` reason. Guarded so a decisive real-signal
-        # lead and the both-MISSING case are never overridden / fabricated.
+        # S3 L3 v2 — qualitative winner_evidence describing the GENUINE winner
+        # (price provenance + signal strength). Reasons only, no coefficients/
+        # caps/percentages (no_backend_internals_in_reveals).
         winner_evidence: List[str] = []
         if len(products_data) == 2:
-            winner_index, winner_evidence = apply_winner_evidence_tiebreak(
-                products_data, result_products, overalls,
-                winner_index, win_margin, len(dims), category,
+            winner_evidence = build_winner_evidence(
+                products_data, result_products, winner_index, category,
             )
 
         if behavior_profile or session_signals:
@@ -1222,15 +1020,10 @@ class ScoringService:
             "is_cross_tier": is_cross_tier,
             "dimension_winners": dimension_winners,
             "category_weights": dict(CATEGORY_DIMENSION_WEIGHTS.get(category, CATEGORY_DIMENSION_WEIGHTS["other"])),
-            # S3 L3.2 — qualitative reasons backing the winner pick (price
-            # authority / Bahrain availability). Empty list when no
-            # discriminating real-price evidence. Surfaced in scoring_v2 by L3.4.
+            # S3 L3 v2 — qualitative reasons describing the GENUINE winner
+            # (price provenance + signal strength). Surfaced in scoring_v2 by L3.4.
             "winner_evidence": winner_evidence,
         }
-        # S3 intervention #1 — only emit the marker when neutralization actually
-        # fired, so the flag-OFF response stays byte-identical to today.
-        if winner_value_neutralized:
-            result["winner_value_neutralized"] = True
         return result
 
     def _compute_weights(self, preferences: Optional[Dict[str, Any]], category: str = "other") -> Dict[str, float]:

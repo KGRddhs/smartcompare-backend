@@ -840,9 +840,11 @@ class TestValueScoreRedesign:
         assert score > 55
 
     def test_value_score_same_tier(self):
+        # S3 L3 v2 (b) lever 1 — value-for-money default coeffs spec 0.70/price 0.30
+        # (was 0.60/0.40) so "what you get" dominates "how cheap".
         service = ScoringService()
         score = service._compute_value_score(80, 60, "mid", False)
-        expected = 80 * 0.6 + 60 * 0.4
+        expected = 80 * 0.70 + 60 * 0.30
         assert abs(score - expected) < 0.5
 
     def test_value_score_missing_spec(self):
