@@ -127,7 +127,21 @@ def test_factual_verdict_no_youtube_density_when_attention_comparable(youtube_on
 
 
 # ---------------------------------------------------------------------------
-# (b) winner tie-break — review-density as the SECOND evidence axis
+# (b) winner axis — review-density is a CITED VERDICT signal, NOT a winner-
+# determinant (v2 re-architecture, 2026-06-13).
+#
+# HISTORY: the original L3.3 (pre-pivot, commit d72b18e) made YouTube review-
+# density a SECOND winner-tie-break axis that FLIPPED winner_index inside the
+# tie band. The "genuine winner from score" v2 pivot (Ahmed: "recommendation
+# based on pain, prompt, reviews, preferences, logic") DROPPED every
+# winner_index flip — the winner is now the plain argmax of the authority-
+# adjusted `overall`. YouTube view-count NEVER enters compute_scores (grep:
+# zero refs in scoring_service); it remains a CITED supporting input to the
+# factual_verdict + the verdict prompt (surface (a) above + L2's
+# _build_youtube_signal_block) — exactly the no-fabrication principle: a
+# popularity number must not silently crown a winner. These tests now PIN that
+# boundary: density does NOT flip the genuine winner, and build_winner_evidence
+# never fabricates a density reason. (Coverage preserved, aligned to v2.)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -135,58 +149,72 @@ def service():
     return ScoringService()
 
 
-def test_review_density_breaks_tie_when_price_undiscriminating(service, youtube_on):
-    """Both products are estimates (price authority can't discriminate) but
-    product_1 has vastly more YouTube review attention. Inside the tie band the
-    winner should tilt to product_1 + emit a review-density winner_evidence
-    reason."""
+def test_review_density_does_not_flip_genuine_winner(service, youtube_on):
+    """v2: both products are identical real signals (estimated price, same
+    rating/specs) → compute_scores yields a GENUINE TIE (overall equal). The
+    vastly-larger YouTube attention on product_1 must NOT flip the winner — view
+    count is a CITED verdict signal, never a score input or a winner-determinant.
+    The winner stays the deterministic argmax of the genuine tie (index 0), and
+    build_winner_evidence stays EMPTY (no fabricated density reason on a coin-
+    flip). This is the inverse of the dropped pre-pivot L3.3 index-flip."""
     p0 = _prod("Quiet", source_method="estimated",
                yt=_yt_signal(total_views=5_000, video_count=1, channel="Tiny"))
     p1 = _prod("Loud", source_method="estimated",
                yt=_yt_signal(total_views=3_000_000, video_count=15, channel="MKBHD"))
     result = service.compute_scores([p0, p1])
-    assert result["winner_index"] == 1, (
-        "with price tied/estimated, the markedly-more-reviewed product should win the tie"
+    # Genuine tie on the real signals — youtube density did not move `overall`.
+    o0 = result["scores"]["product_0"]["overall"]
+    o1 = result["scores"]["product_1"]["overall"]
+    assert o0 == o1, (
+        f"identical real signals must score equal — youtube view-count must NOT "
+        f"enter the score; got o0={o0} o1={o1}"
     )
+    # Winner is NOT flipped to the higher-attention product by density.
+    assert result["winner_index"] != 1, (
+        "YouTube review-density must NOT flip the genuine winner to product_1 "
+        "(density is citation-only in v2, never a winner-determinant)"
+    )
+    # No fabricated review-density reason on a genuine coin-flip.
     blob = " ".join(str(e) for e in (result.get("winner_evidence") or [])).lower()
-    assert any(t in blob for t in ("review", "youtube", "mkbhd", "attention", "coverage")), (
-        f"winner_evidence should cite the review-density signal; got {result.get('winner_evidence')}"
+    assert not any(t in blob for t in ("youtube", "mkbhd", "view", "attention")), (
+        f"winner_evidence must not fabricate a density reason; got {result.get('winner_evidence')}"
     )
 
 
-def test_price_authority_beats_review_density(service, youtube_on):
-    """Price authority is the FIRST axis. If product_0 has the only real BH
-    price but product_1 has more YouTube attention, price authority wins the tie
-    (real local price > video popularity for a Bahrain buyer)."""
+def test_real_price_authority_drives_winner_not_density(service, youtube_on):
+    """v2 grounds the winner in REAL signals: product_0 has the only real BH
+    price (price-authority bump to its `overall`) while product_1 has far more
+    YouTube attention. The genuine winner is product_0 — real local price beats
+    video popularity, and density never enters the score to contest it."""
     p0 = _prod("RealPrice", source_method="local_bhd",
                yt=_yt_signal(total_views=10_000, video_count=1, channel="Tiny"))
     p1 = _prod("Popular", source_method="estimated",
                yt=_yt_signal(total_views=3_000_000, video_count=15, channel="MKBHD"))
     result = service.compute_scores([p0, p1])
     assert result["winner_index"] == 0, (
-        "real BH price must outrank review-density in the tie-break"
+        "real BH price authority must drive the genuine winner over video popularity"
     )
 
 
-def test_review_density_tiebreak_inert_when_flag_off(service, youtube_off):
-    """Flag OFF -> review-density must not influence the winner at all."""
+def test_review_density_inert_on_winner_when_flag_off(service, youtube_off):
+    """Flag OFF -> review-density must not influence the winner OR emit evidence.
+    (Already true in v2 since density never enters the score; pins it explicitly
+    so a future density→score wiring can't regress the flag-OFF rollback path.)"""
     p0 = _prod("Quiet", source_method="estimated",
                yt=_yt_signal(total_views=5_000, video_count=1, channel="Tiny"))
     p1 = _prod("Loud", source_method="estimated",
                yt=_yt_signal(total_views=3_000_000, video_count=15, channel="MKBHD"))
     result = service.compute_scores([p0, p1])
-    # No real price, flag off -> no discriminating evidence -> argmax stands,
-    # no review-density evidence.
     blob = " ".join(str(e) for e in (result.get("winner_evidence") or [])).lower()
-    assert "review" not in blob and "youtube" not in blob and "mkbhd" not in blob
+    assert "youtube" not in blob and "mkbhd" not in blob and "view" not in blob
 
 
-def test_review_density_evidence_no_backend_internals(service, youtube_on):
-    """Review-density winner_evidence stays qualitative — no view-count integers,
-    coefficients, or score math leaked."""
+def test_winner_evidence_no_backend_internals(service, youtube_on):
+    """winner_evidence stays qualitative — no view-count integers, coefficients,
+    or score math leaked (no_backend_internals_in_reveals)."""
     p0 = _prod("Quiet", source_method="estimated",
                yt=_yt_signal(total_views=5_000, video_count=1, channel="Tiny"))
-    p1 = _prod("Loud", source_method="estimated",
+    p1 = _prod("Loud", source_method="local_bhd",
                yt=_yt_signal(total_views=3_000_000, video_count=15, channel="MKBHD"))
     result = service.compute_scores([p0, p1])
     blob = " ".join(str(e) for e in (result.get("winner_evidence") or [])).lower()
