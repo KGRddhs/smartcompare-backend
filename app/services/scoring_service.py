@@ -640,6 +640,50 @@ def _product_all_missing(result_product: Dict[str, Any], n_dims: int) -> bool:
     return bool(md) and len(md) >= n_dims
 
 
+# S3 L3.2+ (Ahmed directive 2026-06-13) — estimate price-authority demotion.
+# _compute_raw_scores feeds price.amount into the value/price dimensions
+# REGARDLESS of source_method, so a GPT-*estimated* cheap price can inflate the
+# value dim and hand an estimated product a DECISIVE win over a real-priced
+# competitor — a fabricated number out-ranking real Bahrain data. The
+# band-limited tie-break can't catch that when the price gap pushes the margin
+# outside the band. This computes whether an estimate's win is PRICE-DRIVEN: if
+# the estimated product does NOT also lead the real-priced product on the
+# non-price evidence (everything except the value-derived dim), its win was
+# bought with the estimate and must defer to the real-priced product. The
+# real-priced product is NEVER demoted — facts always win over estimates.
+
+
+def _non_price_overall(
+    result_product: Dict[str, Any],
+    category: str,
+) -> Optional[float]:
+    """Mean of a product's NON-PRICE dimension scores (excludes the single
+    value-derived dim per _DIMENSION_SIGNAL_MAP), skipping MISSING cells. None
+    when no non-price signal exists. Used only to test whether an estimate's win
+    is purely price-driven; never surfaced."""
+    breakdown = (result_product or {}).get("breakdown") or {}
+    if not breakdown:
+        return None
+    dim_map = ScoringService._DIMENSION_SIGNAL_MAP.get(
+        category, ScoringService._DIMENSION_SIGNAL_MAP["other"]
+    )
+    vals = []
+    for dim, score in breakdown.items():
+        # The value-type dim is the only price-derived dimension — exclude it so
+        # the comparison reflects specs/reviews/reliability/popularity only.
+        if dim_map.get(dim) == "value":
+            continue
+        if score is None or score == MISSING_SCORE:
+            continue
+        try:
+            vals.append(float(score))
+        except (TypeError, ValueError):
+            continue
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
 def apply_winner_evidence_tiebreak(
     products_data: List[Dict[str, Any]],
     result_products: Dict[str, Any],
@@ -647,8 +691,9 @@ def apply_winner_evidence_tiebreak(
     naive_winner_index: int,
     win_margin: float,
     n_dims: int,
+    category: str = "other",
 ) -> tuple[int, List[str]]:
-    """S3 L3.2 + L3.3 — return (winner_index, winner_evidence).
+    """S3 L3.2 + L3.3 + estimate-demotion — return (winner_index, winner_evidence).
 
     Two evidence axes, in priority order, both fire ONLY inside the tie band:
       1. price authority (L3.2): one real Bahrain price vs an estimate.
@@ -656,6 +701,12 @@ def apply_winner_evidence_tiebreak(
          (flag-gated on ENABLE_YOUTUBE_SOURCE).
     Price authority is the stronger Bahrain-buyer signal, so it's checked first;
     review density only breaks ties price can't.
+
+    Estimate-authority demotion (Ahmed directive — overrides the tie band): when
+    one product has a real price and the other an estimate, an estimate that wins
+    ONLY because of its (fabricated) cheap price — i.e. does not also lead on the
+    non-price evidence — is demoted in favour of the real-priced product, EVEN at
+    a decisive margin. A real-priced product is never demoted.
 
     `winner_evidence` is a list of short qualitative reasons (NO coefficients,
     caps, or score math — `no_backend_internals_in_reveals`). Empty when there
@@ -707,6 +758,31 @@ def apply_winner_evidence_tiebreak(
         f"{products_data[real_idx].get('brand', '')} "
         f"{products_data[real_idx].get('name', '')}".strip()
     ) or "the available option"
+    est_idx = 1 - real_idx
+
+    # Estimate-authority demotion (Ahmed directive) — applies at ANY margin, so
+    # it's checked BEFORE the decisive-margin rule. Fires only when the naive
+    # winner is the ESTIMATED product: if that product does not also lead the
+    # real-priced product on the NON-PRICE evidence (specs/reviews/reliability/
+    # popularity), its win was bought with the fabricated price -> defer to the
+    # real-priced product. A real-priced winner is never touched.
+    if naive_winner_index == est_idx:
+        np_est = _non_price_overall(result_products.get(f"product_{est_idx}", {}), category)
+        np_real = _non_price_overall(result_products.get(f"product_{real_idx}", {}), category)
+        # The estimate keeps the win ONLY if it leads on non-price evidence by a
+        # real margin (>= the tie band, so a wash doesn't count as a lead). When
+        # non-price evidence is absent/tied/behind, the estimate's edge is price
+        # alone -> demote to the real-priced product.
+        est_leads_on_facts = (
+            np_est is not None
+            and np_real is not None
+            and (np_est - np_real) >= _WINNER_TIE_BAND
+        )
+        if not est_leads_on_facts:
+            return real_idx, [
+                f"{real_name} has a confirmed Bahrain price; the other's edge "
+                f"rests on an indicative figure, not local data"
+            ]
 
     # Decisive margin: argmax already has a real signal lead — never override.
     if win_margin > _WINNER_TIE_BAND:
@@ -1009,7 +1085,7 @@ class ScoringService:
         if len(products_data) == 2:
             winner_index, winner_evidence = apply_winner_evidence_tiebreak(
                 products_data, result_products, overalls,
-                winner_index, win_margin, len(dims),
+                winner_index, win_margin, len(dims), category,
             )
 
         if behavior_profile or session_signals:

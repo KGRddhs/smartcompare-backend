@@ -17,7 +17,14 @@ Consume signals that ALREADY EXIST in the response:
 - [x] **L3.3 review-density into the verdict** — DONE. Two surfaces: (a) factual_verdict CITED review-density candidate (channel + humanized views) competing for line1, flag-gated; (b) review-density as the SECOND tie-break axis in apply_winner_evidence_tiebreak (price authority stays first). 7 tests + regression green.
 - [x] **L3.4 `winner_evidence` surfaced in scoring_v2** — DONE. `_build_scoring_v2` threads `scoring_result["winner_evidence"]` into the `scoring_v2` payload (always-list, str-coerced, malformed→[]). End-to-end chain pin (compute_scores tie-break → scoring_v2) green. 6 tests + regression green.
 
-**ALL L3 TASKS COMPLETE (L3.1–L3.4).** Ready for gate. Awaiting team-lead GO for smoke20 (CREDIT GATE).
+**ALL L3 TASKS COMPLETE (L3.1–L3.4) + ESTIMATE-DEMOTION (Ahmed directive 2026-06-13).** Ready for gate. Awaiting team-lead GO for smoke20 (CREDIT GATE).
+
+## ESTIMATE-AUTHORITY DEMOTION (Ahmed directive: "facts, accuracy, NO estimation — an estimated-price product can never out-rank a real-priced one on fabricated confidence")
+- **Hole found + reproduced:** `_compute_raw_scores` feeds `price.amount` into the value/price dims REGARDLESS of `source_method`, so a GPT-estimated cheap price inflated the value dim and handed an estimated product a DECISIVE 14pt win (71.4 vs 57.4) over a real-priced competitor with identical specs/rating. The band-limited L3.2 tie-break didn't catch it (margin outside the 8pt band).
+- **Fix (fact-preserving):** in `apply_winner_evidence_tiebreak`, when one product is real-priced and the other estimated, an estimate that wins is DEMOTED to the real-priced product UNLESS it also leads on NON-PRICE evidence (specs/reviews/reliability/popularity, via `_non_price_overall` excluding the value-derived dim) by >= the tie band. Applies at ANY margin (checked before the decisive-margin rule). A real-priced product is NEVER demoted. Cited `winner_evidence`.
+- `apply_winner_evidence_tiebreak` gained a `category` param (threaded from compute_scores) so `_non_price_overall` picks the right dim map.
+- Guards: both-estimated / converted_usd-vs-estimate (neither real) → no demotion; estimate that genuinely leads on specs+reviews → keeps win; real-already-wins → no-op. Order-independent.
+- Tests: tests/test_estimate_authority_demotion.py (6) + 486 broad scoring regression GREEN.
 
 ## L3.3 implementation (committed)
 - `scoring_service.py`: review-density as the 2nd evidence axis in `apply_winner_evidence_tiebreak` — helpers `_youtube_source_enabled` (flag), `_youtube_views`, `_youtube_channel`, `_review_density_leader` (decisive-gap detector: floor `_REVIEW_DENSITY_MIN_VIEWS=10k`, ratio `_REVIEW_DENSITY_DOMINANCE_RATIO=3.0`). Fires ONLY inside the tie band when price authority does NOT discriminate (both/neither real price) and one product has decisively more YouTube attention. Price authority is checked first (stronger BH signal). Flag OFF → no-op.
