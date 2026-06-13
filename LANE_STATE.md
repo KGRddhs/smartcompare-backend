@@ -12,11 +12,16 @@
 - **L4.4** live burn drill (cold query increments new counter; rotation resets clean). **HELD for team-lead GO.**
 
 ## Status
-- **L4.1 DONE** (estimate-share metric) — commit `63f514e`, pushed. 14 TDD tests.
-- **L4.3 DONE** (Serper counter key-scoping) — 12 new TDD tests green; full `test_api_budget_service.py` = 92 passed; combined L4.1+L4.3+persist = 130 passed. Admin `/admin/costs` serper gauge auto-inherits scoping (reads `_budget_key` → 5 serper_lifetime/costs tests still green). py_compile OK.
-- **Current task:** CODE for L4.1+L4.3 complete. L4.2 + L4.4 HELD for team-lead GO (Serper-credit-heavy). Awaiting GO / cross-QA.
-- **Last commit SHA:** (committing L4.3 now)
+- **L4.1 DONE** (estimate-share metric) — commits `63f514e` + `66e58f8` (self-review), pushed. 15 TDD tests.
+- **L4.3 DONE** (Serper counter key-scoping) — commit `0dc806e`. 12 TDD tests; 130 passed across the api_budget blast radius, zero ripple. Admin `/admin/costs` serper gauge auto-inherits scoping.
+- **Team-lead ACK 2026-06-13:** code-complete confirmed. Both doc heads-ups OWNED BY team-lead at close-out (CLAUDE.md rotation playbook + DEL orphaned key). **L4 must NOT touch main-repo CLAUDE.md.** No separate L4.2 baseline run needed — estimate-share baseline comes free from the FIRST GATE smoke20 (carries my metric). L4.2/L4.4 stay HELD for GO at eval phase post-merges.
+- **Head-start DONE (non-credit):** `L4_CLOSEOUT_PATCH_PROPOSAL.md` — exact L4.2 command + CLAUDE.md gate-string re-anchor diff + rotation-playbook diff + SESSION_BUNDLES L4 line. Drafted as a proposal for team-lead to apply; L4 applies NONE of it.
+- **Current task:** idle-ready. Standing by for (a) cross-QA slot when L2's merge is up (I QA L2), (b) GO on L4.2/L4.4 at eval phase.
+- **Last commit SHA:** (committing patch proposal now; code HEAD 66e58f8)
 - **Baseline:** `tests/test_eval_runner.py` + `tests/test_api_budget_service.py` = 99 passed (clean) before changes.
+
+## Cross-lane broadcast note
+The "task-list" sender fired 4 out-of-order automated broadcasts at L4 (#6 L5-bugs → #7 gates+merges → #8 full-200 → #9 destructive close-out), walking the task list top-down regardless of lane/ordering/credit-gate. ALL declined as no-ops. team-lead direct messages are authoritative. L4 never crossed a lane boundary, never burned credits without GO, never touched gated CLAUDE.md.
 
 ### L4.3 shape (shipped)
 - `_serper_key_prefix()` — first 8 chars of `SERPER_API_KEY` read fresh; `"nokey"` fallback when unset/empty.
