@@ -661,6 +661,54 @@ def _price_authority_delta(product: Dict[str, Any]) -> float:
     return -pts
 
 
+# S3 L3 v2 (b) lever 2 — value-dim WEIGHT reduction hatch. The value dim rewards
+# cheapness (S2 root cause); WINNER_VALUE_WEIGHT_SCALE (default 1.0 = no change)
+# scales the value-type dim's category weight, redistributing the freed weight
+# proportionally across the non-value dims so genuine quality drives the pick.
+# Deterministic post-data → offline-sweepable. The FINAL default lands by
+# Ahmed's sign-off on the measured sweep.
+def _value_weight_scale() -> float:
+    import os
+    raw = os.environ.get("WINNER_VALUE_WEIGHT_SCALE")
+    if raw is None:
+        return 1.0
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _scale_value_weight(weights: Dict[str, float], category: str) -> Dict[str, float]:
+    """Scale the value-type dim's weight by WINNER_VALUE_WEIGHT_SCALE, redistribute
+    the freed weight proportionally across the non-value dims, renormalize. No-op
+    at scale 1.0. The value-type dim(s) are identified via _DIMENSION_SIGNAL_MAP."""
+    scale = _value_weight_scale()
+    if scale == 1.0:
+        return weights
+    dim_map = ScoringService._DIMENSION_SIGNAL_MAP.get(
+        category, ScoringService._DIMENSION_SIGNAL_MAP["other"]
+    )
+    value_dims = {d for d, sig in dim_map.items() if sig == "value" and d in weights}
+    if not value_dims:
+        return weights
+    out = dict(weights)
+    freed = 0.0
+    for d in value_dims:
+        new_w = out[d] * scale
+        freed += out[d] - new_w
+        out[d] = new_w
+    # Redistribute the freed weight proportionally across the non-value dims.
+    non_value = {d: w for d, w in out.items() if d not in value_dims}
+    nv_total = sum(non_value.values())
+    if nv_total > 0 and freed > 0:
+        for d in non_value:
+            out[d] += freed * (non_value[d] / nv_total)
+    total = sum(out.values())
+    if total > 0:
+        out = {k: v / total for k, v in out.items()}
+    return out
+
+
 # ---------------------------------------------------------------------------
 # S3 L3 v2 — build_winner_evidence: qualitative reasons describing the GENUINE
 # winner (the plain argmax of the authority-adjusted overall). NO winner_index
@@ -1103,7 +1151,8 @@ class ScoringService:
         weights = dict(base_weights)
 
         if not preferences:
-            return weights
+            # S3 L3 v2 (b) lever 2 — apply the value-weight scale on the anon path too.
+            return _scale_value_weight(weights, category)
 
         # Apply category-specific priority adjustments (stack for multiple priorities)
         cat_priority_adj = CATEGORY_PRIORITY_ADJUSTMENTS.get(category, {})
@@ -1136,7 +1185,8 @@ class ScoringService:
             n = len(weights)
             weights = {k: 1.0 / n for k in weights}
 
-        return weights
+        # S3 L3 v2 (b) lever 2 — apply the value-weight scale (hatched, default no-op).
+        return _scale_value_weight(weights, category)
 
     @staticmethod
     def _detect_price_tier(price_bhd: float, category: str = "other", *, comparison_prices=None) -> str:
