@@ -260,6 +260,27 @@ def _spec_row_winner(
     return None
 
 
+def _youtube_signal_for_response(pd: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """S3 L2 — surface the YouTube cited review signal in the response reviews
+    section, flag-gated. Returns the signal dict when ENABLE_YOUTUBE_SOURCE is
+    ON and the product carries one at reviews.youtube_review_signal; None
+    otherwise. Rollback-safe: flag OFF -> None even if the 14d cache attached a
+    stale signal to the product (mirrors the verdict-prompt scrub)."""
+    if os.environ.get("ENABLE_YOUTUBE_SOURCE", "").strip().lower() not in (
+        "true", "1", "on", "yes",
+    ):
+        return None
+    if not isinstance(pd, dict):
+        return None
+    reviews = pd.get("reviews")
+    if not isinstance(reviews, dict):
+        return None
+    signal = reviews.get("youtube_review_signal")
+    if isinstance(signal, dict) and signal.get("top_channel"):
+        return signal
+    return None
+
+
 def _build_specs_rows(
     products: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -973,6 +994,11 @@ def build_comparison_response(
                         "review_volume": "minimal",
                         "agreement_level": "moderate",
                     }),
+                    # S3 L2 — cited YouTube review signal (flag-gated). None
+                    # when ENABLE_YOUTUBE_SOURCE OFF / no signal. Frontend
+                    # renders "~N views · top video by <channel>" as a cited
+                    # review source; never the word "estimated", always cited.
+                    "youtube_review_signal": _youtube_signal_for_response(pd),
                 }
                 for pd in product_data
             ],

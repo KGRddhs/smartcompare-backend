@@ -22,7 +22,7 @@ YouTube enrichment lives INSIDE `review_service.get_reviews()` as a `consult_you
 - [x] L2.1 `youtube_service.py` + 9 MOCKED unit tests (TDD) — GREEN
 - [x] L2.2 Quota metering in api_budget_service — provider config + daily UNIT counter (try_consume_youtube_credit / get_youtube_unit_usage) + 12 dedicated metering tests GREEN (check-and-increment, over-budget rollback, fail-open x2, TTL-first-write-only, env override, record_usage path)
 - [x] L2.3 Reviews-race participant — `consult_youtube_source()` (flag-gated, wait_for-capped 4.0s, None-on-miss/error/timeout) + `youtube_source_enabled()` reader + wired into get_reviews AFTER extraction-persist. 10 tests GREEN incl. p95 timeout-drop pin + persist-before-consult order pin + failure-doesnt-break-reviews + flag-off-no-key. 36 existing I2.5 consult tests still green.
-- [ ] L2.4 Cited-evidence surfacing (reviews section + optional factual verdict; copy rules) — TDD
+- [x] L2.4 Cited-evidence surfacing — verdict prompt (extraction_service: _extract_youtube_signal / _build_youtube_signal_block / _scrub_youtube_signal_if_off + _humanize_count, wired into generate_comparison gated on flag + scrubbed in json.dumps payload) + response reviews section (response_builder._youtube_signal_for_response, flag-gated, inline key). 16 tests GREEN incl. NO-scary-copy + NEVER-"estimated" + cite-channel + humanized-count + rollback-scrub. 92 existing verdict/extraction/response/I2.5 tests green (forbidden-words audit passes).
 - [ ] L2.5 `ENABLE_YOUTUBE_SOURCE` flag (default OFF) + 14d cache — TDD
 
 ## Discipline
