@@ -561,6 +561,76 @@ def _has_real_price(p: Dict[str, Any]) -> bool:
     return _product_source_method(p) in _PRICE_TRUST_SET
 
 
+# S3 L3.3 — review-density (YouTube attention) is the SECOND evidence axis for
+# the winner tie-break, after price authority. It only discriminates when one
+# product has MARKEDLY more review attention; a small gap is not signal.
+# `_REVIEW_DENSITY_MIN_VIEWS` is the floor below which a signal is ignored
+# (a handful of views is noise); `_REVIEW_DENSITY_DOMINANCE_RATIO` is how many
+# times more attention the leader needs before density is treated as decisive.
+_REVIEW_DENSITY_MIN_VIEWS = 10_000
+_REVIEW_DENSITY_DOMINANCE_RATIO = 3.0
+
+
+def _youtube_source_enabled() -> bool:
+    """Flag reader for ENABLE_YOUTUBE_SOURCE — mirrors L2's rollback safety so a
+    14d-cache-carried youtube_review_signal never steers the winner after the
+    flag is rolled back. Read live (not cached) so monkeypatch tests + a Railway
+    flip take effect without a process restart."""
+    import os
+    return os.environ.get("ENABLE_YOUTUBE_SOURCE", "").strip().lower() in (
+        "true", "1", "on", "yes",
+    )
+
+
+def _youtube_views(p: Dict[str, Any]) -> int:
+    """Total YouTube review views for a product, 0 when absent/malformed.
+    Reads L2's contract at reviews.youtube_review_signal.total_views."""
+    reviews = p.get("reviews")
+    if not isinstance(reviews, dict):
+        return 0
+    sig = reviews.get("youtube_review_signal")
+    if not isinstance(sig, dict):
+        return 0
+    try:
+        return int(sig.get("total_views") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _youtube_channel(p: Dict[str, Any]) -> str:
+    reviews = p.get("reviews")
+    if not isinstance(reviews, dict):
+        return ""
+    sig = reviews.get("youtube_review_signal")
+    if not isinstance(sig, dict):
+        return ""
+    return (sig.get("top_channel") or "").strip()
+
+
+def _review_density_leader(p0: Dict[str, Any], p1: Dict[str, Any]) -> Optional[int]:
+    """Return 0 / 1 if one product has DECISIVELY more YouTube review attention,
+    else None. Flag-gated: returns None when ENABLE_YOUTUBE_SOURCE is off so a
+    cache-carried signal can't steer the winner after a rollback.
+
+    'Decisive' = leader views >= floor AND leader >= dominance_ratio × the other
+    side's views (treating 0 on the other side as the floor so a one-sided
+    presence still needs to clear the absolute floor)."""
+    if not _youtube_source_enabled():
+        return None
+    v0, v1 = _youtube_views(p0), _youtube_views(p1)
+    hi = max(v0, v1)
+    lo = min(v0, v1)
+    if hi < _REVIEW_DENSITY_MIN_VIEWS:
+        return None
+    # Compare the leader against the other side (floor the denominator so a
+    # near-zero runner-up doesn't make every gap look infinite — must still
+    # beat dominance_ratio × max(lo, floor-fraction)).
+    denom = max(lo, _REVIEW_DENSITY_MIN_VIEWS / _REVIEW_DENSITY_DOMINANCE_RATIO)
+    if hi < denom * _REVIEW_DENSITY_DOMINANCE_RATIO:
+        return None
+    return 0 if v0 > v1 else 1
+
+
 def _product_all_missing(result_product: Dict[str, Any], n_dims: int) -> bool:
     """True iff EVERY dimension for this product was missing data — the
     all-MISSING case the guard must not fabricate a tilt for. Reads the
@@ -578,11 +648,18 @@ def apply_winner_evidence_tiebreak(
     win_margin: float,
     n_dims: int,
 ) -> tuple[int, List[str]]:
-    """S3 L3.2 — return (winner_index, winner_evidence).
+    """S3 L3.2 + L3.3 — return (winner_index, winner_evidence).
+
+    Two evidence axes, in priority order, both fire ONLY inside the tie band:
+      1. price authority (L3.2): one real Bahrain price vs an estimate.
+      2. review density (L3.3): decisively more YouTube review attention
+         (flag-gated on ENABLE_YOUTUBE_SOURCE).
+    Price authority is the stronger Bahrain-buyer signal, so it's checked first;
+    review density only breaks ties price can't.
 
     `winner_evidence` is a list of short qualitative reasons (NO coefficients,
     caps, or score math — `no_backend_internals_in_reveals`). Empty when there
-    is no discriminating real-price evidence.
+    is no discriminating evidence on either axis.
 
     Only two products are considered (the engine always compares a pair); for
     any other arity this is a no-op returning the naive winner.
@@ -593,9 +670,29 @@ def apply_winner_evidence_tiebreak(
     p0, p1 = products_data[0], products_data[1]
     real0, real1 = _has_real_price(p0), _has_real_price(p1)
 
-    # No discriminating price evidence: neither or both have a real price.
+    r0 = result_products.get("product_0", {})
+    r1 = result_products.get("product_1", {})
+    both_missing = _product_all_missing(r0, n_dims) and _product_all_missing(r1, n_dims)
+
+    # No discriminating PRICE evidence (neither or both have a real price): fall
+    # to the SECOND axis — review density (S3 L3.3). Only inside the tie band,
+    # only when one product has decisively more YouTube review attention, and
+    # never when both products are all-MISSING (no real signal to stand on).
     if real0 == real1:
-        return naive_winner_index, []
+        if win_margin > _WINNER_TIE_BAND or both_missing:
+            return naive_winner_index, []
+        dens_idx = _review_density_leader(p0, p1)
+        if dens_idx is None:
+            return naive_winner_index, []
+        dens_name = (
+            f"{products_data[dens_idx].get('brand', '')} "
+            f"{products_data[dens_idx].get('name', '')}".strip()
+        ) or "this option"
+        channel = _youtube_channel(products_data[dens_idx])
+        cite = f" (top YouTube review by {channel})" if channel else ""
+        return dens_idx, [
+            f"{dens_name} has substantially more YouTube review coverage{cite}"
+        ]
 
     real_idx = 0 if real0 else 1
 
@@ -603,9 +700,7 @@ def apply_winner_evidence_tiebreak(
     # real signal at all — do not fabricate an availability tilt. (The real
     # side here has a price but no specs/reviews; still, with both products
     # fully MISSING on dimensions the pick is not defensible — defer.)
-    r0 = result_products.get("product_0", {})
-    r1 = result_products.get("product_1", {})
-    if _product_all_missing(r0, n_dims) and _product_all_missing(r1, n_dims):
+    if both_missing:
         return naive_winner_index, []
 
     real_name = (

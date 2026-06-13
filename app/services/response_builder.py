@@ -500,6 +500,97 @@ def _runner_up_dim_candidate(
     }
 
 
+# S3 L3.3 — review-density (YouTube attention) as a CITED factual_verdict fact.
+# Flag-gated on ENABLE_YOUTUBE_SOURCE so a 14d-cache-carried signal can't leak
+# into the verdict after a rollback (mirrors L2's scrub). Only fires when the
+# winner has DECISIVELY more attention than the runner-up — a small gap is not a
+# fact worth stating. Cites the channel + a humanized count; NEVER a raw integer
+# view count, NEVER the word "estimated".
+_YT_DENSITY_MIN_VIEWS = 10_000
+_YT_DENSITY_DOMINANCE_RATIO = 3.0
+
+
+def _youtube_source_enabled_rb() -> bool:
+    return os.environ.get("ENABLE_YOUTUBE_SOURCE", "").strip().lower() in (
+        "true", "1", "on", "yes",
+    )
+
+
+def _humanize_views(n: int) -> str:
+    """Compact human view figure: 2_400_000 -> '2.4M', 12_500 -> '12.5K',
+    900 -> '900'. Local to response_builder (L2's _humanize_count lives in
+    extraction_service; keeping a private copy avoids a cross-module import and
+    survives independent of merge order)."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return "0"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K".replace(".0K", "K")
+    return str(n)
+
+
+def _yt_signal_for(p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Read L2's youtube_review_signal off a product, flag-gated. None when the
+    flag is off / signal absent / malformed."""
+    if not _youtube_source_enabled_rb():
+        return None
+    reviews = p.get("reviews")
+    if not isinstance(reviews, dict):
+        return None
+    sig = reviews.get("youtube_review_signal")
+    if isinstance(sig, dict) and sig.get("top_channel"):
+        return sig
+    return None
+
+
+def _yt_views(sig: Optional[Dict[str, Any]]) -> int:
+    if not isinstance(sig, dict):
+        return 0
+    try:
+        return int(sig.get("total_views") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _review_density_candidate(
+    products: List[Dict[str, Any]],
+    winner_index: int,
+) -> Optional[Dict[str, Any]]:
+    """S3 L3.3 — build a CITED review-density candidate fact for the WINNER when
+    the winner has decisively more YouTube review attention than the runner-up.
+    Returns None when the flag is off, either signal is absent, or the gap isn't
+    decisive (so we never state a meaningless 'more reviews' claim).
+
+    Magnitude is normalized into the same 0–1 band the other candidates use so
+    it competes fairly for line1. The candidate carries the channel + humanized
+    count for citation — never a raw integer."""
+    if len(products) < 2:
+        return None
+    sig_w = _yt_signal_for(products[winner_index])
+    sig_r = _yt_signal_for(products[1 - winner_index])
+    if sig_w is None:
+        return None
+    vw = _yt_views(sig_w)
+    vr = _yt_views(sig_r)
+    if vw < _YT_DENSITY_MIN_VIEWS:
+        return None
+    denom = max(vr, _YT_DENSITY_MIN_VIEWS / _YT_DENSITY_DOMINANCE_RATIO)
+    if vw < denom * _YT_DENSITY_DOMINANCE_RATIO:
+        return None  # winner's lead isn't decisive
+    return {
+        # Scale the gap into ~0–1 so it ranks against price/rating/dim. A 3×+
+        # dominance lands ~0.5–0.9; cap at 1.0.
+        "magnitude": min(1.0, (vw / denom) / 10.0 + 0.3),
+        "kind": "review_density",
+        "channel": (sig_w.get("top_channel") or "").strip(),
+        "views_human": _humanize_views(vw),
+        "video_count": sig_w.get("video_count") or 0,
+    }
+
+
 def _format_line1(
     winner_name: str,
     candidate: Dict[str, Any],
@@ -507,6 +598,11 @@ def _format_line1(
     """Render the winner-anchored line1 from the largest-magnitude candidate.
     Strings are concise + presentational; honor the FIVE critical rules."""
     kind = candidate["kind"]
+    if kind == "review_density":
+        ch = candidate.get("channel", "")
+        views = candidate.get("views_human", "")
+        cite = f", led by {ch}" if ch else ""
+        return f"{winner_name} draws far more reviewer attention (~{views} YouTube views{cite})."
     if kind == "price":
         pct = round(candidate["pct"] * 100)
         if candidate["winner_cheaper"]:
@@ -580,10 +676,15 @@ def _build_factual_verdict(
     runner_name = _product_name(products[1 - winner_index])
 
     # Gather candidate facts for line1, pick the largest-magnitude one.
+    # S3 L3.3 — review-density (YouTube attention) joins as a CITED candidate,
+    # flag-gated on ENABLE_YOUTUBE_SOURCE. It competes on normalized magnitude;
+    # a decisive review-attention gap can anchor line1, otherwise the existing
+    # price/rating/dim facts win.
     candidates = [c for c in (
         _price_candidate(products, winner_index),
         _rating_candidate(products, winner_index),
         _top_dim_candidate(dimensions, winner_index),
+        _review_density_candidate(products, winner_index),
     ) if c is not None]
 
     if candidates:

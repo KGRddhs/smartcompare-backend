@@ -14,8 +14,13 @@ Consume signals that ALREADY EXIST in the response:
 ## Tasks (plan §L3)
 - [x] **L3.1 winner-discriminator audit** (diagnostic, NON-credit) — DONE (findings below)
 - [x] **L3.2 Bahrain availability + price-authority into the winner pick** — DONE (evidence-weighted tie-break in compute_scores; GUARDS decisive-margin + both-MISSING; order-independent). 7 tests + 304 scoring-suite regression green.
-- [ ] L3.3 review-density into the verdict (consume L2 youtube_review_signal + usage="review" Arabic sources into factual_verdict evidence + winner confidence — cited, never a raw score) — NEXT
-- [ ] L3.4 `winner_evidence` surfaced in scoring_v2 (qualitative reasons ONLY — no coefficients/caps/% per no_backend_internals_in_reveals)
+- [x] **L3.3 review-density into the verdict** — DONE. Two surfaces: (a) factual_verdict CITED review-density candidate (channel + humanized views) competing for line1, flag-gated; (b) review-density as the SECOND tie-break axis in apply_winner_evidence_tiebreak (price authority stays first). 7 tests + regression green.
+- [ ] L3.4 `winner_evidence` surfaced in scoring_v2 (qualitative reasons ONLY — no coefficients/caps/% per no_backend_internals_in_reveals) — NEXT
+
+## L3.3 implementation (committed)
+- `scoring_service.py`: review-density as the 2nd evidence axis in `apply_winner_evidence_tiebreak` — helpers `_youtube_source_enabled` (flag), `_youtube_views`, `_youtube_channel`, `_review_density_leader` (decisive-gap detector: floor `_REVIEW_DENSITY_MIN_VIEWS=10k`, ratio `_REVIEW_DENSITY_DOMINANCE_RATIO=3.0`). Fires ONLY inside the tie band when price authority does NOT discriminate (both/neither real price) and one product has decisively more YouTube attention. Price authority is checked first (stronger BH signal). Flag OFF → no-op.
+- `response_builder.py`: `_review_density_candidate(products, winner_index)` reads L2's `reviews.youtube_review_signal` (flag-gated `_yt_signal_for`), normalizes the gap into the 0–1 candidate band, wired into `_build_factual_verdict`'s candidate list. `_format_line1` renders a `review_density` kind ("draws far more reviewer attention (~2.4M YouTube views, led by MKBHD)"). Local `_humanize_views` (no cross-module import; survives merge order). NEVER raw integer / "estimated".
+- Both surfaces flag-gated on ENABLE_YOUTUBE_SOURCE (mirrors L2 rollback safety — 14d cache can carry a signal past a flag flip).
 
 ## L3.2 implementation (committed)
 - `scoring_service.py`: module-level `apply_winner_evidence_tiebreak(products_data, result_products, overalls, naive_winner_index, win_margin, n_dims) -> (winner_index, winner_evidence)`; helpers `_has_real_price` (trust-set membership), `_product_all_missing`; const `_WINNER_TIE_BAND=8.0`. Wired into `compute_scores` right after the naive argmax; `winner_evidence` added to the return dict.
