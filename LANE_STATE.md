@@ -16,8 +16,9 @@
 - **L4.3 DONE** (Serper counter key-scoping) — commit `0dc806e`. 12 TDD tests; 130 passed across the api_budget blast radius, zero ripple. Admin `/admin/costs` serper gauge auto-inherits scoping.
 - **Team-lead ACK 2026-06-13:** code-complete confirmed. Both doc heads-ups OWNED BY team-lead at close-out (CLAUDE.md rotation playbook + DEL orphaned key). **L4 must NOT touch main-repo CLAUDE.md.** No separate L4.2 baseline run needed — estimate-share baseline comes free from the FIRST GATE smoke20 (carries my metric). L4.2/L4.4 stay HELD for GO at eval phase post-merges.
 - **Head-start DONE (non-credit):** `L4_CLOSEOUT_PATCH_PROPOSAL.md` — exact L4.2 command + CLAUDE.md gate-string re-anchor diff + rotation-playbook diff + SESSION_BUNDLES L4 line. Drafted as a proposal for team-lead to apply; L4 applies NONE of it.
-- **Current task:** idle-ready. Standing by for (a) cross-QA slot when L2's merge is up (I QA L2), (b) GO on L4.2/L4.4 at eval phase.
-- **Last commit SHA:** (committing patch proposal now; code HEAD 66e58f8)
+- **L2 PRE-QA DONE (non-credit, team-lead-approved read-only):** reviewed `feature/s3-l2-youtube` full diff. Verdict STRONG / merge-ready. **api_budget_service.py L4-collision check: CLEAR** (L2 hunks @46-65 + @456-581 disjoint from my @71-107 + @119-161; auto-merges). 1 medium (circuit-breaker in PROVIDER_CONFIGS but not exercised — flagged for gate) + 2 display nits. All L2.1-L2.5 invariants verified green. Details in `L4_PREQA_OF_L2.md`. Reported to team-lead.
+- **Current task:** idle-ready. Standing by for (a) cross-QA slot when L2's merge is up (pre-QA done, expect fast), (b) GO on L4.2/L4.4 at eval phase.
+- **Last commit SHA:** (committing L2 pre-QA artifact now; code HEAD 66e58f8)
 - **Baseline:** `tests/test_eval_runner.py` + `tests/test_api_budget_service.py` = 99 passed (clean) before changes.
 
 ## Cross-lane broadcast note
