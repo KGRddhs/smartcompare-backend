@@ -564,6 +564,7 @@ from app.services.fact_check_service import (
 from app.services.response_builder import (
     build_comparison_response,
     derive_rating_from_scores,
+    _youtube_signal_for_response,  # S3 L2 — streaming reviews-event parity
 )
 from app.services.image_service import get_product_image_url
 # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
@@ -1852,6 +1853,10 @@ class StructuredComparisonService:
                             "overall_sentiment": "mixed", "consensus": "",
                             "highlights": [], "review_volume": "minimal", "agreement_level": "moderate",
                         }),
+                        # S3 L2 — streaming parity with the non-streaming reviews
+                        # section (response_builder). Flag-gated; None when
+                        # ENABLE_YOUTUBE_SOURCE OFF / no signal.
+                        "youtube_review_signal": _youtube_signal_for_response(pd),
                     }
                     for pd in product_data
                 ]
