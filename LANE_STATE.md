@@ -5,10 +5,15 @@
 **Owner:** L5 (Opus)
 
 ## Current task
-L5.2 — verify `match_registry_apex` wired at by_source write+read; pin integration test.
+L5.3 — lever-1 orphaned price task cancel cleanup (structured cancellation / try-finally).
 
 ## Last commit SHA
-L5.1 DONE (committing) — double-count was a manual `record_usage("serper")` at review_service.py:338, on top of search_web's internal meter (serper_service.py:94). Same class as F4/G2 (9ee695c) but in the dormant `fetch_retailer_quotes`. Removed manual call; kept `has_budget` gate + `track_serper_cost_fn`. New RED→GREEN test `test_fetch_does_not_double_count_serper_budget`; rewrote 2 stale tests that encoded the buggy 3-manual-record behavior. 10/10 green.
+- L5.1 `575cacf` — fetch_retailer_quotes Serper budget double-count fixed (manual `record_usage` removed; search_web owns meter). 10/10 green.
+- L5.2 DONE (committing) — VERIFIED already-wired on both sides, no re-wire needed:
+  - WRITE: `record_tier15_hit` (cache_service.py:144-145) calls `match_registry_apex` on raw host before incrementing.
+  - READ: `_aggregate_source_hits` probes apex keys via `_registry_domains()`.
+  - CALLER: structured_comparison_service.py:2900 passes un-normalized retailer host (only www. stripped) → normalization is real.
+  - Existing tests pinned write-norm + read-apex SEPARATELY; added 2 END-TO-END round-trip tests (uae.sharafdg.com→sharafdg.com, www.noon.com→noon.com) chaining write→read through the real reader. 21/21 green in test_tier15_hit_rate_metric.py.
 
 ## Mission (4 carried bugs, TDD)
 - **L5.1** `fetch_retailer_quotes` double-count. NOTE: function lives in `app/services/review_service.py:304` (NOT price_service.py). `tests/test_retailer_quotes.py` already pins 3-distinct-retailer behavior at the function level → double-count is likely at a CALLER aggregation site or how quotes feed review counts. Investigate callers first.
