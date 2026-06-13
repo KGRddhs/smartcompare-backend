@@ -20,7 +20,7 @@ YouTube enrichment lives INSIDE `review_service.get_reviews()` as a `consult_you
 
 ## Task ledger
 - [x] L2.1 `youtube_service.py` + 9 MOCKED unit tests (TDD) — GREEN
-- [~] L2.2 Quota metering in api_budget_service — provider config + daily UNIT counter (try_consume_youtube_credit / get_youtube_unit_usage) scaffolded with L2.1; dedicated metering tests still TODO
+- [x] L2.2 Quota metering in api_budget_service — provider config + daily UNIT counter (try_consume_youtube_credit / get_youtube_unit_usage) + 12 dedicated metering tests GREEN (check-and-increment, over-budget rollback, fail-open x2, TTL-first-write-only, env override, record_usage path)
 - [ ] L2.3 Reviews-race participant (consult_youtube_source in review_service, inner wait_for, None on miss) — TDD
 - [ ] L2.4 Cited-evidence surfacing (reviews section + optional factual verdict; copy rules) — TDD
 - [ ] L2.5 `ENABLE_YOUTUBE_SOURCE` flag (default OFF) + 14d cache — TDD
