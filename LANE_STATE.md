@@ -5,6 +5,14 @@
 **Owner:** L3
 **Merge order:** L5 → L4 → L2 → **L3** → L1 (I merge 4th, just before L1)
 
+## WINNER-ONLY INVARIANT (team-lead merge-gate requirement — VERIFIED 2026-06-13)
+The winner-mechanism interventions must NOT mutate the per-product `overall`/`breakdown` data the eval's price/specs axes read. Verified by code inspection:
+- **A2 (value-axis neutralization)** + `_winner_without_value_dim`: WINNER-ONLY. A2 block writes only `winner_index`/`win_margin`/`winner_value_neutralized`. `_winner_without_value_dim` READS breakdowns (local copies via `.get`) + computes local `o0/o1`; does NOT mutate `result_products`. ✓
+- **tie-break + estimate-demotion** (`apply_winner_evidence_tiebreak`, incl. `_non_price_overall`, `_review_density_*`): WINNER-ONLY. ZERO assignments to `result_products[...]`/`products_data[...]`/`["overall"]`/`["breakdown"]` — returns `(winner_index, winner_evidence)` only. ✓
+- **A1 (normalization dampening)**: NOT winner-only — by design it changes `_normalize_dimension` output, so the displayed `breakdown` dim-bar values shift (45–85 band). HOWEVER the EVAL axes are still insulated: eval `price_pass`/`specs_score`/`factual_pass` read `overview.products[i].price`/`specs` + verdict text, which are INDEPENDENT of the scoring breakdown (confirmed eval_runner L560-590). So A1 cannot regress price/specs/factual; it only re-scales the user-visible scoring_v2 dim bars (the intended display effect + escape-hatch `DISABLE_DIM_NORM_DAMPENING`).
+- **#2 GPT-winner (response_builder)**: WINNER-ONLY + flag-OFF in prod. Overrides `winner_index` only; no breakdown mutation.
+NET: all 4 are eval-axis-safe (price/specs/factual cannot regress from any of them). Only the WINNER axis is affected — exactly the intended blast radius.
+
 ## Mission
 Ground the winner pick in real evidence so it stops being a coin-flip (.495 → ≥0.60 full-200).
 Consume signals that ALREADY EXIST in the response:
