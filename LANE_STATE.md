@@ -5,7 +5,7 @@
 **Owner:** L5 (Opus)
 
 ## Current task
-ALL 4 L5 ITEMS DISPOSITIONED — gate-ready. L5.4 re-defer awaiting team-lead ratification. ADJUDICATION below.
+ALL 4 L5 ITEMS CLOSED (L5.4 re-defer RATIFIED by team-lead 2026-06-13). team-lead is running the first ultracode gate-review on the L5 diff now. L5 is FIRST in merge order. Holding for the gate result — fix-before-merge on any review-confirmed bug.
 
 ## Disposition table (team-lead rulings ACK'd 2026-06-13)
 | Item | Disposition | team-lead ruling | Evidence |
@@ -13,7 +13,7 @@ ALL 4 L5 ITEMS DISPOSITIONED — gate-ready. L5.4 re-defer awaiting team-lead ra
 | L5.1 | **FIXED** (`575cacf`) | "proceed — caller-side double-count test" | manual `record_usage` removed from `fetch_retailer_quotes`; RED→GREEN `test_fetch_does_not_double_count_serper_budget` |
 | L5.2 | **VERIFY + CLOSE** (`700b575`) | "if genuinely wired at BOTH sites, do NOT re-wire; pin with e2e test = valid VERIFY+CLOSE" | write apex-normalizes (cache_service.py:144-145) + read probes apex (_aggregate_source_hits); 2 e2e round-trip tests prove uae.sharafdg.com→sharafdg.com record+read |
 | L5.3 | **FIXED** (`b386be8`) | "proceed — cancel-path TDD" | `try/except BaseException`→`_cleanup_orphan_price_task`; 2 RED→GREEN cancel tests; I5.6 concurrency preserved |
-| L5.4 | **RE-DEFER proposed** (`d9ba97c`) | "isolate, root-cause, propose fix-or-redefer with evidence" — proposed re-defer, awaiting explicit confirm | elec-003 502 = isolated gateway transient (healthy neighbors, no Sentry capture, other-002 Dyson/Shark passed 200, query 3/200) |
+| L5.4 | **RE-DEFER RATIFIED** (`d9ba97c`) — #12 CLOSED | team-lead ratified 2026-06-13: evidence-complete + sound; monitor S3 full-200 for elec-003 502 recurrence, focused crash investigation only if deterministic | elec-003 502 = isolated gateway transient (healthy neighbors, no Sentry capture, other-002 Dyson/Shark passed 200, query 3/200) |
 
 ## Commits (all pushed to origin/feature/s3-l5-carried-bugs)
 - `575cacf` L5.1 — fetch_retailer_quotes Serper budget double-count (manual record_usage removed)
