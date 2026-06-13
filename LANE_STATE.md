@@ -4,6 +4,7 @@
 **Branch:** `feature/s3-l2-youtube`
 **Owner:** L2
 **Merge order:** L5 → L4 → **L2** → L3 → L1 (I merge 3rd)
+**STATUS: COMPLETE (task #2 done). All 5 sub-tasks + test-isolation fix pushed. Head 65804fc. STANDING BY for gate review / live-smoke GO / ring cross-QA.**
 
 ## Mission
 Add YouTube as a CITED review signal:
