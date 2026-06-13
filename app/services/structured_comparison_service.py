@@ -500,6 +500,7 @@ from app.services.price_service import (
     extract_price_from_html,
     curl_fetch_html,
     fetch_page_price,
+    fetch_shopify_price,
     fetch_iherb_price,
     fetch_pharmacy_price,
     fan_out_price_lookup,
@@ -574,6 +575,7 @@ from app.services.source_router import (
     build_site_discovery_query,
     score_source,
     source_usage,
+    get_shopify_sources_for_category,
 )
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -2779,6 +2781,71 @@ class StructuredComparisonService:
         ):
             scraping_mode = os.environ.get("SCRAPING_MODE", "hard")
             candidate_urls: List[Tuple[str, str]] = []
+
+            # --- S3 L1.3: Shopify direct-discovery (FREE, before Serper) ---
+            # The major BH retailers are JS-SPAs whose prices aren't in static
+            # curl HTML (L1_DIAGNOSTIC_bh_scrapeability.md), but Shopify-platform
+            # BH stores expose a static /products.json catalog with real BHD
+            # prices. For any bahrain-tier Shopify registry source in this
+            # category, hit /products.json DIRECTLY (zero Serper, zero render
+            # credits) and short-circuit on a confident hit — this is the
+            # cleanest real-BH-price lever for the winner axis. On a miss we
+            # fall through to the unchanged Serper + fan_out path below.
+            shopify_sources = get_shopify_sources_for_category(category)
+            if shopify_sources:
+                try:
+                    shop_results = await asyncio.wait_for(
+                        asyncio.gather(
+                            *(
+                                fetch_shopify_price(s.domain, full_name, currency)
+                                for s in shopify_sources
+                            ),
+                            return_exceptions=True,
+                        ),
+                        timeout=8.0,
+                    )
+                except asyncio.TimeoutError:
+                    shop_results = []
+                except Exception as e:  # noqa: BLE001 — discovery is best-effort
+                    logger.warning(f"[PRICE] Shopify discovery failed: {e}")
+                    shop_results = []
+
+                # Most-authoritative = lowest real BHD price among valid hits
+                # (an in-catalog listing is the product's actual price; lowest
+                # mirrors the "most authoritative, not cheapest-marketplace"
+                # philosophy WITHIN a single trusted BH retailer set).
+                shop_best = None
+                for r in shop_results:
+                    if isinstance(r, dict) and r.get("amount") and r["amount"] > 0:
+                        if shop_best is None or r["amount"] < shop_best["amount"]:
+                            shop_best = r
+                if shop_best:
+                    shop_best["source_method"] = shop_best.get(
+                        "source_method", "shopify_json"
+                    )
+                    win_domain = str(
+                        shop_best.get("retailer") or ""
+                    ).replace("www.", "").lower()
+                    self._tier15_routes[full_name] = {
+                        "route": "shopify_direct",
+                        "source_weight": score_source(
+                            shop_best.get("url", "") or f"https://{win_domain}",
+                            category,
+                        ),
+                    }
+                    record_tier15_attempt(category)
+                    record_tier15_hit(category, win_domain or None)
+                    set_cached(cache_key, shop_best, PRICE_CACHE_TTL)
+                    self._save_price_to_db(
+                        cache_key, brand, name, variant, region, shop_best
+                    )
+                    shop_best["_cached"] = False
+                    logger.info(
+                        "[PRICE] Shopify direct-discovery hit for %s: %.3f %s via %s "
+                        "(zero Serper/render)",
+                        full_name, shop_best["amount"], currency, win_domain,
+                    )
+                    return shop_best
 
             # --- Discovery: all queries fire concurrently ---
             # B.0 (Lane F1): a Bahrain-first `site:` discovery query leads the
