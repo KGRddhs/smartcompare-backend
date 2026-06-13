@@ -36,6 +36,9 @@ from app.services.cache_service import get_cached, set_cached
 from app.services.api_budget_service import (
     has_budget,
     record_usage,
+    record_failure,
+    record_success,
+    is_circuit_closed,
     try_consume_youtube_credit,
 )
 
@@ -163,6 +166,16 @@ async def fetch_youtube_review_signal(
     if cached and isinstance(cached, dict):
         return cached
 
+    # Circuit breaker (Firecrawl pattern) — checked FIRST so a YouTube outage
+    # (repeated 5xx/timeout) short-circuits BEFORE we consume a quota unit. When
+    # 3 consecutive failures have tripped it, every cold review fetch would
+    # otherwise eat the 4s wait_for + a 100-unit search on a doomed call; the
+    # breaker fast-fails to None for the 10-min cooldown instead. Fail-open on
+    # Redis down (is_circuit_closed returns True).
+    if not is_circuit_closed("youtube"):
+        logger.info("[YOUTUBE] circuit open — skipping signal")
+        return None
+
     # Budget guard BEFORE the expensive search.list (100 units). This is the
     # check-and-increment for the daily YouTube quota — fail-open on Redis down
     # (we'd rather spend a unit than silently lose the signal), hard-stop when
@@ -180,11 +193,18 @@ async def fetch_youtube_review_signal(
     try:
         video_ids = await _search_review_videos(query)
         if not video_ids:
-            # Nothing found — do NOT spend the videos.list unit. Return None.
+            # Nothing found — do NOT spend the videos.list unit, and do NOT
+            # trip the breaker: an empty result is a valid zero, not a service
+            # failure (mirrors Firecrawl's "do NOT record_failure on
+            # 404/no-result"). Return None.
             return None
         stats = await _video_stats(video_ids)
     except Exception as e:  # noqa: BLE001 — best-effort; any failure → None
+        # A raised exception here = the API call itself failed (timeout / 5xx /
+        # connection error / raise_for_status) = SERVICE-level → trip the
+        # breaker so repeated failures fast-fail for the cooldown window.
         logger.warning("[YOUTUBE] signal fetch failed for %r: %s", query, e)
+        record_failure("youtube")
         return None
 
     if not stats:
@@ -205,5 +225,8 @@ async def fetch_youtube_review_signal(
         "video_count": len(stats),
     }
 
+    # Fully successful fetch — reset the breaker's failure count / close a
+    # half-open breaker (Firecrawl pattern).
+    record_success("youtube")
     set_cached(cache_key, signal, YOUTUBE_CACHE_TTL)
     return signal
