@@ -5,6 +5,52 @@
 **Owner:** L3
 **Merge order:** L5 → L4 → L2 → **L3** → L1 (I merge 4th, just before L1)
 
+# ============================================================================
+# L3 v2 — "GENUINE WINNER FROM SCORE" DESIGN (Ahmed pivot 2026-06-13) — DESIGN-FIRST, NOT BUILT
+# ============================================================================
+Ahmed directive: "best for accuracy + genuine... recommendation based on pain, prompt system, reviews, preferences, logic." Winner must EMERGE from a genuine overall score, NOT a winner_index flip. Frontend already argmaxes scoring_v2.overall_score (ResultsScreen.tsx:634-641) → fix the score, everything agrees, ZERO FE change.
+
+## DROP (confirmed removable, all winner-index-flip mechanisms)
+- A2 value-axis neutralization (`_winner_without_value_dim` + `winner_value_neutralized` marker + the cross-tier recompute block in compute_scores L1164-1180). Reason: no-op on its own target case (proven), re-injects first-index bias (o0>=o1→0), UI contradiction. GONE.
+- Estimate-demotion winner_index FLIP + the price-authority/review-density tie-break OVERRIDE (`apply_winner_evidence_tiebreak` index-override paths). Replaced by score factors below. GONE.
+- L3.2 price-authority tie-break + L3.3 review-density tie-break (the index tilts) — folded into the SCORE, not a flip.
+
+## REPLACE WITH (winner emerges from the genuine `overall`)
+### (a) PRICE-AUTHORITY AS A SCORE FACTOR (not a flip)
+- WHERE: in `compute_scores`, after the per-product `overall` is computed (L1137), apply a multiplicative/additive authority adjustment per product BEFORE the argmax. Real BH price (source_method in `_PRICE_TRUST_SET`) → modest BUMP; `estimated` → modest PENALTY; `converted_usd` → neutral-to-small penalty (not a real local price but not fabricated).
+- MAGNITUDE (proposed, to be tuned empirically): additive ±~4 points on the 0-100 overall (real: +2, estimate: −2; net ~4pt swing). Rationale: must be SMALLER than a decisive signal lead so a clearly-better estimated product still wins (kills the over-fire finding, gate c=0.92 case), but large enough to tip genuine close calls (<~4pt) to the real-priced side. 4pt ≈ half the old 8pt tie band — close calls only. EXACT magnitude measured on full-200 (escape-hatch env `WINNER_PRICE_AUTHORITY_POINTS`, default the chosen value).
+- "Facts beat estimates" now lives IN the score → visible + consistent in rings/verdict/share. No fabrication: it's a confidence weight on REAL vs ESTIMATED provenance, not a made-up price.
+
+### (b) VALUE / CHEAPER-PRICE DOMINANCE REDUCTION (the core accuracy lever)
+- ROOT CAUSE (S2-pinned): the value dim rewards ABSOLUTE cheapness (`_normalize_price`: lower price→higher score), but gold's winner is the PRICIER product 64% of priced rows. The value dim (electronics weight 0.20) + its price-component drag the winner toward cheap.
+- APPROACH: two levers, BOTH measured (NOT guessed):
+  1. RESHAPE value → value-FOR-MONEY: the value dim already blends spec+price via `_compute_value_score` (default spec 0.60/price 0.40). Shift the default toward spec (e.g. 0.70/0.30) so "what you get" dominates "how cheap" — i.e. value rewards strong specs at a fair price, not raw cheapness.
+  2. REDUCE value dim WEIGHT in `CATEGORY_DIMENSION_WEIGHTS` (electronics 0.20 → ~0.12-0.15), redistributing to specs/reviews so genuine quality drives the pick. CAUTION: this is the delicate lever — touches the weight table the gate flagged as Ahmed-scope. Propose a SMALL reduction + measure the winner delta per-category on full-200; tune via escape-hatch before committing the number.
+- MEASUREMENT: full-200 winner_pass per-category, sweep value-weight/coeff candidates (escape-hatch envs), pick the config that maximizes winner without regressing price/specs/factual. Don't ship a guessed number.
+
+### (c) PAIN + PREFERENCES INTO THE WEIGHTS (genuinely applied)
+- CURRENT STATE (verified): `compute_scores` already receives `preferences=user_preferences` + `behavior_profile` and applies them — `_compute_weights` applies `CATEGORY_PRIORITY_ADJUSTMENTS` (priorities) + budget adj; `apply_behavioral_adjustments` applies the behavior profile. So PREFERENCES + BEHAVIOR genuinely shape the dimension weights TODAY. ✓
+- GAP: `pain_workflow_priors` + `demographics_profile` (cohort) do NOT reach `compute_scores` — they only feed the VERDICT prompt (orchestrator L1462 `pain_workflow_context`; L1444 `demographics_profile`). So "pain" currently shapes the EXPLANATION, not the SCORE.
+- DECISION NEEDED (your call): do we wire pain_workflow + cohort into the SCORE weights now (NEW: a `pain_workflow`/`cohort` → dimension-emphasis mapping passed to compute_scores, capped like behavioral ±10%), or KEEP pain/cohort as verdict-only for v2 and note score-wiring as a follow-up? My lean: wire COHORT into weights now (it's already fetched + has a clean priors structure), DEFER pain_workflow score-wiring (pain_workflow_loader's shape is verdict-oriented; mapping it to dim weights is a design sub-project). Confirm.
+
+### (d) A1 KEEP-OR-DROP + MISSING_SCORE=50 collision
+- A1 (normalization dampening 30+r*70 → 45+r*40): it is PURELY COSMETIC for the winner (compresses dim bars symmetrically, preserves order — proven 0/4 fixture flips). With the winner now emerging from `overall`, A1 changes only displayed bars. RECOMMENDATION: DROP A1 for v2 simplicity (one fewer moving part, no UX-risk, no winner benefit) UNLESS you want the honesty/calibration UX win — then keep behind `DISABLE_DIM_NORM_DAMPENING`. My lean: DROP (Ahmed wants genuine accuracy, not bar cosmetics; revisit in a calibration pass).
+- MISSING_SCORE=50 COLLISION (real bug, pre-existing, independent of A1): MULTIPLE legitimate real scores == 50.0 — `_normalize_review` rating 2.5★ → 50.0; `_normalize_direct` reliability/popularity raw 0.5 → 50.0. Sites that filter `score == MISSING_SCORE` then DROP these real values: `_non_price_overall` L704 (going away with A2) + `compute_dimension_winners` L1887 + `_dim_winner` L2563 + `_dim_from_category_lookup` L2551. FIX: stop using `==50` as the missing sentinel. Track missing via the EXISTING explicit per-product `_<dim>_missing` flags / the `missing_data` list (already computed at L1143) + `was_missing_*` markers — they're robust. Audit the `==MISSING_SCORE` filter sites; replace value-equality checks with the explicit flags where a real 50 could be dropped. (Some sites are display-only + low-risk; I'll list the load-bearing ones in the build.)
+
+### (e) #2 GPT-WINNER → GROUNDED CROSS-CHECK LOG ONLY
+- KEEP the #2 producer (extraction_service `_build_independent_winner_block`, flag-gated) — it's the "prompt system" signal. KEEP the consumer reading `independent_winner_*`.
+- CHANGE: NO index override. In response_builder, when ENABLE_GPT_WINNER on AND GPT's GROUNDED independent winner != the genuine deterministic argmax → LOG it (like WINNER_INDEX_MISMATCH: `GPT_WINNER_DISAGREES deterministic=X gpt=Y grounded=true basis=...`) for S3.1 investigation. Shipped winner = genuine deterministic argmax ALWAYS. The GPT verdict EXPLAINS that winner, grounded in the same signals. (Removes the consistency trap; preserves the signal for the S3.1 adoption decision.)
+
+## KEEP (unchanged, now describing the genuine winner)
+- `winner_evidence` qualitative reasons — repoint to describe the GENUINE winner ("real Bahrain price + stronger reviews + fits your priority"). Built from the same score factors (price provenance, review strength, the priority that drove the weights).
+
+## MEASUREMENT PLAN (escape-hatches for empirical tuning)
+- Env knobs (default to chosen values): `WINNER_PRICE_AUTHORITY_POINTS`, value-weight/coeff override. Full-200 on PROD (dispatcher) sweeps candidates; pick max-winner-no-axis-regression. The value re-weight is delicate → measure, don't guess.
+
+## SEQUENCING
+DESIGN (this) → team-lead review → BUILD (TDD) → measure full-200 (PROD) → tune via hatches → merge. Main-merge HELD until v2 built + measured. SUPERSEDES merge-as-is + marker-fix + merge-resolution (A2/demotion gone).
+# ============================================================================
+
 ## WINNER-ONLY INVARIANT (team-lead merge-gate requirement — VERIFIED 2026-06-13)
 The winner-mechanism interventions must NOT mutate the per-product `overall`/`breakdown` data the eval's price/specs axes read. Verified by code inspection:
 - **A2 (value-axis neutralization)** + `_winner_without_value_dim`: WINNER-ONLY. A2 block writes only `winner_index`/`win_margin`/`winner_value_neutralized`. `_winner_without_value_dim` READS breakdowns (local copies via `.get`) + computes local `o0/o1`; does NOT mutate `result_products`. ✓
