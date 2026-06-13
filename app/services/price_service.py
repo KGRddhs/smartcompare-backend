@@ -779,6 +779,126 @@ def extract_jsonld_price(html: str, brand: str, expected_currency: str) -> Optio
     return best_price
 
 
+# S3 L1.4 — number that looks like a BHD/GCC price (1-5 digits, optional decimals
+# up to 3 places). Avoids matching SKUs/years embedded in surrounding text by
+# anchoring on the price node's own text.
+_RENDERED_PRICE_RE = re.compile(r"(\d{1,5}(?:[.,]\d{1,3})?)")
+
+
+def _extract_rendered_dom_price(
+    soup, html: str, currency: str, domain: str, url: str
+) -> Optional[Dict[str, Any]]:
+    """S3 L1.4 — last-resort price from RENDERED HTML (Firecrawl) when no
+    structured data exists. Two shapes seen on BH SPAs:
+
+    (a) an embedded ``<script>`` JSON blob carrying ``price`` + ``priceCurrency``
+        / ``currency`` (some Next.js sites), and
+    (b) a ``.price`` / ``.woocommerce-Price-amount`` text node — the sharafdg
+        Mustache shape — EXPLICITLY skipping ``.cross-price`` / ``.strike``
+        (the strikethrough regular price) so we read the CURRENT price.
+
+    Returns a ``source_method="page_scrape_rendered"`` dict or ``None``. On
+    static curl HTML these are unresolved ``{{price}}`` templates / absent, so
+    this returns None unchanged — it only bites on rendered HTML.
+    """
+    # (a) embedded-JSON: scan <script> blobs for a price + currency pair.
+    for script in soup.find_all("script"):
+        raw = script.string or script.get_text() or ""
+        if not raw or "price" not in raw.lower():
+            continue
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        found = _find_price_currency_in_obj(data)
+        if found:
+            amount, cur = found
+            if amount and amount > 0:
+                result = {
+                    "amount": round(amount, 2),
+                    "original_currency": cur or currency,
+                    "currency": cur or currency,
+                    "retailer": domain, "url": url, "in_stock": True,
+                    "confidence": 0.85, "estimated": False,
+                    "source_method": "page_scrape_rendered",
+                }
+                if (cur or currency).upper() != currency.upper():
+                    _convert_gpt_price_currency(result, currency)
+                return result
+
+    # (b) rendered `.price` text node (skip the strikethrough regular price).
+    for elem in soup.select(".price, .woocommerce-Price-amount, .product-price .price"):
+        classes = " ".join(elem.get("class") or [])
+        if "cross" in classes or "strike" in classes or "old" in classes:
+            continue
+        # Don't read a .price that merely WRAPS a .cross-price/.strike child.
+        text = elem.get_text(" ", strip=True)
+        # Strip the currency token so the regex sees only the number.
+        text_no_cur = re.sub(r"[A-Za-z؀-ۿ]{2,}", " ", text)
+        m = _RENDERED_PRICE_RE.search(text_no_cur)
+        if not m:
+            continue
+        try:
+            amount = float(m.group(1).replace(",", ""))
+        except (ValueError, TypeError):
+            continue
+        if amount <= 0:
+            continue
+        result = {
+            "amount": round(amount, 2),
+            "original_currency": currency, "currency": currency,
+            "retailer": domain, "url": url, "in_stock": True,
+            "confidence": 0.75, "estimated": False,
+            "source_method": "page_scrape_rendered",
+        }
+        return result
+
+    return None
+
+
+def _find_price_currency_in_obj(obj) -> Optional[Tuple[float, Optional[str]]]:
+    """Recursively find a (price, currency) pair in a parsed-JSON object.
+
+    Looks for a dict with a numeric price-ish key (price/sellingPrice/lowPrice/
+    amount) and, nearby, a currency key (priceCurrency/currency/currencyCode).
+    Returns the first plausible pair or None.
+    """
+    price_keys = ("price", "sellingprice", "lowprice", "amount", "nowprice")
+    cur_keys = ("pricecurrency", "currency", "currencycode")
+
+    def walk(x):
+        if isinstance(x, dict):
+            lower = {k.lower(): k for k in x.keys()}
+            price_val = None
+            for pk in price_keys:
+                if pk in lower:
+                    v = x[lower[pk]]
+                    try:
+                        price_val = float(v)
+                        break
+                    except (ValueError, TypeError):
+                        continue
+            cur_val = None
+            for ck in cur_keys:
+                if ck in lower and isinstance(x[lower[ck]], str):
+                    cur_val = x[lower[ck]]
+                    break
+            if price_val is not None and price_val > 0:
+                return (price_val, cur_val)
+            for v in x.values():
+                r = walk(v)
+                if r:
+                    return r
+        elif isinstance(x, list):
+            for it in x:
+                r = walk(it)
+                if r:
+                    return r
+        return None
+
+    return walk(obj)
+
+
 def extract_price_from_html(
     html: str, product_name: str, currency: str, domain: str, url: str
 ) -> Optional[Dict[str, Any]]:
@@ -854,6 +974,17 @@ def extract_price_from_html(
                 return result
         except (ValueError, TypeError):
             pass
+
+    # Priority 4 (S3 L1.4): rendered-DOM fallback — fires ONLY after structured
+    # data (JSON-LD/OG/microdata) misses. The major BH SPAs (sharafdg Mustache,
+    # some Next.js) keep the price in a rendered `.price` text node or an
+    # embedded <script> JSON blob, NOT in any structured format. This only helps
+    # when the cascade has RENDERED HTML (Firecrawl) — on static curl HTML these
+    # nodes are unresolved templates ({{price}}) or absent, so it returns None
+    # exactly as before. source_method="page_scrape_rendered" marks the tier.
+    rendered = _extract_rendered_dom_price(soup, html, currency, domain, url)
+    if rendered:
+        return rendered
 
     return None
 
