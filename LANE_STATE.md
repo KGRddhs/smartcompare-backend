@@ -17,7 +17,15 @@ Consume signals that ALREADY EXIST in the response:
 - [x] **L3.3 review-density into the verdict** — DONE. Two surfaces: (a) factual_verdict CITED review-density candidate (channel + humanized views) competing for line1, flag-gated; (b) review-density as the SECOND tie-break axis in apply_winner_evidence_tiebreak (price authority stays first). 7 tests + regression green.
 - [x] **L3.4 `winner_evidence` surfaced in scoring_v2** — DONE. `_build_scoring_v2` threads `scoring_result["winner_evidence"]` into the `scoring_v2` payload (always-list, str-coerced, malformed→[]). End-to-end chain pin (compute_scores tie-break → scoring_v2) green. 6 tests + regression green.
 
-**ALL L3 TASKS COMPLETE (L3.1–L3.4) + ESTIMATE-DEMOTION (Ahmed directive 2026-06-13).** Ready for gate. Awaiting team-lead GO for smoke20 (CREDIT GATE).
+**ALL L3 TASKS COMPLETE (L3.1–L3.4) + ESTIMATE-DEMOTION + MECHANISM INVESTIGATION + INTERVENTION #1 (flag-OFF).** Awaiting team-lead ruling on intervention #2 (qualitative-verdict decoupling) + smoke20 GO.
+
+## WINNER-MECHANISM INTERVENTION #1 — value-axis neutralization (commit 214e689, FLAG-GATED default OFF)
+- `ENABLE_WINNER_VALUE_NEUTRALIZATION` (default OFF) — INERT in prod + gate until flipped (398 regression green proves flag-off byte-identical).
+- When ON + cross-tier: recompute winner with the value-type dim removed (renormalized) so the cheaper-wins anti-signal stops deciding the pick. Within-tier untouched. Winner-only (overall/breakdown unchanged). Emits `winner_value_neutralized:true` only when it actually flips.
+- Helpers: `_winner_value_neutralization_enabled()`, `_winner_without_value_dim()`. Wired in compute_scores BEFORE the L3.2 tie-break.
+- **HONEST SCOPE:** fires NARROWLY — only when specs are near-equal so value is the lone swing. When spec-numerology already separates the pair (common case), it no-ops. Small winner delta expected, NOT the headline fix. Built as a ready-to-MEASURE experiment, not a claimed win.
+- The HEADLINE lever remains intervention #2 (decouple the qualitative GPT verdict to win on divergence) — AWAITING team-lead ruling (architecture call).
+- Tests: tests/test_winner_value_neutralization.py (5) GREEN.
 
 ## ESTIMATE-AUTHORITY DEMOTION (Ahmed directive: "facts, accuracy, NO estimation — an estimated-price product can never out-rank a real-priced one on fabricated confidence")
 - **Hole found + reproduced:** `_compute_raw_scores` feeds `price.amount` into the value/price dims REGARDLESS of `source_method`, so a GPT-estimated cheap price inflated the value dim and handed an estimated product a DECISIVE 14pt win (71.4 vs 57.4) over a real-priced competitor with identical specs/rating. The band-limited L3.2 tie-break didn't catch it (margin outside the 8pt band).
