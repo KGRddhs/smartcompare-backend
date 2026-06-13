@@ -25,6 +25,7 @@ from app.services.price_service import (
     _match_shopify_product,
     fetch_shopify_price,
 )
+from app.services.exchange_rate_service import FALLBACK_RATES
 
 FIXTURE = Path(__file__).parent / "fixtures" / "shopify_products_almoayyed.json"
 
@@ -32,6 +33,55 @@ FIXTURE = Path(__file__).parent / "fixtures" / "shopify_products_almoayyed.json"
 @pytest.fixture
 def catalog():
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+
+def _usd_catalog():
+    """A Shopify catalog whose STORE base currency is USD (the steel-arm-
+    supplements.myshopify.com case found in discovery) — price 95.00 must NOT
+    be stamped 95 BHD."""
+    return {
+        "_store_currency": "USD",
+        "products": [
+            {"title": "Creatine Monohydrate 300g", "handle": "creatine-mono",
+             "variants": [{"price": "95.00", "available": True}]},
+        ],
+    }
+
+
+# === M1 (gate MUST-FIX): Shopify currency verification — no blind BHD stamp ===
+
+class TestShopifyCurrencyVerification:
+    def test_usd_store_price_is_converted_not_stamped_bhd(self):
+        """A USD-base store: 95.00 USD must be CONVERTED to BHD (~35.8), never
+        returned as '95 BHD' (~2.65x inflation = the wrong-price hole)."""
+        res = _match_shopify_product(_usd_catalog(), "Creatine Monohydrate", "BHD",
+                                     "steel-arm-supplements.myshopify.com")
+        assert res is not None
+        assert res["currency"] == "BHD"
+        expected_bhd = round(95.00 * FALLBACK_RATES["USD"], 2)
+        assert res["amount"] == pytest.approx(expected_bhd, abs=0.01)
+        assert res["amount"] != pytest.approx(95.0)  # NOT the raw USD number
+        assert res.get("original_currency") == "USD"
+
+    def test_unknown_store_currency_skips_hit(self):
+        """When the store currency can't be determined, DO NOT stamp BHD —
+        return None and let the cascade continue (Decision-F: don't fabricate)."""
+        cat = {"products": [
+            {"title": "Mystery Widget 5000", "handle": "w",
+             "variants": [{"price": "42.00", "available": True}]},
+        ]}  # no _store_currency key
+        res = _match_shopify_product(cat, "Mystery Widget 5000", "BHD", "x.myshopify.com")
+        assert res is None
+
+    def test_bhd_store_keeps_price(self, catalog):
+        """A BHD-base store (the fixture now declares _store_currency=BHD) keeps
+        its price unchanged."""
+        res = _match_shopify_product(
+            catalog, "Super General 20 Kg Washing Machine", "BHD", "shopalmoayyed.com",
+        )
+        assert res is not None
+        assert res["amount"] == pytest.approx(200.0)
+        assert res["currency"] == "BHD"
 
 
 # --- Pure matcher --------------------------------------------------------
@@ -76,7 +126,7 @@ class TestMatchShopifyProduct:
         assert _match_shopify_product(None, "anything", "BHD", "x.com") is None
 
     def test_zero_or_missing_price_skipped(self):
-        cat = {"products": [
+        cat = {"_store_currency": "BHD", "products": [
             {"title": "Test Widget 5000", "handle": "test-widget-5000",
              "variants": [{"price": "0.000", "available": True}]},
         ]}
@@ -88,6 +138,46 @@ class TestMatchShopifyProduct:
         )
         assert res is not None
         assert "in_stock" in res
+
+    # --- S5 (gate): near-miss discrimination — pins the keyword + 0.4-overlap
+    # gates that the matcher's value rests on (mutation-tested: strict_title_match
+    # all()->any() and 0.4->0.0 BOTH shipped green before this). These cases
+    # share a number/word with a fixture product but MUST be rejected PAST
+    # numbers_match — at the keyword or overlap gate.
+
+    def test_near_miss_rejected_by_keyword_gate(self, catalog):
+        """'Bosch Mixer Grinder 2000W' shares 2000W + Mixer + Grinder with the
+        Panasonic Mixer (55) but is a different brand — strict_title_match must
+        reject it ('bosch' absent from the title), NOT match to 55 BHD. Reaches
+        PAST numbers_match (2000 IS shared)."""
+        res = _match_shopify_product(
+            catalog, "Bosch Mixer Grinder 2000W", "BHD", "shopalmoayyed.com",
+        )
+        assert res is None
+
+    def test_near_miss_shares_number_but_rejected(self, catalog):
+        """'Hoover 2000W Vacuum Cleaner Bagless' shares 2000W with the Panasonic
+        Mixer but is an unrelated product — rejected (its keywords aren't a
+        subset of any title). Pins that a shared NUMBER alone never matches.
+
+        Note: the matcher's 0.4 word-overlap gate is structurally correlated with
+        strict_title_match (both measure query-keywords-in-title), so a case
+        that passes strict_title_match but fails ONLY the 0.4 gate can't be
+        constructed from catalog-title inputs — the load-bearing discrimination
+        is the strict_title_match all()-not-any() invariant, pinned above."""
+        res = _match_shopify_product(
+            catalog, "Hoover 2000W Vacuum Cleaner Bagless", "BHD", "shopalmoayyed.com",
+        )
+        assert res is None
+
+    def test_mutation_guard_strict_title_any_would_fail(self, catalog):
+        """If strict_title_match were weakened all()->any(), 'Panasonic Toaster
+        Oven' (shares only 'Panasonic' with the Mixer/Food-Processor) would
+        wrongly match. It MUST be rejected — pins the all()-not-any() invariant."""
+        res = _match_shopify_product(
+            catalog, "Panasonic Toaster Oven 25 Litre", "BHD", "shopalmoayyed.com",
+        )
+        assert res is None
 
 
 # --- Network wrapper (monkeypatched catalog) -----------------------------

@@ -61,3 +61,55 @@ class TestBrandInBrandField:
         (no false positive — the gate still discriminates)."""
         res = extract_jsonld_price(ounass_html, "Samsung", "BHD")
         assert res is None
+
+
+# === S4 (gate SHOULD-FIX): brand-field match must not grab a wrong-product ===
+# price on a multi-Product same-brand page.
+
+_MULTI_PRODUCT_HTML = '''<html><head>
+<script type="application/ld+json">
+[
+ {"@type":"Product","name":"Cheap Keychain Accessory",
+  "brand":{"@type":"Brand","name":"Acme"},
+  "offers":{"@type":"Offer","price":5.000,"priceCurrency":"BHD"}},
+ {"@type":"Product","name":"Galaxy Phone X 256GB",
+  "brand":{"@type":"Brand","name":"Acme"},
+  "offers":{"@type":"Offer","price":200.000,"priceCurrency":"BHD"}}
+]
+</script></head><body></body></html>'''
+
+
+class TestBrandFieldWrongProduct:
+    def test_brand_field_does_not_grab_cheapest_unrelated_sibling(self):
+        """Query 'Acme Galaxy Phone X 256GB' on a page with two same-brand
+        Products (a 5 BHD keychain + the 200 BHD phone). Matching via the brand
+        field must STILL require the NAME to relate to the query — so it returns
+        the 200 phone (or None), NEVER the cheapest 5 BHD keychain."""
+        res = extract_price_from_html(
+            _MULTI_PRODUCT_HTML, "Acme Galaxy Phone X 256GB", "BHD",
+            "x.com", "https://x.com/p",
+        )
+        assert res is not None
+        assert res["amount"] == pytest.approx(200.0)
+        assert res["amount"] != pytest.approx(5.0)  # NOT the unrelated keychain
+
+    def test_brand_field_match_with_unrelated_query_rejected(self):
+        """A query that shares the brand but relates to NEITHER product name is
+        rejected (no min-price grab)."""
+        res = extract_price_from_html(
+            _MULTI_PRODUCT_HTML, "Acme Espresso Machine Deluxe", "BHD",
+            "x.com", "https://x.com/p",
+        )
+        assert res is None
+
+    def test_brand_in_name_unaffected(self):
+        """When the brand is IN the name (the common case), behavior is
+        unchanged — still extracts."""
+        html = '''<html><head><script type="application/ld+json">
+        {"@type":"Product","name":"Acme Galaxy Phone X 256GB",
+         "offers":{"@type":"Offer","price":200.0,"priceCurrency":"BHD"}}
+        </script></head><body></body></html>'''
+        res = extract_price_from_html(html, "Acme Galaxy Phone X", "BHD",
+                                      "x.com", "https://x.com/p")
+        assert res is not None
+        assert res["amount"] == pytest.approx(200.0)
