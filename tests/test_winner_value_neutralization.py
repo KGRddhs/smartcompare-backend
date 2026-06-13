@@ -25,15 +25,17 @@ def service():
     return ScoringService()
 
 
+# A2 is DEFAULT ON (team-lead ruling 2026-06-13); DISABLE_* is the OFF switch.
 @pytest.fixture
 def neutralize_on(monkeypatch):
-    monkeypatch.setenv("ENABLE_WINNER_VALUE_NEUTRALIZATION", "true")
+    # Ensure the OFF-switch is unset so the default-ON path is exercised.
+    monkeypatch.delenv("DISABLE_WINNER_VALUE_NEUTRALIZATION", raising=False)
     yield
 
 
 @pytest.fixture
 def neutralize_off(monkeypatch):
-    monkeypatch.delenv("ENABLE_WINNER_VALUE_NEUTRALIZATION", raising=False)
+    monkeypatch.setenv("DISABLE_WINNER_VALUE_NEUTRALIZATION", "true")
     yield
 
 
