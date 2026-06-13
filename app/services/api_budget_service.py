@@ -46,6 +46,20 @@ PROVIDER_CONFIGS = {
         "warn_at": 2000,
         "is_lifetime": True,
     },
+    # Bundle B S3 L2 — YouTube Data API v3. Free quota is 10,000 units/DAY
+    # (NOT lifetime, NOT monthly): search.list costs 100 units, videos.list 1.
+    # The real spend-guard is the per-day check-and-increment counter
+    # (try_consume_youtube_credit / _youtube_daily_*), which caps daily UNITS.
+    # This PROVIDER_CONFIGS entry exists so has_budget()/the circuit breaker /
+    # record_usage()'s burn-alert plumbing treat "youtube" as a known provider;
+    # `monthly_limit` here is the daily unit ceiling and `is_lifetime` is False
+    # so the (unused) monthly key would reset — but the daily counter below is
+    # the authoritative budget, mirroring the serper_images pattern.
+    "youtube": {
+        "monthly_limit": 10000,     # daily unit ceiling (10k/day free quota)
+        "warn_at": 8000,
+        "is_lifetime": False,
+    },
 }
 
 # Circuit breaker config
@@ -71,10 +85,37 @@ _CB_TTL = 3600
 _MONTHLY_TTL = 35 * 24 * 3600
 
 
+# S3 L4.3 — fallback prefix when SERPER_API_KEY is unset/empty (test/CI without
+# the secret). Keeps the counter key deterministic instead of collapsing to a
+# bare 'budget:serper::lifetime'.
+_SERPER_NO_KEY_PREFIX = "nokey"
+
+
+def _serper_key_prefix() -> str:
+    """First 8 chars of the live SERPER_API_KEY (read fresh each call so a
+    Railway env update / key rotation takes effect without a restart, mirroring
+    _serper_image_daily_budget).
+
+    This scopes the Serper lifetime counter to the key that burned the credits:
+    a rotation starts a fresh honest counter instead of inheriting the previous
+    account's burn (the 5136-across-4-accounts false-trip, S2 G6). Falls back to
+    a stable 'nokey' sentinel when the env var is unset/empty so the key stays
+    deterministic."""
+    raw = (os.environ.get("SERPER_API_KEY") or "").strip()
+    return raw[:8] if raw else _SERPER_NO_KEY_PREFIX
+
+
 def _budget_key(provider: str) -> str:
-    """Redis key for budget counter."""
+    """Redis key for budget counter.
+
+    serper's lifetime counter is KEY-SCOPED (S3 L4.3): the live key's 8-char
+    prefix is embedded so a rotation cannot inherit a depleted account's burn.
+    Other lifetime providers (firecrawl) keep their plain lifetime key — they
+    are not API-key-rotated the same way."""
     config = PROVIDER_CONFIGS.get(provider, {})
     if config.get("is_lifetime"):
+        if provider == "serper":
+            return f"budget:serper:{_serper_key_prefix()}:lifetime"
         return f"budget:{provider}:lifetime"
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     return f"budget:{provider}:{month}"
@@ -119,7 +160,16 @@ def _burn_sentinel_key(provider: str) -> str:
     """Redis sentinel marking the 80%-burn alert as already fired for the
     current budget window (lifetime, or this month for resetting providers).
     Tying it to the same window-stamp as the budget key means a monthly reset
-    (new month key) naturally re-arms the alert."""
+    (new month key) naturally re-arms the alert.
+
+    S3 L4.3 — for serper the sentinel is keyed by the live key's 8-char prefix
+    (`burn_alert_fired:{prefix}`) so a key rotation re-arms the alert: the new
+    prefix yields a new sentinel key, so the previous key's LATCHED (no-expiry)
+    sentinel no longer suppresses the fresh key's alert. (Pre-L4.3 the no-expiry
+    latch meant a counter-only reset on rotation left the alert permanently
+    suppressed — CLAUDE.md rotation playbook had to DEL it manually.)"""
+    if provider == "serper":
+        return f"budget:serper:burn_alert_fired:{_serper_key_prefix()}"
     return f"budget:{provider}:burn_alert_fired:{_budget_key(provider)}"
 
 
@@ -451,6 +501,115 @@ def get_serper_image_usage() -> Dict[str, int]:
     used = 0
     try:
         raw = _redis_get(_serper_image_key())
+        if raw is not None:
+            used = int(raw)
+    except Exception:
+        pass
+    return {"used": used, "limit": limit, "remaining": max(0, limit - used)}
+
+
+# ============================================================================
+# Bundle B S3 L2 — YouTube Data API v3 daily UNIT counter
+# YouTube's free quota is 10,000 UNITS per DAY (resets at midnight Pacific).
+# search.list = 100 units, videos.list = 1 unit. We meter UNITS (not calls)
+# in a per-UTC-day Redis counter, guard the expensive search.list with a
+# check-and-increment, and fail OPEN on Redis down (a lost signal is cheaper
+# than a hard failure). Modeled on try_consume_serper_image_credit.
+# ============================================================================
+
+# Default daily UNIT budget. 9,000 leaves a 1,000-unit safety buffer under the
+# 10k free ceiling (~90 search.list calls/day). Override via env.
+_DEFAULT_YOUTUBE_DAILY_UNITS = 9000
+
+
+def _youtube_daily_unit_budget() -> int:
+    """Resolve the daily YouTube UNIT budget from env (read fresh each call so
+    tests + Railway env updates take effect without a restart)."""
+    try:
+        return int(os.environ.get("YOUTUBE_DAILY_UNIT_BUDGET", _DEFAULT_YOUTUBE_DAILY_UNITS))
+    except (TypeError, ValueError):
+        return _DEFAULT_YOUTUBE_DAILY_UNITS
+
+
+def _youtube_daily_key() -> str:
+    """Redis key for today's YouTube unit count (UTC-aligned daily bucket).
+
+    NOTE: YouTube's quota actually resets at midnight Pacific, not UTC. We use a
+    UTC day bucket for consistency with the rest of the codebase — the small
+    boundary skew only costs at most one extra day's grace, well inside the
+    1,000-unit safety buffer."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return f"budget:youtube_units:{today}"
+
+
+# TTL 36h so the key survives across the UTC boundary even under aggressive
+# Upstash trimming (matches the serper_images safety margin).
+_YOUTUBE_UNIT_TTL = 36 * 3600
+
+
+def try_consume_youtube_credit(units: int = 100) -> bool:
+    """Atomically check-and-increment the daily YouTube UNIT counter.
+
+    Call this BEFORE the expensive search.list (default 100 units). Returns
+    True when the call may proceed (counter incremented), False when today's
+    unit budget is exhausted. Fails OPEN on Redis errors (a missed YouTube
+    signal is cheaper than a hard failure) per
+    memory/project_upstash_redis_singlepoint_failure.md.
+
+    The cheap videos.list (1 unit) is NOT separately gated here — it only runs
+    after search.list already passed this guard, and 1 unit is within the
+    safety buffer. record_usage("youtube", count=1) still meters it for the
+    admin summary.
+
+    Args:
+        units: units to consume for this guarded call (default 100 = search.list).
+    """
+    if units <= 0:
+        return True
+
+    limit = _youtube_daily_unit_budget()
+    key = _youtube_daily_key()
+
+    try:
+        from app.services.cache_service import redis_client
+        if redis_client is None:
+            return True  # fail-open
+
+        new_value = redis_client.incrby(key, units)
+        # Set TTL on first write only (incrby returns `units` on the first call).
+        if new_value == units:
+            try:
+                redis_client.expire(key, _YOUTUBE_UNIT_TTL)
+            except Exception as e:
+                logger.warning("[BUDGET] youtube_units TTL set failed: %s", e)
+
+        if new_value > limit:
+            # Roll back so the counter reflects *consumed* units, not attempted.
+            try:
+                redis_client.decrby(key, units)
+            except Exception:
+                pass
+            logger.warning(
+                "[BUDGET] youtube daily unit budget exhausted (%s/%s)",
+                new_value, limit,
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.warning("[BUDGET] youtube consume failed: %s — fail-open", e)
+        return True
+
+
+def get_youtube_unit_usage() -> Dict[str, int]:
+    """Diagnostic — current day UNIT usage for the YouTube counter.
+
+    Returns:
+        {"used": int, "limit": int, "remaining": int}
+    """
+    limit = _youtube_daily_unit_budget()
+    used = 0
+    try:
+        raw = _redis_get(_youtube_daily_key())
         if raw is not None:
             used = int(raw)
     except Exception:

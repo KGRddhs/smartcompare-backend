@@ -10,6 +10,7 @@ manually by the lane agent (announced to dispatcher), never in this suite.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import tempfile
@@ -420,3 +421,203 @@ def test_aggregate_missing_dim_cells_empty_run():
     report = eval_runner.aggregate([])
     assert report.missing_dim_cells_total == 0
     assert report.missing_dim_cells_mean == 0.0
+
+
+# ---------------------------------------------------------------------------
+# S3 L4.1 — estimate-share metric (price source_method == "estimated")
+#
+# The North-star KPI for "no false estimates": of the price fields the engine
+# actually PRODUCED (have a source_method), what fraction fell to the Tier-3
+# GPT `estimated` path vs real data (local_bhd / converted_usd / page_scrape /
+# firecrawl / scrapedo_rendered / ...). A product with NO price at all is in
+# neither bucket — the metric measures the honesty of produced prices, not
+# coverage. Mirrors the I3.6 missing_dim_cells thread end-to-end.
+# ---------------------------------------------------------------------------
+
+def _body_with_price_methods(method_p0, method_p1, *, winner_idx: int = 0) -> dict:
+    """Response body whose overview.products[i].price carries a source_method.
+
+    Pass a method string ('estimated', 'local_bhd', ...) to set it, or None to
+    drop the whole price object for that product (simulating no price found)."""
+    body = _make_response_body(winner_idx=winner_idx)
+    products = body["overview"]["products"]
+    for idx, method in enumerate((method_p0, method_p1)):
+        if method is None:
+            # No price produced for this product at all.
+            products[idx]["price"] = None
+        else:
+            products[idx]["price"] = {
+                "amount": 300.0, "currency": "BHD", "source_method": method,
+            }
+    return body
+
+
+def test_extract_price_source_method_reads_enum():
+    body = _body_with_price_methods("estimated", "local_bhd")
+    assert eval_runner.extract_price_source_method(body, 0) == "estimated"
+    assert eval_runner.extract_price_source_method(body, 1) == "local_bhd"
+
+
+def test_extract_price_source_method_none_when_no_price():
+    """No price object (or no source_method key) → None, no crash."""
+    body = _body_with_price_methods(None, "local_bhd")
+    assert eval_runner.extract_price_source_method(body, 0) is None
+    # Out-of-range index is safe.
+    assert eval_runner.extract_price_source_method(body, 5) is None
+    # Price object without a source_method key → None.
+    body2 = _make_response_body()  # price = {amount, currency}, no source_method
+    assert eval_runner.extract_price_source_method(body2, 0) is None
+    # Empty/garbage bodies don't raise.
+    assert eval_runner.extract_price_source_method({}, 0) is None
+
+
+def test_extract_price_source_method_empty_string_is_none():
+    """An empty/whitespace source_method is phantom provenance → None, so it
+    does not dilute the priced denominator (defensive: backend emits a real
+    enum, but a blank must not count as a produced price)."""
+    body = _make_response_body()
+    body["overview"]["products"][0]["price"] = {"amount": 300.0, "source_method": ""}
+    body["overview"]["products"][1]["price"] = {"amount": 300.0, "source_method": "   "}
+    assert eval_runner.extract_price_source_method(body, 0) is None
+    assert eval_runner.extract_price_source_method(body, 1) is None
+    # Both phantom → (0, 0), not (0, 2).
+    assert eval_runner.count_price_source_cells(body) == (0, 0)
+
+
+def test_count_price_cells_all_estimated():
+    """Both products priced via the Tier-3 estimate → 2 estimated / 2 priced."""
+    body = _body_with_price_methods("estimated", "estimated")
+    estimated, priced = eval_runner.count_price_source_cells(body)
+    assert (estimated, priced) == (2, 2)
+
+
+def test_count_price_cells_mixed():
+    """One real, one estimate → 1 estimated / 2 priced."""
+    body = _body_with_price_methods("local_bhd", "estimated")
+    estimated, priced = eval_runner.count_price_source_cells(body)
+    assert (estimated, priced) == (1, 2)
+
+
+def test_count_price_cells_all_real():
+    """Both real (one local, one converted) → 0 estimated / 2 priced."""
+    body = _body_with_price_methods("local_bhd", "converted_usd")
+    estimated, priced = eval_runner.count_price_source_cells(body)
+    assert (estimated, priced) == (0, 2)
+
+
+def test_count_price_cells_one_missing_price():
+    """A product with no price is excluded from BOTH buckets — the surviving
+    estimate is 1/1, not 1/2 (honesty of produced prices, not coverage)."""
+    body = _body_with_price_methods("estimated", None)
+    estimated, priced = eval_runner.count_price_source_cells(body)
+    assert (estimated, priced) == (1, 1)
+
+
+def test_count_price_cells_no_prices_at_all():
+    """No priced products → (0, 0); the run-level share guards the ZeroDiv."""
+    body = _body_with_price_methods(None, None)
+    assert eval_runner.count_price_source_cells(body) == (0, 0)
+
+
+def test_grade_run_result_captures_price_source_cells():
+    body = _body_with_price_methods("estimated", "local_bhd")
+    run_result = eval_runner.QueryRunResult(
+        id="q1", query="x", category="electronics",
+        http_status=200, wall_ms=1000, error=None, response=body,
+    )
+    record = {"id": "q1", "expected_prices": {}, "expected_specs": {},
+              "expected_winner_index": None, "forbidden_facts": []}
+    graded = eval_runner.grade_run_result(run_result, record)
+    assert graded.estimated_price_cells == 1
+    assert graded.priced_cells == 2
+
+
+def test_error_row_has_zero_price_source_cells():
+    """An errored query (no response body) reports 0/0 — no produced prices."""
+    run_result = eval_runner.QueryRunResult(
+        id="q-err", query="x", category="electronics",
+        http_status=400, wall_ms=30000, error="http_400", response=None,
+    )
+    record = {"id": "q-err", "expected_prices": {}, "expected_specs": {},
+              "expected_winner_index": None, "forbidden_facts": []}
+    graded = eval_runner.grade_run_result(run_result, record)
+    assert graded.estimated_price_cells == 0
+    assert graded.priced_cells == 0
+
+
+@pytest.mark.asyncio
+async def test_run_eval_aggregates_estimate_share():
+    """EvalReport surfaces run-level estimated/priced totals + the share ratio
+    so persist_eval_run writes them into the eval_runs metadata jsonb."""
+    # Every query: 1 estimated / 2 priced → run share = 0.5.
+    transport = _mock_transport(_body_with_price_methods("estimated", "local_bhd"))
+    queries = [
+        {"id": f"q-{i}", "query": "x", "category": "electronics", "region": "bahrain",
+         "expected_prices": {}, "expected_specs": {}, "expected_winner_index": None,
+         "forbidden_facts": [], "max_wall_seconds": 25.0}
+        for i in range(4)
+    ]
+    report = await eval_runner.run_eval(queries, base_url="http://test",
+                                        transport=transport, concurrency=2)
+    # 4 queries × (1 estimated, 2 priced) → 4 estimated / 8 priced.
+    assert report.estimated_price_cells_total == 4
+    assert report.priced_cells_total == 8
+    assert report.estimate_share == pytest.approx(0.5)
+
+
+def test_aggregate_estimate_share_empty_run():
+    """Empty graded list → 0/0 totals, 0.0 share (no ZeroDiv)."""
+    report = eval_runner.aggregate([])
+    assert report.estimated_price_cells_total == 0
+    assert report.priced_cells_total == 0
+    assert report.estimate_share == 0.0
+
+
+def test_aggregate_estimate_share_all_errors_no_zerodiv():
+    """A run where every query errored → no priced cells → share 0.0, no crash."""
+    graded = [
+        eval_runner.GradedQuery(
+            id=f"q-{i}", category="electronics", wall_ms=30000, http_status=400,
+            error="http_400", price_pass=False, specs_score=0.0, winner_pass=False,
+            factual_pass=False, weighted_score=0.0, passing=False, wall_over_cap=True,
+        )
+        for i in range(3)
+    ]
+    report = eval_runner.aggregate(graded)
+    assert report.priced_cells_total == 0
+    assert report.estimate_share == 0.0
+
+
+def test_format_report_shows_estimate_share():
+    """The CLI report surfaces the estimate-share line (KPI visibility)."""
+    transport_body = _body_with_price_methods("estimated", "local_bhd")
+    graded = eval_runner.grade_run_result(
+        eval_runner.QueryRunResult(
+            id="q1", query="x", category="electronics", http_status=200,
+            wall_ms=1000, error=None, response=transport_body,
+        ),
+        {"id": "q1", "expected_prices": {}, "expected_specs": {},
+         "expected_winner_index": None, "forbidden_facts": []},
+    )
+    report = eval_runner.aggregate([graded])
+    text = eval_runner._format_report(report)
+    assert "estimate-share" in text.lower() or "estimate share" in text.lower()
+    # The 50.0% share should be rendered.
+    assert "50" in text
+
+
+def test_per_query_jsonl_includes_price_source_cells():
+    """The --out JSONL row carries the per-query estimated/priced cell counts
+    (dataclasses.asdict serialization of the new GradedQuery fields)."""
+    graded = eval_runner.grade_run_result(
+        eval_runner.QueryRunResult(
+            id="q1", query="x", category="electronics", http_status=200,
+            wall_ms=1000, error=None,
+            response=_body_with_price_methods("estimated", "estimated"),
+        ),
+        {"id": "q1", "expected_prices": {}, "expected_specs": {},
+         "expected_winner_index": None, "forbidden_facts": []},
+    )
+    row = dataclasses.asdict(graded)
+    assert row["estimated_price_cells"] == 2
+    assert row["priced_cells"] == 2

@@ -1301,6 +1301,106 @@ Add these keys to your JSON response:
 """
 
 
+# ---------- S3 L2: YouTube cited review-signal verdict surfacing ----------
+# Mirrors the I2.5 review_source_quotes trio (extract / build-block / scrub-if-
+# off) so the YouTube signal becomes a LABELED, CITED verdict input — never a
+# raw score — and so a cache-carried signal can't steer verdicts after a flag
+# rollback. Copy rules: NO scary copy, NEVER the word "estimated", cite the
+# channel.
+
+
+def _humanize_count(n: int) -> str:
+    """Compact human view/engagement figure: 1_200_000 -> '1.2M', 12_500 ->
+    '12.5K', 900 -> '900'. Citing a raw '1200000' isn't how we surface counts."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return "0"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K".replace(".0K", "K")
+    return str(n)
+
+
+def _extract_youtube_signal(product: Optional[Dict]) -> Optional[Dict[str, Any]]:
+    """Pull the S3 L2 YouTube review signal off a product, if present.
+
+    Lives at product["reviews"]["youtube_review_signal"] (attached by the
+    review_service consult path when ENABLE_YOUTUBE_SOURCE is set). Returns None
+    when absent / malformed (flag OFF / consult missed) — the common case."""
+    if not isinstance(product, dict):
+        return None
+    reviews = product.get("reviews")
+    if not isinstance(reviews, dict):
+        return None
+    signal = reviews.get("youtube_review_signal")
+    if isinstance(signal, dict) and signal.get("top_channel"):
+        return signal
+    return None
+
+
+def _build_youtube_signal_block(
+    product1: Optional[Dict], product2: Optional[Dict]
+) -> str:
+    """S3 L2 — render the YouTube review signal as a labeled, CITED verdict
+    input. Returns "" when neither product carries a signal (flag OFF / consult
+    missed) so the prompt is byte-identical to the no-YouTube path.
+
+    Cites the channel + a humanized view count + the top video title. Framed as
+    supporting review-attention signal, explicitly NOT the verdict. No scary
+    copy; never the word 'estimated'."""
+    s1 = _extract_youtube_signal(product1)
+    s2 = _extract_youtube_signal(product2)
+    if not s1 and not s2:
+        return ""
+
+    def _fmt(sig: Dict[str, Any]) -> str:
+        views = _humanize_count(sig.get("total_views", 0))
+        channel = (sig.get("top_channel") or "").strip()
+        title = (sig.get("top_video_title") or "").strip()
+        n_videos = sig.get("video_count", 0)
+        cite = f" — top video by {channel}" if channel else ""
+        title_part = f': "{title}"' if title else ""
+        return (
+            f"  - ~{views} views across {n_videos} recent review videos{cite}"
+            f"{title_part}"
+        )
+
+    lines = [
+        "",
+        "## YouTube review attention",
+        "How much real-world video-review attention each product has on YouTube"
+        " (public view counts + the most-watched review). Treat as supporting"
+        " signal about review depth/popularity, NOT as the verdict.",
+    ]
+    if s1:
+        lines.append("Product 1:")
+        lines.append(_fmt(s1))
+    if s2:
+        lines.append("Product 2:")
+        lines.append(_fmt(s2))
+    return "\n".join(lines)
+
+
+def _scrub_youtube_signal_if_off(product: Optional[Dict]) -> Optional[Dict]:
+    """Rollback safety: when ENABLE_YOUTUBE_SOURCE is OFF, strip a cache-carried
+    youtube_review_signal from the verdict payload copy so a rolled-back flag
+    rolls back fully (the 14d cache can hold a signal past a flag flip)."""
+    from app.services.review_service import youtube_source_enabled
+    if youtube_source_enabled():
+        return product
+    if not isinstance(product, dict):
+        return product
+    reviews = product.get("reviews")
+    if isinstance(reviews, dict) and "youtube_review_signal" in reviews:
+        product = dict(product)
+        product["reviews"] = {
+            k: v for k, v in reviews.items() if k != "youtube_review_signal"
+        }
+    return product
+
+
 async def generate_comparison(
     product1: Dict,
     product2: Dict,
@@ -1373,13 +1473,19 @@ If this is a cross-tier comparison, frame it as "different products for differen
         if _gpt_winner_lever_enabled():
             system_msg += _build_independent_winner_block()
 
-        # User message: product data wrapped in tags
+        # User message: product data wrapped in tags. Both rollback-scrubs are
+        # composed so a cache-carried review_source_quotes (I2.5) OR
+        # youtube_review_signal (S3 L2) is stripped from the json.dumps payload
+        # when its flag is OFF — the labeled blocks below are the ONLY sanctioned
+        # path for those signals to reach the verdict.
+        _p1 = _scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product1))
+        _p2 = _scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product2))
         user_msg = f"""<USER_INPUT>
 PRODUCT 1:
-{json.dumps(_scrub_consult_quotes_if_off(product1), indent=2)}
+{json.dumps(_p1, indent=2)}
 
 PRODUCT 2:
-{json.dumps(_scrub_consult_quotes_if_off(product2), indent=2)}
+{json.dumps(_p2, indent=2)}
 
 User's region: {region}
 Primary concern: {concern}
@@ -1397,6 +1503,18 @@ Primary concern: {concern}
             review_quotes_block = _build_review_source_quotes_block(product1, product2)
             if review_quotes_block:
                 user_msg += review_quotes_block
+
+        # S3 L2 — when ENABLE_YOUTUBE_SOURCE is ON, surface the YouTube review
+        # signal as a DELIBERATE, LABELED, CITED verdict input (feeds L3.3
+        # review-density-into-verdict). Gate on the FLAG, not signal presence —
+        # the 14d cache carries youtube_review_signal past a flag rollback and
+        # must not steer verdicts when OFF. Flag OFF = empty block = byte-
+        # identical prompt.
+        from app.services.review_service import youtube_source_enabled
+        if youtube_source_enabled():
+            youtube_block = _build_youtube_signal_block(product1, product2)
+            if youtube_block:
+                user_msg += youtube_block
 
         # Bundle C § 1a A.3.1 — `response_format={"type": "json_object"}`
         # forces OpenAI's structured-output guarantee: the model MUST return

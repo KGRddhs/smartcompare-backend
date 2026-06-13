@@ -57,9 +57,110 @@ class TestBudgetKey:
         assert len(parts) == 3
         assert len(parts[2]) == 7  # YYYY-MM
 
-    def test_serper_is_lifetime(self):
+    def test_serper_is_lifetime_and_key_scoped(self, monkeypatch):
+        """S3 L4.3 — serper's lifetime counter is now KEY-SCOPED so a rotation
+        starts a fresh honest counter (fixes the 5136-across-4-accounts false-
+        trip). Format: budget:serper:{first8-of-SERPER_API_KEY}:lifetime."""
+        monkeypatch.setenv("SERPER_API_KEY", "0cda9843deadbeef")
         key = _budget_key("serper")
-        assert key == "budget:serper:lifetime"
+        assert key == "budget:serper:0cda9843:lifetime"
+
+
+class TestSerperKeyScoping:
+    """S3 L4.3 — key-scope budget:serper:lifetime + rotation-safe burn sentinel.
+
+    The single shared counter carried burn across 4 rotated accounts and false-
+    tripped at the 2200 cap mid-run (S2 G6). Scoping the key to the live key's
+    8-char prefix means a rotation naturally starts a fresh counter, and the
+    burn-alert sentinel re-arms on the new prefix without a manual DEL."""
+
+    def test_key_prefix_reads_first_8_chars(self, monkeypatch):
+        from app.services.api_budget_service import _serper_key_prefix
+        monkeypatch.setenv("SERPER_API_KEY", "0cda9843xxxxxxxxxxxx")
+        assert _serper_key_prefix() == "0cda9843"
+
+    def test_key_prefix_fallback_when_unset(self, monkeypatch):
+        """Unset/empty SERPER_API_KEY → a stable 'nokey' sentinel prefix so the
+        key is deterministic in test/CI environments without the secret."""
+        from app.services.api_budget_service import _serper_key_prefix
+        monkeypatch.delenv("SERPER_API_KEY", raising=False)
+        assert _serper_key_prefix() == "nokey"
+        monkeypatch.setenv("SERPER_API_KEY", "")
+        assert _serper_key_prefix() == "nokey"
+
+    def test_key_prefix_reads_env_fresh(self, monkeypatch):
+        """Read fresh each call so a Railway env update / rotation takes effect
+        without a process restart (mirrors _serper_image_daily_budget)."""
+        from app.services.api_budget_service import _serper_key_prefix
+        monkeypatch.setenv("SERPER_API_KEY", "aaaaaaaa1111")
+        assert _serper_key_prefix() == "aaaaaaaa"
+        monkeypatch.setenv("SERPER_API_KEY", "bbbbbbbb2222")
+        assert _serper_key_prefix() == "bbbbbbbb"
+
+    def test_budget_key_embeds_prefix(self, monkeypatch):
+        monkeypatch.setenv("SERPER_API_KEY", "0cda9843zzzz")
+        assert _budget_key("serper") == "budget:serper:0cda9843:lifetime"
+
+    def test_rotation_changes_the_counter_key(self, monkeypatch):
+        """Two different keys → two different counter keys → a rotation cannot
+        inherit the previous account's burn."""
+        monkeypatch.setenv("SERPER_API_KEY", "3d304edepleted")
+        old_key = _budget_key("serper")
+        monkeypatch.setenv("SERPER_API_KEY", "0cda9843fresh")
+        new_key = _budget_key("serper")
+        assert old_key != new_key
+        assert old_key == "budget:serper:3d304ede:lifetime"
+        assert new_key == "budget:serper:0cda9843:lifetime"
+
+    def test_other_lifetime_providers_not_scoped(self):
+        """Only serper is key-scoped; firecrawl stays on its plain lifetime key
+        (not API-key-rotated the same way)."""
+        assert _budget_key("firecrawl") == "budget:firecrawl:lifetime"
+
+    def test_monthly_provider_unaffected(self):
+        """scrapedo (monthly) keeps its month-stamped key, no prefix."""
+        key = _budget_key("scrapedo")
+        assert key.startswith("budget:scrapedo:")
+        assert "lifetime" not in key
+
+    def test_burn_sentinel_embeds_prefix(self, monkeypatch):
+        """S3 L4.3 — the burn-alert sentinel is keyed by the prefix so a
+        rotation re-arms the alert (new prefix → new sentinel key → not the
+        latched no-expiry one from the previous key)."""
+        from app.services.api_budget_service import _burn_sentinel_key
+        monkeypatch.setenv("SERPER_API_KEY", "0cda9843zzzz")
+        sentinel = _burn_sentinel_key("serper")
+        assert "0cda9843" in sentinel
+        assert "burn_alert_fired" in sentinel
+
+    def test_burn_sentinel_rotation_resets(self, monkeypatch):
+        """Different keys → different sentinels → the latched lifetime alert
+        from the old key does NOT suppress the new key's alert."""
+        from app.services.api_budget_service import _burn_sentinel_key
+        monkeypatch.setenv("SERPER_API_KEY", "3d304edepleted")
+        old_sentinel = _burn_sentinel_key("serper")
+        monkeypatch.setenv("SERPER_API_KEY", "0cda9843fresh")
+        new_sentinel = _burn_sentinel_key("serper")
+        assert old_sentinel != new_sentinel
+
+    def test_record_usage_increments_scoped_key(self, mock_redis_helpers, monkeypatch):
+        """record_usage writes to the key-scoped counter, end-to-end."""
+        from app.services import api_budget_service as abs_mod
+        monkeypatch.setenv("SERPER_API_KEY", "0cda9843zzzz")
+        abs_mod.record_usage("serper", 1)
+        assert mock_redis_helpers["store"]["budget:serper:0cda9843:lifetime"] == "1"
+
+    def test_fresh_key_starts_at_zero_used(self, mock_redis_helpers, monkeypatch):
+        """A rotation onto a fresh key reports 0 used even when the OLD key's
+        counter is at the cap in Redis (the false-trip fix, end-to-end)."""
+        from app.services.api_budget_service import get_burn_status
+        # Old depleted key's counter is parked over the cap.
+        mock_redis_helpers["store"]["budget:serper:3d304ede:lifetime"] = "5136"
+        # Rotate onto the fresh key.
+        monkeypatch.setenv("SERPER_API_KEY", "0cda9843fresh")
+        status = get_burn_status("serper")
+        assert status["used"] == 0
+        assert status["over_threshold"] is False
 
 
 class TestHasBudget:

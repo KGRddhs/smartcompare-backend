@@ -18,6 +18,9 @@ from app.services.extraction_service import (
 from app.services.serper_service import search_web
 from app.services.cache_service import get_cached, set_cached
 from app.services.api_budget_service import has_budget, record_usage
+# Bundle B S3 L2 — YouTube cited review signal (imported at module scope so
+# tests can patch app.services.review_service.fetch_youtube_review_signal).
+from app.services.youtube_service import fetch_youtube_review_signal
 
 logger = logging.getLogger(__name__)
 
@@ -278,6 +281,20 @@ async def get_reviews(
     except Exception as e:  # noqa: BLE001 — defensive; consult is best-effort
         logger.warning("[I2.5] consult_review_sources wiring error: %s", e)
 
+    # S3 L2 — YouTube cited review signal. Flag-gated (default OFF → instant
+    # None), wait_for-capped inside consult_youtube_source so it can NEVER
+    # extend p95. Runs AFTER the extraction is persisted (same F3/G2 ordering
+    # as the I2.5 consult) so a cap-cancel mid-consult can't lose finished
+    # reviews. Any error is swallowed — YouTube is never critical-path.
+    try:
+        yt_signal = await consult_youtube_source(brand, name, variant, category)
+        if yt_signal and isinstance(reviews, dict):
+            reviews["youtube_review_signal"] = yt_signal
+            if extraction_persisted:
+                set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
+    except Exception as e:  # noqa: BLE001 — defensive; YouTube is best-effort
+        logger.warning("[L2] youtube consult wiring error: %s", e)
+
     reviews["_cached"] = False
     return reviews
 
@@ -335,7 +352,18 @@ async def fetch_retailer_quotes(
         try:
             q = f'{product_query} site:{site_filter}'.strip()
             result = await search_web(q, num_results=5)
-            record_usage("serper")
+            # L5.1 (S3): NO manual record_usage("serper") here — search_web
+            # records the budget meter internally on success (serper_service.py:94),
+            # so a manual call here would double-count. LATENT hygiene, not an
+            # active drain: this fetcher has ZERO production callers (dormant,
+            # ledger §5), so the double-meter never reached prod — the fix
+            # prevents it from double-counting if any future caller wires it into
+            # the hot path. Same bug class F4/G2 fixed in the (also-dormant)
+            # fetch_review_source_snippets (9ee695c). NB rating_service.py:296 is a
+            # CORRECT single-count: it meters a DIRECT httpx POST (not search_web),
+            # so its manual record_usage is the only meter for that call site.
+            # track_serper_cost_fn is the separate per-request cost tracker (not
+            # the budget meter) so it stays.
             if track_serper_cost_fn:
                 track_serper_cost_fn()
         except Exception as e:
@@ -538,3 +566,55 @@ async def consult_review_sources(
     except Exception as e:  # noqa: BLE001
         logger.warning("[I2.5] review-source consult error (mode=%s): %s", mode, e)
         return []
+
+
+# ---------- S3 L2: YouTube cited review-signal consult ----------
+
+# Inner wait_for cap for the YouTube consult. Sized WELL under the reviews-race
+# budget (_PHASE1_TIMEOUTS["reviews"]=10s) so a slow YouTube call drops out long
+# before it can pressure p95. This is the p95 guard: YouTube can NEVER extend
+# the reviews race — a call slower than this is abandoned as None.
+_YOUTUBE_CONSULT_TIMEOUT = 4.0
+
+
+def youtube_source_enabled() -> bool:
+    """Read ENABLE_YOUTUBE_SOURCE fresh each call (default OFF).
+
+    Default OFF in code; flipped in Railway ONLY when QA is green (the lane
+    discipline). Read fresh (not process-cached) so a Railway flip / QA A/B
+    takes effect without a restart. Accepts the standard truthy set; anything
+    else (unset / "false" / "0" / "off" / junk) is OFF.
+    """
+    return os.environ.get("ENABLE_YOUTUBE_SOURCE", "").strip().lower() in (
+        "true", "1", "on", "yes",
+    )
+
+
+async def consult_youtube_source(
+    brand: str,
+    name: str,
+    variant: str | None,
+    category: str,
+    timeout: float = _YOUTUBE_CONSULT_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """S3 L2 — fetch a cited YouTube review signal, wait_for-capped.
+
+    OFF (default) → instant None (the API client is never called → zero quota).
+    ON → fetch_youtube_review_signal wrapped in asyncio.wait_for(timeout) so a
+    slow call is abandoned as None. NEVER raises, NEVER critical-path — any
+    timeout / error / miss yields None and the persisted reviews ship unchanged.
+    This is the contract that keeps YouTube off the p95 path.
+    """
+    if not youtube_source_enabled():
+        return None
+    try:
+        return await asyncio.wait_for(
+            fetch_youtube_review_signal(brand, name, variant, category),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        logger.info("[L2] youtube consult timed out (>%ss) — dropping signal", timeout)
+        return None
+    except Exception as e:  # noqa: BLE001 — best-effort; never breaks reviews
+        logger.warning("[L2] youtube consult error: %s", e)
+        return None
