@@ -12,10 +12,18 @@
 - **L4.4** live burn drill (cold query increments new counter; rotation resets clean). **HELD for team-lead GO.**
 
 ## Status
-- **L4.1 DONE** (estimate-share metric) — 14 new TDD tests green; full `test_eval_runner.py` = 32 passed; `test_eval_persistence.py` = 6 passed (new metadata keys flow through). py_compile OK.
-- **Current task:** L4.3 — key-scope the Serper counter (TDD next).
-- **Last commit SHA:** (committing L4.1 now)
+- **L4.1 DONE** (estimate-share metric) — commit `63f514e`, pushed. 14 TDD tests.
+- **L4.3 DONE** (Serper counter key-scoping) — 12 new TDD tests green; full `test_api_budget_service.py` = 92 passed; combined L4.1+L4.3+persist = 130 passed. Admin `/admin/costs` serper gauge auto-inherits scoping (reads `_budget_key` → 5 serper_lifetime/costs tests still green). py_compile OK.
+- **Current task:** CODE for L4.1+L4.3 complete. L4.2 + L4.4 HELD for team-lead GO (Serper-credit-heavy). Awaiting GO / cross-QA.
+- **Last commit SHA:** (committing L4.3 now)
 - **Baseline:** `tests/test_eval_runner.py` + `tests/test_api_budget_service.py` = 99 passed (clean) before changes.
+
+### L4.3 shape (shipped)
+- `_serper_key_prefix()` — first 8 chars of `SERPER_API_KEY` read fresh; `"nokey"` fallback when unset/empty.
+- `_budget_key("serper")` → `budget:serper:{prefix}:lifetime` (only serper scoped; firecrawl/scrapedo unchanged).
+- `_burn_sentinel_key("serper")` → `budget:serper:burn_alert_fired:{prefix}` — rotation re-arms the latched no-expiry alert (new prefix = new sentinel key). Lifetime latch (`ex=None`) preserved; the F1 TTL-inversion fix is intact.
+- Rotation self-heals: fresh key starts at 0 used even if the old key's counter is parked over the 2200 cap (the 5136-across-4-accounts false-trip fix). Verified end-to-end via `get_burn_status`.
+- **NOTE for rotation playbook (post-merge doc update):** with L4.3, a key rotation no longer needs the manual `reset budget:serper:lifetime` + `DEL burn_alert_fired:*` — the counter+sentinel are now prefix-keyed and self-heal. Old `budget:serper:lifetime` (unscoped) key can be DEL'd once as cleanup.
 
 ### L4.1 shape (shipped)
 - `extract_price_source_method(body, idx)` + `count_price_source_cells(body) -> (estimated, priced)` in eval_runner.py.

@@ -71,10 +71,37 @@ _CB_TTL = 3600
 _MONTHLY_TTL = 35 * 24 * 3600
 
 
+# S3 L4.3 — fallback prefix when SERPER_API_KEY is unset/empty (test/CI without
+# the secret). Keeps the counter key deterministic instead of collapsing to a
+# bare 'budget:serper::lifetime'.
+_SERPER_NO_KEY_PREFIX = "nokey"
+
+
+def _serper_key_prefix() -> str:
+    """First 8 chars of the live SERPER_API_KEY (read fresh each call so a
+    Railway env update / key rotation takes effect without a restart, mirroring
+    _serper_image_daily_budget).
+
+    This scopes the Serper lifetime counter to the key that burned the credits:
+    a rotation starts a fresh honest counter instead of inheriting the previous
+    account's burn (the 5136-across-4-accounts false-trip, S2 G6). Falls back to
+    a stable 'nokey' sentinel when the env var is unset/empty so the key stays
+    deterministic."""
+    raw = (os.environ.get("SERPER_API_KEY") or "").strip()
+    return raw[:8] if raw else _SERPER_NO_KEY_PREFIX
+
+
 def _budget_key(provider: str) -> str:
-    """Redis key for budget counter."""
+    """Redis key for budget counter.
+
+    serper's lifetime counter is KEY-SCOPED (S3 L4.3): the live key's 8-char
+    prefix is embedded so a rotation cannot inherit a depleted account's burn.
+    Other lifetime providers (firecrawl) keep their plain lifetime key — they
+    are not API-key-rotated the same way."""
     config = PROVIDER_CONFIGS.get(provider, {})
     if config.get("is_lifetime"):
+        if provider == "serper":
+            return f"budget:serper:{_serper_key_prefix()}:lifetime"
         return f"budget:{provider}:lifetime"
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     return f"budget:{provider}:{month}"
@@ -119,7 +146,16 @@ def _burn_sentinel_key(provider: str) -> str:
     """Redis sentinel marking the 80%-burn alert as already fired for the
     current budget window (lifetime, or this month for resetting providers).
     Tying it to the same window-stamp as the budget key means a monthly reset
-    (new month key) naturally re-arms the alert."""
+    (new month key) naturally re-arms the alert.
+
+    S3 L4.3 — for serper the sentinel is keyed by the live key's 8-char prefix
+    (`burn_alert_fired:{prefix}`) so a key rotation re-arms the alert: the new
+    prefix yields a new sentinel key, so the previous key's LATCHED (no-expiry)
+    sentinel no longer suppresses the fresh key's alert. (Pre-L4.3 the no-expiry
+    latch meant a counter-only reset on rotation left the alert permanently
+    suppressed — CLAUDE.md rotation playbook had to DEL it manually.)"""
+    if provider == "serper":
+        return f"budget:serper:burn_alert_fired:{_serper_key_prefix()}"
     return f"budget:{provider}:burn_alert_fired:{_budget_key(provider)}"
 
 
