@@ -527,6 +527,111 @@ def _product_source_method(p: Dict[str, Any]) -> str:
     return price.get("source_method") or "estimated"
 
 
+# ---------------------------------------------------------------------------
+# S3 L3.2 — evidence-weighted winner tie-break (price-authority / Bahrain
+# availability). The L3.1 audit found the deterministic winner axis at .495 —
+# BELOW the always-pick-product_0 baseline (.655) — because the winner is a
+# pure argmax (`overalls.index(max(overalls))`) with no tie-break: when the two
+# weighted overalls land in a narrow band (common with sparse/MISSING signals),
+# `.index(max())` silently returns product_0. That first-index bias is noise.
+#
+# This tie-break is NOT a fabricated score. It only fires inside the tie band
+# and only when ONE product has a real Bahrain price (source_method in the
+# trust set) and the other an estimate — i.e. there is genuine discriminating
+# evidence. Hard guards (F2.4 lesson):
+#   - decisive margin (> band) -> argmax stands (a real signal lead is never
+#     overridden);
+#   - both products MISSING-only -> NO tilt (defer to argmax; INSUFFICIENT_DATA
+#     is returned upstream by the orchestrator);
+#   - neither OR both have a real price -> no discriminating evidence -> no tilt.
+# ---------------------------------------------------------------------------
+
+# Overall-score band (0-100 scale) within which the argmax pick is treated as
+# noise rather than signal, so the evidence tie-break may override it. 8 points
+# ≈ the width seen between two products whose only real difference is a sparse
+# spec field or a half-star rating — below the threshold where a deterministic
+# "winner" is defensible on score alone.
+_WINNER_TIE_BAND = 8.0
+
+
+def _has_real_price(p: Dict[str, Any]) -> bool:
+    """True iff the product carries a real (non-estimated) Bahrain-relevant
+    price. `_PRICE_TRUST_SET` is the authoritative 'real data' set; everything
+    else (`estimated`, `converted_usd`) is NOT a real local price."""
+    return _product_source_method(p) in _PRICE_TRUST_SET
+
+
+def _product_all_missing(result_product: Dict[str, Any], n_dims: int) -> bool:
+    """True iff EVERY dimension for this product was missing data — the
+    all-MISSING case the guard must not fabricate a tilt for. Reads the
+    `missing_data` list already computed in compute_scores (None when nothing
+    was missing)."""
+    md = result_product.get("missing_data")
+    return bool(md) and len(md) >= n_dims
+
+
+def apply_winner_evidence_tiebreak(
+    products_data: List[Dict[str, Any]],
+    result_products: Dict[str, Any],
+    overalls: List[float],
+    naive_winner_index: int,
+    win_margin: float,
+    n_dims: int,
+) -> tuple[int, List[str]]:
+    """S3 L3.2 — return (winner_index, winner_evidence).
+
+    `winner_evidence` is a list of short qualitative reasons (NO coefficients,
+    caps, or score math — `no_backend_internals_in_reveals`). Empty when there
+    is no discriminating real-price evidence.
+
+    Only two products are considered (the engine always compares a pair); for
+    any other arity this is a no-op returning the naive winner.
+    """
+    if len(products_data) != 2 or len(overalls) != 2:
+        return naive_winner_index, []
+
+    p0, p1 = products_data[0], products_data[1]
+    real0, real1 = _has_real_price(p0), _has_real_price(p1)
+
+    # No discriminating price evidence: neither or both have a real price.
+    if real0 == real1:
+        return naive_winner_index, []
+
+    real_idx = 0 if real0 else 1
+
+    # Guard (F2.4): if BOTH products are all-MISSING, the comparison has no
+    # real signal at all — do not fabricate an availability tilt. (The real
+    # side here has a price but no specs/reviews; still, with both products
+    # fully MISSING on dimensions the pick is not defensible — defer.)
+    r0 = result_products.get("product_0", {})
+    r1 = result_products.get("product_1", {})
+    if _product_all_missing(r0, n_dims) and _product_all_missing(r1, n_dims):
+        return naive_winner_index, []
+
+    real_name = (
+        f"{products_data[real_idx].get('brand', '')} "
+        f"{products_data[real_idx].get('name', '')}".strip()
+    ) or "the available option"
+
+    # Decisive margin: argmax already has a real signal lead — never override.
+    if win_margin > _WINNER_TIE_BAND:
+        # Still surface the availability fact as supporting evidence IF the
+        # real-price product is the one that won on score (so the verdict can
+        # cite it). Never tilt away from a decisive lead.
+        if naive_winner_index == real_idx:
+            return naive_winner_index, [
+                f"{real_name} has a confirmed Bahrain price"
+            ]
+        return naive_winner_index, []
+
+    # Tie band: the argmax pick is noise. Tilt to the real-data product.
+    evidence = [
+        f"{real_name} has a confirmed Bahrain price while the other relies on "
+        f"an indicative figure"
+    ]
+    return real_idx, evidence
+
+
 def _product_fact_check_pcts(p: Dict[str, Any]) -> tuple[int, int]:
     """Return (verified_pct, citation_count). Tolerates two shapes:
     legacy {specs_verified, specs_likely, specs_unverified, specs_flagged}
@@ -799,6 +904,19 @@ class ScoringService:
         winner_index = overalls.index(max(overalls))
         win_margin = round(abs(overalls[0] - overalls[1]), 1) if len(overalls) >= 2 else 0
 
+        # S3 L3.2 — evidence-weighted tie-break. Within the tie band the plain
+        # argmax pick is noise (L3.1: winner axis below the always-pick-0
+        # baseline); when exactly one product has a real Bahrain price and the
+        # other an estimate, tilt the winner to the real-data side and surface a
+        # qualitative `winner_evidence` reason. Guarded so a decisive real-signal
+        # lead and the both-MISSING case are never overridden / fabricated.
+        winner_evidence: List[str] = []
+        if len(products_data) == 2:
+            winner_index, winner_evidence = apply_winner_evidence_tiebreak(
+                products_data, result_products, overalls,
+                winner_index, win_margin, len(dims),
+            )
+
         if behavior_profile or session_signals:
             scoring_method = "behavioral"
         elif preferences:
@@ -829,6 +947,10 @@ class ScoringService:
             "is_cross_tier": is_cross_tier,
             "dimension_winners": dimension_winners,
             "category_weights": dict(CATEGORY_DIMENSION_WEIGHTS.get(category, CATEGORY_DIMENSION_WEIGHTS["other"])),
+            # S3 L3.2 — qualitative reasons backing the winner pick (price
+            # authority / Bahrain availability). Empty list when no
+            # discriminating real-price evidence. Surfaced in scoring_v2 by L3.4.
+            "winner_evidence": winner_evidence,
         }
 
     def _compute_weights(self, preferences: Optional[Dict[str, Any]], category: str = "other") -> Dict[str, float]:
