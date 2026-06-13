@@ -335,7 +335,13 @@ async def fetch_retailer_quotes(
         try:
             q = f'{product_query} site:{site_filter}'.strip()
             result = await search_web(q, num_results=5)
-            record_usage("serper")
+            # L5.1 (S3): NO manual record_usage("serper") here — search_web
+            # records the budget meter internally on success
+            # (serper_service.py:94). A manual call double-counted every credit
+            # (3 retailers x 2 products = 6 calls/compare metered as 12). Same
+            # bug class as F4/G2 fixed in fetch_review_source_snippets (9ee695c).
+            # track_serper_cost_fn is the separate per-request cost tracker (not
+            # the budget meter) so it stays.
             if track_serper_cost_fn:
                 track_serper_cost_fn()
         except Exception as e:
