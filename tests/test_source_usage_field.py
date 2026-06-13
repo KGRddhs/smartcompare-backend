@@ -45,15 +45,16 @@ def test_all_legacy_rows_are_price_usage():
 def test_registry_price_source_count():
     """Price-usable rows are intact; Arabic review sources are additive.
 
-    Count is 33 since the I5.3 dead-domain purge (2026-06-11) removed
-    carrefourbh / geant.com.bh / eroselectronics (all NXDOMAIN) and I5.11
-    removed spinneysbahrain.com — the original `== 37` assertion was left stale
-    by those purges and silently RED at base. S3 L1.3 is additive (the Shopify
-    flag adds no rows), so 33 holds. Guard the floor so a future accidental
-    mass-deletion of price rows is caught.
+    Count is 34: the I5.3 dead-domain purge (2026-06-11) removed carrefourbh /
+    geant.com.bh / eroselectronics (all NXDOMAIN) and I5.11 removed
+    spinneysbahrain.com (37→33; the original `== 37` was left stale by those
+    purges and silently RED at base). S3 L1.2 then ADDED bahrain.ounass.com
+    (verified curl-extractable BH JSON-LD), 33→34. The Shopify is_shopify flag
+    (L1.3) adds no rows. Guard the floor so a future accidental mass-deletion of
+    price rows is caught.
     """
     price_rows = [s for s in SOURCE_REGISTRY if s.usage in ("price", "both")]
-    assert len(price_rows) == 33
+    assert len(price_rows) == 34
 
 
 # ---------------------------------------------------------------------------

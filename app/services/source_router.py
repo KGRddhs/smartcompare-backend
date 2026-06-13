@@ -101,6 +101,17 @@ SOURCE_REGISTRY: List[Source] = [
     Source(
         "bateel.bh", "bahrain", ("grocery",), 3.0
     ),  # Bateel BH — premium dates / gourmet
+    # S3 L1.2 (Ahmed pre-approved, Decision-F control-calibrated 2026-06-13) —
+    # ounass.com's Bahrain subdomain. Verified curl-EXTRACTABLE: product pages
+    # expose static Product JSON-LD with priceCurrency=BHD (extract_price_from_
+    # html pulls 80 BHD from a real fixture once the L1.4 brand-field fix lets
+    # the brand match). Real-BHD luxury source — unlike the Landmark fashion
+    # SPAs (curl-unscrapeable, deferred to the L1.STRETCH dataset). The GCC
+    # ounass.com apex row below is untouched; this BH subdomain scores 3.0.
+    Source(
+        "bahrain.ounass.com", "bahrain",
+        ("fashion", "fragrances", "makeup"), 3.0,
+    ),
 
     # === GCC SECONDARY (weight 1.5) ===
     Source("noon.com", "gcc", (), 1.5),

@@ -726,7 +726,24 @@ def extract_jsonld_price(html: str, brand: str, expected_currency: str) -> Optio
             product_name = product.get("name", "")
             brand_nospace = brand_lower.replace(" ", "")
             name_nospace = product_name.lower().replace(" ", "")
-            if brand_nospace not in name_nospace:
+            # L1.4 (Bundle B S3) — also match the JSON-LD `brand` field, not just
+            # the product name. Many BH retailers (verified: bahrain.ounass.com)
+            # carry the brand in a dedicated `brand` field ({"@type":"Brand",
+            # "name":"Jessie and James"} or a bare string) while the name is just
+            # "Orangey Dress" — pre-fix that valid BHD price was wrongly rejected.
+            ld_brand = product.get("brand")
+            if isinstance(ld_brand, dict):
+                ld_brand = ld_brand.get("name", "")
+            elif isinstance(ld_brand, list):
+                ld_brand = " ".join(
+                    (b.get("name", "") if isinstance(b, dict) else str(b))
+                    for b in ld_brand
+                )
+            brand_field_nospace = str(ld_brand or "").lower().replace(" ", "")
+            if (
+                brand_nospace not in name_nospace
+                and not (brand_field_nospace and brand_nospace in brand_field_nospace)
+            ):
                 continue
 
             offers = product.get("offers", {})
