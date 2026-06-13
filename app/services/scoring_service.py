@@ -803,6 +803,51 @@ def apply_winner_evidence_tiebreak(
     return real_idx, evidence
 
 
+# ---------------------------------------------------------------------------
+# S3 winner-mechanism intervention #1 — value-axis neutralization (FLAG-GATED,
+# default OFF; ready-to-measure pending team-lead ruling). Mechanism (corpus-
+# pinned): the value/price dim rewards the CHEAPER product, but gold's winner is
+# the MORE EXPENSIVE product in 64% of priced rows — so the value axis fights
+# gold, worst on CROSS-TIER pairs (budget vs luxury) where the premium is most
+# often justified. When ON + cross-tier, recompute the winner with the value-type
+# dim's weight removed (renormalized) so cheaper-is-better stops deciding the
+# pick. Within-tier untouched. Winner-only: per-product `overall`/breakdown
+# (which the response + eval price/specs read) are NOT mutated. Default OFF =>
+# byte-identical to today.
+# ---------------------------------------------------------------------------
+
+
+def _winner_value_neutralization_enabled() -> bool:
+    import os
+    return os.environ.get("ENABLE_WINNER_VALUE_NEUTRALIZATION", "").strip().lower() in (
+        "true", "1", "on", "yes",
+    )
+
+
+def _winner_without_value_dim(
+    result_products: Dict[str, Any],
+    weights: Dict[str, float],
+    value_dim_keys: frozenset,
+) -> Optional[int]:
+    """Recompute the 2-product winner index from the per-product breakdowns with
+    the value-type dimension(s) removed from the weighting (renormalized). Returns
+    the new winner index, or None when it can't be computed (missing breakdowns /
+    no non-value weight left). Reads the breakdowns already in result_products —
+    does NOT mutate them."""
+    b0 = (result_products.get("product_0") or {}).get("breakdown") or {}
+    b1 = (result_products.get("product_1") or {}).get("breakdown") or {}
+    if not b0 or not b1:
+        return None
+    nv = {d: w for d, w in weights.items() if d not in value_dim_keys}
+    total = sum(nv.values())
+    if total <= 0:
+        return None
+    nv = {d: w / total for d, w in nv.items()}
+    o0 = sum(b0.get(d, MISSING_SCORE) * w for d, w in nv.items())
+    o1 = sum(b1.get(d, MISSING_SCORE) * w for d, w in nv.items())
+    return 0 if o0 >= o1 else 1
+
+
 def _product_fact_check_pcts(p: Dict[str, Any]) -> tuple[int, int]:
     """Return (verified_pct, citation_count). Tolerates two shapes:
     legacy {specs_verified, specs_likely, specs_unverified, specs_flagged}
@@ -1075,6 +1120,31 @@ class ScoringService:
         winner_index = overalls.index(max(overalls))
         win_margin = round(abs(overalls[0] - overalls[1]), 1) if len(overalls) >= 2 else 0
 
+        # S3 winner-mechanism intervention #1 — value-axis neutralization
+        # (FLAG-GATED, default OFF; ready-to-measure pending team-lead ruling).
+        # On a CROSS-TIER comparison the value/price dim's "cheaper wins" pull is
+        # statistically anti-correlated with gold (gold's winner is the pricier
+        # product 64% of priced rows). When the flag is ON + cross-tier, recompute
+        # the winner with the value-type dim removed so cheaper-is-better stops
+        # deciding the pick. Winner-only — per-product overall/breakdown unchanged.
+        winner_value_neutralized = False
+        if (
+            len(products_data) == 2
+            and is_cross_tier
+            and _winner_value_neutralization_enabled()
+        ):
+            dim_signal_map = self._DIMENSION_SIGNAL_MAP.get(
+                category, self._DIMENSION_SIGNAL_MAP["other"]
+            )
+            value_dim_keys = frozenset(
+                d for d, sig in dim_signal_map.items() if sig == "value"
+            )
+            nv_winner = _winner_without_value_dim(result_products, weights, value_dim_keys)
+            if nv_winner is not None and nv_winner != winner_index:
+                winner_index = nv_winner
+                win_margin = round(abs(overalls[0] - overalls[1]), 1)
+                winner_value_neutralized = True
+
         # S3 L3.2 — evidence-weighted tie-break. Within the tie band the plain
         # argmax pick is noise (L3.1: winner axis below the always-pick-0
         # baseline); when exactly one product has a real Bahrain price and the
@@ -1109,7 +1179,7 @@ class ScoringService:
         result_so_far = {"scores": result_products}
         dimension_winners = self.compute_dimension_winners(result_so_far, product_names, category)
 
-        return {
+        result = {
             "scores": result_products,
             "winner_index": winner_index,
             "win_margin": win_margin,
@@ -1123,6 +1193,11 @@ class ScoringService:
             # discriminating real-price evidence. Surfaced in scoring_v2 by L3.4.
             "winner_evidence": winner_evidence,
         }
+        # S3 intervention #1 — only emit the marker when neutralization actually
+        # fired, so the flag-OFF response stays byte-identical to today.
+        if winner_value_neutralized:
+            result["winner_value_neutralized"] = True
+        return result
 
     def _compute_weights(self, preferences: Optional[Dict[str, Any]], category: str = "other") -> Dict[str, float]:
         """Compute scoring weights from category defaults + user preferences."""
