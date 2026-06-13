@@ -258,6 +258,51 @@ def extract_price_amount(body: Dict[str, Any], product_idx: int) -> Optional[flo
         return None
 
 
+# Price source_method enum values that mean "real data", not a GPT estimate.
+# The Tier-3 GPT training-data fallback tags `estimated`; everything else
+# (local_bhd / converted_usd / page_scrape / page_scrape_rendered / firecrawl /
+# scrapedo_rendered) is a real fetched/converted price. (CLAUDE.md price
+# pipeline.) The estimate-share metric counts `estimated` against this set.
+_ESTIMATED_SOURCE_METHOD = "estimated"
+
+
+def extract_price_source_method(body: Dict[str, Any], product_idx: int) -> Optional[str]:
+    """overview.products[i].price.source_method (None when no price produced).
+
+    S3 L4.1 — the price provenance enum used by the estimate-share metric.
+    Returns None when the product has no price object or the object carries no
+    source_method key (older backend / no price found) — such a cell is in
+    neither the estimated nor the priced bucket."""
+    products = _products_overview(body)
+    if product_idx >= len(products):
+        return None
+    price = products[product_idx].get("price")
+    if not isinstance(price, dict):
+        return None
+    method = price.get("source_method")
+    return method if isinstance(method, str) else None
+
+
+def count_price_source_cells(body: Dict[str, Any]) -> tuple[int, int]:
+    """Tally (estimated_cells, priced_cells) across both products' prices.
+
+    S3 L4.1 — `priced_cells` counts price fields the engine actually PRODUCED
+    (a non-null source_method); `estimated_cells` is the subset whose method is
+    the Tier-3 GPT `estimated` fallback. A product with no price (None) is in
+    neither bucket — the metric measures the honesty of produced prices, not
+    coverage. Run-level estimate_share = sum(estimated) / sum(priced)."""
+    estimated = 0
+    priced = 0
+    for idx in (0, 1):
+        method = extract_price_source_method(body, idx)
+        if method is None:
+            continue
+        priced += 1
+        if method == _ESTIMATED_SOURCE_METHOD:
+            estimated += 1
+    return estimated, priced
+
+
 def extract_specs(body: Dict[str, Any], product_idx: int) -> Dict[str, Any]:
     """specs.products[i].specs dict (falls back to overview products)."""
     specs_products = _products_specs(body)
@@ -481,6 +526,13 @@ class GradedQuery:
     # metadata (0 for error rows / older backends). Written to the --out
     # JSONL + aggregated into the run-level missing-dim coverage metric.
     missing_dim_cells: int = 0
+    # S3 L4.1 — price-provenance cells for the estimate-share KPI. Of the
+    # price fields this query PRODUCED (priced_cells = non-null source_method),
+    # estimated_price_cells fell to the Tier-3 GPT `estimated` fallback. Both 0
+    # on error rows (no produced prices). Written to the --out JSONL + summed
+    # into the run-level estimate_share.
+    estimated_price_cells: int = 0
+    priced_cells: int = 0
 
 
 @dataclasses.dataclass
@@ -503,6 +555,14 @@ class EvalReport:
     # Decision B's "fully certain, no missing data" directive is measured.
     missing_dim_cells_total: int = 0
     missing_dim_cells_mean: float = 0.0
+    # S3 L4.1 — run-level estimate-share (the "no false estimates" KPI).
+    # estimated_price_cells_total / priced_cells_total = estimate_share (the
+    # fraction of PRODUCED prices that fell to the GPT estimate). Persisted in
+    # the eval_runs metadata jsonb so S3 can measure the drop vs the S2
+    # baseline as real Bahrain data replaces estimates.
+    estimated_price_cells_total: int = 0
+    priced_cells_total: int = 0
+    estimate_share: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -588,6 +648,7 @@ def grade_run_result(run_result: QueryRunResult, record: Dict[str, Any],
                                    weights=weights)
     passing = run_result.error is None and weighted >= QUERY_PASS_THRESHOLD
     cap = float(record.get("max_wall_seconds", 25.0))
+    estimated_cells, priced_cells = count_price_source_cells(body)
     return GradedQuery(
         id=run_result.id,
         category=run_result.category,
@@ -602,6 +663,8 @@ def grade_run_result(run_result: QueryRunResult, record: Dict[str, Any],
         passing=passing,
         wall_over_cap=(run_result.wall_ms / 1000.0) > cap,
         missing_dim_cells=extract_missing_dim_cells(body),
+        estimated_price_cells=estimated_cells,
+        priced_cells=priced_cells,
     )
 
 
@@ -638,6 +701,13 @@ def aggregate(graded: List[GradedQuery]) -> EvalReport:
     missing_total = sum(g.missing_dim_cells for g in graded)
     missing_mean = round(missing_total / total, 4) if total else 0.0
 
+    # S3 L4.1 — estimate-share = produced-prices-that-are-estimates / all-
+    # produced-prices. Denominator guards ZeroDiv (all-error or no-price runs
+    # → 0.0, an honest "no estimates produced").
+    estimated_total = sum(g.estimated_price_cells for g in graded)
+    priced_total = sum(g.priced_cells for g in graded)
+    estimate_share = round(estimated_total / priced_total, 4) if priced_total else 0.0
+
     return EvalReport(
         queries_total=total,
         queries_passing=passing,
@@ -653,6 +723,9 @@ def aggregate(graded: List[GradedQuery]) -> EvalReport:
         p95_over_cap=(p95 is not None and p95 > STREAM_HARD_CAP_SECONDS * 1000),
         missing_dim_cells_total=missing_total,
         missing_dim_cells_mean=missing_mean,
+        estimated_price_cells_total=estimated_total,
+        priced_cells_total=priced_total,
+        estimate_share=estimate_share,
     )
 
 
@@ -720,6 +793,9 @@ def _format_report(report: EvalReport) -> str:
         f"{'OVER-CAP' if report.p95_over_cap else 'within cap'}",
         f"missing-dim cells  -  total={report.missing_dim_cells_total} "
         f"mean={report.missing_dim_cells_mean:.2f}/query (I3.6 KPI dial)",
+        f"estimate-share  -  {report.estimate_share:.1%} "
+        f"({report.estimated_price_cells_total}/{report.priced_cells_total} "
+        f"produced prices are estimates · L4.1 KPI · lower=better)",
     ]
     if report.failing_ids:
         lines.append(f"failing: {', '.join(report.failing_ids)}")
@@ -799,7 +875,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                       "axis_weights_used": axis_weights,
                       # S2 I3.6 — missing-dim coverage (Decision B KPI dial).
                       "missing_dim_cells_total": report.missing_dim_cells_total,
-                      "missing_dim_cells_mean": report.missing_dim_cells_mean},
+                      "missing_dim_cells_mean": report.missing_dim_cells_mean,
+                      # S3 L4.1 — estimate-share ("no false estimates" KPI).
+                      "estimate_share": report.estimate_share,
+                      "estimated_price_cells_total": report.estimated_price_cells_total,
+                      "priced_cells_total": report.priced_cells_total},
         )
         print(f"# eval_runs row: {run_id}")
 
