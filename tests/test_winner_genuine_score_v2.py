@@ -55,6 +55,35 @@ def test_estimate_penalty_lowers_that_products_overall(service):
     assert o0 > o1, "the estimated product's overall must be discounted below the real one"
 
 
+def test_shopify_json_is_real_price_not_penalized(service):
+    """S3 merge (v2×L1) regression: L1's Shopify direct-discovery emits a real,
+    currency-verified BHD price as source_method='shopify_json'. v2's price-
+    authority MUST treat it as real (0 penalty, == local_bhd), NEVER estimate-
+    grade — else a genuine BH Shopify price is penalised, inverting L1's purpose."""
+    shared = dict(rating=4.4, review_count=600,
+                  specs={"ram": "8 GB", "storage": "256 GB", "battery": "4500 mAh"},
+                  fact_check={"specs_verified": 3})
+    # shopify_json vs local_bhd, otherwise identical → equal overall (both real).
+    o_shopify = service.compute_scores([
+        _elec("Shop", amount=300, source_method="shopify_json", **shared),
+        _elec("X", amount=300, source_method="local_bhd", **shared),
+    ])["scores"]["product_0"]["overall"]
+    o_local = service.compute_scores([
+        _elec("Loc", amount=300, source_method="local_bhd", **shared),
+        _elec("X", amount=300, source_method="local_bhd", **shared),
+    ])["scores"]["product_0"]["overall"]
+    assert o_shopify == o_local, (
+        f"a real BH shopify_json price must score == local_bhd (no penalty); "
+        f"got shopify={o_shopify} vs local={o_local}")
+    # shopify_json must beat an otherwise-identical estimate (real beats estimate).
+    r = service.compute_scores([
+        _elec("Shop", amount=300, source_method="shopify_json", **shared),
+        _elec("Est", amount=300, source_method="estimated", **shared),
+    ])
+    assert r["scores"]["product_0"]["overall"] > r["scores"]["product_1"]["overall"], \
+        "a real BH shopify_json price must out-score an estimate"
+
+
 def test_close_call_tips_to_real_price(service):
     """Genuine close call: identical specs (so no normalization-amplified spec
     lead), the real-priced product slightly better rated. Without authority the

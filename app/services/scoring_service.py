@@ -615,6 +615,12 @@ def _resolve_value_coefficients(priorities=None) -> Dict[str, float]:
 _PRICE_TRUST_SET = frozenset({
     "official_brand", "page_scrape", "page_scrape_rendered",
     "firecrawl", "scrapedo_rendered", "local_bhd",
+    # S3 merge (v2×L1) — L1's Shopify direct-discovery emits a REAL, currency-
+    # verified Bahrain BHD price (M1 convert-or-skip via /meta.json). It is local
+    # data, NOT an estimate — so it earns 0 price-authority penalty like local_bhd.
+    # Without this, _price_authority_delta's "all other → estimate-grade" fall-
+    # through would penalise a genuine BH Shopify price −4 (inverts L1's purpose).
+    "shopify_json",
 })
 
 
