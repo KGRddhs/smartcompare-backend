@@ -823,6 +823,23 @@ def _build_scoring_v2(
     raw_b = scoring_result.get("scores", {}).get("product_1", {}).get("overall", 50)
     score_a = calibrate_score(raw_a)
     score_b = calibrate_score(raw_b)
+    # S3 L3 v2 [gate finding A] — CALIBRATION-COLLAPSE invariant. The FE derives
+    # the winner SOLELY from (product_a >= product_b) ? 0 : 1 (ResultsScreen.tsx),
+    # never from winner_idx. calibrate_score = int(round(70+(raw-50)*0.5)) collapses
+    # any sub-~2pt raw gap to product_a == product_b, so a genuine product_1 win by
+    # a small margin → calibrated tie → the FE `>=` crowns product_0 while the
+    # verdict/evidence/name/recommendation all say product_1. v2 (A1 band +
+    # magnitude-awareness near-ties + ±4 authority) makes this the modal outcome.
+    # ENFORCE argmax(score_a, score_b) == winner_index by nudging the LOSER strictly
+    # below the winner (clamp to the calibration band floor 60). The winner keeps
+    # its honest calibrated score; display + winner_idx + eval + all surfaces agree.
+    # (S3.1 follow-up: FE reads winner_idx as the single source of truth.)
+    if score_a is not None and score_b is not None and winner_index in (0, 1):
+        _floor = 60  # _CALIBRATION_FLOOR
+        if winner_index == 0 and not (score_a > score_b):
+            score_b = max(_floor, min(score_b, score_a - 1))
+        elif winner_index == 1 and not (score_b > score_a):
+            score_a = max(_floor, min(score_a, score_b - 1))
     dimensions = build_dimensions_v2(product_data, scoring_result, category)
     # Bundle C § 1b A.3.2 — compose factual_verdict from existing fields.
     # Pure template, zero GPT cost. qa-bundle-c D.1.3 confirmed missing.

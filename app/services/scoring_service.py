@@ -314,6 +314,25 @@ _DIM_NORM_SPAN_LEGACY = 70.0
 _DIM_NORM_TIE_LEGACY = 70.0
 
 
+def _signal_missing_for(raw: Dict[str, Any], signal: str) -> bool:
+    """S3 L3 v2 [gate finding B] — is a dimension's SOURCE SIGNAL missing for this
+    product, read from the per-signal `_<sig>_missing` flags (the source of truth),
+    NEVER `== MISSING_SCORE` value-equality (a computed 50 is a real score).
+
+    Signal → raw-flag mapping (mirrors _DIMENSION_SIGNAL_MAP + _compute_raw_scores):
+      spec / review / reliability / popularity → `_<signal>_missing`
+      value           → spec OR price missing (the value dim needs both)
+      spec_secondary  → spec AND review both missing (blends the two; present if
+                        either side has signal — matches the spec_secondary
+                        fallback in _normalize_scores).
+    """
+    if signal == "value":
+        return bool(raw.get("_spec_missing")) or bool(raw.get("_price_missing"))
+    if signal == "spec_secondary":
+        return bool(raw.get("_spec_missing")) and bool(raw.get("_review_missing"))
+    return bool(raw.get(f"_{signal}_missing"))
+
+
 def _dim_norm_dampening_disabled() -> bool:
     """Escape hatch reader — when ENV DISABLE_DIM_NORM_DAMPENING is set, revert
     `_normalize_dimension` to the legacy 30–100 spread (+ legacy 70 tie + NO
@@ -358,8 +377,15 @@ def _magnitude_aware_ratio(current: float, lo: float, hi: float, higher_better: 
     span = hi - lo
     if span <= 0:
         return 0.5
-    # Relative gap on the positive scale (hi is the larger magnitude).
-    denom = abs(hi) if hi != 0 else span
+    # S3 L3 v2 [gate finding C] — the relative-gap scale is the LARGER-magnitude
+    # endpoint, max(|hi|, |lo|), NOT |hi|. With negative values |hi| can be the
+    # SMALLER magnitude (e.g. lo=-100, hi=-10 → |hi|=10 ≪ |lo|=100), so dividing
+    # by |hi| under-reported the scale and INFLATED rel_gap → a modest gap read
+    # as decisive (the very noise→decisive failure A1 set out to kill). max(|.|)
+    # is sign-agnostic and never smaller than |hi|, so positive-only pairs are
+    # unchanged (hi is already the larger |.| there). Falls back to span only if
+    # both endpoints are exactly 0 (span would be 0 → already returned above).
+    denom = max(abs(hi), abs(lo))
     rel_gap = span / denom if denom > 0 else 1.0
     tol = _dim_gap_tolerance()
     if rel_gap <= tol:
@@ -1571,16 +1597,27 @@ class ScoringService:
             for rs in raw_scores:
                 rs["_spec_missing"] = True
 
-        # Compute spec_secondary: blended spec and review for variety
+        # Compute spec_secondary: blended spec and review for variety.
+        # S3 L3 v2 [gate finding B — THIRD site] — gate missingness on the
+        # EXPLICIT per-product `_spec_missing` / `_review_missing` flags, NOT
+        # `== MISSING_SCORE` value-equality. A genuine 2.5★ rating normalizes
+        # to EXACTLY 50.0 (== the sentinel) via _normalize_review's
+        # `(rating-1)/4*80+20` band — value-equality dropped it as absent so the
+        # spec_secondary dim fell back to spec-only (review contribution lost)
+        # AND would later be mis-flagged missing. The flags are set whenever the
+        # underlying raw signal is None (the only true missing path) plus the
+        # array-collapse guards above, so they are the source of truth.
         spec_secondary_scores = []
         for i in range(len(raw_scores)):
             s = spec_scores[i]
             r = review_scores[i]
-            if s == MISSING_SCORE and r == MISSING_SCORE:
+            s_missing = bool(raw_scores[i].get("_spec_missing"))
+            r_missing = bool(raw_scores[i].get("_review_missing"))
+            if s_missing and r_missing:
                 spec_secondary_scores.append(MISSING_SCORE)
-            elif s == MISSING_SCORE:
+            elif s_missing:
                 spec_secondary_scores.append(r)
-            elif r == MISSING_SCORE:
+            elif r_missing:
                 spec_secondary_scores.append(s)
             else:
                 spec_secondary_scores.append(round(s * 0.6 + r * 0.4, 1))
@@ -1620,8 +1657,17 @@ class ScoringService:
                 signal = dim_signal_map.get(dim, "spec")
                 scores[dim] = signal_arrays[signal][i]
 
-                # Mark missing data flag for tracking
-                if scores[dim] == MISSING_SCORE:
+                # S3 L3 v2 [gate finding B] — mark the dim missing from the
+                # SOURCE-SIGNAL missing flags, NOT `== MISSING_SCORE` value-
+                # equality. A legitimately computed 50.0 (rating 2.5★ →
+                # _normalize_review=50.0; reliability/popularity 0.5 →
+                # _normalize_direct=50.0) is a REAL score, not the sentinel —
+                # value-equality flagged it missing → the dim got SUPPRESSED in
+                # build_dimensions_v2 while the ratings were on screen. The
+                # per-signal `_<sig>_missing` flags (set during signal
+                # normalization + the array-collapse guards) are the source of
+                # truth for missingness.
+                if _signal_missing_for(raw_scores[i], signal):
                     raw_scores[i][f"_{dim}_missing"] = True
 
             normalized.append(scores)
@@ -2521,15 +2567,38 @@ def _dim_from_category_lookup(
     if score_b is None:
         score_b = b_score_dict.get(dim_key)
 
-    # Both missing → silent omission per § 2h
-    if score_a in (None, MISSING_SCORE) and score_b in (None, MISSING_SCORE):
-        return None
+    # S3 L3 v2 [gate finding B — SECOND site] — determine missingness from the
+    # EXPLICIT per-product `missing_data` list (the producer's source of truth)
+    # + a genuinely-absent breakdown value (score is None), NEVER `==
+    # MISSING_SCORE` value-equality. A legitimately computed 50.0 (rating 2.5★ →
+    # _normalize_review=50.0; reliability/popularity 0.5 → _normalize_direct=
+    # 50.0) is a REAL score — value-equality flagged it 'was missing' so
+    # build_dimensions_v2's one-sided-missing suppression (Decision B) hid its
+    # winner while the rating was on screen. `dim_key` here is the full
+    # CATEGORY_DIMENSIONS key (with `_score` suffix), exactly the form stored in
+    # missing_data (see compute_scores: `missing_dims = [dim for dim in dims ...]`).
+    #
+    # Legacy/synthetic shape (no `missing_data` key at all) predates the list and
+    # still uses the sentinel VALUE as the gap marker — distinguish "key present
+    # & None" (real: no gaps) from "key absent" (legacy) via the _ABSENT sentinel
+    # so the real no-gap path never falls back to value-equality. Mirror the
+    # reconciliation in count_missing_dim_cells.
+    _ABSENT = object()
 
-    # S2 I3.5 — per-side missing markers so build_dimensions_v2 can suppress
-    # the winner when EXACTLY ONE side is a data gap (Decision B). At this
-    # point at most one side is missing (both-missing already returned None).
-    was_missing_a = score_a in (None, MISSING_SCORE)
-    was_missing_b = score_b in (None, MISSING_SCORE)
+    def _was_missing(score, score_dict) -> bool:
+        if score is None:
+            return True  # genuinely absent from the breakdown
+        md = score_dict.get("missing_data", _ABSENT)
+        if md is not _ABSENT:
+            return dim_key in (md or ())  # authoritative real shape
+        return score == MISSING_SCORE  # legacy/synthetic fallback
+
+    was_missing_a = _was_missing(score_a, a_score_dict)
+    was_missing_b = _was_missing(score_b, b_score_dict)
+
+    # Both missing → silent omission per § 2h
+    if was_missing_a and was_missing_b:
+        return None
 
     label = _DIMENSION_LABELS.get(dim_key, dim_key.replace("_score", "").replace("_", " ").title())
     # L1.3: emit user-friendly key without the `_score` suffix
@@ -2563,7 +2632,10 @@ def _compose_delta_text(
     no `estimated` leakage). Strings are short + presentational so the
     bar-chart caption stays readable on narrow phones.
     """
-    if score_a in (None, MISSING_SCORE) or score_b in (None, MISSING_SCORE):
+    # S3 L3 v2 [gate finding B] — bail only on a genuinely-absent value (None),
+    # NOT on a real computed 50.0 (== MISSING_SCORE value-equality would blank
+    # the caption for an honest middling score).
+    if score_a is None or score_b is None:
         return ""
     try:
         margin = abs(float(score_a) - float(score_b))
@@ -2892,11 +2964,40 @@ def count_missing_dim_cells(
     if b0 and not any(d in b0 for d in dims):
         dims = list(b0.keys())
 
+    # S3 L3 v2 [gate finding B — FOURTH site] — when the product carries an
+    # explicit `missing_data` list (the real compute_scores shape), it is the
+    # AUTHORITATIVE gap source. A breakdown value of EXACTLY 50.0 that is NOT in
+    # missing_data is a genuine score (2.5★ review → _normalize_review=50.0; 0.5
+    # reliability/popularity → _normalize_direct=50.0), NOT a gap — counting it
+    # via `== MISSING_SCORE` value-equality INFLATED this very KPI dial that
+    # Ahmed reads for "no missing data, no false certainty". Fall back to
+    # value-equality + key-absence only for the legacy/synthetic shape that
+    # predates missing_data (preserves the existing synthetic-result contract).
+    # Distinguish "key present and None" (real shape: no gaps) from "key absent"
+    # (legacy/synthetic shape) via a sentinel default — they would both read as
+    # None otherwise and the real no-gap case would wrongly fall back to value-
+    # equality. In the real compute_scores shape `missing_data` is ALWAYS a key
+    # (a list, or None when no dim was missing); the legacy synthetic shape omits
+    # it entirely.
+    _ABSENT = object()
+    md0 = b0_dict.get("missing_data", _ABSENT)
+    md1 = b1_dict.get("missing_data", _ABSENT)
+
+    def _cell_missing(breakdown: dict, md, dim: str) -> bool:
+        if md is not _ABSENT:
+            # Authoritative (real shape, md is a list or None): flagged missing,
+            # OR genuinely absent from the breakdown. A present 50.0 not in the
+            # list is a REAL score, never a gap.
+            md_set = md or ()
+            return (dim in md_set) or (dim not in breakdown)
+        # Legacy/synthetic (no missing_data key): the sentinel value / key-absence.
+        return breakdown.get(dim, MISSING_SCORE) == MISSING_SCORE
+
     count = 0
     for dim in dims:
-        if b0.get(dim, MISSING_SCORE) == MISSING_SCORE:
+        if _cell_missing(b0, md0, dim):
             count += 1
-        if b1.get(dim, MISSING_SCORE) == MISSING_SCORE:
+        if _cell_missing(b1, md1, dim):
             count += 1
 
     total = len(dims) * 2

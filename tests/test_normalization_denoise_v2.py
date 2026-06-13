@@ -132,6 +132,62 @@ def test_both_zero_via_normalize_dimension_is_missing(service):
     assert service._normalize_dimension(raw, 0, "spec_raw") == MISSING_SCORE
 
 
+# ---------------------------------------------------------------------------
+# [gate finding C] relative-gap denominator — magnitude scale must be
+# max(|hi|, |lo|), NOT |hi|. With negative values |hi| can be the SMALLER
+# magnitude, so |hi| under-reports the scale and INFLATES rel_gap → a modest
+# gap reads as decisive (the same noise→decisive failure A1 set out to kill).
+# ---------------------------------------------------------------------------
+
+def test_magnitude_denom_both_negative_uses_max_abs():
+    """lo=-100, hi=-10 (both negative). True scale is 100 (|lo|), gap is 90 →
+    rel_gap 0.9 (large but bounded). The OLD denom=|hi|=10 gave rel_gap=9.0 —
+    same clamp bucket, so distinguish via a MODERATE negative gap below."""
+    from app.services.scoring_service import _magnitude_aware_ratio, _dim_gap_tolerance
+    # Moderate gap: lo=-100, hi=-92 → span 8, true scale 100 → rel_gap 0.08.
+    # OLD denom=|hi|=92 → rel_gap 8/92≈0.087 (barely over default 0.08 tol →
+    # opens a hair). NEW denom=max(92,100)=100 → rel_gap 0.08 == tol → exact tie.
+    r_hi = _magnitude_aware_ratio(-92.0, -100.0, -92.0, True)  # current=hi
+    r_lo = _magnitude_aware_ratio(-100.0, -100.0, -92.0, True)  # current=lo
+    # With the correct denom (100) the 8% gap is within the 8% tolerance → tie.
+    assert r_hi == pytest.approx(0.5, abs=1e-9), (
+        f"8% gap on a |scale|=100 negative pair must be a tie (denom=max|.|), got {r_hi}"
+    )
+    assert r_lo == pytest.approx(0.5, abs=1e-9)
+
+
+def test_magnitude_denom_negative_moderate_gap_not_inflated():
+    """A clearly-decisive negative gap still opens — proves the fix doesn't just
+    flatten everything. lo=-100, hi=-20 → span 80, scale 100 → rel_gap 0.8."""
+    from app.services.scoring_service import _magnitude_aware_ratio
+    r_hi = _magnitude_aware_ratio(-20.0, -100.0, -20.0, True)
+    # rel_gap 0.8 ≫ tol → a real lead; current==hi → pos 1.0 → well above 0.5.
+    assert r_hi > 0.75, f"a decisive 80% negative gap must open a real lead, got {r_hi}"
+
+
+def test_magnitude_denom_sign_crossing_uses_larger_abs():
+    """Sign-crossing lo<0<hi: lo=-10, hi=90 → span 100, scale max(10,90)=90 →
+    rel_gap 100/90≈1.11 → decisive (a sign flip IS a decisive gap). The OLD
+    denom=|hi|=90 happens to agree here (hi is the larger |.|), so this pins the
+    branch where lo is the SMALLER magnitude — both must give a decisive lead."""
+    from app.services.scoring_service import _magnitude_aware_ratio
+    r = _magnitude_aware_ratio(90.0, -10.0, 90.0, True)
+    assert r > 0.9, f"sign-crossing must be decisive, got {r}"
+
+
+def test_magnitude_denom_negative_lo_dominates_positive_hi():
+    """The bug's sharp case: |lo| ≫ |hi| with hi positive but tiny. lo=-100,
+    hi=2 → span 102, TRUE scale 100 (|lo|). NEW rel_gap 102/100=1.02 → decisive
+    (correct — they're 102 apart on a ~100 scale). OLD denom=|hi|=2 → rel_gap 51
+    (absurd, but same clamp). The discriminating assertion is the MODERATE
+    counterpart: lo=-10, hi=2 → span 12, scale 10 → rel_gap 1.2 (decisive) vs a
+    near-zero hi where the OLD code would have divided by ~0."""
+    from app.services.scoring_service import _magnitude_aware_ratio
+    # Primary: |lo| dominates, hi tiny-positive → must be decisive, no blow-up.
+    r = _magnitude_aware_ratio(2.0, -10.0, 2.0, True)
+    assert r > 0.9, f"|lo|-dominated gap must be decisive without div-by-tiny, got {r}"
+
+
 def test_tolerance_governs_magnitude_direction_picks_side(service):
     """The gap tolerance governs MAGNITUDE; higher_better/lower_better picks WHICH
     side gets the lead. Same pair, opposite direction → mirrored around midpoint."""

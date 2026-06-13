@@ -128,3 +128,73 @@ class TestCountMissingDimCells:
         # Falls back to the present keys (6 supp dims): 2 missing per side = 4.
         assert result["count"] == 4
         assert result["total"] == 12
+
+    def test_missing_data_list_is_authoritative_over_value_equality(self):
+        """[gate finding B] When the product carries an explicit `missing_data`
+        list (the real compute_scores shape), it is AUTHORITATIVE — a breakdown
+        value of exactly 50.0 that is NOT in missing_data is a REAL score, not a
+        gap. Pins the collision: a genuine 2.5★ review (→50.0) / 0.5 reliability
+        (→50.0) must NOT inflate the KPI dial Ahmed reads for 'no missing data'.
+        """
+        b0 = dict(_FULL_ELEC)
+        b0["ecosystem_score"] = MISSING_SCORE   # genuine middling 50.0 (e.g. 0.5 popularity)
+        b0["futureproof_score"] = MISSING_SCORE  # genuine middling 50.0 (e.g. 2.5★ review)
+        sr = {
+            "scores": {
+                # missing_data EMPTY → none of these 50.0s are real gaps.
+                "product_0": {"overall": 80, "breakdown": b0, "missing_data": None},
+                "product_1": {"overall": 75, "breakdown": _FULL_ELEC, "missing_data": None},
+            }
+        }
+        result = count_missing_dim_cells(sr, "electronics")
+        assert result["count"] == 0, (
+            f"genuine 50.0 cells NOT in missing_data must not count as gaps; got {result}"
+        )
+
+    def test_missing_data_list_counts_flagged_cells_even_if_value_nonsentinel(self):
+        """Symmetric: a dim IN missing_data counts as a gap regardless of the
+        breakdown value (the Tier-fallback may leave a non-50 placeholder)."""
+        sr = {
+            "scores": {
+                "product_0": {"overall": 80, "breakdown": dict(_FULL_ELEC),
+                              "missing_data": ["ecosystem_score", "futureproof_score"]},
+                "product_1": {"overall": 75, "breakdown": dict(_FULL_ELEC),
+                              "missing_data": None},
+            }
+        }
+        result = count_missing_dim_cells(sr, "electronics")
+        assert result["count"] == 2, f"flagged cells must count as gaps; got {result}"
+
+    def test_real_compute_scores_genuine_25star_not_counted_missing(self):
+        """End-to-end against compute_scores: BOTH products real specs + 2.5★
+        (review→50.0). The review-driven dim (futureproof_score) must NOT be
+        counted as a missing cell — it's a real 50.0, in neither missing_data."""
+        from app.services.scoring_service import ScoringService
+        svc = ScoringService()
+        prod = lambda n, s: {
+            "name": n, "category": "electronics", "specs": s,
+            "rating": 2.5, "review_count": 500,
+            "price": {"amount": 300, "currency": "BHD", "source_method": "local_bhd"},
+            "fact_check": {"specs_verified": 3},
+        }
+        p0 = prod("Hi", {"ram": "16 GB", "storage": "1 TB", "screen": "6.8",
+                         "battery_life_hours": "30"})
+        p1 = prod("Lo", {"ram": "8 GB", "storage": "256 GB"})
+        r = svc.compute_scores([p0, p1])
+        # futureproof_score is the review dim for electronics; with a real 2.5★
+        # on both, it must be in NEITHER product's missing_data.
+        for pk in ("product_0", "product_1"):
+            md = r["scores"][pk].get("missing_data") or []
+            assert "futureproof_score" not in md
+        result = count_missing_dim_cells(r, "electronics")
+        # The review dim is real on both sides → it contributes 0 to the count.
+        # (Other dims may or may not be present, but the review dim specifically
+        # must not be over-counted via the 50.0 collision.)
+        # Re-derive the count WITHOUT the review dim's cells to prove no inflation:
+        md0 = set(r["scores"]["product_0"].get("missing_data") or [])
+        md1 = set(r["scores"]["product_1"].get("missing_data") or [])
+        expected = len(md0) + len(md1)
+        assert result["count"] == expected, (
+            f"count must equal the union of explicit missing_data sizes "
+            f"({expected}), not inflated by genuine 50.0s; got {result}"
+        )
