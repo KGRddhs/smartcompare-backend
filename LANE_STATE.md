@@ -5,7 +5,18 @@
 **Owner:** L5 (Opus)
 
 ## Current task
-L5.4 — DONE (awaiting team-lead ratification of re-defer). ADJUDICATION below.
+ALL 4 L5 ITEMS DISPOSITIONED — gate-ready. L5.4 re-defer awaiting team-lead ratification. ADJUDICATION below.
+
+## Commits (all pushed to origin/feature/s3-l5-carried-bugs)
+- `575cacf` L5.1 — fetch_retailer_quotes Serper budget double-count (manual record_usage removed)
+- `700b575` L5.2 — by_source subdomain attribution verified wired + end-to-end tests
+- `b386be8` L5.3 — lever-1 orphaned price task cancel cleanup (try/except → _cleanup_orphan_price_task)
+- `d9ba97c` L5.4 — engine-error adjudication (re-defer the elec-003 502 transient, evidence-complete)
+
+## Regression evidence (gate-ready)
+- 3 touched test files together: 33/33 green.
+- Broader batch (streaming, phase1 guards, per-race timeouts, wall caps, tier15 route/registry, source router, settle window, cost dashboard): 95/95 green.
+- KNOWN pre-existing flake (NOT mine): `test_phase1_runs_reviews_in_parallel_with_specs_price` (<1.2s wall) — fails identically on clean HEAD; dummy-key 401 network-retry noise on un-mocked image/rating siblings (no .env in worktree). Load-sensitive-wall caveat.
 
 ### L5.4 adjudication (evidence-complete)
 S2 full-200 = `C:/Users/SynAckITPC/Documents/ai/smartcompare/.qa-bias-rerun/s2_exit_full200.jsonl`. 11 error rows of 200:
