@@ -26,6 +26,11 @@ class Source:
     # scrape pool to avoid budget burn); "both" = usable for either. Default
     # "price" on every legacy row → zero behaviour change.
     usage: str = "price"
+    # S3 L1.3 — Shopify-platform store. When True, the Tier 1.5 cascade can hit
+    # `{domain}/products.json` DIRECTLY (free, static BHD prices, no Serper /
+    # render credits) before the Serper site: discovery. Default False → every
+    # legacy row unchanged; only verified-Shopify BH stores are tagged.
+    is_shopify: bool = False
 
 
 SOURCE_REGISTRY: List[Source] = [
@@ -83,11 +88,13 @@ SOURCE_REGISTRY: List[Source] = [
     # appliance/AC + fragrance + premium-grocery gap-fillers. Each is a real
     # BH e-commerce site with BHD prices + checkout + product pages.
     Source(
-        "shopalmoayyed.com", "bahrain", ("electronics",), 3.0
-    ),  # Y.K. Almoayyed & Sons (Shopify) — AC/appliances/electronics
+        "shopalmoayyed.com", "bahrain", ("electronics",), 3.0, is_shopify=True
+    ),  # Y.K. Almoayyed & Sons (Shopify) — AC/appliances/electronics. S3 L1.3:
+    #    /products.json verified — 30 products, static BHD JSON-LD (page_scrape).
     Source(
-        "bh.asgharali.com", "bahrain", ("fragrances",), 3.0
-    ),  # Asgharali Perfumes BH (Shopify)
+        "bh.asgharali.com", "bahrain", ("fragrances",), 3.0, is_shopify=True
+    ),  # Asgharali Perfumes BH (Shopify). S3 L1.3: /products.json verified —
+    #    93 products, static BHD prices.
     Source(
         "jalilaperfumes.com", "bahrain", ("fragrances",), 3.0
     ),  # Jalila Perfumes BH (custom PHP, product pages + BHD)
@@ -202,6 +209,24 @@ def get_sources_for_category(
                 continue
             result.append(s)
     return result
+
+
+def get_shopify_sources_for_category(category: str) -> List[Source]:
+    """S3 L1.3 — Bahrain-tier Shopify sources for `category`, in registry order.
+
+    The Tier 1.5 cascade iterates these to hit `{domain}/products.json` DIRECTLY
+    (free, static BHD, no Serper/render) before the Serper site: discovery. A
+    Shopify source with empty `categories` would match every category; today's
+    tagged rows are category-scoped (almoayyed=electronics, asgharali=
+    fragrances). Returns a (possibly empty) list — never raises.
+    """
+    return [
+        s
+        for s in SOURCE_REGISTRY
+        if s.is_shopify
+        and s.tier == "bahrain"
+        and (not s.categories or category in s.categories)
+    ]
 
 
 def source_usage(url: str, category: str) -> str:

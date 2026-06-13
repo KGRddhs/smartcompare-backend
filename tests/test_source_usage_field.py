@@ -42,10 +42,18 @@ def test_all_legacy_rows_are_price_usage():
         assert s.usage == "price", f"{s.domain} should default to price usage"
 
 
-def test_registry_still_has_37_price_sources():
-    """The 37 pre-S2 price rows are intact; Arabic sources are additive."""
+def test_registry_price_source_count():
+    """Price-usable rows are intact; Arabic review sources are additive.
+
+    Count is 33 since the I5.3 dead-domain purge (2026-06-11) removed
+    carrefourbh / geant.com.bh / eroselectronics (all NXDOMAIN) and I5.11
+    removed spinneysbahrain.com — the original `== 37` assertion was left stale
+    by those purges and silently RED at base. S3 L1.3 is additive (the Shopify
+    flag adds no rows), so 33 holds. Guard the floor so a future accidental
+    mass-deletion of price rows is caught.
+    """
     price_rows = [s for s in SOURCE_REGISTRY if s.usage in ("price", "both")]
-    assert len(price_rows) == 37
+    assert len(price_rows) == 33
 
 
 # ---------------------------------------------------------------------------
