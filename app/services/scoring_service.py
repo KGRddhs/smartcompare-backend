@@ -941,6 +941,8 @@ def _compute_value_score(
     *,
     price_tier: str = "mid",
     is_cross_tier: bool = False,
+    spec_missing: bool | None = None,
+    price_missing: bool | None = None,
 ) -> float:
     """Bundle C § 4a — module-level value-formula entry point. Resolves
     priority-driven coefficients from VALUE_FORMULA_BY_PRIORITY and combines
@@ -950,7 +952,15 @@ def _compute_value_score(
 
     `priorities` is the user's ordered priority list (e.g. ['price','durability']).
     Backwards-compat: the ScoringService._compute_value_score method below
-    delegates here, passing the preferences it received via _normalize_scores."""
+    delegates here, passing the preferences it received via _normalize_scores.
+
+    S3 L3 v2 [gate re-review — B value-score site] `spec_missing`/`price_missing`
+    are the AUTHORITATIVE per-signal missing flags (`_spec_missing`/`_price_missing`
+    from _compute_raw_scores). When provided, missingness is read from THEM, not
+    `== MISSING_SCORE` value-equality — a real spec/price that normalizes to
+    EXACTLY 50.0 (== the sentinel) is a genuine middling score and must BLEND, not
+    drop a real contribution. Default None → legacy `== MISSING_SCORE` fallback so
+    the many scalar-only callers (and their tests) keep their sentinel semantics."""
     # Sparse-signal fallbacks (mirror legacy method semantics — MISSING_SCORE
     # behavior preserved for legacy callers; flag-on None propagation handled
     # by upstream A.4.9 dim omission).
@@ -960,11 +970,14 @@ def _compute_value_score(
         return price_score
     if price_score is None:
         return spec_score
-    if spec_score == MISSING_SCORE and price_score == MISSING_SCORE:
+    # Authoritative when flags are supplied; else legacy value-equality.
+    spec_gone = spec_missing if spec_missing is not None else (spec_score == MISSING_SCORE)
+    price_gone = price_missing if price_missing is not None else (price_score == MISSING_SCORE)
+    if spec_gone and price_gone:
         return MISSING_SCORE
-    if spec_score == MISSING_SCORE:
+    if spec_gone:
         return price_score
-    if price_score == MISSING_SCORE:
+    if price_gone:
         return spec_score
 
     if is_cross_tier:
@@ -1628,10 +1641,17 @@ class ScoringService:
         # back to the legacy default (0.60 spec / 0.40 price) → identical
         # output to pre-A.6.1 behavior.
         priorities = (preferences or {}).get("priorities") if preferences else None
+        # S3 L3 v2 [gate re-review — B value-score site] thread the authoritative
+        # per-product `_spec_missing`/`_price_missing` flags so a real spec/price
+        # that normalizes to EXACTLY 50.0 (== MISSING_SCORE) is BLENDED, not
+        # dropped as a phantom gap. The flags reflect the array-collapse guards
+        # above (spec) + the raw-None paths in _compute_raw_scores (spec/price).
         value_scores = [
             self._compute_value_score(
                 spec_scores[i], price_scores[i], price_tiers[i],
                 is_cross_tier_flag, priorities=priorities,
+                spec_missing=bool(raw_scores[i].get("_spec_missing")),
+                price_missing=bool(raw_scores[i].get("_price_missing")),
             )
             for i in range(len(raw_scores))
         ]
@@ -1792,16 +1812,23 @@ class ScoringService:
         price_tier: str,
         is_cross_tier: bool,
         priorities=None,
+        *,
+        spec_missing: bool | None = None,
+        price_missing: bool | None = None,
     ) -> float:
         """Bundle C § 4a — delegate to module-level _compute_value_score so
         priority-driven coefficients (VALUE_FORMULA_BY_PRIORITY) replace the
         legacy hard-coded 0.6/0.4 split. Backwards-compat: priorities=None
         falls back to the default coefficients identical to the legacy
         formula, so all existing tests that don't pass priorities still
-        produce the same number."""
+        produce the same number.
+
+        S3 L3 v2 [gate re-review] forwards the authoritative `_spec_missing`/
+        `_price_missing` flags (default None → legacy `== MISSING_SCORE`)."""
         return _compute_value_score(
             spec_score, price_score, priorities=priorities,
             price_tier=price_tier, is_cross_tier=is_cross_tier,
+            spec_missing=spec_missing, price_missing=price_missing,
         )
 
     def _empty_result(self, count: int) -> Dict[str, Any]:
@@ -2268,12 +2295,15 @@ def _dim_winner(
     """
     if score_a is None or score_b is None:
         return None
-    # S2 I3.5 — any side's data missing → no winner. Catches the asymmetric
-    # one-sided case Decision B targets (the both-missing case was already
-    # suppressed by the MISSING_SCORE-sentinel check below + upstream omission).
+    # S2 I3.5 — any side's data missing → no winner. Catches BOTH the asymmetric
+    # one-sided case Decision B targets AND the both-missing case (both flags
+    # set), now that `was_missing_a/b` are authoritatively plumbed. (S3 L3 v2
+    # gate re-review: dropped the redundant `score_a==MISSING_SCORE and
+    # score_b==MISSING_SCORE` value-equality check that used to live here — it
+    # only fired on a genuine real-50/50 tie, which the tie-margin check below
+    # already returns None for, and the sentinel-sniff was the very collision
+    # this pass eliminates.)
     if was_missing_a or was_missing_b:
-        return None
-    if score_a in (MISSING_SCORE,) and score_b in (MISSING_SCORE,):
         return None
     if confidence == "low":
         return None

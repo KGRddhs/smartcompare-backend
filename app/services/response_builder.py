@@ -830,16 +830,35 @@ def _build_scoring_v2(
     # a small margin → calibrated tie → the FE `>=` crowns product_0 while the
     # verdict/evidence/name/recommendation all say product_1. v2 (A1 band +
     # magnitude-awareness near-ties + ±4 authority) makes this the modal outcome.
-    # ENFORCE argmax(score_a, score_b) == winner_index by nudging the LOSER strictly
-    # below the winner (clamp to the calibration band floor 60). The winner keeps
-    # its honest calibrated score; display + winner_idx + eval + all surfaces agree.
-    # (S3.1 follow-up: FE reads winner_idx as the single source of truth.)
+    # ENFORCE argmax(score_a, score_b) == winner_index. Default: nudge the LOSER
+    # strictly below the winner (winner keeps its honest calibrated score).
+    #
+    # [gate re-review — floor-edge hole] At the band FLOOR (both calibrate to 60)
+    # the loser-lower can't separate: max(60, min(60, 59)) == 60 == winner → still
+    # a tie → FE crowns the loser. calibrate is monotonic, so the floor is the ONE
+    # sub-case the loser-nudge can't fix. Unreachable on default flags (A1 → overall
+    # ≥~41 → calibrated ≥~66), but DISABLE_DIM_NORM_DAMPENING's legacy 30-100 band
+    # reaches it → the bug resurfaces. So when the WINNER sits at/below the floor,
+    # RAISE the winner above the loser instead (clamp to the calibration ceiling).
+    # The invariant holds on BOTH flag paths.
     if score_a is not None and score_b is not None and winner_index in (0, 1):
-        _floor = 60  # _CALIBRATION_FLOOR
-        if winner_index == 0 and not (score_a > score_b):
-            score_b = max(_floor, min(score_b, score_a - 1))
-        elif winner_index == 1 and not (score_b > score_a):
-            score_a = max(_floor, min(score_a, score_b - 1))
+        from app.services.scoring_service import (
+            _CALIBRATION_FLOOR as _floor,
+            _CALIBRATION_CEILING as _ceil,
+        )
+        win_score = score_a if winner_index == 0 else score_b
+        los_score = score_b if winner_index == 0 else score_a
+        if win_score <= los_score:  # tie or inverted — must separate
+            if win_score <= _floor:
+                # Can't push the loser below the floor → raise the winner instead.
+                new_win = min(_ceil, los_score + 1)
+            else:
+                new_win = win_score  # winner stays honest; lower the loser below it
+            new_los = max(_floor, min(los_score, new_win - 1))
+            if winner_index == 0:
+                score_a, score_b = new_win, new_los
+            else:
+                score_b, score_a = new_win, new_los
     dimensions = build_dimensions_v2(product_data, scoring_result, category)
     # Bundle C § 1b A.3.2 — compose factual_verdict from existing fields.
     # Pure template, zero GPT cost. qa-bundle-c D.1.3 confirmed missing.

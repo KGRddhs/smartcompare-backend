@@ -201,6 +201,71 @@ def test_dim_from_category_lookup_genuinely_absent_value_is_missing(service):
     assert dim.get("was_missing_b") is False
 
 
+def test_compute_value_score_real_50_spec_blends_with_flags(service):
+    """[gate re-review — B value-score site] _compute_value_score must not read a
+    real spec_score/price_score of EXACTLY 50.0 as missing. When the explicit
+    spec_missing/price_missing flags say 'present' (False), a 50.0 is a genuine
+    middling score and must BLEND, not fall back to the other signal alone.
+
+    Module-level fn with the new flag params (the path _normalize_scores uses).
+    """
+    from app.services.scoring_service import _compute_value_score
+    # spec=50.0 REAL (not missing), price=90.0 REAL → must blend, NOT return 90.
+    blended = _compute_value_score(
+        50.0, 90.0, priorities=None, price_tier="mid", is_cross_tier=False,
+        spec_missing=False, price_missing=False,
+    )
+    # default coeffs 0.70 spec / 0.30 price → 50*0.7 + 90*0.3 = 35 + 27 = 62.0
+    assert blended == pytest.approx(62.0, abs=0.5), (
+        f"a real spec=50.0 must blend with price (≈62.0), not drop to price-only (90); got {blended}"
+    )
+    assert blended != 90.0, "must NOT take the spec==MISSING_SCORE price-only branch for a real 50"
+
+
+def test_compute_value_score_flags_override_value_equality(service):
+    """When the flag says MISSING (non-50 value), the flag wins (drop the flagged
+    signal); when the flag says PRESENT but the value is 50, the flag wins
+    (blend/keep). Flags are authoritative over the 50 sentinel."""
+    from app.services.scoring_service import _compute_value_score
+    # spec flagged missing (value 72, non-sentinel) → price-only.
+    r1 = _compute_value_score(72.0, 88.0, price_tier="mid", is_cross_tier=False,
+                              spec_missing=True, price_missing=False)
+    assert r1 == 88.0, f"spec flagged missing must yield price-only, got {r1}"
+    # price flagged missing (value 50.0) → spec-only (flag wins over the 50).
+    r2 = _compute_value_score(64.0, 50.0, price_tier="mid", is_cross_tier=False,
+                              spec_missing=False, price_missing=True)
+    assert r2 == 64.0, f"price flagged missing must yield spec-only, got {r2}"
+
+
+def test_compute_value_score_legacy_no_flags_keeps_sentinel_semantics(service):
+    """Backward-compat: with NO flags (the existing scalar-only callers), a
+    literal MISSING_SCORE keeps its sentinel meaning so the existing tests
+    (test_value_score_missing_spec/price/both) stay green."""
+    from app.services.scoring_service import _compute_value_score, MISSING_SCORE
+    assert _compute_value_score(MISSING_SCORE, 70.0, price_tier="mid",
+                                is_cross_tier=False) == 70.0
+    assert _compute_value_score(70.0, MISSING_SCORE, price_tier="mid",
+                                is_cross_tier=False) == 70.0
+    assert _compute_value_score(MISSING_SCORE, MISSING_SCORE, price_tier="mid",
+                                is_cross_tier=False) == MISSING_SCORE
+
+
+def test_value_dim_blends_real_50_via_compute_scores(service):
+    """End-to-end: the value dim in compute_scores must reflect a real price/spec,
+    not silently drop it. Pins the producer threading the _spec_missing/
+    _price_missing flags into _compute_value_score."""
+    p0 = _prod("A", rating=4.0, price=300, specs={"ram": "8 GB", "storage": "256 GB"})
+    p1 = _prod("B", rating=4.0, price=305, specs={"ram": "8 GB", "storage": "128 GB"})
+    r = service.compute_scores([p0, p1])
+    for pk in ("product_0", "product_1"):
+        md = r["scores"][pk].get("missing_data") or []
+        assert "value_score" not in md, (
+            f"value dim with real specs + real prices must not be flagged missing; got {md}"
+        )
+        v = r["scores"][pk]["breakdown"].get("value_score")
+        assert v is not None, f"value_score must be present for {pk}"
+
+
 def test_spec_secondary_blends_real_25star_review_not_drops_it(service):
     """[gate finding B — THIRD site, _normalize_scores spec_secondary] BOTH
     products have real (differing) specs + a genuine 2.5★ rating (review→50.0).
