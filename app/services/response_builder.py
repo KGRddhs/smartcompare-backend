@@ -964,23 +964,20 @@ def build_comparison_response(
         winner_index = _gpt_winner
     win_margin = scoring_result.get("win_margin", 0)
 
-    # S3 intervention #2 — GPT-qualitative-winner lever (FLAG-GATED default OFF).
-    # The deterministic spec-scorer has a capability ceiling (ranks spec numbers
-    # + cheapness; gold rewards qualitative quality it can't express). When
-    # ENABLE_GPT_WINNER is ON, let the verdict's INDEPENDENT winner override the
-    # deterministic pick — but ONLY when it is GROUNDED (the model self-reports
-    # it justified the call from the supplied facts, not a guess — the
-    # no-estimation guardrail) and the index is a valid 0/1. Otherwise the
-    # deterministic winner stands. Default OFF => byte-identical to today.
+    # S3 L3 v2 (e) — GPT-qualitative-winner as a GROUNDED CROSS-CHECK LOG ONLY.
+    # The shipped winner is ALWAYS the genuine deterministic argmax (the GPT
+    # verdict EXPLAINS it). When ENABLE_GPT_WINNER is ON and the GPT verdict's
+    # GROUNDED independent winner DISAGREES with the deterministic winner, LOG it
+    # (like WINNER_INDEX_MISMATCH) for S3.1 investigation — NO index override
+    # (override creates the consistency trap the v2 pivot removed). Default OFF.
     if _gpt_winner_lever_enabled():
         indep = _grounded_gpt_winner(comparison)
         if indep is not None and indep != winner_index:
             logger.info(
-                "GPT_WINNER_OVERRIDE deterministic=%s gpt_independent=%s basis=%r",
+                "GPT_WINNER_DISAGREES deterministic=%s gpt_independent=%s grounded=true basis=%r",
                 winner_index, indep,
                 (comparison.get("independent_winner_basis") or "")[:120],
             )
-            winner_index = indep
 
     # Build personalization metadata
     personalized = user_preferences is not None and bool(user_preferences)

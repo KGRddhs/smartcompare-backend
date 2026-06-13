@@ -92,9 +92,11 @@ def test_flag_off_uses_deterministic_winner(gpt_winner_off):
 # Flag ON — GPT independent winner used only when GROUNDED
 # ---------------------------------------------------------------------------
 
-def test_flag_on_grounded_gpt_winner_overrides_deterministic(gpt_winner_on):
-    """Flag ON + GPT independent winner is GROUNDED + valid → it overrides the
-    deterministic pick (the capability-ceiling fix)."""
+def test_flag_on_grounded_gpt_winner_does_not_override(gpt_winner_on):
+    """S3 L3 v2 (e) — LOG-ONLY. Flag ON + a GROUNDED GPT independent winner that
+    DISAGREES is LOGGED for S3.1 but must NOT override — the shipped winner stays
+    the genuine deterministic argmax (no consistency trap)."""
+    import logging
     resp = build_comparison_response(
         product_data=_products(),
         comparison=_comparison(winner_index=1, indep=0, grounded=True,
@@ -102,8 +104,24 @@ def test_flag_on_grounded_gpt_winner_overrides_deterministic(gpt_winner_on):
         scoring_result=_scoring_result(1),
         category_used="electronics",
     )
-    assert resp["scoring_v2"]["overall_score"]["winner_idx"] == 0, (
-        "a grounded GPT independent winner must override the deterministic pick when ON"
+    assert resp["scoring_v2"]["overall_score"]["winner_idx"] == 1, (
+        "v2: a grounded GPT disagreement is logged, NOT an override — deterministic stands"
+    )
+
+
+def test_flag_on_grounded_disagreement_is_logged(gpt_winner_on, caplog):
+    """The grounded disagreement emits a GPT_WINNER_DISAGREES log (the S3.1
+    cross-check signal)."""
+    import logging
+    with caplog.at_level(logging.INFO):
+        build_comparison_response(
+            product_data=_products(),
+            comparison=_comparison(winner_index=1, indep=0, grounded=True, basis="camera"),
+            scoring_result=_scoring_result(1),
+            category_used="electronics",
+        )
+    assert any("GPT_WINNER_DISAGREES" in r.message for r in caplog.records), (
+        "a grounded disagreement must be logged for S3.1 investigation"
     )
 
 

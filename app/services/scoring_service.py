@@ -902,8 +902,15 @@ class ScoringService:
         preferences: Optional[Dict[str, Any]] = None,
         behavior_profile: Optional[Dict[str, Any]] = None,
         session_signals: Optional[Dict[str, Any]] = None,
+        cohort_profile: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Compute scores for a list of products using category-specific dimensions."""
+        """Compute scores for a list of products using category-specific dimensions.
+
+        S3 L3 v2 (c): `cohort_profile` (the cohort-seeded preferences shape
+        {priorities, ...}) nudges the dimension weights toward the cohort's
+        inferred priorities (±10% cap), applied ONLY when no EXPLICIT preferences
+        are supplied — explicit prefs are the stronger ±30% signal and win.
+        """
         if not products_data or len(products_data) < 2:
             return self._empty_result(len(products_data))
 
@@ -911,6 +918,14 @@ class ScoringService:
         if category not in CATEGORY_DIMENSIONS:
             category = "other"
         weights = self._compute_weights(preferences, category)
+
+        # S3 L3 v2 (c) — cohort priors into the score weights, ONLY when the user
+        # has no explicit preferences (cohort is the weak inferred default).
+        cohort_applied = False
+        if not preferences and cohort_profile and cohort_profile.get("priorities"):
+            new_weights = self.apply_cohort_adjustments(weights, cohort_profile, category)
+            cohort_applied = new_weights != weights
+            weights = new_weights
 
         # Apply behavioral and session adjustments (layered on top of explicit preferences)
         if behavior_profile:
@@ -994,6 +1009,8 @@ class ScoringService:
             scoring_method = "behavioral"
         elif preferences:
             scoring_method = "personalized"
+        elif cohort_applied:
+            scoring_method = "cohort"
         else:
             scoring_method = "category_weighted"
 
@@ -1831,6 +1848,37 @@ class ScoringService:
         for dim in weights:
             if dim in sensitivity:
                 deltas[dim] = (sensitivity[dim] - avg_sensitivity) * weights[dim]
+
+        return self._apply_capped_adjustments(weights, deltas, original, MAX_BEHAVIORAL_SHIFT_RATIO)
+
+    def apply_cohort_adjustments(
+        self,
+        weights: Dict[str, float],
+        cohort_profile: Optional[Dict[str, Any]],
+        category: str = "other",
+    ) -> Dict[str, float]:
+        """S3 L3 v2 (c) — nudge the dimension weights toward the COHORT's inferred
+        priorities, capped at ±10% of each dim's category weight (like behavioral
+        — an inferred signal is weaker than an explicit ±30% preference). Reuses
+        the CATEGORY_PRIORITY_ADJUSTMENTS mapping, scaled so the cohort nudge
+        fits inside the ±10% cap (the priority deltas are sized for ±30%).
+        No-op when cohort_profile is empty or has no priorities."""
+        if not cohort_profile:
+            return weights
+        priorities = cohort_profile.get("priorities") or []
+        if not priorities:
+            return weights
+
+        cat_priority_adj = CATEGORY_PRIORITY_ADJUSTMENTS.get(category, {})
+        # Priority deltas are tuned for the ±30% explicit cap; scale to ±10% so
+        # the inferred cohort signal lands within the behavioral band.
+        scale = MAX_BEHAVIORAL_SHIFT_RATIO / MAX_WEIGHT_SHIFT_RATIO  # 0.10/0.30
+        original = dict(weights)
+        deltas: Dict[str, float] = {}
+        for priority in priorities:
+            for dim, delta in cat_priority_adj.get(priority, {}).items():
+                if dim in weights:
+                    deltas[dim] = deltas.get(dim, 0.0) + delta * scale
 
         return self._apply_capped_adjustments(weights, deltas, original, MAX_BEHAVIORAL_SHIFT_RATIO)
 

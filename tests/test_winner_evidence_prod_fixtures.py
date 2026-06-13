@@ -62,17 +62,19 @@ def test_tiebreak_preserves_winner_on_decisive_prod_capture():
     product_data, _scoring_result, _cat, _wi = build_inputs(
         "iphone15_vs_galaxys24_response.json"
     )
-    # Sanity: both products are real-priced in the capture, so price authority
-    # does NOT discriminate -> no price tilt regardless of margin.
+    # Sanity: both products are real-priced in the capture, so the price-
+    # authority SCORE factor does NOT discriminate (both unpenalized).
     methods = [
         (p.get("price") or {}).get("source_method") for p in product_data
     ]
     assert methods == ["local_bhd", "local_bhd"], methods
 
     fresh = ScoringService().compute_scores(product_data)
-    # No discriminating real-price evidence + (recomputed) clear gap -> the
-    # tie-break leaves the argmax winner intact, and emits no fabricated
-    # price-authority evidence.
-    assert not fresh.get("winner_evidence"), (
-        "both-real-price capture must not produce a price-authority tilt"
+    # S3 L3 v2: winner is the genuine argmax (Samsung leads). The price-authority
+    # factor is neutral (both real), so no PRICE-PROVENANCE reason — but a
+    # genuine overall/review lead reason is correct + expected. Assert only that
+    # no fabricated price-provenance ("confirmed Bahrain price") reason appears.
+    ev_blob = " ".join(fresh.get("winner_evidence") or []).lower()
+    assert "confirmed bahrain price" not in ev_blob, (
+        "both-real-price capture must not claim a price-provenance edge"
     )
