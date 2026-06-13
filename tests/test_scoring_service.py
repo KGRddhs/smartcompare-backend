@@ -840,9 +840,11 @@ class TestValueScoreRedesign:
         assert score > 55
 
     def test_value_score_same_tier(self):
+        # S3 L3 v2 (b) lever 1 — value-for-money default coeffs spec 0.70/price 0.30
+        # (was 0.60/0.40) so "what you get" dominates "how cheap".
         service = ScoringService()
         score = service._compute_value_score(80, 60, "mid", False)
-        expected = 80 * 0.6 + 60 * 0.4
+        expected = 80 * 0.70 + 60 * 0.30
         assert abs(score - expected) < 0.5
 
     def test_value_score_missing_spec(self):
@@ -889,10 +891,16 @@ class TestDimensionWinners:
         assert winners["function_score"]["winner"] == "tie"
 
     def test_dimension_winners_both_missing(self):
+        # S3 L3 v2 (d) — missingness is tracked via the EXPLICIT missing_data
+        # list, NOT by `== MISSING_SCORE` value-equality (a computed 50 is a real
+        # score). To mark function_score missing on both products, list it in
+        # each product's missing_data.
         service = ScoringService()
         result = {"scores": {
-            "product_0": {"breakdown": {"function_score": MISSING_SCORE, "build_score": 50, "review_score": 50, "value_score": 50, "reliability_score": 50, "feature_match_score": 50}},
-            "product_1": {"breakdown": {"function_score": MISSING_SCORE, "build_score": 50, "review_score": 50, "value_score": 50, "reliability_score": 50, "feature_match_score": 50}},
+            "product_0": {"breakdown": {"function_score": MISSING_SCORE, "build_score": 50, "review_score": 50, "value_score": 50, "reliability_score": 50, "feature_match_score": 50},
+                          "missing_data": ["function_score"]},
+            "product_1": {"breakdown": {"function_score": MISSING_SCORE, "build_score": 50, "review_score": 50, "value_score": 50, "reliability_score": 50, "feature_match_score": 50},
+                          "missing_data": ["function_score"]},
         }}
         winners = service.compute_dimension_winners(result, ["A", "B"], "other")
         assert winners["function_score"]["winner"] == "N/A"

@@ -1264,6 +1264,43 @@ def _build_review_source_quotes_block(
     return "\n".join(lines)
 
 
+def _gpt_winner_lever_enabled() -> bool:
+    """S3 intervention #2 flag reader (default OFF). Read live so a Railway flip
+    / monkeypatch takes effect without a restart."""
+    import os
+    return os.environ.get("ENABLE_GPT_WINNER", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _build_independent_winner_block() -> str:
+    """S3 intervention #2 — instruct the model to ALSO emit an INDEPENDENT winner
+    judged purely on the product facts (ignoring the deterministic scores), with
+    an honest grounded:true/false self-report. The no-estimation guardrail is in
+    the prompt: it must justify from the supplied data and set grounded=false if
+    it had to reach beyond it. These extra JSON keys are additive — the existing
+    winner_index/declaration/etc. stay exactly as before."""
+    return """
+
+## Independent Winner (additional judgment)
+SEPARATELY from the scored winner above, decide which product is the better
+overall pick for a typical GCC (Bahrain) buyer judging PURELY on the product
+facts shown (specs, price, ratings/reviews) and well-established qualitative
+quality (brand ecosystem, heritage, whether a higher price is justified by what
+the buyer gets). For THIS judgment, do NOT defer to the numeric scores — form
+your own view from the evidence.
+
+HARD RULE (no guessing): ground this call in the supplied facts. If the data is
+too thin to justify a confident independent pick, set "independent_winner_grounded"
+to false. Never invent specs, prices, or review facts not present in the data.
+
+Add these keys to your JSON response:
+  "independent_winner_index": 0 or 1,
+  "independent_winner_grounded": true or false,
+  "independent_winner_basis": "<=25 words citing the specific facts that drove it"
+"""
+
+
 # ---------- S3 L2: YouTube cited review-signal verdict surfacing ----------
 # Mirrors the I2.5 review_source_quotes trio (extract / build-block / scrub-if-
 # off) so the YouTube signal becomes a LABELED, CITED verdict input — never a
@@ -1426,6 +1463,15 @@ If this is a cross-tier comparison, frame it as "different products for differen
         elif demographics_profile:
             # Preferences absent but cohort priors might still apply
             system_msg += _build_cohort_priors_block(demographics_profile)
+
+        # S3 intervention #2 — GPT-qualitative-winner lever (FLAG-GATED default
+        # OFF). When ON, ask the model for an INDEPENDENT winner judged purely on
+        # the product facts (NOT the deterministic scores above), grounded in
+        # cited facts with an honest grounded:true/false self-report. The
+        # response_builder consumes it ONLY when grounded (no-estimation
+        # guardrail). Flag OFF => prompt byte-identical to today.
+        if _gpt_winner_lever_enabled():
+            system_msg += _build_independent_winner_block()
 
         # User message: product data wrapped in tags. Both rollback-scrubs are
         # composed so a cache-carried review_source_quotes (I2.5) OR

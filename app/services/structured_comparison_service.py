@@ -1423,8 +1423,15 @@ class StructuredComparisonService:
             # Step 3: Compute deterministic scores
             scoring_service = get_scoring_service()
             t_score = time.perf_counter() if orchestrator_timings is not None else None
+            # S3 L3 v2 (c) — cohort priors into the SCORE weights. When the user
+            # has no explicit preferences but has demographics, seed cohort-
+            # inferred preferences and pass them as cohort_profile (compute_scores
+            # applies them ±10%, only when no explicit prefs). Fail-soft: any error
+            # leaves cohort_profile=None (pure category-weighted scoring).
+            cohort_profile = self._derive_cohort_profile(user_preferences, demographics_profile)
             scoring_result = scoring_service.compute_scores(
                 product_data, preferences=user_preferences, behavior_profile=behavior_profile,
+                cohort_profile=cohort_profile,
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["scoring_ms"] = round((time.perf_counter() - t_score) * 1000, 1)
@@ -1882,8 +1889,11 @@ class StructuredComparisonService:
 
             # Step 3: Compute scores
             t_score = time.perf_counter() if orchestrator_timings is not None else None
+            # S3 L3 v2 (c) — cohort priors into the score weights (fail-soft).
+            cohort_profile = self._derive_cohort_profile(user_preferences, demographics_profile)
             scoring_result = scoring_service.compute_scores(
                 product_data, preferences=user_preferences, behavior_profile=behavior_profile,
+                cohort_profile=cohort_profile,
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["scoring_ms"] = round((time.perf_counter() - t_score) * 1000, 1)
@@ -2121,6 +2131,32 @@ class StructuredComparisonService:
     # ============================================
     # Internal orchestration methods
     # ============================================
+
+    @staticmethod
+    def _derive_cohort_profile(
+        user_preferences: Optional[Dict[str, Any]],
+        demographics_profile: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """S3 L3 v2 (c) — seed cohort-inferred preferences from the user's
+        demographics so compute_scores can nudge the dimension weights toward the
+        cohort (±10%). Returns None (→ pure category-weighted scoring) when the
+        user has EXPLICIT preferences (those win, ±30%), when demographics are
+        absent, or on any error (fail-soft — cohort scoring must never break a
+        comparison)."""
+        if user_preferences:  # explicit prefs win; cohort is the weak default
+            return None
+        if not demographics_profile:
+            return None
+        try:
+            from app.services.cohort_service import get_cohort_service
+            seeded = get_cohort_service().seed_preferences(demographics_profile)
+            # Only return when the cohort actually produced priorities — an empty
+            # priorities list is a no-op for the weighting.
+            if seeded and seeded.get("priorities"):
+                return seeded
+        except Exception as exc:  # noqa: BLE001 — cohort scoring is best-effort
+            logger.debug("cohort_profile derivation skipped: %s", exc)
+        return None
 
     async def _fetch_behavior_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Fetch user's behavioral profile from Supabase."""

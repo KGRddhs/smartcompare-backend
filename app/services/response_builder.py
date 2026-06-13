@@ -44,6 +44,58 @@ def _factual_verdict_present_in_scoring_v2(scoring_v2: Dict[str, Any]) -> bool:
     return bool(fv.get("line1")) or bool(fv.get("line2"))
 
 
+def _gpt_winner_lever_enabled() -> bool:
+    """S3 intervention #2 flag reader (default OFF). Read live so a Railway flip
+    / monkeypatch takes effect without a restart."""
+    return os.environ.get("ENABLE_GPT_WINNER", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _eval_capture_debug_enabled() -> bool:
+    """S3 L3 v2 — EVAL_CAPTURE_DEBUG flag (default OFF). When ON, the response
+    serializes the RAW per-product scoring INPUTS (fact_check) under
+    overview.products[i]._debug_capture so the offline param sweep can re-run the
+    v2 scorer EXACTLY (the harness re-normalizes — A1/gap-tol change normalization
+    — so it needs raw inputs, not the post-norm breakdown). Flipped on Railway
+    ONLY for the one full-200 capture run; OFF in normal prod (zero user-facing
+    change, no payload bloat)."""
+    return os.environ.get("EVAL_CAPTURE_DEBUG", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _debug_capture_payload(pd: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Raw scoring inputs the captured body otherwise omits — currently the raw
+    fact_check (the reliability dim INPUT). specs/price.source_method/rating/
+    review_count/category already live in overview+specs, so fact_check is the
+    one missing input for an EXACT offline re-score. None when no fact_check."""
+    fc = pd.get("fact_check")
+    if not isinstance(fc, dict):
+        return None
+    return {"fact_check": fc}
+
+
+def _grounded_gpt_winner(comparison: Dict[str, Any]) -> Optional[int]:
+    """Return the verdict's INDEPENDENT winner index (0/1) ONLY when it is
+    grounded (model self-reported it justified the call from the supplied facts,
+    not a guess) and the index is a valid 0/1 int. None otherwise (older prompt,
+    parse miss, ungrounded guess, or malformed index) so the caller falls back
+    to the deterministic winner. The `grounded` gate is the no-estimation
+    guardrail — an admitted guess never overrides."""
+    if not isinstance(comparison, dict):
+        return None
+    if comparison.get("independent_winner_grounded") is not True:
+        return None
+    idx = comparison.get("independent_winner_index")
+    # Reject bools (bool is an int subclass) and non-0/1 values.
+    if isinstance(idx, bool) or not isinstance(idx, int):
+        return None
+    if idx not in (0, 1):
+        return None
+    return idx
+
+
 def derive_rating_from_scores(overall_score: float) -> float:
     """Derive a synthetic rating (1-5 scale) from overall score when no real rating exists."""
     rating = 2.5 + (overall_score / 100) * 2.3
@@ -521,6 +573,97 @@ def _runner_up_dim_candidate(
     }
 
 
+# S3 L3.3 — review-density (YouTube attention) as a CITED factual_verdict fact.
+# Flag-gated on ENABLE_YOUTUBE_SOURCE so a 14d-cache-carried signal can't leak
+# into the verdict after a rollback (mirrors L2's scrub). Only fires when the
+# winner has DECISIVELY more attention than the runner-up — a small gap is not a
+# fact worth stating. Cites the channel + a humanized count; NEVER a raw integer
+# view count, NEVER the word "estimated".
+_YT_DENSITY_MIN_VIEWS = 10_000
+_YT_DENSITY_DOMINANCE_RATIO = 3.0
+
+
+def _youtube_source_enabled_rb() -> bool:
+    return os.environ.get("ENABLE_YOUTUBE_SOURCE", "").strip().lower() in (
+        "true", "1", "on", "yes",
+    )
+
+
+def _humanize_views(n: int) -> str:
+    """Compact human view figure: 2_400_000 -> '2.4M', 12_500 -> '12.5K',
+    900 -> '900'. Local to response_builder (L2's _humanize_count lives in
+    extraction_service; keeping a private copy avoids a cross-module import and
+    survives independent of merge order)."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return "0"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K".replace(".0K", "K")
+    return str(n)
+
+
+def _yt_signal_for(p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Read L2's youtube_review_signal off a product, flag-gated. None when the
+    flag is off / signal absent / malformed."""
+    if not _youtube_source_enabled_rb():
+        return None
+    reviews = p.get("reviews")
+    if not isinstance(reviews, dict):
+        return None
+    sig = reviews.get("youtube_review_signal")
+    if isinstance(sig, dict) and sig.get("top_channel"):
+        return sig
+    return None
+
+
+def _yt_views(sig: Optional[Dict[str, Any]]) -> int:
+    if not isinstance(sig, dict):
+        return 0
+    try:
+        return int(sig.get("total_views") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _review_density_candidate(
+    products: List[Dict[str, Any]],
+    winner_index: int,
+) -> Optional[Dict[str, Any]]:
+    """S3 L3.3 — build a CITED review-density candidate fact for the WINNER when
+    the winner has decisively more YouTube review attention than the runner-up.
+    Returns None when the flag is off, either signal is absent, or the gap isn't
+    decisive (so we never state a meaningless 'more reviews' claim).
+
+    Magnitude is normalized into the same 0–1 band the other candidates use so
+    it competes fairly for line1. The candidate carries the channel + humanized
+    count for citation — never a raw integer."""
+    if len(products) < 2:
+        return None
+    sig_w = _yt_signal_for(products[winner_index])
+    sig_r = _yt_signal_for(products[1 - winner_index])
+    if sig_w is None:
+        return None
+    vw = _yt_views(sig_w)
+    vr = _yt_views(sig_r)
+    if vw < _YT_DENSITY_MIN_VIEWS:
+        return None
+    denom = max(vr, _YT_DENSITY_MIN_VIEWS / _YT_DENSITY_DOMINANCE_RATIO)
+    if vw < denom * _YT_DENSITY_DOMINANCE_RATIO:
+        return None  # winner's lead isn't decisive
+    return {
+        # Scale the gap into ~0–1 so it ranks against price/rating/dim. A 3×+
+        # dominance lands ~0.5–0.9; cap at 1.0.
+        "magnitude": min(1.0, (vw / denom) / 10.0 + 0.3),
+        "kind": "review_density",
+        "channel": (sig_w.get("top_channel") or "").strip(),
+        "views_human": _humanize_views(vw),
+        "video_count": sig_w.get("video_count") or 0,
+    }
+
+
 def _format_line1(
     winner_name: str,
     candidate: Dict[str, Any],
@@ -528,6 +671,11 @@ def _format_line1(
     """Render the winner-anchored line1 from the largest-magnitude candidate.
     Strings are concise + presentational; honor the FIVE critical rules."""
     kind = candidate["kind"]
+    if kind == "review_density":
+        ch = candidate.get("channel", "")
+        views = candidate.get("views_human", "")
+        cite = f", led by {ch}" if ch else ""
+        return f"{winner_name} draws far more reviewer attention (~{views} YouTube views{cite})."
     if kind == "price":
         pct = round(candidate["pct"] * 100)
         if candidate["winner_cheaper"]:
@@ -601,10 +749,15 @@ def _build_factual_verdict(
     runner_name = _product_name(products[1 - winner_index])
 
     # Gather candidate facts for line1, pick the largest-magnitude one.
+    # S3 L3.3 — review-density (YouTube attention) joins as a CITED candidate,
+    # flag-gated on ENABLE_YOUTUBE_SOURCE. It competes on normalized magnitude;
+    # a decisive review-attention gap can anchor line1, otherwise the existing
+    # price/rating/dim facts win.
     candidates = [c for c in (
         _price_candidate(products, winner_index),
         _rating_candidate(products, winner_index),
         _top_dim_candidate(dimensions, winner_index),
+        _review_density_candidate(products, winner_index),
     ) if c is not None]
 
     if candidates:
@@ -691,6 +844,42 @@ def _build_scoring_v2(
     raw_b = scoring_result.get("scores", {}).get("product_1", {}).get("overall", 50)
     score_a = calibrate_score(raw_a)
     score_b = calibrate_score(raw_b)
+    # S3 L3 v2 [gate finding A] — CALIBRATION-COLLAPSE invariant. The FE derives
+    # the winner SOLELY from (product_a >= product_b) ? 0 : 1 (ResultsScreen.tsx),
+    # never from winner_idx. calibrate_score = int(round(70+(raw-50)*0.5)) collapses
+    # any sub-~2pt raw gap to product_a == product_b, so a genuine product_1 win by
+    # a small margin → calibrated tie → the FE `>=` crowns product_0 while the
+    # verdict/evidence/name/recommendation all say product_1. v2 (A1 band +
+    # magnitude-awareness near-ties + ±4 authority) makes this the modal outcome.
+    # ENFORCE argmax(score_a, score_b) == winner_index. Default: nudge the LOSER
+    # strictly below the winner (winner keeps its honest calibrated score).
+    #
+    # [gate re-review — floor-edge hole] At the band FLOOR (both calibrate to 60)
+    # the loser-lower can't separate: max(60, min(60, 59)) == 60 == winner → still
+    # a tie → FE crowns the loser. calibrate is monotonic, so the floor is the ONE
+    # sub-case the loser-nudge can't fix. Unreachable on default flags (A1 → overall
+    # ≥~41 → calibrated ≥~66), but DISABLE_DIM_NORM_DAMPENING's legacy 30-100 band
+    # reaches it → the bug resurfaces. So when the WINNER sits at/below the floor,
+    # RAISE the winner above the loser instead (clamp to the calibration ceiling).
+    # The invariant holds on BOTH flag paths.
+    if score_a is not None and score_b is not None and winner_index in (0, 1):
+        from app.services.scoring_service import (
+            _CALIBRATION_FLOOR as _floor,
+            _CALIBRATION_CEILING as _ceil,
+        )
+        win_score = score_a if winner_index == 0 else score_b
+        los_score = score_b if winner_index == 0 else score_a
+        if win_score <= los_score:  # tie or inverted — must separate
+            if win_score <= _floor:
+                # Can't push the loser below the floor → raise the winner instead.
+                new_win = min(_ceil, los_score + 1)
+            else:
+                new_win = win_score  # winner stays honest; lower the loser below it
+            new_los = max(_floor, min(los_score, new_win - 1))
+            if winner_index == 0:
+                score_a, score_b = new_win, new_los
+            else:
+                score_b, score_a = new_win, new_los
     dimensions = build_dimensions_v2(product_data, scoring_result, category)
     # Bundle C § 1b A.3.2 — compose factual_verdict from existing fields.
     # Pure template, zero GPT cost. qa-bundle-c D.1.3 confirmed missing.
@@ -704,6 +893,14 @@ def _build_scoring_v2(
     # in structured_comparison_service already computes the legs + per-
     # leg evidence dicts; we just thread them through.
     confidence_legs, confidence_details = _confidence_legs_and_details(product_data)
+    # S3 L3.4 — surface the qualitative winner_evidence the scoring layer
+    # produced (L3.2 price authority + L3.3 review density). Always a list of
+    # short strings (never coefficients/caps/% per no_backend_internals_in_reveals);
+    # coerce defensively so a malformed scoring_result can't ship a non-list.
+    raw_evidence = scoring_result.get("winner_evidence")
+    winner_evidence = (
+        [str(e) for e in raw_evidence] if isinstance(raw_evidence, list) else []
+    )
     scoring_v2 = {
         "overall_score": {
             "product_a": score_a,
@@ -713,6 +910,10 @@ def _build_scoring_v2(
         "win_margin": abs(score_a - score_b),
         "dimensions": dimensions,
         "factual_verdict": factual_verdict,
+        # S3 L3.4 — qualitative reasons backing the winner pick (price
+        # authority / Bahrain availability / review density). Empty list when
+        # the comparison had no discriminating real-data evidence.
+        "winner_evidence": winner_evidence,
         # Bundle C v1 hot-fix (round 2) — HeroRings.tsx reads
         # scoring_v2.comparison_quality per spec § 2e for weird-mode em-dash.
         # Also surface in scoring_v2 (in addition to metadata.comparison_quality
@@ -844,6 +1045,21 @@ def build_comparison_response(
         winner_index = _gpt_winner
     win_margin = scoring_result.get("win_margin", 0)
 
+    # S3 L3 v2 (e) — GPT-qualitative-winner as a GROUNDED CROSS-CHECK LOG ONLY.
+    # The shipped winner is ALWAYS the genuine deterministic argmax (the GPT
+    # verdict EXPLAINS it). When ENABLE_GPT_WINNER is ON and the GPT verdict's
+    # GROUNDED independent winner DISAGREES with the deterministic winner, LOG it
+    # (like WINNER_INDEX_MISMATCH) for S3.1 investigation — NO index override
+    # (override creates the consistency trap the v2 pivot removed). Default OFF.
+    if _gpt_winner_lever_enabled():
+        indep = _grounded_gpt_winner(comparison)
+        if indep is not None and indep != winner_index:
+            logger.info(
+                "GPT_WINNER_DISAGREES deterministic=%s gpt_independent=%s grounded=true basis=%r",
+                winner_index, indep,
+                (comparison.get("independent_winner_basis") or "")[:120],
+            )
+
     # Build personalization metadata
     personalized = user_preferences is not None and bool(user_preferences)
     personalization_factors = []
@@ -946,6 +1162,14 @@ def build_comparison_response(
                             "",
                         ),
                         (user_preferences or {}).get("budget"),
+                    ),
+                    # S3 L3 v2 — raw scoring inputs for the offline param sweep,
+                    # emitted ONLY when EVAL_CAPTURE_DEBUG is set (the one capture
+                    # run). None otherwise → key carries None in normal prod; FE
+                    # ignores unknown keys. Kept additive + last so it never
+                    # shifts the user-facing shape.
+                    "_debug_capture": (
+                        _debug_capture_payload(pd) if _eval_capture_debug_enabled() else None
                     ),
                 }
                 for i, pd in enumerate(product_data)

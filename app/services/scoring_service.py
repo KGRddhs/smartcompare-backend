@@ -296,6 +296,112 @@ for _s in LOWER_IS_BETTER_BY_CATEGORY.values():
 MISSING_SCORE = 50
 
 
+# S3 winner-mechanism Option A1 — normalization dampening (team-lead APPROVED as
+# DEFAULT, 2026-06-13). `_normalize_dimension` previously mapped the relative
+# position with `30 + ratio*70` (range 30–100), so the product with even a
+# SLIGHTLY higher raw spec number got 100 and the other got 30 — a 70pt swing
+# manufactured from noise (the corpus-pinned driver of the 47%-wrong-on-clean
+# winner gap). A1 narrows the spread to `45 + ratio*40` (range 45–85), and the
+# genuine-tie return to the new band midpoint (65). This compresses BOTH the
+# user-visible dim bars AND the winner/overall contribution (the FULL version).
+# `DISABLE_DIM_NORM_DAMPENING` (default OFF) is the escape hatch: reverts to the
+# legacy 30–100 spread + 70 tie if Ahmed wants the dramatic bars kept.
+_DIM_NORM_FLOOR_DAMPENED = 45.0
+_DIM_NORM_SPAN_DAMPENED = 40.0
+_DIM_NORM_TIE_DAMPENED = 65.0
+_DIM_NORM_FLOOR_LEGACY = 30.0
+_DIM_NORM_SPAN_LEGACY = 70.0
+_DIM_NORM_TIE_LEGACY = 70.0
+
+
+def _signal_missing_for(raw: Dict[str, Any], signal: str) -> bool:
+    """S3 L3 v2 [gate finding B] — is a dimension's SOURCE SIGNAL missing for this
+    product, read from the per-signal `_<sig>_missing` flags (the source of truth),
+    NEVER `== MISSING_SCORE` value-equality (a computed 50 is a real score).
+
+    Signal → raw-flag mapping (mirrors _DIMENSION_SIGNAL_MAP + _compute_raw_scores):
+      spec / review / reliability / popularity → `_<signal>_missing`
+      value           → spec OR price missing (the value dim needs both)
+      spec_secondary  → spec AND review both missing (blends the two; present if
+                        either side has signal — matches the spec_secondary
+                        fallback in _normalize_scores).
+    """
+    if signal == "value":
+        return bool(raw.get("_spec_missing")) or bool(raw.get("_price_missing"))
+    if signal == "spec_secondary":
+        return bool(raw.get("_spec_missing")) and bool(raw.get("_review_missing"))
+    return bool(raw.get(f"_{signal}_missing"))
+
+
+def _dim_norm_dampening_disabled() -> bool:
+    """Escape hatch reader — when ENV DISABLE_DIM_NORM_DAMPENING is set, revert
+    `_normalize_dimension` to the legacy 30–100 spread (+ legacy 70 tie + NO
+    magnitude-awareness — full legacy behavior). Read live (not cached) so a
+    monkeypatch test + a Railway flip take effect without a restart."""
+    import os
+    return os.environ.get("DISABLE_DIM_NORM_DAMPENING", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+# S3 L3 v2 — MAGNITUDE-AWARENESS (team-lead root-cause fix). _normalize_dimension
+# mapped DIRECTION to the full band and ignored MAGNITUDE: relative min/max on a
+# 2-product pair gave the higher value the ceiling + the lower the floor by ANY
+# margin, so a +0.02% product got a decisive lead. The relative-gap tolerance
+# makes the dim reflect the SIZE of the gap: gaps within the tolerance read as a
+# ~tie (band midpoint); beyond it the lead opens scaled by the EXCESS gap
+# ((gap−tol)/(1−tol)), smoothly (no cliff at the tolerance). Sweep-tunable via
+# WINNER_DIM_GAP_TOLERANCE (deterministic post-data → offline-sweepable).
+_DEFAULT_DIM_GAP_TOLERANCE = 0.08  # 8% relative gap ≈ tie
+
+
+def _dim_gap_tolerance() -> float:
+    import os
+    raw = os.environ.get("WINNER_DIM_GAP_TOLERANCE")
+    if raw is None:
+        return _DEFAULT_DIM_GAP_TOLERANCE
+    try:
+        v = float(raw)
+        return min(0.95, max(0.0, v))
+    except (TypeError, ValueError):
+        return _DEFAULT_DIM_GAP_TOLERANCE
+
+
+def _magnitude_aware_ratio(current: float, lo: float, hi: float, higher_better: bool) -> float:
+    """Return the 0..1 position of `current` between lo/hi AFTER applying the
+    relative-gap tolerance: when the relative gap |hi−lo|/hi is within the
+    tolerance, BOTH map to 0.5 (a tie at the band midpoint); beyond it, the
+    effective ratio is scaled by how far past the tolerance the gap reaches so a
+    small-but-real gap barely opens and a large gap opens fully. hi > lo assumed
+    (caller handles hi==lo). Direction handled by `higher_better`."""
+    span = hi - lo
+    if span <= 0:
+        return 0.5
+    # S3 L3 v2 [gate finding C] — the relative-gap scale is the LARGER-magnitude
+    # endpoint, max(|hi|, |lo|), NOT |hi|. With negative values |hi| can be the
+    # SMALLER magnitude (e.g. lo=-100, hi=-10 → |hi|=10 ≪ |lo|=100), so dividing
+    # by |hi| under-reported the scale and INFLATED rel_gap → a modest gap read
+    # as decisive (the very noise→decisive failure A1 set out to kill). max(|.|)
+    # is sign-agnostic and never smaller than |hi|, so positive-only pairs are
+    # unchanged (hi is already the larger |.| there). Falls back to span only if
+    # both endpoints are exactly 0 (span would be 0 → already returned above).
+    denom = max(abs(hi), abs(lo))
+    rel_gap = span / denom if denom > 0 else 1.0
+    tol = _dim_gap_tolerance()
+    if rel_gap <= tol:
+        return 0.5  # within tolerance → genuine tie at the band midpoint
+    # Excess factor in (0, 1]: how decisively the gap exceeds the tolerance.
+    excess = (rel_gap - tol) / (1.0 - tol) if tol < 1.0 else 1.0
+    excess = min(1.0, max(0.0, excess))
+    # Position of `current` within [lo, hi] (0 at lo, 1 at hi).
+    pos = (current - lo) / span
+    if not higher_better:
+        pos = 1.0 - pos
+    # Pull `pos` toward the 0.5 midpoint by (1 - excess): a marginal gap keeps
+    # both near 0.5; a decisive gap lets pos reach its extreme.
+    return 0.5 + (pos - 0.5) * excess
+
+
 # Bundle C § 2a flag — when ON, missing signals propagate as None instead
 # of being injected with MISSING_SCORE=50. Cached at process init,
 # mirroring _DEBUG_STAGE_TIMINGS pattern in structured_comparison_service.
@@ -423,15 +529,23 @@ TIER_EXPECTATIONS = {
 # the 'quality' row. Used only inside _compute_value_score and never
 # exposed in API responses (critical rule #2: no internals in user-facing
 # diagnostic reveals).
+#
+# S3 L3 v2 (b) lever 1 — VALUE = VALUE-FOR-MONEY. The default coefficients
+# shifted spec 0.60/price 0.40 → 0.70/0.30 so "what you get" dominates "how
+# cheap": a marginally-cheaper product with equal specs no longer wins the value
+# dim on price alone (the S2-pinned cheaper-bias root cause — gold rewards the
+# pricier product 64% of priced rows). The explicit `price` priority still
+# leans price-heavy (a price-first shopper genuinely wants cheap). Coefficients
+# never surface in API responses (critical rule #2).
 VALUE_FORMULA_BY_PRIORITY = {
-    "price":             {"spec": 0.40, "price": 0.60},
-    "quality":           {"spec": 0.70, "price": 0.30},
-    "durability":        {"spec": 0.65, "price": 0.35},
-    "latest_features":   {"spec": 0.65, "price": 0.35},
-    "brand_reputation":  {"spec": 0.65, "price": 0.35},
-    "eco_friendly":      {"spec": 0.55, "price": 0.45},
-    "ease_of_use":       {"spec": 0.55, "price": 0.45},
-    "_default":          {"spec": 0.60, "price": 0.40},
+    "price":             {"spec": 0.45, "price": 0.55},
+    "quality":           {"spec": 0.75, "price": 0.25},
+    "durability":        {"spec": 0.70, "price": 0.30},
+    "latest_features":   {"spec": 0.70, "price": 0.30},
+    "brand_reputation":  {"spec": 0.70, "price": 0.30},
+    "eco_friendly":      {"spec": 0.60, "price": 0.40},
+    "ease_of_use":       {"spec": 0.60, "price": 0.40},
+    "_default":          {"spec": 0.70, "price": 0.30},
 }
 
 
@@ -525,6 +639,175 @@ def _product_source_method(p: Dict[str, Any]) -> str:
     if not isinstance(price, dict):
         return "estimated"
     return price.get("source_method") or "estimated"
+
+
+# ---------------------------------------------------------------------------
+# S3 L3 v2 — PRICE-AUTHORITY AS A SCORE FACTOR (Ahmed pivot 2026-06-13).
+# "Facts beat estimates" lives IN the genuine overall score, not a winner_index
+# flip. A real Bahrain price (source_method in _PRICE_TRUST_SET) is the product's
+# HONEST score → no penalty. An `estimated` price is the UNCERTAIN score → a
+# modest penalty (display-honest shape: discount the estimate, don't inflate the
+# real). `converted_usd` is a real converted figure but not local data → a
+# SMALLER penalty. The penalty is applied to each product's `overall` BEFORE the
+# argmax, so the winner emerges from the score + the effect is visible +
+# consistent everywhere (rings/verdict/share/eval all argmax the same overall).
+#
+# MAGNITUDE: WINNER_PRICE_AUTHORITY_POINTS (the estimate penalty, on the 0-100
+# overall scale). Sized SMALLER than a decisive real-signal lead so a clearly-
+# better estimated product still wins; only genuine close calls tip to facts.
+# Tunable post-measurement via the env (offline sweep over captured bodies).
+# ---------------------------------------------------------------------------
+
+_DEFAULT_PRICE_AUTHORITY_POINTS = 4.0
+_CONVERTED_USD_PENALTY_RATIO = 0.5  # converted_usd penalty = ratio * estimate penalty
+
+
+def _price_authority_points() -> float:
+    import os
+    raw = os.environ.get("WINNER_PRICE_AUTHORITY_POINTS")
+    if raw is None:
+        return _DEFAULT_PRICE_AUTHORITY_POINTS
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return _DEFAULT_PRICE_AUTHORITY_POINTS
+
+
+def _price_authority_delta(product: Dict[str, Any]) -> float:
+    """Return the additive authority adjustment (<= 0) for a product's `overall`,
+    keyed on price provenance. Real BH price → 0 (honest score stands);
+    `estimated` → −points; `converted_usd` → −(ratio*points) (real figure, not
+    local). All other non-trust methods treated as estimate-grade."""
+    method = _product_source_method(product)
+    if method in _PRICE_TRUST_SET:
+        return 0.0
+    pts = _price_authority_points()
+    if method == "converted_usd":
+        return -pts * _CONVERTED_USD_PENALTY_RATIO
+    return -pts
+
+
+# S3 L3 v2 (b) lever 2 — value-dim WEIGHT reduction hatch. The value dim rewards
+# cheapness (S2 root cause); WINNER_VALUE_WEIGHT_SCALE (default 1.0 = no change)
+# scales the value-type dim's category weight, redistributing the freed weight
+# proportionally across the non-value dims so genuine quality drives the pick.
+# Deterministic post-data → offline-sweepable. The FINAL default lands by
+# Ahmed's sign-off on the measured sweep.
+def _value_weight_scale() -> float:
+    import os
+    raw = os.environ.get("WINNER_VALUE_WEIGHT_SCALE")
+    if raw is None:
+        return 1.0
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _scale_value_weight(weights: Dict[str, float], category: str) -> Dict[str, float]:
+    """Scale the value-type dim's weight by WINNER_VALUE_WEIGHT_SCALE, redistribute
+    the freed weight proportionally across the non-value dims, renormalize. No-op
+    at scale 1.0. The value-type dim(s) are identified via _DIMENSION_SIGNAL_MAP."""
+    scale = _value_weight_scale()
+    if scale == 1.0:
+        return weights
+    dim_map = ScoringService._DIMENSION_SIGNAL_MAP.get(
+        category, ScoringService._DIMENSION_SIGNAL_MAP["other"]
+    )
+    value_dims = {d for d, sig in dim_map.items() if sig == "value" and d in weights}
+    if not value_dims:
+        return weights
+    out = dict(weights)
+    freed = 0.0
+    for d in value_dims:
+        new_w = out[d] * scale
+        freed += out[d] - new_w
+        out[d] = new_w
+    # Redistribute the freed weight proportionally across the non-value dims.
+    non_value = {d: w for d, w in out.items() if d not in value_dims}
+    nv_total = sum(non_value.values())
+    if nv_total > 0 and freed > 0:
+        for d in non_value:
+            out[d] += freed * (non_value[d] / nv_total)
+    total = sum(out.values())
+    if total > 0:
+        out = {k: v / total for k, v in out.items()}
+    return out
+
+
+# ---------------------------------------------------------------------------
+# S3 L3 v2 — build_winner_evidence: qualitative reasons describing the GENUINE
+# winner (the plain argmax of the authority-adjusted overall). NO winner_index
+# flip, NO coefficients/caps/percentages (no_backend_internals_in_reveals).
+# Reasons drawn from: real Bahrain price provenance, stronger review signal, and
+# spec-lead — whichever genuinely favour the winner. Empty list when nothing
+# clearly distinguishes the winner (close calls keep quiet rather than fabricate).
+# ---------------------------------------------------------------------------
+
+
+def _has_real_price(p: Dict[str, Any]) -> bool:
+    """True iff the product carries a real (non-estimated) Bahrain-relevant
+    price. `_PRICE_TRUST_SET` is the authoritative 'real data' set; everything
+    else (`estimated`, `converted_usd`) is NOT a real local price."""
+    return _product_source_method(p) in _PRICE_TRUST_SET
+
+
+def _product_name_for_evidence(p: Dict[str, Any]) -> str:
+    name = (f"{p.get('brand', '')} {p.get('name', '')}".strip()
+            or (p.get('name') or '').strip())
+    return name or "the winning option"
+
+
+def _safe_rating_val(p: Dict[str, Any]) -> Optional[float]:
+    r = p.get("rating")
+    try:
+        return float(r) if isinstance(r, (int, float)) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def build_winner_evidence(
+    products_data: List[Dict[str, Any]],
+    result_products: Dict[str, Any],
+    winner_index: int,
+    category: str,
+) -> List[str]:
+    """S3 L3 v2 — qualitative reasons backing the GENUINE winner. Reasons only
+    (no numbers/coefficients/caps). Returns up to 2 reasons covering: real
+    Bahrain price (when the winner has one and the runner-up does not), stronger
+    reviews (clearly higher rating), and a clear overall lead. Empty when the
+    winner doesn't clearly distinguish on these axes (avoids fabricated reasons
+    on a genuine coin-flip)."""
+    if len(products_data) != 2:
+        return []
+    win = products_data[winner_index]
+    run = products_data[1 - winner_index]
+    reasons: List[str] = []
+
+    # Price provenance — winner has a real BH price, runner-up an estimate.
+    if _has_real_price(win) and not _has_real_price(run):
+        reasons.append("has a confirmed Bahrain price while the other relies on an indicative figure")
+
+    # Review strength — winner clearly higher rated.
+    rw, rr = _safe_rating_val(win), _safe_rating_val(run)
+    if rw is not None and rr is not None and rw - rr >= 0.3:
+        reasons.append("draws stronger reviewer ratings")
+
+    # Overall lead — only as a fallback reason when no concrete axis fired but
+    # the winner has a clear score margin (keeps a reason for a genuine lead).
+    if not reasons:
+        ow = result_products.get(f"product_{winner_index}", {}).get("overall")
+        orun = result_products.get(f"product_{1 - winner_index}", {}).get("overall")
+        try:
+            if ow is not None and orun is not None and float(ow) - float(orun) >= 6.0:
+                reasons.append("leads on the overall picture")
+        except (TypeError, ValueError):
+            pass
+
+    if not reasons:
+        return []
+    name = _product_name_for_evidence(win)
+    return [f"{name} {r}" for r in reasons[:2]]
 
 
 def _product_fact_check_pcts(p: Dict[str, Any]) -> tuple[int, int]:
@@ -658,6 +941,8 @@ def _compute_value_score(
     *,
     price_tier: str = "mid",
     is_cross_tier: bool = False,
+    spec_missing: bool | None = None,
+    price_missing: bool | None = None,
 ) -> float:
     """Bundle C § 4a — module-level value-formula entry point. Resolves
     priority-driven coefficients from VALUE_FORMULA_BY_PRIORITY and combines
@@ -667,7 +952,15 @@ def _compute_value_score(
 
     `priorities` is the user's ordered priority list (e.g. ['price','durability']).
     Backwards-compat: the ScoringService._compute_value_score method below
-    delegates here, passing the preferences it received via _normalize_scores."""
+    delegates here, passing the preferences it received via _normalize_scores.
+
+    S3 L3 v2 [gate re-review — B value-score site] `spec_missing`/`price_missing`
+    are the AUTHORITATIVE per-signal missing flags (`_spec_missing`/`_price_missing`
+    from _compute_raw_scores). When provided, missingness is read from THEM, not
+    `== MISSING_SCORE` value-equality — a real spec/price that normalizes to
+    EXACTLY 50.0 (== the sentinel) is a genuine middling score and must BLEND, not
+    drop a real contribution. Default None → legacy `== MISSING_SCORE` fallback so
+    the many scalar-only callers (and their tests) keep their sentinel semantics."""
     # Sparse-signal fallbacks (mirror legacy method semantics — MISSING_SCORE
     # behavior preserved for legacy callers; flag-on None propagation handled
     # by upstream A.4.9 dim omission).
@@ -677,11 +970,14 @@ def _compute_value_score(
         return price_score
     if price_score is None:
         return spec_score
-    if spec_score == MISSING_SCORE and price_score == MISSING_SCORE:
+    # Authoritative when flags are supplied; else legacy value-equality.
+    spec_gone = spec_missing if spec_missing is not None else (spec_score == MISSING_SCORE)
+    price_gone = price_missing if price_missing is not None else (price_score == MISSING_SCORE)
+    if spec_gone and price_gone:
         return MISSING_SCORE
-    if spec_score == MISSING_SCORE:
+    if spec_gone:
         return price_score
-    if price_score == MISSING_SCORE:
+    if price_gone:
         return spec_score
 
     if is_cross_tier:
@@ -745,8 +1041,15 @@ class ScoringService:
         preferences: Optional[Dict[str, Any]] = None,
         behavior_profile: Optional[Dict[str, Any]] = None,
         session_signals: Optional[Dict[str, Any]] = None,
+        cohort_profile: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Compute scores for a list of products using category-specific dimensions."""
+        """Compute scores for a list of products using category-specific dimensions.
+
+        S3 L3 v2 (c): `cohort_profile` (the cohort-seeded preferences shape
+        {priorities, ...}) nudges the dimension weights toward the cohort's
+        inferred priorities (±10% cap), applied ONLY when no EXPLICIT preferences
+        are supplied — explicit prefs are the stronger ±30% signal and win.
+        """
         if not products_data or len(products_data) < 2:
             return self._empty_result(len(products_data))
 
@@ -754,6 +1057,14 @@ class ScoringService:
         if category not in CATEGORY_DIMENSIONS:
             category = "other"
         weights = self._compute_weights(preferences, category)
+
+        # S3 L3 v2 (c) — cohort priors into the score weights, ONLY when the user
+        # has no explicit preferences (cohort is the weak inferred default).
+        cohort_applied = False
+        if not preferences and cohort_profile and cohort_profile.get("priorities"):
+            new_weights = self.apply_cohort_adjustments(weights, cohort_profile, category)
+            cohort_applied = new_weights != weights
+            weights = new_weights
 
         # Apply behavioral and session adjustments (layered on top of explicit preferences)
         if behavior_profile:
@@ -794,15 +1105,51 @@ class ScoringService:
                 "missing_data": missing_dims if missing_dims else None,
             }
 
-        # Determine winner
+        # S3 L3 v2 — PRICE-AUTHORITY AS A SCORE FACTOR (Ahmed pivot 2026-06-13).
+        # "Facts beat estimates" now lives IN the genuine `overall` score, NOT a
+        # winner_index flip. Apply the per-product authority delta (estimate /
+        # converted_usd penalty; real BH price unpenalized) to `overall` BEFORE
+        # the argmax. v1's A2 value-neutralization + estimate-demotion + tie-break
+        # index-overrides are DROPPED — the winner is now the plain argmax of the
+        # genuine score, which the frontend's argmax(scoring_v2.overall_score)
+        # matches automatically (ResultsScreen.tsx) — zero FE change.
+        if len(products_data) == 2:
+            n_dims = len(dims)
+            for i in range(len(products_data)):
+                pk = f"product_{i}"
+                # Guard: don't penalize an all-MISSING product — its `overall`
+                # is the MISSING-driven sentinel, not a genuine score, and the
+                # orchestrator returns INSUFFICIENT_DATA for the both-missing
+                # case anyway. Penalizing it would break the MISSING invariant.
+                md = result_products[pk].get("missing_data")
+                if md and len(md) >= n_dims:
+                    continue
+                delta = _price_authority_delta(products_data[i])
+                if delta:
+                    adjusted = round(max(0.0, min(100.0, result_products[pk]["overall"] + delta)), 1)
+                    result_products[pk]["overall"] = adjusted
+
+        # Determine winner — plain argmax of the genuine (authority-adjusted)
+        # overall. No flip overrides anywhere.
         overalls = [result_products[f"product_{i}"]["overall"] for i in range(len(products_data))]
         winner_index = overalls.index(max(overalls))
         win_margin = round(abs(overalls[0] - overalls[1]), 1) if len(overalls) >= 2 else 0
+
+        # S3 L3 v2 — qualitative winner_evidence describing the GENUINE winner
+        # (price provenance + signal strength). Reasons only, no coefficients/
+        # caps/percentages (no_backend_internals_in_reveals).
+        winner_evidence: List[str] = []
+        if len(products_data) == 2:
+            winner_evidence = build_winner_evidence(
+                products_data, result_products, winner_index, category,
+            )
 
         if behavior_profile or session_signals:
             scoring_method = "behavioral"
         elif preferences:
             scoring_method = "personalized"
+        elif cohort_applied:
+            scoring_method = "cohort"
         else:
             scoring_method = "category_weighted"
 
@@ -820,7 +1167,7 @@ class ScoringService:
         result_so_far = {"scores": result_products}
         dimension_winners = self.compute_dimension_winners(result_so_far, product_names, category)
 
-        return {
+        result = {
             "scores": result_products,
             "winner_index": winner_index,
             "win_margin": win_margin,
@@ -829,7 +1176,11 @@ class ScoringService:
             "is_cross_tier": is_cross_tier,
             "dimension_winners": dimension_winners,
             "category_weights": dict(CATEGORY_DIMENSION_WEIGHTS.get(category, CATEGORY_DIMENSION_WEIGHTS["other"])),
+            # S3 L3 v2 — qualitative reasons describing the GENUINE winner
+            # (price provenance + signal strength). Surfaced in scoring_v2 by L3.4.
+            "winner_evidence": winner_evidence,
         }
+        return result
 
     def _compute_weights(self, preferences: Optional[Dict[str, Any]], category: str = "other") -> Dict[str, float]:
         """Compute scoring weights from category defaults + user preferences."""
@@ -839,7 +1190,8 @@ class ScoringService:
         weights = dict(base_weights)
 
         if not preferences:
-            return weights
+            # S3 L3 v2 (b) lever 2 — apply the value-weight scale on the anon path too.
+            return _scale_value_weight(weights, category)
 
         # Apply category-specific priority adjustments (stack for multiple priorities)
         cat_priority_adj = CATEGORY_PRIORITY_ADJUSTMENTS.get(category, {})
@@ -872,7 +1224,8 @@ class ScoringService:
             n = len(weights)
             weights = {k: 1.0 / n for k in weights}
 
-        return weights
+        # S3 L3 v2 (b) lever 2 — apply the value-weight scale (hatched, default no-op).
+        return _scale_value_weight(weights, category)
 
     @staticmethod
     def _detect_price_tier(price_bhd: float, category: str = "other", *, comparison_prices=None) -> str:
@@ -1257,16 +1610,27 @@ class ScoringService:
             for rs in raw_scores:
                 rs["_spec_missing"] = True
 
-        # Compute spec_secondary: blended spec and review for variety
+        # Compute spec_secondary: blended spec and review for variety.
+        # S3 L3 v2 [gate finding B — THIRD site] — gate missingness on the
+        # EXPLICIT per-product `_spec_missing` / `_review_missing` flags, NOT
+        # `== MISSING_SCORE` value-equality. A genuine 2.5★ rating normalizes
+        # to EXACTLY 50.0 (== the sentinel) via _normalize_review's
+        # `(rating-1)/4*80+20` band — value-equality dropped it as absent so the
+        # spec_secondary dim fell back to spec-only (review contribution lost)
+        # AND would later be mis-flagged missing. The flags are set whenever the
+        # underlying raw signal is None (the only true missing path) plus the
+        # array-collapse guards above, so they are the source of truth.
         spec_secondary_scores = []
         for i in range(len(raw_scores)):
             s = spec_scores[i]
             r = review_scores[i]
-            if s == MISSING_SCORE and r == MISSING_SCORE:
+            s_missing = bool(raw_scores[i].get("_spec_missing"))
+            r_missing = bool(raw_scores[i].get("_review_missing"))
+            if s_missing and r_missing:
                 spec_secondary_scores.append(MISSING_SCORE)
-            elif s == MISSING_SCORE:
+            elif s_missing:
                 spec_secondary_scores.append(r)
-            elif r == MISSING_SCORE:
+            elif r_missing:
                 spec_secondary_scores.append(s)
             else:
                 spec_secondary_scores.append(round(s * 0.6 + r * 0.4, 1))
@@ -1277,10 +1641,17 @@ class ScoringService:
         # back to the legacy default (0.60 spec / 0.40 price) → identical
         # output to pre-A.6.1 behavior.
         priorities = (preferences or {}).get("priorities") if preferences else None
+        # S3 L3 v2 [gate re-review — B value-score site] thread the authoritative
+        # per-product `_spec_missing`/`_price_missing` flags so a real spec/price
+        # that normalizes to EXACTLY 50.0 (== MISSING_SCORE) is BLENDED, not
+        # dropped as a phantom gap. The flags reflect the array-collapse guards
+        # above (spec) + the raw-None paths in _compute_raw_scores (spec/price).
         value_scores = [
             self._compute_value_score(
                 spec_scores[i], price_scores[i], price_tiers[i],
                 is_cross_tier_flag, priorities=priorities,
+                spec_missing=bool(raw_scores[i].get("_spec_missing")),
+                price_missing=bool(raw_scores[i].get("_price_missing")),
             )
             for i in range(len(raw_scores))
         ]
@@ -1306,8 +1677,17 @@ class ScoringService:
                 signal = dim_signal_map.get(dim, "spec")
                 scores[dim] = signal_arrays[signal][i]
 
-                # Mark missing data flag for tracking
-                if scores[dim] == MISSING_SCORE:
+                # S3 L3 v2 [gate finding B] — mark the dim missing from the
+                # SOURCE-SIGNAL missing flags, NOT `== MISSING_SCORE` value-
+                # equality. A legitimately computed 50.0 (rating 2.5★ →
+                # _normalize_review=50.0; reliability/popularity 0.5 →
+                # _normalize_direct=50.0) is a REAL score, not the sentinel —
+                # value-equality flagged it missing → the dim got SUPPRESSED in
+                # build_dimensions_v2 while the ratings were on screen. The
+                # per-signal `_<sig>_missing` flags (set during signal
+                # normalization + the array-collapse guards) are the source of
+                # truth for missingness.
+                if _signal_missing_for(raw_scores[i], signal):
                     raw_scores[i][f"_{dim}_missing"] = True
 
             normalized.append(scores)
@@ -1386,14 +1766,28 @@ class ScoringService:
             )
             if max_val == 0 or both_sides_flagged_missing:
                 return MISSING_SCORE
-            return 70.0
+            # S3 A1 — genuine non-missing tie returns the band midpoint (65
+            # dampened / 70 legacy), NOT a manufactured extreme.
+            return (
+                _DIM_NORM_TIE_LEGACY if _dim_norm_dampening_disabled()
+                else _DIM_NORM_TIE_DAMPENED
+            )
 
-        if higher_better:
-            ratio = (current - min_val) / (max_val - min_val)
-        else:
-            ratio = (max_val - current) / (max_val - min_val)
+        # Legacy hatch path: raw direction-only ratio + 30–100 spread (no
+        # dampening, no magnitude-awareness — full legacy behavior).
+        if _dim_norm_dampening_disabled():
+            if higher_better:
+                ratio = (current - min_val) / (max_val - min_val)
+            else:
+                ratio = (max_val - current) / (max_val - min_val)
+            return round(_DIM_NORM_FLOOR_LEGACY + ratio * _DIM_NORM_SPAN_LEGACY, 1)
 
-        return round(30 + ratio * 70, 1)
+        # S3 L3 v2 — MAGNITUDE-AWARE ratio (lever 2) into the dampened 45–85 band
+        # (lever 1). A tiny relative gap → ~0.5 (tie at the 65 midpoint); a real
+        # gap opens scaled by the excess past the tolerance. Kills the "+0.02%
+        # product gets a 40pt lead" noise while keeping genuine leads.
+        ratio = _magnitude_aware_ratio(current, min_val, max_val, higher_better)
+        return round(_DIM_NORM_FLOOR_DAMPENED + ratio * _DIM_NORM_SPAN_DAMPENED, 1)
 
     def _normalize_review(self, raw_scores: List[Dict], idx: int) -> float:
         """Normalize review score: rating/5 * 100."""
@@ -1418,16 +1812,23 @@ class ScoringService:
         price_tier: str,
         is_cross_tier: bool,
         priorities=None,
+        *,
+        spec_missing: bool | None = None,
+        price_missing: bool | None = None,
     ) -> float:
         """Bundle C § 4a — delegate to module-level _compute_value_score so
         priority-driven coefficients (VALUE_FORMULA_BY_PRIORITY) replace the
         legacy hard-coded 0.6/0.4 split. Backwards-compat: priorities=None
         falls back to the default coefficients identical to the legacy
         formula, so all existing tests that don't pass priorities still
-        produce the same number."""
+        produce the same number.
+
+        S3 L3 v2 [gate re-review] forwards the authoritative `_spec_missing`/
+        `_price_missing` flags (default None → legacy `== MISSING_SCORE`)."""
         return _compute_value_score(
             spec_score, price_score, priorities=priorities,
             price_tier=price_tier, is_cross_tier=is_cross_tier,
+            spec_missing=spec_missing, price_missing=price_missing,
         )
 
     def _empty_result(self, count: int) -> Dict[str, Any]:
@@ -1467,13 +1868,28 @@ class ScoringService:
         if b0 and not any(d in b0 for d in dims):
             dims = list(b0.keys())
 
+        # S3 L3 v2 (d) — determine missingness from the EXPLICIT missing_data
+        # lists, NOT by `== MISSING_SCORE` value-equality. A legitimately computed
+        # 50.0 (rating 2.5★ → 50.0; reliability/popularity 0.5 → 50.0) must count
+        # as a REAL score, not be dropped as "missing". A dim is missing for a
+        # product only when it's absent from the breakdown OR listed in that
+        # product's missing_data.
+        md0 = set(scores.get("product_0", {}).get("missing_data") or [])
+        md1 = set(scores.get("product_1", {}).get("missing_data") or [])
+
         winners = {}
         for dim in dims:
+            missing0 = dim not in b0 or dim in md0
+            missing1 = dim not in b1 or dim in md1
             s0 = b0.get(dim, MISSING_SCORE)
             s1 = b1.get(dim, MISSING_SCORE)
 
-            if s0 == MISSING_SCORE and s1 == MISSING_SCORE:
+            if missing0 and missing1:
                 winners[dim] = {"winner": "N/A", "margin": None}
+            elif missing0:
+                winners[dim] = {"winner": product_names[1], "margin": None}
+            elif missing1:
+                winners[dim] = {"winner": product_names[0], "margin": None}
             elif abs(s0 - s1) < 3.0:
                 winners[dim] = {"winner": "tie", "margin": round(abs(s0 - s1), 1)}
             elif s0 > s1:
@@ -1626,6 +2042,37 @@ class ScoringService:
         for dim in weights:
             if dim in sensitivity:
                 deltas[dim] = (sensitivity[dim] - avg_sensitivity) * weights[dim]
+
+        return self._apply_capped_adjustments(weights, deltas, original, MAX_BEHAVIORAL_SHIFT_RATIO)
+
+    def apply_cohort_adjustments(
+        self,
+        weights: Dict[str, float],
+        cohort_profile: Optional[Dict[str, Any]],
+        category: str = "other",
+    ) -> Dict[str, float]:
+        """S3 L3 v2 (c) — nudge the dimension weights toward the COHORT's inferred
+        priorities, capped at ±10% of each dim's category weight (like behavioral
+        — an inferred signal is weaker than an explicit ±30% preference). Reuses
+        the CATEGORY_PRIORITY_ADJUSTMENTS mapping, scaled so the cohort nudge
+        fits inside the ±10% cap (the priority deltas are sized for ±30%).
+        No-op when cohort_profile is empty or has no priorities."""
+        if not cohort_profile:
+            return weights
+        priorities = cohort_profile.get("priorities") or []
+        if not priorities:
+            return weights
+
+        cat_priority_adj = CATEGORY_PRIORITY_ADJUSTMENTS.get(category, {})
+        # Priority deltas are tuned for the ±30% explicit cap; scale to ±10% so
+        # the inferred cohort signal lands within the behavioral band.
+        scale = MAX_BEHAVIORAL_SHIFT_RATIO / MAX_WEIGHT_SHIFT_RATIO  # 0.10/0.30
+        original = dict(weights)
+        deltas: Dict[str, float] = {}
+        for priority in priorities:
+            for dim, delta in cat_priority_adj.get(priority, {}).items():
+                if dim in weights:
+                    deltas[dim] = deltas.get(dim, 0.0) + delta * scale
 
         return self._apply_capped_adjustments(weights, deltas, original, MAX_BEHAVIORAL_SHIFT_RATIO)
 
@@ -1848,12 +2295,15 @@ def _dim_winner(
     """
     if score_a is None or score_b is None:
         return None
-    # S2 I3.5 — any side's data missing → no winner. Catches the asymmetric
-    # one-sided case Decision B targets (the both-missing case was already
-    # suppressed by the MISSING_SCORE-sentinel check below + upstream omission).
+    # S2 I3.5 — any side's data missing → no winner. Catches BOTH the asymmetric
+    # one-sided case Decision B targets AND the both-missing case (both flags
+    # set), now that `was_missing_a/b` are authoritatively plumbed. (S3 L3 v2
+    # gate re-review: dropped the redundant `score_a==MISSING_SCORE and
+    # score_b==MISSING_SCORE` value-equality check that used to live here — it
+    # only fired on a genuine real-50/50 tie, which the tie-margin check below
+    # already returns None for, and the sentinel-sniff was the very collision
+    # this pass eliminates.)
     if was_missing_a or was_missing_b:
-        return None
-    if score_a in (MISSING_SCORE,) and score_b in (MISSING_SCORE,):
         return None
     if confidence == "low":
         return None
@@ -2147,15 +2597,38 @@ def _dim_from_category_lookup(
     if score_b is None:
         score_b = b_score_dict.get(dim_key)
 
-    # Both missing → silent omission per § 2h
-    if score_a in (None, MISSING_SCORE) and score_b in (None, MISSING_SCORE):
-        return None
+    # S3 L3 v2 [gate finding B — SECOND site] — determine missingness from the
+    # EXPLICIT per-product `missing_data` list (the producer's source of truth)
+    # + a genuinely-absent breakdown value (score is None), NEVER `==
+    # MISSING_SCORE` value-equality. A legitimately computed 50.0 (rating 2.5★ →
+    # _normalize_review=50.0; reliability/popularity 0.5 → _normalize_direct=
+    # 50.0) is a REAL score — value-equality flagged it 'was missing' so
+    # build_dimensions_v2's one-sided-missing suppression (Decision B) hid its
+    # winner while the rating was on screen. `dim_key` here is the full
+    # CATEGORY_DIMENSIONS key (with `_score` suffix), exactly the form stored in
+    # missing_data (see compute_scores: `missing_dims = [dim for dim in dims ...]`).
+    #
+    # Legacy/synthetic shape (no `missing_data` key at all) predates the list and
+    # still uses the sentinel VALUE as the gap marker — distinguish "key present
+    # & None" (real: no gaps) from "key absent" (legacy) via the _ABSENT sentinel
+    # so the real no-gap path never falls back to value-equality. Mirror the
+    # reconciliation in count_missing_dim_cells.
+    _ABSENT = object()
 
-    # S2 I3.5 — per-side missing markers so build_dimensions_v2 can suppress
-    # the winner when EXACTLY ONE side is a data gap (Decision B). At this
-    # point at most one side is missing (both-missing already returned None).
-    was_missing_a = score_a in (None, MISSING_SCORE)
-    was_missing_b = score_b in (None, MISSING_SCORE)
+    def _was_missing(score, score_dict) -> bool:
+        if score is None:
+            return True  # genuinely absent from the breakdown
+        md = score_dict.get("missing_data", _ABSENT)
+        if md is not _ABSENT:
+            return dim_key in (md or ())  # authoritative real shape
+        return score == MISSING_SCORE  # legacy/synthetic fallback
+
+    was_missing_a = _was_missing(score_a, a_score_dict)
+    was_missing_b = _was_missing(score_b, b_score_dict)
+
+    # Both missing → silent omission per § 2h
+    if was_missing_a and was_missing_b:
+        return None
 
     label = _DIMENSION_LABELS.get(dim_key, dim_key.replace("_score", "").replace("_", " ").title())
     # L1.3: emit user-friendly key without the `_score` suffix
@@ -2189,7 +2662,10 @@ def _compose_delta_text(
     no `estimated` leakage). Strings are short + presentational so the
     bar-chart caption stays readable on narrow phones.
     """
-    if score_a in (None, MISSING_SCORE) or score_b in (None, MISSING_SCORE):
+    # S3 L3 v2 [gate finding B] — bail only on a genuinely-absent value (None),
+    # NOT on a real computed 50.0 (== MISSING_SCORE value-equality would blank
+    # the caption for an honest middling score).
+    if score_a is None or score_b is None:
         return ""
     try:
         margin = abs(float(score_a) - float(score_b))
@@ -2518,11 +2994,40 @@ def count_missing_dim_cells(
     if b0 and not any(d in b0 for d in dims):
         dims = list(b0.keys())
 
+    # S3 L3 v2 [gate finding B — FOURTH site] — when the product carries an
+    # explicit `missing_data` list (the real compute_scores shape), it is the
+    # AUTHORITATIVE gap source. A breakdown value of EXACTLY 50.0 that is NOT in
+    # missing_data is a genuine score (2.5★ review → _normalize_review=50.0; 0.5
+    # reliability/popularity → _normalize_direct=50.0), NOT a gap — counting it
+    # via `== MISSING_SCORE` value-equality INFLATED this very KPI dial that
+    # Ahmed reads for "no missing data, no false certainty". Fall back to
+    # value-equality + key-absence only for the legacy/synthetic shape that
+    # predates missing_data (preserves the existing synthetic-result contract).
+    # Distinguish "key present and None" (real shape: no gaps) from "key absent"
+    # (legacy/synthetic shape) via a sentinel default — they would both read as
+    # None otherwise and the real no-gap case would wrongly fall back to value-
+    # equality. In the real compute_scores shape `missing_data` is ALWAYS a key
+    # (a list, or None when no dim was missing); the legacy synthetic shape omits
+    # it entirely.
+    _ABSENT = object()
+    md0 = b0_dict.get("missing_data", _ABSENT)
+    md1 = b1_dict.get("missing_data", _ABSENT)
+
+    def _cell_missing(breakdown: dict, md, dim: str) -> bool:
+        if md is not _ABSENT:
+            # Authoritative (real shape, md is a list or None): flagged missing,
+            # OR genuinely absent from the breakdown. A present 50.0 not in the
+            # list is a REAL score, never a gap.
+            md_set = md or ()
+            return (dim in md_set) or (dim not in breakdown)
+        # Legacy/synthetic (no missing_data key): the sentinel value / key-absence.
+        return breakdown.get(dim, MISSING_SCORE) == MISSING_SCORE
+
     count = 0
     for dim in dims:
-        if b0.get(dim, MISSING_SCORE) == MISSING_SCORE:
+        if _cell_missing(b0, md0, dim):
             count += 1
-        if b1.get(dim, MISSING_SCORE) == MISSING_SCORE:
+        if _cell_missing(b1, md1, dim):
             count += 1
 
     total = len(dims) * 2
