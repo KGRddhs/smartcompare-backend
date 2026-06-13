@@ -1745,13 +1745,28 @@ class ScoringService:
         if b0 and not any(d in b0 for d in dims):
             dims = list(b0.keys())
 
+        # S3 L3 v2 (d) — determine missingness from the EXPLICIT missing_data
+        # lists, NOT by `== MISSING_SCORE` value-equality. A legitimately computed
+        # 50.0 (rating 2.5★ → 50.0; reliability/popularity 0.5 → 50.0) must count
+        # as a REAL score, not be dropped as "missing". A dim is missing for a
+        # product only when it's absent from the breakdown OR listed in that
+        # product's missing_data.
+        md0 = set(scores.get("product_0", {}).get("missing_data") or [])
+        md1 = set(scores.get("product_1", {}).get("missing_data") or [])
+
         winners = {}
         for dim in dims:
+            missing0 = dim not in b0 or dim in md0
+            missing1 = dim not in b1 or dim in md1
             s0 = b0.get(dim, MISSING_SCORE)
             s1 = b1.get(dim, MISSING_SCORE)
 
-            if s0 == MISSING_SCORE and s1 == MISSING_SCORE:
+            if missing0 and missing1:
                 winners[dim] = {"winner": "N/A", "margin": None}
+            elif missing0:
+                winners[dim] = {"winner": product_names[1], "margin": None}
+            elif missing1:
+                winners[dim] = {"winner": product_names[0], "margin": None}
             elif abs(s0 - s1) < 3.0:
                 winners[dim] = {"winner": "tie", "margin": round(abs(s0 - s1), 1)}
             elif s0 > s1:
