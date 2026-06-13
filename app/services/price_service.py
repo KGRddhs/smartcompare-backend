@@ -892,6 +892,174 @@ async def fetch_page_price(
 
 
 # ============================================
+# Shopify direct-discovery (/products.json)
+# ============================================
+# L1.3 part 2 (Bundle B S3 'Sources'). Diagnostic
+# (L1_DIAGNOSTIC_bh_scrapeability.md): the major BH retailers are JS-SPAs whose
+# prices are NOT in static curl HTML — but Shopify-platform BH stores
+# (shopalmoayyed.com, bh.asgharali.com) expose a static `/products.json`
+# catalog with real BHD prices. Hitting it directly gives a real BH price with
+# ZERO Serper + ZERO render credits — the cleanest real-price lever for the
+# winner axis. Match the catalog client-side with the existing title helpers.
+
+# Shopify caps /products.json at 250/page; one page is plenty for the small BH
+# storefronts (≈30 products) and keeps the call cheap. Cache the catalog so a
+# 2-product comparison on the same store is a single fetch.
+SHOPIFY_PRODUCTS_PATH = "/products.json?limit=250"
+_SHOPIFY_CATALOG_TTL = 6 * 3600  # 6h — catalogs are stable intraday
+
+
+async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
+    """Fetch + JSON-parse `https://{domain}/products.json` via curl_cffi.
+
+    Returns the parsed dict (``{"products": [...]}``) or ``None`` on any
+    failure (non-Shopify store, non-200, non-JSON, network error). Cached in
+    Redis for 6h, keyed by domain — a comparison's two products on the same
+    store share one fetch. Graceful-None throughout (never raises)."""
+    domain = (domain or "").replace("www.", "").strip().lower()
+    if not domain:
+        return None
+
+    cache_key = f"shopify_catalog:{domain}"
+    cached = get_cached(cache_key)
+    if cached is not None:
+        return cached if isinstance(cached, dict) else None
+
+    url = f"https://{domain}{SHOPIFY_PRODUCTS_PATH}"
+    try:
+        from curl_cffi import requests as curl_requests
+        resp = await asyncio.to_thread(
+            lambda: curl_requests.get(
+                url, impersonate="chrome", timeout=PAGE_SCRAPE_TIMEOUT,
+                allow_redirects=True,
+            )
+        )
+    except Exception as e:  # noqa: BLE001 — discovery is best-effort
+        logger.info(f"[PRICE] Shopify catalog fetch failed for {domain}: {e}")
+        return None
+
+    if resp.status_code != 200:
+        logger.info(f"[PRICE] Shopify catalog HTTP {resp.status_code} for {domain}")
+        return None
+    try:
+        data = resp.json()
+    except Exception:
+        # Not a Shopify store (HTML, redirect to a storefront, etc.).
+        return None
+    if not isinstance(data, dict) or "products" not in data:
+        return None
+
+    set_cached(cache_key, data, _SHOPIFY_CATALOG_TTL)
+    return data
+
+
+def _match_shopify_product(
+    catalog: Optional[Dict[str, Any]],
+    product_name: str,
+    currency: str,
+    domain: str,
+) -> Optional[Dict[str, Any]]:
+    """Find the best title-matching product in a Shopify `/products.json`
+    catalog and return its price dict, or ``None``.
+
+    Matching reuses the price_service title helpers so it behaves exactly like
+    the Serper-Shopping path: significant numbers must match
+    (``numbers_match``), key words must all appear (``strict_title_match``),
+    and the word-overlap ratio gates weak matches (>= 0.4). The store currency
+    is taken as the caller's `currency` (these are BH-registry domains → BHD);
+    the per-variant price string carries no currency code.
+    """
+    if not isinstance(catalog, dict):
+        return None
+    products = catalog.get("products")
+    if not isinstance(products, list) or not products:
+        return None
+
+    domain = (domain or "").replace("www.", "").strip().lower()
+    p_words = normalize_words(product_name)
+    best: Optional[Dict[str, Any]] = None
+    best_score = 0.0
+
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        title = product.get("title") or ""
+        if not title:
+            continue
+
+        # Same gates as extract_price_from_shopping (counterfeit/accessory are
+        # not expected on a curated BH storefront but stay defensive).
+        if is_counterfeit_listing(title) or is_accessory(title):
+            continue
+        if not numbers_match(product_name, title):
+            continue
+        if not strict_title_match(product_name, title):
+            continue
+
+        t_words = normalize_words(title)
+        match_score = len(p_words & t_words) / len(p_words) if p_words else 0.0
+        if match_score < 0.4:
+            continue
+
+        variants = product.get("variants")
+        if not isinstance(variants, list) or not variants:
+            continue
+        variant = variants[0] if isinstance(variants[0], dict) else {}
+        amount = parse_price_string(str(variant.get("price", "")))
+        if amount is None or amount <= 0:
+            continue
+
+        if match_score > best_score:
+            handle = product.get("handle") or ""
+            url = (
+                f"https://{domain}/products/{handle}" if handle and domain
+                else f"https://{domain}/" if domain else ""
+            )
+            best = {
+                "amount": round(amount, 2),
+                "currency": currency,
+                "retailer": domain,
+                "url": url,
+                "in_stock": bool(variant.get("available", True)),
+                "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
+                "estimated": False,
+                "source_method": "shopify_json",
+                "title": title,
+                "match_score": round(match_score, 3),
+            }
+            best_score = match_score
+
+    return best
+
+
+async def fetch_shopify_price(
+    domain: str, product_name: str, currency: str = "BHD",
+) -> Optional[Dict[str, Any]]:
+    """Direct-discovery price for a Shopify-platform BH retailer.
+
+    Fetches the store's `/products.json`, matches `product_name`, and returns a
+    ``source_method="shopify_json"`` price dict (real BHD, no Serper/render) or
+    ``None``. L2 content-safety gated like the other Tier-1.5 entry points.
+    """
+    if not ENABLE_PAGE_SCRAPE:
+        return None
+    catalog = await _fetch_shopify_catalog(domain)
+    if not catalog:
+        return None
+    price = _match_shopify_product(catalog, product_name, currency, domain)
+    if not price:
+        return None
+
+    # L2 content safety — drop a candidate whose surface trips the blocklist.
+    from app.services.content_safety_service import get_content_safety_service
+    _surface = f"{price.get('title', '')} {price.get('retailer', '') or domain} {product_name}"
+    if not get_content_safety_service().is_text_safe(_surface):
+        logger.info("[content_safety] L2 dropped Shopify candidate for %s", domain)
+        return None
+    return price
+
+
+# ============================================
 # iHerb scraping
 # ============================================
 
