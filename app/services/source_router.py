@@ -37,6 +37,12 @@ class Source:
     # wasted) and INCLUDES it in the budget-gated Firecrawl/Scrape.do render-tier
     # escalation. The store is real + priced — just render-needed. Default False.
     is_render_only: bool = False
+    # S3 #21/#1 (2026-06-14) — storefront backed by a PUBLIC Algolia search index
+    # (6thStreet today). When True, the Tier-2 Algolia cascade (between the
+    # Shopify /products.json direct-fetch and the Serper site: discovery) queries
+    # the index DIRECTLY via algolia_service.fetch_algolia_price (free, $0, no
+    # Serper/render, genuine BHD). Default False → every legacy row unchanged.
+    is_algolia: bool = False
 
 
 SOURCE_REGISTRY: List[Source] = [
@@ -133,6 +139,15 @@ SOURCE_REGISTRY: List[Source] = [
     Source(
         "alhajisbahrain.com", "bahrain", ("fragrances",), 3.0, is_shopify=True
     ),  # Al Hajis BH (Shopify /products.json, designer fragrances, BHD)
+    # S3 #21/#1 — 6thStreet (Apparel Group), Magento+Algolia. The PUBLIC search
+    # index exposes genuine BHD via algolia_service.fetch_algolia_price (free,
+    # $0, no Serper/render). 1,200+ brands across fashion/fragrances/makeup/
+    # skincare/haircare. Tier-2 (after Shopify-json, before curl).
+    Source(
+        "en-bh.6thstreet.com", "bahrain",
+        ("fashion", "fragrances", "makeup", "skincare", "haircare"), 3.0,
+        is_algolia=True,
+    ),  # 6thStreet BH (Algolia index, BHD)
     Source(
         "jalilaperfumes.com", "bahrain", ("fragrances",), 3.0
     ),  # Jalila Perfumes BH (custom PHP, product pages + BHD)
@@ -315,6 +330,24 @@ def get_shopify_sources_for_category(category: str) -> List[Source]:
         s
         for s in SOURCE_REGISTRY
         if s.is_shopify
+        and s.tier == "bahrain"
+        and (not s.categories or category in s.categories)
+    ]
+
+
+def get_algolia_sources_for_category(category: str) -> List[Source]:
+    """S3 #21/#1 — Bahrain-tier Algolia-backed sources for `category`, in
+    registry order.
+
+    The Tier-2 cascade (between the Shopify /products.json direct-fetch and the
+    Serper site: discovery) iterates these to query the store's PUBLIC Algolia
+    index DIRECTLY via algolia_service.fetch_algolia_price (free, $0, no Serper/
+    render, genuine BHD). Returns a (possibly empty) list — never raises.
+    """
+    return [
+        s
+        for s in SOURCE_REGISTRY
+        if s.is_algolia
         and s.tier == "bahrain"
         and (not s.categories or category in s.categories)
     ]
