@@ -888,28 +888,114 @@ def extract_price_from_html(
         except (ValueError, TypeError):
             pass
 
-    # Priority 3: Microdata itemprop="price"
-    price_elem = soup.find(attrs={"itemprop": "price"})
-    if price_elem:
-        price_val = price_elem.get("content") or price_elem.get_text(strip=True)
-        try:
-            amount = float(price_val.replace(",", "").replace("$", "").replace("£", "").replace("€", ""))
-            if amount > 0:
-                currency_elem = soup.find(attrs={"itemprop": "priceCurrency"})
-                detected_currency = currency_elem.get("content", "USD") if currency_elem else "USD"
-                result = {
-                    "amount": amount, "original_currency": detected_currency,
-                    "currency": detected_currency, "retailer": domain, "url": url,
-                    "in_stock": True, "confidence": 0.8, "estimated": False,
-                    "source_method": "page_scrape",
-                }
-                if detected_currency.upper() != currency.upper():
-                    _convert_gpt_price_currency(result, currency)
-                return result
-        except (ValueError, TypeError):
-            pass
+    # Priority 3: Schema.org MICRODATA (itemprop=price + itemprop=priceCurrency).
+    # S3-genuine (gap-fill): bahrain.sharafdg.com PDPs are microdata-only (no
+    # JSON-LD), so this is the path that produces a genuine BH electronics price.
+    # CRITICAL — the page also carries an EPP INSTALLMENT itemprop=price
+    # ("BHD 48.332/month"); the old find-first grabbed THAT (wrong). The helper
+    # skips installment-context elements + reads the currency paired in the SAME
+    # Offer itemscope (not a page-global find), and normalizes lowercase "bhd".
+    micro = _extract_microdata_price(soup, currency, domain, url)
+    if micro:
+        return micro
 
     return None
+
+
+# S3-genuine — installment markers an itemprop=price might sit next to (the EPP
+# "BHD NN/month" widget). Used to skip a non-product-price microdata node.
+_INSTALLMENT_RE = re.compile(
+    r"/\s*month|per\s*month|/mo\b|monthly|installment|EPP|تقسيط", re.I
+)
+
+
+def _extract_microdata_price(
+    soup, currency: str, domain: str, url: str
+) -> Optional[Dict[str, Any]]:
+    """Extract a product price from Schema.org microdata, skipping EPP
+    installment nodes and pairing priceCurrency within the same Offer scope.
+
+    Returns a ``page_scrape_microdata`` dict or ``None``. Prefers an
+    ``itemprop=price`` inside an ``schema.org/Offer`` (or Product) itemscope;
+    a bare/installment one is skipped.
+    """
+    candidates = soup.find_all(attrs={"itemprop": "price"})
+    if not candidates:
+        return None
+
+    best = None  # (in_offer_scope: bool, amount, currency)
+    for el in candidates:
+        raw = el.get("content") or el.get_text(" ", strip=True)
+        if not raw:
+            continue
+        m = re.search(r"(\d[\d,]*(?:\.\d+)?)", str(raw).replace(",", ""))
+        if not m:
+            continue
+        try:
+            amount = float(m.group(1))
+        except (ValueError, TypeError):
+            continue
+        if amount <= 0:
+            continue
+
+        # Is this price inside an Offer/Product itemscope? Walk up; also grab the
+        # currency paired within that SAME scope (not a page-global find).
+        in_offer = False
+        cur = None
+        offer_scope = None
+        s = el
+        for _ in range(5):
+            if s is None or not hasattr(s, "get"):
+                break
+            itemtype = s.get("itemtype") or ""
+            if "Offer" in itemtype or "Product" in itemtype:
+                in_offer = True
+                offer_scope = s
+                break
+            s = s.parent
+        if offer_scope is not None:
+            cur_el = offer_scope.find(attrs={"itemprop": "priceCurrency"})
+            if cur_el is not None:
+                cur = cur_el.get("content") or cur_el.get_text(strip=True)
+
+        # Installment skip — ONLY for a price NOT inside an Offer/Product scope
+        # (a genuine Offer price is the product price even if an installment
+        # widget shares an outer container). Check the node's own + immediate
+        # parent text for a per-month / EPP marker.
+        if not in_offer:
+            ctx = el.get_text(" ", strip=True)
+            if el.parent is not None:
+                ctx += " " + el.parent.get_text(" ", strip=True)
+            if _INSTALLMENT_RE.search(ctx):
+                continue
+
+        if not cur:
+            cur_el = soup.find(attrs={"itemprop": "priceCurrency"})
+            cur = (cur_el.get("content") or cur_el.get_text(strip=True)) if cur_el else "USD"
+        cur = str(cur).strip().upper()  # lulu lowercase "bhd" -> "BHD"
+
+        # Prefer an Offer-scoped price; among equals, the larger plausible value.
+        key = (in_offer, amount)
+        if best is None or key > (best[0], best[1]):
+            best = (in_offer, amount, cur)
+
+    if best is None:
+        return None
+
+    _in_offer, amount, cur = best
+    result = {
+        "amount": amount, "original_currency": cur, "currency": cur,
+        "retailer": domain, "url": url, "in_stock": True,
+        "confidence": 0.8, "estimated": False,
+        # Use the existing "page_scrape" method (microdata is structured-data
+        # from the page, same tier as JSON-LD/OG) so it's recognized as a real
+        # price by scoring_service / quality_ranker / the L1.5 metric without a
+        # cross-lane source_method-enum change.
+        "source_method": "page_scrape",
+    }
+    if cur.upper() != currency.upper():
+        _convert_gpt_price_currency(result, currency)
+    return result
 
 
 # ============================================
