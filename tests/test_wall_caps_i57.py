@@ -23,35 +23,27 @@ from app.services.structured_comparison_service import StructuredComparisonServi
 
 
 def test_fan_out_price_race_capped_at_12s():
-    """The fan_out_price_lookup race must be bounded by a 12s budget MAX (was 15s).
+    """The fan_out_price_lookup race must be bounded by a 12s budget (was 15s).
 
     S3-genuine Approach A part 2 split the single fan_out into a curl wave + a
-    render wave that SHARE one deadline (_FAN_OUT_BUDGET; each wave's wait_for gets
-    the remaining budget). Fix 3 (prod-hardening) made the budget CONDITIONAL: the
-    MAX is 12.0 (no-parked case, the `else 12.0`); when a parked converted exists
-    it's the tighter _PARKED_FALLBACK_FAN_OUT_BUDGET (<12). So the 12s ceiling is
-    preserved and the parked case is bounded TIGHTER — never above 12s.
+    render wave that SHARE one 12s deadline (_FAN_OUT_BUDGET=12.0; each wave's
+    wait_for gets the remaining budget). The 12s total cap is preserved — it's
+    just expressed as a shared budget instead of a single literal timeout=12.0.
     """
     source = inspect.getsource(StructuredComparisonService._get_price)
     assert "fan_out_price_lookup" in source, "fan_out race call missing"
-    # The MAX fan_out budget is 12.0 (the else-branch ceiling).
-    assert "else 12.0" in source, (
-        "I5.7: the Tier-1.5 fan_out ceiling must be 12.0 (the no-parked else-branch)"
-    )
-    assert "_PARKED_FALLBACK_FAN_OUT_BUDGET" in source, (
-        "Fix 3: the parked-converted case must use the tighter bounded budget"
+    assert "_FAN_OUT_BUDGET = 12.0" in source, (
+        "I5.7: the Tier-1.5 fan_out must be bounded by a 12s budget "
+        "(_FAN_OUT_BUDGET=12.0; shared across the curl+render waves)"
     )
     # The fan_out waits use the remaining shared budget.
     assert "timeout=_remaining" in source, (
-        "the two waves must each wait_for the remaining shared budget"
+        "the two waves must each wait_for the remaining shared 12s budget"
     )
     # The old 15s cap must be gone from the fan_out race so the tightening is real.
     assert "timeout=15.0" not in source, (
         "I5.7: the stale 15.0s fan_out cap must be removed from _get_price"
     )
-    # Both budgets are <= 12s (never exceeds the 15s outer cap).
-    import app.services.structured_comparison_service as _scs
-    assert _scs._PARKED_FALLBACK_FAN_OUT_BUDGET <= 12.0
 
 
 def test_phase1_price_race_capped_at_15s():
@@ -88,11 +80,10 @@ def test_price_outer_cap_exceeds_inner_fan_out_cap():
     # Outer cap = _PRICE_RACE_TIMEOUT (15.0), wired into _PHASE1_TIMEOUTS['price'].
     assert "_PRICE_RACE_TIMEOUT" in fetch_src
     outer = _scs._PRICE_RACE_TIMEOUT
-    # The inner fan_out budget is 12s MAX (the else-branch ceiling), SHARED across
-    # the curl+render waves; Fix 3 bounds the parked-converted case TIGHTER. Both
-    # are <= 12s, preserving the 15s-outer > 12s-inner invariant (no 24s blowout).
-    assert "else 12.0" in price_src
-    assert _scs._PARKED_FALLBACK_FAN_OUT_BUDGET <= 12.0
+    # The inner fan_out budget is 12s, now SHARED across the curl+render waves
+    # (Approach A part 2) — so the TOTAL Tier-1.5 scrape still can't exceed 12s,
+    # preserving the 15s-outer > 12s-inner invariant (no two-wave 24s blowout).
+    assert "_FAN_OUT_BUDGET = 12.0" in price_src
     # outer (15.0) > inner total (12.0) — headroom for Tier 1 + Tier 3 estimate.
     assert outer > 12.0
 

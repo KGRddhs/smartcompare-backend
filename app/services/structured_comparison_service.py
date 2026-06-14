@@ -603,18 +603,6 @@ STREAM_HARD_CAP_SECONDS = float(os.getenv("STREAM_HARD_CAP_SECONDS", "25.0"))
 # the Phase-1 handler now falls back to self._parked_price (never None).
 _PRICE_RACE_TIMEOUT = float(os.getenv("PRICE_RACE_TIMEOUT", "15.0"))
 
-# S3-genuine prod-hardening (Fix 3, team-lead-approved 2026-06-14) — BOUNDED
-# Tier-1.5 fan_out budget WHEN a parked converted_usd already exists. The
-# converted-parking (6a5aa57) makes every high-value product run the full
-# Tier-1.5 cascade (12s) instead of the old ~5s gl=us short-circuit → 2 products
-# + Phase 2 blew the outer cap. So: when we ALREADY have a real cited fallback
-# (the parked converted), give the BH curl tier a SHORTER budget — try genuine BH
-# FAST, return the parked converted if it doesn't land in time. Tuned so a
-# WARM/fast genuine BH curl (the ~5-8s curl portion of the 11.5s iPhone win)
-# still hits 248.99, but 2×price + Phase 2 fit under the cap. No parked fallback
-# → keep the full 12s (nothing to fall back to but the estimate).
-_PARKED_FALLBACK_FAN_OUT_BUDGET = float(os.getenv("PARKED_FAN_OUT_BUDGET", "9.0"))
-
 # I5.6 lever-3 — per-race cap on the Phase-2 verified-rating fetch. The rating
 # cascade (Serper Tier 1→2→3 + GPT fallback) was the one UNCAPPED Phase-2 race;
 # 4s matches the measured warm rating floor with headroom while keeping a slow
@@ -3216,18 +3204,7 @@ class StructuredComparisonService:
                 # so the total Tier-1.5 scrape time stays <= the 12s the single
                 # fan_out had — it never exceeds the 15s outer _PHASE1_TIMEOUTS
                 # ["price"] cap.
-                #
-                # Fix 3 — when a parked converted_usd ALREADY exists, use the
-                # SHORTER bounded budget: try genuine BH fast, else return the
-                # parked converted (below) rather than burning the full 12s. This
-                # bounds 2×price + Phase 2 under the outer cap. A warm genuine BH
-                # curl (~5-8s) still lands within the bounded budget → the iPhone
-                # 248.99 win holds; only the cold/slow case defers to the parked.
-                _FAN_OUT_BUDGET = (
-                    _PARKED_FALLBACK_FAN_OUT_BUDGET
-                    if converted_fallback and converted_fallback.get("amount")
-                    else 12.0
-                )
+                _FAN_OUT_BUDGET = 12.0
                 _t15_start = time.monotonic()
                 for _wave in ("curl", "render"):
                     _remaining = _FAN_OUT_BUDGET - (time.monotonic() - _t15_start)
