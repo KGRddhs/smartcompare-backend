@@ -64,6 +64,11 @@ SOURCE_REGISTRY: List[Source] = [
     Source("gcc.luluhypermarket.com", "bahrain", (), 3.0),
     Source("bahrain.sharafdg.com", "bahrain", ("electronics",), 3.0),
     Source("extra.com", "bahrain", ("electronics",), 3.0),
+    # bahrain.microless.com — PDP curl Decision-F (2026-06-14): MacBook Air M4
+    # PDP → 439.062 BHD via JSON-LD (offer price+priceCurrency=BHD, InStock).
+    # CURL-scrapeable (the first 403 was a parallel-write race, re-curl = 200).
+    # Laptops/computing electronics retailer.
+    Source("bahrain.microless.com", "bahrain", ("electronics",), 3.0),
     Source(
         "bn.boots.com",
         "bahrain",

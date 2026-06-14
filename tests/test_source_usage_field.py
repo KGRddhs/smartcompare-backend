@@ -45,16 +45,18 @@ def test_all_legacy_rows_are_price_usage():
 def test_registry_price_source_count():
     """Price-usable rows are intact; Arabic review sources are additive.
 
-    Count is 34: I5.3/I5.11 purges took 37→33; S3 L1.2 added bahrain.ounass.com
+    Count is 35: I5.3/I5.11 purges took 37→33; S3 L1.2 added bahrain.ounass.com
     (33→34); S3-reopen T4 added 2 verified BH Shopify fragrance stores
     en-bh.ajmal.com + alhajisbahrain.com (34→36); S3-reopen gap-fill (Decision-F)
     DELETED 2 dead electronics rows behbehani.com + jumboelectronics.com
     (200-but-not-a-store — starving the limit=8 discovery) and RETARGETED the
-    bare luluhypermarket.com → gcc.luluhypermarket.com (net-zero), 36→34. Guard
-    the floor so a future accidental mass-deletion of price rows is caught.
+    bare luluhypermarket.com → gcc.luluhypermarket.com (net-zero), 36→34;
+    S3-reopen PDP-curl Decision-F ADDED bahrain.microless.com (curl-scrapeable
+    MacBook PDP → 439.062 BHD JSON-LD), 34→35. Guard the floor so a future
+    accidental mass-deletion of price rows is caught.
     """
     price_rows = [s for s in SOURCE_REGISTRY if s.usage in ("price", "both")]
-    assert len(price_rows) == 34
+    assert len(price_rows) == 35
 
 
 # ---------------------------------------------------------------------------

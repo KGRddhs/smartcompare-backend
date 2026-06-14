@@ -186,6 +186,11 @@ RETAILER_SEARCH_URLS = {
     # Bahrain storefront so the price comes back in BHD (the AED-vs-BHD host bug
     # was THE electronics keystone; registry retargeted to match).
     "lulu": "https://gcc.luluhypermarket.com/en-bh/search/?q={query}",
+    # microless BH (Magento) — search path verified 200. NOTE the SEARCH page is
+    # JS-rendered (0 static product links); the genuine BHD price is on the PDP
+    # (439.062 BHD JSON-LD). So the registry row's real value is the Serper->PDP
+    # ->curl path; this search URL is a fallback for any search-page-static case.
+    "microless": "https://bahrain.microless.com/search/?q={query}",
     "carrefour": "https://www.carrefouruae.com/mafuae/en/search?q={query}",
     "virgin megastore": "https://www.virginmegastore.ae/search/{query}",
     "apple": "https://www.apple.com/shop/buy?fh={query}",
