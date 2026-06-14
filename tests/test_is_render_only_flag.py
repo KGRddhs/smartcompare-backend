@@ -64,16 +64,14 @@ class TestRenderOnlyField:
         )
 
 
-class TestRenderOnlyExcludedFromDirectCurl:
-    def test_render_only_excluded_from_build_direct_bh_candidates(self):
-        """The Serper-independent direct-curl injector must NOT emit render-only
-        sources (a curl yields nothing — wasted fetch). nasserpharmacy is a
-        supplements render-only source; it must be absent from the curl-direct
-        supplements candidates."""
-        from app.services.price_service import build_direct_bh_candidates
-        cands = build_direct_bh_candidates("vitamin d 1000iu", "supplements")
-        urls = " ".join(u for u, _ in cands)
-        for dom in RENDER_ONLY_DOMAINS:
-            assert dom not in urls, (
-                f"{dom} is render-only — must not be a direct-curl candidate"
-            )
+class TestRenderOnlyFlagSet:
+    @pytest.mark.parametrize("domain", sorted(RENDER_ONLY_DOMAINS))
+    def test_render_only_sources_flagged_for_render_tier(self, domain):
+        """Render-only sources carry is_render_only=True so the cascade routes
+        them through the budget-gated render wave (Firecrawl/Scrape.do), NOT the
+        free curl wave (a curl yields nothing on a JS-SPA). The curl-vs-render
+        wave split is exercised in test_curl_before_render_budget.py; this pins
+        the flag that drives it. (The old direct-curl-SEARCH injector that read
+        this flag was removed 2026-06-14 — search pages are JS-rendered.)"""
+        by = {s.domain: s for s in SOURCE_REGISTRY}
+        assert by[domain].is_render_only is True

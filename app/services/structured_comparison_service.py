@@ -821,39 +821,43 @@ def _build_escalation_scrapers(
     full_name: str,
     currency: str,
     scraping_mode: str,
+    wave: str = "all",
 ) -> List[Callable[[dict], Awaitable[Optional[Dict[str, Any]]]]]:
     """Bundle E § Decision 8 — build the scraper list for fan_out_price_lookup().
 
-    For each (url, retailer_domain) pair discovered via the existing Serper
-    queries, emit:
-      - A curl scraper (always — free, fast).
-      - A Firecrawl scraper if should_fan_out(url) passes (SCRAPING_MODE gate).
-      - A Scrape.do scraper if should_fan_out(url) passes (residential fallback).
+    `wave` (S3-genuine Approach A part 2 — budget-discipline two-wave split):
+      - "curl"   → ONLY the free curl scrapers (the curl-first early-exit wave).
+      - "render" → ONLY the paid Firecrawl/Scrape.do scrapers (escalation wave,
+                   run ONLY after the curl wave misses — Ahmed: render not fired
+                   every escalation).
+      - "all"    → both (legacy single-wave behaviour; kept for callers that
+                   don't split).
+
+    For each (url, retailer_domain) pair (Serper-discovered, locale-filtered):
+      - A curl scraper (free, fast) — emitted for wave in {curl, all}.
+      - Firecrawl + Scrape.do if should_fan_out(url) passes (SCRAPING_MODE gate)
+        — emitted for wave in {render, all}.
 
     Each scraper accepts a `product` dict (ignored — closure captures
     full_name/currency/retailer_domain) and returns either None or a
     `{value, source_method, rank, raw_data}` candidate. fan_out_price_lookup
-    races them, applies select-best, and cancels pending tasks when 2
-    sources agree within 5% (or when one rank≥85 result lands).
-
-    candidate_urls is preserved in priority order from the Serper discovery:
-    official brand domains first, then authorized retailers, then GCC retailers.
-    Counterfeit domains never appear here because the discovery filters
-    (Tier 1.5b/c) exclude them via OFFICIAL_BRAND_DOMAINS + AUTHORIZED_LUXURY_RETAILERS
-    + GCC_LUXURY_RETAILERS whitelists.
+    races them, applies select-best, cancels pending on confirm.
     """
+    want_curl = wave in ("curl", "all")
+    want_render = wave in ("render", "all")
     scrapers: List[Callable[[dict], Awaitable[Optional[Dict[str, Any]]]]] = []
     for url, retailer_domain in candidate_urls:
         if not validate_scrape_url(url):
             continue
-        # Curl scrape — always free, always fires.
-        async def _curl_with_args(_product, _url=url, _retailer=retailer_domain):
-            return await _curl_scraper(_url, full_name, currency, _retailer)
-        scrapers.append(_curl_with_args)
+        if want_curl:
+            # Curl scrape — always free.
+            async def _curl_with_args(_product, _url=url, _retailer=retailer_domain):
+                return await _curl_scraper(_url, full_name, currency, _retailer)
+            scrapers.append(_curl_with_args)
 
         # Firecrawl + Scrape.do gated by SCRAPING_MODE per design § Decision 8.
         # In soft mode only luxury/SPA domains get the rendered-scrape budget.
-        if firecrawl_service.should_fan_out(url, mode=scraping_mode):
+        if want_render and firecrawl_service.should_fan_out(url, mode=scraping_mode):
             async def _fc_with_args(_product, _url=url, _retailer=retailer_domain):
                 return await _firecrawl_scraper(_url, full_name, currency, _retailer)
             scrapers.append(_fc_with_args)
@@ -3072,20 +3076,17 @@ class StructuredComparisonService:
             )
             candidate_urls = [(link, label) for link, label, _route, _w in harvested]
 
-            # S3-genuine — the curl-search injector (build_direct_bh_candidates)
-            # is NEUTRALIZED. Team-lead live probe (2026-06-14, WRINKLE 2) +
-            # verified against our own captures: the BH retailers' SEARCH pages
-            # are JS-rendered (gcc.lulu /en-bh/search/?q= → 404; sharafdg ?s= →
-            # 0 JSON-LD / 0 itemprop, PDP links are noise). So a curl-only
-            # search→PDP path can't reach the PDPs — the search URLs carry no
-            # extractable price and only burn fan_out fetches. PDP DISCOVERY for
-            # these non-Shopify retailers comes from the Serper `site:` query
-            # above (live again); the genuine BH price is then produced by the
-            # cascade curling the discovered PDP + the JSON-LD/microdata/OG
-            # extractor. Serper-independence is covered by Shopify /products.json
-            # (works) + a future Firecrawl-render-search (deferred, budget-gated
-            # per Ahmed). The build_direct_bh_candidates fn is retained as the
-            # shell for that future render-search path.
+            # S3-genuine — the curl-SEARCH-URL injector (build_direct_bh_candidates)
+            # was REMOVED 2026-06-14. Team-lead live probe (WRINKLE 2) + our own
+            # captures: the BH retailers' SEARCH pages are JS-rendered (gcc.lulu
+            # /en-bh/search/?q= → 404; sharafdg ?s= → 0 JSON-LD/itemprop, PDP links
+            # are noise). So a curl-only search→PDP path can't reach the PDPs.
+            # PDP DISCOVERY for these non-Shopify retailers is the Serper `site:`
+            # query above (locale-filtered to BH); the genuine BH price is then
+            # produced by the curl wave below curling the discovered PDP + the
+            # JSON-LD/microdata/OG extractor. Serper-independence = Shopify
+            # /products.json (works) + a future Firecrawl-render-search (deferred,
+            # budget-gated per Ahmed).
 
             # --- Race: fan_out_price_lookup runs all per-URL scrapers in
             # parallel, cancels pending tasks when 2 sources confirm within
@@ -3101,70 +3102,77 @@ class StructuredComparisonService:
             if candidate_urls:
                 # F1.6 — count one Tier 1.5 escalation attempt (fail-open).
                 record_tier15_attempt(category)
-                try:
-                    scrapers = _build_escalation_scrapers(
+
+                def _finalize_fan_winner(fan_result):
+                    """Stamp + route-record + cache a fan_out winner; returns the
+                    winning_price dict or None. Shared by the curl + render waves."""
+                    best = fan_result.get("best")
+                    if not (best and best.get("raw_data") and best["raw_data"].get("amount")):
+                        return None
+                    winning_price = best["raw_data"]
+                    winning_price["source_method"] = best.get("source_method", "page_scrape")
+                    win_domain = str(winning_price.get("retailer") or "").replace("www.", "").lower()
+                    for _link, _label, _route, _weight in harvested:
+                        if _label.lower() == win_domain or win_domain.endswith("." + _label.lower()) or _label.lower().endswith("." + win_domain):
+                            self._tier15_routes[full_name] = {"route": _route, "source_weight": _weight}
+                            break
+                    else:
+                        self._tier15_routes[full_name] = {
+                            "route": "tier1_5",
+                            "source_weight": score_source(
+                                winning_price.get("url", "") or f"https://{win_domain}", category
+                            ),
+                        }
+                    record_tier15_hit(category, win_domain or None)
+                    set_cached(cache_key, winning_price, PRICE_CACHE_TTL)
+                    self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
+                    winning_price["_cached"] = False
+                    if fan_result.get("cancelled_count", 0) > 0:
+                        logger.info(
+                            "[PRICE] fan_out cancelled %d pending scrapers after confirmation (elapsed=%.2fs)",
+                            fan_result["cancelled_count"], fan_result.get("elapsed_seconds", 0.0),
+                        )
+                    return winning_price
+
+                # S3-genuine Approach A part 2 — TWO-WAVE budget split. Run the
+                # FREE curl wave FIRST (early-exit on a plausible genuine price);
+                # the paid Firecrawl/Scrape.do RENDER wave fires ONLY if the curl
+                # wave misses (Ahmed: render not fired every escalation). This
+                # also trims wall — most BH PDPs (sharafdg/extra/gcc.lulu/microless)
+                # are curl-extractable, so the render wave rarely runs.
+                for _wave, _cap in (("curl", 12.0), ("render", 12.0)):
+                    _scrapers = _build_escalation_scrapers(
                         candidate_urls=candidate_urls,
                         full_name=full_name,
                         currency=currency,
                         scraping_mode=scraping_mode,
+                        wave=_wave,
                     )
-                    fan_result = await asyncio.wait_for(
-                        fan_out_price_lookup(
-                            product={"full_name": full_name, "brand": brand},
-                            scrapers=scrapers,
-                            scraping_mode=scraping_mode,
-                        ),
-                        timeout=12.0,
-                    )
-                    best = fan_result.get("best")
-                    if best and best.get("raw_data") and best["raw_data"].get("amount"):
-                        winning_price = best["raw_data"]
-                        # Stamp the design-decreed source_method names so
-                        # downstream rendering + analytics see the rank tier
-                        # (firecrawl_brand_domain / page_scrape_jsonld /
-                        # scrapedo_rendered / confirmed_multi_source).
-                        winning_price["source_method"] = best.get("source_method", "page_scrape")
-                        # F1.4 — record the routing path of the winning candidate
-                        # (registry / legacy_fallback / official) for source_trace.
-                        # Match the winning retailer domain back to `harvested`.
-                        win_domain = str(winning_price.get("retailer") or "").replace("www.", "").lower()
-                        for _link, _label, _route, _weight in harvested:
-                            if _label.lower() == win_domain or win_domain.endswith("." + _label.lower()) or _label.lower().endswith("." + win_domain):
-                                self._tier15_routes[full_name] = {
-                                    "route": _route,
-                                    "source_weight": _weight,
-                                }
-                                break
-                        else:
-                            # Winner domain not matched (rare — e.g. redirect
-                            # changed the host). Still flag that Tier 1.5 fired.
-                            self._tier15_routes[full_name] = {
-                                "route": "tier1_5",
-                                "source_weight": score_source(
-                                    winning_price.get("url", "") or f"https://{win_domain}", category
-                                ),
-                            }
-                        # F1.6 — count one Tier 1.5 hit + the winning domain.
-                        record_tier15_hit(category, win_domain or None)
-                        set_cached(cache_key, winning_price, PRICE_CACHE_TTL)
-                        self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
-                        winning_price["_cached"] = False
-                        if fan_result.get("cancelled_count", 0) > 0:
-                            logger.info(
-                                "[PRICE] fan_out cancelled %d pending scrapers after confirmation (elapsed=%.2fs)",
-                                fan_result["cancelled_count"], fan_result.get("elapsed_seconds", 0.0),
-                            )
-                        return winning_price
-                except asyncio.TimeoutError:
-                    # D2 follow-up: 15s race cap fired. Fall through to Tier 2
-                    # GPT extraction — trade real scrape for predictable wall.
-                    logger.info(
-                        "[PRICE] Tier 1.5 fan_out race exceeded 15s budget for %s; "
-                        "falling through to Tier 2 GPT extraction",
-                        full_name,
-                    )
-                except Exception as e:
-                    logger.warning(f"[PRICE] Tier 1.5 fan_out_price_lookup failed: {e}")
+                    if not _scrapers:
+                        continue  # render wave empty when no URL needs render
+                    try:
+                        _fan = await asyncio.wait_for(
+                            fan_out_price_lookup(
+                                product={"full_name": full_name, "brand": brand},
+                                scrapers=_scrapers,
+                                scraping_mode=scraping_mode,
+                            ),
+                            timeout=_cap,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.info(
+                            "[PRICE] Tier 1.5 %s-wave exceeded %.0fs for %s; "
+                            "%s", _wave, _cap, full_name,
+                            "trying render wave" if _wave == "curl" else "falling through to Tier 2",
+                        )
+                        continue
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning(f"[PRICE] Tier 1.5 {_wave}-wave failed: {e}")
+                        continue
+                    _winner = _finalize_fan_winner(_fan)
+                    if _winner is not None:
+                        # Curl-wave win → genuine BH price, no render credits burned.
+                        return _winner
 
             # S3 — the ranked discovery/fan_out yielded nothing. A parked
             # reseller Shopify hit (real BH price) is a better answer than a GPT

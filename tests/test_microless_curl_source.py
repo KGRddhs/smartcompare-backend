@@ -39,13 +39,16 @@ class TestMicrolessRegistered:
             "electronics",
         ) == 3.0
 
-    def test_microless_in_direct_curl_candidates(self):
-        """As a curl bahrain electronics source, microless must be emitted by the
-        Serper-independent direct-curl injector."""
-        from app.services.price_service import build_direct_bh_candidates
-        cands = build_direct_bh_candidates("Apple MacBook Air M4", "electronics")
-        urls = " ".join(u for u, _ in cands)
-        assert "microless" in urls
+    def test_microless_is_curl_tier_bahrain_electronics(self):
+        """As a curl bahrain electronics source, microless is a bahrain-tier,
+        non-Shopify, non-render-only electronics row (the curl tier scrapes its
+        Serper-discovered PDP). (The old direct-curl-SEARCH injector was removed
+        2026-06-14 — search pages are JS-rendered; PDP discovery is via Serper.)"""
+        s = _by_domain()["bahrain.microless.com"]
+        assert s.tier == "bahrain"
+        assert "electronics" in s.categories
+        assert s.is_render_only is False
+        assert s.is_shopify is False
 
 
 class TestMicrolessLivePdp:

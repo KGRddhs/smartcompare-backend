@@ -545,44 +545,13 @@ def build_retailer_url(source: str, product_name: str) -> Optional[str]:
     return None
 
 
-def build_direct_bh_candidates(
-    full_name: str, category: str
-) -> List[Tuple[str, str]]:
-    """S3-genuine (team-lead pivot 2026-06-14) — SERPER-INDEPENDENT BH candidates.
-
-    The BH registry retailers (gcc.lulu, sharafdg, extra, ...) normally reach the
-    price scraper ONLY through the Serper `site:` discovery query, which no-ops
-    when the Serper account is dry. This builds each BH-tier NON-Shopify source's
-    search URL DIRECTLY from the registry + RETAILER_SEARCH_URLS — zero Serper —
-    so the Tier-1.5 fan_out can curl these directly-scrapeable BH pages even with
-    Serper down. The caller PREPENDS these to the Serper-discovered candidates
-    (purely additive).
-
-    Shopify BH stores are EXCLUDED — they already have a dedicated
-    Serper-independent /products.json direct-discovery path (and the search-URL
-    template is wrong for them).
-
-    Returns ``[(url, domain_label), ...]`` in registry (bahrain-first) order;
-    empty list when a category's BH tier has no non-Shopify URL-resolvable source.
-    """
-    # Lazy import — avoids a top-level price_service -> source_router coupling.
-    from app.services.source_router import get_sources_for_category
-
-    candidates: List[Tuple[str, str]] = []
-    seen: set = set()
-    for s in get_sources_for_category(category):
-        if s.tier != "bahrain":
-            continue
-        if getattr(s, "is_shopify", False):
-            continue  # Shopify has its own /products.json path.
-        if getattr(s, "is_render_only", False):
-            continue  # JS-SPA — a curl yields nothing; goes via the render tier.
-        url = build_retailer_url(s.domain, full_name)
-        if not url or url in seen:
-            continue
-        seen.add(url)
-        candidates.append((url, s.domain))
-    return candidates
+# NOTE: build_direct_bh_candidates (the curl-SEARCH-URL injector, b250b55) was
+# REMOVED 2026-06-14. The team-lead's live probe + our own captures proved the BH
+# retailers' SEARCH pages are JS-rendered (gcc.lulu /en-bh/search → 404; sharafdg
+# ?s= → noise) — constructed search URLs carry no extractable price. PDP discovery
+# for these non-Shopify retailers comes from the Serper `site:` query +
+# BH-locale filter (is_wrong_locale_url); Serper-independence is Shopify
+# /products.json + a future Firecrawl-render-search (deferred, budget-gated).
 
 
 def sanitize_gpt_price(price: Optional[Dict]) -> None:
