@@ -16,8 +16,9 @@ def test_site_query_electronics_bahrain_tier():
         "Carrier 1.5 ton AC", "electronics", tier="bahrain", limit=4
     )
     # Bahrain electronics sources, registry order, OR-joined site: operators
+    # (lulu retargeted to the gcc/en-bh BHD storefront by the S3-genuine fix).
     assert q.startswith("Carrier 1.5 ton AC ")
-    assert "site:luluhypermarket.com" in q and "site:bahrain.sharafdg.com" in q
+    assert "site:gcc.luluhypermarket.com" in q and "site:bahrain.sharafdg.com" in q
     assert "site:noon.com" not in q  # gcc tier excluded
     assert q.count("site:") <= 4
 

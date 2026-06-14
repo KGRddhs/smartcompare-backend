@@ -42,8 +42,13 @@ _DEAD_NXDOMAIN = {
 }
 
 # Replacements proven alive (DNS→IP + HTTP 200) — must appear in the registry.
+# SUPERSEDED IN PART by the S3-genuine gap-fill (Decision-F, 2026-06-14): the
+# I5.3 liveness bar was DNS→IP+200 only; the gap-fill applied the stricter
+# 200-AND-actually-a-BHD-store bar. The bare luluhypermarket.com's 200 catalog
+# is en-ae/AED and redirects to gcc.luluhypermarket.com/en-bh/ — so the BHD
+# replacement is now gcc.luluhypermarket.com (the bare host is retired).
 _LIVE_REPLACEMENTS = {
-    "luluhypermarket.com",
+    "gcc.luluhypermarket.com",
     "bahrain.sharafdg.com",
     "extra.com",
 }
@@ -65,8 +70,10 @@ class TestLiveReplacementsPresent:
 
     def test_luluhypermarket_all_categories_weight_3(self):
         # lulu.com.bh was all-category bahrain weight 3.0; replacement inherits.
+        # Replacement is gcc.luluhypermarket.com (the BHD/en-bh storefront) after
+        # the S3-genuine keystone retarget — the bare host served AED.
         for cat in ("electronics", "supplements", "grocery", "fashion"):
-            assert score_source(f"https://www.luluhypermarket.com/x", category=cat) == 3.0
+            assert score_source(f"https://gcc.luluhypermarket.com/en-bh/x", category=cat) == 3.0
 
     def test_bahrain_sharafdg_electronics_weight_3(self):
         # sharafdg.com.bh was electronics-only bahrain 3.0; replacement inherits.
@@ -86,10 +93,22 @@ class TestLiveReplacementsPresent:
         assert "extra.com.bh" not in domains
 
 
-class TestKeptLiveDomains:
-    def test_behbehani_kept(self):
-        # behbehani.com proven alive → stays (electronics+fashion bahrain 3.0).
-        assert score_source("https://behbehani.com/product/p1", category="electronics") == 3.0
+class TestDeadElectronicsSuperseded:
+    """SUPERSEDES the old I5.3 "kept" pins for behbehani.com + jumboelectronics.com.
 
-    def test_jumbo_kept(self):
-        assert score_source("https://jumboelectronics.com/product/p1", category="electronics") == 3.0
+    I5.3 (2026-06-11) kept both because the bare host resolved + returned HTTP 200.
+    The S3-genuine gap-fill (Decision-F, 2026-06-14) re-checked the *content* under
+    the stricter 200-AND-actually-a-store bar and found both are 200-but-NOT-a-store:
+      - jumboelectronics.com → 114-byte parked /lander redirect, 0 shop signals.
+      - behbehani.com        → brochure splash (~3.6KB), no shop / no PDPs.
+    Both DELETED — a dead row starves the limit=8 discovery window with a useless
+    site: operator. They must NOT score (fall through to the 0.5 unknown default).
+    """
+
+    @pytest.mark.parametrize("domain", ["behbehani.com", "jumboelectronics.com"])
+    def test_dead_electronics_no_longer_scores(self, domain):
+        assert score_source(f"https://{domain}/product/p1", category="electronics") == 0.5
+
+    @pytest.mark.parametrize("domain", ["behbehani.com", "jumboelectronics.com"])
+    def test_dead_electronics_not_in_registry(self, domain):
+        assert domain not in _REGISTRY_DOMAINS

@@ -15,7 +15,7 @@ from app.services.source_router import Source, get_sources_for_category, score_s
 # ---------- score_source tier hierarchy ----------
 
 def test_bahrain_sources_score_higher_than_gcc_and_global():
-    bh_score = score_source("https://www.luluhypermarket.com/product/123", category="electronics")
+    bh_score = score_source("https://gcc.luluhypermarket.com/en-bh/product/123", category="electronics")
     gcc_score = score_source("https://www.noon.com/uae-en/product/456", category="electronics")
     global_score = score_source("https://www.amazon.com/dp/B0XXX", category="electronics")
     assert bh_score > gcc_score > global_score
@@ -60,9 +60,13 @@ def test_score_source_bn_boots_supplements():
 
 
 def test_score_source_lulu_works_across_all_categories():
-    """Lulu has empty `categories` tuple → matches every category."""
+    """Lulu has empty `categories` tuple → matches every category.
+
+    Retargeted to gcc.luluhypermarket.com (the BHD/en-bh storefront) — the bare
+    host (en-ae/AED) was retired by the S3-genuine keystone fix.
+    """
     for cat in ("electronics", "supplements", "grocery", "fashion"):
-        assert score_source("https://www.luluhypermarket.com/x", category=cat) == 3.0
+        assert score_source("https://gcc.luluhypermarket.com/en-bh/x", category=cat) == 3.0
 
 
 # ---------- get_sources_for_category ----------
@@ -124,9 +128,11 @@ def test_get_sources_for_category_returns_only_source_dataclass():
 
 
 def test_score_source_handles_www_prefix():
-    """www.luluhypermarket.com and luluhypermarket.com should both score 3.0."""
-    with_www = score_source("https://www.luluhypermarket.com/x", category="electronics")
-    without_www = score_source("https://luluhypermarket.com/x", category="electronics")
+    """A www-prefixed and bare host of a registered bahrain domain both score
+    3.0 (www-stripping invariant). Uses gcc.luluhypermarket.com — the bare
+    luluhypermarket.com was retired by the S3-genuine keystone retarget."""
+    with_www = score_source("https://www.gcc.luluhypermarket.com/en-bh/x", category="electronics")
+    without_www = score_source("https://gcc.luluhypermarket.com/en-bh/x", category="electronics")
     assert with_www == 3.0
     assert without_www == 3.0
 
