@@ -1165,12 +1165,21 @@ async def _lazy_bh_pdp_backfill(
             _seen.add(link)
             extra.append((link, domain, "lazy_backfill", weight))
 
-    for bd in missing:
+    # S3 #34 (cascade-parallelize) — fire the per-retailer Serper queries
+    # CONCURRENTLY (was a serial for-loop: sharafdg ~1.7s + microless ~1.45s
+    # added ~3s to the price race, contributing to the prod 15s-cap cut). gather
+    # the search_web calls, then process results in `missing` order (so `extra`
+    # ordering + every _accept filter is byte-identical to the serial version —
+    # only WHEN the I/O fires changes, never WHICH candidates are accepted).
+    async def _bd_search(bd: str):
         try:
-            res = await search_web(f"{full_name} site:{bd}", num_results=5)
+            return bd, await search_web(f"{full_name} site:{bd}", num_results=5)
         except Exception as e:  # noqa: BLE001 — best-effort
             logger.info(f"[PRICE] lazy backfill search failed for {bd}: {e}")
-            continue
+            return bd, None
+
+    search_results = await asyncio.gather(*(_bd_search(bd) for bd in missing))
+    for bd, res in search_results:
         organic = (res or {}).get("organic", []) if isinstance(res, dict) else []
         # microless-style: PDPs rank directly.
         pdp_found = False
