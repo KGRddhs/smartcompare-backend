@@ -294,11 +294,6 @@ _RENDER_ONLY_DOMAINS = {
 # render-scope-to-BH + the ce0a78e helper/curl-skip). So ALL is_render_only tests
 # are xfail-strict now and flip green TOGETHER when the consolidated branch lands.
 
-@pytest.mark.xfail(
-    reason="genuine-BH merge reverted (3db3ddc); is_render_only field pending L1 re-merge. "
-           "strict=True → loud xpass when the consolidated branch lands.",
-    strict=True,
-)
 def test_render_only_field_marks_the_five_spa_domains():
     """The is_render_only flag exists on Source and exactly the 5 SPA domains
     carry it (alosra/nasserpharmacy/bn.boots/bolo/megamart)."""
@@ -319,14 +314,9 @@ def test_non_spa_bh_source_is_not_render_only():
 
 # --- (ii) is_render_only_domain() helper: RED-first until L1 fast-follow ---
 
-@pytest.mark.xfail(
-    reason="L1 fast-follow: is_render_only_domain() helper not yet on main. "
-           "strict=True → loud xpass when it lands, signalling L5 to drop the marker.",
-    strict=True,
-)
 def test_is_render_only_domain_helper_resolves_spa():
     """is_render_only_domain(domain_or_url) → True for an SPA source, False for a
-    curl source. RED-first (xfail strict): helper lands in L1's fast-follow."""
+    curl source. Live on main since the S3 genuine-BH re-merge (3be92ce)."""
     from app.services.source_router import is_render_only_domain  # noqa: F401 — RED until merged
     # Bare domain + full-URL both resolve (L1 spec: accepts domain OR URL).
     assert is_render_only_domain("nasserpharmacy.com") is True
@@ -336,14 +326,8 @@ def test_is_render_only_domain_helper_resolves_spa():
     assert is_render_only_domain("noon.com") is False
 
 
-# --- (iii) curl-skip for render-only URL: RED-first until L1 fast-follow ---
+# --- (iii) curl-skip for render-only URL: live on main since 3be92ce ---
 
-@pytest.mark.xfail(
-    reason="L1 fast-follow: curl-skip for render-only domains not yet on main. "
-           "strict=True → this flips to a LOUD xpass when the skip lands, signalling "
-           "L5 to drop the marker and confirm the green.",
-    strict=True,
-)
 def test_curl_wave_skips_render_only_domain():
     """_build_escalation_scrapers(wave="curl") must emit ZERO scrapers for a
     render-only domain's URL (a static curl can't render a JS-SPA → pure waste).
@@ -369,11 +353,6 @@ def test_curl_wave_skips_render_only_domain():
     )
 
 
-@pytest.mark.xfail(
-    reason="genuine-BH merge reverted (3db3ddc); _build_escalation_scrapers(wave=...) "
-           "two-wave split pending L1 re-merge. strict=True → loud xpass on land.",
-    strict=True,
-)
 def test_curl_wave_keeps_non_render_domain():
     """Control: wave="curl" DOES emit a curl scraper for a normal (non-render)
     domain — the skip is render-only-specific, not a blanket curl drop."""
@@ -400,11 +379,6 @@ def test_curl_wave_keeps_non_render_domain():
 # drop render-only domains out of the render tier too (which would leave them
 # with NO price path at all). L1 spec: wave="render" emits 2 (firecrawl+scrapedo).
 
-@pytest.mark.xfail(
-    reason="genuine-BH merge reverted (3db3ddc); _build_escalation_scrapers(wave=...) "
-           "two-wave split pending L1 re-merge. strict=True → loud xpass on land.",
-    strict=True,
-)
 def test_render_wave_includes_render_only_domain():
     """A render-only domain's PDP MUST get the Firecrawl + Scrape.do scrapers in
     wave='render' (2 scrapers) — it's the ONLY price path for a JS-SPA."""
@@ -431,13 +405,8 @@ def test_render_wave_includes_render_only_domain():
 # render calls → blew the 15s price cap → price None. L1's Fix B gates the render
 # wave on `is_render_only_domain(...)` so a GLOBAL url gets 0 render scrapers
 # (the parked converted_usd is the answer); only an is_render_only BH SPA renders.
-# Pending L1's consolidated re-merge → xfail-strict, flips green with the set.
+# Live on main since the S3 genuine-BH re-merge (3be92ce).
 
-@pytest.mark.xfail(
-    reason="Fix B (render-scope-to-BH) is on L1's fast-follow (5a4f614), not yet on main. "
-           "Verified green against that branch (16/16 --runxfail). strict=True → loud xpass on re-merge.",
-    strict=True,
-)
 def test_render_wave_skips_global_url_fix_b():
     """A GLOBAL organic url (samsung.com/us) must get ZERO render scrapers in
     wave='render' — rendering globals is THE prod regression that blew the 15s

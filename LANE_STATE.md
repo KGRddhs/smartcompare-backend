@@ -6,7 +6,11 @@
 **Prior:** L5 carried-bugs lane MERGED to main (`59ec212`); fan_out F1 fix shipped.
 
 ## Current task
-**ROLLBACK (2026-06-14): genuine-BH merge REVERTED (main=3db3ddc) for a prod-latency regression.** Rebased onto rolled-back main. Added the A5 LIVENESS invariant (team-lead's high-value ask) — the guard that would've caught the regression. Net: 11 passed, 5 xfailed. Holding for L1's consolidated re-merge (fix-A + fix-B + ce0a78e).
+**RE-MERGE LANDED ON MAIN (3be92ce, 2026-06-14) → FLIP DONE.** Rebased onto re-merged main; all 6 is_render_only/Fix-B strict-xfails fired as XPASS(strict) loud-fail (the intended trigger) → dropped all 6 markers → **17/17 GREEN, zero xfails.** The full cascade-contract net (A1 order / A2 honest-label / A3 estimate-last / A4a usage=review / A4b is_render_only two-sided + Fix-B global-skip / A5 liveness) is now LIVE against the genuine-BH code. A2 + A5 mutation-proven. 
+
+## Optional follow-up (team-lead flagged, NOT blockers, pre-existing on 3db3ddc):
+- 12 full-suite-only failures = asyncio-loop pollution (share_routes uses `asyncio.get_event_loop().run_until_complete` → closed-loop after an earlier test). ALL pass in isolation. Offered to hunt the polluter for a clean full-suite green.
+- 2 phase1 timing tests (test_phase1_includes_reviews, test_all_fast_races) = load-sensitive false-negatives on slow box (6-7s vs <2s walls).
 
 ## Rollback context (the lesson)
 My Q1 CONTRACT net (ORDER/labels, 7/7) was correct at the contract level but a MOCKED unit net structurally CAN'T catch a prod-RUNTIME bug: the re-order escalated genuine-BH scraping to rendering GLOBAL pages (samsung.com/us, amazon.ae), blew the 15s Phase-1 price-race timeout, and returned None (no price) instead of the parked converted price. Regression: price→no-price on electronics. **Fix = the A5 liveness invariant below (belongs in the cross-cutting net so it can't recur).** Saved to memory [[feedback_mock_hides_bug_layer_false_green]] family.
