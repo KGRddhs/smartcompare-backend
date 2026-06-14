@@ -237,6 +237,10 @@ ACCESSORY_KEYWORDS = {
     "mount", "grip", "wallet", "skin", "bumper", "shell", "screen protector",
     "armband", "holster", "dock", "cradle", "earbuds", "headphone",
     "stylus", "pen", "keyboard", "mouse",
+    # S3 #34 — BH-English accessory terms (the Galaxy-S24-"screen guard" / case
+    # confident-wrong-product class). "guard" matched whole-word via \b in
+    # is_accessory, so it flags "screen guard" without catching e.g. "guardian".
+    "screen guard", "guard",
 }
 
 # High-value electronics keywords
@@ -976,6 +980,14 @@ def extract_jsonld_price(
 
         for product in products:
             product_name = product.get("name", "")
+            # S3 #34 (blocker) — REJECT an accessory PDP. A "Galaxy S24 Case"
+            # JSON-LD (brand Samsung, numbers 24, no model-line qualifier) was
+            # matching as the phone → 11.9 BHD GENUINE-labeled confident-wrong
+            # product (the exact "wrong scrape" forbidden). is_accessory was on
+            # the shopping + Shopify matchers but MISSING here (the curl-scrape /
+            # backfill JSON-LD path). A real phone PDP is not an accessory.
+            if is_accessory(product_name):
+                continue
             brand_nospace = brand_lower.replace(" ", "")
             name_nospace = product_name.lower().replace(" ", "")
             # L1.4 (Bundle B S3) — also match the JSON-LD `brand` field, not just

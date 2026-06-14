@@ -156,6 +156,55 @@ async def test_genuine_tier1_cancels_prefetch_no_orphan():
     assert abs(price["amount"] - 99.0) < 0.01
 
 
+@pytest.mark.asyncio
+async def test_prefetch_SKIPPED_when_algolia_sources_exist():
+    """#34B BUDGET BOUND (option b) — a category with Algolia/Shopify sources
+    SHORT-CIRCUITS before discovery, so the speculative prefetch is NOT fired
+    (no wasted Serper). A fashion query (6thStreet Algolia) fires ZERO prefetch
+    Serper calls before its Algolia short-circuit."""
+    import app.services.structured_comparison_service as scs
+    svc = scs.get_comparison_service()
+    ssc = "app.services.structured_comparison_service"
+
+    async def conv_shopping(*a, **k):
+        return {"shopping": [{"title": "x", "source": "y", "price": "1", "link": "z"}],
+                "organic": [], "shopping_region": "us_fallback"}
+
+    def fake_extract(name, items, cur, shopping_region=None):
+        return {"amount": 50.0, "currency": "BHD", "original_currency": "USD",
+                "retailer": "Foo", "source_method": "converted_usd", "retailer_score": 0.5}
+
+    async def fake_algolia(domain, product_name, category="other"):
+        return {"amount": 18.5, "currency": "BHD", "retailer": "en-bh.6thstreet.com",
+                "url": "https://en-bh.6thstreet.com/p/x", "in_stock": True,
+                "estimated": False, "source_method": "local_bhd"}
+
+    search_calls = {"n": 0}
+    async def count_search(*a, **k):
+        search_calls["n"] += 1
+        return {"organic": []}
+
+    # Real registry: fashion HAS the 6thStreet Algolia source → prefetch skipped.
+    with patch(f"{ssc}.search_product_prices", new=AsyncMock(side_effect=conv_shopping)), \
+         patch(f"{ssc}.extract_price_from_shopping", side_effect=fake_extract), \
+         patch(f"{ssc}._should_escalate_price_scrape", return_value=True), \
+         patch("app.services.algolia_service.fetch_algolia_price", side_effect=fake_algolia), \
+         patch(f"{ssc}.search_web", new=AsyncMock(side_effect=count_search)), \
+         patch(f"{ssc}.get_cached", return_value=None), \
+         patch(f"{ssc}.set_cached", return_value=True), \
+         patch("app.services.product_data_service.get_cached_price", new=AsyncMock(return_value=None)), \
+         patch.object(svc, "_save_price_to_db"):
+        price = await svc._get_price(brand="Tom Ford", name="Oud Wood", variant=None,
+                                     region="bahrain", search_query="Tom Ford Oud Wood",
+                                     nocache=True, category="fashion")
+
+    assert price["source_method"] == "local_bhd"  # Algolia short-circuit
+    assert search_calls["n"] == 0, (
+        f"prefetch fired {search_calls['n']} Serper calls on a fashion (Algolia) "
+        f"query — must be 0 (budget bound: skip prefetch when Algolia source exists)"
+    )
+
+
 # ===========================================================================
 # Invariant pins — these MUST still hold after the parallelization (team-lead's
 # 4 PRESERVE invariants). Parallelizing the FETCH must not change the SELECTION.

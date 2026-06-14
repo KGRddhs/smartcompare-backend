@@ -1160,6 +1160,10 @@ async def _lazy_bh_pdp_backfill(
             return
         if full_name and title and variant_mismatch(full_name, title):
             return
+        # S3 #34 — don't even harvest an accessory PDP (Galaxy-S24-case class);
+        # defense-in-depth on top of extract_jsonld_price's is_accessory check.
+        if title and is_accessory(title):
+            return
         weight = score_source(link, category)
         if weight >= 1.5:
             _seen.add(link)
@@ -3083,8 +3087,21 @@ class StructuredComparisonService:
         # fire, the tasks are CANCELLED below (no orphans — L5.3). This changes
         # WHEN discovery is fetched, NEVER the selection (the same results feed
         # the same _harvest/fan_out/_select_best).
+        # S3 #34 BUDGET BOUND (team-lead gate, option b) — SKIP the speculative
+        # prefetch when this category has Shopify-json OR Algolia direct sources.
+        # Those sources SHORT-CIRCUIT before discovery (fragrances=alhajis Shopify,
+        # fashion=6thStreet Algolia), so the 4 prefetched Serper calls would be
+        # ALREADY SPENT (they finish in ~1-2s, inside shopping's 5.9s) before the
+        # cancel fires = wasted (~+30% Serper on those ~8/20 smoke20 queries).
+        # Electronics has NO Shopify/Algolia sources → prefetch still fires (the
+        # latency-critical category that needs it; iPhone verified <15s after).
+        _pf_eligible = (
+            not is_supplement and ENABLE_PAGE_SCRAPE
+            and not get_shopify_sources_for_category(category)
+            and not get_algolia_sources_for_category(category)
+        )
         _prefetched_discovery: List[Tuple[str, Any]] = []
-        if not is_supplement and ENABLE_PAGE_SCRAPE:
+        if _pf_eligible:
             _pf_official = get_official_domain(full_name)
             _pf_retailer_q = build_site_discovery_query(
                 full_name, category, tier="global", limit=8) or full_name
