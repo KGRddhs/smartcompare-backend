@@ -1978,17 +1978,40 @@ _GENUINE_BH_SOURCE_METHODS = frozenset({
 
 
 def _is_genuine_bh_candidate(c: dict) -> bool:
-    """True iff a fan_out candidate is a genuine BH price (not converted/estimate).
+    """True iff a fan_out candidate is a genuine BH price (not converted/estimate
+    AND not from a GLOBAL-tier domain).
+
     Checks both the candidate's source_method and its raw_data's (the curl
     scraper stamps the genuine method on raw_data; a global-tier downgrade sets
-    converted_usd on both)."""
+    converted_usd on both).
+
+    apple-phantom hotfix (prod-verify on 110d0ff): a GLOBAL-tier domain
+    (apple.com/samsung.com — no Bahrain storefront) stamped with a genuine method
+    (page_scrape_jsonld) was counting as genuine — a PHANTOM. So ALSO require the
+    candidate's retailer/domain to NOT be registry tier='global' (defense-in-
+    depth: the _curl_scraper converted_usd downgrade is the first line; this is
+    the second, so apple.com is never genuine even if the downgrade didn't fire).
+    gcc/bahrain-tier and OFF-registry (None — a discovered BH retailer PDP) stay
+    genuine; only an explicit global-tier domain is excluded."""
     sm = (c.get("source_method") or "")
-    raw_sm = ((c.get("raw_data") or {}).get("source_method") or "")
+    raw = c.get("raw_data") or {}
+    raw_sm = (raw.get("source_method") or "")
     # converted/estimate on EITHER disqualifies (a global-tier downgrade stamps
     # converted_usd on raw_data even when the rank-name was page_scrape_jsonld).
     if "converted" in sm or "converted" in raw_sm or "estimated" in sm or "estimated" in raw_sm:
         return False
-    return sm in _GENUINE_BH_SOURCE_METHODS or raw_sm in _GENUINE_BH_SOURCE_METHODS
+    if not (sm in _GENUINE_BH_SOURCE_METHODS or raw_sm in _GENUINE_BH_SOURCE_METHODS):
+        return False
+    # apple-phantom — a global-tier domain can NEVER be a genuine BH price.
+    retailer = raw.get("retailer") or c.get("retailer") or raw.get("url") or ""
+    if retailer:
+        try:
+            from app.services.source_router import registry_tier
+            if registry_tier(retailer) == "global":
+                return False
+        except Exception:  # noqa: BLE001 — never let the tier lookup block a price
+            pass
+    return True
 
 
 def _select_best(candidates: List[dict]) -> Optional[dict]:
