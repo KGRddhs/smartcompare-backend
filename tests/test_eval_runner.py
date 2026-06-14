@@ -621,3 +621,209 @@ def test_per_query_jsonl_includes_price_source_cells():
     row = dataclasses.asdict(graded)
     assert row["estimated_price_cells"] == 2
     assert row["priced_cells"] == 2
+
+
+# ---------------------------------------------------------------------------
+# S3 E1 — genuine-BH-price-share metric (full provenance breakdown)
+#
+# Ahmed's standard: GENUINE BH prices; converted_usd / estimated are last
+# resort. The PRIMARY dial is now genuine_bh_share = of all PRODUCED prices,
+# the fraction with a genuine-BH source_method (real fetch from a BH retailer:
+# local_bhd / page_scrape / page_scrape_rendered / firecrawl / scrapedo_rendered
+# / shopify_json) vs converted_usd vs estimated. Higher genuine_bh_share = the
+# goal. Surfaced run-level AND per-category. estimate_share (L4.1) stays.
+# ---------------------------------------------------------------------------
+
+def _graded_with_provenance(genuine, converted, estimated, priced, *,
+                            category="electronics", qid="q"):
+    """A GradedQuery carrying explicit provenance cell counts (for aggregate /
+    per-category tests that don't need a full response body)."""
+    return eval_runner.GradedQuery(
+        id=qid, category=category, wall_ms=1000, http_status=200, error=None,
+        price_pass=True, specs_score=1.0, winner_pass=True, factual_pass=True,
+        weighted_score=1.0, passing=True, wall_over_cap=False,
+        genuine_bh_price_cells=genuine, converted_usd_price_cells=converted,
+        estimated_price_cells=estimated, priced_cells=priced,
+    )
+
+
+def test_genuine_bh_source_methods_set():
+    """The genuine-BH set is exactly the real-BH-fetch methods (+ shopify_json,
+    forward-compat for the Shopify wiring) — NOT converted_usd or estimated."""
+    s = eval_runner.GENUINE_BH_SOURCE_METHODS
+    assert {"local_bhd", "page_scrape", "page_scrape_rendered", "firecrawl",
+            "scrapedo_rendered", "shopify_json"} <= set(s)
+    assert "converted_usd" not in s
+    assert "estimated" not in s
+
+
+def test_count_price_provenance_all_genuine():
+    body = _body_with_price_methods("local_bhd", "page_scrape")
+    prov = eval_runner.count_price_provenance(body)
+    assert prov == {"genuine_bh": 2, "converted_usd": 0, "estimated": 0, "priced": 2}
+
+
+def test_count_price_provenance_mixed_three_buckets():
+    """One genuine, one converted (only 2 products, so test the converted/
+    estimated split across two bodies via aggregate below; here genuine+converted)."""
+    body = _body_with_price_methods("firecrawl", "converted_usd")
+    prov = eval_runner.count_price_provenance(body)
+    assert prov == {"genuine_bh": 1, "converted_usd": 1, "estimated": 0, "priced": 2}
+
+
+def test_count_price_provenance_converted_and_estimated():
+    body = _body_with_price_methods("converted_usd", "estimated")
+    prov = eval_runner.count_price_provenance(body)
+    assert prov == {"genuine_bh": 0, "converted_usd": 1, "estimated": 1, "priced": 2}
+
+
+def test_count_price_provenance_shopify_json_is_genuine():
+    """shopify_json counts as genuine BH (forward-compat — the moment the
+    pipeline emits it, the metric credits it)."""
+    body = _body_with_price_methods("shopify_json", "estimated")
+    prov = eval_runner.count_price_provenance(body)
+    assert prov["genuine_bh"] == 1
+    assert prov["estimated"] == 1
+
+
+def test_count_price_provenance_no_price_excluded():
+    """A product with no price is in NO bucket (priced denominator unaffected)."""
+    body = _body_with_price_methods("local_bhd", None)
+    prov = eval_runner.count_price_provenance(body)
+    assert prov == {"genuine_bh": 1, "converted_usd": 0, "estimated": 0, "priced": 1}
+
+
+def test_grade_run_result_captures_provenance_cells():
+    body = _body_with_price_methods("local_bhd", "converted_usd")
+    run_result = eval_runner.QueryRunResult(
+        id="q1", query="x", category="electronics",
+        http_status=200, wall_ms=1000, error=None, response=body,
+    )
+    record = {"id": "q1", "expected_prices": {}, "expected_specs": {},
+              "expected_winner_index": None, "forbidden_facts": []}
+    graded = eval_runner.grade_run_result(run_result, record)
+    assert graded.genuine_bh_price_cells == 1
+    assert graded.converted_usd_price_cells == 1
+    assert graded.estimated_price_cells == 0
+    assert graded.priced_cells == 2
+
+
+def test_error_row_has_zero_provenance_cells():
+    run_result = eval_runner.QueryRunResult(
+        id="q-err", query="x", category="electronics",
+        http_status=400, wall_ms=30000, error="http_400", response=None,
+    )
+    record = {"id": "q-err", "expected_prices": {}, "expected_specs": {},
+              "expected_winner_index": None, "forbidden_facts": []}
+    graded = eval_runner.grade_run_result(run_result, record)
+    assert graded.genuine_bh_price_cells == 0
+    assert graded.converted_usd_price_cells == 0
+
+
+def test_aggregate_genuine_bh_share():
+    """Run-level: 3 genuine + 1 converted + 2 estimated across 6 priced cells →
+    genuine_bh_share=0.5, converted_usd_share≈0.167, estimate_share≈0.333."""
+    graded = [
+        _graded_with_provenance(2, 0, 0, 2, qid="q1"),  # both genuine
+        _graded_with_provenance(1, 1, 0, 2, qid="q2"),  # genuine + converted
+        _graded_with_provenance(0, 0, 2, 2, qid="q3"),  # both estimated
+    ]
+    report = eval_runner.aggregate(graded)
+    assert report.genuine_bh_price_cells_total == 3
+    assert report.converted_usd_price_cells_total == 1
+    assert report.estimated_price_cells_total == 2
+    assert report.priced_cells_total == 6
+    assert report.genuine_bh_share == pytest.approx(0.5)
+    assert report.converted_usd_share == pytest.approx(round(1 / 6, 4))
+    assert report.estimate_share == pytest.approx(round(2 / 6, 4))
+
+
+def test_aggregate_provenance_shares_sum_to_one():
+    """The three provenance shares partition the produced prices → sum to 1.0
+    (within rounding) whenever priced > 0."""
+    graded = [_graded_with_provenance(3, 2, 5, 10)]
+    report = eval_runner.aggregate(graded)
+    total_share = (report.genuine_bh_share + report.converted_usd_share
+                   + report.estimate_share)
+    assert total_share == pytest.approx(1.0, abs=2e-4)
+
+
+def test_aggregate_genuine_bh_share_empty_run_no_zerodiv():
+    report = eval_runner.aggregate([])
+    assert report.genuine_bh_price_cells_total == 0
+    assert report.genuine_bh_share == 0.0
+    assert report.converted_usd_share == 0.0
+
+
+def test_aggregate_per_category_provenance():
+    """Per-category breakdown: electronics all-genuine, supplements all-estimated
+    → the PRIMARY dial is readable per category to see where estimates persist."""
+    graded = [
+        _graded_with_provenance(2, 0, 0, 2, category="electronics", qid="e1"),
+        _graded_with_provenance(2, 0, 0, 2, category="electronics", qid="e2"),
+        _graded_with_provenance(0, 0, 2, 2, category="supplements", qid="s1"),
+    ]
+    report = eval_runner.aggregate(graded)
+    pc = report.per_category_provenance
+    assert pc["electronics"]["genuine_bh_share"] == pytest.approx(1.0)
+    assert pc["electronics"]["priced"] == 4
+    assert pc["supplements"]["genuine_bh_share"] == pytest.approx(0.0)
+    assert pc["supplements"]["estimate_share"] == pytest.approx(1.0)
+    assert pc["supplements"]["priced"] == 2
+
+
+def test_per_category_skips_categories_with_no_priced():
+    """A category whose queries all errored (0 priced) doesn't crash / isn't a
+    misleading 0.0 — it's simply absent or zero-guarded."""
+    graded = [_graded_with_provenance(0, 0, 0, 0, category="other", qid="o1")]
+    report = eval_runner.aggregate(graded)
+    pc = report.per_category_provenance
+    # 'other' had no produced prices → either absent or all-zero shares (no crash).
+    if "other" in pc:
+        assert pc["other"]["genuine_bh_share"] == 0.0
+        assert pc["other"]["priced"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_eval_aggregates_genuine_bh_share():
+    transport = _mock_transport(_body_with_price_methods("local_bhd", "converted_usd"))
+    queries = [
+        {"id": f"q-{i}", "query": "x", "category": "electronics", "region": "bahrain",
+         "expected_prices": {}, "expected_specs": {}, "expected_winner_index": None,
+         "forbidden_facts": [], "max_wall_seconds": 25.0}
+        for i in range(4)
+    ]
+    report = await eval_runner.run_eval(queries, base_url="http://test",
+                                        transport=transport, concurrency=2)
+    # 4 × (1 genuine, 1 converted) → 4 genuine / 4 converted / 8 priced.
+    assert report.genuine_bh_price_cells_total == 4
+    assert report.converted_usd_price_cells_total == 4
+    assert report.genuine_bh_share == pytest.approx(0.5)
+    assert report.converted_usd_share == pytest.approx(0.5)
+
+
+def test_format_report_shows_genuine_bh_share():
+    """The CLI report surfaces genuine-BH-share as the PRIMARY dial (higher=
+    better) alongside converted_usd + estimate."""
+    graded = [_graded_with_provenance(3, 1, 0, 4)]
+    report = eval_runner.aggregate(graded)
+    text = eval_runner._format_report(report)
+    low = text.lower()
+    assert "genuine" in low and ("bh" in low)
+    assert "higher" in low  # PRIMARY-dial framing (higher = better)
+    assert "75" in text  # 3/4 genuine = 75.0%
+
+
+def test_per_query_jsonl_includes_provenance_cells():
+    graded = eval_runner.grade_run_result(
+        eval_runner.QueryRunResult(
+            id="q1", query="x", category="electronics", http_status=200,
+            wall_ms=1000, error=None,
+            response=_body_with_price_methods("firecrawl", "converted_usd"),
+        ),
+        {"id": "q1", "expected_prices": {}, "expected_specs": {},
+         "expected_winner_index": None, "forbidden_facts": []},
+    )
+    row = dataclasses.asdict(graded)
+    assert row["genuine_bh_price_cells"] == 1
+    assert row["converted_usd_price_cells"] == 1

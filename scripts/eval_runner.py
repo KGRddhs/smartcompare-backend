@@ -308,6 +308,59 @@ def count_price_source_cells(body: Dict[str, Any]) -> tuple[int, int]:
     return estimated, priced
 
 
+# S3 E1 — price source_method values that mean a GENUINE Bahrain price: a real
+# fetch from a BH retailer page/feed (NOT a USD->BHD conversion, NOT a GPT
+# estimate). Ahmed's standard is genuine BH first; converted_usd / estimated are
+# last resort. `shopify_json` is included forward-compatibly — the Shopify
+# products.json adapter (S3 tasks #14-16/#21) emits it, and the metric must
+# credit it the moment it lands. (`page_scrape_rendered` is a real rendered BH
+# page fetch, so it's genuine too.) The genuine-BH-share KPI counts this set as
+# the numerator over all produced prices.
+GENUINE_BH_SOURCE_METHODS = frozenset({
+    "local_bhd",
+    "page_scrape",
+    "page_scrape_rendered",
+    "firecrawl",
+    "scrapedo_rendered",
+    "shopify_json",
+})
+
+# The one non-genuine, non-estimate bucket: a USD price converted to BHD. Real
+# number, but not a BH-sourced price — tracked separately so we can see how much
+# of the catalogue still leans on conversion vs genuine BH retail.
+_CONVERTED_USD_SOURCE_METHOD = "converted_usd"
+
+
+def count_price_provenance(body: Dict[str, Any]) -> Dict[str, int]:
+    """Tally produced prices into provenance buckets across both products.
+
+    S3 E1 — the full breakdown behind the genuine-BH-share KPI. Returns
+    `{genuine_bh, converted_usd, estimated, priced}` where `priced` is the
+    number of price fields the engine PRODUCED (non-null source_method) and the
+    three buckets partition it (genuine_bh + converted_usd + estimated ==
+    priced for known methods). A product with no price is in no bucket. An
+    unrecognized non-empty method counts toward `priced` but no bucket — it is
+    surfaced by the partition-vs-priced gap rather than silently miscredited."""
+    genuine = converted = estimated = priced = 0
+    for idx in (0, 1):
+        method = extract_price_source_method(body, idx)
+        if method is None:
+            continue
+        priced += 1
+        if method in GENUINE_BH_SOURCE_METHODS:
+            genuine += 1
+        elif method == _CONVERTED_USD_SOURCE_METHOD:
+            converted += 1
+        elif method == _ESTIMATED_SOURCE_METHOD:
+            estimated += 1
+    return {
+        "genuine_bh": genuine,
+        "converted_usd": converted,
+        "estimated": estimated,
+        "priced": priced,
+    }
+
+
 def extract_specs(body: Dict[str, Any], product_idx: int) -> Dict[str, Any]:
     """specs.products[i].specs dict (falls back to overview products)."""
     specs_products = _products_specs(body)
@@ -538,6 +591,14 @@ class GradedQuery:
     # into the run-level estimate_share.
     estimated_price_cells: int = 0
     priced_cells: int = 0
+    # S3 E1 — the other two provenance buckets (the genuine-BH-share KPI).
+    # genuine_bh_price_cells = produced prices with a real BH-fetch method
+    # (GENUINE_BH_SOURCE_METHODS); converted_usd_price_cells = USD->BHD
+    # conversions. With estimated_price_cells they partition priced_cells.
+    # Summed into the run-level + per-category genuine_bh_share / converted_usd_
+    # share. 0 on error rows.
+    genuine_bh_price_cells: int = 0
+    converted_usd_price_cells: int = 0
 
 
 @dataclasses.dataclass
@@ -568,6 +629,20 @@ class EvalReport:
     estimated_price_cells_total: int = 0
     priced_cells_total: int = 0
     estimate_share: float = 0.0
+    # S3 E1 — genuine-BH-price-share (the PRIMARY success dial; higher=better).
+    # genuine_bh_price_cells_total / priced_cells_total = genuine_bh_share, the
+    # fraction of PRODUCED prices that are real BH-sourced (vs converted_usd vs
+    # estimated). Persisted in the eval_runs metadata jsonb. per_category_
+    # provenance maps category -> {genuine_bh, converted_usd, estimated, priced,
+    # genuine_bh_share, converted_usd_share, estimate_share} so we can see where
+    # estimates persist by category.
+    genuine_bh_price_cells_total: int = 0
+    converted_usd_price_cells_total: int = 0
+    genuine_bh_share: float = 0.0
+    converted_usd_share: float = 0.0
+    per_category_provenance: Dict[str, Dict[str, Any]] = dataclasses.field(
+        default_factory=dict
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -653,7 +728,9 @@ def grade_run_result(run_result: QueryRunResult, record: Dict[str, Any],
                                    weights=weights)
     passing = run_result.error is None and weighted >= QUERY_PASS_THRESHOLD
     cap = float(record.get("max_wall_seconds", 25.0))
-    estimated_cells, priced_cells = count_price_source_cells(body)
+    # S3 E1 — full provenance breakdown (genuine_bh / converted_usd / estimated
+    # / priced) in one pass; supersedes the L4.1 (estimated, priced)-only count.
+    prov = count_price_provenance(body)
     return GradedQuery(
         id=run_result.id,
         category=run_result.category,
@@ -668,8 +745,10 @@ def grade_run_result(run_result: QueryRunResult, record: Dict[str, Any],
         passing=passing,
         wall_over_cap=(run_result.wall_ms / 1000.0) > cap,
         missing_dim_cells=extract_missing_dim_cells(body),
-        estimated_price_cells=estimated_cells,
-        priced_cells=priced_cells,
+        estimated_price_cells=prov["estimated"],
+        priced_cells=prov["priced"],
+        genuine_bh_price_cells=prov["genuine_bh"],
+        converted_usd_price_cells=prov["converted_usd"],
     )
 
 
@@ -713,6 +792,34 @@ def aggregate(graded: List[GradedQuery]) -> EvalReport:
     priced_total = sum(g.priced_cells for g in graded)
     estimate_share = round(estimated_total / priced_total, 4) if priced_total else 0.0
 
+    # S3 E1 — genuine-BH-share (PRIMARY dial) + converted_usd share, run-level.
+    genuine_total = sum(g.genuine_bh_price_cells for g in graded)
+    converted_total = sum(g.converted_usd_price_cells for g in graded)
+    genuine_bh_share = round(genuine_total / priced_total, 4) if priced_total else 0.0
+    converted_usd_share = round(converted_total / priced_total, 4) if priced_total else 0.0
+
+    # S3 E1 — per-category provenance: bucket the cells by query category so the
+    # report shows WHERE estimates persist (e.g. supplements still estimate-
+    # heavy while electronics are genuine). Categories with zero produced prices
+    # get zero-guarded shares (no ZeroDiv, not a misleading omission).
+    per_category_provenance: Dict[str, Dict[str, Any]] = {}
+    cats = sorted({g.category or "uncategorized" for g in graded})
+    for cat in cats:
+        rows = [g for g in graded if (g.category or "uncategorized") == cat]
+        c_genuine = sum(g.genuine_bh_price_cells for g in rows)
+        c_converted = sum(g.converted_usd_price_cells for g in rows)
+        c_estimated = sum(g.estimated_price_cells for g in rows)
+        c_priced = sum(g.priced_cells for g in rows)
+        per_category_provenance[cat] = {
+            "genuine_bh": c_genuine,
+            "converted_usd": c_converted,
+            "estimated": c_estimated,
+            "priced": c_priced,
+            "genuine_bh_share": round(c_genuine / c_priced, 4) if c_priced else 0.0,
+            "converted_usd_share": round(c_converted / c_priced, 4) if c_priced else 0.0,
+            "estimate_share": round(c_estimated / c_priced, 4) if c_priced else 0.0,
+        }
+
     return EvalReport(
         queries_total=total,
         queries_passing=passing,
@@ -731,6 +838,11 @@ def aggregate(graded: List[GradedQuery]) -> EvalReport:
         estimated_price_cells_total=estimated_total,
         priced_cells_total=priced_total,
         estimate_share=estimate_share,
+        genuine_bh_price_cells_total=genuine_total,
+        converted_usd_price_cells_total=converted_total,
+        genuine_bh_share=genuine_bh_share,
+        converted_usd_share=converted_usd_share,
+        per_category_provenance=per_category_provenance,
     )
 
 
@@ -801,7 +913,26 @@ def _format_report(report: EvalReport) -> str:
         f"estimate-share  -  {report.estimate_share:.1%} "
         f"({report.estimated_price_cells_total}/{report.priced_cells_total} "
         f"produced prices are estimates · L4.1 KPI · lower=better)",
+        # S3 E1 — genuine-BH-share is the PRIMARY success dial (higher=better).
+        # ASCII-only separators (no U+00B7) so captured/redirected reports don't
+        # mojibake under the Windows cp1252 console codec (CLAUDE.md trap).
+        f"genuine-BH-share  -  {report.genuine_bh_share:.1%} GENUINE "
+        f"({report.genuine_bh_price_cells_total}/{report.priced_cells_total}) "
+        f"| converted_usd {report.converted_usd_share:.1%} "
+        f"| estimated {report.estimate_share:.1%} "
+        f"-- E1 PRIMARY dial -- higher genuine=better",
     ]
+    # S3 E1 — per-category provenance breakdown (where do estimates persist?).
+    if report.per_category_provenance:
+        lines.append("genuine-BH by category (genuine / converted / estimated of priced):")
+        for cat, p in sorted(report.per_category_provenance.items()):
+            if not p.get("priced"):
+                continue
+            lines.append(
+                f"  {cat:<14} genuine={p['genuine_bh_share']:.0%} "
+                f"converted={p['converted_usd_share']:.0%} "
+                f"estimated={p['estimate_share']:.0%}  (n={p['priced']})"
+            )
     if report.failing_ids:
         lines.append(f"failing: {', '.join(report.failing_ids)}")
     lines.append("=" * 60)
@@ -884,7 +1015,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                       # S3 L4.1 — estimate-share ("no false estimates" KPI).
                       "estimate_share": report.estimate_share,
                       "estimated_price_cells_total": report.estimated_price_cells_total,
-                      "priced_cells_total": report.priced_cells_total},
+                      "priced_cells_total": report.priced_cells_total,
+                      # S3 E1 — genuine-BH-share (PRIMARY success dial) + breakdown.
+                      "genuine_bh_share": report.genuine_bh_share,
+                      "converted_usd_share": report.converted_usd_share,
+                      "genuine_bh_price_cells_total": report.genuine_bh_price_cells_total,
+                      "converted_usd_price_cells_total": report.converted_usd_price_cells_total,
+                      "per_category_provenance": report.per_category_provenance},
         )
         print(f"# eval_runs row: {run_id}")
 
