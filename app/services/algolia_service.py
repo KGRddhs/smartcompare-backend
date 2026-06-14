@@ -44,6 +44,19 @@ from app.services.api_budget_service import (
     record_failure, record_success, is_circuit_closed,
 )
 
+# L1 hardening (price_service.variant_mismatch) — rejects a different model-line
+# variant whose name is a prefix-superset of the query ("Galaxy S24" query vs
+# "Galaxy S24 Ultra" hit passes strict_title_match but is a pricier different
+# SKU). Defensive import: the helper lives on the integration branch; when this
+# module is merged alongside it, the guard activates automatically. Until then
+# (and on any older price_service) it no-ops to False (no mismatch) so the
+# module always imports and behaviour degrades to the pre-guard matcher.
+try:
+    from app.services.price_service import variant_mismatch
+except ImportError:  # pragma: no cover - exercised only pre-merge
+    def variant_mismatch(product_name: str, title: str) -> bool:  # type: ignore
+        return False
+
 logger = logging.getLogger(__name__)
 
 # Per-store Algolia metadata. `chunk_hint` narrows which JS bundle carries the
@@ -305,6 +318,12 @@ def _match_algolia_hit(
         if not numbers_match(product_name, surface):
             continue
         if not strict_title_match(product_name, surface):
+            continue
+        # L1 hardening — reject a different model-line variant whose name is a
+        # prefix-superset of the query ("Galaxy S24" vs "Galaxy S24 Ultra"):
+        # strict_title_match passes (base name is a substring) but it's a
+        # pricier different SKU. No-ops to False pre-merge (see import guard).
+        if variant_mismatch(product_name, surface):
             continue
         t_words = normalize_words(surface)
         score = (len(p_words & t_words) / len(p_words)) if p_words else 0.0

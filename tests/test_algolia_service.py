@@ -153,6 +153,51 @@ def test_match_picks_best_overlap_among_candidates():
     assert "Elixir" in matched["name"]  # better word overlap than plain Sauvage
 
 
+# Real-behavior stub for variant_mismatch (mirrors price_service.variant_mismatch
+# qualifier-set logic) so these tests verify _match_algolia_hit CONSULTS it +
+# respects its verdict, independent of whether the real price_service impl is on
+# this branch yet (it lives on L1's integration branch; my module defensive-
+# imports it with a no-op fallback).
+_VARIANT_QUALS = {"pro", "max", "plus", "ultra", "mini", "air"}
+
+
+def _stub_variant_mismatch(query: str, title: str) -> bool:
+    import re as _re
+    q = set(_re.findall(r"[a-z]+", (query or "").lower())) & _VARIANT_QUALS
+    t = set(_re.findall(r"[a-z]+", (title or "").lower())) & _VARIANT_QUALS
+    return q != t
+
+
+def test_match_rejects_prefix_variant_mismatch():
+    """L1 hardening: a base-model query must NOT match a pricier model-line
+    variant whose name is a superset ('Galaxy S24' query vs 'Galaxy S24 Ultra'
+    hit — passes strict_title_match + overlap, but a different SKU). The
+    variant_mismatch guard closes this prefix-variant hole on the Algolia path.
+    """
+    import app.services.algolia_service as alg
+    hits = [
+        {"name": "Galaxy S24 Ultra 5G", "brand_name": "Samsung",
+         "price": [{"BHD": {"default": 410}}], "url": "u", "in_stock": True},
+    ]
+    with patch("app.services.algolia_service.variant_mismatch", new=_stub_variant_mismatch):
+        matched = alg._match_algolia_hit(hits, "Samsung Galaxy S24")
+    assert matched is None  # Ultra is a different model-line variant — rejected
+
+
+def test_match_keeps_exact_variant_when_query_specifies_it():
+    """Guard is precise: 'Galaxy S24 Ultra' query DOES match the Ultra hit
+    (qualifier sets equal) — variant_mismatch must not over-reject."""
+    import app.services.algolia_service as alg
+    hits = [
+        {"name": "Galaxy S24 Ultra 5G", "brand_name": "Samsung",
+         "price": [{"BHD": {"default": 410}}], "url": "u", "in_stock": True},
+    ]
+    with patch("app.services.algolia_service.variant_mismatch", new=_stub_variant_mismatch):
+        matched = alg._match_algolia_hit(hits, "Samsung Galaxy S24 Ultra")
+    assert matched is not None
+    assert "Ultra" in matched["name"]
+
+
 # ---------------------------------------------------------------------------
 # fetch_algolia_price — orchestrator (config harvest → query → match → price)
 # ---------------------------------------------------------------------------
