@@ -1968,7 +1968,11 @@ def _confirmed(candidates: List[dict]) -> bool:
 # lowest-value tie-break.
 _GENUINE_BH_SOURCE_METHODS = frozenset({
     "page_scrape", "page_scrape_jsonld", "page_scrape_rendered",
-    "local_bhd", "shopify_json", "firecrawl", "scrapedo_rendered",
+    "local_bhd", "shopify_json",
+    # the ACTUAL method strings the fan_out scrapers stamp (scs.py): the
+    # firecrawl scraper emits "firecrawl_brand_domain", scrapedo emits
+    # "scrapedo_rendered". A rendered genuine BH price is still genuine.
+    "firecrawl", "firecrawl_brand_domain", "scrapedo_rendered",
     "official_brand",
 })
 
