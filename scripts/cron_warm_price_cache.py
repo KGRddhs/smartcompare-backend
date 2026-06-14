@@ -49,6 +49,15 @@ import os
 os.environ["PRICE_RACE_TIMEOUT"] = os.getenv("WARMER_PRICE_RACE_TIMEOUT", "60")
 os.environ["STREAM_HARD_CAP_SECONDS"] = os.getenv("WARMER_STREAM_HARD_CAP", "150")
 
+# Load .env for LOCAL/manual runs (Railway injects env directly — load_dotenv
+# no-ops in the container since there is no .env file). override=False preserves
+# the PRICE_RACE_TIMEOUT override above and never clobbers Railway's injected env.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=False)
+except Exception:
+    pass
+
 import asyncio
 import logging
 from typing import Any, Dict, List, Optional
