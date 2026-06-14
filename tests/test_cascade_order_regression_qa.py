@@ -424,6 +424,41 @@ def test_render_wave_includes_render_only_domain():
     )
 
 
+# --- Fix B (THE PROD ROLLBACK FIX): render wave must NOT fire on a GLOBAL url ---
+# This is the exact regression that rolled the genuine-BH merge back: render
+# fired on gl=us GLOBAL organic URLs (samsung.com/us, amazon.ae, harvested from
+# the official/gcc tiers) because should_fan_out is True-in-hard-mode → 6+ slow
+# render calls → blew the 15s price cap → price None. L1's Fix B gates the render
+# wave on `is_render_only_domain(...)` so a GLOBAL url gets 0 render scrapers
+# (the parked converted_usd is the answer); only an is_render_only BH SPA renders.
+# Pending L1's consolidated re-merge → xfail-strict, flips green with the set.
+
+@pytest.mark.xfail(
+    reason="Fix B (render-scope-to-BH) is on L1's fast-follow (5a4f614), not yet on main. "
+           "Verified green against that branch (16/16 --runxfail). strict=True → loud xpass on re-merge.",
+    strict=True,
+)
+def test_render_wave_skips_global_url_fix_b():
+    """A GLOBAL organic url (samsung.com/us) must get ZERO render scrapers in
+    wave='render' — rendering globals is THE prod regression that blew the 15s
+    cap → None. Only is_render_only BH SPAs may render; a global's answer is the
+    parked converted_usd."""
+    from app.services.structured_comparison_service import _build_escalation_scrapers
+
+    global_url = "https://www.samsung.com/us/smartphones/galaxy-s24/"
+    scrapers = _build_escalation_scrapers(
+        candidate_urls=[(global_url, "samsung.com")],
+        full_name="Samsung Galaxy S24",
+        currency="BHD",
+        scraping_mode="hard",
+        wave="render",
+    )
+    assert len(scrapers) == 0, (
+        "wave='render' emitted render scrapers for a GLOBAL url — THE prod "
+        f"regression (renders globals → blows the 15s cap → None); expected 0, got {len(scrapers)}"
+    )
+
+
 # ===========================================================================
 # A5 — FALLBACK-ALWAYS-YIELDS-A-PRICE liveness invariant (the rollback lesson)
 # ===========================================================================
