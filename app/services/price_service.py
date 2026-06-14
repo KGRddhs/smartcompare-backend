@@ -954,6 +954,14 @@ def extract_price_from_html(
         }
         if price_data.get("_needs_conversion") or result["currency"].upper() != currency.upper():
             _convert_gpt_price_currency(result, currency)
+            # S3 coverage #2 (apple.com-198.9 wrong-scrape) — a JSON-LD price in
+            # a FOREIGN currency that we converted to the target is NOT a genuine
+            # local shelf price; it's a converted figure. Label its provenance
+            # HONESTLY as converted_usd (the USD-fallback at line ~939 fired, or
+            # the page served e.g. a US $529 refurb that became 198.9 BHD). This
+            # keeps it out of the genuine-BH-share KPI + the UI says
+            # "indicative/reference", never a genuine BH price.
+            result["source_method"] = "converted_usd"
         return result
 
     # Priority 2: OpenGraph meta tags
@@ -987,6 +995,9 @@ def extract_price_from_html(
                 }
                 if detected_currency.upper() != currency.upper():
                     _convert_gpt_price_currency(result, currency)
+                    # S3 coverage #2 — a converted OG price is converted_usd, not
+                    # a genuine local page_scrape (provenance honesty).
+                    result["source_method"] = "converted_usd"
                 return result
         except (ValueError, TypeError):
             pass

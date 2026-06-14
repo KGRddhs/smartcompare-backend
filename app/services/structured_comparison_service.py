@@ -581,6 +581,7 @@ from app.services.source_router import (
     is_wrong_locale_url,
     is_render_only_domain,
     get_shopify_sources_for_category,
+    registry_tier,
 )
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -691,10 +692,27 @@ async def _curl_scraper(
     if not get_content_safety_service().is_text_safe(_surface):
         logger.info("[content_safety] L2 dropped fan-out curl candidate for %s", retailer_domain)
         return None
+    # S3 coverage #2 (apple.com-198.9 wrong-scrape) — a GLOBAL-tier domain
+    # (apple.com/samsung.com/...) has NO Bahrain storefront, so its scrape can
+    # NEVER be a genuine BH shelf price. The prod bug: a US $529 refurbished
+    # iPhone 15 (apple.com JSON-LD priceCurrency=USD) was converted to 198.9 BHD
+    # and stamped genuine page_scrape_jsonld. Downgrade a global-tier scrape to
+    # converted_usd (a converted figure, honestly labeled — kept out of the
+    # genuine-BH-share KPI + UI renders "indicative/reference"). Bahrain/gcc-tier
+    # and off-registry (None — a discovered BH retailer PDP) keep page_scrape_jsonld.
+    _src_method = "page_scrape_jsonld"
+    _rank = _RANK_PAGE_SCRAPE_JSONLD
+    if registry_tier(retailer_domain) == "global" or registry_tier(url) == "global":
+        _src_method = "converted_usd"
+        page_price["source_method"] = "converted_usd"
+        logger.info(
+            "[PRICE] global-tier %s curl downgraded page_scrape_jsonld -> converted_usd "
+            "(no BH storefront; converted figure only)", retailer_domain,
+        )
     return {
         "value": float(page_price["amount"]),
-        "source_method": "page_scrape_jsonld",
-        "rank": _RANK_PAGE_SCRAPE_JSONLD,
+        "source_method": _src_method,
+        "rank": _rank,
         "raw_data": page_price,
     }
 
