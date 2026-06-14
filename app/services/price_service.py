@@ -515,6 +515,70 @@ def strict_title_match(product_name: str, title: str) -> bool:
     return all(w in title_normalized for w in key_words)
 
 
+# S3 #1 (discovery-match) — model-line variant qualifiers. A base-model query
+# ("iPhone 15") strict-matches a HIGHER variant ("iPhone 15 Pro Max") because
+# the base name is a prefix of the variant — so the wrong, pricier SKU's PDP can
+# be attributed to the query (the iPhone16->14 wrong-product class, inverted).
+# These tokens DISTINGUISH SKUs within a model line; variant_mismatch rejects a
+# candidate whose qualifier set differs from the query's.
+_VARIANT_QUALIFIERS = frozenset({
+    "pro", "max", "plus", "ultra", "mini", "air", "promax",
+})
+
+
+def _size_qualifiers(text: str) -> set:
+    """Size discriminators present in `text` (e.g. {'13', '15'} from '13-inch',
+    '15"', or a bare laptop-range '13'). A size in the QUERY constrains the SKU;
+    a size only in the title (query unspecified) does not."""
+    t = text.lower()
+    sizes = set()
+    # N-inch / N inch / N"  → the screen size number (explicit)
+    for m in re.findall(r'(\d{2})\s*(?:-?\s*inch|")', t):
+        sizes.add(m)
+    # A bare 2-digit number in the laptop/tablet screen range (11-17") is also a
+    # size discriminator ("MacBook Air 13 M3"). Conservative range avoids model
+    # numbers (15/16/17 phones are caught by numbers_match separately; here we
+    # only add 11-17 which are the common screen inches).
+    for m in re.findall(r'\b(1[1-7])\b', t):
+        sizes.add(m)
+    return sizes
+
+
+def variant_mismatch(product_name: str, title: str) -> bool:
+    """True iff `title` is a DIFFERENT model-line variant than `product_name`
+    (so its price must NOT be attributed to the query).
+
+    Logic:
+      - model-line qualifiers (pro/max/plus/ultra/mini/air): the SET present in
+        the query must equal the set present in the title. A qualifier in the
+        title-but-not-query ("Pro Max" when query is base) OR query-but-not-title
+        ("iPhone 15 Pro" when title is base) → mismatch.
+      - size qualifiers (13-inch/15-inch): only enforced when the QUERY specifies
+        a size — then the title's size, if any, must include it. A size only in
+        the title (query unspecified) is allowed (query didn't constrain it).
+
+    Never raises. Returns False (no mismatch) when neither side carries a
+    discriminating qualifier — the brand/number matchers handle the rest.
+    """
+    q = (product_name or "").lower()
+    t = (title or "").lower()
+    # Normalize "pro max" -> token set membership: treat the two-word "pro max"
+    # by checking each word; "promax" is also in the set for safety.
+    q_words = set(re.findall(r"[a-z]+", q))
+    t_words = set(re.findall(r"[a-z]+", t))
+    q_quals = q_words & _VARIANT_QUALIFIERS
+    t_quals = t_words & _VARIANT_QUALIFIERS
+    if q_quals != t_quals:
+        return True
+    # Size: only when the query constrains it.
+    q_sizes = _size_qualifiers(q)
+    if q_sizes:
+        t_sizes = _size_qualifiers(t)
+        if t_sizes and not (q_sizes & t_sizes):
+            return True
+    return False
+
+
 def get_retailer_score(retailer_name: str) -> float:
     """Score a retailer by quality tier."""
     if not retailer_name:
@@ -719,6 +783,13 @@ def extract_price_from_shopping(
             continue
         if not numbers_match(product_name, title):
             continue
+        # S3 #1 (discovery-match) — reject a different model-line variant
+        # ("iPhone 15" query vs "iPhone 15 Pro Max" listing): the base name is a
+        # prefix of the variant so strict/numbers both pass, but it's a pricier
+        # different SKU. Genuine-or-correct: don't attribute the wrong variant's
+        # price.
+        if variant_mismatch(product_name, title):
+            continue
 
         t_words = normalize_words(title)
         match_score = len(p_words & t_words) / len(p_words) if p_words else 0
@@ -869,6 +940,15 @@ def extract_jsonld_price(
             if not matched_in_name and not matched_in_brand_field:
                 continue
 
+            # S3 #1 (discovery-match) — reject a DIFFERENT model-line variant
+            # even when the base name matched (matched_in_name=True for "iPhone
+            # 15" vs an "iPhone 15 Pro Max" JSON-LD Product, since the base is a
+            # prefix). sharafdg/microless PDP discovery surfaces base+Pro+Pro Max
+            # on one query; without this the cheapest/first variant's price is
+            # mis-attributed. Applies whenever the full query is known.
+            if query_name and variant_mismatch(query_name, product_name):
+                continue
+
             # S4 — when the match is ONLY via the brand field (the product NAME
             # didn't contain the brand), require the matched product's name to
             # actually relate to the full query. Otherwise a multi-Product
@@ -954,6 +1034,14 @@ def extract_price_from_html(
         }
         if price_data.get("_needs_conversion") or result["currency"].upper() != currency.upper():
             _convert_gpt_price_currency(result, currency)
+            # S3 coverage #2 (apple.com-198.9 wrong-scrape) — a JSON-LD price in
+            # a FOREIGN currency that we converted to the target is NOT a genuine
+            # local shelf price; it's a converted figure. Label its provenance
+            # HONESTLY as converted_usd (the USD-fallback at line ~939 fired, or
+            # the page served e.g. a US $529 refurb that became 198.9 BHD). This
+            # keeps it out of the genuine-BH-share KPI + the UI says
+            # "indicative/reference", never a genuine BH price.
+            result["source_method"] = "converted_usd"
         return result
 
     # Priority 2: OpenGraph meta tags
@@ -987,6 +1075,9 @@ def extract_price_from_html(
                 }
                 if detected_currency.upper() != currency.upper():
                     _convert_gpt_price_currency(result, currency)
+                    # S3 coverage #2 — a converted OG price is converted_usd, not
+                    # a genuine local page_scrape (provenance honesty).
+                    result["source_method"] = "converted_usd"
                 return result
         except (ValueError, TypeError):
             pass
@@ -1412,6 +1503,9 @@ def _match_shopify_product(
         if not numbers_match(product_name, title):
             continue
         if not strict_title_match(product_name, title):
+            continue
+        # S3 #1 (discovery-match) — reject a different model-line variant.
+        if variant_mismatch(product_name, title):
             continue
 
         t_words = normalize_words(title)

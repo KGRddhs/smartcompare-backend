@@ -37,6 +37,12 @@ class Source:
     # wasted) and INCLUDES it in the budget-gated Firecrawl/Scrape.do render-tier
     # escalation. The store is real + priced — just render-needed. Default False.
     is_render_only: bool = False
+    # S3 #21/#1 (2026-06-14) — storefront backed by a PUBLIC Algolia search index
+    # (6thStreet today). When True, the Tier-2 Algolia cascade (between the
+    # Shopify /products.json direct-fetch and the Serper site: discovery) queries
+    # the index DIRECTLY via algolia_service.fetch_algolia_price (free, $0, no
+    # Serper/render, genuine BHD). Default False → every legacy row unchanged.
+    is_algolia: bool = False
 
 
 SOURCE_REGISTRY: List[Source] = [
@@ -133,6 +139,20 @@ SOURCE_REGISTRY: List[Source] = [
     Source(
         "alhajisbahrain.com", "bahrain", ("fragrances",), 3.0, is_shopify=True
     ),  # Al Hajis BH (Shopify /products.json, designer fragrances, BHD)
+    # S3 #21/#1 — 6thStreet (Apparel Group), Magento+Algolia. The PUBLIC search
+    # index exposes genuine BHD via algolia_service.fetch_algolia_price (free,
+    # $0, no Serper/render). FASHION/FOOTWEAR ONLY — L2 verify-or-omit
+    # (2026-06-14): the harvested index returns NO genuine beauty ("lipstick"→0
+    # hits, "Dior Sauvage"→backpacks, "Charlotte Tilbury"→Forever New dresses);
+    # the beauty catalog is a SEPARATE Algolia index reachable only via a
+    # headless browser (not harvestable, dropped). Positive gate proven:
+    # "Nike Air Max SC"→genuine Nike BHD 32.000. Beauty (makeup/skincare/
+    # haircare) rides the render-tier rows (boutiqaat/sephora) + the Shopify
+    # fragrance stores (ajmal/alhajis/asgharali). Tier-2 (after Shopify, before curl).
+    Source(
+        "en-bh.6thstreet.com", "bahrain", ("fashion",), 3.0,
+        is_algolia=True,
+    ),  # 6thStreet BH (Algolia index, BHD, fashion/footwear only)
     Source(
         "jalilaperfumes.com", "bahrain", ("fragrances",), 3.0
     ),  # Jalila Perfumes BH (custom PHP, product pages + BHD)
@@ -152,7 +172,13 @@ SOURCE_REGISTRY: List[Source] = [
     ),
 
     # === GCC SECONDARY (weight 1.5) ===
-    Source("noon.com", "gcc", (), 1.5),
+    # S3 coverage #2 — noon.com is Akamai-walled: a plain curl gets a 0-byte
+    # body, and its JSON-LD price is a hardcoded-0 placeholder (the real price
+    # hydrates in the Next.js RSC stream). Flag is_render_only so the cascade
+    # routes it to the render tier instead of wasting a plain curl. noon stays
+    # gcc-tier (SECONDARY breadth, gray-import) — never authoritative for Apple/
+    # Samsung; sharafdg/microless are the authoritative BH electronics sources.
+    Source("noon.com", "gcc", (), 1.5, is_render_only=True),
     Source("amazon.ae", "gcc", (), 1.5),
     Source("sharafdg.com", "gcc", ("electronics",), 1.5),
     Source("ounass.com", "gcc", ("fashion", "fragrances", "makeup"), 1.5),
@@ -224,6 +250,42 @@ def match_registry_apex(host: str) -> str:
     return domain
 
 
+def registry_tier(host_or_url: str) -> Optional[str]:
+    """Return the registry tier ("bahrain" | "gcc" | "global") for a host/URL,
+    or None when the domain isn't in the registry.
+
+    Suffix-matches like `score_source`/`match_registry_apex` so a regional
+    subdomain resolves to its apex tier (`store.apple.com` -> apple.com ->
+    "global"; `bahrain.sharafdg.com` -> "bahrain"). Accepts a bare host or a
+    full URL.
+
+    S3 coverage #2 (the apple.com-198.9 wrong-scrape) — used by `_curl_scraper`
+    to enforce "a GLOBAL-tier domain can never carry a genuine page_scrape*/
+    local_bhd label" (no BH Apple Store ⇒ a global scrape is converted_usd at
+    best). A non-registry domain (None) is treated as NOT-global by the caller
+    (a discovered BH retailer PDP off-registry can still be genuine).
+    """
+    if not host_or_url:
+        return None
+    raw = str(host_or_url)
+    # Accept a full URL — pull the netloc; else treat as a bare host.
+    if "://" in raw or "/" in raw:
+        try:
+            from urllib.parse import urlparse
+            netloc = urlparse(raw if "://" in raw else "//" + raw).netloc
+            raw = netloc or raw
+        except Exception:  # noqa: BLE001
+            pass
+    domain = _normalize_domain(raw)
+    if not domain:
+        return None
+    for s in SOURCE_REGISTRY:
+        registry_domain = s.domain.lower()
+        if domain == registry_domain or domain.endswith("." + registry_domain):
+            return s.tier
+    return None
+
+
 def _usage_allows(source_usage_value: str, wanted: str) -> bool:
     """True when a source of `source_usage_value` may serve `wanted`.
 
@@ -273,6 +335,24 @@ def get_shopify_sources_for_category(category: str) -> List[Source]:
         s
         for s in SOURCE_REGISTRY
         if s.is_shopify
+        and s.tier == "bahrain"
+        and (not s.categories or category in s.categories)
+    ]
+
+
+def get_algolia_sources_for_category(category: str) -> List[Source]:
+    """S3 #21/#1 — Bahrain-tier Algolia-backed sources for `category`, in
+    registry order.
+
+    The Tier-2 cascade (between the Shopify /products.json direct-fetch and the
+    Serper site: discovery) iterates these to query the store's PUBLIC Algolia
+    index DIRECTLY via algolia_service.fetch_algolia_price (free, $0, no Serper/
+    render, genuine BHD). Returns a (possibly empty) list — never raises.
+    """
+    return [
+        s
+        for s in SOURCE_REGISTRY
+        if s.is_algolia
         and s.tier == "bahrain"
         and (not s.categories or category in s.categories)
     ]

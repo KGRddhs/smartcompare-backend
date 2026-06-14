@@ -581,6 +581,8 @@ from app.services.source_router import (
     is_wrong_locale_url,
     is_render_only_domain,
     get_shopify_sources_for_category,
+    get_algolia_sources_for_category,
+    registry_tier,
 )
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -662,6 +664,18 @@ _RANK_FIRECRAWL_BRAND_DOMAIN = 90
 _RANK_PAGE_SCRAPE_JSONLD = 85
 _RANK_SCRAPEDO_RENDERED = 70
 
+# S3 coverage #3 (skin-002 timeout trim) — max distinct is_render_only domains
+# the paid render wave will attempt. Each domain costs a Firecrawl+Scrape.do
+# pair (slow; lower-weight SPAs 429/timeout). candidate_urls is pre-ordered by
+# source_weight (bahrain->gcc), so the top-N keeps the genuine winner + drops
+# the redundant slow tail. Tunable via env for the offline wall sweep.
+_RENDER_WAVE_MAX_DOMAINS = int(os.getenv("RENDER_WAVE_MAX_DOMAINS", "2"))
+
+# S3 #21/#1 — outer cap on the Tier-2 Algolia direct-query gather (config
+# harvest + one index query per source). Kept tight so it never eats the budget
+# before discovery/render; a timeout just falls through to discovery.
+_ALGOLIA_TIER2_TIMEOUT = float(os.getenv("ALGOLIA_TIER2_TIMEOUT", "5.0"))
+
 
 async def _curl_scraper(
     url: str, full_name: str, currency: str, retailer_domain: str
@@ -691,10 +705,27 @@ async def _curl_scraper(
     if not get_content_safety_service().is_text_safe(_surface):
         logger.info("[content_safety] L2 dropped fan-out curl candidate for %s", retailer_domain)
         return None
+    # S3 coverage #2 (apple.com-198.9 wrong-scrape) — a GLOBAL-tier domain
+    # (apple.com/samsung.com/...) has NO Bahrain storefront, so its scrape can
+    # NEVER be a genuine BH shelf price. The prod bug: a US $529 refurbished
+    # iPhone 15 (apple.com JSON-LD priceCurrency=USD) was converted to 198.9 BHD
+    # and stamped genuine page_scrape_jsonld. Downgrade a global-tier scrape to
+    # converted_usd (a converted figure, honestly labeled — kept out of the
+    # genuine-BH-share KPI + UI renders "indicative/reference"). Bahrain/gcc-tier
+    # and off-registry (None — a discovered BH retailer PDP) keep page_scrape_jsonld.
+    _src_method = "page_scrape_jsonld"
+    _rank = _RANK_PAGE_SCRAPE_JSONLD
+    if registry_tier(retailer_domain) == "global" or registry_tier(url) == "global":
+        _src_method = "converted_usd"
+        page_price["source_method"] = "converted_usd"
+        logger.info(
+            "[PRICE] global-tier %s curl downgraded page_scrape_jsonld -> converted_usd "
+            "(no BH storefront; converted figure only)", retailer_domain,
+        )
     return {
         "value": float(page_price["amount"]),
-        "source_method": "page_scrape_jsonld",
-        "rank": _RANK_PAGE_SCRAPE_JSONLD,
+        "source_method": _src_method,
+        "rank": _rank,
         "raw_data": page_price,
     }
 
@@ -853,6 +884,17 @@ def _build_escalation_scrapers(
     want_curl = wave in ("curl", "all")
     want_render = wave in ("render", "all")
     scrapers: List[Callable[[dict], Awaitable[Optional[Dict[str, Any]]]]] = []
+    # S3 coverage #3 (skin-002 timeout trim) — the render wave fires a
+    # Firecrawl+Scrape.do PAIR per is_render_only candidate. A skincare query
+    # discovers several BH SPAs (bolo/nasserpharmacy/boutiqaat); rendering ALL of
+    # them is 6+ slow calls, and the lower-weight ones 429/timeout (measured:
+    # scrapedo 429 -> circuit-trip) and eat the 12s budget even though the
+    # highest-weight genuine source confirms (rank 90 -> fan_out cancels the
+    # rest). candidate_urls is pre-ordered bahrain->official->authorized->gcc by
+    # source_weight, so capping the render fan-out to the FIRST N distinct
+    # is_render_only domains keeps the genuine win (bolo, first) + drops the
+    # redundant slow tail. The free curl wave is UNCAPPED (curl is cheap+fast).
+    _render_domains_used: set = set()
     for url, retailer_domain in candidate_urls:
         if not validate_scrape_url(url):
             continue
@@ -881,6 +923,15 @@ def _build_escalation_scrapers(
             and _render_only
             and firecrawl_service.should_fan_out(url, mode=scraping_mode)
         ):
+            # S3 coverage #3 — cap render fan-out to the top-N distinct domains.
+            _rdom = (retailer_domain or url).replace("www.", "").lower()
+            if (
+                _rdom not in _render_domains_used
+                and len(_render_domains_used) >= _RENDER_WAVE_MAX_DOMAINS
+            ):
+                continue  # render-domain budget spent — skip the slow tail
+            _render_domains_used.add(_rdom)
+
             async def _fc_with_args(_product, _url=url, _retailer=retailer_domain):
                 return await _firecrawl_scraper(_url, full_name, currency, _retailer)
             scrapers.append(_fc_with_args)
@@ -3056,6 +3107,68 @@ class StructuredComparisonService:
                         "%.3f %s via %s (ranked discovery still runs)",
                         full_name, shop_best["amount"], currency, win_domain,
                     )
+
+            # --- S3 #21/#1: Tier-2 Algolia direct-query (FREE, real BHD) ---
+            # Between the Shopify /products.json direct-fetch (above) and the
+            # Serper site: discovery (below). Algolia-backed BH storefronts
+            # (6thStreet today) expose genuine BHD via their PUBLIC search index —
+            # query it DIRECTLY (zero Serper, zero render credits). A genuine
+            # local_bhd hit is a real BH shelf price → short-circuit (like the
+            # official-Shopify hit), it beats the discovery/GPT tiers below.
+            # algolia_service strict-matches (rejects wrong-brand fuzz, the
+            # iPhone16→14 class) + is content-safety gated internally + graceful-
+            # None (never raises), so this never blocks the cascade.
+            algolia_sources = get_algolia_sources_for_category(category)
+            if algolia_sources:
+                from app.services.algolia_service import fetch_algolia_price
+                try:
+                    algolia_results = await asyncio.wait_for(
+                        asyncio.gather(
+                            *(
+                                fetch_algolia_price(s.domain, full_name, category)
+                                for s in algolia_sources
+                            ),
+                            return_exceptions=True,
+                        ),
+                        timeout=_ALGOLIA_TIER2_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    algolia_results = []
+                except Exception as e:  # noqa: BLE001 — best-effort
+                    logger.info(f"[PRICE] Algolia Tier-2 gather failed: {e}")
+                    algolia_results = []
+                algolia_best = None
+                for r in algolia_results:
+                    if isinstance(r, dict) and r.get("amount") and r["amount"] > 0:
+                        if algolia_best is None or r["amount"] < algolia_best["amount"]:
+                            algolia_best = r
+                if algolia_best:
+                    algolia_best["source_method"] = algolia_best.get(
+                        "source_method", "local_bhd"
+                    )
+                    win_domain = str(
+                        algolia_best.get("retailer") or ""
+                    ).replace("www.", "").lower()
+                    self._tier15_routes[full_name] = {
+                        "route": "algolia_direct",
+                        "source_weight": score_source(
+                            algolia_best.get("url", "") or f"https://{win_domain}",
+                            category,
+                        ),
+                    }
+                    record_tier15_attempt(category)
+                    record_tier15_hit(category, win_domain or None)
+                    set_cached(cache_key, algolia_best, PRICE_CACHE_TTL)
+                    self._save_price_to_db(
+                        cache_key, brand, name, variant, region, algolia_best
+                    )
+                    algolia_best["_cached"] = False
+                    logger.info(
+                        "[PRICE] Algolia direct hit for %s: %.3f %s via %s "
+                        "(zero Serper/render, genuine BHD)",
+                        full_name, algolia_best["amount"], currency, win_domain,
+                    )
+                    return algolia_best
 
             # --- Discovery: all queries fire concurrently ---
             # B.0 (Lane F1): a Bahrain-first `site:` discovery query leads the

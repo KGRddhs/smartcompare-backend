@@ -52,11 +52,13 @@ def test_registry_price_source_count():
     (200-but-not-a-store — starving the limit=8 discovery) and RETARGETED the
     bare luluhypermarket.com → gcc.luluhypermarket.com (net-zero), 36→34;
     S3-reopen PDP-curl Decision-F ADDED bahrain.microless.com (curl-scrapeable
-    MacBook PDP → 439.062 BHD JSON-LD), 34→35. Guard the floor so a future
-    accidental mass-deletion of price rows is caught.
+    MacBook PDP → 439.062 BHD JSON-LD), 34→35. S3-coverage #1 ADDED
+    en-bh.6thstreet.com (Algolia-backed BH storefront, is_algolia, genuine BHD),
+    35→36. Guard the floor so a future accidental mass-deletion of price rows is
+    caught.
     """
     price_rows = [s for s in SOURCE_REGISTRY if s.usage in ("price", "both")]
-    assert len(price_rows) == 35
+    assert len(price_rows) == 36
 
 
 # ---------------------------------------------------------------------------
