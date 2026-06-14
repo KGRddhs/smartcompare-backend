@@ -6,11 +6,16 @@
 **Prior:** L5 carried-bugs lane MERGED to main (`59ec212`); fan_out F1 fix shipped.
 
 ## Current task
-Q1 DONE (`54bcc80`, pushed). Q4 baseline verified. Holding for L1's re-order merge → then re-run net as the regression guard + Q3 supplement-timeout watch. team-lead self-runs the smoke20 gate.
+Q1 net DONE incl. A4b (L1 contract confirmed). **REBASED onto merged main (b58abc8 — L1's cascade re-order + L4 KPI).** Regression-guard GREEN. Holding for L1's fast-follow (curl-skip + helper) → 2 strict-xfail flip green. team-lead self-runs the smoke20 gate.
 
 ## Status
-- **Q1 (A1-A3 + A4a DONE)** — `tests/test_cascade_order_regression_qa.py`, 7 tests: A1 order / A2 honest-label / A3 estimate-last / **A4a usage="review" exclusion**. All green on main; **mutation-tested** the A2 guard (forcing local_bhd on the converted path → RED, proving real discriminating power). Complementary to L1's per-fix TDD (no duplication).
-- **A4b PENDING (team-lead correction 2026-06-14):** `is_render_only` is DISTINCT from `usage="review"` — L1's NEW flag for the 4 SPA sources (alosra/nasserpharmacy/bn.boots/bolo) that HAVE genuine BH prices but need JS render. Two-sided contract: OUT of curl-harvest AND IN the render-tier (Firecrawl/Scrape.do) escalation. Flag does NOT exist yet (not on main, not on L1's pushed branch — L1's next uncommitted batch). **Coordination msg sent to L1** for exact flag name + mechanism; will write the test failing-first against the confirmed contract. A4a relabeled to NOT claim is_render_only coverage (A4b placeholder block documents the gap).
+- **REGRESSION-GUARD GREEN (team-lead's ask)** — rebased my QA branch onto `origin/main` b58abc8 (L1's cascade re-order `e33e13e` + locale-filter + 5 BH curl sources + L4 KPI now merged). Re-ran the full Q1 net against the merged code: **7/7 cascade-contract invariants still hold** (A1 order / A2 honest-label / A3 estimate-last / A4a usage=review). L1's re-order introduced NO regression to the cascade contract.
+- **Q1 A1-A3 + A4a DONE** — all green; **mutation-tested** the A2 guard (force local_bhd on converted path → RED → restore green = real discriminating power, not a tautology). Complementary to L1's per-fix TDD.
+- **A4b DONE (L1 contract confirmed 2026-06-14):** `is_render_only` is DISTINCT from `usage="review"` — 5 SPA sources (alosra/nasserpharmacy/bn.boots/bolo/**megamart** — 5 not 4) HAVE BH prices but need JS render. NUANCE: render-only is NOT excluded from `_harvest_candidate_urls`; the two-sided split is in `_build_escalation_scrapers(wave=...)` — wave="curl" SKIPS the curl scraper, wave="render" emits Firecrawl/Scrape.do. Merged-state split:
+  - (i) `Source.is_render_only` field + 5 domains → ON MAIN → 2 tests GREEN.
+  - (ii) `is_render_only_domain()` helper → NOT on main (L1 fast-follow) → 1 test **xfail strict** (loud flip on land).
+  - (iii) curl-skip in `_build_escalation_scrapers(wave="curl")` → NOT on main (L1 fast-follow) → 1 test **xfail strict** (verified it's the REAL `expected 0 got 1` assertion via --runxfail). Control (non-render keeps curl scraper) GREEN.
+  - **12 tests total: 10 passed, 2 xfailed.** L1 pings the fast-follow SHA → I drop the 2 markers + confirm green.
 - **Q4 baseline** — security regression **103/104** green = the EXPECTED baseline (team-lead's number). The 1 failure is pre-existing + unrelated: `authService.ts:480 console.log('[GOOGLE-DIAG]')` — the deferred Google-Sign-In diagnostic instrumentation (CLAUDE.md known-bug), a frontend .ts file my backend-test-only branch cannot have touched. My net coexists with on-main cascade/source/fan_out tests: 35/35.
 - **Q2** (team-lead self-runs the smoke20 gate) — I feed cascade-contract failures.
 - **Q3** (reactive) — supplement-timeout watch when L1's timeout fix lands.

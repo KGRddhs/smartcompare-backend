@@ -260,15 +260,114 @@ def test_harvest_keeps_real_price_domain():
 
 
 # ===========================================================================
-# A4b — is_render_only TWO-SIDED CONTRACT (L1's NEW flag) — PENDING L1 confirm
+# A4b — is_render_only TWO-SIDED CONTRACT (L1's flag, contract confirmed)
 # ===========================================================================
-# A render-only source (alosra / nasserpharmacy / bn.boots / bolo: HAS genuine
-# BH prices, needs JS render) must be:
-#   (a) OUT of the curl-harvest candidate pool (curl can't render the SPA), AND
-#   (b) IN the Firecrawl/Scrape.do render-tier escalation pool.
-# This is DISTINCT from usage="review" (A4a) — render-only sources DO have
-# prices. The exact flag name + cascade mechanism is in L1's in-flight batch;
-# coordination message sent. The test will be written failing-first against the
-# confirmed contract so it greens when L1's batch lands. Deliberately NOT pinned
-# yet to avoid mismatching L1's implementation (testing the wrong flag = a
-# false guard). The A4a tests above do NOT cover this case.
+# L1 confirmed the FINAL contract (msg 2026-06-14). is_render_only is DISTINCT
+# from usage="review": a render-only source (alosra / nasserpharmacy / bn.boots
+# / bolo / megamart — 5 SPAs, NOT 4) HAS genuine BH prices but needs JS render.
+# IMPORTANT NUANCE (corrects my earlier assumption): render-only sources are NOT
+# excluded from _harvest_candidate_urls — they DO enter candidate_urls when
+# Serper discovers their PDP. The two-sided split happens in
+# _build_escalation_scrapers(wave=...):
+#   (a) wave="curl"   → SKIPS emitting a curl scraper for a render-only domain
+#                       (a static curl yields nothing on a JS-SPA).
+#   (b) wave="render" → emits Firecrawl/Scrape.do for it (fires only on curl miss).
+#
+# Merged-state split (verified on origin/main b58abc8):
+#   (i)   Source.is_render_only field + the 5 domains → ON MAIN → pin GREEN.
+#   (ii)  is_render_only_domain() helper → NOT on main (L1 fast-follow) → RED-first.
+#   (iii) curl-skip in _build_escalation_scrapers(wave="curl") → NOT on main
+#         (L1 fast-follow) → RED-first; L1 pings the fast-follow SHA when it greens.
+
+from app.services.source_router import SOURCE_REGISTRY
+
+_RENDER_ONLY_DOMAINS = {
+    "alosraonline.com", "nasserpharmacy.com", "bn.boots.com", "bolo.bh", "megamart.bh",
+}
+
+
+# --- (i) field + the 5 domains: ON MAIN → GREEN ---
+
+def test_render_only_field_marks_the_five_spa_domains():
+    """The is_render_only flag exists on Source and exactly the 5 SPA domains
+    carry it (alosra/nasserpharmacy/bn.boots/bolo/megamart)."""
+    marked = {s.domain for s in SOURCE_REGISTRY if getattr(s, "is_render_only", False)}
+    assert marked == _RENDER_ONLY_DOMAINS, (
+        f"is_render_only domain set drifted: expected {_RENDER_ONLY_DOMAINS}, got {marked}"
+    )
+
+
+def test_non_spa_bh_source_is_not_render_only():
+    """Control: a CURL-tier BH source (e.g. microless — L1: curl, not render)
+    must NOT be flagged is_render_only."""
+    by_domain = {s.domain: s for s in SOURCE_REGISTRY}
+    # luluhypermarket is a known non-render BH source in the registry.
+    if "luluhypermarket.com" in by_domain:
+        assert getattr(by_domain["luluhypermarket.com"], "is_render_only", False) is False
+
+
+# --- (ii) is_render_only_domain() helper: RED-first until L1 fast-follow ---
+
+@pytest.mark.xfail(
+    reason="L1 fast-follow: is_render_only_domain() helper not yet on main. "
+           "strict=True → loud xpass when it lands, signalling L5 to drop the marker.",
+    strict=True,
+)
+def test_is_render_only_domain_helper_resolves_spa():
+    """is_render_only_domain(domain_or_url) → True for an SPA source, False for a
+    curl source. RED-first (xfail strict): helper lands in L1's fast-follow."""
+    from app.services.source_router import is_render_only_domain  # noqa: F401 — RED until merged
+    assert is_render_only_domain("nasserpharmacy.com") is True
+    assert is_render_only_domain("https://bn.boots.com/some-pdp") is True
+    assert is_render_only_domain("noon.com") is False
+
+
+# --- (iii) curl-skip for render-only URL: RED-first until L1 fast-follow ---
+
+@pytest.mark.xfail(
+    reason="L1 fast-follow: curl-skip for render-only domains not yet on main. "
+           "strict=True → this flips to a LOUD xpass when the skip lands, signalling "
+           "L5 to drop the marker and confirm the green.",
+    strict=True,
+)
+def test_curl_wave_skips_render_only_domain():
+    """_build_escalation_scrapers(wave="curl") must emit ZERO scrapers for a
+    render-only domain's URL (a static curl can't render a JS-SPA → pure waste).
+
+    RED-first (xfail strict): the curl-skip is L1's in-flight fast-follow. Today
+    the curl wave emits 1 curl scraper for every candidate URL incl. render-only
+    ones; this is xfail NOW and becomes xpass (loud, strict) when the skip lands.
+    """
+    from app.services.structured_comparison_service import _build_escalation_scrapers
+
+    render_only_url = "https://nasserpharmacy.com/product/centrum-multivitamin"
+    scrapers = _build_escalation_scrapers(
+        candidate_urls=[(render_only_url, "nasserpharmacy.com")],
+        full_name="Centrum Multivitamin",
+        currency="BHD",
+        scraping_mode="hard",
+        wave="curl",
+    )
+    assert len(scrapers) == 0, (
+        "wave='curl' emitted a curl scraper for a render-only (JS-SPA) domain — "
+        f"a static curl yields nothing on it; expected 0, got {len(scrapers)}. "
+        "(RED until L1's curl-skip fast-follow lands.)"
+    )
+
+
+def test_curl_wave_keeps_non_render_domain():
+    """Control: wave="curl" DOES emit a curl scraper for a normal (non-render)
+    domain — the skip is render-only-specific, not a blanket curl drop."""
+    from app.services.structured_comparison_service import _build_escalation_scrapers
+
+    normal_url = "https://noon.com/product/centrum-multivitamin"
+    scrapers = _build_escalation_scrapers(
+        candidate_urls=[(normal_url, "noon.com")],
+        full_name="Centrum Multivitamin",
+        currency="BHD",
+        scraping_mode="hard",
+        wave="curl",
+    )
+    assert len(scrapers) >= 1, (
+        f"wave='curl' must emit a curl scraper for a normal domain; got {len(scrapers)}"
+    )
