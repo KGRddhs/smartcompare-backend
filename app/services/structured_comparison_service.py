@@ -483,7 +483,6 @@ from app.services.price_service import (
     is_counterfeit_listing,
     is_accessory,
     is_high_value_query,
-    is_price_plausible,
     is_luxury_brand,
     is_supplement_query,
     extract_domain,
@@ -578,7 +577,6 @@ from app.services.source_router import (
     build_site_discovery_query,
     score_source,
     source_usage,
-    is_wrong_locale_url,
     get_shopify_sources_for_category,
 )
 
@@ -821,43 +819,39 @@ def _build_escalation_scrapers(
     full_name: str,
     currency: str,
     scraping_mode: str,
-    wave: str = "all",
 ) -> List[Callable[[dict], Awaitable[Optional[Dict[str, Any]]]]]:
     """Bundle E § Decision 8 — build the scraper list for fan_out_price_lookup().
 
-    `wave` (S3-genuine Approach A part 2 — budget-discipline two-wave split):
-      - "curl"   → ONLY the free curl scrapers (the curl-first early-exit wave).
-      - "render" → ONLY the paid Firecrawl/Scrape.do scrapers (escalation wave,
-                   run ONLY after the curl wave misses — Ahmed: render not fired
-                   every escalation).
-      - "all"    → both (legacy single-wave behaviour; kept for callers that
-                   don't split).
-
-    For each (url, retailer_domain) pair (Serper-discovered, locale-filtered):
-      - A curl scraper (free, fast) — emitted for wave in {curl, all}.
-      - Firecrawl + Scrape.do if should_fan_out(url) passes (SCRAPING_MODE gate)
-        — emitted for wave in {render, all}.
+    For each (url, retailer_domain) pair discovered via the existing Serper
+    queries, emit:
+      - A curl scraper (always — free, fast).
+      - A Firecrawl scraper if should_fan_out(url) passes (SCRAPING_MODE gate).
+      - A Scrape.do scraper if should_fan_out(url) passes (residential fallback).
 
     Each scraper accepts a `product` dict (ignored — closure captures
     full_name/currency/retailer_domain) and returns either None or a
     `{value, source_method, rank, raw_data}` candidate. fan_out_price_lookup
-    races them, applies select-best, cancels pending on confirm.
+    races them, applies select-best, and cancels pending tasks when 2
+    sources agree within 5% (or when one rank≥85 result lands).
+
+    candidate_urls is preserved in priority order from the Serper discovery:
+    official brand domains first, then authorized retailers, then GCC retailers.
+    Counterfeit domains never appear here because the discovery filters
+    (Tier 1.5b/c) exclude them via OFFICIAL_BRAND_DOMAINS + AUTHORIZED_LUXURY_RETAILERS
+    + GCC_LUXURY_RETAILERS whitelists.
     """
-    want_curl = wave in ("curl", "all")
-    want_render = wave in ("render", "all")
     scrapers: List[Callable[[dict], Awaitable[Optional[Dict[str, Any]]]]] = []
     for url, retailer_domain in candidate_urls:
         if not validate_scrape_url(url):
             continue
-        if want_curl:
-            # Curl scrape — always free.
-            async def _curl_with_args(_product, _url=url, _retailer=retailer_domain):
-                return await _curl_scraper(_url, full_name, currency, _retailer)
-            scrapers.append(_curl_with_args)
+        # Curl scrape — always free, always fires.
+        async def _curl_with_args(_product, _url=url, _retailer=retailer_domain):
+            return await _curl_scraper(_url, full_name, currency, _retailer)
+        scrapers.append(_curl_with_args)
 
         # Firecrawl + Scrape.do gated by SCRAPING_MODE per design § Decision 8.
         # In soft mode only luxury/SPA domains get the rendered-scrape budget.
-        if want_render and firecrawl_service.should_fan_out(url, mode=scraping_mode):
+        if firecrawl_service.should_fan_out(url, mode=scraping_mode):
             async def _fc_with_args(_product, _url=url, _retailer=retailer_domain):
                 return await _firecrawl_scraper(_url, full_name, currency, _retailer)
             scrapers.append(_fc_with_args)
@@ -967,21 +961,7 @@ def _harvest_candidate_urls(
                 elif link_domain in GCC_LUXURY_RETAILERS:
                     harvested.append((link, link_domain, "legacy_fallback", weight))
 
-    # S3-genuine (team-lead live probe 2026-06-14) — BH-LOCALE FILTER. Serper
-    # `site:` discovery returns mixed-locale results for the multi-locale BH
-    # registry domains; score_source matches by domain and IGNORES the locale
-    # path, so an extra.com/en-sa/ (SAR) page scores 3.0 and would be scraped →
-    # a Saudi price. Drop any candidate carrying a non-BH GCC locale segment
-    # BEFORE it enters candidate_urls/fan_out (the genuine /en-bh/ PDP Serper
-    # also returns survives and extracts BHD). No rewrite (SKUs differ per
-    # locale). Applies across ALL tiers in one place.
-    filtered = [h for h in harvested if not is_wrong_locale_url(h[0])]
-    if len(filtered) != len(harvested):
-        logger.info(
-            "[PRICE] BH-locale filter dropped %d wrong-locale candidate(s)",
-            len(harvested) - len(filtered),
-        )
-    return filtered
+    return harvested
 
 
 class StructuredComparisonService:
@@ -1182,8 +1162,8 @@ class StructuredComparisonService:
     def _build_fact_check(self, product: Dict) -> Dict:
         return build_fact_check(product)
 
-    def _extract_price_from_shopping(self, product_name: str, shopping_items: List[Dict], currency: str, shopping_region: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        return extract_price_from_shopping(product_name, shopping_items, currency, shopping_region=shopping_region)
+    def _extract_price_from_shopping(self, product_name: str, shopping_items: List[Dict], currency: str) -> Optional[Dict[str, Any]]:
+        return extract_price_from_shopping(product_name, shopping_items, currency)
 
     def _extract_price_from_html(self, html: str, product_name: str, currency: str, domain: str, url: str) -> Optional[Dict[str, Any]]:
         return extract_price_from_html(html, product_name, currency, domain, url)
@@ -2808,7 +2788,6 @@ class StructuredComparisonService:
         is_supplement = (category == "supplements") or is_supplement_query(full_name)
 
         # --- Tier 1: Direct Serper Shopping extraction ---
-        shopping_region = None  # T2 — gl region the shopping items came from
         if is_supplement:
             search_results = {"shopping": [], "organic": []}
             shopping_items = []
@@ -2830,46 +2809,39 @@ class StructuredComparisonService:
             )
 
         tier3_estimate = None
-        # S3-genuine (Approach A, team-lead-approved 2026-06-14) — a CONVERTED_USD
-        # Tier-1 price is PARKED here, not returned, so the genuine-BH curl tier
-        # (Tier-1.5) runs and can WIN. §5 ordering: genuine-BH (tier 1-5) beats
-        # converted_usd (tier-7). The parked converted price is the fallback ONLY
-        # after BH curl+render miss (before the GPT estimate). A GENUINE Tier-1
-        # price (local_bhd / page_scrape) still short-circuits below.
-        converted_fallback = None
 
-        price = extract_price_from_shopping(
-            full_name, shopping_items, currency, shopping_region=shopping_region
-        )
+        price = extract_price_from_shopping(full_name, shopping_items, currency)
         if price and price.get("amount"):
             if price.get("retailer_score", 0) >= 1.0:
                 pass  # Official domain — skip sanity check
             elif is_high_value_query(full_name) and price.get("retailer_score", 0) < 1.0:
-                # S3-reopen T1 (team-lead Decision-F 2026-06-14) — the GPT
-                # estimate is the judge of NOTHING. The old code fetched the GPT
-                # training guess and NULLED this real Tier-1 price when it merely
-                # deviated from the guess (then the cascade fell to that same
-                # guess — a real price thrown away for an estimate). Now the gate
-                # is ABSOLUTE category plausibility: a plausible Tier-1 price is
-                # KEPT (a wrong guess is exactly why we don't let it veto a cited
-                # price); only a grossly-implausible amount (a mis-extracted
-                # installment / accessory / currency error) is dropped — and
-                # dropping it falls through to the BH scrape cascade, never
-                # promotes it. No estimate is fetched here just to veto.
-                if not is_price_plausible(_convert_to_bhd(price["amount"], currency), category):
-                    price = None
+                # B0-B Item 2 — confidence-driven threshold band (was
+                # is_luxury_brand-gated). Build a single-source list from the
+                # winning Tier-1 candidate and let compute_price_confidence
+                # decide whether we need the tighter luxury-equivalent band.
+                tier1_sources = [{
+                    "src": "serper_shopping",
+                    "amount": price["amount"],
+                    "retailer_score": price.get("retailer_score", 0),
+                }]
+                high_threshold, low_threshold = _sanity_check_thresholds(tier1_sources)
+                tier3_estimate, usage = await extract_price_from_training_data(brand, name, variant, region)
+                self._track_gpt_cost(usage)
+                sanitize_gpt_price(tier3_estimate)
+                _convert_gpt_price_currency(tier3_estimate, currency)
+                if tier3_estimate and tier3_estimate.get("amount"):
+                    tier1_bhd = _convert_to_bhd(price["amount"], currency)
+                    tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
+                    if tier1_bhd > tier3_bhd * high_threshold:
+                        price = None
+                    elif tier1_bhd < tier3_bhd * low_threshold:
+                        price = None
             if price and price.get("amount"):
                 price.pop("retailer_score", None)
-                # Approach A — PARK a CONVERTED_USD Tier-1 price; defer to the
-                # genuine-BH Tier-1.5 curl tier below. A genuine Tier-1 price
-                # (local_bhd / page_scrape / any non-converted) short-circuits now.
-                if price.get("source_method") == "converted_usd":
-                    converted_fallback = dict(price)
-                else:
-                    set_cached(cache_key, price, PRICE_CACHE_TTL)
-                    self._save_price_to_db(cache_key, brand, name, variant, region, price)
-                    price["_cached"] = False
-                    return price
+                set_cached(cache_key, price, PRICE_CACHE_TTL)
+                self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                price["_cached"] = False
+                return price
 
         # --- Tier 1.5: Page scraping cascade (confidence-driven, all categories) ---
         # L2.5 — replaced the legacy is_luxury_brand() gate with
@@ -3076,18 +3048,6 @@ class StructuredComparisonService:
             )
             candidate_urls = [(link, label) for link, label, _route, _w in harvested]
 
-            # S3-genuine — the curl-SEARCH-URL injector (build_direct_bh_candidates)
-            # was REMOVED 2026-06-14. Team-lead live probe (WRINKLE 2) + our own
-            # captures: the BH retailers' SEARCH pages are JS-rendered (gcc.lulu
-            # /en-bh/search/?q= → 404; sharafdg ?s= → 0 JSON-LD/itemprop, PDP links
-            # are noise). So a curl-only search→PDP path can't reach the PDPs.
-            # PDP DISCOVERY for these non-Shopify retailers is the Serper `site:`
-            # query above (locale-filtered to BH); the genuine BH price is then
-            # produced by the curl wave below curling the discovered PDP + the
-            # JSON-LD/microdata/OG extractor. Serper-independence = Shopify
-            # /products.json (works) + a future Firecrawl-render-search (deferred,
-            # budget-gated per Ahmed).
-
             # --- Race: fan_out_price_lookup runs all per-URL scrapers in
             # parallel, cancels pending tasks when 2 sources confirm within
             # 5% (or rank≥85 lands), returns the highest-ranked candidate.
@@ -3102,88 +3062,70 @@ class StructuredComparisonService:
             if candidate_urls:
                 # F1.6 — count one Tier 1.5 escalation attempt (fail-open).
                 record_tier15_attempt(category)
-
-                def _finalize_fan_winner(fan_result):
-                    """Stamp + route-record + cache a fan_out winner; returns the
-                    winning_price dict or None. Shared by the curl + render waves."""
-                    best = fan_result.get("best")
-                    if not (best and best.get("raw_data") and best["raw_data"].get("amount")):
-                        return None
-                    winning_price = best["raw_data"]
-                    winning_price["source_method"] = best.get("source_method", "page_scrape")
-                    win_domain = str(winning_price.get("retailer") or "").replace("www.", "").lower()
-                    for _link, _label, _route, _weight in harvested:
-                        if _label.lower() == win_domain or win_domain.endswith("." + _label.lower()) or _label.lower().endswith("." + win_domain):
-                            self._tier15_routes[full_name] = {"route": _route, "source_weight": _weight}
-                            break
-                    else:
-                        self._tier15_routes[full_name] = {
-                            "route": "tier1_5",
-                            "source_weight": score_source(
-                                winning_price.get("url", "") or f"https://{win_domain}", category
-                            ),
-                        }
-                    record_tier15_hit(category, win_domain or None)
-                    set_cached(cache_key, winning_price, PRICE_CACHE_TTL)
-                    self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
-                    winning_price["_cached"] = False
-                    if fan_result.get("cancelled_count", 0) > 0:
-                        logger.info(
-                            "[PRICE] fan_out cancelled %d pending scrapers after confirmation (elapsed=%.2fs)",
-                            fan_result["cancelled_count"], fan_result.get("elapsed_seconds", 0.0),
-                        )
-                    return winning_price
-
-                # S3-genuine Approach A part 2 — TWO-WAVE budget split. Run the
-                # FREE curl wave FIRST (early-exit on a plausible genuine price);
-                # the paid Firecrawl/Scrape.do RENDER wave fires ONLY if the curl
-                # wave misses (Ahmed: render not fired every escalation). This
-                # also trims wall — most BH PDPs (sharafdg/extra/gcc.lulu/microless)
-                # are curl-extractable, so the render wave rarely runs.
-                #
-                # I5.7 wall-cap invariant preserved: the TWO waves SHARE a single
-                # 12s deadline (curl gets up to 12s; render gets the REMAINDER),
-                # so the total Tier-1.5 scrape time stays <= the 12s the single
-                # fan_out had — it never exceeds the 15s outer _PHASE1_TIMEOUTS
-                # ["price"] cap.
-                _FAN_OUT_BUDGET = 12.0
-                _t15_start = time.monotonic()
-                for _wave in ("curl", "render"):
-                    _remaining = _FAN_OUT_BUDGET - (time.monotonic() - _t15_start)
-                    if _remaining <= 0.5:
-                        break  # shared 12s budget spent — fall through to Tier 2
-                    _scrapers = _build_escalation_scrapers(
+                try:
+                    scrapers = _build_escalation_scrapers(
                         candidate_urls=candidate_urls,
                         full_name=full_name,
                         currency=currency,
                         scraping_mode=scraping_mode,
-                        wave=_wave,
                     )
-                    if not _scrapers:
-                        continue  # render wave empty when no URL needs render
-                    try:
-                        _fan = await asyncio.wait_for(
-                            fan_out_price_lookup(
-                                product={"full_name": full_name, "brand": brand},
-                                scrapers=_scrapers,
-                                scraping_mode=scraping_mode,
-                            ),
-                            timeout=_remaining,
-                        )
-                    except asyncio.TimeoutError:
-                        logger.info(
-                            "[PRICE] Tier 1.5 %s-wave hit the shared 12s budget for "
-                            "%s; %s", _wave, full_name,
-                            "trying render wave" if _wave == "curl" else "falling through to Tier 2",
-                        )
-                        continue
-                    except Exception as e:  # noqa: BLE001
-                        logger.warning(f"[PRICE] Tier 1.5 {_wave}-wave failed: {e}")
-                        continue
-                    _winner = _finalize_fan_winner(_fan)
-                    if _winner is not None:
-                        # Curl-wave win → genuine BH price, no render credits burned.
-                        return _winner
+                    fan_result = await asyncio.wait_for(
+                        fan_out_price_lookup(
+                            product={"full_name": full_name, "brand": brand},
+                            scrapers=scrapers,
+                            scraping_mode=scraping_mode,
+                        ),
+                        timeout=12.0,
+                    )
+                    best = fan_result.get("best")
+                    if best and best.get("raw_data") and best["raw_data"].get("amount"):
+                        winning_price = best["raw_data"]
+                        # Stamp the design-decreed source_method names so
+                        # downstream rendering + analytics see the rank tier
+                        # (firecrawl_brand_domain / page_scrape_jsonld /
+                        # scrapedo_rendered / confirmed_multi_source).
+                        winning_price["source_method"] = best.get("source_method", "page_scrape")
+                        # F1.4 — record the routing path of the winning candidate
+                        # (registry / legacy_fallback / official) for source_trace.
+                        # Match the winning retailer domain back to `harvested`.
+                        win_domain = str(winning_price.get("retailer") or "").replace("www.", "").lower()
+                        for _link, _label, _route, _weight in harvested:
+                            if _label.lower() == win_domain or win_domain.endswith("." + _label.lower()) or _label.lower().endswith("." + win_domain):
+                                self._tier15_routes[full_name] = {
+                                    "route": _route,
+                                    "source_weight": _weight,
+                                }
+                                break
+                        else:
+                            # Winner domain not matched (rare — e.g. redirect
+                            # changed the host). Still flag that Tier 1.5 fired.
+                            self._tier15_routes[full_name] = {
+                                "route": "tier1_5",
+                                "source_weight": score_source(
+                                    winning_price.get("url", "") or f"https://{win_domain}", category
+                                ),
+                            }
+                        # F1.6 — count one Tier 1.5 hit + the winning domain.
+                        record_tier15_hit(category, win_domain or None)
+                        set_cached(cache_key, winning_price, PRICE_CACHE_TTL)
+                        self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
+                        winning_price["_cached"] = False
+                        if fan_result.get("cancelled_count", 0) > 0:
+                            logger.info(
+                                "[PRICE] fan_out cancelled %d pending scrapers after confirmation (elapsed=%.2fs)",
+                                fan_result["cancelled_count"], fan_result.get("elapsed_seconds", 0.0),
+                            )
+                        return winning_price
+                except asyncio.TimeoutError:
+                    # D2 follow-up: 15s race cap fired. Fall through to Tier 2
+                    # GPT extraction — trade real scrape for predictable wall.
+                    logger.info(
+                        "[PRICE] Tier 1.5 fan_out race exceeded 15s budget for %s; "
+                        "falling through to Tier 2 GPT extraction",
+                        full_name,
+                    )
+                except Exception as e:
+                    logger.warning(f"[PRICE] Tier 1.5 fan_out_price_lookup failed: {e}")
 
             # S3 — the ranked discovery/fan_out yielded nothing. A parked
             # reseller Shopify hit (real BH price) is a better answer than a GPT
@@ -3297,28 +3239,44 @@ class StructuredComparisonService:
                     price["retailer"] = "iHerb"
                     price["url"] = f"https://{iherb_cc}.iherb.com/search?kw={quote_plus(full_name)}"
             else:
-                # S3-reopen T1 (team-lead Decision-F 2026-06-14) — ABSOLUTE
-                # plausibility, NOT deviation-from-GPT. The Tier-2 price is a real
-                # cited (organic-extracted) number; the GPT training estimate is
-                # a guess and the judge of NOTHING. The OLD code computed a
-                # GPT-relative band and annotated price_deviates_from_estimate
-                # (and pre-that, SWAPPED in the estimate — the "real price thrown
-                # away for a guess" violation). Now: a plausible real price is
-                # KEPT with its honest converted_usd/local_bhd label, EVEN IF it
-                # differs 2-3x from the guess (the guess being wrong is exactly
-                # why we don't trust it). A grossly-IMPLAUSIBLE amount is a
-                # wrong-scrape (installment / accessory / currency error) — it is
-                # DROPPED (not promoted) so the cascade falls to the tier-8
-                # estimate, the lesser evil. No GPT estimate is fetched to veto.
-                if not is_price_plausible(_convert_to_bhd(price["amount"], currency), category):
-                    price = None
-            if price and price.get("amount"):
-                if price.get("retailer") and not price.get("url"):
-                    price["url"] = build_retailer_url(price["retailer"], full_name)
-                set_cached(cache_key, price, PRICE_CACHE_TTL)
-                self._save_price_to_db(cache_key, brand, name, variant, region, price)
-                price["_cached"] = False
-                return price
+                if tier3_estimate is None:
+                    tier3_estimate, usage = await extract_price_from_training_data(brand, name, variant, region)
+                    self._track_gpt_cost(usage)
+                    sanitize_gpt_price(tier3_estimate)
+                    _convert_gpt_price_currency(tier3_estimate, currency)
+                if tier3_estimate and tier3_estimate.get("amount"):
+                    tier2_bhd = _convert_to_bhd(price["amount"], currency)
+                    tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
+                    # B0-B Item 2 — confidence-driven threshold band (was
+                    # is_luxury_brand-gated). Tier-2 GPT extracts have no
+                    # retailer_score; treat as a single-source candidate so
+                    # _sanity_check_thresholds picks the band consistently
+                    # across categories instead of hardcoded luxury-only.
+                    tier2_sources = [{
+                        "src": "gpt_organic_extract",
+                        "amount": price["amount"],
+                        "retailer_score": 0,
+                    }]
+                    high_threshold, low_threshold = _sanity_check_thresholds(tier2_sources)
+                    # Preserve the upstream gpt_* source_method when the
+                    # Tier-2 sanity check swaps in the Tier-3 estimate, so
+                    # quality_ranker's PRICE_SOURCE_RANK lookup sees the
+                    # specific tier name. Legacy "estimated" remains the
+                    # default for callers that didn't stamp a gpt_* method
+                    # (preserves backward-compat for tests asserting
+                    # source_method == 'estimated').
+                    if tier2_bhd > tier3_bhd * high_threshold or tier2_bhd < tier3_bhd * low_threshold:
+                        price = tier3_estimate
+                        price["estimated"] = True
+                        existing_method = price.get("source_method", "")
+                        if not (isinstance(existing_method, str) and existing_method.startswith("gpt_")):
+                            price["source_method"] = "estimated"
+            if price.get("retailer") and not price.get("url"):
+                price["url"] = build_retailer_url(price["retailer"], full_name)
+            set_cached(cache_key, price, PRICE_CACHE_TTL)
+            self._save_price_to_db(cache_key, brand, name, variant, region, price)
+            price["_cached"] = False
+            return price
 
         # --- Broader search fallback ---
         broader_name = full_name
@@ -3333,34 +3291,13 @@ class StructuredComparisonService:
             self._track_serper_cost()
             broader_shopping = broader_results.get("shopping", [])
             if broader_shopping:
-                price = extract_price_from_shopping(
-                    broader_name, broader_shopping, currency,
-                    shopping_region=broader_results.get("shopping_region"),
-                )
+                price = extract_price_from_shopping(broader_name, broader_shopping, currency)
                 if price and price.get("amount"):
                     price.pop("retailer_score", None)
                     set_cached(cache_key, price, PRICE_CACHE_TTL)
                     self._save_price_to_db(cache_key, brand, name, variant, region, price)
                     price["_cached"] = False
                     return price
-
-        # --- §5 tier-7: parked CONVERTED_USD fallback (before the GPT estimate) ---
-        # Approach A — the genuine-BH curl+render tiers + broader search all
-        # missed; the converted_usd Tier-1 price we parked is a REAL cited price
-        # (gl=us, labeled indicative), so it BEATS the GPT estimate (tier-8).
-        if converted_fallback and converted_fallback.get("amount"):
-            if converted_fallback.get("retailer") and not converted_fallback.get("url"):
-                converted_fallback["url"] = build_retailer_url(
-                    converted_fallback["retailer"], full_name
-                )
-            set_cached(cache_key, converted_fallback, PRICE_CACHE_TTL)
-            self._save_price_to_db(cache_key, brand, name, variant, region, converted_fallback)
-            converted_fallback["_cached"] = False
-            logger.info(
-                "[PRICE] parked converted_usd fallback used for %s (BH curl+render "
-                "missed; beats GPT estimate)", full_name,
-            )
-            return converted_fallback
 
         # --- Tier 3: GPT training data fallback ---
         if tier3_estimate is None:

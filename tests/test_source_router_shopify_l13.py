@@ -36,10 +36,9 @@ class TestIsShopifyFlag:
     def test_non_shopify_domains_not_tagged(self):
         by_domain = {s.domain: s for s in SOURCE_REGISTRY}
         # SPA incumbents + pharmacies are NOT Shopify (must not be probed via
-        # /products.json — they'd 404 / waste a fetch). lulu retargeted to the
-        # gcc/en-bh storefront (SAP Hybris, not Shopify).
+        # /products.json — they'd 404 / waste a fetch).
         assert by_domain["bahrain.sharafdg.com"].is_shopify is False
-        assert by_domain["gcc.luluhypermarket.com"].is_shopify is False
+        assert by_domain["luluhypermarket.com"].is_shopify is False
         assert by_domain["nasserpharmacy.com"].is_shopify is False
 
     def test_every_shopify_row_is_bahrain_tier(self):

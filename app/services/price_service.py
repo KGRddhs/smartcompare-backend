@@ -174,23 +174,9 @@ RETAILER_SEARCH_URLS = {
     # the `text=` param (`q=` lands on /en-bh/error); sharafdg BH is WooCommerce
     # `?s=...&post_type=product`.
     "extra": "https://www.extra.com/en-bh/search?text={query}",
-    # Both keys map to the BH WooCommerce search: "sharaf dg" (the human
-    # retailer name, used by Serper-source matching) AND "sharafdg" (the bare
-    # form so the registry DOMAIN bahrain.sharafdg.com — which has no space —
-    # resolves via build_retailer_url for the direct-BH injector).
     "sharaf dg": "https://bahrain.sharafdg.com/?s={query}&post_type=product",
-    "sharafdg": "https://bahrain.sharafdg.com/?s={query}&post_type=product",
     "ubuy": "https://www.ubuy.com.bh/en/search?q={query}",
-    # lulu: the bare host (www.luluhypermarket.com) catalog is en-ae/AED and
-    # redirects to gcc.luluhypermarket.com/en-bh/ — point straight at the GCC
-    # Bahrain storefront so the price comes back in BHD (the AED-vs-BHD host bug
-    # was THE electronics keystone; registry retargeted to match).
-    "lulu": "https://gcc.luluhypermarket.com/en-bh/search/?q={query}",
-    # microless BH (Magento) — search path verified 200. NOTE the SEARCH page is
-    # JS-rendered (0 static product links); the genuine BHD price is on the PDP
-    # (439.062 BHD JSON-LD). So the registry row's real value is the Serper->PDP
-    # ->curl path; this search URL is a fallback for any search-page-static case.
-    "microless": "https://bahrain.microless.com/search/?q={query}",
+    "lulu": "https://www.luluhypermarket.com/en-bh/search?q={query}",
     "carrefour": "https://www.carrefouruae.com/mafuae/en/search?q={query}",
     "virgin megastore": "https://www.virginmegastore.ae/search/{query}",
     "apple": "https://www.apple.com/shop/buy?fh={query}",
@@ -311,12 +297,6 @@ CURRENCY_CODES = {
 }
 
 PAGE_SCRAPE_TIMEOUT = 5
-# S3-genuine (team-lead live probe 2026-06-14, WRINKLE 1): gcc.luluhypermarket.com
-# is ~3.4s warm but the 5s cap clipped it COLD (curl(28) timeout) — the keystone
-# broad BH source then intermittently returned nothing. Bahrain-tier registry
-# curls get a longer cold-tolerant timeout; non-BH scrapes stay at 5s so the
-# whole cascade isn't slowed.
-BH_REGISTRY_CURL_TIMEOUT = 10
 TIER_15_BUDGET_TIMEOUT = 20
 
 
@@ -545,15 +525,6 @@ def build_retailer_url(source: str, product_name: str) -> Optional[str]:
     return None
 
 
-# NOTE: build_direct_bh_candidates (the curl-SEARCH-URL injector, b250b55) was
-# REMOVED 2026-06-14. The team-lead's live probe + our own captures proved the BH
-# retailers' SEARCH pages are JS-rendered (gcc.lulu /en-bh/search → 404; sharafdg
-# ?s= → noise) — constructed search URLs carry no extractable price. PDP discovery
-# for these non-Shopify retailers comes from the Serper `site:` query +
-# BH-locale filter (is_wrong_locale_url); Serper-independence is Shopify
-# /products.json + a future Firecrawl-render-search (deferred, budget-gated).
-
-
 def sanitize_gpt_price(price: Optional[Dict]) -> None:
     """Fix GPT returning the string 'null' or echoing prompt templates."""
     if not price:
@@ -564,66 +535,6 @@ def sanitize_gpt_price(price: Optional[Dict]) -> None:
             continue
         if val.lower() == "null" or "or null" in val.lower():
             price[key] = None
-
-
-# S3-reopen T1 (team-lead Decision-F 2026-06-14) — ABSOLUTE plausibility gate.
-# Wide-by-design category floor/ceiling multipliers: only catch GROSS
-# mis-extractions (an iPhone at 5 or 9000 BHD), never a legitimately cheap or
-# expensive REAL price. The GPT estimate is the judge of nothing — this is what
-# replaces the old deviation-from-estimate veto at the two price sanity sites.
-_PLAUSIBILITY_FLOOR_MULT = 0.1   # reject below 0.1 x the category budget breakpoint
-_PLAUSIBILITY_CEIL_MULT = 3.0    # reject above 3 x the highest FINITE breakpoint
-# S3-genuine (team-lead floor fix 2026-06-14) — low-value categories (cheap OTC
-# meds, grocery staples) routinely have GENUINE sub-1-BHD prices (Panadol 0.990,
-# Evian 0.595, yoghurt 0.750). For these the 0.1×budget-breakpoint floor (1.1 for
-# supplements) wrongly dropped real prices — so they use an ABSOLUTE small floor
-# instead. High-value categories keep the multiplicative floor (an iPhone at
-# 0.99 BHD is still garbage).
-_ABSOLUTE_FLOOR_CATEGORIES = {"supplements", "grocery"}
-_ABSOLUTE_PRICE_FLOOR = 0.1   # BHD — below this is a scrape artifact, not a price
-
-
-def is_price_plausible(amount_bhd: Optional[float], category: Optional[str]) -> bool:
-    """Absolute-plausibility gate for a real (cited/converted) price, in BHD.
-
-    Returns False only for gross category outliers — amount<=0, below the
-    category floor, or above 3x the highest finite breakpoint. A plausible price
-    is TRUSTED even when it deviates wildly from the GPT training guess (the
-    guess being wrong is exactly why we don't let it veto a cited price). Unknown
-    / 'other' categories are permissive (only amount>0) since their magnitude is
-    unbounded (cars to snacks).
-
-    Floor: high-value categories use 0.1×budget-breakpoint (an iPhone at 5 BHD is
-    garbage); low-value categories (supplements/grocery) use an ABSOLUTE 0.1-BHD
-    floor so a genuine cheap OTC/grocery price (0.990 Panadol, 0.595 Evian) is
-    KEPT — the multiplicative floor (1.1 for supplements) wrongly dropped them.
-
-    Anchors on scoring_service.PRICE_TIERS_BY_CATEGORY so the bounds track the
-    same per-category BHD breakpoints the scorer already maintains.
-    """
-    if amount_bhd is None or amount_bhd <= 0:
-        return False
-    # Lazy import — keeps price_service's top-level import surface minimal and
-    # avoids any scoring_service import-order coupling.
-    from app.services.scoring_service import PRICE_TIERS_BY_CATEGORY
-
-    cat = (category or "").lower()
-    ranges = PRICE_TIERS_BY_CATEGORY.get(cat)
-    if not ranges:
-        # 'other'/unknown — unbounded magnitude; only positivity is required.
-        return True
-    budget_breakpoint = ranges[0][0]
-    finite_breakpoints = [u for u, _ in ranges if u != float("inf")]
-    # Highest finite breakpoint anchors the ceiling (luxury is often inf when
-    # top_tier is folded — fall back to premium so a real expensive item isn't
-    # over-rejected but 9000-BHD garbage still is).
-    top_finite = max(finite_breakpoints) if finite_breakpoints else budget_breakpoint
-    if cat in _ABSOLUTE_FLOOR_CATEGORIES:
-        floor = _ABSOLUTE_PRICE_FLOOR
-    else:
-        floor = budget_breakpoint * _PLAUSIBILITY_FLOOR_MULT
-    ceiling = top_finite * _PLAUSIBILITY_CEIL_MULT
-    return floor <= amount_bhd <= ceiling
 
 
 def get_official_domain(product_name: str) -> Optional[str]:
@@ -647,24 +558,10 @@ def extract_price_from_shopping(
     product_name: str,
     shopping_items: List[Dict],
     currency: str,
-    shopping_region: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Extract best matching price from Serper Shopping results.
-
-    S3-reopen T2 (honest labels) — `shopping_region` is the gl region the items
-    came from (`search_product_prices` returns it as `shopping_region`). When it
-    is the gl=us fallback (``"us_fallback"`` / ``"us"``), OR a candidate's price
-    string was in a non-target currency and got converted, that candidate is
-    stamped ``converted_usd`` — NEVER ``local_bhd``. Only genuinely native-BHD
-    prices get ``local_bhd``. Ahmed's directive: US-converted is an HONEST
-    last-resort label, not a fake local price.
-    """
+    """Extract best matching price from Serper Shopping results."""
     if not shopping_items:
         return None
-
-    region_is_us_fallback = str(shopping_region or "").lower() in (
-        "us_fallback", "us",
-    )
 
     # L2 content safety — drop unsafe shopping items before pricing/ranking
     # logic runs. Inline import avoids circular-import risk at module load.
@@ -694,12 +591,6 @@ def extract_price_from_shopping(
             continue
 
         detected_cur = detect_currency(price_str)
-        # T2 — a candidate is "converted" if its price string was a non-target
-        # currency (so we converted it), OR the items came from the gl=us
-        # fallback region (their prices are US even when the string is bare).
-        item_converted = region_is_us_fallback or bool(
-            detected_cur and detected_cur != currency
-        )
         if detected_cur and detected_cur != currency:
             amount = _convert_to_bhd(amount, detected_cur)
             if currency != "BHD":
@@ -740,9 +631,7 @@ def extract_price_from_shopping(
             "retailer": retailer,
             "url": item.get("link") or build_retailer_url(retailer, product_name),
             "in_stock": True,
-            # T2 — honest label: converted_usd for gl=us-fallback / converted
-            # prices, local_bhd only for genuinely native-BHD listings.
-            "source_method": "converted_usd" if item_converted else "local_bhd",
+            "source_method": "local_bhd",
             "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
             "match_score": match_score,
             "retailer_score": retailer_score,
@@ -896,12 +785,8 @@ def extract_jsonld_price(
             for offer in offers:
                 if not isinstance(offer, dict):
                     continue
-                # priceCurrency can be an explicit JSON null (key present, value
-                # None) — e.g. bahrainpharmacy's empty WooCommerce Offer node.
-                # Coerce to str so a malformed Offer is SKIPPED, not a crash that
-                # aborts the whole extractor before the WC/microdata fallbacks.
-                currency = offer.get("priceCurrency") or ""
-                if str(currency).upper() != expected_currency.upper():
+                currency = offer.get("priceCurrency", "")
+                if currency.upper() != expected_currency.upper():
                     continue
                 try:
                     # AggregateOffer carries lowPrice instead of price (I5.8)
@@ -968,17 +853,7 @@ def extract_price_from_html(
         try:
             amount = float(og_price['content'])
             if amount > 0:
-                # S3-genuine (PDP curl Decision-F): a currency-LESS OG price
-                # defaults to the EXPECTED currency arg, NOT hardcoded "USD".
-                # bahrain.sharafdg.com ships product:price:amount=244.990 with NO
-                # currency tag on a BHD page — the old "USD" default converted a
-                # genuine 244.990 BHD price down to 92.12 BHD. An unlabeled price
-                # on a BH retailer page is in BHD (the region/expected currency).
-                detected_currency = (
-                    og_currency['content']
-                    if og_currency and og_currency.get('content')
-                    else currency
-                )
+                detected_currency = og_currency['content'] if og_currency and og_currency.get('content') else "USD"
                 result = {
                     "amount": amount, "original_currency": detected_currency,
                     "currency": detected_currency, "retailer": domain, "url": url,
@@ -991,210 +866,41 @@ def extract_price_from_html(
         except (ValueError, TypeError):
             pass
 
-    # Priority 3: Schema.org MICRODATA (itemprop=price + itemprop=priceCurrency).
-    # S3-genuine (gap-fill): bahrain.sharafdg.com PDPs are microdata-only (no
-    # JSON-LD), so this is the path that produces a genuine BH electronics price.
-    # CRITICAL — the page also carries an EPP INSTALLMENT itemprop=price
-    # ("BHD 48.332/month"); the old find-first grabbed THAT (wrong). The helper
-    # skips installment-context elements + reads the currency paired in the SAME
-    # Offer itemscope (not a page-global find), and normalizes lowercase "bhd".
-    micro = _extract_microdata_price(soup, currency, domain, url)
-    if micro:
-        return micro
-
-    # Priority 4: WooCommerce price span. S3-genuine (PDP curl Decision-F):
-    # bahrainpharmacy.com/store PDPs are WooCommerce with an EMPTY JSON-LD Offer
-    # (price=None) and no OG/microdata — the real price is in a
-    # `.woocommerce-Price-amount` span (<bdi>VALUE<span
-    # class="woocommerce-Price-currencySymbol">BHD</span></bdi>). The first such
-    # span NOT inside a <del> is the product price (a <del> wraps a crossed-out
-    # sale original; later spans are related products).
-    wc = _extract_woocommerce_price(soup, currency, domain, url)
-    if wc:
-        return wc
+    # Priority 3: Microdata itemprop="price"
+    price_elem = soup.find(attrs={"itemprop": "price"})
+    if price_elem:
+        price_val = price_elem.get("content") or price_elem.get_text(strip=True)
+        try:
+            amount = float(price_val.replace(",", "").replace("$", "").replace("£", "").replace("€", ""))
+            if amount > 0:
+                currency_elem = soup.find(attrs={"itemprop": "priceCurrency"})
+                detected_currency = currency_elem.get("content", "USD") if currency_elem else "USD"
+                result = {
+                    "amount": amount, "original_currency": detected_currency,
+                    "currency": detected_currency, "retailer": domain, "url": url,
+                    "in_stock": True, "confidence": 0.8, "estimated": False,
+                    "source_method": "page_scrape",
+                }
+                if detected_currency.upper() != currency.upper():
+                    _convert_gpt_price_currency(result, currency)
+                return result
+        except (ValueError, TypeError):
+            pass
 
     return None
-
-
-def _extract_woocommerce_price(
-    soup, currency: str, domain: str, url: str
-) -> Optional[Dict[str, Any]]:
-    """Extract a price from a WooCommerce `.woocommerce-Price-amount` span.
-
-    Reads the FIRST such span (the product price; later ones are related
-    products) — but SKIPS a crossed-out original inside a `<del>` (on a SALE
-    item the markup is `<del>OLD</del> <ins>NEW</ins>`; the first amount is the
-    pre-sale price). Prefers the `<ins>`/non-`<del>` sale price. The numeric is
-    the span text minus the currency-symbol child; the currency comes from
-    `.woocommerce-Price-currencySymbol` (BHD on a BH page), normalized .upper().
-    Returns a ``page_scrape`` dict or None.
-    """
-    # S3-genuine (team-lead #3 scope) — take the MAIN price, NOT a crossed-out
-    # original. WooCommerce sale markup nests the old price in <del> and the
-    # sale price in <ins>; pick the first amount NOT inside a <del>.
-    span = None
-    for cand in soup.find_all(class_="woocommerce-Price-amount"):
-        # find_parent("del") walks ancestors — a price inside <del> is the
-        # struck-out original; skip it.
-        if cand.find_parent("del") is not None:
-            continue
-        span = cand
-        break
-    if span is None:
-        return None
-    # Currency from the symbol child (strip it out of the numeric text after).
-    sym = span.find(class_="woocommerce-Price-currencySymbol")
-    detected_currency = (sym.get_text(" ", strip=True) if sym else "") or currency
-    detected_currency = detected_currency.strip().upper()
-    if sym:
-        sym.extract()  # remove so it doesn't pollute the numeric parse
-    amount = parse_price_string(span.get_text(" ", strip=True))
-    if amount is None or amount <= 0:
-        return None
-    result = {
-        "amount": amount,
-        "original_currency": detected_currency,
-        "currency": detected_currency,
-        "retailer": domain,
-        "url": url,
-        "in_stock": True,
-        "confidence": 0.9,
-        "estimated": False,
-        "source_method": "page_scrape",
-    }
-    if detected_currency != currency.upper():
-        _convert_gpt_price_currency(result, currency)
-    return result
-
-
-# S3-genuine — installment markers an itemprop=price might sit next to (the EPP
-# "BHD NN/month" widget). Used to skip a non-product-price microdata node.
-_INSTALLMENT_RE = re.compile(
-    r"/\s*month|per\s*month|/mo\b|monthly|installment|EPP|تقسيط", re.I
-)
-
-
-def _extract_microdata_price(
-    soup, currency: str, domain: str, url: str
-) -> Optional[Dict[str, Any]]:
-    """Extract a product price from Schema.org microdata, skipping EPP
-    installment nodes and pairing priceCurrency within the same Offer scope.
-
-    Returns a ``page_scrape_microdata`` dict or ``None``. Prefers an
-    ``itemprop=price`` inside an ``schema.org/Offer`` (or Product) itemscope;
-    a bare/installment one is skipped.
-    """
-    candidates = soup.find_all(attrs={"itemprop": "price"})
-    if not candidates:
-        return None
-
-    best = None  # (in_offer_scope: bool, amount, currency)
-    for el in candidates:
-        raw = el.get("content") or el.get_text(" ", strip=True)
-        if not raw:
-            continue
-        m = re.search(r"(\d[\d,]*(?:\.\d+)?)", str(raw).replace(",", ""))
-        if not m:
-            continue
-        try:
-            amount = float(m.group(1))
-        except (ValueError, TypeError):
-            continue
-        if amount <= 0:
-            continue
-
-        # Is this price inside an Offer/Product itemscope? Walk up; also grab the
-        # currency paired within that SAME scope (not a page-global find).
-        in_offer = False
-        cur = None
-        offer_scope = None
-        s = el
-        for _ in range(5):
-            if s is None or not hasattr(s, "get"):
-                break
-            itemtype = s.get("itemtype") or ""
-            if "Offer" in itemtype or "Product" in itemtype:
-                in_offer = True
-                offer_scope = s
-                break
-            s = s.parent
-        if offer_scope is not None:
-            cur_el = offer_scope.find(attrs={"itemprop": "priceCurrency"})
-            if cur_el is not None:
-                cur = cur_el.get("content") or cur_el.get_text(strip=True)
-
-        # Installment skip — ONLY for a price NOT inside an Offer/Product scope
-        # (a genuine Offer price is the product price even if an installment
-        # widget shares an outer container). Check the node's own + immediate
-        # parent text for a per-month / EPP marker.
-        if not in_offer:
-            ctx = el.get_text(" ", strip=True)
-            if el.parent is not None:
-                ctx += " " + el.parent.get_text(" ", strip=True)
-            if _INSTALLMENT_RE.search(ctx):
-                continue
-
-        if not cur:
-            cur_el = soup.find(attrs={"itemprop": "priceCurrency"})
-            cur = (cur_el.get("content") or cur_el.get_text(strip=True)) if cur_el else "USD"
-        cur = str(cur).strip().upper()  # lulu lowercase "bhd" -> "BHD"
-
-        # Prefer an Offer-scoped price; among equals, the larger plausible value.
-        key = (in_offer, amount)
-        if best is None or key > (best[0], best[1]):
-            best = (in_offer, amount, cur)
-
-    if best is None:
-        return None
-
-    _in_offer, amount, cur = best
-    result = {
-        "amount": amount, "original_currency": cur, "currency": cur,
-        "retailer": domain, "url": url, "in_stock": True,
-        "confidence": 0.8, "estimated": False,
-        # Use the existing "page_scrape" method (microdata is structured-data
-        # from the page, same tier as JSON-LD/OG) so it's recognized as a real
-        # price by scoring_service / quality_ranker / the L1.5 metric without a
-        # cross-lane source_method-enum change.
-        "source_method": "page_scrape",
-    }
-    if cur.upper() != currency.upper():
-        _convert_gpt_price_currency(result, currency)
-    return result
 
 
 # ============================================
 # Page fetching
 # ============================================
 
-def _curl_timeout_for_url(url: str) -> int:
-    """Per-fetch curl timeout: bahrain-tier registry domains get the longer
-    cold-tolerant BH_REGISTRY_CURL_TIMEOUT; everything else stays at
-    PAGE_SCRAPE_TIMEOUT (WRINKLE 1 — keep non-BH scrapes fast)."""
-    try:
-        from app.services.source_router import SOURCE_REGISTRY
-        host = urlparse(url).netloc.replace("www.", "").lower()
-        if not host:
-            return PAGE_SCRAPE_TIMEOUT
-        for s in SOURCE_REGISTRY:
-            if s.tier != "bahrain":
-                continue
-            d = s.domain.replace("www.", "").lower()
-            if host == d or host.endswith("." + d) or d.endswith("." + host):
-                return BH_REGISTRY_CURL_TIMEOUT
-    except Exception:  # noqa: BLE001 — selector must never break the fetch
-        pass
-    return PAGE_SCRAPE_TIMEOUT
-
-
 async def curl_fetch_html(url: str) -> Optional[str]:
     """Fetch raw HTML via curl_cffi (no JS rendering)."""
     try:
         from curl_cffi import requests as curl_requests
-        timeout = _curl_timeout_for_url(url)
         resp = await asyncio.to_thread(
             lambda: curl_requests.get(
-                url, impersonate="chrome", timeout=timeout, allow_redirects=True,
+                url, impersonate="chrome", timeout=PAGE_SCRAPE_TIMEOUT, allow_redirects=True,
             )
         )
         if resp.status_code != 200:

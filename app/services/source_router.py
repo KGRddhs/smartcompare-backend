@@ -31,12 +31,6 @@ class Source:
     # render credits) before the Serper site: discovery. Default False → every
     # legacy row unchanged; only verified-Shopify BH stores are tagged.
     is_shopify: bool = False
-    # S3-genuine (2026-06-14) — JS-SPA store whose STATIC curl HTML carries no
-    # usable price (confirmed by curling the PDP through the extractor). When
-    # True, the cascade EXCLUDES it from the free curl-direct harvest (a curl is
-    # wasted) and INCLUDES it in the budget-gated Firecrawl/Scrape.do render-tier
-    # escalation. The store is real + priced — just render-needed. Default False.
-    is_render_only: bool = False
 
 
 SOURCE_REGISTRY: List[Source] = [
@@ -56,54 +50,33 @@ SOURCE_REGISTRY: List[Source] = [
     #   carrefourbh.com + geant.com.bh DELETED (both NXDOMAIN; carrefour.com.bh
     #     also NXDOMAIN — no live BH Carrefour/Geant domain exists to replace
     #     with, and a dead site: row starves the limit=4 discovery window).
-    # S3-genuine gap-fill (2026-06-14, Decision-F): RETARGET bare
-    # luluhypermarket.com -> gcc.luluhypermarket.com. The bare host's catalog is
-    # en-ae/AED (WHY lulu yielded nothing); gcc + /en-bh/ serves BHD JSON-LD
-    # (priceCurrency lowercase "bhd" — extractor .upper()-normalizes). THE
-    # electronics keystone: broad catalog (electronics+grocery+pharmacy+beauty).
-    Source("gcc.luluhypermarket.com", "bahrain", (), 3.0),
+    Source("luluhypermarket.com", "bahrain", (), 3.0),
     Source("bahrain.sharafdg.com", "bahrain", ("electronics",), 3.0),
     Source("extra.com", "bahrain", ("electronics",), 3.0),
-    # bahrain.microless.com — PDP curl Decision-F (2026-06-14): MacBook Air M4
-    # PDP → 439.062 BHD via JSON-LD (offer price+priceCurrency=BHD, InStock).
-    # CURL-scrapeable (the first 403 was a parallel-write race, re-curl = 200).
-    # Laptops/computing electronics retailer.
-    Source("bahrain.microless.com", "bahrain", ("electronics",), 3.0),
     Source(
         "bn.boots.com",
         "bahrain",
         ("supplements", "skincare", "makeup", "haircare"),
         3.0,
-        is_render_only=True,  # JS-SPA: no static curl price → render-tier
     ),
-    Source(
-        "bolo.bh", "bahrain", ("supplements", "makeup", "skincare"), 3.0,
-        is_render_only=True,  # Vue SPA (not Google-indexed) → render-tier
-    ),
-    # S3-genuine gap-fill (2026-06-14, Decision-F): behbehani.com +
-    # jumboelectronics.com DELETED — both are 200-but-NOT-a-store
-    # (jumbo = 114-byte parked /lander redirect; behbehani = brochure splash, no
-    # shop). I5.3 had kept them on a status-only 200 check; they have zero shop
-    # signals and starve the limit=8 BH discovery window (the electronics 0/N).
+    Source("bolo.bh", "bahrain", ("supplements", "makeup", "skincare"), 3.0),
+    Source("behbehani.com", "bahrain", ("electronics", "fashion"), 3.0),
+    # I5.3 — eroselectronics.com DELETED (NXDOMAIN 2026-06-11; no live BH
+    # replacement). behbehani.com + jumboelectronics.com verified alive (200), kept.
+    Source("jumboelectronics.com", "bahrain", ("electronics",), 3.0),
     Source("talabat.com", "bahrain", ("grocery",), 3.0),
     # spinneysbahrain.com DELETED (I5.11 liveness gate 2026-06-12): NXDOMAIN;
     # spinneys.com live but no Bahrain storefront evidence (Decision F: never
     # fabricate). Re-add when a verified Bahrain-serving domain exists (S3).
-    # megamart.bh — PDP curl Decision-F (2026-06-14): Angular SPA shell, the
-    # "BD 3.455" price is JS-rendered (ZERO price in static curl HTML) → render-tier.
-    Source("megamart.bh", "bahrain", ("grocery",), 3.0, is_render_only=True),
+    Source("megamart.bh", "bahrain", ("grocery",), 3.0),
     # F1.5 expansion (verified live 2026-06-10) — Bahrain grocery + pharmacy
     # gaps. RATIFICATION REQUIRED (F1.5 checkpoint) before merge.
-    Source(
-        "alosraonline.com", "bahrain", ("grocery",), 3.0,
-        is_render_only=True,  # Alosra (BMMI) — JS-SPA → render-tier
-    ),
+    Source("alosraonline.com", "bahrain", ("grocery",), 3.0),  # Alosra (BMMI)
     Source(
         "nasserpharmacy.com",
         "bahrain",
         ("supplements", "skincare", "makeup", "haircare", "fragrances"),
         3.0,
-        is_render_only=True,  # Nasser Pharmacy — JS-SPA → render-tier
     ),  # Nasser Pharmacy — Bahrain's largest chain, 10k+ health/beauty SKUs
     Source(
         "bahrainpharmacy.com",
@@ -122,17 +95,6 @@ SOURCE_REGISTRY: List[Source] = [
         "bh.asgharali.com", "bahrain", ("fragrances",), 3.0, is_shopify=True
     ),  # Asgharali Perfumes BH (Shopify). S3 L1.3: /products.json verified —
     #    93 products, static BHD prices.
-    # S3-reopen T4 (research brief §1, Decision-F re-verified 2026-06-14):
-    # two verified free-endpoint Shopify fragrance stores — cheapest genuine-BHD
-    # win ($0, no render). en-bh.ajmal.com /meta.json=BHD ("Oud Nadir 48.000");
-    # alhajisbahrain.com /meta.json=BHD ("Meraki Amber 5.000"). (ajmal.com apex
-    # is NOT Shopify — the BH store is the en-bh subdomain.)
-    Source(
-        "en-bh.ajmal.com", "bahrain", ("fragrances",), 3.0, is_shopify=True
-    ),  # Ajmal Perfumes BH (Shopify /products.json, BHD)
-    Source(
-        "alhajisbahrain.com", "bahrain", ("fragrances",), 3.0, is_shopify=True
-    ),  # Al Hajis BH (Shopify /products.json, designer fragrances, BHD)
     Source(
         "jalilaperfumes.com", "bahrain", ("fragrances",), 3.0
     ),  # Jalila Perfumes BH (custom PHP, product pages + BHD)
@@ -324,50 +286,6 @@ def score_source(url: str, category: str) -> float:
             if not s.categories or category in s.categories:
                 return s.weight
     return 0.5
-
-
-# S3-genuine (team-lead live probe 2026-06-14) — wrong-GCC-locale path segments.
-# Serper `site:` discovery returns mixed-locale results for the multi-locale BH
-# registry domains; score_source matches by DOMAIN and ignores the locale PATH,
-# so a /en-sa/ (SAR) page on bahrain-tier extra.com scores 3.0 and gets scraped
-# → a Saudi price. These segments mark a NON-Bahrain GCC locale to DROP. NO
-# rewrite (SKU IDs differ per locale → 404); we only filter.
-_WRONG_GCC_LOCALE_SEGMENTS = (
-    "/en-sa/", "/ar-sa/",   # Saudi (SAR)
-    "/en-ae/", "/ar-ae/", "/uae_en/", "/uae_ar/",  # UAE (AED)
-    "/en-om/", "/ar-om/",   # Oman (OMR)
-    "/en-kw/", "/ar-kw/",   # Kuwait (KWD)
-    "/en-qa/", "/ar-qa/",   # Qatar (QAR)
-)
-# Bahrain locale markers — if present, the URL is explicitly BH (keep even if a
-# wrong-locale string somehow co-occurs, which it shouldn't).
-_BH_LOCALE_MARKERS = ("/en-bh/", "/ar-bh/", "/bahrain_en/", "/bahrain_ar/", "-bh/")
-
-
-def is_wrong_locale_url(url: str) -> bool:
-    """True iff `url` carries a NON-Bahrain GCC locale path segment (so it would
-    yield a foreign-currency price and must be dropped from the BH scrape pool).
-
-    KEEP: explicit BH locale (/en-bh/, /ar-bh/, /bahrain_en/), bahrain.* subdomain,
-    and locale-NEUTRAL paths (no recognizable GCC locale segment) — conservative,
-    never drop a maybe-BH page. DROP only an explicit wrong-GCC-locale segment.
-    """
-    if not url:
-        return False
-    try:
-        parsed = urlparse(url)
-    except (ValueError, TypeError):
-        return False
-    host = (parsed.netloc or "").lower()
-    path = (parsed.path or "").lower()
-    # A bahrain.* subdomain is inherently BH — keep.
-    if host.startswith("bahrain.") or host.startswith("www.bahrain."):
-        return False
-    # An explicit BH locale marker anywhere → keep.
-    if any(m in path for m in _BH_LOCALE_MARKERS):
-        return False
-    # An explicit wrong-GCC-locale segment → drop.
-    return any(seg in path for seg in _WRONG_GCC_LOCALE_SEGMENTS)
 
 
 def build_site_discovery_query(
