@@ -621,3 +621,346 @@ def test_per_query_jsonl_includes_price_source_cells():
     row = dataclasses.asdict(graded)
     assert row["estimated_price_cells"] == 2
     assert row["priced_cells"] == 2
+
+
+# ---------------------------------------------------------------------------
+# S3 E1 — genuine-BH-price-share metric (full provenance breakdown)
+#
+# Ahmed's standard: GENUINE BH prices; converted_usd / estimated are last
+# resort. The PRIMARY dial is now genuine_bh_share = of all PRODUCED prices,
+# the fraction with a genuine-BH source_method (real fetch from a BH retailer:
+# local_bhd / page_scrape / page_scrape_rendered / firecrawl / scrapedo_rendered
+# / shopify_json) vs converted_usd vs estimated. Higher genuine_bh_share = the
+# goal. Surfaced run-level AND per-category. estimate_share (L4.1) stays.
+# ---------------------------------------------------------------------------
+
+def _graded_with_provenance(genuine, converted, estimated, priced, *,
+                            category="electronics", qid="q"):
+    """A GradedQuery carrying explicit provenance cell counts (for aggregate /
+    per-category tests that don't need a full response body)."""
+    return eval_runner.GradedQuery(
+        id=qid, category=category, wall_ms=1000, http_status=200, error=None,
+        price_pass=True, specs_score=1.0, winner_pass=True, factual_pass=True,
+        weighted_score=1.0, passing=True, wall_over_cap=False,
+        genuine_bh_price_cells=genuine, converted_usd_price_cells=converted,
+        estimated_price_cells=estimated, priced_cells=priced,
+    )
+
+
+def test_genuine_bh_source_methods_set():
+    """The genuine-BH set is exactly the real-BH-fetch methods (+ shopify_json,
+    forward-compat for the Shopify wiring) — NOT converted_usd or estimated."""
+    s = eval_runner.GENUINE_BH_SOURCE_METHODS
+    assert {"local_bhd", "page_scrape", "page_scrape_rendered", "firecrawl",
+            "scrapedo_rendered", "shopify_json"} <= set(s)
+    assert "converted_usd" not in s
+    assert "estimated" not in s
+
+
+def test_count_price_provenance_all_genuine():
+    body = _body_with_price_methods("local_bhd", "page_scrape")
+    prov = eval_runner.count_price_provenance(body)
+    assert prov == {"genuine_bh": 2, "converted_usd": 0, "estimated": 0, "priced": 2}
+
+
+def test_count_price_provenance_mixed_three_buckets():
+    """One genuine, one converted (only 2 products, so test the converted/
+    estimated split across two bodies via aggregate below; here genuine+converted)."""
+    body = _body_with_price_methods("firecrawl", "converted_usd")
+    prov = eval_runner.count_price_provenance(body)
+    assert prov == {"genuine_bh": 1, "converted_usd": 1, "estimated": 0, "priced": 2}
+
+
+def test_count_price_provenance_converted_and_estimated():
+    body = _body_with_price_methods("converted_usd", "estimated")
+    prov = eval_runner.count_price_provenance(body)
+    assert prov == {"genuine_bh": 0, "converted_usd": 1, "estimated": 1, "priced": 2}
+
+
+def test_count_price_provenance_shopify_json_is_genuine():
+    """shopify_json counts as genuine BH (forward-compat — the moment the
+    pipeline emits it, the metric credits it)."""
+    body = _body_with_price_methods("shopify_json", "estimated")
+    prov = eval_runner.count_price_provenance(body)
+    assert prov["genuine_bh"] == 1
+    assert prov["estimated"] == 1
+
+
+def test_count_price_provenance_no_price_excluded():
+    """A product with no price is in NO bucket (priced denominator unaffected)."""
+    body = _body_with_price_methods("local_bhd", None)
+    prov = eval_runner.count_price_provenance(body)
+    assert prov == {"genuine_bh": 1, "converted_usd": 0, "estimated": 0, "priced": 1}
+
+
+def test_grade_run_result_captures_provenance_cells():
+    body = _body_with_price_methods("local_bhd", "converted_usd")
+    run_result = eval_runner.QueryRunResult(
+        id="q1", query="x", category="electronics",
+        http_status=200, wall_ms=1000, error=None, response=body,
+    )
+    record = {"id": "q1", "expected_prices": {}, "expected_specs": {},
+              "expected_winner_index": None, "forbidden_facts": []}
+    graded = eval_runner.grade_run_result(run_result, record)
+    assert graded.genuine_bh_price_cells == 1
+    assert graded.converted_usd_price_cells == 1
+    assert graded.estimated_price_cells == 0
+    assert graded.priced_cells == 2
+
+
+def test_error_row_has_zero_provenance_cells():
+    run_result = eval_runner.QueryRunResult(
+        id="q-err", query="x", category="electronics",
+        http_status=400, wall_ms=30000, error="http_400", response=None,
+    )
+    record = {"id": "q-err", "expected_prices": {}, "expected_specs": {},
+              "expected_winner_index": None, "forbidden_facts": []}
+    graded = eval_runner.grade_run_result(run_result, record)
+    assert graded.genuine_bh_price_cells == 0
+    assert graded.converted_usd_price_cells == 0
+
+
+def test_aggregate_genuine_bh_share():
+    """Run-level: 3 genuine + 1 converted + 2 estimated across 6 priced cells →
+    genuine_bh_share=0.5, converted_usd_share≈0.167, estimate_share≈0.333."""
+    graded = [
+        _graded_with_provenance(2, 0, 0, 2, qid="q1"),  # both genuine
+        _graded_with_provenance(1, 1, 0, 2, qid="q2"),  # genuine + converted
+        _graded_with_provenance(0, 0, 2, 2, qid="q3"),  # both estimated
+    ]
+    report = eval_runner.aggregate(graded)
+    assert report.genuine_bh_price_cells_total == 3
+    assert report.converted_usd_price_cells_total == 1
+    assert report.estimated_price_cells_total == 2
+    assert report.priced_cells_total == 6
+    assert report.genuine_bh_share == pytest.approx(0.5)
+    assert report.converted_usd_share == pytest.approx(round(1 / 6, 4))
+    assert report.estimate_share == pytest.approx(round(2 / 6, 4))
+
+
+def test_aggregate_provenance_shares_sum_to_one():
+    """The three provenance shares partition the produced prices → sum to 1.0
+    (within rounding) whenever priced > 0."""
+    graded = [_graded_with_provenance(3, 2, 5, 10)]
+    report = eval_runner.aggregate(graded)
+    total_share = (report.genuine_bh_share + report.converted_usd_share
+                   + report.estimate_share)
+    assert total_share == pytest.approx(1.0, abs=2e-4)
+
+
+def test_aggregate_genuine_bh_share_empty_run_no_zerodiv():
+    report = eval_runner.aggregate([])
+    assert report.genuine_bh_price_cells_total == 0
+    assert report.genuine_bh_share == 0.0
+    assert report.converted_usd_share == 0.0
+
+
+def test_aggregate_per_category_provenance():
+    """Per-category breakdown: electronics all-genuine, supplements all-estimated
+    → the PRIMARY dial is readable per category to see where estimates persist."""
+    graded = [
+        _graded_with_provenance(2, 0, 0, 2, category="electronics", qid="e1"),
+        _graded_with_provenance(2, 0, 0, 2, category="electronics", qid="e2"),
+        _graded_with_provenance(0, 0, 2, 2, category="supplements", qid="s1"),
+    ]
+    report = eval_runner.aggregate(graded)
+    pc = report.per_category_provenance
+    assert pc["electronics"]["genuine_bh_share"] == pytest.approx(1.0)
+    assert pc["electronics"]["priced"] == 4
+    assert pc["supplements"]["genuine_bh_share"] == pytest.approx(0.0)
+    assert pc["supplements"]["estimate_share"] == pytest.approx(1.0)
+    assert pc["supplements"]["priced"] == 2
+
+
+def test_per_category_skips_categories_with_no_priced():
+    """A category whose queries all errored (0 priced) doesn't crash / isn't a
+    misleading 0.0 — it's simply absent or zero-guarded."""
+    graded = [_graded_with_provenance(0, 0, 0, 0, category="other", qid="o1")]
+    report = eval_runner.aggregate(graded)
+    pc = report.per_category_provenance
+    # 'other' had no produced prices → either absent or all-zero shares (no crash).
+    if "other" in pc:
+        assert pc["other"]["genuine_bh_share"] == 0.0
+        assert pc["other"]["priced"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_eval_aggregates_genuine_bh_share():
+    transport = _mock_transport(_body_with_price_methods("local_bhd", "converted_usd"))
+    queries = [
+        {"id": f"q-{i}", "query": "x", "category": "electronics", "region": "bahrain",
+         "expected_prices": {}, "expected_specs": {}, "expected_winner_index": None,
+         "forbidden_facts": [], "max_wall_seconds": 25.0}
+        for i in range(4)
+    ]
+    report = await eval_runner.run_eval(queries, base_url="http://test",
+                                        transport=transport, concurrency=2)
+    # 4 × (1 genuine, 1 converted) → 4 genuine / 4 converted / 8 priced.
+    assert report.genuine_bh_price_cells_total == 4
+    assert report.converted_usd_price_cells_total == 4
+    assert report.genuine_bh_share == pytest.approx(0.5)
+    assert report.converted_usd_share == pytest.approx(0.5)
+
+
+def test_format_report_shows_genuine_bh_share():
+    """The CLI report surfaces genuine-BH-share as the PRIMARY dial (higher=
+    better) alongside converted_usd + estimate."""
+    graded = [_graded_with_provenance(3, 1, 0, 4)]
+    report = eval_runner.aggregate(graded)
+    text = eval_runner._format_report(report)
+    low = text.lower()
+    assert "genuine" in low and ("bh" in low)
+    assert "higher" in low  # PRIMARY-dial framing (higher = better)
+    assert "75" in text  # 3/4 genuine = 75.0%
+
+
+def test_per_query_jsonl_includes_provenance_cells():
+    graded = eval_runner.grade_run_result(
+        eval_runner.QueryRunResult(
+            id="q1", query="x", category="electronics", http_status=200,
+            wall_ms=1000, error=None,
+            response=_body_with_price_methods("firecrawl", "converted_usd"),
+        ),
+        {"id": "q1", "expected_prices": {}, "expected_specs": {},
+         "expected_winner_index": None, "forbidden_facts": []},
+    )
+    row = dataclasses.asdict(graded)
+    assert row["genuine_bh_price_cells"] == 1
+    assert row["converted_usd_price_cells"] == 1
+
+
+# ---------------------------------------------------------------------------
+# S3 E3 — OpenAI cost-guard (evals must not silently drain OpenAI)
+#
+# The full-200 capture drained the OpenAI account (insufficient_quota took prod
+# DOWN). Like the Serper --allow-full guard, the eval pre-flights an estimate
+# of the OpenAI calls a run will DRIVE (each /compare triggers several backend
+# OpenAI calls) and REFUSES when the estimate exceeds a safe budget unless an
+# explicit override is passed. Pure static estimate — the eval runs against
+# remote prod and can't read prod's live OpenAI counter, so a pre-run estimate
+# is the right mechanism (mirrors the Serper cost guard).
+# ---------------------------------------------------------------------------
+
+def test_estimate_openai_calls_scales_with_queries():
+    per_q = eval_runner.OPENAI_CALLS_PER_QUERY
+    assert eval_runner.estimate_openai_calls(20) == 20 * per_q
+    assert eval_runner.estimate_openai_calls(200) == 200 * per_q
+    assert eval_runner.estimate_openai_calls(0) == 0
+
+
+def test_openai_calls_per_query_is_conservative():
+    """The per-query estimate covers the backend's compare OpenAI fan-out
+    (specs + price-extraction + reviews + verdict + parse) — at least 4."""
+    assert eval_runner.OPENAI_CALLS_PER_QUERY >= 4
+
+
+def test_check_openai_budget_under_budget_ok():
+    ok, msg = eval_runner.check_openai_budget(20, budget=150, allow_overspend=False)
+    assert ok is True
+    assert "openai" in msg.lower()
+
+
+def test_check_openai_budget_over_budget_refuses():
+    """A full-200-scale run (200 × per-q) blows past a smoke-sized budget and is
+    REFUSED unless overridden — the drain-prevention contract."""
+    ok, msg = eval_runner.check_openai_budget(200, budget=150, allow_overspend=False)
+    assert ok is False
+    assert "refus" in msg.lower() or "exceed" in msg.lower()
+    # The message states the estimate + the budget so the operator can act.
+    assert str(eval_runner.estimate_openai_calls(200)) in msg
+
+
+def test_check_openai_budget_override_allows_overspend():
+    """--allow-openai-overspend lets an authorized big run proceed (with a
+    warning), so a dispatcher-approved full run isn't hard-blocked."""
+    ok, msg = eval_runner.check_openai_budget(200, budget=150, allow_overspend=True)
+    assert ok is True
+    assert "override" in msg.lower() or "overspend" in msg.lower() or "warn" in msg.lower()
+
+
+def test_check_openai_budget_warns_near_threshold():
+    """A run that's under budget but within the warn band still proceeds (ok)
+    but flags the proximity so the operator sees it coming."""
+    # Pick a query count whose estimate is >= 80% of budget but <= budget.
+    per_q = eval_runner.OPENAI_CALLS_PER_QUERY
+    budget = per_q * 10  # exactly 10 queries' worth
+    ok, msg = eval_runner.check_openai_budget(9, budget=budget, allow_overspend=False)
+    assert ok is True  # 9*per_q <= budget
+    assert "warn" in msg.lower() or "approach" in msg.lower() or "%" in msg
+
+
+def test_openai_budget_default_allows_smoke20_refuses_full():
+    """The DEFAULT budget must let smoke20 (20q) run freely but gate a
+    full-200-scale run — the exact policy that would have prevented the drain."""
+    default_budget = eval_runner._openai_call_budget()
+    ok20, _ = eval_runner.check_openai_budget(20, budget=default_budget, allow_overspend=False)
+    ok200, _ = eval_runner.check_openai_budget(200, budget=default_budget, allow_overspend=False)
+    assert ok20 is True
+    assert ok200 is False
+
+
+def test_openai_budget_env_override(monkeypatch):
+    """EVAL_OPENAI_CALL_BUDGET overrides the default, read fresh."""
+    monkeypatch.setenv("EVAL_OPENAI_CALL_BUDGET", "12345")
+    assert eval_runner._openai_call_budget() == 12345
+    monkeypatch.setenv("EVAL_OPENAI_CALL_BUDGET", "not-an-int")
+    # Malformed → falls back to the default (never crashes the run).
+    assert eval_runner._openai_call_budget() == eval_runner.DEFAULT_OPENAI_CALL_BUDGET
+
+
+# ---------------------------------------------------------------------------
+# S3 E2 — smoke20 is the iteration loop; full-200 needs explicit dispatcher GO
+#
+# Ahmed: full-200 avoided (token cost). smoke20 is the fast path. The full set
+# live is double-gated: --allow-full (Serper) AND --allow-openai-overspend
+# (E3). These main() tests exercise the REFUSAL paths only — they short-circuit
+# (return 3) BEFORE any network call, so no live traffic.
+# ---------------------------------------------------------------------------
+
+def test_main_full_set_refused_without_allow_full():
+    """Omitting --subset (full set) without --allow-full is refused (Serper
+    guard) — smoke20 is the intended loop."""
+    rc = eval_runner.main(["--gold", str(GOLD_PATH)])  # no --subset, no --allow-full
+    assert rc == 3
+
+
+def test_main_full_set_refused_by_openai_guard_even_with_allow_full():
+    """The DOUBLE lock: even with --allow-full (Serper), a full-200-scale run is
+    still refused by the OpenAI cost-guard unless --allow-openai-overspend — the
+    exact policy that would have prevented the drain. Refuses pre-network."""
+    rc = eval_runner.main(["--gold", str(GOLD_PATH), "--allow-full"])
+    assert rc == 3  # OpenAI guard refuses (estimate >> default 150 budget)
+
+
+def test_main_full_set_openai_refusal_is_overridable(monkeypatch):
+    """With BOTH overrides the run is permitted past the guards (it then
+    proceeds to the network — we stub run_eval so no live traffic, asserting the
+    guards did NOT short-circuit)."""
+    called = {}
+
+    async def _fake_run_eval(queries, **kwargs):
+        called["n"] = len(queries)
+        return eval_runner.aggregate([])  # empty report, no network
+
+    monkeypatch.setattr(eval_runner, "run_eval", _fake_run_eval)
+    rc = eval_runner.main([
+        "--gold", str(GOLD_PATH), "--allow-full", "--allow-openai-overspend",
+        "--mode", "absolute", "--threshold", "0.0",
+    ])
+    # Guards passed → run_eval was reached (not a 3 short-circuit).
+    assert "n" in called
+    assert rc in (0, 1)  # gate verdict, not a cost-guard refusal
+
+
+def test_main_smoke20_passes_cost_guards(monkeypatch):
+    """smoke20 sails past BOTH guards with no override flags (the friction-free
+    loop). run_eval stubbed so no live traffic."""
+    async def _fake_run_eval(queries, **kwargs):
+        return eval_runner.aggregate([])
+
+    monkeypatch.setattr(eval_runner, "run_eval", _fake_run_eval)
+    rc = eval_runner.main([
+        "--gold", str(GOLD_PATH), "--subset", "smoke20",
+        "--mode", "absolute", "--threshold", "0.0",
+    ])
+    assert rc in (0, 1)  # reached the gate, not a cost-guard refusal (3)
