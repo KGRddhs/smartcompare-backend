@@ -6,7 +6,12 @@
 **Prior:** L5 carried-bugs lane MERGED to main (`59ec212`); fan_out F1 fix shipped.
 
 ## Current task
-**RE-MERGE LANDED ON MAIN (3be92ce, 2026-06-14) → FLIP DONE.** Rebased onto re-merged main; all 6 is_render_only/Fix-B strict-xfails fired as XPASS(strict) loud-fail → dropped all 6 markers → **17/17 GREEN, zero xfails.** Full cascade-contract net (A1 order / A2 honest-label / A3 estimate-last / A4a usage=review / A4b is_render_only two-sided + Fix-B global-skip / A5 liveness) LIVE. A2 + A5 mutation-proven. + asyncio-loop polluter FIXED (`b71ae41`).
+**HOLDING for team-lead A-vs-B decision (noon edits) + item-2 assertion-surface confirm.** Net is 17/17 green on main @ ceb573e. team-lead asked for 2 contract-net updates; I VERIFIED a state discrepancy before applying (good catch):
+- **team-lead said "noon is_render_only=True on main, your net stale" — VERIFIED FALSE on bare main.** `origin/main` 3be92ce still has `Source("noon.com","gcc",(),1.5)` — NO is_render_only. The flag is ONLY on coverage branch (feature/s3-coverage ead18aa, line 181), NOT merged. Applying team-lead's "add noon to set + flip helper to True" NOW → my net goes RED vs bare-main. Flagged + proposed (A) commit-now-if-merged-atomically-with-coverage, or (B) xfail-strict (lean B). Awaiting decision.
+- **Item-2 genuine-source contract** (grounded in coverage ead18aa): is_algolia field @45; en-bh.6thstreet.com fashion+is_algolia @153; fragrance Shopify asgharali/ajmal/alhajis is_shopify @128-140; bahrain.microless.com electronics curl-tier @77; noon is_render_only @181. Will pin as failing-first xfail-strict + mutation-prove genuine-vs-estimate. HOLD beauty (boutiqaat/sephora.me) per team-lead (task #36 probe unresolved).
+
+## Prior milestone (DONE)
+**RE-MERGE LANDED ON MAIN (3be92ce) → FLIP DONE.** Dropped all 6 is_render_only/Fix-B strict-xfails → 17/17 green. A1-A5 LIVE, A2+A5 mutation-proven. asyncio-loop polluter FIXED (`b71ae41`, proven 162/163). noon-controls hardened to amazon.ae (`ceb573e`).
 
 ## COVERAGE-BRANCH heads-up — noon.com becomes is_render_only #6 (NOT on main yet)
 L1 `feature/s3-coverage 757f4da` flags `noon.com` is_render_only=True (6th domain: Akamai-walled, curl 0-byte, JSON-LD price=hardcoded-0, hydrates in Next.js RSC → render-tier). MECHANISM unchanged; only the SET grows 5→6.
