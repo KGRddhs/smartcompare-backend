@@ -6,7 +6,14 @@
 **Prior:** L5 carried-bugs lane MERGED to main (`59ec212`); fan_out F1 fix shipped.
 
 ## Current task
-Q1 — integrated cascade-reorder regression net (failing-test-first). team-lead self-runs the smoke20 gate; I do NOT block measurement.
+Q1 DONE (`54bcc80`, pushed). Q4 baseline verified. Holding for L1's re-order merge → then re-run net as the regression guard + Q3 supplement-timeout watch. team-lead self-runs the smoke20 gate.
+
+## Status
+- **Q1 DONE** — `tests/test_cascade_order_regression_qa.py`, 7 tests, 4 invariants (A1 order / A2 honest-label / A3 estimate-last / A4 render-only-exclusion). All green on main; **mutation-tested** the A2 guard (forcing local_bhd on the converted path → RED, proving real discriminating power, not false-green). Complementary to L1's per-fix TDD (no duplication).
+- **Q4 baseline** — security regression **103/104** green = the EXPECTED baseline (team-lead's number). The 1 failure is pre-existing + unrelated: `authService.ts:480 console.log('[GOOGLE-DIAG]')` — the deferred Google-Sign-In diagnostic instrumentation (CLAUDE.md known-bug), a frontend .ts file my backend-test-only branch cannot have touched. My net coexists with on-main cascade/source/fan_out tests: 35/35.
+- **Q2** (team-lead self-runs the smoke20 gate) — I feed cascade-contract failures.
+- **Q3** (reactive) — supplement-timeout watch when L1's timeout fix lands.
+- **NEXT:** when L1's re-order merges to main, re-run the Q1 net against it as the live regression guard; report any RED to team-lead immediately.
 
 ## Mission (S3 reopened — genuine BH pricing)
 L1 (`feature/s3-genuine-price-cascade`) re-orders the price cascade (BH→web→US-converted→estimate-last), kills the gl=us→local_bhd mislabel (`b82af2a`), fixes supplement timeout. Big surface change to price_service.py / structured_comparison_service.py. **Regressions are the risk.**
