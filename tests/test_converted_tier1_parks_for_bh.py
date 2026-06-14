@@ -201,6 +201,95 @@ async def test_global_only_escalation_builds_no_render_scrapers(monkeypatch, cle
 
 
 @pytest.mark.asyncio
+async def test_fix3_bounded_budget_when_parked_slow_curl_returns_parked(monkeypatch, clean_service):
+    """Fix 3 (prod-latency hardening): when a parked converted exists AND the BH
+    curl is SLOW (exceeds the bounded budget), the cascade returns the PARKED
+    converted FAST rather than burning the full 12s. Patches the bounded budget
+    tiny + a slow fan_out; asserts the parked converted is returned and the
+    bounded budget (not 12s) governed."""
+    from app.services import structured_comparison_service as scs_mod
+    import asyncio as _aio
+    import time as _time
+
+    _converted_tier1(monkeypatch, scs_mod)
+    monkeypatch.setattr(scs_mod, "get_official_domain", lambda *a, **kw: None)
+    monkeypatch.setattr(scs_mod, "fetch_shopify_price", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        scs_mod, "search_web",
+        AsyncMock(return_value={"organic": [
+            {"link": "https://bahrain.sharafdg.com/product/iphone-15/"}
+        ]}),
+    )
+    # Tiny bounded budget so the test is fast; a SLOW fan_out that would exceed it.
+    monkeypatch.setattr(scs_mod, "_PARKED_FALLBACK_FAN_OUT_BUDGET", 0.3, raising=False)
+
+    async def _slow_fan(product, *, scrapers, scraping_mode):
+        await _aio.sleep(5)  # far exceeds the 0.3s bounded budget
+        return {"best": None}
+    monkeypatch.setattr(scs_mod, "fan_out_price_lookup", _slow_fan)
+    monkeypatch.setattr(scs_mod, "search_price_organic",
+                        AsyncMock(return_value={"organic": [], "knowledge_graph": None}))
+    monkeypatch.setattr(scs_mod, "extract_price", AsyncMock(return_value=(None, {})))
+    monkeypatch.setattr(
+        scs_mod, "extract_price_from_training_data",
+        AsyncMock(return_value=({"amount": 290.0, "currency": "BHD"}, {})),
+    )
+
+    t0 = _time.monotonic()
+    result = await clean_service._get_price(
+        brand="Apple", name="iPhone 15", variant="128GB", region="bahrain",
+        search_query="Apple iPhone 15 128GB price", nocache=True,
+        category="electronics",
+    )
+    elapsed = _time.monotonic() - t0
+    # The bounded budget (0.3s, +0.5s break guard) capped the fan_out — NOT 5s.
+    assert elapsed < 3.0, f"bounded budget didn't cap the slow curl (elapsed {elapsed:.1f}s)"
+    # The parked converted is returned (NOT the estimate, NOT None).
+    assert result is not None
+    assert result["source_method"] == "converted_usd"
+
+
+@pytest.mark.asyncio
+async def test_fix3_fast_genuine_bh_still_wins_within_bounded_budget(monkeypatch, clean_service):
+    """Fix 3 — the win HOLDS: when a parked converted exists but the genuine BH
+    curl lands FAST (within the bounded budget), genuine local_bhd/page_scrape
+    STILL wins. The bounded budget only forfeits the SLOW case, never a fast hit."""
+    from app.services import structured_comparison_service as scs_mod
+
+    _converted_tier1(monkeypatch, scs_mod)
+    monkeypatch.setattr(scs_mod, "get_official_domain", lambda *a, **kw: None)
+    monkeypatch.setattr(scs_mod, "fetch_shopify_price", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        scs_mod, "search_web",
+        AsyncMock(return_value={"organic": [
+            {"link": "https://bahrain.sharafdg.com/product/iphone-15/"}
+        ]}),
+    )
+    # A generous bounded budget; a FAST fan_out that hits genuine BH immediately.
+    monkeypatch.setattr(scs_mod, "_PARKED_FALLBACK_FAN_OUT_BUDGET", 9.0, raising=False)
+    monkeypatch.setattr(
+        scs_mod, "fan_out_price_lookup",
+        AsyncMock(return_value={"best": {
+            "raw_data": {"amount": 248.990, "currency": "BHD",
+                         "retailer": "bahrain.sharafdg.com",
+                         "source_method": "page_scrape_jsonld"},
+            "source_method": "page_scrape_jsonld",
+        }}),
+    )
+
+    result = await clean_service._get_price(
+        brand="Apple", name="iPhone 15", variant="128GB", region="bahrain",
+        search_query="Apple iPhone 15 128GB price", nocache=True,
+        category="electronics",
+    )
+    # Genuine BH WINS within the bounded budget — the parked converted is NOT used.
+    assert result is not None
+    assert result["amount"] == pytest.approx(248.990)
+    assert result["source_method"] in ("page_scrape_jsonld", "page_scrape", "local_bhd")
+    assert result["source_method"] != "converted_usd"
+
+
+@pytest.mark.asyncio
 async def test_genuine_local_bhd_tier1_still_short_circuits(monkeypatch, clean_service):
     """A GENUINE local_bhd Tier-1 price (already a real BH price) MAY still
     early-exit — the parking applies ONLY to converted prices. (Here Tier-1
