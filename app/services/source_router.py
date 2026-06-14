@@ -141,13 +141,18 @@ SOURCE_REGISTRY: List[Source] = [
     ),  # Al Hajis BH (Shopify /products.json, designer fragrances, BHD)
     # S3 #21/#1 — 6thStreet (Apparel Group), Magento+Algolia. The PUBLIC search
     # index exposes genuine BHD via algolia_service.fetch_algolia_price (free,
-    # $0, no Serper/render). 1,200+ brands across fashion/fragrances/makeup/
-    # skincare/haircare. Tier-2 (after Shopify-json, before curl).
+    # $0, no Serper/render). FASHION/FOOTWEAR ONLY — L2 verify-or-omit
+    # (2026-06-14): the harvested index returns NO genuine beauty ("lipstick"→0
+    # hits, "Dior Sauvage"→backpacks, "Charlotte Tilbury"→Forever New dresses);
+    # the beauty catalog is a SEPARATE Algolia index reachable only via a
+    # headless browser (not harvestable, dropped). Positive gate proven:
+    # "Nike Air Max SC"→genuine Nike BHD 32.000. Beauty (makeup/skincare/
+    # haircare) rides the render-tier rows (boutiqaat/sephora) + the Shopify
+    # fragrance stores (ajmal/alhajis/asgharali). Tier-2 (after Shopify, before curl).
     Source(
-        "en-bh.6thstreet.com", "bahrain",
-        ("fashion", "fragrances", "makeup", "skincare", "haircare"), 3.0,
+        "en-bh.6thstreet.com", "bahrain", ("fashion",), 3.0,
         is_algolia=True,
-    ),  # 6thStreet BH (Algolia index, BHD)
+    ),  # 6thStreet BH (Algolia index, BHD, fashion/footwear only)
     Source(
         "jalilaperfumes.com", "bahrain", ("fragrances",), 3.0
     ),  # Jalila Perfumes BH (custom PHP, product pages + BHD)

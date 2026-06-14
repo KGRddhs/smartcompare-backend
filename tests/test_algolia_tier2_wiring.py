@@ -15,15 +15,23 @@ from unittest.mock import AsyncMock, patch
 
 
 class TestAlgoliaRegistryHelper:
-    def test_6thstreet_for_its_categories(self):
+    def test_6thstreet_for_fashion_only(self):
+        # L2 verify-or-omit (2026-06-14): the harvested 6thStreet index is
+        # FASHION/FOOTWEAR ONLY — beauty queries return junk (lipstick->0,
+        # "Dior Sauvage"->backpacks). So 6thStreet serves ONLY fashion.
         from app.services.source_router import get_algolia_sources_for_category
-        for cat in ("fashion", "fragrances", "makeup", "skincare", "haircare"):
-            domains = [s.domain for s in get_algolia_sources_for_category(cat)]
-            assert "en-bh.6thstreet.com" in domains, f"6thStreet missing for {cat}"
+        domains = [s.domain for s in get_algolia_sources_for_category("fashion")]
+        assert "en-bh.6thstreet.com" in domains, "6thStreet missing for fashion"
 
-    def test_empty_for_electronics(self):
+    def test_6thstreet_NOT_for_beauty_or_electronics(self):
         from app.services.source_router import get_algolia_sources_for_category
-        assert get_algolia_sources_for_category("electronics") == []
+        # beauty + fragrances are NOT 6thStreet's (the Algolia harvest yields no
+        # genuine beauty); they ride render-tier + Shopify-fragrance rows.
+        for cat in ("fragrances", "makeup", "skincare", "haircare", "electronics", "grocery"):
+            domains = [s.domain for s in get_algolia_sources_for_category(cat)]
+            assert "en-bh.6thstreet.com" not in domains, (
+                f"6thStreet wrongly serves {cat} — it's fashion-only"
+            )
 
     def test_6thstreet_is_bahrain_tier_algolia(self):
         from app.services.source_router import registry_tier, SOURCE_REGISTRY
@@ -59,7 +67,7 @@ class TestAlgoliaTier2CallSite:
         # Algolia returns a genuine BHD hit.
         async def fake_algolia(domain, product_name, category="other"):
             return {
-                "amount": 18.5, "currency": "BHD", "retailer": "en-bh.6thstreet.com",
+                "amount": 32.0, "currency": "BHD", "retailer": "en-bh.6thstreet.com",
                 "url": "https://en-bh.6thstreet.com/product/x", "in_stock": True,
                 "estimated": False, "source_method": "local_bhd", "confidence": 0.9,
             }
@@ -71,13 +79,14 @@ class TestAlgoliaTier2CallSite:
             raise AssertionError("discovery reached — Algolia did not short-circuit")
         monkeypatch.setattr(scs, "search_web", boom_search)
 
+        # FASHION query — 6thStreet is fashion-only (L2 verify-or-omit).
         price = await svc._get_price(
-            brand="Tom Ford", name="Oud Wood", variant=None, region="bahrain",
-            search_query="Tom Ford Oud Wood", nocache=True, category="fragrances",
+            brand="Nike", name="Air Max SC", variant=None, region="bahrain",
+            search_query="Nike Air Max SC", nocache=True, category="fashion",
         )
         assert price is not None
         assert price["source_method"] == "local_bhd"
-        assert abs(price["amount"] - 18.5) < 0.01
+        assert abs(price["amount"] - 32.0) < 0.01
         assert price["retailer"] == "en-bh.6thstreet.com"
 
     async def test_algolia_miss_falls_through(self, monkeypatch):
@@ -99,9 +108,11 @@ class TestAlgoliaTier2CallSite:
             return {"organic": [], "shopping": []}
         monkeypatch.setattr(scs, "search_web", marker_search)
 
+        # FASHION so the Algolia block RUNS (6thStreet is fashion-only) and its
+        # None result falls through to discovery (not skipped-because-no-source).
         await svc._get_price(
-            brand="Tom Ford", name="Oud Wood", variant=None, region="bahrain",
-            search_query="Tom Ford Oud Wood", nocache=True, category="fragrances",
+            brand="Nike", name="Air Max SC", variant=None, region="bahrain",
+            search_query="Nike Air Max SC", nocache=True, category="fashion",
         )
         # Algolia returned None → discovery WAS reached (fell through).
         assert reached["discovery"] is True

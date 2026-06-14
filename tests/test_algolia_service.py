@@ -122,6 +122,24 @@ def test_match_accepts_real_title_match():
     assert matched["name"].startswith("Pro Filt'r")
 
 
+def test_match_real_nike_fixture_positive_gate():
+    """POSITIVE GATE (real recorded 6thStreet response): 'Nike Air Max SC'
+    matches the genuine Nike hit and yields BHD 32.000. Proves the genuine-BHD
+    path on a product 6thStreet actually carries (the fashion lever — the
+    harvested index is fashion/footwear-strong, beauty-thin)."""
+    import json
+    from pathlib import Path
+    import app.services.algolia_service as alg
+    fx = json.loads(
+        (Path(__file__).parent / "fixtures" / "algolia_6thstreet_nike.json")
+        .read_text(encoding="utf-8")
+    )
+    matched = alg._match_algolia_hit(fx["hits"], "Nike Air Max SC")
+    assert matched is not None
+    assert matched.get("brand_name") == "Nike"
+    assert alg._parse_algolia_price(matched) == 32.0
+
+
 def test_match_picks_best_overlap_among_candidates():
     import app.services.algolia_service as alg
     hits = [
