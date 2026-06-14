@@ -10,6 +10,7 @@ Source weighting drives the cross-validation in `confidence_service.py` so
 mismatched Tier-1 Bahrain prices outvote a distant amazon.com listing.
 """
 
+import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
@@ -448,6 +449,46 @@ def is_wrong_locale_url(url: str) -> bool:
         return False
     # An explicit wrong-GCC-locale segment → drop.
     return any(seg in path for seg in _WRONG_GCC_LOCALE_SEGMENTS)
+
+
+# S3 Lulu BH-locale (live-verified 2026-06-14) — retailers that use an IDENTICAL
+# product slug across GCC locales, so a wrong-locale URL can be REWRITTEN to
+# /en-bh/ to hit the genuine BH PDP (instead of being dropped). ALLOW-SET only
+# (Decision-F): Lulu confirmed (Nutella 3.34 / Maybelline 7.825 / H&S 1.59 /
+# Centrum 12.09 BHD via /en-bh/ rewrite). sharafdg/extra are NOT here — their
+# SKU IDs differ per locale, so a rewrite would 404 / mis-attribute.
+_BH_LOCALE_REWRITE_DOMAINS = ("luluhypermarket.com",)
+# (en|ar)-(wrong GCC) locale segment, captured for substitution.
+_LOCALE_SEG_RE = re.compile(r"/(?:en|ar)-(?:sa|ae|om|kw|qa)/", re.IGNORECASE)
+
+
+def rewrite_to_bh_locale(url: str) -> Optional[str]:
+    """For an ALLOW-SET same-slug retailer (Lulu), rewrite a wrong-GCC-locale
+    path segment to `/en-bh/` and return the rewritten URL; else return None.
+
+    None when: not an allow-set domain, already /en-bh/, or no locale segment to
+    rewrite. The caller adds the rewritten URL to the BH scrape pool — the BH
+    store serves the same slug in BHD (page_scrape), unlocking grocery/makeup/
+    haircare/supplements from one source.
+    """
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+    except (ValueError, TypeError):
+        return None
+    host = _normalize_domain(parsed.netloc or "")
+    if not host:
+        return None
+    if not any(host == d or host.endswith("." + d) for d in _BH_LOCALE_REWRITE_DOMAINS):
+        return None
+    # Already BH → nothing to do.
+    if any(m in (parsed.path or "").lower() for m in _BH_LOCALE_MARKERS):
+        return None
+    rewritten, n = _LOCALE_SEG_RE.subn("/en-bh/", url)
+    if n == 0:
+        return None
+    return rewritten
 
 
 def is_render_only_domain(domain_or_url: str) -> bool:
