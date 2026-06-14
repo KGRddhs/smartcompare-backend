@@ -663,6 +663,13 @@ _RANK_FIRECRAWL_BRAND_DOMAIN = 90
 _RANK_PAGE_SCRAPE_JSONLD = 85
 _RANK_SCRAPEDO_RENDERED = 70
 
+# S3 coverage #3 (skin-002 timeout trim) — max distinct is_render_only domains
+# the paid render wave will attempt. Each domain costs a Firecrawl+Scrape.do
+# pair (slow; lower-weight SPAs 429/timeout). candidate_urls is pre-ordered by
+# source_weight (bahrain->gcc), so the top-N keeps the genuine winner + drops
+# the redundant slow tail. Tunable via env for the offline wall sweep.
+_RENDER_WAVE_MAX_DOMAINS = int(os.getenv("RENDER_WAVE_MAX_DOMAINS", "2"))
+
 
 async def _curl_scraper(
     url: str, full_name: str, currency: str, retailer_domain: str
@@ -871,6 +878,17 @@ def _build_escalation_scrapers(
     want_curl = wave in ("curl", "all")
     want_render = wave in ("render", "all")
     scrapers: List[Callable[[dict], Awaitable[Optional[Dict[str, Any]]]]] = []
+    # S3 coverage #3 (skin-002 timeout trim) — the render wave fires a
+    # Firecrawl+Scrape.do PAIR per is_render_only candidate. A skincare query
+    # discovers several BH SPAs (bolo/nasserpharmacy/boutiqaat); rendering ALL of
+    # them is 6+ slow calls, and the lower-weight ones 429/timeout (measured:
+    # scrapedo 429 -> circuit-trip) and eat the 12s budget even though the
+    # highest-weight genuine source confirms (rank 90 -> fan_out cancels the
+    # rest). candidate_urls is pre-ordered bahrain->official->authorized->gcc by
+    # source_weight, so capping the render fan-out to the FIRST N distinct
+    # is_render_only domains keeps the genuine win (bolo, first) + drops the
+    # redundant slow tail. The free curl wave is UNCAPPED (curl is cheap+fast).
+    _render_domains_used: set = set()
     for url, retailer_domain in candidate_urls:
         if not validate_scrape_url(url):
             continue
@@ -899,6 +917,15 @@ def _build_escalation_scrapers(
             and _render_only
             and firecrawl_service.should_fan_out(url, mode=scraping_mode)
         ):
+            # S3 coverage #3 — cap render fan-out to the top-N distinct domains.
+            _rdom = (retailer_domain or url).replace("www.", "").lower()
+            if (
+                _rdom not in _render_domains_used
+                and len(_render_domains_used) >= _RENDER_WAVE_MAX_DOMAINS
+            ):
+                continue  # render-domain budget spent — skip the slow tail
+            _render_domains_used.add(_rdom)
+
             async def _fc_with_args(_product, _url=url, _retailer=retailer_domain):
                 return await _firecrawl_scraper(_url, full_name, currency, _retailer)
             scrapers.append(_fc_with_args)
