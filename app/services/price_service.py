@@ -897,8 +897,12 @@ def extract_jsonld_price(
             for offer in offers:
                 if not isinstance(offer, dict):
                     continue
-                currency = offer.get("priceCurrency", "")
-                if currency.upper() != expected_currency.upper():
+                # priceCurrency can be an explicit JSON null (key present, value
+                # None) — e.g. bahrainpharmacy's empty WooCommerce Offer node.
+                # Coerce to str so a malformed Offer is SKIPPED, not a crash that
+                # aborts the whole extractor before the WC/microdata fallbacks.
+                currency = offer.get("priceCurrency") or ""
+                if str(currency).upper() != expected_currency.upper():
                     continue
                 try:
                     # AggregateOffer carries lowPrice instead of price (I5.8)
@@ -999,7 +1003,55 @@ def extract_price_from_html(
     if micro:
         return micro
 
+    # Priority 4: WooCommerce price span. S3-genuine (PDP curl Decision-F):
+    # bahrainpharmacy.com/store PDPs are WooCommerce with an EMPTY JSON-LD Offer
+    # (price=None) and no OG/microdata — the real price is in a
+    # `.woocommerce-Price-amount` span (<bdi>VALUE<span
+    # class="woocommerce-Price-currencySymbol">BHD</span></bdi>). The FIRST such
+    # span on the page is the product price (later ones are related products).
+    wc = _extract_woocommerce_price(soup, currency, domain, url)
+    if wc:
+        return wc
+
     return None
+
+
+def _extract_woocommerce_price(
+    soup, currency: str, domain: str, url: str
+) -> Optional[Dict[str, Any]]:
+    """Extract a price from a WooCommerce `.woocommerce-Price-amount` span.
+
+    Reads the FIRST such span (the product price; later ones are related
+    products). The numeric is the span text minus the currency-symbol child;
+    the currency comes from `.woocommerce-Price-currencySymbol` (BHD on a BH
+    page), normalized .upper(). Returns a ``page_scrape`` dict or None.
+    """
+    span = soup.find(class_="woocommerce-Price-amount")
+    if not span:
+        return None
+    # Currency from the symbol child (strip it out of the numeric text after).
+    sym = span.find(class_="woocommerce-Price-currencySymbol")
+    detected_currency = (sym.get_text(" ", strip=True) if sym else "") or currency
+    detected_currency = detected_currency.strip().upper()
+    if sym:
+        sym.extract()  # remove so it doesn't pollute the numeric parse
+    amount = parse_price_string(span.get_text(" ", strip=True))
+    if amount is None or amount <= 0:
+        return None
+    result = {
+        "amount": amount,
+        "original_currency": detected_currency,
+        "currency": detected_currency,
+        "retailer": domain,
+        "url": url,
+        "in_stock": True,
+        "confidence": 0.9,
+        "estimated": False,
+        "source_method": "page_scrape",
+    }
+    if detected_currency != currency.upper():
+        _convert_gpt_price_currency(result, currency)
+    return result
 
 
 # S3-genuine — installment markers an itemprop=price might sit next to (the EPP
