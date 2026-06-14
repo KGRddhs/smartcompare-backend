@@ -174,7 +174,12 @@ RETAILER_SEARCH_URLS = {
     # the `text=` param (`q=` lands on /en-bh/error); sharafdg BH is WooCommerce
     # `?s=...&post_type=product`.
     "extra": "https://www.extra.com/en-bh/search?text={query}",
+    # Both keys map to the BH WooCommerce search: "sharaf dg" (the human
+    # retailer name, used by Serper-source matching) AND "sharafdg" (the bare
+    # form so the registry DOMAIN bahrain.sharafdg.com — which has no space —
+    # resolves via build_retailer_url for the direct-BH injector).
     "sharaf dg": "https://bahrain.sharafdg.com/?s={query}&post_type=product",
+    "sharafdg": "https://bahrain.sharafdg.com/?s={query}&post_type=product",
     "ubuy": "https://www.ubuy.com.bh/en/search?q={query}",
     # lulu: the bare host (www.luluhypermarket.com) catalog is en-ae/AED and
     # redirects to gcc.luluhypermarket.com/en-bh/ — point straight at the GCC
@@ -527,6 +532,44 @@ def build_retailer_url(source: str, product_name: str) -> Optional[str]:
         if key in source_lower:
             return template.format(query=quote_plus(product_name))
     return None
+
+
+def build_direct_bh_candidates(
+    full_name: str, category: str
+) -> List[Tuple[str, str]]:
+    """S3-genuine (team-lead pivot 2026-06-14) — SERPER-INDEPENDENT BH candidates.
+
+    The BH registry retailers (gcc.lulu, sharafdg, extra, ...) normally reach the
+    price scraper ONLY through the Serper `site:` discovery query, which no-ops
+    when the Serper account is dry. This builds each BH-tier NON-Shopify source's
+    search URL DIRECTLY from the registry + RETAILER_SEARCH_URLS — zero Serper —
+    so the Tier-1.5 fan_out can curl these directly-scrapeable BH pages even with
+    Serper down. The caller PREPENDS these to the Serper-discovered candidates
+    (purely additive).
+
+    Shopify BH stores are EXCLUDED — they already have a dedicated
+    Serper-independent /products.json direct-discovery path (and the search-URL
+    template is wrong for them).
+
+    Returns ``[(url, domain_label), ...]`` in registry (bahrain-first) order;
+    empty list when a category's BH tier has no non-Shopify URL-resolvable source.
+    """
+    # Lazy import — avoids a top-level price_service -> source_router coupling.
+    from app.services.source_router import get_sources_for_category
+
+    candidates: List[Tuple[str, str]] = []
+    seen: set = set()
+    for s in get_sources_for_category(category):
+        if s.tier != "bahrain":
+            continue
+        if getattr(s, "is_shopify", False):
+            continue  # Shopify has its own /products.json path.
+        url = build_retailer_url(s.domain, full_name)
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        candidates.append((url, s.domain))
+    return candidates
 
 
 def sanitize_gpt_price(price: Optional[Dict]) -> None:

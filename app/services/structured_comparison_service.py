@@ -495,6 +495,7 @@ from app.services.price_service import (
     get_retailer_score,
     has_retailer_url,
     build_retailer_url,
+    build_direct_bh_candidates,
     sanitize_gpt_price,
     get_official_domain,
     extract_price_from_shopping,
@@ -3043,6 +3044,22 @@ class StructuredComparisonService:
                 results_by_tier, official_domain, category
             )
             candidate_urls = [(link, label) for link, label, _route, _w in harvested]
+
+            # S3-genuine (team-lead pivot 2026-06-14) — SERPER-INDEPENDENT BH
+            # injection. The bahrain `site:` discovery above no-ops when the
+            # Serper account is dry, leaving candidate_urls empty even though the
+            # BH retailer pages are directly curl-scrapeable. Construct each
+            # BH-tier NON-Shopify source's search URL straight from the registry
+            # (zero Serper) and PREPEND — so fan_out curls gcc.lulu/sharafdg/extra
+            # regardless of Serper state. Additive: when Serper IS funded these
+            # merge with the discovered URLs (deduped), and the race early-exit
+            # bounds the extra fetches. (Shopify BH stores are excluded — they
+            # have their own /products.json direct path above.)
+            direct_bh = build_direct_bh_candidates(full_name, category)
+            if direct_bh:
+                _seen_urls = {u for u, _ in candidate_urls}
+                prepend = [(u, lbl) for u, lbl in direct_bh if u not in _seen_urls]
+                candidate_urls = prepend + candidate_urls
 
             # --- Race: fan_out_price_lookup runs all per-URL scrapers in
             # parallel, cancels pending tasks when 2 sources confirm within
