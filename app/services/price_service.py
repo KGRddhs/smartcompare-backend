@@ -965,7 +965,17 @@ def extract_price_from_html(
         try:
             amount = float(og_price['content'])
             if amount > 0:
-                detected_currency = og_currency['content'] if og_currency and og_currency.get('content') else "USD"
+                # S3-genuine (PDP curl Decision-F): a currency-LESS OG price
+                # defaults to the EXPECTED currency arg, NOT hardcoded "USD".
+                # bahrain.sharafdg.com ships product:price:amount=244.990 with NO
+                # currency tag on a BHD page — the old "USD" default converted a
+                # genuine 244.990 BHD price down to 92.12 BHD. An unlabeled price
+                # on a BH retailer page is in BHD (the region/expected currency).
+                detected_currency = (
+                    og_currency['content']
+                    if og_currency and og_currency.get('content')
+                    else currency
+                )
                 result = {
                     "amount": amount, "original_currency": detected_currency,
                     "currency": detected_currency, "retailer": domain, "url": url,
