@@ -95,6 +95,17 @@ SOURCE_REGISTRY: List[Source] = [
         "bh.asgharali.com", "bahrain", ("fragrances",), 3.0, is_shopify=True
     ),  # Asgharali Perfumes BH (Shopify). S3 L1.3: /products.json verified —
     #    93 products, static BHD prices.
+    # S3-reopen T4 (research brief §1, Decision-F re-verified 2026-06-14):
+    # two verified free-endpoint Shopify fragrance stores — cheapest genuine-BHD
+    # win ($0, no render). en-bh.ajmal.com /meta.json=BHD ("Oud Nadir 48.000");
+    # alhajisbahrain.com /meta.json=BHD ("Meraki Amber 5.000"). (ajmal.com apex
+    # is NOT Shopify — the BH store is the en-bh subdomain.)
+    Source(
+        "en-bh.ajmal.com", "bahrain", ("fragrances",), 3.0, is_shopify=True
+    ),  # Ajmal Perfumes BH (Shopify /products.json, BHD)
+    Source(
+        "alhajisbahrain.com", "bahrain", ("fragrances",), 3.0, is_shopify=True
+    ),  # Al Hajis BH (Shopify /products.json, designer fragrances, BHD)
     Source(
         "jalilaperfumes.com", "bahrain", ("fragrances",), 3.0
     ),  # Jalila Perfumes BH (custom PHP, product pages + BHD)
