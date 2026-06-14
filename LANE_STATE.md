@@ -6,7 +6,12 @@
 **Prior:** L5 carried-bugs lane MERGED to main (`59ec212`); fan_out F1 fix shipped.
 
 ## Current task
-**RE-MERGE LANDED ON MAIN (3be92ce, 2026-06-14) → FLIP DONE.** Rebased onto re-merged main; all 6 is_render_only/Fix-B strict-xfails fired as XPASS(strict) loud-fail (the intended trigger) → dropped all 6 markers → **17/17 GREEN, zero xfails.** The full cascade-contract net (A1 order / A2 honest-label / A3 estimate-last / A4a usage=review / A4b is_render_only two-sided + Fix-B global-skip / A5 liveness) is now LIVE against the genuine-BH code. A2 + A5 mutation-proven. 
+**RE-MERGE LANDED ON MAIN (3be92ce, 2026-06-14) → FLIP DONE.** Rebased onto re-merged main; all 6 is_render_only/Fix-B strict-xfails fired as XPASS(strict) loud-fail → dropped all 6 markers → **17/17 GREEN, zero xfails.** Full cascade-contract net (A1 order / A2 honest-label / A3 estimate-last / A4a usage=review / A4b is_render_only two-sided + Fix-B global-skip / A5 liveness) LIVE. A2 + A5 mutation-proven. + asyncio-loop polluter FIXED (`b71ae41`).
+
+## COVERAGE-BRANCH heads-up — noon.com becomes is_render_only #6 (NOT on main yet)
+L1 `feature/s3-coverage 757f4da` flags `noon.com` is_render_only=True (6th domain: Akamai-walled, curl 0-byte, JSON-LD price=hardcoded-0, hydrates in Next.js RSC → render-tier). MECHANISM unchanged; only the SET grows 5→6.
+- **PROACTIVELY HARDENED 2 brittle controls** (don't wait for the batch): swapped `test_harvest_keeps_real_price_domain` + `test_curl_wave_keeps_non_render_domain` from noon.com → **amazon.ae** (verified is_render_only=False, score 1.5; a stable non-render price source that won't flip). Still 17/17 green.
+- **NOON-LANDING DELTA (2 deliberate assertions to update WHEN the coverage batch merges to main):** (1) `_RENDER_ONLY_DOMAINS` exact-set (line ~284) → add `noon.com`; (2) `test_is_render_only_domain_helper_resolves_spa` line ~326 `is_render_only_domain("noon.com") is False` → flip to `is True`. Kept exact-set assertion STRICT deliberately (it's the membership-drift guard). Both are correct-for-current-main now; update on noon merge.
 
 ## POLLUTER HUNT — DONE (team-lead-approved, timeboxed; ~15 min, found + fixed):
 - **ROOT CAUSE: `test_security_regression.py:1360` used `asyncio.run(svc.moderate_output(...))`.** On Python 3.12, `asyncio.run()` closes its loop AND leaves the thread with NO current event loop (`set_event_loop(None)`). The 12 failures are all DOWNSTREAM tests that use the legacy `asyncio.get_event_loop().run_until_complete(...)` — they then get a closed/absent loop → "RuntimeError: Event loop is closed". `test_security_regression` is the immediate alphabetical predecessor of `test_share_routes` (team-lead's hint was exactly right).

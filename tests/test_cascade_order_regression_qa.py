@@ -245,16 +245,18 @@ def test_harvest_excludes_review_usage_domain_in_bahrain_tier():
 
 
 def test_harvest_keeps_real_price_domain():
-    """Control: a genuine price source (noon.com) under the same category IS
-    harvested — proving the exclusion is usage-specific, not a blanket drop."""
+    """Control: a genuine price source (amazon.ae) under the same category IS
+    harvested — proving the exclusion is usage-specific, not a blanket drop.
+    NB: amazon.ae chosen over noon.com so this control stays stable when noon
+    flips is_render_only=True on the S3 coverage branch (noon is Akamai-walled)."""
     results_by_tier = {
         "bahrain": {"organic": [
-            {"link": "https://noon.com/makeup-product-x"},
+            {"link": "https://amazon.ae/makeup-product-x"},
         ]},
     }
     harvested = _harvest_candidate_urls(results_by_tier, official_domain=None, category="makeup")
     harvested_links = [h[0] for h in harvested]
-    assert any("noon.com" in link for link in harvested_links), (
+    assert any("amazon.ae" in link for link in harvested_links), (
         f"a genuine price source was wrongly excluded from the harvest: {harvested_links}"
     )
 
@@ -355,12 +357,15 @@ def test_curl_wave_skips_render_only_domain():
 
 def test_curl_wave_keeps_non_render_domain():
     """Control: wave="curl" DOES emit a curl scraper for a normal (non-render)
-    domain — the skip is render-only-specific, not a blanket curl drop."""
+    domain — the skip is render-only-specific, not a blanket curl drop.
+    NB: amazon.ae (not noon.com) — noon flips is_render_only=True on the S3
+    coverage branch, which would (correctly) make the curl wave SKIP it and
+    break this control; amazon.ae stays a stable non-render price source."""
     from app.services.structured_comparison_service import _build_escalation_scrapers
 
-    normal_url = "https://noon.com/product/centrum-multivitamin"
+    normal_url = "https://amazon.ae/product/centrum-multivitamin"
     scrapers = _build_escalation_scrapers(
-        candidate_urls=[(normal_url, "noon.com")],
+        candidate_urls=[(normal_url, "amazon.ae")],
         full_name="Centrum Multivitamin",
         currency="BHD",
         scraping_mode="hard",
