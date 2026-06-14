@@ -23,10 +23,21 @@
 - Per-query JSONL (`dataclasses.asdict`) + persist `metadata` jsonb get the new fields (no migration — schema-on-read).
 - estimate_share (L4.1) PRESERVED for back-compat.
 
+## E3 shape (shipped this branch)
+- `OPENAI_CALLS_PER_QUERY=5` (parse+specs+price+reviews+verdict fan-out), `DEFAULT_OPENAI_CALL_BUDGET=150` (smoke20's 100 passes; full-200's 1000 refused), `EVAL_OPENAI_CALL_BUDGET` env override (fresh-read, malformed→default).
+- `estimate_openai_calls(n)` + `check_openai_budget(n, budget, allow_overspend) -> (ok, msg)` (refuse / override-warn / near-warn / ok; ASCII-only messages).
+- CLI `--openai-call-budget` + `--allow-openai-overspend`; pre-run gate in main() AFTER the Serper guard, returns 3 on refuse (pre-network). Static estimate (eval hits remote prod, can't read its live counter).
+
+## E2 shape (shipped this branch)
+- **Double-lock policy:** full-200 needs BOTH `--allow-full` (Serper) AND `--allow-openai-overspend` (OpenAI E3); smoke20 sails past both. main()-level tests assert the refusal paths (pre-network, return 3) + that smoke20/overridden-full reach run_eval (stubbed). This IS the "no full-200 without dispatcher GO" enforcement.
+
+## E4 — DONE (no code change)
+- Supabase persist stays `--persist`-gated (already optional in main(); getaddrinfo fails on this box). Noted, doesn't block. Eval runs sandbox-disabled when persistence is actually wanted.
+
 ## Status
-- **E1 DONE + GREEN.** 16 new TDD tests; full test_eval_runner.py + test_eval_persistence.py + test_eval_gate.py = 70 passed. py_compile OK. Report eyeballed (genuine/converted/estimated partition to 100%; per-category readable).
-- **Last commit:** (committing E1 now)
-- **Next:** E3 OpenAI cost-guard.
+- **E1 + E3 + E2 + E4 ALL DONE + GREEN.** 28 new TDD tests (E1 16 / E3 8 / E2 4); full test_eval_runner.py + test_eval_persistence.py + test_eval_gate.py = 82 passed. py_compile OK. CLI refusals eyeballed (Serper refuse, OpenAI refuse ~1000/150, ASCII-clean).
+- **Commits:** E1 `b2be842`; E3+E2 (committing now).
+- **Next:** lane complete — report to team-lead; ready for L5 smoke20 + gate.
 
 ## For L5's smoke20 (post-L1-batch)
 The report now shows `genuine-BH-share -- X% GENUINE | converted_usd Y% | estimated Z%` (overall) + per-category, to quantify the rise vs the before-state (~60% estimate-share). No full-200; smoke20 is the loop.

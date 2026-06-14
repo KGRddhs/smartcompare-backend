@@ -107,6 +107,82 @@ TIMEOUT_SLACK_SECONDS = 10.0
 # checked against this in the report.
 STREAM_HARD_CAP_SECONDS = 30.0
 
+# ---------------------------------------------------------------------------
+# S3 E3 — OpenAI cost-guard
+#
+# The full-200 capture drained the OpenAI account (insufficient_quota took prod
+# DOWN). The eval doesn't call OpenAI directly, but each /text/compare DRIVES a
+# fan-out of backend OpenAI calls (product-parse + specs + price-extraction +
+# reviews + verdict ≈ 5). Like the Serper --allow-full guard, we pre-flight a
+# static estimate of the OpenAI calls a run will drive and REFUSE when it
+# exceeds a safe budget unless explicitly overridden. Static estimate because
+# the eval hits remote prod and can't read prod's live OpenAI counter.
+# ---------------------------------------------------------------------------
+
+# Conservative estimate of OpenAI calls one /compare drives (parse + specs +
+# price extraction + reviews + verdict). Real count varies (cache hits, Tier
+# fallbacks), so this is the upper-ish bound used for the pre-flight estimate.
+OPENAI_CALLS_PER_QUERY = 5
+
+# Default OpenAI-call budget for a single eval run. Sized so smoke20 (20 × 5 =
+# 100) runs freely but any full-200-scale run (200 × 5 = 1000) is gated behind
+# an explicit override — exactly the policy that would have caught the drain.
+# Override via env EVAL_OPENAI_CALL_BUDGET or --openai-call-budget.
+DEFAULT_OPENAI_CALL_BUDGET = 150
+
+# Warn (but proceed) when the estimate crosses this fraction of the budget.
+_OPENAI_WARN_FRACTION = 0.80
+
+
+def _openai_call_budget() -> int:
+    """Resolve the OpenAI-call budget from env (read fresh so a Railway/CI env
+    update takes effect without an edit). Malformed → the default, never
+    crashes the run."""
+    try:
+        return int(os.environ.get("EVAL_OPENAI_CALL_BUDGET", DEFAULT_OPENAI_CALL_BUDGET))
+    except (TypeError, ValueError):
+        return DEFAULT_OPENAI_CALL_BUDGET
+
+
+def estimate_openai_calls(n_queries: int) -> int:
+    """Static estimate of the OpenAI calls a run of `n_queries` will DRIVE
+    (n_queries × the per-compare fan-out). The pre-flight cost-guard input."""
+    return max(0, int(n_queries)) * OPENAI_CALLS_PER_QUERY
+
+
+def check_openai_budget(n_queries: int, *, budget: int,
+                        allow_overspend: bool) -> tuple[bool, str]:
+    """Pre-flight the OpenAI spend for a run. Returns (ok, message).
+
+    - estimate > budget and NOT allow_overspend → (False, refuse message).
+    - estimate > budget and allow_overspend → (True, override-warning).
+    - estimate within the warn band (>= 80% of budget) → (True, warning).
+    - else → (True, ok message).
+
+    The message always states the estimate + budget so the operator can act.
+    This is the drain-prevention contract: a full-200-scale run cannot silently
+    proceed past the budget."""
+    # ASCII-only messages (no em-dash) so captured/redirected eval logs don't
+    # mojibake under the Windows cp1252 console codec (CLAUDE.md trap).
+    estimate = estimate_openai_calls(n_queries)
+    head = f"OpenAI cost-guard: ~{estimate} calls estimated (budget {budget})"
+    if estimate > budget:
+        if not allow_overspend:
+            return False, (
+                f"REFUSING - {head}. This would exceed the safe OpenAI budget "
+                f"(the full-200 capture drained the account + took prod down). "
+                f"Pass --allow-openai-overspend after dispatcher GO, or use a "
+                f"smaller subset."
+            )
+        return True, (
+            f"WARNING - {head}: over budget but proceeding via "
+            f"--allow-openai-overspend (override)."
+        )
+    if estimate >= _OPENAI_WARN_FRACTION * budget:
+        pct = round(100 * estimate / budget) if budget else 0
+        return True, f"WARNING - {head}: approaching budget ({pct}%)."
+    return True, f"{head}: OK."
+
 
 # ---------------------------------------------------------------------------
 # Gold-truth loading
@@ -959,7 +1035,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--persist", action="store_true",
                         help="Write an eval_runs row (service-role Supabase)")
     parser.add_argument("--allow-full", action="store_true",
-                        help="Required to run the FULL set live (cost guard)")
+                        help="Required to run the FULL set live (Serper cost guard)")
+    parser.add_argument("--openai-call-budget", type=int, default=None,
+                        help="Max OpenAI calls a run may DRIVE before it refuses "
+                             "(default env EVAL_OPENAI_CALL_BUDGET or "
+                             f"{DEFAULT_OPENAI_CALL_BUDGET}). E3 drain guard.")
+    parser.add_argument("--allow-openai-overspend", action="store_true",
+                        help="Override the OpenAI cost-guard refusal for an "
+                             "authorized big run (dispatcher GO).")
     parser.add_argument("--out", default=None, help="Write per-query JSON lines to PATH")
     args = parser.parse_args(argv)
 
@@ -986,6 +1069,20 @@ def main(argv: Optional[List[str]] = None) -> int:
             f"--allow-full after dispatcher GO.",
             file=sys.stderr,
         )
+        return 3
+
+    # S3 E3 — OpenAI cost-guard. Pre-flight the OpenAI calls this run will DRIVE
+    # and refuse if it would blow the safe budget (the full-200 capture drained
+    # the account + took prod down). Mirrors the Serper guard above.
+    openai_budget = (args.openai_call_budget if args.openai_call_budget is not None
+                     else _openai_call_budget())
+    openai_ok, openai_msg = check_openai_budget(
+        len(queries), budget=openai_budget,
+        allow_overspend=args.allow_openai_overspend,
+    )
+    print(f"# {openai_msg}")
+    if not openai_ok:
+        print(openai_msg, file=sys.stderr)
         return 3
 
     print(f"# eval run: base={args.base_url} n={len(queries)} mode={args.mode} "

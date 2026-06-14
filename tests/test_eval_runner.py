@@ -827,3 +827,140 @@ def test_per_query_jsonl_includes_provenance_cells():
     row = dataclasses.asdict(graded)
     assert row["genuine_bh_price_cells"] == 1
     assert row["converted_usd_price_cells"] == 1
+
+
+# ---------------------------------------------------------------------------
+# S3 E3 — OpenAI cost-guard (evals must not silently drain OpenAI)
+#
+# The full-200 capture drained the OpenAI account (insufficient_quota took prod
+# DOWN). Like the Serper --allow-full guard, the eval pre-flights an estimate
+# of the OpenAI calls a run will DRIVE (each /compare triggers several backend
+# OpenAI calls) and REFUSES when the estimate exceeds a safe budget unless an
+# explicit override is passed. Pure static estimate — the eval runs against
+# remote prod and can't read prod's live OpenAI counter, so a pre-run estimate
+# is the right mechanism (mirrors the Serper cost guard).
+# ---------------------------------------------------------------------------
+
+def test_estimate_openai_calls_scales_with_queries():
+    per_q = eval_runner.OPENAI_CALLS_PER_QUERY
+    assert eval_runner.estimate_openai_calls(20) == 20 * per_q
+    assert eval_runner.estimate_openai_calls(200) == 200 * per_q
+    assert eval_runner.estimate_openai_calls(0) == 0
+
+
+def test_openai_calls_per_query_is_conservative():
+    """The per-query estimate covers the backend's compare OpenAI fan-out
+    (specs + price-extraction + reviews + verdict + parse) — at least 4."""
+    assert eval_runner.OPENAI_CALLS_PER_QUERY >= 4
+
+
+def test_check_openai_budget_under_budget_ok():
+    ok, msg = eval_runner.check_openai_budget(20, budget=150, allow_overspend=False)
+    assert ok is True
+    assert "openai" in msg.lower()
+
+
+def test_check_openai_budget_over_budget_refuses():
+    """A full-200-scale run (200 × per-q) blows past a smoke-sized budget and is
+    REFUSED unless overridden — the drain-prevention contract."""
+    ok, msg = eval_runner.check_openai_budget(200, budget=150, allow_overspend=False)
+    assert ok is False
+    assert "refus" in msg.lower() or "exceed" in msg.lower()
+    # The message states the estimate + the budget so the operator can act.
+    assert str(eval_runner.estimate_openai_calls(200)) in msg
+
+
+def test_check_openai_budget_override_allows_overspend():
+    """--allow-openai-overspend lets an authorized big run proceed (with a
+    warning), so a dispatcher-approved full run isn't hard-blocked."""
+    ok, msg = eval_runner.check_openai_budget(200, budget=150, allow_overspend=True)
+    assert ok is True
+    assert "override" in msg.lower() or "overspend" in msg.lower() or "warn" in msg.lower()
+
+
+def test_check_openai_budget_warns_near_threshold():
+    """A run that's under budget but within the warn band still proceeds (ok)
+    but flags the proximity so the operator sees it coming."""
+    # Pick a query count whose estimate is >= 80% of budget but <= budget.
+    per_q = eval_runner.OPENAI_CALLS_PER_QUERY
+    budget = per_q * 10  # exactly 10 queries' worth
+    ok, msg = eval_runner.check_openai_budget(9, budget=budget, allow_overspend=False)
+    assert ok is True  # 9*per_q <= budget
+    assert "warn" in msg.lower() or "approach" in msg.lower() or "%" in msg
+
+
+def test_openai_budget_default_allows_smoke20_refuses_full():
+    """The DEFAULT budget must let smoke20 (20q) run freely but gate a
+    full-200-scale run — the exact policy that would have prevented the drain."""
+    default_budget = eval_runner._openai_call_budget()
+    ok20, _ = eval_runner.check_openai_budget(20, budget=default_budget, allow_overspend=False)
+    ok200, _ = eval_runner.check_openai_budget(200, budget=default_budget, allow_overspend=False)
+    assert ok20 is True
+    assert ok200 is False
+
+
+def test_openai_budget_env_override(monkeypatch):
+    """EVAL_OPENAI_CALL_BUDGET overrides the default, read fresh."""
+    monkeypatch.setenv("EVAL_OPENAI_CALL_BUDGET", "12345")
+    assert eval_runner._openai_call_budget() == 12345
+    monkeypatch.setenv("EVAL_OPENAI_CALL_BUDGET", "not-an-int")
+    # Malformed → falls back to the default (never crashes the run).
+    assert eval_runner._openai_call_budget() == eval_runner.DEFAULT_OPENAI_CALL_BUDGET
+
+
+# ---------------------------------------------------------------------------
+# S3 E2 — smoke20 is the iteration loop; full-200 needs explicit dispatcher GO
+#
+# Ahmed: full-200 avoided (token cost). smoke20 is the fast path. The full set
+# live is double-gated: --allow-full (Serper) AND --allow-openai-overspend
+# (E3). These main() tests exercise the REFUSAL paths only — they short-circuit
+# (return 3) BEFORE any network call, so no live traffic.
+# ---------------------------------------------------------------------------
+
+def test_main_full_set_refused_without_allow_full():
+    """Omitting --subset (full set) without --allow-full is refused (Serper
+    guard) — smoke20 is the intended loop."""
+    rc = eval_runner.main(["--gold", str(GOLD_PATH)])  # no --subset, no --allow-full
+    assert rc == 3
+
+
+def test_main_full_set_refused_by_openai_guard_even_with_allow_full():
+    """The DOUBLE lock: even with --allow-full (Serper), a full-200-scale run is
+    still refused by the OpenAI cost-guard unless --allow-openai-overspend — the
+    exact policy that would have prevented the drain. Refuses pre-network."""
+    rc = eval_runner.main(["--gold", str(GOLD_PATH), "--allow-full"])
+    assert rc == 3  # OpenAI guard refuses (estimate >> default 150 budget)
+
+
+def test_main_full_set_openai_refusal_is_overridable(monkeypatch):
+    """With BOTH overrides the run is permitted past the guards (it then
+    proceeds to the network — we stub run_eval so no live traffic, asserting the
+    guards did NOT short-circuit)."""
+    called = {}
+
+    async def _fake_run_eval(queries, **kwargs):
+        called["n"] = len(queries)
+        return eval_runner.aggregate([])  # empty report, no network
+
+    monkeypatch.setattr(eval_runner, "run_eval", _fake_run_eval)
+    rc = eval_runner.main([
+        "--gold", str(GOLD_PATH), "--allow-full", "--allow-openai-overspend",
+        "--mode", "absolute", "--threshold", "0.0",
+    ])
+    # Guards passed → run_eval was reached (not a 3 short-circuit).
+    assert "n" in called
+    assert rc in (0, 1)  # gate verdict, not a cost-guard refusal
+
+
+def test_main_smoke20_passes_cost_guards(monkeypatch):
+    """smoke20 sails past BOTH guards with no override flags (the friction-free
+    loop). run_eval stubbed so no live traffic."""
+    async def _fake_run_eval(queries, **kwargs):
+        return eval_runner.aggregate([])
+
+    monkeypatch.setattr(eval_runner, "run_eval", _fake_run_eval)
+    rc = eval_runner.main([
+        "--gold", str(GOLD_PATH), "--subset", "smoke20",
+        "--mode", "absolute", "--threshold", "0.0",
+    ])
+    assert rc in (0, 1)  # reached the gate, not a cost-guard refusal (3)
