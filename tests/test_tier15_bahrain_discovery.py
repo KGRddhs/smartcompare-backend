@@ -62,14 +62,14 @@ def test_bahrain_candidate_below_threshold_rejected():
     results_by_tier = {
         "bahrain": _organic(
             "https://www.dhgate.com/fake-iphone",          # score 0.5 -> reject
-            "https://www.luluhypermarket.com/iphone-15",            # score 3.0 -> keep
+            "https://gcc.luluhypermarket.com/en-bh/iphone-15",     # score 3.0 -> keep
         ),
     }
     harvested = _harvest_candidate_urls(
         results_by_tier, official_domain=None, category="electronics"
     )
     links = [h[0] for h in harvested]
-    assert "https://www.luluhypermarket.com/iphone-15" in links
+    assert "https://gcc.luluhypermarket.com/en-bh/iphone-15" in links
     assert "https://www.dhgate.com/fake-iphone" not in links
 
 
@@ -159,7 +159,7 @@ def test_gcc_registry_pass_noon_all_category():
 
 def test_every_entry_has_route_and_weight():
     results_by_tier = {
-        "bahrain": _organic("https://www.luluhypermarket.com/iphone-15"),
+        "bahrain": _organic("https://gcc.luluhypermarket.com/en-bh/iphone-15"),
         "official": _organic("https://www.apple.com/shop/iphone-15"),
         "gcc": _organic("https://www.noon.com/uae-en/iphone-15"),
     }
@@ -268,7 +268,7 @@ async def test_bahrain_discovery_query_dispatched_first(monkeypatch, clean_servi
     # The FIRST discovery query must be the Bahrain site: query.
     first = seen_queries[0]
     assert "site:" in first, f"first discovery query not a site: query: {first!r}"
-    assert "site:luluhypermarket.com" in first or "site:bahrain.sharafdg.com" in first, (
+    assert "site:gcc.luluhypermarket.com" in first or "site:bahrain.sharafdg.com" in first, (
         f"first discovery query is not Bahrain-tier: {first!r}"
     )
     # And it must precede the authorized/gcc retailer queries.

@@ -23,16 +23,24 @@ from app.services.structured_comparison_service import StructuredComparisonServi
 
 
 def test_fan_out_price_race_capped_at_12s():
-    """The fan_out_price_lookup race must be bounded by a 12s wait_for (was 15s)."""
+    """The fan_out_price_lookup race must be bounded by a 12s budget (was 15s).
+
+    S3-genuine Approach A part 2 split the single fan_out into a curl wave + a
+    render wave that SHARE one 12s deadline (_FAN_OUT_BUDGET=12.0; each wave's
+    wait_for gets the remaining budget). The 12s total cap is preserved — it's
+    just expressed as a shared budget instead of a single literal timeout=12.0.
+    """
     source = inspect.getsource(StructuredComparisonService._get_price)
     assert "fan_out_price_lookup" in source, "fan_out race call missing"
-    assert "timeout=12.0" in source, (
-        "I5.7: the fan_out_price_lookup race must be bounded by "
-        "asyncio.wait_for(timeout=12.0) — tightened from 15.0 (Decision D)"
+    assert "_FAN_OUT_BUDGET = 12.0" in source, (
+        "I5.7: the Tier-1.5 fan_out must be bounded by a 12s budget "
+        "(_FAN_OUT_BUDGET=12.0; shared across the curl+render waves)"
+    )
+    # The fan_out waits use the remaining shared budget.
+    assert "timeout=_remaining" in source, (
+        "the two waves must each wait_for the remaining shared 12s budget"
     )
     # The old 15s cap must be gone from the fan_out race so the tightening is real.
-    # (15.0 may still appear elsewhere — assert the fan_out race itself no longer
-    # carries it by checking the 12.0 cap sits in the same method.)
     assert "timeout=15.0" not in source, (
         "I5.7: the stale 15.0s fan_out cap must be removed from _get_price"
     )
@@ -60,8 +68,11 @@ def test_price_outer_cap_exceeds_inner_fan_out_cap():
     fetch_src = inspect.getsource(StructuredComparisonService._fetch_product_data)
     price_src = inspect.getsource(StructuredComparisonService._get_price)
     assert ("\"price\": 15.0" in fetch_src or "'price': 15.0" in fetch_src)
-    assert "timeout=12.0" in price_src
-    # 15.0 (outer) > 12.0 (inner) — headroom for Tier 1 + Tier 3 estimate work.
+    # The inner fan_out budget is 12s, now SHARED across the curl+render waves
+    # (Approach A part 2) — so the TOTAL Tier-1.5 scrape still can't exceed 12s,
+    # preserving the 15s-outer > 12s-inner invariant (no two-wave 24s blowout).
+    assert "_FAN_OUT_BUDGET = 12.0" in price_src
+    # 15.0 (outer) > 12.0 (inner total) — headroom for Tier 1 + Tier 3 estimate.
     assert 15.0 > 12.0
 
 
