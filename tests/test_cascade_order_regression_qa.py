@@ -317,8 +317,11 @@ def test_is_render_only_domain_helper_resolves_spa():
     """is_render_only_domain(domain_or_url) → True for an SPA source, False for a
     curl source. RED-first (xfail strict): helper lands in L1's fast-follow."""
     from app.services.source_router import is_render_only_domain  # noqa: F401 — RED until merged
+    # Bare domain + full-URL both resolve (L1 spec: accepts domain OR URL).
     assert is_render_only_domain("nasserpharmacy.com") is True
     assert is_render_only_domain("https://bn.boots.com/some-pdp") is True
+    # Curl-tier domain → False (L1's exact example: sharafdg is curl, not render).
+    assert is_render_only_domain("https://bahrain.sharafdg.com/p/x") is False
     assert is_render_only_domain("noon.com") is False
 
 
@@ -370,4 +373,31 @@ def test_curl_wave_keeps_non_render_domain():
     )
     assert len(scrapers) >= 1, (
         f"wave='curl' must emit a curl scraper for a normal domain; got {len(scrapers)}"
+    )
+
+
+# --- (b) render INCLUSION: render-only domain DOES get Firecrawl+Scrape.do ---
+# This side of the two-sided contract is GREEN on main already: the render wave
+# is gated by firecrawl_service.should_fan_out (True in hard mode), NOT by
+# is_render_only — so a render-only PDP gets its 2 render scrapers regardless of
+# the curl-skip. Pinning it guards against a future change that would wrongly
+# drop render-only domains out of the render tier too (which would leave them
+# with NO price path at all). L1 spec: wave="render" emits 2 (firecrawl+scrapedo).
+
+def test_render_wave_includes_render_only_domain():
+    """A render-only domain's PDP MUST get the Firecrawl + Scrape.do scrapers in
+    wave='render' (2 scrapers) — it's the ONLY price path for a JS-SPA."""
+    from app.services.structured_comparison_service import _build_escalation_scrapers
+
+    render_only_url = "https://nasserpharmacy.com/product/centrum-multivitamin"
+    scrapers = _build_escalation_scrapers(
+        candidate_urls=[(render_only_url, "nasserpharmacy.com")],
+        full_name="Centrum Multivitamin",
+        currency="BHD",
+        scraping_mode="hard",
+        wave="render",
+    )
+    assert len(scrapers) == 2, (
+        "wave='render' must emit Firecrawl+Scrape.do (2) for a render-only PDP — "
+        f"it's the only price path for a JS-SPA; got {len(scrapers)}"
     )
