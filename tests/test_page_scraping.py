@@ -165,7 +165,11 @@ class TestFetchPagePriceJsonLD:
         assert result is not None
         # USD 700 should be converted to BHD (approx 263.9 at 0.377 rate)
         assert result["amount"] > 0
-        assert result["source_method"] == "page_scrape"
+        # S3 #2 (apple.com-198.9 fix) — a FOREIGN-currency page price that we
+        # convert to BHD is converted_usd (honest provenance), NOT a genuine
+        # local page_scrape. The conversion still happens (amount > 0); only the
+        # label is honest now.
+        assert result["source_method"] == "converted_usd"
 
     @pytest.mark.asyncio
     async def test_jsonld_out_of_stock(self, service):
@@ -204,7 +208,9 @@ class TestFetchPagePriceOpenGraph:
             )
         assert result is not None
         assert result["amount"] > 0
-        assert result["source_method"] == "page_scrape"
+        # S3 #2 — OG price in AED (foreign) converted to BHD → converted_usd,
+        # not a genuine local page_scrape (provenance honesty).
+        assert result["source_method"] == "converted_usd"
         assert result["confidence"] == 0.9
 
     @pytest.mark.asyncio
