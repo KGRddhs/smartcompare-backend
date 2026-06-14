@@ -49,11 +49,20 @@ def test_fan_out_price_race_capped_at_12s():
 def test_phase1_price_race_capped_at_15s():
     """The Phase-1 per-product price race cap must be 15.0s (was 18.0s), and must
     stay strictly above the 12s inner fan_out race so the outer wall doesn't cut
-    a fan_out race that's still within its own budget."""
+    a fan_out race that's still within its own budget.
+
+    Fix A made the cap a module-level constant (_PRICE_RACE_TIMEOUT, default 15.0,
+    test-patchable) wired into _PHASE1_TIMEOUTS['price'] — so the cap VALUE is
+    pinned on the constant, and the dict is pinned to reference it.
+    """
+    import app.services.structured_comparison_service as _scs
+    assert _scs._PRICE_RACE_TIMEOUT == 15.0, (
+        "I5.7: the outer price-race cap must be 15.0 (tightened from 18.0)"
+    )
     source = inspect.getsource(StructuredComparisonService._fetch_product_data)
     assert "_PHASE1_TIMEOUTS" in source, "per-race timeout map missing"
-    assert ("\"price\": 15.0" in source or "'price': 15.0" in source), (
-        "I5.7: _PHASE1_TIMEOUTS['price'] must be 15.0 (tightened from 18.0)"
+    assert "_PRICE_RACE_TIMEOUT" in source, (
+        "_PHASE1_TIMEOUTS['price'] must reference the _PRICE_RACE_TIMEOUT constant"
     )
     assert ("\"price\": 18.0" not in source and "'price': 18.0" not in source), (
         "I5.7: the stale 18.0s price cap must be gone"
@@ -65,15 +74,18 @@ def test_price_outer_cap_exceeds_inner_fan_out_cap():
     fan_out race cap (12s) so the outer wait_for never cuts a fan_out race that's
     still within budget. This guards against a future edit dropping them out of
     order."""
+    import app.services.structured_comparison_service as _scs
     fetch_src = inspect.getsource(StructuredComparisonService._fetch_product_data)
     price_src = inspect.getsource(StructuredComparisonService._get_price)
-    assert ("\"price\": 15.0" in fetch_src or "'price': 15.0" in fetch_src)
+    # Outer cap = _PRICE_RACE_TIMEOUT (15.0), wired into _PHASE1_TIMEOUTS['price'].
+    assert "_PRICE_RACE_TIMEOUT" in fetch_src
+    outer = _scs._PRICE_RACE_TIMEOUT
     # The inner fan_out budget is 12s, now SHARED across the curl+render waves
     # (Approach A part 2) — so the TOTAL Tier-1.5 scrape still can't exceed 12s,
     # preserving the 15s-outer > 12s-inner invariant (no two-wave 24s blowout).
     assert "_FAN_OUT_BUDGET = 12.0" in price_src
-    # 15.0 (outer) > 12.0 (inner total) — headroom for Tier 1 + Tier 3 estimate.
-    assert 15.0 > 12.0
+    # outer (15.0) > inner total (12.0) — headroom for Tier 1 + Tier 3 estimate.
+    assert outer > 12.0
 
 
 def test_reviews_trim_context_and_tokens():

@@ -597,6 +597,12 @@ SPECS_CACHE_TTL = 7 * 24 * 60 * 60    # 7 days
 # with whatever fields we have so far and the client unblocks.
 STREAM_HARD_CAP_SECONDS = float(os.getenv("STREAM_HARD_CAP_SECONDS", "25.0"))
 
+# I5.7 — the OUTER per-product price-race cap (wraps the whole _get_price path:
+# Tier 1 + escalation + the inner fan_out + Tier 3 estimate). Module-level so it's
+# explicit + test-patchable (Fix A's timeout→parked test shrinks it). On timeout
+# the Phase-1 handler now falls back to self._parked_price (never None).
+_PRICE_RACE_TIMEOUT = float(os.getenv("PRICE_RACE_TIMEOUT", "15.0"))
+
 # I5.6 lever-3 — per-race cap on the Phase-2 verified-rating fetch. The rating
 # cascade (Serper Tier 1→2→3 + GPT fallback) was the one UNCAPPED Phase-2 race;
 # 4s matches the measured warm rating floor with headroom while keeping a slow
@@ -861,9 +867,20 @@ def _build_escalation_scrapers(
                 return await _curl_scraper(_url, full_name, currency, _retailer)
             scrapers.append(_curl_with_args)
 
-        # Firecrawl + Scrape.do gated by SCRAPING_MODE per design § Decision 8.
-        # In soft mode only luxury/SPA domains get the rendered-scrape budget.
-        if want_render and firecrawl_service.should_fan_out(url, mode=scraping_mode):
+        # Firecrawl + Scrape.do — Fix B (prod rollback 2026-06-14): the render
+        # wave fires ONLY for is_render_only BH-registry domains. THE PROD BUG was
+        # render firing on gl=us GLOBAL organic URLs (samsung.com/us, amazon.ae —
+        # harvested from the official/gcc tiers) via should_fan_out=True-in-hard-
+        # mode → 6+ slow render calls → blew the 15s price cap → price None. An
+        # is_render_only BH SPA (nasserpharmacy/bn.boots/...) genuinely needs
+        # render (curl yields nothing); a global URL never does (the parked
+        # converted_usd is the answer). should_fan_out still applies on top (soft
+        # mode / SCRAPING_MODE gate) for the is_render_only set.
+        if (
+            want_render
+            and _render_only
+            and firecrawl_service.should_fan_out(url, mode=scraping_mode)
+        ):
             async def _fc_with_args(_product, _url=url, _retailer=retailer_domain):
                 return await _firecrawl_scraper(_url, full_name, currency, _retailer)
             scrapers.append(_fc_with_args)
@@ -1031,6 +1048,14 @@ class StructuredComparisonService:
         # candidate wins the fan_out race; read by the source_trace builder so
         # each price-value trace entry records which path fired.
         self._tier15_routes: Dict[str, Dict[str, Any]] = {}
+        # S3-genuine prod-hardening (Fix A) — per-request parked-price stash,
+        # keyed full_name -> price dict. _get_price writes the parked converted_usd
+        # (or any best-so-far) HERE the moment it parks it, BEFORE the slow render
+        # wave. If the outer 15s price-race wait_for then CANCELS _get_price (the
+        # render-on-global timeout), the local parked var dies with the stack
+        # frame — but this survives on self, so the Phase-1 timeout handler returns
+        # it instead of None. Never regress price->no-price.
+        self._parked_price: Dict[str, Dict[str, Any]] = {}
 
     # ============================================
     # Static method wrappers for backward compat
@@ -1320,6 +1345,7 @@ class StructuredComparisonService:
         # response.metadata.source_trace at response build time.
         self._source_trace: Dict[str, Any] = {}
         self._tier15_routes = {}
+        self._parked_price = {}  # Fix A — per-request parked-price stash reset
 
         # L1 content safety pre-filter (spec sec 5.2). Runs on the canonical query
         # string — for explicit_pair shape, this is the concatenated "A vs B"
@@ -1699,6 +1725,7 @@ class StructuredComparisonService:
         # response.metadata.source_trace at response build time.
         self._source_trace: Dict[str, Any] = {}
         self._tier15_routes = {}
+        self._parked_price = {}  # Fix A — per-request parked-price stash reset
 
         # L1 content safety pre-filter (spec sec 5.2). Same gate as sync path —
         # blocked queries terminate the stream with an error event before any
@@ -2268,7 +2295,7 @@ class StructuredComparisonService:
             # 15 (NOT raised to 18 — that would risk the 30s STREAM_HARD_CAP on
             # Phase-2 + verdict). The 3s Shopify wait_for cancels its own inner
             # gather on timeout, so nothing survives to be orphaned at the cap.
-            "price": 15.0,    # Tier 1 + 1.5 cascade (inner fan_out race now 12s)
+            "price": _PRICE_RACE_TIMEOUT,  # Tier 1 + 1.5 (inner fan_out 12s); module-level + test-patchable
             "reviews": 10.0,  # Serper + GPT cleanup (measured 4-5s + headroom)
             "image_url": 5.0, # Serper Images + Tier 3 GPT fallback
         }
@@ -2429,10 +2456,10 @@ class StructuredComparisonService:
                     "[L2.6] Phase 1 race timeout for %s (limit %.1fs)",
                     key, _PHASE1_TIMEOUTS.get(key, 0.0),
                 )
-                result[key] = None
+                result[key] = self._price_fallback_on_miss(key, full_name)
             elif isinstance(phase1_results[i], Exception):
                 logger.error(f"Error fetching {key}: {phase1_results[i]}")
-                result[key] = None
+                result[key] = self._price_fallback_on_miss(key, full_name)
             else:
                 result[key] = phase1_results[i]
 
@@ -2776,6 +2803,26 @@ class StructuredComparisonService:
         specs["_cached"] = False
         return specs
 
+    def _price_fallback_on_miss(self, key: str, full_name: str):
+        """S3-genuine prod-hardening (Fix A) — when a Phase-1 race for `key`
+        timed out / errored, surface a graceful fallback instead of bare None.
+
+        For the PRICE key: return the parked converted_usd (stashed on self by
+        _get_price BEFORE the slow render wave) if one exists — so a render-wave
+        timeout that CANCELS _get_price still yields the real cited gl=us price,
+        never None (the prod regression). For every other key: None as before
+        (specs/reviews/image degrade to missing-data, unchanged).
+        """
+        if key == "price":
+            parked = self._parked_price.get(full_name)
+            if parked and parked.get("amount"):
+                logger.info(
+                    "[PRICE] race miss for %s → returning parked %s price (never None)",
+                    full_name, parked.get("source_method"),
+                )
+                return parked
+        return None
+
     async def _get_price(
         self, brand: str, name: str, variant: Optional[str], region: str,
         search_query: str, nocache: bool = False, category: str = "other"
@@ -2871,6 +2918,11 @@ class StructuredComparisonService:
                 # (local_bhd / page_scrape / any non-converted) short-circuits now.
                 if price.get("source_method") == "converted_usd":
                     converted_fallback = dict(price)
+                    # Fix A — ALSO stash on self (survives an outer 15s wait_for
+                    # cancel of this coroutine, unlike the local above). This is
+                    # the EARLY stash, before the Tier-1.5 render wave that could
+                    # time out — so the Phase-1 handler can return it, never None.
+                    self._parked_price[full_name] = dict(price)
                 else:
                     set_cached(cache_key, price, PRICE_CACHE_TTL)
                     self._save_price_to_db(cache_key, brand, name, variant, region, price)

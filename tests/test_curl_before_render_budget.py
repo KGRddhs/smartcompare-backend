@@ -26,50 +26,60 @@ import pytest
 
 class TestWaveParam:
     def test_curl_wave_emits_only_curl(self, monkeypatch):
-        """wave='curl' → no Firecrawl/Scrape.do scrapers even when should_fan_out
-        would pass."""
+        """wave='curl' → only the curl scraper. For an is_render_only domain the
+        'all' wave emits render (Fix B: render fires for is_render_only); the
+        'curl' wave skips it (Fix A: curl is wasted on a SPA)."""
         from app.services import structured_comparison_service as scs_mod
-        # Force should_fan_out True so render WOULD be emitted in 'all'.
         monkeypatch.setattr(
             scs_mod.firecrawl_service, "should_fan_out", lambda *a, **k: True
         )
-        urls = [("https://bahrain.sharafdg.com/product/iphone-15/", "bahrain.sharafdg.com")]
-        curl_only = scs_mod._build_escalation_scrapers(
-            candidate_urls=urls, full_name="iPhone 15", currency="BHD",
-            scraping_mode="hard", wave="curl",
-        )
-        all_waves = scs_mod._build_escalation_scrapers(
-            candidate_urls=urls, full_name="iPhone 15", currency="BHD",
-            scraping_mode="hard", wave="all",
-        )
-        # 'all' emits curl + firecrawl + scrapedo = 3; 'curl' emits just curl = 1.
-        assert len(curl_only) == 1
-        assert len(all_waves) == 3
+        # A curl-tier BH domain (sharafdg): 'curl'=1, 'all'=1 (NO render — Fix B
+        # scopes render to is_render_only only).
+        sharafdg = [("https://bahrain.sharafdg.com/product/iphone-15/", "bahrain.sharafdg.com")]
+        assert len(scs_mod._build_escalation_scrapers(
+            candidate_urls=sharafdg, full_name="iPhone 15", currency="BHD",
+            scraping_mode="hard", wave="curl")) == 1
+        assert len(scs_mod._build_escalation_scrapers(
+            candidate_urls=sharafdg, full_name="iPhone 15", currency="BHD",
+            scraping_mode="hard", wave="all")) == 1  # curl only, no render
 
-    def test_render_wave_emits_only_render(self, monkeypatch):
+    def test_render_wave_emits_render_only_for_render_only_domain(self, monkeypatch):
         from app.services import structured_comparison_service as scs_mod
         monkeypatch.setattr(
             scs_mod.firecrawl_service, "should_fan_out", lambda *a, **k: True
         )
-        urls = [("https://bahrain.sharafdg.com/product/iphone-15/", "bahrain.sharafdg.com")]
-        render_only = scs_mod._build_escalation_scrapers(
-            candidate_urls=urls, full_name="iPhone 15", currency="BHD",
-            scraping_mode="hard", wave="render",
+        # Fix B: the render wave fires ONLY for is_render_only domains. A curl-tier
+        # BH domain (sharafdg) gets NO render scraper (it curl-scrapes); an
+        # is_render_only domain (nasserpharmacy) gets 2 (firecrawl+scrapedo).
+        sharafdg = scs_mod._build_escalation_scrapers(
+            candidate_urls=[("https://bahrain.sharafdg.com/product/iphone-15/", "bahrain.sharafdg.com")],
+            full_name="iPhone 15", currency="BHD", scraping_mode="hard", wave="render",
         )
-        # firecrawl + scrapedo = 2, no curl.
-        assert len(render_only) == 2
+        assert len(sharafdg) == 0  # curl-tier → no render
+        nasser = scs_mod._build_escalation_scrapers(
+            candidate_urls=[("https://www.nasserpharmacy.com/p/vitamin-d", "nasserpharmacy.com")],
+            full_name="Vitamin D", currency="BHD", scraping_mode="hard", wave="render",
+        )
+        assert len(nasser) == 2  # is_render_only → firecrawl + scrapedo
 
     def test_default_wave_is_all(self, monkeypatch):
+        """Default wave='all'. Post-Fix-B counts: a curl-tier domain (sharafdg)
+        → 1 (curl only, render scoped out); an is_render_only domain
+        (nasserpharmacy) → 2 (curl skipped + render)."""
         from app.services import structured_comparison_service as scs_mod
         monkeypatch.setattr(
             scs_mod.firecrawl_service, "should_fan_out", lambda *a, **k: True
         )
-        urls = [("https://bahrain.sharafdg.com/product/iphone-15/", "bahrain.sharafdg.com")]
-        default = scs_mod._build_escalation_scrapers(
-            candidate_urls=urls, full_name="iPhone 15", currency="BHD",
-            scraping_mode="hard",
+        sharafdg = scs_mod._build_escalation_scrapers(
+            candidate_urls=[("https://bahrain.sharafdg.com/product/iphone-15/", "bahrain.sharafdg.com")],
+            full_name="iPhone 15", currency="BHD", scraping_mode="hard",
         )
-        assert len(default) == 3  # back-compat: curl + render
+        assert len(sharafdg) == 1  # curl only (Fix B: no render for curl-tier)
+        nasser = scs_mod._build_escalation_scrapers(
+            candidate_urls=[("https://www.nasserpharmacy.com/p/x", "nasserpharmacy.com")],
+            full_name="x", currency="BHD", scraping_mode="hard",
+        )
+        assert len(nasser) == 2  # curl skipped (is_render_only) + render
 
 
 class TestRenderOnlySourceRouting:
@@ -117,6 +127,55 @@ class TestRenderOnlySourceRouting:
             scraping_mode="hard", wave="curl",
         )
         assert len(curl_wave) == 1  # sharafdg curl-scrapes fine
+
+
+class TestRenderWaveBhOnly:
+    """Fix B (prod rollback 2026-06-14) — the render wave must fire ONLY on
+    is_render_only BH-registry domains, NEVER on gl=us GLOBAL organic URLs.
+
+    THE PROD BUG: _harvest pulls official/gcc tiers (samsung.com/us, amazon.ae)
+    into candidate_urls; the part-2 render wave fired Firecrawl/Scrape.do on them
+    via should_fan_out=True → 6+ slow render calls → blew the 15s price cap →
+    price returned None. Scoping render to is_render_only kills both the
+    budget-burn AND the timeout."""
+
+    @pytest.mark.parametrize("url,domain", [
+        ("https://www.samsung.com/us/smartphones/galaxy-s24/", "samsung.com"),
+        ("https://www.samsung.com/in/smartphones/galaxy-s24/", "samsung.com"),
+        ("https://www.amazon.ae/dp/B0XXX", "amazon.ae"),
+    ])
+    def test_render_wave_emits_zero_for_global_url(self, monkeypatch, url, domain):
+        from app.services import structured_comparison_service as scs_mod
+        # should_fan_out is True in hard mode (prod default) — but Fix B's
+        # is_render_only gate must override it for non-BH globals.
+        monkeypatch.setattr(
+            scs_mod.firecrawl_service, "should_fan_out", lambda *a, **k: True
+        )
+        render = scs_mod._build_escalation_scrapers(
+            candidate_urls=[(url, domain)], full_name="Galaxy S24", currency="BHD",
+            scraping_mode="hard", wave="render",
+        )
+        assert len(render) == 0, (
+            f"render wave must NOT fire on the global URL {url} (prod budget-burn + timeout)"
+        )
+
+    def test_mixed_candidates_render_only_bh(self, monkeypatch):
+        """A mix of global (samsung.com/us) + is_render_only BH (nasserpharmacy)
+        → render wave fires ONLY for the BH render-only one (2 scrapers)."""
+        from app.services import structured_comparison_service as scs_mod
+        monkeypatch.setattr(
+            scs_mod.firecrawl_service, "should_fan_out", lambda *a, **k: True
+        )
+        urls = [
+            ("https://www.samsung.com/us/x", "samsung.com"),       # global → 0
+            ("https://www.amazon.ae/dp/x", "amazon.ae"),            # gcc global → 0
+            ("https://www.nasserpharmacy.com/p/x", "nasserpharmacy.com"),  # BH render-only → 2
+        ]
+        render = scs_mod._build_escalation_scrapers(
+            candidate_urls=urls, full_name="x", currency="BHD",
+            scraping_mode="hard", wave="render",
+        )
+        assert len(render) == 2  # only nasserpharmacy's firecrawl + scrapedo
 
 
 @pytest.fixture
