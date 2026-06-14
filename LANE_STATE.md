@@ -6,21 +6,22 @@
 **Prior:** L5 carried-bugs lane MERGED to main (`59ec212`); fan_out F1 fix shipped.
 
 ## Current task
-Q1 net DONE incl. A4b (L1 contract confirmed). **REBASED onto merged main (b58abc8 — L1's cascade re-order + L4 KPI).** Regression-guard GREEN. Holding for L1's fast-follow (curl-skip + helper) → 2 strict-xfail flip green. team-lead self-runs the smoke20 gate.
+**ROLLBACK (2026-06-14): genuine-BH merge REVERTED (main=3db3ddc) for a prod-latency regression.** Rebased onto rolled-back main. Added the A5 LIVENESS invariant (team-lead's high-value ask) — the guard that would've caught the regression. Net: 11 passed, 5 xfailed. Holding for L1's consolidated re-merge (fix-A + fix-B + ce0a78e).
+
+## Rollback context (the lesson)
+My Q1 CONTRACT net (ORDER/labels, 7/7) was correct at the contract level but a MOCKED unit net structurally CAN'T catch a prod-RUNTIME bug: the re-order escalated genuine-BH scraping to rendering GLOBAL pages (samsung.com/us, amazon.ae), blew the 15s Phase-1 price-race timeout, and returned None (no price) instead of the parked converted price. Regression: price→no-price on electronics. **Fix = the A5 liveness invariant below (belongs in the cross-cutting net so it can't recur).** Saved to memory [[feedback_mock_hides_bug_layer_false_green]] family.
 
 ## Status
-- **REGRESSION-GUARD GREEN (team-lead's ask)** — rebased my QA branch onto `origin/main` b58abc8 (L1's cascade re-order `e33e13e` + locale-filter + 5 BH curl sources + L4 KPI now merged). Re-ran the full Q1 net against the merged code: **7/7 cascade-contract invariants still hold** (A1 order / A2 honest-label / A3 estimate-last / A4a usage=review). L1's re-order introduced NO regression to the cascade contract.
-- **Q1 A1-A3 + A4a DONE** — all green; **mutation-tested** the A2 guard (force local_bhd on converted path → RED → restore green = real discriminating power, not a tautology). Complementary to L1's per-fix TDD.
-- **A4b DONE (L1 contract confirmed 2026-06-14):** `is_render_only` is DISTINCT from `usage="review"` — 5 SPA sources (alosra/nasserpharmacy/bn.boots/bolo/**megamart** — 5 not 4) HAVE BH prices but need JS render. NUANCE: render-only is NOT excluded from `_harvest_candidate_urls`; the two-sided split is in `_build_escalation_scrapers(wave=...)` — wave="curl" SKIPS the curl scraper, wave="render" emits Firecrawl/Scrape.do. Merged-state split:
-  - (i) `Source.is_render_only` field + 5 domains → ON MAIN → 2 tests GREEN.
-  - (ii) `is_render_only_domain()` helper → NOT on main (L1 fast-follow ce0a78e, built+unpushed) → 1 test **xfail strict**. L1 final sig: bare-domain OR URL → bool; sharafdg URL → False (curl-tier). Test pins both.
-  - (iii)a curl-EXCLUSION: `_build_escalation_scrapers(wave="curl")` emits 0 for render-only → NOT on main (fast-follow) → **xfail strict** (verified REAL `expected 0 got 1` via --runxfail). Control (non-render keeps curl scraper) GREEN.
-  - (iii)b render-INCLUSION: `wave="render"` emits 2 (firecrawl+scrapedo) for render-only → **GREEN on main already** (render wave gated by should_fan_out, NOT by is_render_only). Pins the OTHER side of the two-sided contract — guards against a future change dropping render-only out of the render tier (= no price path at all).
-  - **13 tests total: 11 passed, 2 xfailed.** L1's fast-follow built (ce0a78e, holding for team-lead go); L1 pings the merge SHA → I drop the 2 strict-xfail markers + confirm the loud-flip green.
-- **Q4 baseline** — security regression **103/104** green = the EXPECTED baseline (team-lead's number). The 1 failure is pre-existing + unrelated: `authService.ts:480 console.log('[GOOGLE-DIAG]')` — the deferred Google-Sign-In diagnostic instrumentation (CLAUDE.md known-bug), a frontend .ts file my backend-test-only branch cannot have touched. My net coexists with on-main cascade/source/fan_out tests: 35/35.
+
+## Status
+- **NET STATE on rolled-back main (3db3ddc): 11 passed, 5 xfailed.** `tests/test_cascade_order_regression_qa.py`.
+- **A1/A2/A3/A4a contract invariants → GREEN** on the rolled-back (pre-genuine-BH) base. A2 mutation-tested (force local_bhd on converted path → RED → restore green = real discriminating power).
+- **A5 LIVENESS invariant → GREEN + MUTATION-PROVEN (the rollback lesson, team-lead's high-value ask).** 3 tests: escalation fan_out TIMES OUT / RAISES → `_get_price` still returns a non-None price (Tier-2 converted OR Tier-3 estimate), NEVER `{amount: None}`. Mutation-tested: injected the regression shape (timeout handler → `return {amount: None}`) and BOTH timeout liveness tests went RED → restored green. So it genuinely catches the exact prod regression the contract net missed. Mocked at `_get_price` but exercises the REAL escalation→fallthrough control path. Aligns with tasks #22 (fix-A) + #24 (prod-latency never-None).
+- **A4b is_render_only (5 tests) → ALL xfail-strict** — the genuine-BH merge was fully reverted, so the `is_render_only` field + 5 domains + the two-wave `_build_escalation_scrapers(wave=...)` split are ALL gone from main. They flip green TOGETHER when L1's consolidated re-merge lands (fix-A + fix-B + ce0a78e helper/curl-skip). Contract pinned (i field, ii helper sig incl. sharafdg-False, iii-a curl-skip=0, iii-b render=2) — ready to confirm-green on re-merge.
+- **Q4 baseline** — security regression **103/104** (the deferred GOOGLE-DIAG console.log, unrelated frontend).
 - **Q2** (team-lead self-runs the smoke20 gate) — I feed cascade-contract failures.
-- **Q3** (reactive) — supplement-timeout watch when L1's timeout fix lands.
-- **NEXT:** when L1's re-order merges to main, re-run the Q1 net against it as the live regression guard; report any RED to team-lead immediately.
+- **Q3** (reactive) — supplement-timeout watch HELD per team-lead until L1's fix-A+B lands (tangled with the same latency issue, deferred from the reverted merge).
+- **NEXT:** when L1's consolidated branch (fix-A timeout→parked + fix-B render-scope-BH + ce0a78e) re-merges: (1) re-run full Q1 net + A5 liveness as the live regression guard; (2) confirm the 5 is_render_only xfails flip green; (3) report to team-lead.
 
 ## Mission (S3 reopened — genuine BH pricing)
 L1 (`feature/s3-genuine-price-cascade`) re-orders the price cascade (BH→web→US-converted→estimate-last), kills the gl=us→local_bhd mislabel (`b82af2a`), fixes supplement timeout. Big surface change to price_service.py / structured_comparison_service.py. **Regressions are the risk.**

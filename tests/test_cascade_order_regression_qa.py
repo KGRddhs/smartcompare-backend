@@ -286,8 +286,19 @@ _RENDER_ONLY_DOMAINS = {
 }
 
 
-# --- (i) field + the 5 domains: ON MAIN → GREEN ---
+# --- (i) field + the 5 domains ---
+# ROLLBACK NOTE (2026-06-14): the genuine-BH merge e33e13e was REVERTED for a
+# prod-latency regression (main=3db3ddc). The is_render_only field + 5 domains +
+# the two-wave _build_escalation_scrapers(wave=...) split are ALL gone from main
+# pending L1's consolidated re-merge (fix-A timeout→parked-fallback + fix-B
+# render-scope-to-BH + the ce0a78e helper/curl-skip). So ALL is_render_only tests
+# are xfail-strict now and flip green TOGETHER when the consolidated branch lands.
 
+@pytest.mark.xfail(
+    reason="genuine-BH merge reverted (3db3ddc); is_render_only field pending L1 re-merge. "
+           "strict=True → loud xpass when the consolidated branch lands.",
+    strict=True,
+)
 def test_render_only_field_marks_the_five_spa_domains():
     """The is_render_only flag exists on Source and exactly the 5 SPA domains
     carry it (alosra/nasserpharmacy/bn.boots/bolo/megamart)."""
@@ -358,6 +369,11 @@ def test_curl_wave_skips_render_only_domain():
     )
 
 
+@pytest.mark.xfail(
+    reason="genuine-BH merge reverted (3db3ddc); _build_escalation_scrapers(wave=...) "
+           "two-wave split pending L1 re-merge. strict=True → loud xpass on land.",
+    strict=True,
+)
 def test_curl_wave_keeps_non_render_domain():
     """Control: wave="curl" DOES emit a curl scraper for a normal (non-render)
     domain — the skip is render-only-specific, not a blanket curl drop."""
@@ -384,6 +400,11 @@ def test_curl_wave_keeps_non_render_domain():
 # drop render-only domains out of the render tier too (which would leave them
 # with NO price path at all). L1 spec: wave="render" emits 2 (firecrawl+scrapedo).
 
+@pytest.mark.xfail(
+    reason="genuine-BH merge reverted (3db3ddc); _build_escalation_scrapers(wave=...) "
+           "two-wave split pending L1 re-merge. strict=True → loud xpass on land.",
+    strict=True,
+)
 def test_render_wave_includes_render_only_domain():
     """A render-only domain's PDP MUST get the Firecrawl + Scrape.do scrapers in
     wave='render' (2 scrapers) — it's the ONLY price path for a JS-SPA."""
@@ -400,4 +421,149 @@ def test_render_wave_includes_render_only_domain():
     assert len(scrapers) == 2, (
         "wave='render' must emit Firecrawl+Scrape.do (2) for a render-only PDP — "
         f"it's the only price path for a JS-SPA; got {len(scrapers)}"
+    )
+
+
+# ===========================================================================
+# A5 — FALLBACK-ALWAYS-YIELDS-A-PRICE liveness invariant (the rollback lesson)
+# ===========================================================================
+# Why this exists: the genuine-BH re-order (reverted at 3db3ddc) shipped a
+# prod-RUNTIME regression a mocked CONTRACT net can't catch — escalation blew
+# the Phase-1 price-race timeout and returned None (no price) instead of falling
+# back to the parked converted/estimate price. price→no-price on electronics.
+#
+# This invariant is the cross-cutting guard for exactly that: when the Tier-1.5
+# escalation (fan_out) TIMES OUT or RAISES, _get_price MUST still return a price
+# with a non-None amount (parked Shopify fallback OR Tier-2 converted OR Tier-3
+# estimate) — NEVER {amount: None}. It is GREEN on the rolled-back base (the
+# timeout is caught at ssc:3119 and falls through), and it STAYS the guard that
+# fails loud if L1's re-merge reintroduces the timeout→None abort (fix-A makes
+# it stay green). Mocked at the _get_price level (no live calls / no spend), but
+# it exercises the REAL escalation→fallthrough control path, not just labels.
+
+import asyncio as _asyncio
+
+
+def _liveness_patches(svc, *, shopping_items, organic_extract, training_estimate, fan_out_effect):
+    """Patch _get_price's seams to force the escalation path, then make the
+    fan_out time out / raise, and assert a price still falls through."""
+    ssc = "app.services.structured_comparison_service"
+
+    async def fake_search_product_prices(*_a, **_k):
+        return {"shopping": shopping_items or [], "organic": [], "shopping_region": "us"}
+
+    async def fake_search_price_organic(*_a, **_k):
+        return {"organic": [], "knowledge_graph": None}
+
+    async def fake_extract_price(*_a, **_k):
+        return (dict(organic_extract) if organic_extract else None, {})
+
+    async def fake_training(*_a, **_k):
+        return (dict(training_estimate) if training_estimate else None, {})
+
+    async def fake_search_web(*_a, **_k):
+        # discovery returns one harvestable BH candidate so candidate_urls is
+        # non-empty → the fan_out (which we sabotage) actually runs.
+        return {"organic": [{"link": "https://noon.com/centrum"}]}
+
+    return [
+        patch(f"{ssc}.search_product_prices", new=AsyncMock(side_effect=fake_search_product_prices)),
+        patch(f"{ssc}.search_price_organic", new=AsyncMock(side_effect=fake_search_price_organic)),
+        patch(f"{ssc}.search_web", new=AsyncMock(side_effect=fake_search_web)),
+        patch(f"{ssc}.extract_price", new=AsyncMock(side_effect=fake_extract_price)),
+        patch(f"{ssc}.extract_price_from_training_data", new=AsyncMock(side_effect=fake_training)),
+        # Force escalation ON regardless of Tier-1 confidence.
+        patch(f"{ssc}._should_escalate_price_scrape", return_value=True),
+        # Sabotage the fan_out: time out or raise (the regression trigger).
+        patch(f"{ssc}.fan_out_price_lookup", new=AsyncMock(side_effect=fan_out_effect)),
+        patch(f"{ssc}.get_cached", return_value=None),
+        patch(f"{ssc}.set_cached", return_value=True),
+        patch("app.services.product_data_service.get_cached_price", new=AsyncMock(return_value=None)),
+    ]
+
+
+async def _run_electronics_price(svc):
+    return await svc._get_price(
+        brand="Apple", name="iPhone 15", variant=None, region="bahrain",
+        search_query="Apple iPhone 15", nocache=True, category="electronics",
+    )
+
+
+@pytest.mark.asyncio
+async def test_escalation_timeout_falls_back_to_a_price_never_none():
+    """When the Tier-1.5 fan_out TIMES OUT, _get_price must fall through to a
+    real price (Tier-2 converted here) — NOT abort to {amount: None}. This is
+    the exact regression that the reverted re-order shipped."""
+    svc = _svc()
+
+    async def time_out(*_a, **_k):
+        raise _asyncio.TimeoutError()
+
+    # Tier-1 shopping empty, but a Tier-2 organic extract is available as the
+    # parked fallback after the escalation times out.
+    organic = {"amount": 410.0, "currency": "BHD", "original_currency": "BHD", "retailer": "sharafdg"}
+    with patch.object(svc, "_save_price_to_db"):
+        p = _liveness_patches(
+            svc, shopping_items=[], organic_extract=organic, training_estimate=None,
+            fan_out_effect=time_out,
+        )
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]:
+            price = await _run_electronics_price(svc)
+
+    assert price is not None
+    assert price.get("amount") is not None, (
+        "REGRESSION: escalation timeout aborted to a None price instead of falling "
+        f"back to the parked Tier-2/Tier-3 price. got {price!r}"
+    )
+    assert price["amount"] == 410.0
+
+
+@pytest.mark.asyncio
+async def test_escalation_timeout_falls_back_to_estimate_when_only_estimate_left():
+    """If the escalation times out AND there's no Tier-2 organic price, the
+    cascade must still yield the Tier-3 estimate — never None."""
+    svc = _svc()
+
+    async def time_out(*_a, **_k):
+        raise _asyncio.TimeoutError()
+
+    estimate = {"amount": 350.0, "currency": "BHD", "retailer": None}
+    with patch.object(svc, "_save_price_to_db"):
+        p = _liveness_patches(
+            svc, shopping_items=[], organic_extract=None, training_estimate=estimate,
+            fan_out_effect=time_out,
+        )
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]:
+            price = await _run_electronics_price(svc)
+
+    assert price is not None
+    assert price.get("amount") is not None, (
+        "REGRESSION: escalation timeout + no Tier-2 aborted to None instead of the "
+        f"Tier-3 estimate. got {price!r}"
+    )
+    assert price["amount"] == 350.0
+    assert price.get("estimated") is True
+
+
+@pytest.mark.asyncio
+async def test_escalation_raise_falls_back_to_a_price_never_none():
+    """A non-timeout exception in the escalation must ALSO fall through to a
+    price, not abort to None (defense-in-depth for the same liveness contract)."""
+    svc = _svc()
+
+    async def boom(*_a, **_k):
+        raise RuntimeError("scraper pool exploded")
+
+    organic = {"amount": 299.0, "currency": "BHD", "original_currency": "BHD", "retailer": "sharafdg"}
+    with patch.object(svc, "_save_price_to_db"):
+        p = _liveness_patches(
+            svc, shopping_items=[], organic_extract=organic, training_estimate=None,
+            fan_out_effect=boom,
+        )
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]:
+            price = await _run_electronics_price(svc)
+
+    assert price is not None
+    assert price.get("amount") == 299.0, (
+        f"REGRESSION: escalation raise aborted to None instead of falling back; got {price!r}"
     )
