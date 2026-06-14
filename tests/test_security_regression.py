@@ -1357,11 +1357,24 @@ class TestBundleBContentSafety:
         try:
             svc = ContentSafetyService()
             assert _BLOCKLIST_PATH.exists()
-            result = asyncio.run(
-                svc.moderate_output(
-                    "Comparison verdict text that must be moderated"
+            # NOTE (QA loop-pollution fix 2026-06-14): use a dedicated loop +
+            # restore a fresh default loop afterward, NOT asyncio.run(). On
+            # Python 3.12 asyncio.run() closes its loop AND leaves the thread
+            # with no current event loop (set_event_loop(None)); a later test
+            # that uses the legacy `asyncio.get_event_loop().run_until_complete`
+            # (test_share_routes / test_http_400_cap_cut_mapping / pharmacy_jsonld
+            # / referral_must_fixes) then gets a closed/absent loop → "Event loop
+            # is closed". Restoring a fresh loop here keeps the default usable.
+            _loop = asyncio.new_event_loop()
+            try:
+                result = _loop.run_until_complete(
+                    svc.moderate_output(
+                        "Comparison verdict text that must be moderated"
+                    )
                 )
-            )
+            finally:
+                _loop.close()
+                asyncio.set_event_loop(asyncio.new_event_loop())
             # Real L3 path observed the flagged response; returns the
             # structured refusal SafetyResult.
             assert result.allowed is False, (
