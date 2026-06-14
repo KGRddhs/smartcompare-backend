@@ -580,6 +580,7 @@ from app.services.source_router import (
     score_source,
     source_usage,
     is_wrong_locale_url,
+    rewrite_to_bh_locale,
     is_render_only_domain,
     get_shopify_sources_for_category,
     get_algolia_sources_for_category,
@@ -1083,11 +1084,31 @@ def _harvest_candidate_urls(
     # BEFORE it enters candidate_urls/fan_out (the genuine /en-bh/ PDP Serper
     # also returns survives and extracts BHD). No rewrite (SKUs differ per
     # locale). Applies across ALL tiers in one place.
-    filtered = [h for h in harvested if not is_wrong_locale_url(h[0])]
-    if len(filtered) != len(harvested):
+    # S3 Lulu BH-locale (2026-06-14) — a wrong-locale URL on an ALLOW-SET
+    # same-slug retailer (Lulu) is REWRITTEN to /en-bh/ and kept (the BH store
+    # serves the same slug in BHD: Nutella 3.34 / Maybelline 7.825 / H&S 1.59 /
+    # Centrum 12.09). Everything else is dropped as before (sharafdg/extra SKU
+    # IDs differ per locale → no rewrite). $0 — reuses the discovered URL.
+    filtered: List[Tuple[str, str, str, float]] = []
+    _dropped = 0
+    _rewritten = 0
+    _seen_f: set = set()
+    for h in harvested:
+        if not is_wrong_locale_url(h[0]):
+            if h[0] not in _seen_f:
+                _seen_f.add(h[0]); filtered.append(h)
+            continue
+        bh_url = rewrite_to_bh_locale(h[0])
+        if bh_url and bh_url not in _seen_f:
+            _seen_f.add(bh_url)
+            filtered.append((bh_url, h[1], h[2], h[3]))
+            _rewritten += 1
+        else:
+            _dropped += 1
+    if _dropped or _rewritten:
         logger.info(
-            "[PRICE] BH-locale filter dropped %d wrong-locale candidate(s)",
-            len(harvested) - len(filtered),
+            "[PRICE] BH-locale filter: dropped %d wrong-locale, rewrote %d to /en-bh/",
+            _dropped, _rewritten,
         )
     return filtered
 
