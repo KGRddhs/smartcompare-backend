@@ -1160,17 +1160,30 @@ async def _lazy_bh_pdp_backfill(
             return
         if full_name and title and variant_mismatch(full_name, title):
             return
+        # S3 #34 — don't even harvest an accessory PDP (Galaxy-S24-case class);
+        # defense-in-depth on top of extract_jsonld_price's is_accessory check.
+        if title and is_accessory(title):
+            return
         weight = score_source(link, category)
         if weight >= 1.5:
             _seen.add(link)
             extra.append((link, domain, "lazy_backfill", weight))
 
-    for bd in missing:
+    # S3 #34 (cascade-parallelize) — fire the per-retailer Serper queries
+    # CONCURRENTLY (was a serial for-loop: sharafdg ~1.7s + microless ~1.45s
+    # added ~3s to the price race, contributing to the prod 15s-cap cut). gather
+    # the search_web calls, then process results in `missing` order (so `extra`
+    # ordering + every _accept filter is byte-identical to the serial version —
+    # only WHEN the I/O fires changes, never WHICH candidates are accepted).
+    async def _bd_search(bd: str):
         try:
-            res = await search_web(f"{full_name} site:{bd}", num_results=5)
+            return bd, await search_web(f"{full_name} site:{bd}", num_results=5)
         except Exception as e:  # noqa: BLE001 — best-effort
             logger.info(f"[PRICE] lazy backfill search failed for {bd}: {e}")
-            continue
+            return bd, None
+
+    search_results = await asyncio.gather(*(_bd_search(bd) for bd in missing))
+    for bd, res in search_results:
         organic = (res or {}).get("organic", []) if isinstance(res, dict) else []
         # microless-style: PDPs rank directly.
         pdp_found = False
@@ -3060,6 +3073,62 @@ class StructuredComparisonService:
 
         is_supplement = (category == "supplements") or is_supplement_query(full_name)
 
+        # --- S3 #34 (cascade-parallelize) — SPECULATIVE discovery prefetch ---
+        # ROOT CAUSE (prove-it-works, live prod): the price race serially ran
+        # serper_shopping (~5.9s) THEN the discovery site: queries (~5s) THEN the
+        # genuine-BH curl fan_out — so the fan_out didn't start until ~12-15s, and
+        # in prod's slower RTT the 15s _PRICE_RACE_TIMEOUT cut it → parked
+        # converted won instead of sharafdg/Lulu 244.99. FIX: fire the discovery
+        # site: queries CONCURRENTLY with serper_shopping (they don't depend on
+        # the shopping result) so they're ready when escalation reaches them —
+        # the genuine curl fan_out starts ~6s instead of ~15s. Escalation fires
+        # for ~all electronics (converted Tier-1), so this speculation is almost
+        # always used; if Tier-1 short-circuits genuine OR escalation doesn't
+        # fire, the tasks are CANCELLED below (no orphans — L5.3). This changes
+        # WHEN discovery is fetched, NEVER the selection (the same results feed
+        # the same _harvest/fan_out/_select_best).
+        # S3 #34 BUDGET BOUND (team-lead gate, option b) — SKIP the speculative
+        # prefetch when this category has Shopify-json OR Algolia direct sources.
+        # Those sources SHORT-CIRCUIT before discovery (fragrances=alhajis Shopify,
+        # fashion=6thStreet Algolia), so the 4 prefetched Serper calls would be
+        # ALREADY SPENT (they finish in ~1-2s, inside shopping's 5.9s) before the
+        # cancel fires = wasted (~+30% Serper on those ~8/20 smoke20 queries).
+        # Electronics has NO Shopify/Algolia sources → prefetch still fires (the
+        # latency-critical category that needs it; iPhone verified <15s after).
+        _pf_eligible = (
+            not is_supplement and ENABLE_PAGE_SCRAPE
+            and not get_shopify_sources_for_category(category)
+            and not get_algolia_sources_for_category(category)
+        )
+        _prefetched_discovery: List[Tuple[str, Any]] = []
+        if _pf_eligible:
+            _pf_official = get_official_domain(full_name)
+            _pf_retailer_q = build_site_discovery_query(
+                full_name, category, tier="global", limit=8) or full_name
+            _pf_gcc_q = build_site_discovery_query(
+                full_name, category, tier="gcc", limit=8) or full_name
+            _pf_bh_q = build_site_discovery_query(
+                full_name, category, tier="bahrain", limit=8)
+            if _pf_bh_q:
+                _prefetched_discovery.append(
+                    ("bahrain", asyncio.ensure_future(search_web(_pf_bh_q))))
+            if _pf_official:
+                _prefetched_discovery.append(
+                    ("official", asyncio.ensure_future(
+                        search_web(f"{full_name} site:{_pf_official}"))))
+            _prefetched_discovery.append(
+                ("authorized", asyncio.ensure_future(search_web(_pf_retailer_q))))
+            _prefetched_discovery.append(
+                ("gcc", asyncio.ensure_future(search_web(_pf_gcc_q))))
+
+        def _cancel_prefetched_discovery():
+            """Cancel the speculative discovery tasks (genuine short-circuit /
+            no-escalation) so no orphan Serper calls survive."""
+            for _t, _task in _prefetched_discovery:
+                if not _task.done():
+                    _task.cancel()
+            _prefetched_discovery.clear()
+
         # --- Tier 1: Direct Serper Shopping extraction ---
         shopping_region = None  # T2 — gl region the shopping items came from
         if is_supplement:
@@ -3124,6 +3193,9 @@ class StructuredComparisonService:
                     # time out — so the Phase-1 handler can return it, never None.
                     self._parked_price[full_name] = dict(price)
                 else:
+                    # Genuine Tier-1 short-circuit — the speculative discovery
+                    # prefetch is not needed; cancel it (no orphan Serper calls).
+                    _cancel_prefetched_discovery()
                     set_cached(cache_key, price, PRICE_CACHE_TTL)
                     self._save_price_to_db(cache_key, brand, name, variant, region, price)
                     price["_cached"] = False
@@ -3238,6 +3310,9 @@ class StructuredComparisonService:
                         }
                         record_tier15_attempt(category)
                         record_tier15_hit(category, win_domain or None)
+                        # Official-Shopify short-circuit — cancel the speculative
+                        # discovery prefetch (no orphan Serper calls; L5.3).
+                        _cancel_prefetched_discovery()
                         set_cached(cache_key, shop_best, PRICE_CACHE_TTL)
                         self._save_price_to_db(
                             cache_key, brand, name, variant, region, shop_best
@@ -3307,6 +3382,8 @@ class StructuredComparisonService:
                     }
                     record_tier15_attempt(category)
                     record_tier15_hit(category, win_domain or None)
+                    # Algolia genuine short-circuit — cancel speculative prefetch.
+                    _cancel_prefetched_discovery()
                     set_cached(cache_key, algolia_best, PRICE_CACHE_TTL)
                     self._save_price_to_db(
                         cache_key, brand, name, variant, region, algolia_best
@@ -3340,34 +3417,35 @@ class StructuredComparisonService:
             # product name keeps the discovery slot non-empty for any category
             # with no sources in a tier (noon/amazon.ae are all-category, so in
             # practice both tiers are always non-empty).
-            retailer_query = build_site_discovery_query(
-                full_name, category, tier="global", limit=8
-            ) or full_name
-            gcc_query = build_site_discovery_query(
-                full_name, category, tier="gcc", limit=8
-            ) or full_name
-
-            discovery_tasks = []
-            # Bahrain registry discovery FIRST (gated by has_budget("serper")
-            # implicitly — search_web no-ops without a key). Skipped only when
-            # the category has zero Bahrain-tier registry sources.
-            # I5.4 (Bundle B S2) — limit=8 (was 4) so the whole live
-            # bahrain-electronics registry is queryable in this single Serper
-            # call. After I5.3's dead-domain purge there are 6 live electronics
-            # rows; limit=4 sliced off shopalmoayyed.com (index 5, the F1.5
-            # appliance/AC JSON-LD source) — the electronics 0/14 starvation.
-            # Same one Serper call, just a longer `site:a OR site:b ...` chain.
-            bahrain_query = build_site_discovery_query(
-                full_name, category, tier="bahrain", limit=8
-            )
-            if bahrain_query:
-                discovery_tasks.append(("bahrain", search_web(bahrain_query)))
-            if official_domain:
-                discovery_tasks.append(
-                    ("official", search_web(f"{full_name} site:{official_domain}"))
+            # S3 #34 — USE the speculative discovery tasks fired concurrently
+            # with serper_shopping at the top of _get_price (they're already
+            # running/done, so awaiting them below is instant — the ~5s discovery
+            # cost is now overlapped with the ~5.9s shopping, not serial after it).
+            # Fall back to firing inline only if the prefetch was skipped (it
+            # gates on the SAME not-supplement+ENABLE_PAGE_SCRAPE condition as
+            # this escalation block, so in practice it's always populated here).
+            if _prefetched_discovery:
+                discovery_tasks = list(_prefetched_discovery)
+                _prefetched_discovery.clear()  # ownership transferred; don't cancel
+            else:
+                retailer_query = build_site_discovery_query(
+                    full_name, category, tier="global", limit=8
+                ) or full_name
+                gcc_query = build_site_discovery_query(
+                    full_name, category, tier="gcc", limit=8
+                ) or full_name
+                bahrain_query = build_site_discovery_query(
+                    full_name, category, tier="bahrain", limit=8
                 )
-            discovery_tasks.append(("authorized", search_web(retailer_query)))
-            discovery_tasks.append(("gcc", search_web(gcc_query)))
+                discovery_tasks = []
+                if bahrain_query:
+                    discovery_tasks.append(("bahrain", search_web(bahrain_query)))
+                if official_domain:
+                    discovery_tasks.append(
+                        ("official", search_web(f"{full_name} site:{official_domain}"))
+                    )
+                discovery_tasks.append(("authorized", search_web(retailer_query)))
+                discovery_tasks.append(("gcc", search_web(gcc_query)))
 
             results_by_tier = {}
             try:
@@ -3554,6 +3632,11 @@ class StructuredComparisonService:
                     full_name, shopify_fallback["amount"], currency, win_domain,
                 )
                 return shopify_fallback
+
+        # S3 #34 — reached here without consuming the speculative discovery
+        # prefetch (escalation didn't fire, or fired-then-fell-through). Cancel
+        # any still-pending prefetch tasks so they don't orphan into Tier 2/3.
+        _cancel_prefetched_discovery()
 
         # --- Tier 2: GPT extraction from search context ---
         if is_supplement:
