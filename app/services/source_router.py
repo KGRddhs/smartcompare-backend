@@ -326,6 +326,50 @@ def score_source(url: str, category: str) -> float:
     return 0.5
 
 
+# S3-genuine (team-lead live probe 2026-06-14) — wrong-GCC-locale path segments.
+# Serper `site:` discovery returns mixed-locale results for the multi-locale BH
+# registry domains; score_source matches by DOMAIN and ignores the locale PATH,
+# so a /en-sa/ (SAR) page on bahrain-tier extra.com scores 3.0 and gets scraped
+# → a Saudi price. These segments mark a NON-Bahrain GCC locale to DROP. NO
+# rewrite (SKU IDs differ per locale → 404); we only filter.
+_WRONG_GCC_LOCALE_SEGMENTS = (
+    "/en-sa/", "/ar-sa/",   # Saudi (SAR)
+    "/en-ae/", "/ar-ae/", "/uae_en/", "/uae_ar/",  # UAE (AED)
+    "/en-om/", "/ar-om/",   # Oman (OMR)
+    "/en-kw/", "/ar-kw/",   # Kuwait (KWD)
+    "/en-qa/", "/ar-qa/",   # Qatar (QAR)
+)
+# Bahrain locale markers — if present, the URL is explicitly BH (keep even if a
+# wrong-locale string somehow co-occurs, which it shouldn't).
+_BH_LOCALE_MARKERS = ("/en-bh/", "/ar-bh/", "/bahrain_en/", "/bahrain_ar/", "-bh/")
+
+
+def is_wrong_locale_url(url: str) -> bool:
+    """True iff `url` carries a NON-Bahrain GCC locale path segment (so it would
+    yield a foreign-currency price and must be dropped from the BH scrape pool).
+
+    KEEP: explicit BH locale (/en-bh/, /ar-bh/, /bahrain_en/), bahrain.* subdomain,
+    and locale-NEUTRAL paths (no recognizable GCC locale segment) — conservative,
+    never drop a maybe-BH page. DROP only an explicit wrong-GCC-locale segment.
+    """
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+    except (ValueError, TypeError):
+        return False
+    host = (parsed.netloc or "").lower()
+    path = (parsed.path or "").lower()
+    # A bahrain.* subdomain is inherently BH — keep.
+    if host.startswith("bahrain.") or host.startswith("www.bahrain."):
+        return False
+    # An explicit BH locale marker anywhere → keep.
+    if any(m in path for m in _BH_LOCALE_MARKERS):
+        return False
+    # An explicit wrong-GCC-locale segment → drop.
+    return any(seg in path for seg in _WRONG_GCC_LOCALE_SEGMENTS)
+
+
 def build_site_discovery_query(
     product_query: str, category: str, tier: str = "bahrain", limit: int = 4
 ) -> str:

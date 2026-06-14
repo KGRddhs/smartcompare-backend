@@ -578,6 +578,7 @@ from app.services.source_router import (
     build_site_discovery_query,
     score_source,
     source_usage,
+    is_wrong_locale_url,
     get_shopify_sources_for_category,
 )
 
@@ -962,7 +963,21 @@ def _harvest_candidate_urls(
                 elif link_domain in GCC_LUXURY_RETAILERS:
                     harvested.append((link, link_domain, "legacy_fallback", weight))
 
-    return harvested
+    # S3-genuine (team-lead live probe 2026-06-14) — BH-LOCALE FILTER. Serper
+    # `site:` discovery returns mixed-locale results for the multi-locale BH
+    # registry domains; score_source matches by domain and IGNORES the locale
+    # path, so an extra.com/en-sa/ (SAR) page scores 3.0 and would be scraped →
+    # a Saudi price. Drop any candidate carrying a non-BH GCC locale segment
+    # BEFORE it enters candidate_urls/fan_out (the genuine /en-bh/ PDP Serper
+    # also returns survives and extracts BHD). No rewrite (SKUs differ per
+    # locale). Applies across ALL tiers in one place.
+    filtered = [h for h in harvested if not is_wrong_locale_url(h[0])]
+    if len(filtered) != len(harvested):
+        logger.info(
+            "[PRICE] BH-locale filter dropped %d wrong-locale candidate(s)",
+            len(harvested) - len(filtered),
+        )
+    return filtered
 
 
 class StructuredComparisonService:

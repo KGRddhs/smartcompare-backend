@@ -38,16 +38,22 @@ class TestWindowReachesShopalmoayyed:
             "appliance/AC JSON-LD source the electronics 0/14 fix needs"
         )
 
-    def test_limit_4_now_reaches_shopalmoayyed_after_deadrow_purge(self):
-        # SUPERSEDES the old "limit=4 did NOT reach" pin. The original I5.4 bug
-        # was that two dead rows (behbehani idx3 + jumbo idx4) occupied the early
-        # window and pushed shopalmoayyed past index 3. The S3-genuine gap-fill
-        # DELETED both, so shopalmoayyed now sits at index 3 — inside the limit=4
-        # window. (The limit=8 PROD call is kept as forward-headroom only.)
+    def test_shopalmoayyed_needs_limit_8_after_microless_add(self):
+        # History: the dead-row purge (behbehani/jumbo) briefly let shopalmoayyed
+        # fit at limit=4 (idx 3). The S3 PDP-curl add of bahrain.microless.com
+        # (curl-verified electronics, idx 3) re-displaced it to idx 4 — so it's
+        # OUT of limit=4 again but IN the PROD limit=8 window. This re-justifies
+        # why the prod discovery call uses limit=8 (not just forward-headroom —
+        # shopalmoayyed actively needs it). bahrain-electronics order now:
+        # [0] gcc.lulu [1] sharafdg [2] extra [3] microless [4] shopalmoayyed.
         q4 = build_site_discovery_query(
             "Carrier 1.5 ton AC", "electronics", tier="bahrain", limit=4
         )
-        assert "site:shopalmoayyed.com" in q4
+        assert "site:shopalmoayyed.com" not in q4  # idx 4 — outside limit=4
+        q8 = build_site_discovery_query(
+            "Carrier 1.5 ton AC", "electronics", tier="bahrain", limit=8
+        )
+        assert "site:shopalmoayyed.com" in q8  # idx 4 — inside limit=8 (PROD)
 
     def test_limit_8_still_single_query_or_chain(self):
         q = build_site_discovery_query(
@@ -58,9 +64,10 @@ class TestWindowReachesShopalmoayyed:
         assert " OR " in q
         assert not q.endswith(" OR ")
         assert "site:OR" not in q
-        # 4 live bahrain-electronics sources after the S3-genuine dead-row purge
-        # (was 6; behbehani+jumbo deleted) → 4 site: ops, still within the
-        # limit=8 ceiling (room for future additions).
+        # 5 live bahrain-electronics sources now (gcc.lulu, sharafdg, extra,
+        # microless, shopalmoayyed — after the dead-row purge of behbehani+jumbo
+        # and the PDP-curl add of microless) → 5 site: ops, within the limit=8
+        # ceiling (still room for future additions).
         n = q.count("site:")
         assert 2 < n <= 8
 
