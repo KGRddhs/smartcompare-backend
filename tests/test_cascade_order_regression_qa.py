@@ -210,21 +210,23 @@ async def test_tier1_shopping_price_wins_over_estimate():
 
 
 # ===========================================================================
-# A4 — RENDER-ONLY EXCLUSION: usage="review" domains stay out of the harvest
+# A4a — usage="review" EXCLUSION (existing flag): editorial/no-price sources
+#       stay out of the price-discovery harvest entirely.
 # ===========================================================================
-# The source_router unit tests (test_source_usage_field.py) pin
-# get_sources_for_category(usage="price") / source_usage / build_site_discovery
-# at the helper level. THIS asserts the INTEGRATION guard — that the actual
-# price-discovery harvest in _get_price excludes a review-only domain even when
-# it appears in the Serper organic results (the curl-harvest pool must never
-# scrape a review-only site for a price).
+# NB: usage="review" is DISTINCT from L1's NEW `is_render_only` flag (A4b
+# below). usage="review" = source has NO prices (editorial sites) -> excluded
+# from the price pool. is_render_only = source HAS BH prices but needs JS
+# render -> out of curl-harvest BUT into the render-tier. These tests pin the
+# usage="review" case only. The source_router unit tests
+# (test_source_usage_field.py) pin the helper level; THIS pins the INTEGRATION
+# harvest guard (_harvest_candidate_urls) — complementary, not duplicate.
 
 from app.services.structured_comparison_service import _harvest_candidate_urls
 
 
-def test_harvest_excludes_review_only_domain_in_bahrain_tier():
-    """A review-only registry domain (sayidaty.net, usage='review' for makeup)
-    present in the bahrain organic results must NOT enter the harvest pool."""
+def test_harvest_excludes_review_usage_domain_in_bahrain_tier():
+    """A usage='review' registry domain (sayidaty.net for makeup) present in the
+    bahrain organic results must NOT enter the price-discovery harvest pool."""
     # sayidaty.net is registered usage="review" for makeup; noon.com is a real
     # price source. Both appear in the discovery results.
     results_by_tier = {
@@ -237,8 +239,8 @@ def test_harvest_excludes_review_only_domain_in_bahrain_tier():
     harvested_links = [h[0] for h in harvested]
 
     assert not any("sayidaty.net" in link for link in harvested_links), (
-        "a review-only domain (usage='review') leaked into the price-discovery "
-        f"harvest pool: {harvested_links}"
+        "a usage='review' domain leaked into the price-discovery harvest pool: "
+        f"{harvested_links}"
     )
 
 
@@ -255,3 +257,18 @@ def test_harvest_keeps_real_price_domain():
     assert any("noon.com" in link for link in harvested_links), (
         f"a genuine price source was wrongly excluded from the harvest: {harvested_links}"
     )
+
+
+# ===========================================================================
+# A4b — is_render_only TWO-SIDED CONTRACT (L1's NEW flag) — PENDING L1 confirm
+# ===========================================================================
+# A render-only source (alosra / nasserpharmacy / bn.boots / bolo: HAS genuine
+# BH prices, needs JS render) must be:
+#   (a) OUT of the curl-harvest candidate pool (curl can't render the SPA), AND
+#   (b) IN the Firecrawl/Scrape.do render-tier escalation pool.
+# This is DISTINCT from usage="review" (A4a) — render-only sources DO have
+# prices. The exact flag name + cascade mechanism is in L1's in-flight batch;
+# coordination message sent. The test will be written failing-first against the
+# confirmed contract so it greens when L1's batch lands. Deliberately NOT pinned
+# yet to avoid mismatching L1's implementation (testing the wrong flag = a
+# false guard). The A4a tests above do NOT cover this case.
