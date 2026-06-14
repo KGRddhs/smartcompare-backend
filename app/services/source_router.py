@@ -50,7 +50,12 @@ SOURCE_REGISTRY: List[Source] = [
     #   carrefourbh.com + geant.com.bh DELETED (both NXDOMAIN; carrefour.com.bh
     #     also NXDOMAIN — no live BH Carrefour/Geant domain exists to replace
     #     with, and a dead site: row starves the limit=4 discovery window).
-    Source("luluhypermarket.com", "bahrain", (), 3.0),
+    # S3-genuine gap-fill (2026-06-14, Decision-F): RETARGET bare
+    # luluhypermarket.com -> gcc.luluhypermarket.com. The bare host's catalog is
+    # en-ae/AED (WHY lulu yielded nothing); gcc + /en-bh/ serves BHD JSON-LD
+    # (priceCurrency lowercase "bhd" — extractor .upper()-normalizes). THE
+    # electronics keystone: broad catalog (electronics+grocery+pharmacy+beauty).
+    Source("gcc.luluhypermarket.com", "bahrain", (), 3.0),
     Source("bahrain.sharafdg.com", "bahrain", ("electronics",), 3.0),
     Source("extra.com", "bahrain", ("electronics",), 3.0),
     Source(
@@ -60,10 +65,11 @@ SOURCE_REGISTRY: List[Source] = [
         3.0,
     ),
     Source("bolo.bh", "bahrain", ("supplements", "makeup", "skincare"), 3.0),
-    Source("behbehani.com", "bahrain", ("electronics", "fashion"), 3.0),
-    # I5.3 — eroselectronics.com DELETED (NXDOMAIN 2026-06-11; no live BH
-    # replacement). behbehani.com + jumboelectronics.com verified alive (200), kept.
-    Source("jumboelectronics.com", "bahrain", ("electronics",), 3.0),
+    # S3-genuine gap-fill (2026-06-14, Decision-F): behbehani.com +
+    # jumboelectronics.com DELETED — both are 200-but-NOT-a-store
+    # (jumbo = 114-byte parked /lander redirect; behbehani = brochure splash, no
+    # shop). I5.3 had kept them on a status-only 200 check; they have zero shop
+    # signals and starve the limit=8 BH discovery window (the electronics 0/N).
     Source("talabat.com", "bahrain", ("grocery",), 3.0),
     # spinneysbahrain.com DELETED (I5.11 liveness gate 2026-06-12): NXDOMAIN;
     # spinneys.com live but no Bahrain storefront evidence (Decision F: never

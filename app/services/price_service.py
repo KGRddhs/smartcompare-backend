@@ -176,7 +176,11 @@ RETAILER_SEARCH_URLS = {
     "extra": "https://www.extra.com/en-bh/search?text={query}",
     "sharaf dg": "https://bahrain.sharafdg.com/?s={query}&post_type=product",
     "ubuy": "https://www.ubuy.com.bh/en/search?q={query}",
-    "lulu": "https://www.luluhypermarket.com/en-bh/search?q={query}",
+    # lulu: the bare host (www.luluhypermarket.com) catalog is en-ae/AED and
+    # redirects to gcc.luluhypermarket.com/en-bh/ — point straight at the GCC
+    # Bahrain storefront so the price comes back in BHD (the AED-vs-BHD host bug
+    # was THE electronics keystone; registry retargeted to match).
+    "lulu": "https://gcc.luluhypermarket.com/en-bh/search/?q={query}",
     "carrefour": "https://www.carrefouruae.com/mafuae/en/search?q={query}",
     "virgin megastore": "https://www.virginmegastore.ae/search/{query}",
     "apple": "https://www.apple.com/shop/buy?fh={query}",
