@@ -98,3 +98,73 @@ class TestHarvestRewritesLuluLocale:
         assert not any("extra.com" in l for l in links), (
             f"extra.com wrong-locale should be dropped, not rewritten: {links}"
         )
+
+
+# Guardrail 2 (team-lead GO): currency-verify the rewritten PDP — the /en-bh/
+# result must actually be BHD; a non-BHD JSON-LD offer is DROPPED (M1).
+_LULU_BHD_JSONLD = """<html><head>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Product","name":"Nutella Hazelnut Spread 750g",
+ "offers":{"@type":"Offer","priceCurrency":"BHD","price":1.86,"availability":"http://schema.org/InStock"}}
+</script></head><body>Nutella</body></html>"""
+# A (hypothetical) Lulu page that somehow served a NON-BHD offer — must be dropped.
+_LULU_NONBHD_JSONLD = """<html><head>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Product","name":"Nutella Hazelnut Spread 750g",
+ "offers":{"@type":"Offer","priceCurrency":"KWD","price":1.10,"availability":"http://schema.org/InStock"}}
+</script></head><body>Nutella</body></html>"""
+
+
+class TestRewrittenPdpCurrencyVerify:
+    def test_bhd_jsonld_extracts_genuine(self):
+        from app.services.price_service import extract_price_from_html
+        r = extract_price_from_html(_LULU_BHD_JSONLD, "Nutella", "BHD",
+                                    "gcc.luluhypermarket.com",
+                                    "https://gcc.luluhypermarket.com/en-bh/nutella-750g/")
+        assert r is not None and abs(r["amount"] - 1.86) < 0.01
+        assert r["currency"] == "BHD"
+        assert r["source_method"] == "page_scrape"
+
+    def test_non_bhd_jsonld_is_dropped_not_blind_stamped(self):
+        """A non-BHD JSON-LD offer on the rewritten page is NOT stamped BHD — the
+        extractor's priceCurrency filter drops it (M1: no blind BHD stamp). With
+        no other price source on the page → None."""
+        from app.services.price_service import extract_price_from_html
+        r = extract_price_from_html(_LULU_NONBHD_JSONLD, "Nutella", "BHD",
+                                    "gcc.luluhypermarket.com",
+                                    "https://gcc.luluhypermarket.com/en-bh/nutella-750g/")
+        # the KWD offer is rejected by the BHD currency filter; no other price.
+        # (extract MAY return a USD-fallback-converted dict if the JSON-LD had a
+        # USD offer — here it's KWD, no USD/OG/microdata → None.)
+        assert r is None or r.get("source_method") == "converted_usd", (
+            f"a non-BHD Lulu offer was blind-stamped genuine: {r}"
+        )
+        if r is not None:
+            assert r.get("source_method") != "page_scrape" or r.get("currency") == "BHD"
+            assert r.get("original_currency", "BHD") != "KWD" or "converted" in r.get("source_method", "")
+
+
+# Guardrail 3: graceful stock-miss fall-through — a rewritten /en-bh/ that 404s /
+# has no price returns None (the rewrite ADDS a candidate; never fabricates/errors).
+class TestStockMissFallThrough:
+    def test_404_page_yields_none_not_error(self):
+        """A 404/empty rewritten page → extract None (graceful), not an exception.
+        (Live-confirmed: the Bertolli/specific-Nutella /en-bh/ slugs 404.)"""
+        from app.services.price_service import extract_price_from_html
+        r = extract_price_from_html("<html><body>404 Not Found</body></html>",
+                                    "Bertolli olive oil", "BHD",
+                                    "gcc.luluhypermarket.com",
+                                    "https://gcc.luluhypermarket.com/en-bh/bertolli/")
+        assert r is None  # no price, no crash — cascade falls through
+
+    def test_harvest_still_adds_rewrite_even_if_pdp_may_404(self):
+        """The harvest ADDS the rewritten candidate regardless (it can't know the
+        PDP 404s until scraped); the scrape's None is what falls through."""
+        from app.services.structured_comparison_service import _harvest_candidate_urls
+        results = {"bahrain": {"organic": [
+            {"link": "https://gcc.luluhypermarket.com/en-kw/bertolli-olive-oil-1l/",
+             "title": "Bertolli Olive Oil 1L"}]}}
+        harvested = _harvest_candidate_urls(results, official_domain=None,
+                                            category="grocery", query_name="Bertolli olive oil")
+        links = [h[0] for h in harvested]
+        assert any("/en-bh/bertolli-olive-oil-1l" in l for l in links)
