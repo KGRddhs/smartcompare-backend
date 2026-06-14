@@ -69,7 +69,10 @@ def test_microdata_fallback_parses_price_when_ga_cards_absent():
     assert result["retailer"] == "iHerb"
     assert result["estimated"] is False
     assert "/pr/" in result["url"]
-    assert result["source_method"] == "converted_usd"
+    # S3-genuine label fix (team-lead 2026-06-14): bh.iherb.com prices natively in
+    # BHD → local_bhd, NOT converted_usd (a native-BHD price is genuine-BH and
+    # must not be miscounted as a conversion).
+    assert result["source_method"] == "local_bhd"
 
 
 def test_microdata_fallback_brand_matches_correct_product():

@@ -542,7 +542,9 @@ class TestScrapingModeSoftSkipsFirecrawl:
 
         captured_modes: list[str] = []
 
-        def _capture_build(*, candidate_urls, full_name, currency, scraping_mode):
+        def _capture_build(*, candidate_urls, full_name, currency, scraping_mode, wave=None):
+            # `wave` added — the Approach-A two-wave split calls this with
+            # wave="curl"/"render"; scraping_mode is forwarded to BOTH waves.
             captured_modes.append(scraping_mode)
             return []
 
@@ -620,17 +622,18 @@ class TestFallthroughToTier2WhenAllScrapersFail:
             fan_out_mock,
         )
 
-        # Stub BOTH Tier 2 paths — refactor may name the fallback either
-        # extract_price_from_organic or extract_price_from_training_data.
-        # Either satisfies the contract: a gpt_* source_method + nonzero amount.
+        # Stub the REAL Tier-2 paths the cascade calls: extract_price (organic
+        # GPT — the code calls THIS, not the old extract_price_from_organic name)
+        # + extract_price_from_training_data. A retailer-LESS organic extract →
+        # the cascade stamps gpt_organic_extract (the phantom fix: NOT local_bhd —
+        # a retailer-less GPT guess is not a cited genuine-BH price). This also
+        # exercises the phantom-price fix end-to-end.
         monkeypatch.setattr(
-            "app.services.structured_comparison_service.extract_price_from_organic",
+            "app.services.structured_comparison_service.extract_price",
             AsyncMock(return_value=(
-                {"amount": 2400, "currency": "USD",
-                 "source_method": "gpt_organic_extract"},
+                {"amount": 2400, "currency": "USD"},  # no retailer → gpt_organic_extract
                 {"prompt_tokens": 100, "completion_tokens": 50},
             )),
-            raising=False,
         )
         monkeypatch.setattr(
             "app.services.structured_comparison_service.extract_price_from_training_data",

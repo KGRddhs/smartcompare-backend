@@ -131,6 +131,76 @@ async def test_converted_tier1_used_when_bh_misses(monkeypatch, clean_service):
 
 
 @pytest.mark.asyncio
+async def test_global_only_escalation_builds_no_render_scrapers(monkeypatch, clean_service):
+    """Fix B structural latency proof (prod rollback): when the BH discovery
+    surfaces ONLY a GLOBAL url (samsung.com/us — the prod-bug shape), the render
+    wave must build ZERO render scrapers (no slow Firecrawl/Scrape.do on a global
+    page), and _get_price returns the parked converted_usd. This proves B removes
+    the render-on-global latency REGARDLESS of network — the structural cure for
+    the prod timeout. (The real curl scraper is stubbed so this is pure logic.)"""
+    from app.services import structured_comparison_service as scs_mod
+
+    _converted_tier1(monkeypatch, scs_mod)
+    monkeypatch.setattr(scs_mod, "get_official_domain", lambda *a, **kw: None)
+    monkeypatch.setattr(scs_mod, "fetch_shopify_price", AsyncMock(return_value=None))
+    # Discovery surfaces ONLY a global samsung.com/us page (the prod-bug shape).
+    monkeypatch.setattr(
+        scs_mod, "search_web",
+        AsyncMock(return_value={"organic": [
+            {"link": "https://www.samsung.com/us/smartphones/galaxy-s24/"}
+        ]}),
+    )
+
+    # Spy on _build_escalation_scrapers to capture the render-wave scraper count.
+    captured = {"render_count": None, "curl_count": None}
+    real_build = scs_mod._build_escalation_scrapers
+
+    def _spy(*, candidate_urls, full_name, currency, scraping_mode, wave="all"):
+        scrapers = real_build(
+            candidate_urls=candidate_urls, full_name=full_name,
+            currency=currency, scraping_mode=scraping_mode, wave=wave,
+        )
+        if wave == "render":
+            captured["render_count"] = len(scrapers)
+        elif wave == "curl":
+            captured["curl_count"] = len(scrapers)
+        return scrapers
+    monkeypatch.setattr(scs_mod, "_build_escalation_scrapers", _spy)
+    # fan_out yields nothing (the global curl finds no BH price); estimate exists.
+    monkeypatch.setattr(scs_mod, "fan_out_price_lookup", AsyncMock(return_value={"best": None}))
+    monkeypatch.setattr(scs_mod, "search_price_organic",
+                        AsyncMock(return_value={"organic": [], "knowledge_graph": None}))
+    monkeypatch.setattr(scs_mod, "extract_price", AsyncMock(return_value=(None, {})))
+    monkeypatch.setattr(
+        scs_mod, "extract_price_from_training_data",
+        AsyncMock(return_value=({"amount": 290.0, "currency": "BHD"}, {})),
+    )
+
+    # Query iPhone 15 to match the _converted_tier1 Walmart shopping item (so the
+    # gl=us converted price parks). The global discovery url is samsung.com/us
+    # purely to exercise the global-render-skip — the matched parked price is the
+    # iPhone Walmart one.
+    result = await clean_service._get_price(
+        brand="Apple", name="iPhone 15", variant="128GB", region="bahrain",
+        search_query="Apple iPhone 15 128GB price", nocache=True,
+        category="electronics",
+    )
+    # Non-vacuous: samsung.com DID enter candidate_urls (via OFFICIAL_BRAND_DOMAINS
+    # legacy-fallback — the exact prod-bug path) so the curl wave saw it.
+    assert captured["curl_count"] is not None and captured["curl_count"] >= 1, (
+        "global url must have entered candidate_urls (else the render==0 is vacuous)"
+    )
+    # THE STRUCTURAL CURE: the render wave built ZERO scrapers for the global URL
+    # (no Firecrawl/Scrape.do on samsung.com/us — that was the prod budget+timeout).
+    assert captured["render_count"] == 0, (
+        "render wave must build 0 scrapers for a global-only candidate (Fix B)"
+    )
+    # And the parked converted_usd is returned (Fix A path), never None/estimate.
+    assert result is not None
+    assert result["source_method"] == "converted_usd"
+
+
+@pytest.mark.asyncio
 async def test_genuine_local_bhd_tier1_still_short_circuits(monkeypatch, clean_service):
     """A GENUINE local_bhd Tier-1 price (already a real BH price) MAY still
     early-exit — the parking applies ONLY to converted prices. (Here Tier-1

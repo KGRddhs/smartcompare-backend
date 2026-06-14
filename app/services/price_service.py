@@ -1643,9 +1643,18 @@ async def fetch_iherb_price(
         if not best:
             return None
 
+        # S3-genuine (team-lead 2026-06-14) — the regional iHerb storefront
+        # ({region_code}.iherb.com) serves its data-ga-discount-price NATIVELY in
+        # the region currency (bh.iherb.com → BHD). A native-BHD price is GENUINE
+        # → stamp local_bhd, NOT converted_usd. Labeling it converted_usd
+        # undercounts the genuine-BH-price-share (a real BHD price miscounted as a
+        # conversion). Rule: original_currency == region currency → local_bhd;
+        # only a genuinely-foreign-origin price is converted_usd.
+        _origin = currency  # the regional storefront prices in the region currency
+        _genuine_bh = str(_origin).upper() == str(currency).upper()
         return {
             "amount": best["price"],
-            "original_currency": currency,
+            "original_currency": _origin,
             "currency": currency,
             "retailer": "iHerb",
             "url": best["url"],
@@ -1655,7 +1664,7 @@ async def fetch_iherb_price(
             "_cached": False,
             "iherb_rating": best.get("rating"),
             "iherb_review_count": best.get("review_count"),
-            "source_method": "converted_usd",
+            "source_method": "local_bhd" if _genuine_bh else "converted_usd",
         }
     except Exception as e:
         logger.warning(f"[PRICE] iHerb direct fetch failed: {e}")

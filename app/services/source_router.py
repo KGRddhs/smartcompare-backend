@@ -370,6 +370,31 @@ def is_wrong_locale_url(url: str) -> bool:
     return any(seg in path for seg in _WRONG_GCC_LOCALE_SEGMENTS)
 
 
+def is_render_only_domain(domain_or_url: str) -> bool:
+    """True iff `domain_or_url` resolves to a registry Source marked
+    is_render_only (a JS-SPA whose static curl yields no price). The Approach-A
+    curl wave SKIPS these (a curl is wasted) and the render wave INCLUDES them.
+    Accepts a bare domain or a full URL."""
+    if not domain_or_url:
+        return False
+    host = domain_or_url
+    if "://" in domain_or_url or "/" in domain_or_url:
+        try:
+            host = urlparse(
+                domain_or_url if "://" in domain_or_url else "//" + domain_or_url
+            ).netloc or domain_or_url
+        except (ValueError, TypeError):
+            host = domain_or_url
+    host = host.replace("www.", "").lower()
+    for s in SOURCE_REGISTRY:
+        if not getattr(s, "is_render_only", False):
+            continue
+        d = s.domain.replace("www.", "").lower()
+        if host == d or host.endswith("." + d) or d.endswith("." + host):
+            return True
+    return False
+
+
 def build_site_discovery_query(
     product_query: str, category: str, tier: str = "bahrain", limit: int = 4
 ) -> str:
