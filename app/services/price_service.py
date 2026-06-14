@@ -1939,23 +1939,68 @@ def _candidates_agree(a: dict, b: dict, tolerance: float = AGREEMENT_PCT) -> boo
 
 
 def _confirmed(candidates: List[dict]) -> bool:
-    """True iff: (a) any candidate has rank >= HIGH_RANK_THRESHOLD, or
-       (b) any pair of candidates agrees within AGREEMENT_PCT."""
-    for c in candidates:
+    """True iff a GENUINE candidate confirms the race: (a) a genuine candidate
+    has rank >= HIGH_RANK_THRESHOLD, or (b) two GENUINE candidates agree within
+    AGREEMENT_PCT.
+
+    S3 electronics-authority (prod-verify fix): confirmation ends the race and
+    CANCELS pending scrapers. A converted_usd/estimated candidate must NOT
+    trigger it — apple.com's converted_usd curl (rank 85) was confirming early
+    and cancelling sharafdg's pending GENUINE curl before it could win. Only a
+    genuine BH price ends the race; a converted figure waits for the genuine one."""
+    genuine = [c for c in candidates if _is_genuine_bh_candidate(c)]
+    for c in genuine:
         if c.get("rank", 0) >= HIGH_RANK_THRESHOLD:
             return True
-    for i in range(len(candidates)):
-        for j in range(i + 1, len(candidates)):
-            if _candidates_agree(candidates[i], candidates[j]):
+    for i in range(len(genuine)):
+        for j in range(i + 1, len(genuine)):
+            if _candidates_agree(genuine[i], genuine[j]):
                 return True
     return False
 
 
+# S3 electronics-authority (prod-verify fix) — genuine BH source-methods. A
+# candidate carrying one of these is a real Bahrain shelf price; a converted_usd
+# / estimated one is a foreign/guessed figure. The fan_out winner MUST prefer a
+# genuine BH price over a converted one REGARDLESS of price/rank (CLAUDE.md
+# "MOST AUTHORITATIVE not lowest"). Prod-verify: apple.com converted 198.9
+# (rank 85) was beating the genuine sharafdg page_scrape 244.99 (rank 85) on the
+# lowest-value tie-break.
+_GENUINE_BH_SOURCE_METHODS = frozenset({
+    "page_scrape", "page_scrape_jsonld", "page_scrape_rendered",
+    "local_bhd", "shopify_json", "firecrawl", "scrapedo_rendered",
+    "official_brand",
+})
+
+
+def _is_genuine_bh_candidate(c: dict) -> bool:
+    """True iff a fan_out candidate is a genuine BH price (not converted/estimate).
+    Checks both the candidate's source_method and its raw_data's (the curl
+    scraper stamps the genuine method on raw_data; a global-tier downgrade sets
+    converted_usd on both)."""
+    sm = (c.get("source_method") or "")
+    raw_sm = ((c.get("raw_data") or {}).get("source_method") or "")
+    # converted/estimate on EITHER disqualifies (a global-tier downgrade stamps
+    # converted_usd on raw_data even when the rank-name was page_scrape_jsonld).
+    if "converted" in sm or "converted" in raw_sm or "estimated" in sm or "estimated" in raw_sm:
+        return False
+    return sm in _GENUINE_BH_SOURCE_METHODS or raw_sm in _GENUINE_BH_SOURCE_METHODS
+
+
 def _select_best(candidates: List[dict]) -> Optional[dict]:
-    """Highest-rank wins; ties broken by lowest value."""
+    """Pick the fan_out winner. AUTHORITY first: a genuine BH price beats a
+    converted_usd/estimated one regardless of rank/price. Within the same
+    authority tier: highest-rank wins, ties broken by lowest value."""
     if not candidates:
         return None
-    return max(candidates, key=lambda c: (c.get("rank", 0), -float(c.get("value", 0))))
+    return max(
+        candidates,
+        key=lambda c: (
+            1 if _is_genuine_bh_candidate(c) else 0,  # genuine BH tier first
+            c.get("rank", 0),
+            -float(c.get("value", 0)),
+        ),
+    )
 
 
 async def fan_out_price_lookup(
