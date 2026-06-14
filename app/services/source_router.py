@@ -31,6 +31,12 @@ class Source:
     # render credits) before the Serper site: discovery. Default False → every
     # legacy row unchanged; only verified-Shopify BH stores are tagged.
     is_shopify: bool = False
+    # S3-genuine (2026-06-14) — JS-SPA store whose STATIC curl HTML carries no
+    # usable price (confirmed by curling the PDP through the extractor). When
+    # True, the cascade EXCLUDES it from the free curl-direct harvest (a curl is
+    # wasted) and INCLUDES it in the budget-gated Firecrawl/Scrape.do render-tier
+    # escalation. The store is real + priced — just render-needed. Default False.
+    is_render_only: bool = False
 
 
 SOURCE_REGISTRY: List[Source] = [
@@ -63,8 +69,12 @@ SOURCE_REGISTRY: List[Source] = [
         "bahrain",
         ("supplements", "skincare", "makeup", "haircare"),
         3.0,
+        is_render_only=True,  # JS-SPA: no static curl price → render-tier
     ),
-    Source("bolo.bh", "bahrain", ("supplements", "makeup", "skincare"), 3.0),
+    Source(
+        "bolo.bh", "bahrain", ("supplements", "makeup", "skincare"), 3.0,
+        is_render_only=True,  # Vue SPA (not Google-indexed) → render-tier
+    ),
     # S3-genuine gap-fill (2026-06-14, Decision-F): behbehani.com +
     # jumboelectronics.com DELETED — both are 200-but-NOT-a-store
     # (jumbo = 114-byte parked /lander redirect; behbehani = brochure splash, no
@@ -74,15 +84,21 @@ SOURCE_REGISTRY: List[Source] = [
     # spinneysbahrain.com DELETED (I5.11 liveness gate 2026-06-12): NXDOMAIN;
     # spinneys.com live but no Bahrain storefront evidence (Decision F: never
     # fabricate). Re-add when a verified Bahrain-serving domain exists (S3).
-    Source("megamart.bh", "bahrain", ("grocery",), 3.0),
+    # megamart.bh — PDP curl Decision-F (2026-06-14): Angular SPA shell, the
+    # "BD 3.455" price is JS-rendered (ZERO price in static curl HTML) → render-tier.
+    Source("megamart.bh", "bahrain", ("grocery",), 3.0, is_render_only=True),
     # F1.5 expansion (verified live 2026-06-10) — Bahrain grocery + pharmacy
     # gaps. RATIFICATION REQUIRED (F1.5 checkpoint) before merge.
-    Source("alosraonline.com", "bahrain", ("grocery",), 3.0),  # Alosra (BMMI)
+    Source(
+        "alosraonline.com", "bahrain", ("grocery",), 3.0,
+        is_render_only=True,  # Alosra (BMMI) — JS-SPA → render-tier
+    ),
     Source(
         "nasserpharmacy.com",
         "bahrain",
         ("supplements", "skincare", "makeup", "haircare", "fragrances"),
         3.0,
+        is_render_only=True,  # Nasser Pharmacy — JS-SPA → render-tier
     ),  # Nasser Pharmacy — Bahrain's largest chain, 10k+ health/beauty SKUs
     Source(
         "bahrainpharmacy.com",

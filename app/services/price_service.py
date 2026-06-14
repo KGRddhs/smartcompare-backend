@@ -564,6 +564,8 @@ def build_direct_bh_candidates(
             continue
         if getattr(s, "is_shopify", False):
             continue  # Shopify has its own /products.json path.
+        if getattr(s, "is_render_only", False):
+            continue  # JS-SPA — a curl yields nothing; goes via the render tier.
         url = build_retailer_url(s.domain, full_name)
         if not url or url in seen:
             continue
