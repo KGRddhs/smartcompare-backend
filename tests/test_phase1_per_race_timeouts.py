@@ -86,17 +86,31 @@ async def test_one_slow_race_does_not_drag_others():
 async def test_per_race_timeouts_constants_are_defined_and_sane():
     """Documentation invariant: the timeout map must exist with reasonable
     values that respect STREAM_HARD_CAP_SECONDS=25s envelope."""
-    # The map is local to `_fetch_product_data`; we verify via inspecting
-    # source rather than importing, since constants are intentionally
-    # method-scoped (rebound per request future-proofs runtime tuning).
+    # The map is local to `_fetch_product_data`; we verify its structural
+    # presence via source inspection, but assert the PRICE cap VALUE against
+    # the module-level constant it now binds to.
     import inspect
 
-    from app.services.structured_comparison_service import StructuredComparisonService
+    from app.services.structured_comparison_service import (
+        StructuredComparisonService,
+        _PRICE_RACE_TIMEOUT,
+    )
 
     source = inspect.getsource(StructuredComparisonService._fetch_product_data)
     assert "_PHASE1_TIMEOUTS" in source, "per-race timeout map missing"
-    # I5.7 (Decision D pre-authorized): price cap tightened 18.0 -> 15.0.
-    assert "\"price\": 15.0" in source or "'price': 15.0" in source
+    # Fix A (s3-genuine prod-hardening): the price cap is bound to the
+    # module-level _PRICE_RACE_TIMEOUT constant (test-patchable for the
+    # timeout->parked test) rather than an inline literal. The map must
+    # reference that constant for the "price" key.
+    assert "\"price\": _PRICE_RACE_TIMEOUT" in source, (
+        "price race cap must bind to the module-level _PRICE_RACE_TIMEOUT"
+    )
+    # I5.7 (Decision D pre-authorized): price cap == 15.0 (tightened 18.0->15.0).
+    # Asserted on the constant VALUE so the literal-vs-constant refactor can't
+    # silently drift the actual cap.
+    assert _PRICE_RACE_TIMEOUT == 15.0, (
+        f"price race cap is {_PRICE_RACE_TIMEOUT}s, expected the I5.7 15.0s cap"
+    )
     assert "asyncio.wait_for" in source, (
         "races must be wrapped in asyncio.wait_for"
     )
