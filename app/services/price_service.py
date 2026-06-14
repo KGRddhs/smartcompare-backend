@@ -438,6 +438,29 @@ def is_high_value_query(product_name: str) -> bool:
     return any(kw in name_lower for kw in HIGH_VALUE_KEYWORDS)
 
 
+# Wrong-scrape guard (Ahmed's hard line: "no wrong scrapes"). A genuine BH scrape
+# can land on an ACCESSORY listing — a "Galaxy S24" case at 11.9 BHD — whose title
+# dodges the is_accessory keyword filter; the cascade then caches it as a genuine
+# BH price. is_price_plausible only floors at ~0.1x the category budget-breakpoint
+# (~10 BHD for electronics), so an 11.9 accessory slips through. For a HIGH-VALUE
+# product (phone/laptop/console/GPU) any price below this floor is almost always a
+# wrong-product hit (real units are >= ~100 BHD). Reject it on the genuine paths so
+# the cascade falls through to an HONEST converted/estimated figure instead of a
+# wrong "genuine" one. NON-high-value categories are untouched (is_high_value_query
+# is False for fragrances ~18 BHD, supplements ~5 BHD, makeup, grocery).
+HIGH_VALUE_PRICE_FLOOR_BHD = 50.0
+
+
+def is_implausible_high_value_price(product_name: str, amount: Optional[float]) -> bool:
+    """True iff `product_name` is a high-value product but `amount` (BHD) is
+    implausibly low — a likely accessory / wrong-product scrape that must NOT be
+    served as a genuine price. False for non-high-value products and for
+    missing/zero amounts (nothing to reject)."""
+    if amount is None or amount <= 0:
+        return False
+    return is_high_value_query(product_name) and amount < HIGH_VALUE_PRICE_FLOOR_BHD
+
+
 def is_luxury_brand(product_name: str) -> bool:
     """Check if the product is from a luxury/designer brand."""
     name_lower = product_name.lower()

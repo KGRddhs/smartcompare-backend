@@ -483,6 +483,7 @@ from app.services.price_service import (
     is_counterfeit_listing,
     is_accessory,
     is_high_value_query,
+    is_implausible_high_value_price,
     is_price_plausible,
     is_luxury_brand,
     is_supplement_query,
@@ -3178,7 +3179,7 @@ class StructuredComparisonService:
                 # installment / accessory / currency error) is dropped — and
                 # dropping it falls through to the BH scrape cascade, never
                 # promotes it. No estimate is fetched here just to veto.
-                if not is_price_plausible(_convert_to_bhd(price["amount"], currency), category):
+                if not is_price_plausible(_convert_to_bhd(price["amount"], currency), category) or is_implausible_high_value_price(full_name, _convert_to_bhd(price["amount"], currency)):
                     price = None
             if price and price.get("amount"):
                 price.pop("retailer_score", None)
@@ -3364,6 +3365,10 @@ class StructuredComparisonService:
                 algolia_best = None
                 for r in algolia_results:
                     if isinstance(r, dict) and r.get("amount") and r["amount"] > 0:
+                        # Wrong-scrape guard — skip an implausibly-low high-value hit
+                        # (an accessory the keyword filter missed) so it can't win.
+                        if is_implausible_high_value_price(full_name, r.get("amount")):
+                            continue
                         if algolia_best is None or r["amount"] < algolia_best["amount"]:
                             algolia_best = r
                 if algolia_best:
@@ -3527,6 +3532,18 @@ class StructuredComparisonService:
                         return None
                     winning_price = best["raw_data"]
                     winning_price["source_method"] = best.get("source_method", "page_scrape")
+                    # Wrong-scrape guard (no wrong scrapes) — a fan_out curl can land
+                    # on an accessory PDP (a "Galaxy S24" case at 11.9 BHD) the
+                    # is_accessory keyword filter missed. Reject an implausibly-low
+                    # high-value price so the cascade falls through to an honest
+                    # converted/estimated figure instead of caching a wrong "genuine".
+                    if is_implausible_high_value_price(full_name, winning_price.get("amount")):
+                        logger.info(
+                            "[PRICE] fan_out winner %.3f for %s rejected as implausible "
+                            "high-value (accessory/wrong-product?) — falling through",
+                            winning_price.get("amount") or 0.0, full_name,
+                        )
+                        return None
                     win_domain = str(winning_price.get("retailer") or "").replace("www.", "").lower()
                     for _link, _label, _route, _weight in harvested:
                         if _label.lower() == win_domain or win_domain.endswith("." + _label.lower()) or _label.lower().endswith("." + win_domain):
@@ -3743,7 +3760,33 @@ class StructuredComparisonService:
                 # wrong-scrape (installment / accessory / currency error) — it is
                 # DROPPED (not promoted) so the cascade falls to the tier-8
                 # estimate, the lesser evil. No GPT estimate is fetched to veto.
-                if not is_price_plausible(_convert_to_bhd(price["amount"], currency), category):
+                # Accuracy guard (Ahmed: "no wrong scrapes", ALL categories) — a
+                # cited price extracted from search snippets can be the WRONG SKU (a
+                # 537 BHD S24-Ultra listing matched to an "S24" query). When a parked
+                # converted_usd reference exists (a url-backed gl=us real price), a
+                # cited number deviating wildly from it (>2.5x or <0.4x) is almost
+                # certainly the wrong product — drop it so the verifiable converted
+                # tier wins. Plain category plausibility bounds are too loose to
+                # separate an S24 (~126) from an S24 Ultra (~537); the converted
+                # reference is the per-product anchor. NO reference -> KEEP the cited
+                # price (best real signal we have; preserves organic-beats-estimate).
+                # Category-general: fires wherever a converted reference exists.
+                _bhd_amt = _convert_to_bhd(price["amount"], currency)
+                _ref_bhd = None
+                if converted_fallback and converted_fallback.get("amount"):
+                    _ref_bhd = _convert_to_bhd(
+                        converted_fallback["amount"],
+                        converted_fallback.get("currency", currency),
+                    )
+                _wrong_sku = bool(
+                    _ref_bhd and _ref_bhd > 0
+                    and not (0.4 <= _bhd_amt / _ref_bhd <= 2.5)
+                )
+                if (
+                    _wrong_sku
+                    or not is_price_plausible(_bhd_amt, category)
+                    or is_implausible_high_value_price(full_name, _bhd_amt)
+                ):
                     price = None
             if price and price.get("amount"):
                 if price.get("retailer") and not price.get("url"):
