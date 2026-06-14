@@ -558,10 +558,24 @@ def extract_price_from_shopping(
     product_name: str,
     shopping_items: List[Dict],
     currency: str,
+    shopping_region: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Extract best matching price from Serper Shopping results."""
+    """Extract best matching price from Serper Shopping results.
+
+    S3-reopen T2 (honest labels) — `shopping_region` is the gl region the items
+    came from (`search_product_prices` returns it as `shopping_region`). When it
+    is the gl=us fallback (``"us_fallback"`` / ``"us"``), OR a candidate's price
+    string was in a non-target currency and got converted, that candidate is
+    stamped ``converted_usd`` — NEVER ``local_bhd``. Only genuinely native-BHD
+    prices get ``local_bhd``. Ahmed's directive: US-converted is an HONEST
+    last-resort label, not a fake local price.
+    """
     if not shopping_items:
         return None
+
+    region_is_us_fallback = str(shopping_region or "").lower() in (
+        "us_fallback", "us",
+    )
 
     # L2 content safety — drop unsafe shopping items before pricing/ranking
     # logic runs. Inline import avoids circular-import risk at module load.
@@ -591,6 +605,12 @@ def extract_price_from_shopping(
             continue
 
         detected_cur = detect_currency(price_str)
+        # T2 — a candidate is "converted" if its price string was a non-target
+        # currency (so we converted it), OR the items came from the gl=us
+        # fallback region (their prices are US even when the string is bare).
+        item_converted = region_is_us_fallback or bool(
+            detected_cur and detected_cur != currency
+        )
         if detected_cur and detected_cur != currency:
             amount = _convert_to_bhd(amount, detected_cur)
             if currency != "BHD":
@@ -631,7 +651,9 @@ def extract_price_from_shopping(
             "retailer": retailer,
             "url": item.get("link") or build_retailer_url(retailer, product_name),
             "in_stock": True,
-            "source_method": "local_bhd",
+            # T2 — honest label: converted_usd for gl=us-fallback / converted
+            # prices, local_bhd only for genuinely native-BHD listings.
+            "source_method": "converted_usd" if item_converted else "local_bhd",
             "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
             "match_score": match_score,
             "retailer_score": retailer_score,

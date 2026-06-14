@@ -1162,8 +1162,8 @@ class StructuredComparisonService:
     def _build_fact_check(self, product: Dict) -> Dict:
         return build_fact_check(product)
 
-    def _extract_price_from_shopping(self, product_name: str, shopping_items: List[Dict], currency: str) -> Optional[Dict[str, Any]]:
-        return extract_price_from_shopping(product_name, shopping_items, currency)
+    def _extract_price_from_shopping(self, product_name: str, shopping_items: List[Dict], currency: str, shopping_region: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        return extract_price_from_shopping(product_name, shopping_items, currency, shopping_region=shopping_region)
 
     def _extract_price_from_html(self, html: str, product_name: str, currency: str, domain: str, url: str) -> Optional[Dict[str, Any]]:
         return extract_price_from_html(html, product_name, currency, domain, url)
@@ -2788,6 +2788,7 @@ class StructuredComparisonService:
         is_supplement = (category == "supplements") or is_supplement_query(full_name)
 
         # --- Tier 1: Direct Serper Shopping extraction ---
+        shopping_region = None  # T2 — gl region the shopping items came from
         if is_supplement:
             search_results = {"shopping": [], "organic": []}
             shopping_items = []
@@ -2810,7 +2811,9 @@ class StructuredComparisonService:
 
         tier3_estimate = None
 
-        price = extract_price_from_shopping(full_name, shopping_items, currency)
+        price = extract_price_from_shopping(
+            full_name, shopping_items, currency, shopping_region=shopping_region
+        )
         if price and price.get("amount"):
             if price.get("retailer_score", 0) >= 1.0:
                 pass  # Official domain — skip sanity check
@@ -3291,7 +3294,10 @@ class StructuredComparisonService:
             self._track_serper_cost()
             broader_shopping = broader_results.get("shopping", [])
             if broader_shopping:
-                price = extract_price_from_shopping(broader_name, broader_shopping, currency)
+                price = extract_price_from_shopping(
+                    broader_name, broader_shopping, currency,
+                    shopping_region=broader_results.get("shopping_region"),
+                )
                 if price and price.get("amount"):
                     price.pop("retailer_score", None)
                     set_cached(cache_key, price, PRICE_CACHE_TTL)
