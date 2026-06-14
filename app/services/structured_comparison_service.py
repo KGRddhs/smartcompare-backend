@@ -2826,6 +2826,13 @@ class StructuredComparisonService:
             )
 
         tier3_estimate = None
+        # S3-genuine (Approach A, team-lead-approved 2026-06-14) — a CONVERTED_USD
+        # Tier-1 price is PARKED here, not returned, so the genuine-BH curl tier
+        # (Tier-1.5) runs and can WIN. §5 ordering: genuine-BH (tier 1-5) beats
+        # converted_usd (tier-7). The parked converted price is the fallback ONLY
+        # after BH curl+render miss (before the GPT estimate). A GENUINE Tier-1
+        # price (local_bhd / page_scrape) still short-circuits below.
+        converted_fallback = None
 
         price = extract_price_from_shopping(
             full_name, shopping_items, currency, shopping_region=shopping_region
@@ -2849,10 +2856,16 @@ class StructuredComparisonService:
                     price = None
             if price and price.get("amount"):
                 price.pop("retailer_score", None)
-                set_cached(cache_key, price, PRICE_CACHE_TTL)
-                self._save_price_to_db(cache_key, brand, name, variant, region, price)
-                price["_cached"] = False
-                return price
+                # Approach A — PARK a CONVERTED_USD Tier-1 price; defer to the
+                # genuine-BH Tier-1.5 curl tier below. A genuine Tier-1 price
+                # (local_bhd / page_scrape / any non-converted) short-circuits now.
+                if price.get("source_method") == "converted_usd":
+                    converted_fallback = dict(price)
+                else:
+                    set_cached(cache_key, price, PRICE_CACHE_TTL)
+                    self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                    price["_cached"] = False
+                    return price
 
         # --- Tier 1.5: Page scraping cascade (confidence-driven, all categories) ---
         # L2.5 — replaced the legacy is_luxury_brand() gate with
@@ -3311,6 +3324,24 @@ class StructuredComparisonService:
                     self._save_price_to_db(cache_key, brand, name, variant, region, price)
                     price["_cached"] = False
                     return price
+
+        # --- §5 tier-7: parked CONVERTED_USD fallback (before the GPT estimate) ---
+        # Approach A — the genuine-BH curl+render tiers + broader search all
+        # missed; the converted_usd Tier-1 price we parked is a REAL cited price
+        # (gl=us, labeled indicative), so it BEATS the GPT estimate (tier-8).
+        if converted_fallback and converted_fallback.get("amount"):
+            if converted_fallback.get("retailer") and not converted_fallback.get("url"):
+                converted_fallback["url"] = build_retailer_url(
+                    converted_fallback["retailer"], full_name
+                )
+            set_cached(cache_key, converted_fallback, PRICE_CACHE_TTL)
+            self._save_price_to_db(cache_key, brand, name, variant, region, converted_fallback)
+            converted_fallback["_cached"] = False
+            logger.info(
+                "[PRICE] parked converted_usd fallback used for %s (BH curl+render "
+                "missed; beats GPT estimate)", full_name,
+            )
+            return converted_fallback
 
         # --- Tier 3: GPT training data fallback ---
         if tier3_estimate is None:
