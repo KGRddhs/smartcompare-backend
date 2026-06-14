@@ -155,8 +155,59 @@ async def test_tier2_organic_real_price_not_swapped_for_estimate(monkeypatch, cl
     assert result["source_method"] != "estimated"
     assert result.get("estimated") is not True
     assert result["amount"] == pytest.approx(310.0)
-    # A genuinely-BHD extracted price stays local_bhd (honest).
+    # A genuinely-BHD extracted price WITH A REAL RETAILER stays local_bhd (cited).
     assert result["source_method"] == "local_bhd"
+
+
+@pytest.mark.asyncio
+async def test_tier2_organic_NO_retailer_is_not_phantom_local_bhd(monkeypatch, clean_service):
+    """PHANTOM-PRICE FIX (team-lead gate-review 2026-06-14): a Tier-2 GPT-organic
+    extract with NO retailer is a GUESS from search snippets, NOT a cited genuine
+    BH retailer price — it must NOT be stamped local_bhd (a fabricated genuine-BH
+    label violates Ahmed's no-fabrication directive). retailer=None + local_bhd
+    was the red flag. Such a price carries gpt_organic_extract instead."""
+    from app.services import structured_comparison_service as scs_mod
+
+    # No Tier-1, no BH curl — force the Tier-2 GPT-organic path.
+    monkeypatch.setattr(
+        scs_mod, "search_product_prices",
+        AsyncMock(return_value={"shopping": [], "organic": [], "shopping_region": "bh"}),
+    )
+    monkeypatch.setattr(scs_mod, "get_official_domain", lambda *a, **kw: None)
+    monkeypatch.setattr(scs_mod, "fetch_shopify_price", AsyncMock(return_value=None))
+    monkeypatch.setattr(scs_mod, "search_web", AsyncMock(return_value={"organic": []}))
+    monkeypatch.setattr(scs_mod, "fan_out_price_lookup", AsyncMock(return_value={"best": None}))
+    monkeypatch.setattr(
+        scs_mod, "search_price_organic",
+        AsyncMock(return_value={"organic": [{"link": "https://example.com/x"}],
+                                "knowledge_graph": None}),
+    )
+    # Tier-2 GPT extract: a price with NO retailer, BHD currency (the phantom shape).
+    monkeypatch.setattr(
+        scs_mod, "extract_price",
+        AsyncMock(return_value=(
+            {"amount": 649.95, "currency": "BHD", "original_currency": "BHD"},  # no retailer
+            {},
+        )),
+    )
+    monkeypatch.setattr(
+        scs_mod, "extract_price_from_training_data",
+        AsyncMock(return_value=({"amount": 700.0, "currency": "BHD"}, {})),
+    )
+
+    result = await clean_service._get_price(
+        brand="Some", name="Luxury Bag", variant=None, region="bahrain",
+        search_query="Some Luxury Bag price", nocache=True, category="fashion",
+    )
+    assert result is not None
+    # THE FIX: a no-retailer GPT-organic extract is NOT a phantom local_bhd.
+    assert result.get("source_method") != "local_bhd", (
+        f"phantom: a retailer-less GPT-organic extract stamped local_bhd "
+        f"(fabricated genuine-BH). Got: {result}"
+    )
+    assert result.get("source_method") != "converted_usd"
+    # It carries the honest gpt_organic_extract label (a guess, not a cited price).
+    assert result.get("source_method") == "gpt_organic_extract"
 
 
 @pytest.mark.asyncio

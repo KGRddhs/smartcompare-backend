@@ -3345,8 +3345,20 @@ class StructuredComparisonService:
         sanitize_gpt_price(price)
         _convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
+            # PHANTOM-PRICE FIX (team-lead gate-review 2026-06-14): a Tier-2
+            # GPT-organic extract WITHOUT a retailer is a GUESS from search
+            # snippets, NOT a cited genuine-BH retailer price — it must NOT be
+            # stamped local_bhd (a fabricated genuine-BH label violates Ahmed's
+            # no-fabrication directive; retailer=None + local_bhd was the red
+            # flag). Only a GPT extract that names a real retailer (e.g. "noon BHD
+            # 244" lifted from a snippet) is a cited price → local_bhd/converted.
+            # Supplements get the iHerb retailer assigned below, so they qualify.
+            _has_retailer = bool(price.get("retailer")) or (is_supplement and iherb_organic)
             original_cur = price.get("original_currency", "").upper()
-            if original_cur and original_cur != currency:
+            if not _has_retailer:
+                # Retailer-less GPT guess — honest gpt_* label, never genuine-BH.
+                price["source_method"] = "gpt_organic_extract"
+            elif original_cur and original_cur != currency:
                 price["source_method"] = "converted_usd"
             else:
                 price["source_method"] = "local_bhd"
