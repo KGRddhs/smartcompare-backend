@@ -1020,8 +1020,9 @@ def extract_price_from_html(
     # bahrainpharmacy.com/store PDPs are WooCommerce with an EMPTY JSON-LD Offer
     # (price=None) and no OG/microdata — the real price is in a
     # `.woocommerce-Price-amount` span (<bdi>VALUE<span
-    # class="woocommerce-Price-currencySymbol">BHD</span></bdi>). The FIRST such
-    # span on the page is the product price (later ones are related products).
+    # class="woocommerce-Price-currencySymbol">BHD</span></bdi>). The first such
+    # span NOT inside a <del> is the product price (a <del> wraps a crossed-out
+    # sale original; later spans are related products).
     wc = _extract_woocommerce_price(soup, currency, domain, url)
     if wc:
         return wc
@@ -1035,12 +1036,25 @@ def _extract_woocommerce_price(
     """Extract a price from a WooCommerce `.woocommerce-Price-amount` span.
 
     Reads the FIRST such span (the product price; later ones are related
-    products). The numeric is the span text minus the currency-symbol child;
-    the currency comes from `.woocommerce-Price-currencySymbol` (BHD on a BH
-    page), normalized .upper(). Returns a ``page_scrape`` dict or None.
+    products) — but SKIPS a crossed-out original inside a `<del>` (on a SALE
+    item the markup is `<del>OLD</del> <ins>NEW</ins>`; the first amount is the
+    pre-sale price). Prefers the `<ins>`/non-`<del>` sale price. The numeric is
+    the span text minus the currency-symbol child; the currency comes from
+    `.woocommerce-Price-currencySymbol` (BHD on a BH page), normalized .upper().
+    Returns a ``page_scrape`` dict or None.
     """
-    span = soup.find(class_="woocommerce-Price-amount")
-    if not span:
+    # S3-genuine (team-lead #3 scope) — take the MAIN price, NOT a crossed-out
+    # original. WooCommerce sale markup nests the old price in <del> and the
+    # sale price in <ins>; pick the first amount NOT inside a <del>.
+    span = None
+    for cand in soup.find_all(class_="woocommerce-Price-amount"):
+        # find_parent("del") walks ancestors — a price inside <del> is the
+        # struck-out original; skip it.
+        if cand.find_parent("del") is not None:
+            continue
+        span = cand
+        break
+    if span is None:
         return None
     # Currency from the symbol child (strip it out of the numeric text after).
     sym = span.find(class_="woocommerce-Price-currencySymbol")

@@ -70,6 +70,49 @@ class TestWooCommercePriceSpan:
         assert res is None
 
 
+class TestWooCommerceSalePrice:
+    def test_sale_price_skips_crossed_out_original(self):
+        """Team-lead #3 scope: on a WooCommerce SALE item the markup is
+        <del><span class=woocommerce-Price-amount>OLD</span></del>
+        <ins><span class=woocommerce-Price-amount>NEW</span></ins>. The FIRST
+        .woocommerce-Price-amount is the CROSSED-OUT original (inside <del>) —
+        must be SKIPPED in favour of the <ins> sale price."""
+        html = """<html><body>
+        <p class="price">
+          <del aria-hidden="true"><span class="woocommerce-Price-amount amount"><bdi>5.000&nbsp;<span class="woocommerce-Price-currencySymbol">BHD&nbsp;</span></bdi></span></del>
+          <ins><span class="woocommerce-Price-amount amount"><bdi>3.250&nbsp;<span class="woocommerce-Price-currencySymbol">BHD&nbsp;</span></bdi></span></ins>
+        </p>
+        </body></html>"""
+        res = extract_price_from_html(
+            html, "Some Supplement", "BHD", "bahrainpharmacy.com",
+            "https://bahrainpharmacy.com/store/product/x/",
+        )
+        assert res is not None
+        assert res["amount"] == pytest.approx(3.250)   # the sale price
+        assert res["amount"] != pytest.approx(5.000)   # NOT the crossed-out original
+        assert res["currency"].upper() == "BHD"
+
+
+    def test_from_price_range_takes_first_main_price(self):
+        """A 'from' / price-range item (<span class=from>From </span> then a
+        range low–high) — the MAIN/first .woocommerce-Price-amount is taken (the
+        'from' low price), not a related-product price elsewhere on the page."""
+        html = """<html><body>
+        <p class="price"><span class="from">From </span>
+          <span class="woocommerce-Price-amount amount"><bdi>1.500&nbsp;<span class="woocommerce-Price-currencySymbol">BHD&nbsp;</span></bdi></span>
+          &ndash;
+          <span class="woocommerce-Price-amount amount"><bdi>4.000&nbsp;<span class="woocommerce-Price-currencySymbol">BHD&nbsp;</span></bdi></span>
+        </p>
+        <div class="related"><span class="woocommerce-Price-amount amount"><bdi>9.990&nbsp;<span class="woocommerce-Price-currencySymbol">BHD&nbsp;</span></bdi></span></div>
+        </body></html>"""
+        res = extract_price_from_html(
+            html, "Variable Product", "BHD", "bahrainpharmacy.com",
+            "https://bahrainpharmacy.com/store/product/x/",
+        )
+        assert res is not None
+        assert res["amount"] == pytest.approx(1.500)  # the 'from' low, not 9.990 related
+
+
 class TestWooCommerceLivePdp:
     """Against the captured live bahrainpharmacy PDP (if present)."""
 
