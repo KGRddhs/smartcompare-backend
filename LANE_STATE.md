@@ -22,7 +22,9 @@ Build genuine-BH price adapters to parallelize with L1, hand L1 the cascade wiri
 - [ ] #21.3 boutiqaat + sephora render rows — PART OF the L1 diff (registry rows only, render cascade already handles is_render_only):
       `Source("boutiqaat.com","bahrain",("makeup","skincare","fragrances","haircare"),3.0,is_render_only=True)` (Firecrawl SPA, /en-bh)
       `Source("sephora.me","bahrain",("makeup","skincare","haircare","fragrances"),3.0,is_render_only=True)` (Scrape.do residential, Akamai-walled, /bh-en — authoritative-misses only)
-- [x] Integration: import chain clean (no cycle); 207 source-router/shopify/registry tests + 14 algolia = green.
+- [x] Integration: import chain clean (no cycle); 207 source-router/shopify/registry tests + 17 algolia = green.
+- [x] L1 hardening: `variant_mismatch` guard in `_match_algolia_hit` (rejects prefix-variant SKU mismatch, e.g. "Galaxy S24"->"S24 Ultra"). Defensive import (no-op until alongside L1's price_service). 2 tests (reject + keep-exact). Pushed `bd07e75`; L1 to re-take into feature/s3-coverage. L1 confirmed harvester landed there ("Adidas Superstar -> 21 BHD MATCHED").
+- NOTE: L1 landed the wiring with CORRECTED `("fashion",)` tuple (not the 5 beauty cats). #32 completed.
 
 ## KEY FINDING (reported to team-lead) — 6thStreet index = FASHION-ONLY
 Live-verified (Tom Ford + Fenty + 4 diagnostic queries, all read-only): the harvested index `enterprise_magento_en_bh_products` is **FASHION/FOOTWEAR, NOT beauty**.
