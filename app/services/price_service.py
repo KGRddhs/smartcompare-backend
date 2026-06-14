@@ -604,17 +604,30 @@ def sanitize_gpt_price(price: Optional[Dict]) -> None:
 # replaces the old deviation-from-estimate veto at the two price sanity sites.
 _PLAUSIBILITY_FLOOR_MULT = 0.1   # reject below 0.1 x the category budget breakpoint
 _PLAUSIBILITY_CEIL_MULT = 3.0    # reject above 3 x the highest FINITE breakpoint
+# S3-genuine (team-lead floor fix 2026-06-14) — low-value categories (cheap OTC
+# meds, grocery staples) routinely have GENUINE sub-1-BHD prices (Panadol 0.990,
+# Evian 0.595, yoghurt 0.750). For these the 0.1×budget-breakpoint floor (1.1 for
+# supplements) wrongly dropped real prices — so they use an ABSOLUTE small floor
+# instead. High-value categories keep the multiplicative floor (an iPhone at
+# 0.99 BHD is still garbage).
+_ABSOLUTE_FLOOR_CATEGORIES = {"supplements", "grocery"}
+_ABSOLUTE_PRICE_FLOOR = 0.1   # BHD — below this is a scrape artifact, not a price
 
 
 def is_price_plausible(amount_bhd: Optional[float], category: Optional[str]) -> bool:
     """Absolute-plausibility gate for a real (cited/converted) price, in BHD.
 
-    Returns False only for gross category outliers — amount<=0, below
-    0.1x the category budget breakpoint, or above 3x the highest finite
-    breakpoint. A plausible price is TRUSTED even when it deviates wildly from
-    the GPT training guess (the guess being wrong is exactly why we don't let it
-    veto a cited price). Unknown / 'other' categories are permissive (only
-    amount>0) since their magnitude is unbounded (cars to snacks).
+    Returns False only for gross category outliers — amount<=0, below the
+    category floor, or above 3x the highest finite breakpoint. A plausible price
+    is TRUSTED even when it deviates wildly from the GPT training guess (the
+    guess being wrong is exactly why we don't let it veto a cited price). Unknown
+    / 'other' categories are permissive (only amount>0) since their magnitude is
+    unbounded (cars to snacks).
+
+    Floor: high-value categories use 0.1×budget-breakpoint (an iPhone at 5 BHD is
+    garbage); low-value categories (supplements/grocery) use an ABSOLUTE 0.1-BHD
+    floor so a genuine cheap OTC/grocery price (0.990 Panadol, 0.595 Evian) is
+    KEPT — the multiplicative floor (1.1 for supplements) wrongly dropped them.
 
     Anchors on scoring_service.PRICE_TIERS_BY_CATEGORY so the bounds track the
     same per-category BHD breakpoints the scorer already maintains.
@@ -625,7 +638,8 @@ def is_price_plausible(amount_bhd: Optional[float], category: Optional[str]) -> 
     # avoids any scoring_service import-order coupling.
     from app.services.scoring_service import PRICE_TIERS_BY_CATEGORY
 
-    ranges = PRICE_TIERS_BY_CATEGORY.get((category or "").lower())
+    cat = (category or "").lower()
+    ranges = PRICE_TIERS_BY_CATEGORY.get(cat)
     if not ranges:
         # 'other'/unknown — unbounded magnitude; only positivity is required.
         return True
@@ -635,7 +649,10 @@ def is_price_plausible(amount_bhd: Optional[float], category: Optional[str]) -> 
     # top_tier is folded — fall back to premium so a real expensive item isn't
     # over-rejected but 9000-BHD garbage still is).
     top_finite = max(finite_breakpoints) if finite_breakpoints else budget_breakpoint
-    floor = budget_breakpoint * _PLAUSIBILITY_FLOOR_MULT
+    if cat in _ABSOLUTE_FLOOR_CATEGORIES:
+        floor = _ABSOLUTE_PRICE_FLOOR
+    else:
+        floor = budget_breakpoint * _PLAUSIBILITY_FLOOR_MULT
     ceiling = top_finite * _PLAUSIBILITY_CEIL_MULT
     return floor <= amount_bhd <= ceiling
 

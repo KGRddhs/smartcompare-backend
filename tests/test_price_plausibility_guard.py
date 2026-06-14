@@ -66,9 +66,25 @@ class TestSupplementsBounds:
         # 18 BHD vitamin D — inside supplements tiers (budget=11/mid=30).
         assert is_price_plausible(18.0, "supplements") is True
 
-    def test_absurdly_low_supplement_implausible(self):
-        # 0.5 BHD — below 0.1 x supplements budget breakpoint (11*0.1=1.1).
-        assert is_price_plausible(0.5, "supplements") is False
+    def test_genuine_cheap_otc_kept(self):
+        """Team-lead floor fix (2026-06-14): a genuine 0.990 Panadol / 0.595 cheap
+        OTC must NOT be dropped — the low-tier floor for supplements/grocery is an
+        ABSOLUTE small value (>0.1 BHD), NOT 0.1×breakpoint (which was 1.1 and
+        wrongly rejected real sub-1-BHD prices)."""
+        assert is_price_plausible(0.990, "supplements") is True   # Panadol
+        assert is_price_plausible(0.595, "supplements") is True   # cheap OTC
+        assert is_price_plausible(0.5, "supplements") is True     # was False pre-fix
+
+    def test_genuine_cheap_grocery_kept(self):
+        # Evian 0.595 / yoghurt 0.750 — real cheap grocery, must be kept.
+        assert is_price_plausible(0.595, "grocery") is True
+        assert is_price_plausible(0.750, "grocery") is True
+
+    def test_zero_or_subcent_still_rejected(self):
+        # The absolute floor still rejects 0 / a sub-0.1 garbage value.
+        assert is_price_plausible(0.0, "supplements") is False
+        assert is_price_plausible(0.05, "supplements") is False
+        assert is_price_plausible(0.05, "grocery") is False
 
     def test_absurdly_high_supplement_implausible(self):
         # supplements luxury breakpoint is inf (top_tier folded). Falls back to
