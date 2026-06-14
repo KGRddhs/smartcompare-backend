@@ -3140,7 +3140,18 @@ class StructuredComparisonService:
                 # wave misses (Ahmed: render not fired every escalation). This
                 # also trims wall — most BH PDPs (sharafdg/extra/gcc.lulu/microless)
                 # are curl-extractable, so the render wave rarely runs.
-                for _wave, _cap in (("curl", 12.0), ("render", 12.0)):
+                #
+                # I5.7 wall-cap invariant preserved: the TWO waves SHARE a single
+                # 12s deadline (curl gets up to 12s; render gets the REMAINDER),
+                # so the total Tier-1.5 scrape time stays <= the 12s the single
+                # fan_out had — it never exceeds the 15s outer _PHASE1_TIMEOUTS
+                # ["price"] cap.
+                _FAN_OUT_BUDGET = 12.0
+                _t15_start = time.monotonic()
+                for _wave in ("curl", "render"):
+                    _remaining = _FAN_OUT_BUDGET - (time.monotonic() - _t15_start)
+                    if _remaining <= 0.5:
+                        break  # shared 12s budget spent — fall through to Tier 2
                     _scrapers = _build_escalation_scrapers(
                         candidate_urls=candidate_urls,
                         full_name=full_name,
@@ -3157,12 +3168,12 @@ class StructuredComparisonService:
                                 scrapers=_scrapers,
                                 scraping_mode=scraping_mode,
                             ),
-                            timeout=_cap,
+                            timeout=_remaining,
                         )
                     except asyncio.TimeoutError:
                         logger.info(
-                            "[PRICE] Tier 1.5 %s-wave exceeded %.0fs for %s; "
-                            "%s", _wave, _cap, full_name,
+                            "[PRICE] Tier 1.5 %s-wave hit the shared 12s budget for "
+                            "%s; %s", _wave, full_name,
                             "trying render wave" if _wave == "curl" else "falling through to Tier 2",
                         )
                         continue
