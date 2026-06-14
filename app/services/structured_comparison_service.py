@@ -3261,19 +3261,20 @@ class StructuredComparisonService:
                         "retailer_score": 0,
                     }]
                     high_threshold, low_threshold = _sanity_check_thresholds(tier2_sources)
-                    # Preserve the upstream gpt_* source_method when the
-                    # Tier-2 sanity check swaps in the Tier-3 estimate, so
-                    # quality_ranker's PRICE_SOURCE_RANK lookup sees the
-                    # specific tier name. Legacy "estimated" remains the
-                    # default for callers that didn't stamp a gpt_* method
-                    # (preserves backward-compat for tests asserting
-                    # source_method == 'estimated').
+                    # S3-reopen T1 (Ahmed: estimate is tier-8 LAST resort) — do
+                    # NOT swap a REAL extracted price for the GPT estimate when
+                    # it merely deviates from the GPT training guess. The Tier-2
+                    # price is a real cited price (organic-extracted); the
+                    # training estimate is a guess. A real price ALWAYS beats a
+                    # guess, with its honest converted_usd/local_bhd label, so the
+                    # user sees a cited number (UI "indicative" when converted).
+                    # The deviation is only ANNOTATED (price_deviates_from_estimate)
+                    # so downstream confidence can soften it — never replaced with
+                    # the estimate. (Pre-T1 this swapped price=tier3_estimate +
+                    # estimated=True, the "real price thrown away for a guess"
+                    # violation L1 caught.)
                     if tier2_bhd > tier3_bhd * high_threshold or tier2_bhd < tier3_bhd * low_threshold:
-                        price = tier3_estimate
-                        price["estimated"] = True
-                        existing_method = price.get("source_method", "")
-                        if not (isinstance(existing_method, str) and existing_method.startswith("gpt_")):
-                            price["source_method"] = "estimated"
+                        price["price_deviates_from_estimate"] = True
             if price.get("retailer") and not price.get("url"):
                 price["url"] = build_retailer_url(price["retailer"], full_name)
             set_cached(cache_key, price, PRICE_CACHE_TTL)
