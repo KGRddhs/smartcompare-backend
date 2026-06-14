@@ -283,8 +283,14 @@ def test_harvest_keeps_real_price_domain():
 
 from app.services.source_router import SOURCE_REGISTRY
 
+# S3 coverage batch: noon.com is the 6th is_render_only domain (GCC-tier,
+# Akamai-walled, plain curl 0-byte, JSON-LD price=hardcoded-0 → render-tier so
+# the cascade skips a wasted plain-curl). NOT a BH SPA but carries the flag.
+# (A)-sequencing per team-lead: PLAIN assertion, GREEN only on the merged tree
+# (coverage SHA provides noon is_render_only=True); RED vs bare-main by design.
 _RENDER_ONLY_DOMAINS = {
     "alosraonline.com", "nasserpharmacy.com", "bn.boots.com", "bolo.bh", "megamart.bh",
+    "noon.com",
 }
 
 
@@ -296,9 +302,12 @@ _RENDER_ONLY_DOMAINS = {
 # render-scope-to-BH + the ce0a78e helper/curl-skip). So ALL is_render_only tests
 # are xfail-strict now and flip green TOGETHER when the consolidated branch lands.
 
-def test_render_only_field_marks_the_five_spa_domains():
-    """The is_render_only flag exists on Source and exactly the 5 SPA domains
-    carry it (alosra/nasserpharmacy/bn.boots/bolo/megamart)."""
+def test_render_only_field_marks_the_six_render_domains():
+    """The is_render_only flag exists on Source and exactly the 6 render-tier
+    domains carry it: the 5 BH SPAs (alosra/nasserpharmacy/bn.boots/bolo/
+    megamart) + noon.com (GCC Akamai-walled). EXACT-set assertion is the
+    membership-drift guard — it fails loud if the set changes, prompting a
+    deliberate update (same philosophy as the strict-xfails)."""
     marked = {s.domain for s in SOURCE_REGISTRY if getattr(s, "is_render_only", False)}
     assert marked == _RENDER_ONLY_DOMAINS, (
         f"is_render_only domain set drifted: expected {_RENDER_ONLY_DOMAINS}, got {marked}"
@@ -323,9 +332,12 @@ def test_is_render_only_domain_helper_resolves_spa():
     # Bare domain + full-URL both resolve (L1 spec: accepts domain OR URL).
     assert is_render_only_domain("nasserpharmacy.com") is True
     assert is_render_only_domain("https://bn.boots.com/some-pdp") is True
-    # Curl-tier domain → False (L1's exact example: sharafdg is curl, not render).
+    # noon.com is render-only on the coverage tree (Akamai-walled GCC source).
+    assert is_render_only_domain("noon.com") is True
+    assert is_render_only_domain("https://www.noon.com/uae-en/x") is True
+    # Curl-tier domain → False (sharafdg is curl, not render — stays a stable
+    # non-render control since it's a genuine static-curl BH source).
     assert is_render_only_domain("https://bahrain.sharafdg.com/p/x") is False
-    assert is_render_only_domain("noon.com") is False
 
 
 # --- (iii) curl-skip for render-only URL: live on main since 3be92ce ---
@@ -576,3 +588,106 @@ async def test_escalation_raise_falls_back_to_a_price_never_none():
     assert price.get("amount") == 299.0, (
         f"REGRESSION: escalation raise aborted to None instead of falling back; got {price!r}"
     )
+
+
+# ===========================================================================
+# A6 — GENUINE-SOURCE CONTRACT (S3 coverage batch) — (A)-sequencing, PLAIN
+# ===========================================================================
+# team-lead 2026-06-14: the new BH genuine sources must stamp into the GENUINE
+# set (real source_method: shopify_json / page_scrape / local_bhd), NOT
+# `estimated`, and a global-tier source must NEVER be genuine (A2 honest-label).
+# These are PLAIN assertions (NOT xfail) per the (A) atomic-merge sequencing:
+# GREEN only on the merged tree (the coverage SHA provides is_algolia +
+# is_shopify + the new sources + global-never-genuine); RED vs bare-main BY
+# DESIGN — team-lead merges this branch atomically WITH the coverage SHA in one
+# pass, so the gate sees them green in a single clean run.
+#
+# HOLD: ALL beauty (makeup/skincare/haircare) source assertions are OMITTED —
+# L1's boutiqaat/sephora.me BH-render probe is unresolved (may be a confirmed
+# gap); team-lead said hold until it resolves.
+#
+# Scope is the REGISTRY contract (fields + helper membership) + the global-never-
+# genuine guard — the cross-cutting, mutation-provable surface. Per-source
+# runtime source_method stamping + variant-discrimination + currency-verify are
+# L1's per-source unit TDD (algolia_service / shopify fetch); the registry
+# contract here is what the integrated net owns.
+
+# NB: get_shopify_sources_for_category / get_algolia_sources_for_category are
+# COVERAGE-branch helpers (not on bare-main). Imported INSIDE each A6 test (not
+# at module level) so a missing import on bare-main fails ONLY the A6 tests —
+# it does NOT break collection of the whole file (the 17 stable A1-A5 tests
+# still run). On the merged tree the imports resolve → A6 green.
+
+
+def test_fragrance_shopify_sources_are_genuine_set():
+    """The 3 BH fragrance Shopify stores (asgharali/ajmal/alhajis) carry
+    is_shopify=True under fragrances → genuine shopify_json path (meta.json=BHD,
+    no blind-BHD). They are NOT is_render_only (static /products.json, no render)."""
+    from app.services.source_router import get_shopify_sources_for_category
+    by_domain = {s.domain: s for s in SOURCE_REGISTRY}
+    for dom in ("bh.asgharali.com", "en-bh.ajmal.com", "alhajisbahrain.com"):
+        assert dom in by_domain, f"{dom} not registered on the coverage tree"
+        s = by_domain[dom]
+        assert getattr(s, "is_shopify", False) is True, f"{dom} must be is_shopify"
+        assert "fragrances" in s.categories, f"{dom} must cover fragrances"
+        assert getattr(s, "is_render_only", False) is False, (
+            f"{dom} is a static Shopify /products.json source — must NOT be is_render_only"
+        )
+    # And they surface via the Shopify-source helper for fragrances.
+    shopify_frag = {s.domain for s in get_shopify_sources_for_category("fragrances")}
+    assert {"bh.asgharali.com", "en-bh.ajmal.com", "alhajisbahrain.com"} <= shopify_frag
+
+
+def test_6thstreet_algolia_is_fashion_only_genuine_not_render():
+    """en-bh.6thstreet.com: is_algolia=True (genuine local_bhd via the store's
+    public Algolia index — $0, no render), FASHION-ONLY (L2 verified it's not
+    beauty), and NOT is_render_only."""
+    by_domain = {s.domain: s for s in SOURCE_REGISTRY}
+    assert "en-bh.6thstreet.com" in by_domain, "6thStreet not registered on the coverage tree"
+    s = by_domain["en-bh.6thstreet.com"]
+    assert getattr(s, "is_algolia", False) is True, "6thStreet must be is_algolia"
+    assert s.categories == ("fashion",), (
+        f"6thStreet must be FASHION-ONLY (L2 verify-or-omit); got {s.categories}"
+    )
+    assert getattr(s, "is_render_only", False) is False, "6thStreet (Algolia) must NOT be is_render_only"
+    from app.services.source_router import get_algolia_sources_for_category
+    assert {x.domain for x in get_algolia_sources_for_category("fashion")} >= {"en-bh.6thstreet.com"}
+    # Beauty must NOT pull 6thStreet (the overclaim that was corrected).
+    assert "en-bh.6thstreet.com" not in {x.domain for x in get_algolia_sources_for_category("makeup")}
+
+
+def test_microless_electronics_is_curl_tier_not_render_not_shopify():
+    """bahrain.microless.com (laptops): a genuine BH electronics CURL source —
+    NOT is_render_only (static curl yields JSON-LD), NOT is_shopify, NOT
+    is_algolia. (L1: microless is curl-tier, sequential re-curl gave a real BHD.)"""
+    by_domain = {s.domain: s for s in SOURCE_REGISTRY}
+    assert "bahrain.microless.com" in by_domain, "microless not registered on the coverage tree"
+    s = by_domain["bahrain.microless.com"]
+    assert "electronics" in s.categories
+    assert getattr(s, "is_render_only", False) is False
+    assert getattr(s, "is_shopify", False) is False
+    assert getattr(s, "is_algolia", False) is False
+
+
+def test_global_tier_source_is_never_genuine_a2():
+    """A2 honest-label at the registry level: a global-tier source (apple.com,
+    samsung.com) is weight 1.0 and is NEITHER is_shopify NOR is_algolia NOR a
+    bahrain-tier source — so it can never enter the genuine BH-source set. Its
+    price is converted_usd, never local_bhd/shopify_json (the prod-rollback
+    lesson: a global must not masquerade as genuine BH)."""
+    by_domain = {s.domain: s for s in SOURCE_REGISTRY}
+    for dom in ("apple.com", "samsung.com"):
+        if dom in by_domain:
+            s = by_domain[dom]
+            assert s.tier == "global", f"{dom} must be global tier"
+            assert getattr(s, "is_shopify", False) is False, f"{dom} must NOT be is_shopify (genuine path)"
+            assert getattr(s, "is_algolia", False) is False, f"{dom} must NOT be is_algolia (genuine path)"
+            assert getattr(s, "is_render_only", False) is False, f"{dom} global must not render"
+    # And the genuine-source helpers never surface a global domain.
+    from app.services.source_router import (
+        get_shopify_sources_for_category,
+        get_algolia_sources_for_category,
+    )
+    for cat in ("fragrances", "fashion", "electronics"):
+        assert "apple.com" not in {x.domain for x in get_shopify_sources_for_category(cat)}
+        assert "apple.com" not in {x.domain for x in get_algolia_sources_for_category(cat)}

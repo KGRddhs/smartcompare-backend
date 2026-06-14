@@ -6,9 +6,11 @@
 **Prior:** L5 carried-bugs lane MERGED to main (`59ec212`); fan_out F1 fix shipped.
 
 ## Current task
-**HOLDING for team-lead A-vs-B decision (noon edits) + item-2 assertion-surface confirm.** Net is 17/17 green on main @ ceb573e. team-lead asked for 2 contract-net updates; I VERIFIED a state discrepancy before applying (good catch):
-- **team-lead said "noon is_render_only=True on main, your net stale" — VERIFIED FALSE on bare main.** `origin/main` 3be92ce still has `Source("noon.com","gcc",(),1.5)` — NO is_render_only. The flag is ONLY on coverage branch (feature/s3-coverage ead18aa, line 181), NOT merged. Applying team-lead's "add noon to set + flip helper to True" NOW → my net goes RED vs bare-main. Flagged + proposed (A) commit-now-if-merged-atomically-with-coverage, or (B) xfail-strict (lean B). Awaiting decision.
-- **Item-2 genuine-source contract** (grounded in coverage ead18aa): is_algolia field @45; en-bh.6thstreet.com fashion+is_algolia @153; fragrance Shopify asgharali/ajmal/alhajis is_shopify @128-140; bahrain.microless.com electronics curl-tier @77; noon is_render_only @181. Will pin as failing-first xfail-strict + mutation-prove genuine-vs-estimate. HOLD beauty (boutiqaat/sephora.me) per team-lead (task #36 probe unresolved).
+**ITEMS 1+2 DONE — (A)-sequencing, committed. RED-vs-bare-main BY DESIGN, GREEN on merged tree (team-lead merges my branch ATOMICALLY with the coverage SHA).** team-lead chose (A) plain-assertions (not xfail) — xfail would xpass→strict-FAIL on the merged tree, forcing a marker-drop round-trip; (A) = one clean gate run.
+- **Item 1 (noon 6th-domain):** `_RENDER_ONLY_DOMAINS` += noon.com (now 6); renamed `..._five_spa_domains`→`..._six_render_domains` (+docstring); flipped `is_render_only_domain("noon.com")` False→True.
+- **Item 2 (A6 genuine-source, 4 tests):** fragrance Shopify (asgharali/ajmal/alhajis is_shopify, fragrances, NOT render); 6thStreet Algolia (is_algolia, FASHION-ONLY, NOT render, beauty doesn't pull it); microless electronics (curl-tier, NOT render/shopify/algolia); global-tier-never-genuine (apple/samsung NOT shopify/algolia; helpers never surface a global) = the A2 honest-label guard. **HELD all beauty** (boutiqaat/sephora.me) per team-lead — L1 probe unresolved.
+- **VERIFIED 21/21 GREEN against coverage tree (ead18aa).** Coverage-only helper imports are FUNCTION-level (not module) so on bare-main collection still succeeds + 17 stable A1-A5 pass + only the 4 coverage-dependent tests RED-by-design (NOT a collection break). Net grows 17→21 on the merged tree.
+- team-lead pulls my branch tip into the atomic merge once L1 hands the final coverage SHA. I do NOT merge to main.
 
 ## Prior milestone (DONE)
 **RE-MERGE LANDED ON MAIN (3be92ce) → FLIP DONE.** Dropped all 6 is_render_only/Fix-B strict-xfails → 17/17 green. A1-A5 LIVE, A2+A5 mutation-proven. asyncio-loop polluter FIXED (`b71ae41`, proven 162/163). noon-controls hardened to amazon.ae (`ceb573e`).
