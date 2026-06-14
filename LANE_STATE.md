@@ -24,14 +24,18 @@ Build genuine-BH price adapters to parallelize with L1, hand L1 the cascade wiri
       `Source("sephora.me","bahrain",("makeup","skincare","haircare","fragrances"),3.0,is_render_only=True)` (Scrape.do residential, Akamai-walled, /bh-en — authoritative-misses only)
 - [x] Integration: import chain clean (no cycle); 207 source-router/shopify/registry tests + 14 algolia = green.
 
-## KEY FINDING (reported to team-lead)
-"Tom Ford Black Orchid" on 6thStreet -> 1492 hits, ALL TOMS footwear (brand_name="Toms", Algolia fuzzy "Tom"->"TOMS"). 6thStreet (Apparel Group, mid-market) does NOT carry Tom Ford luxury fragrance. The recorded fixture is the perfect NEGATIVE test — my strict matcher REJECTS it. Positive-path proof needs a product 6thStreet carries (Fenty Pro Filt'r) -> asked team-lead for the +1 live query.
+## KEY FINDING (reported to team-lead) — 6thStreet index = FASHION-ONLY
+Live-verified (Tom Ford + Fenty + 4 diagnostic queries, all read-only): the harvested index `enterprise_magento_en_bh_products` is **FASHION/FOOTWEAR, NOT beauty**.
+- POSITIVE GATE PROVEN: "Nike Air Max SC" -> genuine Nike match, **BHD 32.000** (fixture algolia_6thstreet_nike.json, pinned).
+- NEGATIVE: "Tom Ford"->TOMS shoes, "lipstick"->0, "Huda Beauty"/"MAC"/"Charlotte Tilbury"/"Maybelline"/"Anastasia"->fashion noise. Matcher REJECTS all (fixture algolia_6thstreet_tomford.json, pinned).
+- Beauty PLP pages = 43KB JS shell, no static index token -> beauty catalog config NOT page-JS-harvestable (would need headless browser; not worth it).
+**CORRECTED wiring tuple (was 5 beauty cats — WRONG):** `Source("en-bh.6thstreet.com","bahrain",("fashion",),3.0,is_algolia=True)`. Beauty stays on render-tier (boutiqaat/sephora) + Shopify fragrance stores. Reported to team-lead; L1 (#32) to use the corrected tuple.
 
 ## Discipline
 - TDD; path-restricted commits; push-per-commit; NO stash. LANE_STATE every commit.
 - STANDALONE only (NO source_router/scs edits — L1 lands the wiring from my diff).
 - `.probe_*.py` + `.l2_live_smoke.py` stay UNTRACKED (dot-prefixed). `.env` gitignored.
-- Live Algolia smoke = ONE announced call (done). +1 (Fenty) pending team-lead OK.
+- Live Algolia smoke: Tom Ford + Fenty (both team-lead-approved) + 4 read-only diagnostic queries (index characterization). All free public-search-key, zero Serper. DONE — no further live calls. Probe scripts cleaned up.
 
 ## Last commit
 4550d99 (#21.1 harvester) — committing verify+wiring-state now
