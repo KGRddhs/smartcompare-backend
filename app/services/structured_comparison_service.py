@@ -495,7 +495,6 @@ from app.services.price_service import (
     get_retailer_score,
     has_retailer_url,
     build_retailer_url,
-    build_direct_bh_candidates,
     sanitize_gpt_price,
     get_official_domain,
     extract_price_from_shopping,
@@ -3045,21 +3044,20 @@ class StructuredComparisonService:
             )
             candidate_urls = [(link, label) for link, label, _route, _w in harvested]
 
-            # S3-genuine (team-lead pivot 2026-06-14) — SERPER-INDEPENDENT BH
-            # injection. The bahrain `site:` discovery above no-ops when the
-            # Serper account is dry, leaving candidate_urls empty even though the
-            # BH retailer pages are directly curl-scrapeable. Construct each
-            # BH-tier NON-Shopify source's search URL straight from the registry
-            # (zero Serper) and PREPEND — so fan_out curls gcc.lulu/sharafdg/extra
-            # regardless of Serper state. Additive: when Serper IS funded these
-            # merge with the discovered URLs (deduped), and the race early-exit
-            # bounds the extra fetches. (Shopify BH stores are excluded — they
-            # have their own /products.json direct path above.)
-            direct_bh = build_direct_bh_candidates(full_name, category)
-            if direct_bh:
-                _seen_urls = {u for u, _ in candidate_urls}
-                prepend = [(u, lbl) for u, lbl in direct_bh if u not in _seen_urls]
-                candidate_urls = prepend + candidate_urls
+            # S3-genuine — the curl-search injector (build_direct_bh_candidates)
+            # is NEUTRALIZED. Team-lead live probe (2026-06-14, WRINKLE 2) +
+            # verified against our own captures: the BH retailers' SEARCH pages
+            # are JS-rendered (gcc.lulu /en-bh/search/?q= → 404; sharafdg ?s= →
+            # 0 JSON-LD / 0 itemprop, PDP links are noise). So a curl-only
+            # search→PDP path can't reach the PDPs — the search URLs carry no
+            # extractable price and only burn fan_out fetches. PDP DISCOVERY for
+            # these non-Shopify retailers comes from the Serper `site:` query
+            # above (live again); the genuine BH price is then produced by the
+            # cascade curling the discovered PDP + the JSON-LD/microdata/OG
+            # extractor. Serper-independence is covered by Shopify /products.json
+            # (works) + a future Firecrawl-render-search (deferred, budget-gated
+            # per Ahmed). The build_direct_bh_candidates fn is retained as the
+            # shell for that future render-search path.
 
             # --- Race: fan_out_price_lookup runs all per-URL scrapers in
             # parallel, cancels pending tasks when 2 sources confirm within

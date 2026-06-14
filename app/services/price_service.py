@@ -311,6 +311,12 @@ CURRENCY_CODES = {
 }
 
 PAGE_SCRAPE_TIMEOUT = 5
+# S3-genuine (team-lead live probe 2026-06-14, WRINKLE 1): gcc.luluhypermarket.com
+# is ~3.4s warm but the 5s cap clipped it COLD (curl(28) timeout) — the keystone
+# broad BH source then intermittently returned nothing. Bahrain-tier registry
+# curls get a longer cold-tolerant timeout; non-BH scrapes stay at 5s so the
+# whole cascade isn't slowed.
+BH_REGISTRY_CURL_TIMEOUT = 10
 TIER_15_BUDGET_TIMEOUT = 20
 
 
@@ -1161,13 +1167,34 @@ def _extract_microdata_price(
 # Page fetching
 # ============================================
 
+def _curl_timeout_for_url(url: str) -> int:
+    """Per-fetch curl timeout: bahrain-tier registry domains get the longer
+    cold-tolerant BH_REGISTRY_CURL_TIMEOUT; everything else stays at
+    PAGE_SCRAPE_TIMEOUT (WRINKLE 1 — keep non-BH scrapes fast)."""
+    try:
+        from app.services.source_router import SOURCE_REGISTRY
+        host = urlparse(url).netloc.replace("www.", "").lower()
+        if not host:
+            return PAGE_SCRAPE_TIMEOUT
+        for s in SOURCE_REGISTRY:
+            if s.tier != "bahrain":
+                continue
+            d = s.domain.replace("www.", "").lower()
+            if host == d or host.endswith("." + d) or d.endswith("." + host):
+                return BH_REGISTRY_CURL_TIMEOUT
+    except Exception:  # noqa: BLE001 — selector must never break the fetch
+        pass
+    return PAGE_SCRAPE_TIMEOUT
+
+
 async def curl_fetch_html(url: str) -> Optional[str]:
     """Fetch raw HTML via curl_cffi (no JS rendering)."""
     try:
         from curl_cffi import requests as curl_requests
+        timeout = _curl_timeout_for_url(url)
         resp = await asyncio.to_thread(
             lambda: curl_requests.get(
-                url, impersonate="chrome", timeout=PAGE_SCRAPE_TIMEOUT, allow_redirects=True,
+                url, impersonate="chrome", timeout=timeout, allow_redirects=True,
             )
         )
         if resp.status_code != 200:

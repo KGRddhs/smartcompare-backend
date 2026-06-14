@@ -1,23 +1,20 @@
-"""S3-genuine (team-lead pivot 2026-06-14) — Serper-INDEPENDENT direct-BH
-candidate injection.
+"""S3-genuine — build_direct_bh_candidates (the curl-search injector) is RETAINED
+but NEUTRALIZED at the cascade call site.
 
-THE GAP the pivot exposed: the BH registry retailers (gcc.lulu, sharafdg, extra,
-godukkan, microless, ...) reach the price scraper ONLY via search_web(bahrain
-site:-query) -> _harvest_candidate_urls -> fan_out. search_web NO-OPS without a
-Serper key, so when the Serper account is dry, candidate_urls is empty and
-fan_out never curls these directly-scrapeable BH pages. (Only the Shopify
-/products.json path — asgharali/almoayyed/ajmal/alhajis — is Serper-independent
-today, which is why fragrances work offline but electronics don't.)
+The pivot idea was: construct each BH-tier non-Shopify source's SEARCH URL from
+the registry (zero Serper) and prepend to candidate_urls so fan_out curls them
+even with Serper down. The team-lead's live probe (2026-06-14, WRINKLE 2) — and
+our own captures (gf_lulu/sharafdg_search/lulu_search all extract None) —
+DISPROVED the search-page path: gcc.lulu /en-bh/search/?q= → 404; sharafdg ?s= →
+JS-rendered (0 JSON-LD/itemprop, PDP links are noise). A curl-only search→PDP
+path can't reach the PDPs (slugs are product-specific). So the prepend is NOT
+wired — it only burned fan_out fetches. PDP discovery comes from the Serper
+`site:` query (live again); Serper-independence is Shopify /products.json (works)
++ a future Firecrawl-render-search (deferred, budget-gated).
 
-THE FIX: `build_direct_bh_candidates(full_name, category)` constructs each
-BH-tier NON-Shopify source's search/PDP URL straight from the registry +
-RETAILER_SEARCH_URLS, with NO Serper call. These are PREPENDED to candidate_urls
-so fan_out curls them regardless of Serper state. Purely additive — Serper
-results still merge in when the account is funded.
-
-Pure-function tests (no live calls). The price-extraction one-hop-vs-two-hop
-question (search page vs PDP) is answered by a live probe; this pins the URL
-construction + Serper-independence + Shopify-exclusion invariants.
+The PURE FUNCTION is kept (URL construction + Shopify/render-only exclusion) as
+the shell for that future render-search path — these tests pin its contract. The
+integration test pins that it is NOT prepended into the live cascade.
 """
 
 import pytest
@@ -129,38 +126,38 @@ def clean_service(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_direct_bh_candidates_injected_when_serper_dead(monkeypatch, clean_service):
-    """THE pivot invariant: with Serper completely DEAD (search_web no-ops,
-    Shopping empty), the Tier-1.5 fan_out STILL receives the direct BH retailer
-    URLs (gcc.lulu, sharafdg) — built straight from the registry, zero Serper.
-    Pre-fix candidate_urls was empty and fan_out never ran; now it does."""
+async def test_direct_bh_candidates_NOT_injected_into_cascade(monkeypatch, clean_service):
+    """NEUTRALIZED (WRINKLE 2): build_direct_bh_candidates is NOT prepended into
+    candidate_urls. The BH SEARCH-URL path was proven dead (search pages are
+    JS-rendered / 404 — they carry no extractable price), so wiring it only
+    burned fan_out fetches. With Serper DEAD (search_web no-ops) AND no Shopify
+    hit, the curl-search injector must NOT have slipped gcc.lulu/sharafdg search
+    URLs into the scraper builder — candidate_urls is empty and the cascade
+    falls through to tier-8 (until Serper-discovery, live again, supplies the
+    PDP)."""
     from app.services import structured_comparison_service as scs_mod
 
-    # Serper Shopping empty → escalation fires.
     monkeypatch.setattr(
         scs_mod, "search_product_prices",
         AsyncMock(return_value={"shopping": [], "organic": []}),
     )
     monkeypatch.setattr(scs_mod, "extract_price_from_shopping", lambda *a, **kw: None)
     monkeypatch.setattr(scs_mod, "get_official_domain", lambda *a, **kw: None)
-    # Serper DEAD — search_web returns nothing (the dry-account state).
     monkeypatch.setattr(scs_mod, "search_web", AsyncMock(return_value={"organic": []}))
-    # No Shopify hit (electronics has no Shopify BH store in play here).
     monkeypatch.setattr(scs_mod, "fetch_shopify_price", AsyncMock(return_value=None))
 
-    # Capture the candidate_urls handed to the scraper builder.
-    captured = {}
+    captured = {"built": False}
 
     def _capture_scrapers(*, candidate_urls, full_name, currency, scraping_mode):
+        captured["built"] = True
         captured["urls"] = list(candidate_urls)
-        return []  # no scrapers → fan_out yields nothing → falls to tier-8
+        return []
 
     monkeypatch.setattr(scs_mod, "_build_escalation_scrapers", _capture_scrapers)
     monkeypatch.setattr(
         scs_mod, "fan_out_price_lookup",
         AsyncMock(return_value={"best": None}),
     )
-    # Tier-8 estimate so _get_price completes.
     monkeypatch.setattr(
         scs_mod, "extract_price_from_training_data",
         AsyncMock(return_value=({"amount": 250.0, "currency": "BHD"}, {})),
@@ -172,11 +169,13 @@ async def test_direct_bh_candidates_injected_when_serper_dead(monkeypatch, clean
         category="electronics",
     )
 
-    assert "urls" in captured, "fan_out scraper-build never ran — candidate_urls was empty (the bug)"
-    all_urls = " ".join(u for u, _ in captured["urls"])
-    assert "gcc.luluhypermarket.com" in all_urls, (
-        "direct gcc.lulu BH candidate was NOT injected with Serper dead"
+    # Either the scraper-builder never ran (candidate_urls empty → guarded out),
+    # or it ran with NO injected BH search URLs. Both prove the injector is not
+    # wired — the dead search URLs must NOT reach fan_out.
+    injected = " ".join(u for u, _ in captured.get("urls", []))
+    assert "gcc.luluhypermarket.com" not in injected, (
+        "curl-search injector leaked a gcc.lulu SEARCH url into fan_out (it's dead)"
     )
-    assert "bahrain.sharafdg.com" in all_urls, (
-        "direct sharafdg BH candidate was NOT injected with Serper dead"
+    assert "bahrain.sharafdg.com" not in injected, (
+        "curl-search injector leaked a sharafdg SEARCH url into fan_out (it's dead)"
     )
