@@ -147,6 +147,11 @@ RETAILER_TIERS = {
     "back market": 0.3, "refurbished": 0.3,
 }
 DEFAULT_RETAILER_SCORE = 0.5
+# S3 electronics-authority — a 3P marketplace reseller sits BELOW the 0.5
+# first-party floor, so a first-party listing out-ranks it (and the >=0.5 tier
+# filter drops the reseller when a first-party exists). A 3P-only result keeps
+# this low score → it loses to any genuine BH price downstream.
+_RESELLER_RETAILER_SCORE = 0.2
 
 # Retailer search URL templates
 RETAILER_SEARCH_URLS = {
@@ -590,6 +595,46 @@ def get_retailer_score(retailer_name: str) -> float:
     return DEFAULT_RETAILER_SCORE
 
 
+# S3 electronics-authority (prod-verify fix) — host-marketplaces whose THIRD-
+# PARTY sellers list gray-market / used / import units. Serper renders a 3P
+# listing's source as "<Marketplace> - <SellerName>" (e.g. "Walmart -
+# YYWireless"). The bare marketplace ("Walmart", "Amazon.com") is first-party.
+_THIRD_PARTY_HOST_MARKETPLACES = ("walmart", "amazon", "ebay", "newegg", "aliexpress")
+# Used-goods / refurb marketplaces — the whole storefront is reseller inventory.
+_USED_GOODS_MARKETPLACES = (
+    "swappa", "gazelle", "unclaimed baggage", "back market", "backmarket",
+    "decluttr", "reebelo", "mercari", "poshmark",
+)
+
+
+def is_marketplace_reseller(source: str) -> bool:
+    """True iff `source` is a THIRD-PARTY marketplace reseller (gray-market /
+    used / import) — NOT a first-party/authorized retailer.
+
+    Signals: (1) a host-marketplace source with a " - <seller>" suffix
+    ("Walmart - YYWireless"); (2) a used-goods marketplace storefront
+    (Swappa/Gazelle/Unclaimed Baggage/...). A bare "Walmart"/"Amazon.com" is
+    first-party → False.
+
+    Prod-verify root cause (2026-06-14): a us_fallback "Walmart - YYWireless"
+    $339→127.8 BHD out-ranked the genuine sharafdg 244.99 because it was the
+    cheapest passing match; is_counterfeit_listing targets DHgate/AliExpress
+    DOMAINS, not these marketplace-seller source strings.
+    """
+    if not source:
+        return False
+    s = source.lower().strip()
+    # Used-goods storefronts — whole source is reseller.
+    if any(m in s for m in _USED_GOODS_MARKETPLACES):
+        return True
+    # Host-marketplace + " - <seller>" suffix = a 3P seller on that marketplace.
+    if " - " in s:
+        head = s.split(" - ", 1)[0].strip()
+        if any(m in head for m in _THIRD_PARTY_HOST_MARKETPLACES):
+            return True
+    return False
+
+
 def has_retailer_url(source: str) -> bool:
     """Check if a source name matches any key in RETAILER_SEARCH_URLS."""
     if not source:
@@ -798,6 +843,20 @@ def extract_price_from_shopping(
 
         retailer = item.get("source", "")
         retailer_score = get_retailer_score(retailer)
+
+        # S3 electronics-authority — a THIRD-PARTY marketplace reseller (gray-
+        # market / used: "Walmart - YYWireless", Swappa, Gazelle) is LOW
+        # authority. CRITICAL: get_retailer_score("Walmart - YYWireless") returns
+        # Walmart's HIGH first-party tier (substring "walmart"), so the cap must
+        # apply here BEFORE the OFFICIAL_BRAND_DOMAINS check — the 3P seller must
+        # NOT inherit the host marketplace's first-party score. A genuine brand
+        # DOMAIN in the link still overrides to 1.0 below (a 3P seller won't have
+        # one). Result: a first-party listing out-ranks the reseller, the >=0.5
+        # tier filter drops a reseller when a first-party exists, and a 3P-only
+        # result keeps the low score → loses to any genuine BH price downstream.
+        _is_reseller = is_marketplace_reseller(retailer)
+        if _is_reseller:
+            retailer_score = _RESELLER_RETAILER_SCORE
 
         link = item.get("link", "")
         if link:
