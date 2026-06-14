@@ -147,6 +147,11 @@ RETAILER_TIERS = {
     "back market": 0.3, "refurbished": 0.3,
 }
 DEFAULT_RETAILER_SCORE = 0.5
+# S3 electronics-authority — a 3P marketplace reseller sits BELOW the 0.5
+# first-party floor, so a first-party listing out-ranks it (and the >=0.5 tier
+# filter drops the reseller when a first-party exists). A 3P-only result keeps
+# this low score → it loses to any genuine BH price downstream.
+_RESELLER_RETAILER_SCORE = 0.2
 
 # Retailer search URL templates
 RETAILER_SEARCH_URLS = {
@@ -590,6 +595,46 @@ def get_retailer_score(retailer_name: str) -> float:
     return DEFAULT_RETAILER_SCORE
 
 
+# S3 electronics-authority (prod-verify fix) — host-marketplaces whose THIRD-
+# PARTY sellers list gray-market / used / import units. Serper renders a 3P
+# listing's source as "<Marketplace> - <SellerName>" (e.g. "Walmart -
+# YYWireless"). The bare marketplace ("Walmart", "Amazon.com") is first-party.
+_THIRD_PARTY_HOST_MARKETPLACES = ("walmart", "amazon", "ebay", "newegg", "aliexpress")
+# Used-goods / refurb marketplaces — the whole storefront is reseller inventory.
+_USED_GOODS_MARKETPLACES = (
+    "swappa", "gazelle", "unclaimed baggage", "back market", "backmarket",
+    "decluttr", "reebelo", "mercari", "poshmark",
+)
+
+
+def is_marketplace_reseller(source: str) -> bool:
+    """True iff `source` is a THIRD-PARTY marketplace reseller (gray-market /
+    used / import) — NOT a first-party/authorized retailer.
+
+    Signals: (1) a host-marketplace source with a " - <seller>" suffix
+    ("Walmart - YYWireless"); (2) a used-goods marketplace storefront
+    (Swappa/Gazelle/Unclaimed Baggage/...). A bare "Walmart"/"Amazon.com" is
+    first-party → False.
+
+    Prod-verify root cause (2026-06-14): a us_fallback "Walmart - YYWireless"
+    $339→127.8 BHD out-ranked the genuine sharafdg 244.99 because it was the
+    cheapest passing match; is_counterfeit_listing targets DHgate/AliExpress
+    DOMAINS, not these marketplace-seller source strings.
+    """
+    if not source:
+        return False
+    s = source.lower().strip()
+    # Used-goods storefronts — whole source is reseller.
+    if any(m in s for m in _USED_GOODS_MARKETPLACES):
+        return True
+    # Host-marketplace + " - <seller>" suffix = a 3P seller on that marketplace.
+    if " - " in s:
+        head = s.split(" - ", 1)[0].strip()
+        if any(m in head for m in _THIRD_PARTY_HOST_MARKETPLACES):
+            return True
+    return False
+
+
 def has_retailer_url(source: str) -> bool:
     """Check if a source name matches any key in RETAILER_SEARCH_URLS."""
     if not source:
@@ -798,6 +843,20 @@ def extract_price_from_shopping(
 
         retailer = item.get("source", "")
         retailer_score = get_retailer_score(retailer)
+
+        # S3 electronics-authority — a THIRD-PARTY marketplace reseller (gray-
+        # market / used: "Walmart - YYWireless", Swappa, Gazelle) is LOW
+        # authority. CRITICAL: get_retailer_score("Walmart - YYWireless") returns
+        # Walmart's HIGH first-party tier (substring "walmart"), so the cap must
+        # apply here BEFORE the OFFICIAL_BRAND_DOMAINS check — the 3P seller must
+        # NOT inherit the host marketplace's first-party score. A genuine brand
+        # DOMAIN in the link still overrides to 1.0 below (a 3P seller won't have
+        # one). Result: a first-party listing out-ranks the reseller, the >=0.5
+        # tier filter drops a reseller when a first-party exists, and a 3P-only
+        # result keeps the low score → loses to any genuine BH price downstream.
+        _is_reseller = is_marketplace_reseller(retailer)
+        if _is_reseller:
+            retailer_score = _RESELLER_RETAILER_SCORE
 
         link = item.get("link", "")
         if link:
@@ -1880,23 +1939,72 @@ def _candidates_agree(a: dict, b: dict, tolerance: float = AGREEMENT_PCT) -> boo
 
 
 def _confirmed(candidates: List[dict]) -> bool:
-    """True iff: (a) any candidate has rank >= HIGH_RANK_THRESHOLD, or
-       (b) any pair of candidates agrees within AGREEMENT_PCT."""
-    for c in candidates:
+    """True iff a GENUINE candidate confirms the race: (a) a genuine candidate
+    has rank >= HIGH_RANK_THRESHOLD, or (b) two GENUINE candidates agree within
+    AGREEMENT_PCT.
+
+    S3 electronics-authority (prod-verify fix): confirmation ends the race and
+    CANCELS pending scrapers. A converted_usd/estimated candidate must NOT
+    trigger it — apple.com's converted_usd curl (rank 85) was confirming early
+    and cancelling sharafdg's pending GENUINE curl before it could win. Only a
+    genuine BH price ends the race; a converted figure waits for the genuine one."""
+    genuine = [c for c in candidates if _is_genuine_bh_candidate(c)]
+    for c in genuine:
         if c.get("rank", 0) >= HIGH_RANK_THRESHOLD:
             return True
-    for i in range(len(candidates)):
-        for j in range(i + 1, len(candidates)):
-            if _candidates_agree(candidates[i], candidates[j]):
+    for i in range(len(genuine)):
+        for j in range(i + 1, len(genuine)):
+            if _candidates_agree(genuine[i], genuine[j]):
                 return True
     return False
 
 
+# S3 electronics-authority (prod-verify fix) — genuine BH source-methods. A
+# candidate carrying one of these is a real Bahrain shelf price; a converted_usd
+# / estimated one is a foreign/guessed figure. The fan_out winner MUST prefer a
+# genuine BH price over a converted one REGARDLESS of price/rank (CLAUDE.md
+# "MOST AUTHORITATIVE not lowest"). Prod-verify: apple.com converted 198.9
+# (rank 85) was beating the genuine sharafdg page_scrape 244.99 (rank 85) on the
+# lowest-value tie-break.
+_GENUINE_BH_SOURCE_METHODS = frozenset({
+    "page_scrape", "page_scrape_jsonld", "page_scrape_rendered",
+    "local_bhd", "shopify_json",
+    # the ACTUAL method strings the fan_out scrapers stamp (scs.py): the
+    # firecrawl scraper emits "firecrawl_brand_domain", scrapedo emits
+    # "scrapedo_rendered". A rendered genuine BH price is still genuine.
+    "firecrawl", "firecrawl_brand_domain", "scrapedo_rendered",
+    "official_brand",
+})
+
+
+def _is_genuine_bh_candidate(c: dict) -> bool:
+    """True iff a fan_out candidate is a genuine BH price (not converted/estimate).
+    Checks both the candidate's source_method and its raw_data's (the curl
+    scraper stamps the genuine method on raw_data; a global-tier downgrade sets
+    converted_usd on both)."""
+    sm = (c.get("source_method") or "")
+    raw_sm = ((c.get("raw_data") or {}).get("source_method") or "")
+    # converted/estimate on EITHER disqualifies (a global-tier downgrade stamps
+    # converted_usd on raw_data even when the rank-name was page_scrape_jsonld).
+    if "converted" in sm or "converted" in raw_sm or "estimated" in sm or "estimated" in raw_sm:
+        return False
+    return sm in _GENUINE_BH_SOURCE_METHODS or raw_sm in _GENUINE_BH_SOURCE_METHODS
+
+
 def _select_best(candidates: List[dict]) -> Optional[dict]:
-    """Highest-rank wins; ties broken by lowest value."""
+    """Pick the fan_out winner. AUTHORITY first: a genuine BH price beats a
+    converted_usd/estimated one regardless of rank/price. Within the same
+    authority tier: highest-rank wins, ties broken by lowest value."""
     if not candidates:
         return None
-    return max(candidates, key=lambda c: (c.get("rank", 0), -float(c.get("value", 0))))
+    return max(
+        candidates,
+        key=lambda c: (
+            1 if _is_genuine_bh_candidate(c) else 0,  # genuine BH tier first
+            c.get("rank", 0),
+            -float(c.get("value", 0)),
+        ),
+    )
 
 
 async def fan_out_price_lookup(

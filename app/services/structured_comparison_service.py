@@ -492,6 +492,7 @@ from app.services.price_service import (
     normalize_words,
     numbers_match,
     strict_title_match,
+    variant_mismatch,
     get_retailer_score,
     has_retailer_url,
     build_retailer_url,
@@ -949,10 +950,23 @@ def _build_escalation_scrapers(
 _build_luxury_scrapers = _build_escalation_scrapers
 
 
+def _is_pdp_link(link: str) -> bool:
+    """True iff `link` looks like a product-detail page (not a search/category
+    page). BH retailers use `/product/<slug>` PDPs; a `?q=`/`/c/` path is a
+    search or category listing (no single price)."""
+    if not link:
+        return False
+    low = link.lower()
+    if "/product/" in low or "/p/" in low or "/products/" in low:
+        return True
+    return False
+
+
 def _harvest_candidate_urls(
     results_by_tier: Dict[str, Any],
     official_domain: Optional[str],
     category: str,
+    query_name: str = "",
 ) -> List[Tuple[str, str, str, float]]:
     """B.0 (Lane F1) — order Serper discovery results into a candidate pool.
 
@@ -960,6 +974,11 @@ def _harvest_candidate_urls(
     Returns `(link, domain_label, route, source_weight)` per candidate; the
     caller derives the legacy `(link, label)` `candidate_urls` shape and uses
     `route`/`source_weight` for `source_trace` observability (F1.4).
+
+    `query_name` (S3 electronics-authority prong b) — when set, a harvested
+    bahrain PDP whose title is a different model-line VARIANT than the query
+    (variant_mismatch) is rejected, so an "iPhone 15" query never harvests the
+    sharafdg "iPhone 15 Pro Max" PDP.
 
     Gating (registry-first, legacy-fallback — Dispatcher invariant #1):
     - bahrain tier: a link enters ONLY when `score_source(link, category) >= 1.5`
@@ -972,22 +991,37 @@ def _harvest_candidate_urls(
     - official tier: the existing same-domain check against `official_domain`.
     """
     harvested: List[Tuple[str, str, str, float]] = []
+    _seen_links: set = set()
+
+    def _try_bh_candidate(link: str, title: str = ""):
+        """Gate + append one bahrain-tier candidate (primary link or sitelink)."""
+        if not link or link in _seen_links or not validate_scrape_url(link):
+            return
+        # S2 I2.5 — review-only registry domains carry no prices.
+        if source_usage(link, category) == "review":
+            return
+        # S3 electronics-authority (prong b) — reject a wrong model-line variant
+        # PDP (sharafdg "iPhone 15 Pro Max" for an "iPhone 15" query).
+        if query_name and title and variant_mismatch(query_name, title):
+            return
+        weight = score_source(link, category)
+        if weight >= 1.5:
+            _seen_links.add(link)
+            link_domain = urlparse(link).netloc.replace("www.", "").lower()
+            harvested.append((link, link_domain, "registry", weight))
 
     # --- Bahrain registry tier (NEW, harvested FIRST) ---
     bh = results_by_tier.get("bahrain")
     if bh and bh.get("organic"):
         for item in bh["organic"][:4]:
-            link = item.get("link", "")
-            if not link or not validate_scrape_url(link):
-                continue
-            # S2 I2.5 — review-only registry domains carry no prices; keep them
-            # out of the price scrape pool (usage in price/both only).
-            if source_usage(link, category) == "review":
-                continue
-            weight = score_source(link, category)
-            if weight >= 1.5:
-                link_domain = urlparse(link).netloc.replace("www.", "").lower()
-                harvested.append((link, link_domain, "registry", weight))
+            _try_bh_candidate(item.get("link", ""), item.get("title", ""))
+            # S3 electronics-authority (prong b, piece 1) — ALSO harvest PDP
+            # SITELINKS. The genuine sharafdg base PDP often ranks only as a
+            # nested sitelink under a search/category result; organic[].link-only
+            # missed it (prod-verify root cause 2). Take only PDP-shaped sitelinks.
+            for sl in (item.get("sitelinks") or []):
+                if isinstance(sl, dict) and _is_pdp_link(sl.get("link", "")):
+                    _try_bh_candidate(sl.get("link", ""), sl.get("title", ""))
 
     # --- Official brand domain (same-domain check preserved) ---
     if official_domain and "official" in results_by_tier:
@@ -1056,6 +1090,100 @@ def _harvest_candidate_urls(
             len(harvested) - len(filtered),
         )
     return filtered
+
+
+# S3 electronics-authority (prong b, piece 2) — the genuine-BH electronics
+# retailers whose base PDP the combined discovery often misses (sharafdg's PDP
+# ranks only as a sitelink; both are crowded out by SA/OM noise). The lazy
+# backfill fires ONE dedicated per-retailer query ONLY for these when zero
+# genuine PDP was harvested. Kept to the VERIFIED-genuine BHD sources (lulu/
+# extra serve SA/OM wrong-locale → excluded, a per-retailer query would just be
+# locale-filtered out + waste a call).
+_LAZY_BACKFILL_DOMAINS = ("bahrain.sharafdg.com", "bahrain.microless.com")
+
+
+async def _lazy_bh_pdp_backfill(
+    harvested: List[Tuple[str, str, str, float]],
+    full_name: str,
+    category: str,
+) -> List[Tuple[str, str, str, float]]:
+    """Bounded per-retailer PDP backfill (prong b3 HYBRID).
+
+    For each `_LAZY_BACKFILL_DOMAINS` retailer that has NO PDP in `harvested`,
+    fire ONE `site:<domain> <full_name>` Serper query. A retailer that ranks its
+    PDPs (microless) yields /product/ links directly; one that returns a SEARCH
+    page (sharafdg WP) → curl the page + extract the first in-domain /product/
+    link from the HTML (the PDP link is present even when the price isn't).
+    Every candidate passes variant_mismatch + locale + score gates. Returns the
+    NEW `(link, domain, route, weight)` tuples (possibly empty). Best-effort,
+    never raises. Only fires for retailers genuinely missing — $0 otherwise.
+    """
+    # LAZY GATE (budget): the cascade needs only ONE genuine BH PDP to win. If
+    # ANY bahrain-tier PDP was already harvested (combined query + sitelinks),
+    # skip the backfill entirely — $0. Only when the cheap path reached zero
+    # genuine-BH PDP do we fire the bounded per-retailer queries.
+    for link, _dom, route, _w in harvested:
+        if route == "registry" and _is_pdp_link(link) and not is_wrong_locale_url(link):
+            return []
+    missing = list(_LAZY_BACKFILL_DOMAINS)
+
+    extra: List[Tuple[str, str, str, float]] = []
+    _seen: set = set()
+
+    def _accept(link: str, title: str, domain: str):
+        if not link or link in _seen or not validate_scrape_url(link):
+            return
+        if not _is_pdp_link(link):
+            return
+        if is_wrong_locale_url(link):
+            return
+        if full_name and title and variant_mismatch(full_name, title):
+            return
+        weight = score_source(link, category)
+        if weight >= 1.5:
+            _seen.add(link)
+            extra.append((link, domain, "lazy_backfill", weight))
+
+    for bd in missing:
+        try:
+            res = await search_web(f"{full_name} site:{bd}", num_results=5)
+        except Exception as e:  # noqa: BLE001 — best-effort
+            logger.info(f"[PRICE] lazy backfill search failed for {bd}: {e}")
+            continue
+        organic = (res or {}).get("organic", []) if isinstance(res, dict) else []
+        # microless-style: PDPs rank directly.
+        pdp_found = False
+        search_pages: List[str] = []
+        for it in organic[:5]:
+            link = it.get("link", "")
+            if _is_pdp_link(link):
+                _accept(link, it.get("title", ""), bd)
+                pdp_found = True
+            elif bd in (link or "").lower():
+                # sharafdg-style: a search/category page on the retailer domain.
+                search_pages.append(link)
+        # sharafdg-style fallback: curl the search page + extract its first PDP
+        # links from the HTML (the price isn't rendered, but the PDP <a> is).
+        if not pdp_found and search_pages:
+            for sp in search_pages[:1]:
+                try:
+                    html = await curl_fetch_html(sp)
+                except Exception:  # noqa: BLE001
+                    html = None
+                if not html:
+                    continue
+                for m in re.findall(r'href=["\'](https?://[^"\']*?/product/[^"\']+)["\']', html, re.IGNORECASE):
+                    if bd in m.lower():
+                        # title unknown from a bare href — variant-gate on the slug.
+                        slug = m.rstrip("/").rsplit("/", 1)[-1].replace("-", " ")
+                        _accept(m, slug, bd)
+
+    if extra:
+        logger.info(
+            "[PRICE] lazy BH PDP backfill added %d candidate(s) for %r: %s",
+            len(extra), full_name, [e[0][:70] for e in extra],
+        )
+    return extra
 
 
 class StructuredComparisonService:
@@ -3243,9 +3371,27 @@ class StructuredComparisonService:
             # _harvest_candidate_urls; `harvested` carries route + source_weight
             # for the source_trace record (F1.4).
             harvested = _harvest_candidate_urls(
-                results_by_tier, official_domain, category
+                results_by_tier, official_domain, category, query_name=full_name
             )
             candidate_urls = [(link, label) for link, label, _route, _w in harvested]
+
+            # S3 electronics-authority (prong b3 HYBRID) — LAZY per-retailer PDP
+            # backfill. ONLY fires when the combined query + sitelink-harvest
+            # reached ZERO genuine-BH PDP (else $0). Recovers sharafdg/microless's
+            # base PDP that Serper ranks behind a search page / buries vs SA/OM
+            # noise (prod-verify: iPhone 15 sharafdg 244.99 unreachable otherwise).
+            # Electronics-scoped — that's the category with the genuine-BH-PDP miss.
+            if category == "electronics":
+                _backfill = await _lazy_bh_pdp_backfill(harvested, full_name, category)
+                if _backfill:
+                    self.api_calls += len(_LAZY_BACKFILL_DOMAINS)
+                    self._track_cost_amount(0.001 * len(_LAZY_BACKFILL_DOMAINS))
+                    harvested = list(harvested) + _backfill
+                    # PREPEND backfilled genuine-BH PDPs so they lead the pool.
+                    candidate_urls = (
+                        [(link, label) for link, label, _r, _w in _backfill]
+                        + candidate_urls
+                    )
 
             # S3-genuine — the curl-SEARCH-URL injector (build_direct_bh_candidates)
             # was REMOVED 2026-06-14. Team-lead live probe (WRINKLE 2) + our own
