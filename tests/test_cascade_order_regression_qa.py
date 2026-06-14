@@ -285,6 +285,11 @@ from app.services.source_router import SOURCE_REGISTRY
 
 _RENDER_ONLY_DOMAINS = {
     "alosraonline.com", "nasserpharmacy.com", "bn.boots.com", "bolo.bh", "megamart.bh",
+    # S3 coverage (2026-06-14): noon.com flipped is_render_only=True — Akamai-walled
+    # marketplace (plain curl returns 0-byte), routed to the render-tier. GCC-tier
+    # (gray-import), not a BH SPA, but carries the flag so the cascade skips a wasted
+    # plain-curl on it. L1 #2 apple-fix; dispatcher-confirmed at the coverage merge.
+    "noon.com",
 }
 
 
@@ -296,9 +301,10 @@ _RENDER_ONLY_DOMAINS = {
 # render-scope-to-BH + the ce0a78e helper/curl-skip). So ALL is_render_only tests
 # are xfail-strict now and flip green TOGETHER when the consolidated branch lands.
 
-def test_render_only_field_marks_the_five_spa_domains():
-    """The is_render_only flag exists on Source and exactly the 5 SPA domains
-    carry it (alosra/nasserpharmacy/bn.boots/bolo/megamart)."""
+def test_render_only_field_marks_the_six_render_domains():
+    """The is_render_only flag exists on Source and exactly the 6 render domains
+    carry it: 5 BH SPAs (alosra/nasserpharmacy/bn.boots/bolo/megamart) + noon.com
+    (Akamai-walled GCC marketplace, S3 coverage flip)."""
     marked = {s.domain for s in SOURCE_REGISTRY if getattr(s, "is_render_only", False)}
     assert marked == _RENDER_ONLY_DOMAINS, (
         f"is_render_only domain set drifted: expected {_RENDER_ONLY_DOMAINS}, got {marked}"
@@ -325,7 +331,8 @@ def test_is_render_only_domain_helper_resolves_spa():
     assert is_render_only_domain("https://bn.boots.com/some-pdp") is True
     # Curl-tier domain → False (L1's exact example: sharafdg is curl, not render).
     assert is_render_only_domain("https://bahrain.sharafdg.com/p/x") is False
-    assert is_render_only_domain("noon.com") is False
+    # noon.com → True since the S3 coverage flip (Akamai-walled → render-tier).
+    assert is_render_only_domain("noon.com") is True
 
 
 # --- (iii) curl-skip for render-only URL: live on main since 3be92ce ---
