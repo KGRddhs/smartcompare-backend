@@ -541,6 +541,49 @@ def sanitize_gpt_price(price: Optional[Dict]) -> None:
             price[key] = None
 
 
+# S3-reopen T1 (team-lead Decision-F 2026-06-14) — ABSOLUTE plausibility gate.
+# Wide-by-design category floor/ceiling multipliers: only catch GROSS
+# mis-extractions (an iPhone at 5 or 9000 BHD), never a legitimately cheap or
+# expensive REAL price. The GPT estimate is the judge of nothing — this is what
+# replaces the old deviation-from-estimate veto at the two price sanity sites.
+_PLAUSIBILITY_FLOOR_MULT = 0.1   # reject below 0.1 x the category budget breakpoint
+_PLAUSIBILITY_CEIL_MULT = 3.0    # reject above 3 x the highest FINITE breakpoint
+
+
+def is_price_plausible(amount_bhd: Optional[float], category: Optional[str]) -> bool:
+    """Absolute-plausibility gate for a real (cited/converted) price, in BHD.
+
+    Returns False only for gross category outliers — amount<=0, below
+    0.1x the category budget breakpoint, or above 3x the highest finite
+    breakpoint. A plausible price is TRUSTED even when it deviates wildly from
+    the GPT training guess (the guess being wrong is exactly why we don't let it
+    veto a cited price). Unknown / 'other' categories are permissive (only
+    amount>0) since their magnitude is unbounded (cars to snacks).
+
+    Anchors on scoring_service.PRICE_TIERS_BY_CATEGORY so the bounds track the
+    same per-category BHD breakpoints the scorer already maintains.
+    """
+    if amount_bhd is None or amount_bhd <= 0:
+        return False
+    # Lazy import — keeps price_service's top-level import surface minimal and
+    # avoids any scoring_service import-order coupling.
+    from app.services.scoring_service import PRICE_TIERS_BY_CATEGORY
+
+    ranges = PRICE_TIERS_BY_CATEGORY.get((category or "").lower())
+    if not ranges:
+        # 'other'/unknown — unbounded magnitude; only positivity is required.
+        return True
+    budget_breakpoint = ranges[0][0]
+    finite_breakpoints = [u for u, _ in ranges if u != float("inf")]
+    # Highest finite breakpoint anchors the ceiling (luxury is often inf when
+    # top_tier is folded — fall back to premium so a real expensive item isn't
+    # over-rejected but 9000-BHD garbage still is).
+    top_finite = max(finite_breakpoints) if finite_breakpoints else budget_breakpoint
+    floor = budget_breakpoint * _PLAUSIBILITY_FLOOR_MULT
+    ceiling = top_finite * _PLAUSIBILITY_CEIL_MULT
+    return floor <= amount_bhd <= ceiling
+
+
 def get_official_domain(product_name: str) -> Optional[str]:
     """Return the official brand domain for a luxury product, or None."""
     name_lower = product_name.lower()

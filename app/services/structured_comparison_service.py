@@ -483,6 +483,7 @@ from app.services.price_service import (
     is_counterfeit_listing,
     is_accessory,
     is_high_value_query,
+    is_price_plausible,
     is_luxury_brand,
     is_supplement_query,
     extract_domain,
@@ -2818,27 +2819,19 @@ class StructuredComparisonService:
             if price.get("retailer_score", 0) >= 1.0:
                 pass  # Official domain — skip sanity check
             elif is_high_value_query(full_name) and price.get("retailer_score", 0) < 1.0:
-                # B0-B Item 2 — confidence-driven threshold band (was
-                # is_luxury_brand-gated). Build a single-source list from the
-                # winning Tier-1 candidate and let compute_price_confidence
-                # decide whether we need the tighter luxury-equivalent band.
-                tier1_sources = [{
-                    "src": "serper_shopping",
-                    "amount": price["amount"],
-                    "retailer_score": price.get("retailer_score", 0),
-                }]
-                high_threshold, low_threshold = _sanity_check_thresholds(tier1_sources)
-                tier3_estimate, usage = await extract_price_from_training_data(brand, name, variant, region)
-                self._track_gpt_cost(usage)
-                sanitize_gpt_price(tier3_estimate)
-                _convert_gpt_price_currency(tier3_estimate, currency)
-                if tier3_estimate and tier3_estimate.get("amount"):
-                    tier1_bhd = _convert_to_bhd(price["amount"], currency)
-                    tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
-                    if tier1_bhd > tier3_bhd * high_threshold:
-                        price = None
-                    elif tier1_bhd < tier3_bhd * low_threshold:
-                        price = None
+                # S3-reopen T1 (team-lead Decision-F 2026-06-14) — the GPT
+                # estimate is the judge of NOTHING. The old code fetched the GPT
+                # training guess and NULLED this real Tier-1 price when it merely
+                # deviated from the guess (then the cascade fell to that same
+                # guess — a real price thrown away for an estimate). Now the gate
+                # is ABSOLUTE category plausibility: a plausible Tier-1 price is
+                # KEPT (a wrong guess is exactly why we don't let it veto a cited
+                # price); only a grossly-implausible amount (a mis-extracted
+                # installment / accessory / currency error) is dropped — and
+                # dropping it falls through to the BH scrape cascade, never
+                # promotes it. No estimate is fetched here just to veto.
+                if not is_price_plausible(_convert_to_bhd(price["amount"], currency), category):
+                    price = None
             if price and price.get("amount"):
                 price.pop("retailer_score", None)
                 set_cached(cache_key, price, PRICE_CACHE_TTL)
@@ -3242,45 +3235,28 @@ class StructuredComparisonService:
                     price["retailer"] = "iHerb"
                     price["url"] = f"https://{iherb_cc}.iherb.com/search?kw={quote_plus(full_name)}"
             else:
-                if tier3_estimate is None:
-                    tier3_estimate, usage = await extract_price_from_training_data(brand, name, variant, region)
-                    self._track_gpt_cost(usage)
-                    sanitize_gpt_price(tier3_estimate)
-                    _convert_gpt_price_currency(tier3_estimate, currency)
-                if tier3_estimate and tier3_estimate.get("amount"):
-                    tier2_bhd = _convert_to_bhd(price["amount"], currency)
-                    tier3_bhd = _convert_to_bhd(tier3_estimate["amount"], currency)
-                    # B0-B Item 2 — confidence-driven threshold band (was
-                    # is_luxury_brand-gated). Tier-2 GPT extracts have no
-                    # retailer_score; treat as a single-source candidate so
-                    # _sanity_check_thresholds picks the band consistently
-                    # across categories instead of hardcoded luxury-only.
-                    tier2_sources = [{
-                        "src": "gpt_organic_extract",
-                        "amount": price["amount"],
-                        "retailer_score": 0,
-                    }]
-                    high_threshold, low_threshold = _sanity_check_thresholds(tier2_sources)
-                    # S3-reopen T1 (Ahmed: estimate is tier-8 LAST resort) — do
-                    # NOT swap a REAL extracted price for the GPT estimate when
-                    # it merely deviates from the GPT training guess. The Tier-2
-                    # price is a real cited price (organic-extracted); the
-                    # training estimate is a guess. A real price ALWAYS beats a
-                    # guess, with its honest converted_usd/local_bhd label, so the
-                    # user sees a cited number (UI "indicative" when converted).
-                    # The deviation is only ANNOTATED (price_deviates_from_estimate)
-                    # so downstream confidence can soften it — never replaced with
-                    # the estimate. (Pre-T1 this swapped price=tier3_estimate +
-                    # estimated=True, the "real price thrown away for a guess"
-                    # violation L1 caught.)
-                    if tier2_bhd > tier3_bhd * high_threshold or tier2_bhd < tier3_bhd * low_threshold:
-                        price["price_deviates_from_estimate"] = True
-            if price.get("retailer") and not price.get("url"):
-                price["url"] = build_retailer_url(price["retailer"], full_name)
-            set_cached(cache_key, price, PRICE_CACHE_TTL)
-            self._save_price_to_db(cache_key, brand, name, variant, region, price)
-            price["_cached"] = False
-            return price
+                # S3-reopen T1 (team-lead Decision-F 2026-06-14) — ABSOLUTE
+                # plausibility, NOT deviation-from-GPT. The Tier-2 price is a real
+                # cited (organic-extracted) number; the GPT training estimate is
+                # a guess and the judge of NOTHING. The OLD code computed a
+                # GPT-relative band and annotated price_deviates_from_estimate
+                # (and pre-that, SWAPPED in the estimate — the "real price thrown
+                # away for a guess" violation). Now: a plausible real price is
+                # KEPT with its honest converted_usd/local_bhd label, EVEN IF it
+                # differs 2-3x from the guess (the guess being wrong is exactly
+                # why we don't trust it). A grossly-IMPLAUSIBLE amount is a
+                # wrong-scrape (installment / accessory / currency error) — it is
+                # DROPPED (not promoted) so the cascade falls to the tier-8
+                # estimate, the lesser evil. No GPT estimate is fetched to veto.
+                if not is_price_plausible(_convert_to_bhd(price["amount"], currency), category):
+                    price = None
+            if price and price.get("amount"):
+                if price.get("retailer") and not price.get("url"):
+                    price["url"] = build_retailer_url(price["retailer"], full_name)
+                set_cached(cache_key, price, PRICE_CACHE_TTL)
+                self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                price["_cached"] = False
+                return price
 
         # --- Broader search fallback ---
         broader_name = full_name

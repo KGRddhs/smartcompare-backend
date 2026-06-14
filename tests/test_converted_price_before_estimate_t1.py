@@ -1,19 +1,24 @@
-"""S3-reopen T1 — a real (US-converted) price beats a GPT estimate.
+"""S3-reopen T1 — a real price beats a GPT estimate (ABSOLUTE-plausibility gate).
 
 THE #1 BUG (team-lead live): iPhone 15 vs Galaxy S24 returns source_method=
-"estimated" despite a gl=us-fallback returning a REAL price. Root cause
-(scs.py:2838-2841): for a high-value query, the Tier-1 converted price is
-compared to the GPT TRAINING ESTIMATE and DISCARDED (price=None) when it
-deviates — then the cascade falls all the way to that same GPT estimate. A real
-US-converted price is thrown away for a guess.
+"estimated" despite a gl=us-fallback returning a REAL price. Original root cause
+(scs.py:2838-2841 + 3269-3270): for a high-value query, the real Tier-1/Tier-2
+price was compared to the GPT TRAINING ESTIMATE and DISCARDED/annotated when it
+deviated — then the cascade fell to that same GPT estimate. A real price thrown
+away for a guess.
 
-THE FIX (Ahmed §5: converted_usd is tier-7, estimated is tier-8 last-resort):
-when the sanity check rejects the Tier-1 converted price, PARK it; if Tier-1.5
-(BH) + Tier-2 (organic) also fail, RETURN the parked converted_usd price instead
-of the GPT estimate. The estimate only wins when NO real price exists anywhere.
+THE FIX (team-lead Decision-F 2026-06-14, Ahmed §5: converted_usd tier-7,
+estimated tier-8): the GPT estimate is the judge of NOTHING. Both sanity sites
+now gate on ABSOLUTE category plausibility (is_price_plausible), not
+deviation-from-guess:
+  - plausible real price  -> KEEP it (return over the estimate), even if it
+    differs wildly from the guess (the guess being wrong is WHY it can't judge).
+  - implausible real price -> wrong-scrape; DROP it (do not promote), fall to the
+    tier-8 estimate (the lesser evil).
+The estimate only wins when NO plausible real price exists anywhere.
 
-Drives _get_price end-to-end with the BH cascade stubbed empty + the gl=us
-shopping returning a real price. Free-tier (no live calls).
+Drives _get_price end-to-end with the BH cascade stubbed empty. Free-tier (no
+live calls).
 """
 
 import os
@@ -152,6 +157,58 @@ async def test_tier2_organic_real_price_not_swapped_for_estimate(monkeypatch, cl
     assert result["amount"] == pytest.approx(310.0)
     # A genuinely-BHD extracted price stays local_bhd (honest).
     assert result["source_method"] == "local_bhd"
+
+
+@pytest.mark.asyncio
+async def test_tier2_implausible_price_dropped_not_promoted(monkeypatch, clean_service):
+    """T1 refinement (team-lead Decision-F): a Tier-2 organic price that is
+    grossly IMPLAUSIBLE for the category (iPhone @ 5 BHD — a mis-extracted cable
+    / accessory / wrong line item) is a WRONG SCRAPE. It must be DROPPED, NOT
+    promoted as the price. The cascade then falls to the tier-8 estimate (the
+    lesser evil) — surfacing a 5-BHD iPhone is as bad as a fake estimate."""
+    from app.services import structured_comparison_service as scs_mod
+
+    monkeypatch.setattr(
+        scs_mod, "search_product_prices",
+        AsyncMock(return_value={"shopping": [], "organic": [], "shopping_region": "bh"}),
+    )
+    monkeypatch.setattr(scs_mod, "get_official_domain", lambda *a, **kw: None)
+    monkeypatch.setattr(scs_mod, "fetch_shopify_price", AsyncMock(return_value=None))
+    monkeypatch.setattr(scs_mod, "search_web", AsyncMock(return_value={"organic": []}))
+    monkeypatch.setattr(scs_mod, "fan_out_price_lookup", AsyncMock(return_value={"best": None}))
+    monkeypatch.setattr(
+        scs_mod, "search_price_organic",
+        AsyncMock(return_value={"organic": [{"link": "https://noon.com/iphone-cable"}],
+                                "knowledge_graph": None}),
+    )
+    # Tier-2 GPT organic extraction: a 5 BHD "iPhone 15" price — implausible for
+    # electronics (below 0.1 x budget breakpoint 100 = 10). A wrong scrape.
+    monkeypatch.setattr(
+        scs_mod, "extract_price",
+        AsyncMock(return_value=(
+            {"amount": 5.0, "currency": "BHD", "original_currency": "BHD",
+             "retailer": "noon"},
+            {},
+        )),
+    )
+    # GPT training estimate = 290 BHD (the legit tier-8 fallback).
+    monkeypatch.setattr(
+        scs_mod, "extract_price_from_training_data",
+        AsyncMock(return_value=({"amount": 290.0, "currency": "BHD"}, {})),
+    )
+
+    result = await clean_service._get_price(
+        brand="Apple", name="iPhone 15", variant="128GB", region="bahrain",
+        search_query="Apple iPhone 15 128GB price", nocache=True,
+        category="electronics",
+    )
+    assert result is not None
+    # The implausible 5-BHD scrape was DROPPED, not returned.
+    assert result["amount"] != pytest.approx(5.0)
+    # It fell to the tier-8 estimate (the honest last resort).
+    assert result["source_method"] == "estimated"
+    assert result["estimated"] is True
+    assert result["amount"] == pytest.approx(290.0)
 
 
 @pytest.mark.asyncio
