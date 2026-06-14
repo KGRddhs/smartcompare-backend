@@ -72,6 +72,53 @@ class TestWaveParam:
         assert len(default) == 3  # back-compat: curl + render
 
 
+class TestRenderOnlySourceRouting:
+    """is_render_only INCLUSION side (team-lead Approach-A): an is_render_only
+    SPA source (its Serper-discovered PDP) must SKIP the curl wave (a curl yields
+    nothing on a JS-SPA — wasted fetch) and be INCLUDED in the render wave."""
+
+    def test_render_only_url_skips_curl_wave(self, monkeypatch):
+        from app.services import structured_comparison_service as scs_mod
+        monkeypatch.setattr(
+            scs_mod.firecrawl_service, "should_fan_out", lambda *a, **k: True
+        )
+        # nasserpharmacy.com is an is_render_only registry source.
+        urls = [("https://www.nasserpharmacy.com/p/vitamin-d", "nasserpharmacy.com")]
+        curl_wave = scs_mod._build_escalation_scrapers(
+            candidate_urls=urls, full_name="Vitamin D", currency="BHD",
+            scraping_mode="hard", wave="curl",
+        )
+        # No curl scraper for an is_render_only source — a curl is wasted on a SPA.
+        assert len(curl_wave) == 0
+
+    def test_render_only_url_included_in_render_wave(self, monkeypatch):
+        from app.services import structured_comparison_service as scs_mod
+        monkeypatch.setattr(
+            scs_mod.firecrawl_service, "should_fan_out", lambda *a, **k: True
+        )
+        urls = [("https://www.nasserpharmacy.com/p/vitamin-d", "nasserpharmacy.com")]
+        render_wave = scs_mod._build_escalation_scrapers(
+            candidate_urls=urls, full_name="Vitamin D", currency="BHD",
+            scraping_mode="hard", wave="render",
+        )
+        # firecrawl + scrapedo = 2 — the render-only source IS routed into render.
+        assert len(render_wave) == 2
+
+    def test_curl_source_still_gets_curl_scraper(self, monkeypatch):
+        """A non-render-only BH source (sharafdg) STILL gets its curl scraper in
+        the curl wave (regression — the is_render_only skip must not over-apply)."""
+        from app.services import structured_comparison_service as scs_mod
+        monkeypatch.setattr(
+            scs_mod.firecrawl_service, "should_fan_out", lambda *a, **k: True
+        )
+        urls = [("https://bahrain.sharafdg.com/product/iphone-15/", "bahrain.sharafdg.com")]
+        curl_wave = scs_mod._build_escalation_scrapers(
+            candidate_urls=urls, full_name="iPhone 15", currency="BHD",
+            scraping_mode="hard", wave="curl",
+        )
+        assert len(curl_wave) == 1  # sharafdg curl-scrapes fine
+
+
 @pytest.fixture
 def clean_service(monkeypatch):
     from app.services import structured_comparison_service as scs_mod

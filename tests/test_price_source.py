@@ -9,9 +9,13 @@ import pytest
 class TestPriceSourceMethod:
     """Test that prices are tagged with source_method."""
 
-    def test_iherb_price_tagged_converted_usd(self):
-        price = {"amount": 4.52, "currency": "BHD", "retailer": "iHerb", "source_method": "converted_usd"}
-        assert price["source_method"] == "converted_usd"
+    def test_iherb_native_bhd_tagged_local_bhd(self):
+        # S3-genuine (team-lead 2026-06-14): a bh.iherb.com price is native BHD →
+        # local_bhd (genuine-BH), NOT converted_usd. converted_usd is reserved for
+        # a genuinely-foreign-origin price (see fetch_iherb_price + the dedicated
+        # test_iherb_native_bhd_label.py). This pins the corrected enum intent.
+        price = {"amount": 4.52, "currency": "BHD", "retailer": "iHerb", "source_method": "local_bhd"}
+        assert price["source_method"] == "local_bhd"
 
     def test_pharmacy_price_tagged_local_bhd(self):
         price = {"amount": 2.07, "currency": "BHD", "retailer": "Boots Bahrain", "source_method": "local_bhd"}

@@ -579,6 +579,7 @@ from app.services.source_router import (
     score_source,
     source_usage,
     is_wrong_locale_url,
+    is_render_only_domain,
     get_shopify_sources_for_category,
 )
 
@@ -849,7 +850,12 @@ def _build_escalation_scrapers(
     for url, retailer_domain in candidate_urls:
         if not validate_scrape_url(url):
             continue
-        if want_curl:
+        # S3-genuine (is_render_only INCLUSION side, Approach A): a JS-SPA source
+        # (alosra/nasserpharmacy/bn.boots/bolo/megamart) yields nothing on a
+        # static curl — SKIP it in the curl wave (wasted fetch) and let the render
+        # wave below handle it (the two-sided render-tier inclusion).
+        _render_only = is_render_only_domain(retailer_domain) or is_render_only_domain(url)
+        if want_curl and not _render_only:
             # Curl scrape — always free.
             async def _curl_with_args(_product, _url=url, _retailer=retailer_domain):
                 return await _curl_scraper(_url, full_name, currency, _retailer)
