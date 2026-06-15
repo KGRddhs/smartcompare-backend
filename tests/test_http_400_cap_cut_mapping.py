@@ -35,12 +35,30 @@ os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
 
 from unittest.mock import patch, AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """slowapi caps /text/compare at 10/min by IP. This file makes several
+    TestClient calls; without a per-test reset the window exhausts when this
+    file runs alongside other /text/compare suites in one process, surfacing
+    flaky 429s instead of the asserted 200/503/400. Reset between every test.
+    Mirror of tests/test_timeout_partial_integration.py + test_two_input_shape.py."""
+    from app.middleware.rate_limiter import limiter
+
+    try:
+        limiter.reset()
+    except Exception:  # noqa: BLE001
+        pass
+    yield
+
 
 # A true hard-cap timeout with NO usable partial data — the only case that now
 # surfaces code:"TIMEOUT" from the service. Copy obeys the no-scary contract.

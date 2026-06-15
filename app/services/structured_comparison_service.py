@@ -581,6 +581,7 @@ from app.services.source_router import (
     score_source,
     source_usage,
     is_wrong_locale_url,
+    is_non_pdp_listing_url,
     rewrite_to_bh_locale,
     is_render_only_domain,
     get_shopify_sources_for_category,
@@ -1114,8 +1115,19 @@ def _harvest_candidate_urls(
     filtered: List[Tuple[str, str, str, float]] = []
     _dropped = 0
     _rewritten = 0
+    _dropped_listing = 0
     _seen_f: set = set()
     for h in harvested:
+        # D8 (genuine-bh-latency bundle, be-sourcing WS3) — drop category/search/
+        # listing surfaces BEFORE the render wave. A listing page has no single
+        # PDP price to extract; a render credit would be wasted, or a "from N"
+        # listing figure could mis-attribute. Conservative (PDP marker wins) per
+        # is_non_pdp_listing_url, so a real PDP is never dropped. Runs across ALL
+        # tiers in this one place, ahead of the locale rewrite (a listing URL is
+        # not worth rewriting either).
+        if is_non_pdp_listing_url(h[0]):
+            _dropped_listing += 1
+            continue
         if not is_wrong_locale_url(h[0]):
             if h[0] not in _seen_f:
                 _seen_f.add(h[0]); filtered.append(h)
@@ -1127,10 +1139,11 @@ def _harvest_candidate_urls(
             _rewritten += 1
         else:
             _dropped += 1
-    if _dropped or _rewritten:
+    if _dropped or _rewritten or _dropped_listing:
         logger.info(
-            "[PRICE] BH-locale filter: dropped %d wrong-locale, rewrote %d to /en-bh/",
-            _dropped, _rewritten,
+            "[PRICE] BH-locale filter: dropped %d wrong-locale, %d non-PDP listing, "
+            "rewrote %d to /en-bh/",
+            _dropped, _dropped_listing, _rewritten,
         )
     return filtered
 

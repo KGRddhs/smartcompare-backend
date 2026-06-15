@@ -25,6 +25,21 @@ from app.middleware.error_handler import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """slowapi caps /text/compare at 10/min by IP. TestRoutePreservesTimeoutCodeAs503
+    hits /text/compare via TestClient; reset the limiter between tests so it can't
+    429 when this file runs alongside other /text/compare suites in one process.
+    Mirror of tests/test_timeout_partial_integration.py."""
+    from app.middleware.rate_limiter import limiter
+
+    try:
+        limiter.reset()
+    except Exception:  # noqa: BLE001
+        pass
+    yield
+
+
 class TestSurfaceComparisonFailureHelper:
     def test_content_unavailable_returns_body(self):
         result = {"success": False, "code": "CONTENT_UNAVAILABLE",

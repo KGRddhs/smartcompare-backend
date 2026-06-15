@@ -23,7 +23,9 @@ from unittest.mock import patch, AsyncMock
 from app.services.source_router import (
     get_shopify_sources_for_category,
     get_algolia_sources_for_category,
+    is_non_pdp_listing_url,
 )
+from app.services.structured_comparison_service import _harvest_candidate_urls
 
 
 class TestSpeculativeDirectGate:
@@ -181,3 +183,40 @@ async def test_no_speculative_prefetch_for_no_source_category(monkeypatch):
         search_query="Generic Thing", nocache=True, category="other",
     )
     assert shopify_calls["n"] == 0
+
+
+class TestD8NonPdpListingWiredIntoHarvest:
+    """D8 wire-in: _harvest_candidate_urls must DROP a non-PDP listing/category
+    URL even when it passes the score_source>=1.5 registry gate (same domain as
+    a kept PDP). Predicate coverage lives in test_discovery_bh_locale_filter.py;
+    this pins the INTEGRATION (the gate stays amber until the harvest calls it)."""
+
+    def test_listing_url_dropped_pdp_kept_same_registry_domain(self):
+        # bahrain.ounass.com is a fragrances registry domain (score 3.0). A PDP
+        # path is kept; a /shop/ listing path on the SAME domain (also score 3.0)
+        # must be dropped by the D8 filter, proving the score gate alone wouldn't
+        # have removed it.
+        pdp = "https://bahrain.ounass.com/tom-ford-ombre-leather-p1"
+        listing = "https://bahrain.ounass.com/shop/fragrance"
+        # sanity: both pass the score gate; only `listing` is non-PDP.
+        assert is_non_pdp_listing_url(pdp) is False
+        assert is_non_pdp_listing_url(listing) is True
+
+        results_by_tier = {
+            "bahrain": {
+                "organic": [
+                    {"link": pdp, "title": "Tom Ford Ombre Leather"},
+                    {"link": listing, "title": "Fragrance"},
+                ]
+            }
+        }
+        harvested = _harvest_candidate_urls(
+            results_by_tier, official_domain=None, category="fragrances",
+            query_name="Tom Ford Ombre Leather",
+        )
+        links = [h[0] for h in harvested]
+        assert pdp in links, "PDP must survive the harvest"
+        assert listing not in links, (
+            "D8 wire-in failed: non-PDP listing URL was not dropped by "
+            "_harvest_candidate_urls (is_non_pdp_listing_url not wired in)"
+        )
