@@ -246,6 +246,13 @@ describe('D3 — price pill labeling never uses the word "estimated"', () => {
     expect(parseSourceMethod('page_scrape_jsonld' as any)).toBe('Retailer page');
   });
 
+  it('shopify_json (genuine BH /products.json) renders the retailer-page phrase, not suppressed', () => {
+    // Regression guard: backend emits source_method:"shopify_json" for a real
+    // BHD price (price_service.py:1752). It must NOT fall through to null
+    // (which would suppress the pill like 'estimated').
+    expect(parseSourceMethod('shopify_json' as any)).toBe('Retailer page');
+  });
+
   it('estimated suppresses the pill (returns null) — no provenance copy', () => {
     expect(parseSourceMethod('estimated')).toBeNull();
   });

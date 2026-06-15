@@ -42,6 +42,11 @@ export interface ReviewData {
 // (spec § 5c, `feedback_no_estimated_word_in_ui.md`).
 export type SourceMethod =
   | 'local_bhd'
+  // Genuine-BH bundle: a real BHD price pulled from a retailer's Shopify
+  // /products.json (no Serper/render) — a genuine local listing. Backend
+  // emits this (price_service.py:1752); FE maps it to the "Retailer page"
+  // pill so it isn't silently suppressed like 'estimated'.
+  | 'shopify_json'
   | 'converted_usd'
   | 'page_scrape'
   // Genuine-BH bundle (WS3): curl JSON-LD off a retailer PDP. Treated as a

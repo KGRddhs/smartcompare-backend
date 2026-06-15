@@ -18,6 +18,9 @@ import type { Product, SourceMethod } from '../types';
 
 const APPROVED: Partial<Record<SourceMethod, string>> = {
   local_bhd: 'Direct local listing',
+  // Genuine-BH bundle: real BHD from a retailer Shopify /products.json — a
+  // genuine local listing, same approved phrasing as the other page methods.
+  shopify_json: 'Retailer page',
   converted_usd: 'Local listing',
   page_scrape: 'Retailer page',
   // Genuine-BH bundle (WS3): curl JSON-LD off a retailer PDP — a genuine
