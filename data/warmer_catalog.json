@@ -1,0 +1,81 @@
+{
+  "_metadata": {
+    "schema_version": 1,
+    "authored_at": "2026-06-15",
+    "author": "be-sourcing (Genuine-BH latency+warmer bundle WS4/D6)",
+    "purpose": "STRUCTURAL warmer-only catalog. These are high-traffic / latency-heavy product pairs whose genuine BH (BHD) price is reachable but SLOW to scrape (luxury fragrance, premium haircare, gadgets) — they blow the 15s live request clock so live falls to converted_usd. The off-clock warmer (cron_warm_price_cache) scrapes them with the raised PRICE_RACE_TIMEOUT + FAN_OUT_BUDGET_SECONDS=35 and writes the genuine price into the shared 24h cache, so a live re-compare reads it INSTANT + GENUINE. This file is MERGED into the warmer's query set; it is deliberately SEPARATE from data/validation_gold_truth.json so it never shifts the eval baseline (run 4aee8e88).",
+    "notes": "id prefix 'warm-' to never collide with gold ids. region=bahrain for all. category is advisory only (the backend AI makes the final category call). Keep this list TIGHT — every entry costs ~10-30 Serper credits per warm run against the finite free key; add only pairs with a confirmed structural genuine-but-slow gap. The Tom Ford Ombre Leather + Tobacco Vanille pair is the bundle's repro and is included first."
+  },
+  "queries": [
+    {
+      "id": "warm-frag-001",
+      "query": "Tom Ford Ombre Leather vs Tom Ford Tobacco Vanille",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Bundle repro pair. Genuine BH reachable (Al Hajis ~80 / Ounass BH ~118 BHD via curl JSON-LD) but ~37.5s cold > 30s cap → warmer-only genuine."
+    },
+    {
+      "id": "warm-frag-002",
+      "query": "Creed Aventus vs Tom Ford Oud Wood",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Luxury niche — slow multi-candidate genuine scrape."
+    },
+    {
+      "id": "warm-frag-003",
+      "query": "Maison Francis Kurkdjian Baccarat Rouge 540 vs Parfums de Marly Layton",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Niche luxury, high re-compare traffic."
+    },
+    {
+      "id": "warm-frag-004",
+      "query": "Chanel Bleu de Chanel vs Dior Sauvage",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Mainstream-luxury crossover — common compare, slow BH genuine."
+    },
+    {
+      "id": "warm-hair-001",
+      "query": "Olaplex No.3 Hair Perfector vs K18 Leave-In Molecular Repair Mask",
+      "category": "haircare",
+      "region": "bahrain",
+      "note": "Premium haircare — genuine BH thin, slow to confirm."
+    },
+    {
+      "id": "warm-hair-002",
+      "query": "Kerastase Nutritive Bain Satin vs Moroccanoil Treatment",
+      "category": "haircare",
+      "region": "bahrain",
+      "note": "Salon haircare, structural genuine-but-slow."
+    },
+    {
+      "id": "warm-hair-003",
+      "query": "Dyson Airwrap Complete vs Shark FlexStyle",
+      "category": "haircare",
+      "region": "bahrain",
+      "note": "Hair-tool gadget — high price, slow multi-retailer genuine."
+    },
+    {
+      "id": "warm-gadget-001",
+      "query": "Apple AirPods Pro 2 vs Samsung Galaxy Buds 3 Pro",
+      "category": "electronics",
+      "region": "bahrain",
+      "note": "Gadget — popular compare, slow genuine confirm."
+    },
+    {
+      "id": "warm-gadget-002",
+      "query": "Apple Watch Series 10 vs Samsung Galaxy Watch 7",
+      "category": "electronics",
+      "region": "bahrain",
+      "note": "Wearable gadget — genuine BH reachable but latency-heavy."
+    },
+    {
+      "id": "warm-gadget-003",
+      "query": "Sony WH-1000XM5 vs Bose QuietComfort Ultra Headphones",
+      "category": "electronics",
+      "region": "bahrain",
+      "note": "Premium audio gadget — slow genuine, high re-compare."
+    }
+  ]
+}

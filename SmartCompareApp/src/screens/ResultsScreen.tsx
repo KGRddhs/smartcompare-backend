@@ -126,8 +126,18 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       !!(route?.params?.comparison_id || route?.params?.vision_products)
   );
   const [loadError, setLoadError] = useState<
-    'not_found' | 'need_more_photos' | 'vision_failed' | 'generic' | null
+    'not_found' | 'need_more_photos' | 'vision_failed' | 'timeout' | 'generic' | null
   >(null);
+  // Genuine-BH bundle (D2) — bumping this nonce re-arms the fetch effects so
+  // the timeout state's tap-to-retry actually re-runs the request in place
+  // (rather than only navigating back). Threaded into the fetch effect deps.
+  const [retryNonce, setRetryNonce] = useState(0);
+  const handleRetry = () => {
+    setLoadError(null);
+    setLoadingResult(true);
+    minDisplayUntilRef.current = Date.now() + 1200;
+    setRetryNonce((n) => n + 1);
+  };
   // 1.2s brand-moment floor (Qaren UX redesign § 3) — even fast fetches
   // wait this long so the LoadingRings hero animation lands.
   const minDisplayUntilRef = useRef<number>(Date.now() + 1200);
@@ -188,10 +198,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       } catch (err: any) {
         if (cancelled) return;
         const status = err?.response?.status;
+        const code = err?.response?.data?.code;
         if (status === 404) {
           setLoadError('not_found');
         } else if (status === 401) {
           // Axios 401 interceptor handles refresh/redirect — no-op here.
+        } else if (status === 503 || code === 'TIMEOUT' || code === 'STREAM_TIMEOUT') {
+          // Genuine-BH bundle (D2) — transient timeout. Soft, retryable
+          // state (never the generic "not loading"), with tap-to-retry.
+          setLoadError('timeout');
         } else {
           setLoadError('generic');
         }
@@ -202,7 +217,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     return () => {
       cancelled = true;
     };
-  }, [route?.params?.comparison_id, result]);
+    // retryNonce re-arms this fetch when the user taps retry from the
+    // timeout state (result is still null, so the guard above lets it run).
+  }, [route?.params?.comparison_id, result, retryNonce]);
 
   // Bucket A bug 2 — Camera capture path. ScanCamera passes a
   // vision_products: [uri0, uri1] array via React Nav; identifyFromImages
@@ -252,6 +269,16 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           navigation.navigate('Paywall', { initialUsage: err.detail ?? undefined });
           return;
         }
+        // Genuine-BH bundle (D2) — a 503/TIMEOUT on the camera path is a
+        // transient settle, not a photo-read failure; route it to the soft
+        // retryable timeout state rather than vision_failed.
+        const status = err?.response?.status;
+        const code = err?.response?.data?.code ?? err?.code;
+        if (status === 503 || code === 'TIMEOUT' || code === 'STREAM_TIMEOUT') {
+          setLoadError('timeout');
+          setLoadingResult(false);
+          return;
+        }
         setLoadError('vision_failed');
         setLoadingResult(false);
       }
@@ -260,7 +287,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     return () => {
       cancelled = true;
     };
-  }, [route?.params?.vision_products, result, navigation]);
+    // retryNonce re-arms the camera identify when the user taps retry from
+    // the timeout state.
+  }, [route?.params?.vision_products, result, navigation, retryNonce]);
 
   // Detect new structured format vs old flat format
   const isNewFormat = !!result?.overview?.winner;
@@ -561,6 +590,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // would still render an unusable comparison shell. Bail to the
   // empty-state instead, matching the design § 1a intent.
   if (!result || loadError) {
+    // Genuine-BH bundle (D2) — the timeout state is soft + retryable: a
+    // reassuring "still gathering prices" headline, a body line, and a
+    // tap-to-retry CTA that re-runs the fetch in place (handleRetry). All
+    // other loadError states keep the established back-to-history affordance.
+    const isTimeout = loadError === 'timeout';
     return (
       <View style={styles.container} testID="results-empty-state">
         <View style={styles.header}>
@@ -570,7 +604,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <View style={{ flex: 1 }} />
           <View style={styles.headerButton} />
         </View>
-        <View style={styles.emptyStateContainer}>
+        <View style={styles.emptyStateContainer} testID={isTimeout ? 'results-timeout-state' : undefined}>
           <AlertCircle size={48} color={colors.text.secondary} />
           <Text style={styles.emptyStateTitle}>
             {loadError === 'not_found'
@@ -579,15 +613,21 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               ? t('results.emptyState.needMorePhotos')
               : loadError === 'vision_failed'
               ? t('results.emptyState.visionFailed')
+              : isTimeout
+              ? t('results.timeout.title')
               : t('results.emptyState.title')}
           </Text>
+          {isTimeout ? (
+            <Text style={styles.emptyStateBody}>{t('results.timeout.body')}</Text>
+          ) : null}
           <TouchableOpacity
-            onPress={() => navigation.goBack()}
+            onPress={isTimeout ? handleRetry : () => navigation.goBack()}
             style={styles.emptyStateCta}
             accessibilityRole="button"
+            testID={isTimeout ? 'results-timeout-retry' : undefined}
           >
             <Text style={styles.emptyStateCtaText}>
-              {t('results.emptyState.cta')}
+              {isTimeout ? t('results.timeout.retry') : t('results.emptyState.cta')}
             </Text>
           </TouchableOpacity>
         </View>

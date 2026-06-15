@@ -109,6 +109,7 @@
   "home.errors.camera": "Snap that one more time — sharper focus this round.",
   "home.errors.connection": "Reconnecting…",
   "home.errors.comparison": "Sharper match coming up — try with brand or model.",
+  "home.errors.timeout": "Still gathering prices — give it another tap in a moment.",
   "home.limit.max_title": "That's enough for now",
   "home.limit.max_body": "Compare up to {{max}} products at a time.",
   "home.limit.rate_title": "Take a breath",
@@ -649,6 +650,11 @@
   "results.emptyState.visionFailed": "Snap one more in better light and we'll line them up.",
   "results.loading.fromHistory": "Loading your comparison",
   "results.loading.fromCamera": "Identifying your products",
+
+  "results.timeout.title": "Still gathering prices",
+  "results.timeout.body": "We're lining up the best local listings — give it another tap in a moment.",
+  "results.timeout.retry": "Tap to retry",
+  "results.partial.note": "Prices are still settling — tap to refresh in a moment.",
 
   "register.inviteCode.placeholder": "Have an invite code? (optional)",
   "register.inviteCode.accessibility": "Invite code",

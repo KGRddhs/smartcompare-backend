@@ -40,15 +40,18 @@ async def test_compare_from_text_hard_capped_on_slow_impl():
             f"compare_from_text took {elapsed:.1f}s — hard cap did not fire"
         )
 
-        assert result == {
-            "success": False,
-            "error": "We couldn't finish this comparison in time. Try again.",
-            "code": "TIMEOUT",
-            "total_cost": pytest.approx(0.0),
-        } or result.get("code") == "TIMEOUT"
+        # WS1 (6bfe830) refreshed the no-data hard-cap copy to the no-scary-copy
+        # contract (D2). slow_impl stashes NO partial state → this is the no-data
+        # TIMEOUT path, which now returns TIMEOUT_FRIENDLY_MESSAGE (was the stale
+        # "We couldn't finish… Try again." that the old `or` clause masked).
+        from app.services.structured_comparison_service import TIMEOUT_FRIENDLY_MESSAGE
 
         assert result["success"] is False
         assert result["code"] == "TIMEOUT"
+        assert result["error"] == TIMEOUT_FRIENDLY_MESSAGE
+        # The refreshed copy must not leak the old scary vocab (.copy-policy.json).
+        for _scary in ("couldn't", "try again", "failed to"):
+            assert _scary not in result["error"].lower()
 
 
 @pytest.mark.asyncio

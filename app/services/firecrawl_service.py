@@ -11,8 +11,13 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 FIRECRAWL_API_URL = "https://api.firecrawl.dev/v1/scrape"
-FIRECRAWL_TIMEOUT = 30  # seconds — luxury SPAs (LV, Chanel) need longer to render
-FIRECRAWL_WAIT_MS = 5000  # ms to wait for dynamic content after page load
+# seconds — luxury SPAs (LV, Chanel) need longer to render. Env-driven (Genuine-
+# BH bundle WS3/D5): the OFF-CLOCK warmer raises FIRECRAWL_TIMEOUT (e.g. 45) so a
+# slow luxury SPA can finish inside its 35s FAN_OUT_BUDGET; live keeps the 30s
+# default (the 15s request clock is the real bound there anyway). Read at import;
+# the warmer sets the env before importing the service.
+FIRECRAWL_TIMEOUT = int(os.getenv("FIRECRAWL_TIMEOUT", "30"))
+FIRECRAWL_WAIT_MS = int(os.getenv("FIRECRAWL_WAIT_MS", "5000"))  # ms to wait for dynamic content after page load
 
 
 # Bundle C § 1c diagnostic flag — flag-gated, zero prod overhead with off.

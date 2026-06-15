@@ -144,24 +144,37 @@ def test_counterfeit_domain_fails_both_gates():
 
 def test_gcc_registry_pass_noon_all_category():
     """noon.com is gcc-tier with empty categories (all) -> score 1.5 ->
-    passes the gcc gate via registry for any category."""
+    passes the gcc gate via registry for any category.
+
+    BH-locale fixture (`/bahrain-en/`) per WS3/D8: the discovery filter drops
+    noon's wrong-GCC locales (`/uae-en/`=AED etc.) for a Bahrain query, so the
+    registry-pass path is now exercised with the KEPT BH locale. Merge-base
+    f961e32 confirmed this passed pre-bundle; WS3/D8's filter is the intended
+    cause of the realignment (not a gate regression)."""
     results_by_tier = {
-        "gcc": _organic("https://www.noon.com/uae-en/laptop"),
+        "gcc": _organic("https://www.noon.com/bahrain-en/laptop"),
     }
     harvested = _harvest_candidate_urls(
         results_by_tier, official_domain=None, category="electronics"
     )
     links = [h[0] for h in harvested]
-    assert "https://www.noon.com/uae-en/laptop" in links
+    assert "https://www.noon.com/bahrain-en/laptop" in links
 
 
 # ---------- F1.4: route + source_weight on every entry ----------
 
 def test_every_entry_has_route_and_weight():
+    # Fixtures realigned to survive the WS3/D8 discovery filters (genuine-bh
+    # latency bundle): the BH-locale filter keeps noon `/bahrain-en/` (was
+    # `/uae-en/`=AED, now dropped), and the PDP/listing filter (be-core #11
+    # is_non_pdp_listing_url) drops the apple `/shop/iphone-15` LISTING surface
+    # — so the official fixture is the PDP-form `apple.com/iphone-15/`. All
+    # three URLs are product-detail pages in a KEPT locale, so the route/weight
+    # contract is still exercised on 3 admitted entries.
     results_by_tier = {
         "bahrain": _organic("https://gcc.luluhypermarket.com/en-bh/iphone-15"),
-        "official": _organic("https://www.apple.com/shop/iphone-15"),
-        "gcc": _organic("https://www.noon.com/uae-en/iphone-15"),
+        "official": _organic("https://www.apple.com/iphone-15/"),
+        "gcc": _organic("https://www.noon.com/bahrain-en/iphone-15"),
     }
     harvested = _harvest_candidate_urls(
         results_by_tier, official_domain="apple.com", category="electronics"

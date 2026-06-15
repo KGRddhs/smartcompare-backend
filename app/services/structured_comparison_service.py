@@ -581,6 +581,7 @@ from app.services.source_router import (
     score_source,
     source_usage,
     is_wrong_locale_url,
+    is_non_pdp_listing_url,
     rewrite_to_bh_locale,
     is_render_only_domain,
     get_shopify_sources_for_category,
@@ -607,6 +608,27 @@ STREAM_HARD_CAP_SECONDS = float(os.getenv("STREAM_HARD_CAP_SECONDS", "25.0"))
 # explicit + test-patchable (Fix A's timeout→parked test shrinks it). On timeout
 # the Phase-1 handler now falls back to self._parked_price (never None).
 _PRICE_RACE_TIMEOUT = float(os.getenv("PRICE_RACE_TIMEOUT", "15.0"))
+
+# WS1 (genuine-bh-latency bundle, D2) — friendly, no-scary-copy message for a
+# TRUE hard-cap timeout (the 503/TIMEOUT path, only when NO usable data landed).
+# Obeys the copy contract in SmartCompareApp/src/i18n/.copy-policy.json: NO
+# "couldn't" / "try again" / "Failed to". The FE i18n-substitutes by CODE
+# ("TIMEOUT"), so this string is the API-level fallback, not the rendered copy.
+TIMEOUT_FRIENDLY_MESSAGE = "Still gathering prices — give it another tap in a moment."
+
+
+def _fan_out_budget_seconds() -> float:
+    """WS3/D5 — the shared Tier-1.5 two-wave (curl + render) budget, in seconds.
+    Read LIVE from FAN_OUT_BUDGET_SECONDS so the off-clock warmer process can
+    raise it to 35s (letting Firecrawl/Scrape.do finish luxury SPAs) WITHOUT a
+    restart, while live traffic keeps the sacred 12s default. Malformed values
+    fall back to 12.0. Read per-call (not cached) so an env flip / monkeypatch
+    takes effect immediately; the cost is one getenv per price escalation,
+    which is negligible next to the scrape it gates."""
+    try:
+        return float(os.getenv("FAN_OUT_BUDGET_SECONDS", "12.0"))
+    except (TypeError, ValueError):
+        return 12.0
 
 # I5.6 lever-3 — per-race cap on the Phase-2 verified-rating fetch. The rating
 # cascade (Serper Tier 1→2→3 + GPT fallback) was the one UNCAPPED Phase-2 race;
@@ -1093,8 +1115,31 @@ def _harvest_candidate_urls(
     filtered: List[Tuple[str, str, str, float]] = []
     _dropped = 0
     _rewritten = 0
+    _dropped_listing = 0
     _seen_f: set = set()
     for h in harvested:
+        # D8 (genuine-bh-latency bundle, be-sourcing WS3) — drop category/search/
+        # listing surfaces BEFORE the render wave. A listing page has no single
+        # PDP price to extract; a render credit would be wasted, or a "from N"
+        # listing figure could mis-attribute. Conservative (PDP marker wins) per
+        # is_non_pdp_listing_url, so a real PDP is never dropped. Runs across ALL
+        # tiers in this one place, ahead of the locale rewrite (a listing URL is
+        # not worth rewriting either).
+        #
+        # T13 (team-lead ruling) — EXEMPT the OFFICIAL tier. D8's intent was to
+        # drop wrong-region MARKETPLACE listing/category pages (noon /egypt,
+        # generic /collections), NOT to second-guess an official-brand domain. An
+        # official-brand /shop/ URL (e.g. apple.com/shop/iphone-15) is the MOST
+        # AUTHORITATIVE source per the price philosophy (official > authorized >
+        # marketplace) — dropping it to a marketplace/converted fallback is exactly
+        # the wrong trade. Gate on the harvest route ("official") OR official-domain
+        # membership so the listing drop never removes an official-brand URL. The
+        # wrong-locale drop below STAYS tier-agnostic (a wrong-region official URL
+        # is still wrong-region).
+        _is_official = h[2] == "official" or h[1] in OFFICIAL_BRAND_DOMAINS
+        if not _is_official and is_non_pdp_listing_url(h[0]):
+            _dropped_listing += 1
+            continue
         if not is_wrong_locale_url(h[0]):
             if h[0] not in _seen_f:
                 _seen_f.add(h[0]); filtered.append(h)
@@ -1106,10 +1151,11 @@ def _harvest_candidate_urls(
             _rewritten += 1
         else:
             _dropped += 1
-    if _dropped or _rewritten:
+    if _dropped or _rewritten or _dropped_listing:
         logger.info(
-            "[PRICE] BH-locale filter: dropped %d wrong-locale, rewrote %d to /en-bh/",
-            _dropped, _rewritten,
+            "[PRICE] BH-locale filter: dropped %d wrong-locale, %d non-PDP listing, "
+            "rewrote %d to /en-bh/",
+            _dropped, _dropped_listing, _rewritten,
         )
     return filtered
 
@@ -1270,6 +1316,21 @@ class StructuredComparisonService:
         # frame — but this survives on self, so the Phase-1 timeout handler returns
         # it instead of None. Never regress price->no-price.
         self._parked_price: Dict[str, Dict[str, Any]] = {}
+        # WS1 (genuine-bh-latency bundle, D1) — per-request best-available
+        # partial stash. `_compare_from_text_impl` writes each stage onto these
+        # as it lands (product_data after Phase-1 gather, scoring_result/names/
+        # tradeoffs/confidence after scoring, comparison after the verdict). When
+        # the outer STREAM_HARD_CAP_SECONDS wait_for in compare_from_text CANCELS
+        # the impl mid-flight, the local stage vars die with the stack frame — but
+        # these survive on self, so the timeout handler can assemble a best-
+        # available partial response (success:true + metadata.partial) instead of
+        # returning a bare scary code:TIMEOUT error. Reset at the top of each
+        # impl run (sync path; the streaming path has its own settle handler).
+        self._partial_build_ctx: Optional[Dict[str, Any]] = None
+        self._partial_product_data: Optional[List[Dict[str, Any]]] = None
+        self._partial_scoring_result: Optional[Dict[str, Any]] = None
+        self._partial_product_names: Optional[List[str]] = None
+        self._partial_comparison: Optional[Dict[str, Any]] = None
 
     # ============================================
     # Static method wrappers for backward compat
@@ -1470,6 +1531,95 @@ class StructuredComparisonService:
     # Main entry points
     # ============================================
 
+    def _partial_has_usable_data(self) -> bool:
+        """WS1 (D1) — True when at least one product has usable Phase-1 data
+        (specs OR a price) stashed. Mirrors the inverse of
+        `_phase1_completely_failed`: a product is usable if EITHER specs or
+        price landed. When neither product has anything, the timeout handler
+        falls through to the existing INSUFFICIENT_DATA error instead of
+        shipping an empty 'partial'."""
+        pd_list = self._partial_product_data
+        if not pd_list:
+            return False
+        for pd in pd_list:
+            if not isinstance(pd, dict):
+                continue
+            if pd.get("specs") is not None or pd.get("price") is not None:
+                return True
+        return False
+
+    def _build_partial_response(self, *, elapsed_seconds: float) -> Dict[str, Any]:
+        """WS1 (D1) — assemble a best-available response from whatever stages
+        landed before the hard cap fired. Reuses `build_comparison_response`
+        (which already defaults every missing kwarg) so the partial body has
+        the SAME shape as a full response — the FE renders it normally. Marks
+        `metadata.partial=true` so the FE can show a subtle 'still settling'
+        affordance.
+
+        Stage availability cascade:
+          - product_data: required (caller checks `_partial_has_usable_data`).
+          - scoring_result: real dimension scores + deterministic winner if
+            scoring finished; else {} → build_comparison_response falls back to
+            the GPT winner (0) and MISSING_SCORE dims.
+          - comparison (verdict): real winner_declaration/reason if the GPT
+            verdict finished; else {} → build_comparison_response renders the
+            templated factual_verdict + product-name winner with no scary copy.
+
+        Never raises — any failure falls through to the caller's INSUFFICIENT_
+        DATA path via the try/except in `compare_from_text`.
+        """
+        ctx = self._partial_build_ctx or {}
+        product_data = self._partial_product_data or []
+        scoring_result = self._partial_scoring_result or {}
+        comparison = self._partial_comparison or {}
+        product_names = self._partial_product_names or [
+            p.get("name", "") for p in product_data
+        ]
+
+        # Derive tradeoffs + confidence ONLY when scoring landed; otherwise the
+        # response carries empty tradeoffs + a low-signal confidence default
+        # (build_comparison_response tolerates both).
+        tradeoffs: List[Dict[str, Any]] = []
+        confidence: Dict[str, Any] = {}
+        try:
+            scoring_service = get_scoring_service()
+            if scoring_result:
+                tradeoffs = scoring_service.compute_tradeoff_pairs(
+                    scoring_result.get("dimension_winners", {}),
+                    product_names,
+                    scoring_result.get("winner_index", 0),
+                )
+            confidence = scoring_service.compute_confidence(
+                product_data,
+                shopping_count=len(self._shopping_items_cache),
+                cached=ctx.get("from_cache", False),
+            )
+        except Exception as e:  # noqa: BLE001 — partial must never crash
+            logger.warning("[WS1] partial tradeoff/confidence derive failed: %s", e)
+
+        result = build_comparison_response(
+            product_data=product_data,
+            comparison=comparison,
+            scoring_result=scoring_result,
+            product_names=product_names,
+            tradeoffs=tradeoffs,
+            confidence=confidence,
+            user_preferences=ctx.get("user_preferences"),
+            from_cache=ctx.get("from_cache", False),
+            query=ctx.get("query", ""),
+            region=ctx.get("region", "bahrain"),
+            category_used=ctx.get("category_used", ""),
+            category_switched=ctx.get("category_switched", False),
+            original_category=ctx.get("original_category"),
+            total_cost=self.total_cost,
+            api_calls=self.api_calls,
+            gpt_calls=self.gpt_calls,
+            serper_calls=self.serper_calls,
+            elapsed_seconds=elapsed_seconds,
+            metadata={"partial": True},
+        )
+        return result
+
     async def compare_from_text(
         self,
         query: str,
@@ -1486,10 +1636,18 @@ class StructuredComparisonService:
     ) -> Dict[str, Any]:
         """L2.7 — hard-capped entry point: wraps `_compare_from_text_impl` in
         asyncio.wait_for(STREAM_HARD_CAP_SECONDS) so the non-streaming path
-        gets the same 25s ceiling the streaming path already has. On timeout
-        a graceful `success:false, code:TIMEOUT` response is returned instead
-        of propagating asyncio.TimeoutError to the caller.
+        gets the same ceiling the streaming path already has.
+
+        WS1 (D1) — on the hard-cap timeout we NO LONGER return a bare scary
+        `code:TIMEOUT` error for a valid query. Instead:
+          - if at least one product has usable data → a best-available PARTIAL
+            (success:true, metadata.partial:true) assembled from the stages
+            that landed (specs/prices always, scores + verdict if they finished).
+          - else → the existing INSUFFICIENT_DATA body (both products empty).
+        A true `code:TIMEOUT` is reserved for the no-data case if even the
+        partial build fails; the route maps it to HTTP 503 (D2), never 400.
         """
+        _t0 = time.time()
         try:
             return await asyncio.wait_for(
                 self._compare_from_text_impl(
@@ -1508,14 +1666,44 @@ class StructuredComparisonService:
                 timeout=STREAM_HARD_CAP_SECONDS,
             )
         except asyncio.TimeoutError:
+            elapsed = time.time() - _t0
+            # WS1 (D1) — best-available partial if any product has data.
+            if self._partial_has_usable_data():
+                try:
+                    partial = self._build_partial_response(elapsed_seconds=elapsed)
+                    logger.warning(
+                        "[L2.7] compare_from_text hard-cap %.1fs hit for query=%r "
+                        "— returning best-available PARTIAL (success:true)",
+                        STREAM_HARD_CAP_SECONDS, query,
+                    )
+                    return partial
+                except Exception as e:  # noqa: BLE001 — fall through to graceful error
+                    logger.error(
+                        "[L2.7] partial build failed after hard-cap for query=%r: %s",
+                        query, e, exc_info=True,
+                    )
+            # No usable data (or partial build failed) — INSUFFICIENT_DATA when
+            # we at least resolved the products; else the friendly TIMEOUT body
+            # (route → HTTP 503, never 400; no scary copy).
             logger.warning(
-                "[L2.7] compare_from_text hard-cap %.1fs hit for query=%r",
+                "[L2.7] compare_from_text hard-cap %.1fs hit for query=%r "
+                "— no usable partial; returning graceful timeout",
                 STREAM_HARD_CAP_SECONDS, query,
             )
+            if self._partial_product_data:
+                return {
+                    "success": False,
+                    "error": "Comparison data was incomplete — choose different products.",
+                    "code": "INSUFFICIENT_DATA",
+                    "elapsed_seconds": round(elapsed, 2),
+                    "total_cost": self.total_cost,
+                    "api_calls": self.api_calls,
+                }
             return {
                 "success": False,
-                "error": "We couldn't finish this comparison in time. Try again.",
+                "error": TIMEOUT_FRIENDLY_MESSAGE,
                 "code": "TIMEOUT",
+                "elapsed_seconds": round(elapsed, 2),
                 "total_cost": self.total_cost,
             }
 
@@ -1560,6 +1748,21 @@ class StructuredComparisonService:
         self._source_trace: Dict[str, Any] = {}
         self._tier15_routes = {}
         self._parked_price = {}  # Fix A — per-request parked-price stash reset
+
+        # WS1 (D1) — reset the best-available partial stash for this run. The
+        # build context carries everything _build_partial_response needs that is
+        # NOT a fetched stage (query/region/category/cache flag/prefs). Stages
+        # are stashed below as they land.
+        self._partial_build_ctx = {
+            "query": query,
+            "region": region,
+            "from_cache": not nocache,
+            "user_preferences": user_preferences,
+        }
+        self._partial_product_data = None
+        self._partial_scoring_result = None
+        self._partial_product_names = None
+        self._partial_comparison = None
 
         # L1 content safety pre-filter (spec sec 5.2). Runs on the canonical query
         # string — for explicit_pair shape, this is the concatenated "A vs B"
@@ -1637,6 +1840,16 @@ class StructuredComparisonService:
                 original_category = selected_category
             category_used = detected_category
 
+            # WS1 (D1) — fold the resolved category context into the partial
+            # build ctx so a hard-cap timeout after this point can still build
+            # a correctly-categorized partial response.
+            if self._partial_build_ctx is not None:
+                self._partial_build_ctx.update({
+                    "category_used": category_used,
+                    "category_switched": category_switched,
+                    "original_category": original_category,
+                })
+
             # I5.6 lever-2 — start the behavioral-profile + demographics fetch
             # CONCURRENTLY with the product-data gather. Both fetches depend ONLY
             # on user_id (known here) and have zero dependency on product_data, so
@@ -1658,6 +1871,13 @@ class StructuredComparisonService:
                 self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
                 self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache)
             )
+
+            # WS1 (D1) — stash the assembled product data the moment Phase 1
+            # completes. If the outer STREAM_HARD_CAP wait_for cancels us during
+            # the slower Phase-2 / scoring / verdict stages below, the timeout
+            # handler returns these specs+prices as a best-available partial
+            # (success:true) rather than a bare scary code:TIMEOUT.
+            self._partial_product_data = product_data
 
             # H6 (audit 2026-05-22): when both products' Phase 1 fetches
             # totally failed (specs=None AND price=None on both, meaning the
@@ -1710,6 +1930,13 @@ class StructuredComparisonService:
             ]
             scores_summary = scoring_service.build_scores_summary(scoring_result, product_names)
 
+            # WS1 (D1) — scoring is done; stash it so a timeout during the
+            # GPT verdict (~6.5s, the next slow stage) still yields a partial
+            # response WITH real dimension scores + a deterministic winner,
+            # not just bare specs/prices.
+            self._partial_scoring_result = scoring_result
+            self._partial_product_names = product_names
+
             # Step 4: Generate comparison (passes demographics_profile so the cohort
             # priors block in extraction_service can render when conditions are met).
             t_verdict = time.perf_counter() if orchestrator_timings is not None else None
@@ -1739,6 +1966,19 @@ class StructuredComparisonService:
                 pain_workflow_context=scores_summary,
                 stage_timings=orchestrator_timings,
             )
+
+            # WS1 (D1) — stash the finished verdict. From here on the remaining
+            # work (trust validation, pros/cons pop, value badges, tradeoffs,
+            # response build, L3 moderation) is sub-second; a timeout this late
+            # is rare, but if it lands the partial response carries the real
+            # GPT verdict instead of the templated fallback. NOTE: the pros/cons
+            # pop below mutates `comparison` in place (moving product_N_pros/cons
+            # onto product_data); stashing the reference here means the partial
+            # path sees the same post-pop object — which is exactly what
+            # build_comparison_response expects (it reads pros/cons off
+            # product_data, and winner_declaration/reason/key_tradeoff off
+            # comparison, none of which the pop removes).
+            self._partial_comparison = comparison
 
             # Trust validation
             from app.services.trust_validation_service import validate_verdict
@@ -2052,10 +2292,17 @@ class StructuredComparisonService:
                     STREAM_HARD_CAP_SECONDS, query,
                 )
                 await _cancel_profile_task(_profile_task)
+                # WS1 (D2) — STREAM_TIMEOUT keeps its distinct code (the FE SSE
+                # error branch handles both TIMEOUT and STREAM_TIMEOUT), but the
+                # copy now obeys the no-scary-copy contract (was "Comparison
+                # timed out — please try again." which leaks the forbidden "try
+                # again"). `partial:true` marks it so the FE renders the soft
+                # tap-to-retry state, not the generic error.
                 partial_response = {
                     "success": False,
-                    "error": "Comparison timed out — please try again.",
+                    "error": TIMEOUT_FRIENDLY_MESSAGE,
                     "code": "STREAM_TIMEOUT",
+                    "partial": True,
                     "elapsed_seconds": (datetime.now() - start_time).total_seconds(),
                     "total_cost": self.total_cost,
                     "api_calls": self.api_calls,
@@ -3074,6 +3321,28 @@ class StructuredComparisonService:
 
         is_supplement = (category == "supplements") or is_supplement_query(full_name)
 
+        # WS2 (genuine-bh-latency bundle) — per-sub-stage price timing, gated on
+        # DEBUG_STAGE_TIMINGS so it's a true no-op in prod. Attributes the
+        # ~17-20s price_ms across serper_shopping / discovery+escalation /
+        # fan_out so the latency-trim targets the proven-dominant sub-stage
+        # (measure-before-optimize). Emitted as [PRICE_SUBSTAGE] INFO lines the
+        # _frag_pipeline_trace.py harness captures.
+        _ps_debug = _debug_timings_enabled()
+        _ps_t0 = time.monotonic()
+        _ps_last = _ps_t0
+
+        def _ps_mark(stage: str) -> None:
+            nonlocal _ps_last
+            if not _ps_debug:
+                return
+            _now = time.monotonic()
+            logger.info(
+                "[PRICE_SUBSTAGE] %s stage=%s delta_ms=%.0f cum_ms=%.0f",
+                full_name[:40], stage,
+                (_now - _ps_last) * 1000, (_now - _ps_t0) * 1000,
+            )
+            _ps_last = _now
+
         # --- S3 #34 (cascade-parallelize) — SPECULATIVE discovery prefetch ---
         # ROOT CAUSE (prove-it-works, live prod): the price race serially ran
         # serper_shopping (~5.9s) THEN the discovery site: queries (~5s) THEN the
@@ -3124,11 +3393,68 @@ class StructuredComparisonService:
 
         def _cancel_prefetched_discovery():
             """Cancel the speculative discovery tasks (genuine short-circuit /
-            no-escalation) so no orphan Serper calls survive."""
+            no-escalation) so no orphan Serper calls survive. WS2 — also drops
+            any still-pending speculative FREE direct fetches (Shopify/Algolia)
+            so the same call site covers both speculations; consumed entries
+            were already popped, so this only cancels what wasn't used."""
             for _t, _task in _prefetched_discovery:
                 if not _task.done():
                     _task.cancel()
             _prefetched_discovery.clear()
+            _cancel_prefetched_direct()
+
+        # WS2 (genuine-bh-latency bundle) — speculative FREE genuine-BH direct
+        # fetch, overlapped with the serper_shopping wait. The trace proved the
+        # ~6s serper_shopping sub-stage dominates price_ms, and for Shopify/
+        # Algolia categories (fragrances=alhajis, fashion=6thStreet) the genuine
+        # BH price comes from these FREE direct sources (Shopify /products.json +
+        # Algolia public index — ZERO Serper, zero render credits), which
+        # currently run SERIAL *after* shopping. Kicking them off here overlaps
+        # them with the 6s shopping wait so the genuine price is ready the moment
+        # escalation reaches it. UNLIKE the Serper discovery prefetch above, these
+        # cost nothing to speculate (no Serper) — so there's no budget downside to
+        # firing them even on the rare query where escalation won't fire (the
+        # cancel below just drops a couple of free HTTP GETs). The escalation block
+        # consumes these via _prefetched_direct (instant await) or, if absent,
+        # falls back to firing them inline (unchanged behaviour).
+        _shopify_sources_pf = (
+            get_shopify_sources_for_category(category) if not is_supplement else []
+        )
+        _algolia_sources_pf = (
+            get_algolia_sources_for_category(category) if not is_supplement else []
+        )
+        _prefetched_direct: Dict[str, Any] = {}
+        if ENABLE_PAGE_SCRAPE and (_shopify_sources_pf or _algolia_sources_pf):
+            if _shopify_sources_pf:
+                _prefetched_direct["shopify"] = asyncio.ensure_future(
+                    asyncio.gather(
+                        *(
+                            fetch_shopify_price(s.domain, full_name, currency)
+                            for s in _shopify_sources_pf
+                        ),
+                        return_exceptions=True,
+                    )
+                )
+            if _algolia_sources_pf:
+                from app.services.algolia_service import fetch_algolia_price
+                _prefetched_direct["algolia"] = asyncio.ensure_future(
+                    asyncio.gather(
+                        *(
+                            fetch_algolia_price(s.domain, full_name, category)
+                            for s in _algolia_sources_pf
+                        ),
+                        return_exceptions=True,
+                    )
+                )
+
+        def _cancel_prefetched_direct():
+            """Cancel the speculative FREE direct fetches (genuine Tier-1 short-
+            circuit / no-escalation) so no orphan HTTP GETs survive. No Serper
+            budget impact — these are free /products.json + Algolia calls."""
+            for _task in _prefetched_direct.values():
+                if not _task.done():
+                    _task.cancel()
+            _prefetched_direct.clear()
 
         # --- Tier 1: Direct Serper Shopping extraction ---
         shopping_region = None  # T2 — gl region the shopping items came from
@@ -3139,6 +3465,7 @@ class StructuredComparisonService:
         else:
             search_results = await search_product_prices(search_query, region_info["code"])
             self._track_serper_cost()
+            _ps_mark("serper_shopping")  # WS2 — includes gl=bh + (often) gl=us fallback
             shopping_items = search_results.get("shopping", [])
             self._shopping_items_cache[full_name] = shopping_items
             # Bundle C v1 hot-fix — always-on log of gl=us fallback activity.
@@ -3230,6 +3557,7 @@ class StructuredComparisonService:
             ),
             brand=brand,
         ):
+            _ps_mark("escalate_decision")  # WS2 — entering Tier 1.5 escalation
             scraping_mode = os.environ.get("SCRAPING_MODE", "hard")
             candidate_urls: List[Tuple[str, str]] = []
 
@@ -3262,17 +3590,27 @@ class StructuredComparisonService:
             shopify_fallback = None
             shopify_sources = get_shopify_sources_for_category(category)
             if shopify_sources:
+                # WS2 — consume the speculative fetch fired concurrently with the
+                # serper_shopping call (instant await when it already finished
+                # during the ~6s shopping wait; the 3s cap is the SAME wall, now
+                # mostly overlapped). Fall back to firing inline if the prefetch
+                # was skipped (ENABLE_PAGE_SCRAPE off / no sources at kickoff).
                 try:
-                    shop_results = await asyncio.wait_for(
-                        asyncio.gather(
-                            *(
-                                fetch_shopify_price(s.domain, full_name, currency)
-                                for s in shopify_sources
+                    if "shopify" in _prefetched_direct:
+                        shop_results = await asyncio.wait_for(
+                            _prefetched_direct.pop("shopify"), timeout=3.0
+                        )
+                    else:
+                        shop_results = await asyncio.wait_for(
+                            asyncio.gather(
+                                *(
+                                    fetch_shopify_price(s.domain, full_name, currency)
+                                    for s in shopify_sources
+                                ),
+                                return_exceptions=True,
                             ),
-                            return_exceptions=True,
-                        ),
-                        timeout=3.0,
-                    )
+                            timeout=3.0,
+                        )
                 except asyncio.TimeoutError:
                     shop_results = []
                 except Exception as e:  # noqa: BLE001 — discovery is best-effort
@@ -3346,17 +3684,26 @@ class StructuredComparisonService:
             algolia_sources = get_algolia_sources_for_category(category)
             if algolia_sources:
                 from app.services.algolia_service import fetch_algolia_price
+                # WS2 — consume the speculative Algolia fetch overlapped with the
+                # serper_shopping wait (same as the Shopify path above). Inline
+                # fallback when the prefetch was skipped.
                 try:
-                    algolia_results = await asyncio.wait_for(
-                        asyncio.gather(
-                            *(
-                                fetch_algolia_price(s.domain, full_name, category)
-                                for s in algolia_sources
+                    if "algolia" in _prefetched_direct:
+                        algolia_results = await asyncio.wait_for(
+                            _prefetched_direct.pop("algolia"),
+                            timeout=_ALGOLIA_TIER2_TIMEOUT,
+                        )
+                    else:
+                        algolia_results = await asyncio.wait_for(
+                            asyncio.gather(
+                                *(
+                                    fetch_algolia_price(s.domain, full_name, category)
+                                    for s in algolia_sources
+                                ),
+                                return_exceptions=True,
                             ),
-                            return_exceptions=True,
-                        ),
-                        timeout=_ALGOLIA_TIER2_TIMEOUT,
-                    )
+                            timeout=_ALGOLIA_TIER2_TIMEOUT,
+                        )
                 except asyncio.TimeoutError:
                     algolia_results = []
                 except Exception as e:  # noqa: BLE001 — best-effort
@@ -3579,7 +3926,13 @@ class StructuredComparisonService:
                 # so the total Tier-1.5 scrape time stays <= the 12s the single
                 # fan_out had — it never exceeds the 15s outer _PHASE1_TIMEOUTS
                 # ["price"] cap.
-                _FAN_OUT_BUDGET = 12.0
+                #
+                # WS3/D5 (genuine-bh-latency bundle) — env-configurable so the
+                # OFF-CLOCK warmer can raise it (FAN_OUT_BUDGET_SECONDS=35) to let
+                # Firecrawl/Scrape.do finish luxury SPAs. LIVE STAYS 12s (the 15s
+                # price clock is sacred); only the warmer's process sets the env.
+                _FAN_OUT_BUDGET = _fan_out_budget_seconds()
+                _ps_mark("pre_fan_out")  # WS2 — discovery+ranking done, entering scrape waves
                 _t15_start = time.monotonic()
                 for _wave in ("curl", "render"):
                     _remaining = _FAN_OUT_BUDGET - (time.monotonic() - _t15_start)
@@ -3613,6 +3966,7 @@ class StructuredComparisonService:
                     except Exception as e:  # noqa: BLE001
                         logger.warning(f"[PRICE] Tier 1.5 {_wave}-wave failed: {e}")
                         continue
+                    _ps_mark(f"fan_out_{_wave}")  # WS2 — per-wave scrape wall
                     _winner = _finalize_fan_winner(_fan)
                     if _winner is not None:
                         # Curl-wave win → genuine BH price, no render credits burned.

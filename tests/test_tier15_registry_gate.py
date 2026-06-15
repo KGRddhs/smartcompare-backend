@@ -58,9 +58,19 @@ def test_registry_pass_route_recorded():
 
 def test_registry_pass_gcc_noon_any_category():
     """noon.com is gcc-tier all-category (weight 1.5) → registry pass for
-    electronics."""
+    electronics.
+
+    Uses the BH-locale form `noon.com/bahrain-en/`. WS3/D8 (genuine-bh latency
+    bundle) added a BH-locale discovery filter that DROPS noon's wrong-GCC
+    locales (`/uae-en/`=AED, `/saudi-en/`=SAR, `/egypt-en/`=EGP) for a Bahrain
+    query — see _BH_LOCALE_MARKERS @ source_router.py. The registry-pass path
+    this test exercises is unchanged; only the fixture URL was realigned to the
+    KEPT BH locale (the pre-D8 `/uae-en/` fixture is now correctly filtered).
+    Merge-base f961e32 verified: this test passed pre-bundle; the WS3/D8 filter
+    is the intended cause (not a regression in the gate itself).
+    """
     harvested = _harvest_candidate_urls(
-        {"gcc": _organic("https://www.noon.com/uae-en/laptop")},
+        {"gcc": _organic("https://www.noon.com/bahrain-en/laptop")},
         official_domain=None,
         category="electronics",
     )

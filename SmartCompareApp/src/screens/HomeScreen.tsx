@@ -329,7 +329,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             advanceTimerRef.current = null;
           }
           setLoading(false);
-          Alert.alert(t('common.error'), data.error || t('home.errors.comparison'));
+          // Genuine-BH bundle (D2) — a timeout hard-fail surfaces the soft
+          // results-still-settling copy, never the backend `error` string
+          // (which may carry forbidden vocab). Other failures keep the
+          // existing sharper-match nudge.
+          const isTimeout = data.code === 'TIMEOUT' || data.code === 'STREAM_TIMEOUT';
+          Alert.alert(
+            t('common.error'),
+            isTimeout ? t('home.errors.timeout') : data.error || t('home.errors.comparison')
+          );
         }
       },
       onError: (error: any) => {
@@ -351,6 +359,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         if (isUsageLimitError(error)) {
           const detail = getUsageLimitDetail(error);
           navigation.navigate('Paywall', { initialUsage: detail ?? undefined });
+          return;
+        }
+        // Genuine-BH bundle (D2) — transient timeout (HTTP 503 / code TIMEOUT,
+        // normalized by parseApiError). Show the soft still-gathering-prices
+        // copy with the implicit tap-to-retry; NEVER the backend error string
+        // or scary failure copy. parseApiError returns an empty message for
+        // this code precisely so it can never leak into the UI.
+        if (parsed.code === 'TIMEOUT') {
+          Alert.alert(t('common.error'), t('home.errors.timeout'));
           return;
         }
         Alert.alert(t('common.error'), error.message || t('home.errors.comparison'));
@@ -413,6 +430,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       } else if (isUsageLimitError(error)) {
         const detail = getUsageLimitDetail(error);
         navigation.navigate('Paywall', { initialUsage: detail ?? undefined });
+      } else if (parsed.code === 'TIMEOUT') {
+        // Genuine-BH bundle (D2) — soft timeout copy, never the backend string.
+        Alert.alert(t('common.error'), t('home.errors.timeout'));
       } else {
         Alert.alert(t('common.error'), parsed.message);
       }

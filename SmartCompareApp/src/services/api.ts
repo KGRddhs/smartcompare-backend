@@ -448,7 +448,25 @@ export function streamComparison(
                 case 'reviews': callbacks.onReviews?.(parsed); break;
                 case 'scores': callbacks.onScores?.(parsed); break;
                 case 'verdict': callbacks.onVerdict?.(parsed); break;
-                case 'complete': callbacks.onComplete?.(parsed); break;
+                case 'complete':
+                  // Genuine-BH bundle (D2) — a complete event can arrive with
+                  // success:false + a timeout code when the stream hit the hard
+                  // cap. Route it through onError with a synthetic axios-shaped
+                  // error so HomeScreen's unified error path substitutes the
+                  // friendly results.timeout.* copy (never the backend string).
+                  // The partial specs/prices already streamed remain rendered
+                  // by the loading view; we do NOT discard them.
+                  if (parsed && parsed.success === false) {
+                    const code = parsed.code || parsed?.metadata?.code || null;
+                    callbacks.onError?.(
+                      Object.assign(new Error('stream_incomplete'), {
+                        response: { status: 503, data: { code, error: parsed.error } },
+                      })
+                    );
+                  } else {
+                    callbacks.onComplete?.(parsed);
+                  }
+                  break;
                 // Bundle E § Decision 8 — settle-window events.
                 case 'first_paint': callbacks.onFirstPaint?.(parsed); break;
                 case 'settle_update': callbacks.onSettleUpdate?.(parsed); break;
@@ -487,9 +505,21 @@ export function streamComparison(
             signal: controller.signal,
           });
           if (response.data.success) {
+            // success:true covers both fully-complete and the D1 best-available
+            // partial (metadata.partial:true); the Results screen renders either.
             callbacks.onComplete?.(response.data);
           } else {
-            callbacks.onError?.(new Error(response.data.error || 'Comparison failed'));
+            // Genuine-BH bundle (D2) — preserve the structured code so the
+            // unified onError path substitutes the friendly results.timeout.*
+            // copy. A bare Error('Comparison failed') would have lost the code.
+            callbacks.onError?.(
+              Object.assign(new Error(response.data.error || 'Comparison failed'), {
+                response: {
+                  status: 200,
+                  data: { code: response.data.code, error: response.data.error },
+                },
+              })
+            );
           }
         } catch (fallbackErr: any) {
           if (fallbackErr.name !== 'AbortError' && fallbackErr.name !== 'CanceledError') {
@@ -581,16 +611,38 @@ export async function trackEvent(
 
 export function parseApiError(error: any): { message: string; code: string | null } {
   const data = error?.response?.data;
+  const status = error?.response?.status;
+
+  // Genuine-BH bundle (D2) — transient timeout. The backend now returns a
+  // structured 503 with code:"TIMEOUT" (was a collapsed 400 "couldn't
+  // finish…/Try again" that violated the no-scary-copy contract). We
+  // normalize ANY of: explicit code TIMEOUT/STREAM_TIMEOUT, OR a 503 with
+  // no more specific code, into code:'TIMEOUT'. Callers MUST substitute
+  // friendly copy by code (results.timeout.*) and IGNORE `message` here —
+  // we deliberately do NOT forward the backend `error` string, which may
+  // still carry forbidden vocab. `message` is kept only as a non-rendered
+  // fallback for non-timeout paths.
+  const rawCode: string | null =
+    (typeof data?.code === 'string' && data.code) ||
+    (typeof data?.detail?.code === 'string' && data.detail.code) ||
+    null;
+  if (rawCode === 'TIMEOUT' || rawCode === 'STREAM_TIMEOUT' || status === 503) {
+    return { message: '', code: 'TIMEOUT' };
+  }
+
   if (data?.error) {
-    return { message: data.error, code: data.code || null };
+    return { message: data.error, code: rawCode };
   }
   if (data?.detail) {
-    return { message: typeof data.detail === 'string' ? data.detail : 'Invalid request', code: null };
+    return {
+      message: typeof data.detail === 'string' ? data.detail : 'Invalid request',
+      code: rawCode,
+    };
   }
   if (error?.message) {
-    return { message: error.message, code: null };
+    return { message: error.message, code: rawCode };
   }
-  return { message: 'Something went wrong', code: null };
+  return { message: 'Something went wrong', code: rawCode };
 }
 
 export async function shareComparison(comparisonId: string): Promise<{ share_token: string; share_url: string }> {
