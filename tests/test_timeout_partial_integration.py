@@ -554,3 +554,71 @@ class TestInsufficientDataUnchanged:
         body = resp.json()
         assert body.get("code") == "INSUFFICIENT_DATA" or resp.status_code in (400, 422, 503)
         _assert_no_forbidden_vocab(body)
+
+
+# ===========================================================================
+# Layer 3 — SSE streaming D2 contract. The streaming hard-cap on the Phase-1
+# data fetch yields settle_complete + complete events with success:false,
+# code:"STREAM_TIMEOUT", partial:true, and friendly copy (no forbidden vocab).
+# Drives the REAL compare_from_text_streaming generator with _fetch_product_data
+# mocked to hang past a patched cap. explicit_pair skips parse_product_query so
+# no OpenAI call fires. No network.
+# ===========================================================================
+@pytest.mark.asyncio
+class TestStreamingTimeoutD2Contract:
+    async def _collect_stream_events(self, svc):
+        import asyncio as _asyncio
+
+        import app.services.structured_comparison_service as scs
+
+        async def slow_fetch(*_a, **_k):
+            await _asyncio.sleep(5)  # exceed the patched cap
+            return {"brand": "X", "name": "Y", "specs": {}, "price": None}
+
+        events = []
+        with patch.object(scs, "STREAM_HARD_CAP_SECONDS", 0.3), \
+                patch.object(svc, "_fetch_product_data", side_effect=slow_fetch):
+            async for ev_type, data in svc.compare_from_text_streaming(
+                query="Tom Ford Ombre Leather vs Tom Ford Tobacco Vanille",
+                region="bahrain",
+                explicit_pair=("Tom Ford Ombre Leather", "Tom Ford Tobacco Vanille"),
+            ):
+                events.append((ev_type, data))
+                if ev_type in ("complete", "settle_complete", "error"):
+                    # keep collecting both settle_complete + complete, but stop
+                    # once we've seen the terminal complete to bound the loop.
+                    if ev_type == "complete":
+                        break
+        return events
+
+    async def test_stream_hardcap_yields_stream_timeout_partial(self):
+        """WS1/D2 — the streaming data-fetch cap yields a settle_complete (and
+        a backward-compat complete) carrying code:STREAM_TIMEOUT + partial:true,
+        NOT a bare scary error."""
+        from app.services.structured_comparison_service import get_comparison_service
+
+        svc = get_comparison_service()
+        events = await self._collect_stream_events(svc)
+        terminal = [d for (t, d) in events if t in ("settle_complete", "complete")]
+        assert terminal, f"no settle_complete/complete event; got {[t for t, _ in events]}"
+        body = terminal[-1]
+        assert body.get("code") == "STREAM_TIMEOUT"
+        assert body.get("partial") is True
+        assert body.get("success") is False
+
+    async def test_stream_timeout_copy_has_no_forbidden_vocab(self):
+        """D2 — the streamed timeout body obeys the no-scary-copy contract
+        (TIMEOUT_FRIENDLY_MESSAGE, no couldn't / try again / failed / تعذر / فشل)."""
+        from app.services.structured_comparison_service import get_comparison_service
+
+        svc = get_comparison_service()
+        events = await self._collect_stream_events(svc)
+        _assert_no_forbidden_vocab([d for _, d in events])
+
+    async def test_stream_timeout_message_constant_is_clean(self):
+        """Guard the shared TIMEOUT_FRIENDLY_MESSAGE constant directly — a
+        future edit re-introducing scary copy fails here regardless of which
+        path emits it."""
+        from app.services.structured_comparison_service import TIMEOUT_FRIENDLY_MESSAGE
+
+        _assert_no_forbidden_vocab({"msg": TIMEOUT_FRIENDLY_MESSAGE})
