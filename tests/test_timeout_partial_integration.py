@@ -279,6 +279,137 @@ class TestPartialEstimatedLastResort:
 
 
 # ===========================================================================
+# Layer 1c — WRAPPER-level: the real compare_from_text hard-cap wrapper
+# (be-core WS1) assembling the partial from the stashed `self._partial_*`
+# state. This is the strongest integration pin — it exercises be-core's
+# ACTUAL timeout handler + _build_partial_response()/_partial_has_usable_data(),
+# not just response_builder. Mocked impl stashes partial state then hangs so
+# the asyncio.wait_for hard-cap fires and the handler assembles the partial.
+# No network; cap forced to ~0.3s so the test is fast.
+# ===========================================================================
+def _stash_partial_state(svc, *, product_data, scoring=None, comparison=None):
+    """Mirror what _compare_from_text_impl stashes on `self` as stages land,
+    so the timeout handler can assemble the best-available partial."""
+    svc._partial_build_ctx = {
+        "query": "Tom Ford Ombre Leather vs Tom Ford Tobacco Vanille",
+        "region": "bahrain",
+        "from_cache": False,
+        "user_preferences": None,
+        "category_used": "fragrances",
+    }
+    svc._partial_product_data = product_data
+    svc._partial_scoring_result = scoring if scoring is not None else _partial_scoring()
+    svc._partial_comparison = comparison if comparison is not None else {}
+    svc._partial_product_names = [p.get("name", "") for p in product_data]
+    svc._shopping_items_cache = {}
+    svc.total_cost = 0.017
+    svc.api_calls = 4
+    svc.gpt_calls = 2
+    svc.serper_calls = 6
+
+
+@pytest.mark.asyncio
+class TestWrapperPartialOnHardCap:
+    """Drive the real compare_from_text wrapper through the hard-cap timeout."""
+
+    async def _run_with_cap(self, svc, stash_fn):
+        """Force a short cap, patch the impl to stash partial state + hang,
+        then call the real wrapper so the timeout handler fires."""
+        import app.services.structured_comparison_service as scs
+
+        async def slow_impl(*_a, **_k):
+            stash_fn(svc)
+            import asyncio as _asyncio
+            await _asyncio.sleep(5)  # exceed the patched cap
+            return {"success": True}
+
+        with patch.object(scs, "STREAM_HARD_CAP_SECONDS", 0.3), \
+                patch.object(svc, "_compare_from_text_impl", side_effect=slow_impl):
+            return await svc.compare_from_text(
+                "Tom Ford Ombre Leather vs Tom Ford Tobacco Vanille",
+                region="bahrain",
+            )
+
+    async def test_wrapper_returns_partial_when_one_product_has_data(self):
+        """WS1 acceptance — cap fires with usable Phase-1 data stashed =>
+        success:true + metadata.partial:true (NOT a code:TIMEOUT crash)."""
+        from app.services.structured_comparison_service import get_comparison_service
+
+        svc = get_comparison_service()
+        product_data = [
+            _partial_product("Tom Ford", "Ombre Leather", source_method="converted_usd", amount=80.0),
+            _partial_product("Tom Ford", "Tobacco Vanille", source_method="converted_usd", amount=118.0),
+        ]
+        result = await self._run_with_cap(
+            svc, lambda s: _stash_partial_state(s, product_data=product_data)
+        )
+        assert result["success"] is True
+        assert result["metadata"]["partial"] is True
+        prices = [op["price"]["amount"] for op in result["overview"]["products"]]
+        assert prices == [80.0, 118.0]
+        for op in result["overview"]["products"]:
+            assert op["price"]["source_method"] == "converted_usd"  # honest, not relabeled
+        _assert_no_forbidden_vocab(result)
+
+    async def test_wrapper_partial_has_templated_verdict_when_gpt_missing(self):
+        """WS1 — when the GPT verdict didn't finish (comparison={}), the
+        partial still ships a non-empty templated factual_verdict."""
+        from app.services.structured_comparison_service import get_comparison_service
+
+        svc = get_comparison_service()
+        product_data = [
+            _partial_product("Tom Ford", "Ombre Leather", source_method="page_scrape_jsonld", amount=80.0),
+            _partial_product("Tom Ford", "Tobacco Vanille", source_method="page_scrape_jsonld", amount=118.0),
+        ]
+        result = await self._run_with_cap(
+            svc,
+            lambda s: _stash_partial_state(s, product_data=product_data, comparison={}),
+        )
+        assert result["success"] is True
+        fv = result["scoring_v2"]["factual_verdict"]
+        assert fv and fv.get("line1") and fv.get("line2")
+
+    async def test_wrapper_insufficient_data_when_no_product_stash(self):
+        """WS1 — cap fires with NO stashed product data (both products empty)
+        => the graceful no-data body (code in {INSUFFICIENT_DATA, TIMEOUT}),
+        NOT a partial. Route maps a TIMEOUT to 503 (D2). No scary copy."""
+        from app.services.structured_comparison_service import get_comparison_service
+
+        svc = get_comparison_service()
+
+        def _clear(s):
+            s._partial_product_data = None
+            s._partial_scoring_result = None
+            s._partial_comparison = None
+            s._partial_product_names = None
+
+        result = await self._run_with_cap(svc, _clear)
+        assert result["success"] is False
+        assert result.get("code") in ("INSUFFICIENT_DATA", "TIMEOUT")
+        assert "partial" not in (result.get("metadata") or {})
+        _assert_no_forbidden_vocab(result)
+
+    async def test_wrapper_partial_has_usable_data_predicate(self):
+        """WS1 unit — _partial_has_usable_data() is the gate: True when a
+        product has specs OR price, False when neither."""
+        from app.services.structured_comparison_service import get_comparison_service
+
+        svc = get_comparison_service()
+        # price-only product => usable
+        svc._partial_product_data = [{"name": "X", "price": {"amount": 5.0}, "specs": None}]
+        assert svc._partial_has_usable_data() is True
+        # specs-only product => usable
+        svc._partial_product_data = [{"name": "X", "price": None, "specs": {"a": 1}}]
+        assert svc._partial_has_usable_data() is True
+        # neither => not usable
+        svc._partial_product_data = [{"name": "X", "price": None, "specs": None}]
+        assert svc._partial_has_usable_data() is False
+        # empty / None => not usable
+        svc._partial_product_data = None
+        assert svc._partial_has_usable_data() is False
+
+
+# ===========================================================================
 # Layer 2 — route-level contract (real middleware stack, mocked service).
 # These pin the OBSERVABLE HTTP behavior the D2 contract requires. They are
 # intentionally NOT in be-core's owned files; they validate the same contract
@@ -338,10 +469,10 @@ class TestRoutePartialReturns200:
 
 class TestRouteTimeoutMapsTo503:
     """D2 — a TRUE hard failure (both products zero data) preserves the
-    TIMEOUT code and maps to 503, never the legacy 400. This pins the
-    post-WS1 contract; it is RED until be-core lands the route change, then
-    GREEN. (be-core's test_text_routes_error_mapping.py owns the unit-level
-    pin; this is the cross-cutting integration pin.)"""
+    TIMEOUT code and maps to 503, never the legacy 400. Pins the post-WS1
+    contract landed in text_routes._surface_comparison_failure.
+    (be-core's test_text_routes_error_mapping.py owns the unit-level pin;
+    this is the cross-cutting integration pin through the real middleware.)"""
 
     TIMEOUT_RESULT = {
         "success": False,
@@ -351,10 +482,6 @@ class TestRouteTimeoutMapsTo503:
         "total_cost": 0.0,
     }
 
-    @pytest.mark.xfail(
-        reason="RED until be-core WS1 lands TIMEOUT->503 route mapping (task #2)",
-        strict=False,
-    )
     def test_get_timeout_maps_to_503_with_code_preserved(self):
         with patch("app.api.text_routes.get_comparison_service") as m_svc:
             inst = m_svc.return_value
@@ -369,10 +496,6 @@ class TestRouteTimeoutMapsTo503:
         assert body["success"] is False
         _assert_no_forbidden_vocab(body)
 
-    @pytest.mark.xfail(
-        reason="RED until be-core WS1 lands TIMEOUT->503 route mapping (task #2)",
-        strict=False,
-    )
     def test_post_timeout_maps_to_503_parity(self):
         with patch("app.api.text_routes.get_comparison_service") as m_svc:
             inst = m_svc.return_value
