@@ -73,6 +73,45 @@ class QuickCompareRequest(BaseModel):
     region: str = "bahrain"
 
 
+# WS1 (genuine-bh-latency bundle, D2) — map a non-success comparison result to
+# the right wire surface. Replaces the old blanket `HTTPException(400)` that
+# collapsed EVERY failure code (including TIMEOUT) into BAD_REQUEST.
+#
+# Contract (error_handler.py unwraps a structured detail dict, preserving the
+# code even on a 503 — verified against http_exception_handler):
+#   - CONTENT_UNAVAILABLE → return the structured dict as-is at HTTP 200
+#     (Bundle B content-safety surface; FE reads the body, not the status).
+#   - TIMEOUT             → HTTPException(503, {code:"TIMEOUT", error}) → the
+#     unified envelope surfaces code:"TIMEOUT" (transient/retryable), NOT 400.
+#   - everything else (INSUFFICIENT_DATA, parser-failure, generic) → HTTP 400.
+#
+# Returns a dict to early-return (CONTENT_UNAVAILABLE) or raises HTTPException.
+def _surface_comparison_failure(result: Dict):
+    code = result.get("code")
+    error_msg = result.get("error", "Comparison failed")
+    if code == "CONTENT_UNAVAILABLE":
+        # Preserve the structured body (FE matches the spec contract). Wrapping
+        # in HTTPException would drop the layer/extra keys via str(detail).
+        return result
+    if code == "TIMEOUT":
+        # D2 — transient timeout. Structured detail so the envelope keeps
+        # code:"TIMEOUT" (error_handler overrides the 503→FEATURE_DISABLED
+        # default when a code is supplied). 503, NOT 400.
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "TIMEOUT", "error": error_msg},
+        )
+    # INSUFFICIENT_DATA + parser-failure + anything unrecognized → 400. Keep
+    # the structured code where present so the FE can branch (e.g. show the
+    # "choose different products" copy for INSUFFICIENT_DATA).
+    if code:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": code, "error": error_msg},
+        )
+    raise HTTPException(status_code=400, detail=error_msg)
+
+
 # ============================================
 # Endpoints
 # ============================================
@@ -160,18 +199,13 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             ),
             label="log_search.text.post.failure",
         )
-        # Bundle B content-safety surface (spec sec 5.2): the service returns
-        # a structured {success:false, code:"CONTENT_UNAVAILABLE", layer:...}
-        # dict. Wrapping that in HTTPException would drop the structured body
-        # (global error middleware reshapes detail strings). Early-return the
-        # service dict as-is so the wire shape matches the spec contract.
-        # Pattern: feedback_conditional_middleware_unwrap.md.
-        if result.get("code") == "CONTENT_UNAVAILABLE":
-            return result
-        raise HTTPException(
-            status_code=400,
-            detail=result.get("error", "Comparison failed")
-        )
+        # WS1 (D2) — map the failure code to its proper wire surface
+        # (CONTENT_UNAVAILABLE→200 body, TIMEOUT→503, else→400). Replaces the
+        # old blanket 400 that hid TIMEOUT behind BAD_REQUEST. A best-available
+        # PARTIAL has success:true so it never reaches this branch.
+        surfaced = _surface_comparison_failure(result)
+        if surfaced is not None:
+            return surfaced
 
     # Extract product names for logging
     product_names = [f"{p.get('brand', '')} {p.get('name', '')}".strip()
@@ -304,14 +338,12 @@ async def text_compare_get(
             ),
             label="log_search.text.get.failure",
         )
-        # Bundle B: preserve structured CONTENT_UNAVAILABLE body — see POST
-        # handler comment above. Conditional unwrap pattern.
-        if result.get("code") == "CONTENT_UNAVAILABLE":
-            return result
-        raise HTTPException(
-            status_code=400,
-            detail=result.get("error", "Comparison failed")
-        )
+        # WS1 (D2) — same code→surface mapping as the POST handler. TIMEOUT→503,
+        # CONTENT_UNAVAILABLE→200 body, else→400. The old blanket 400 was the
+        # bug that surfaced a hard-cap TIMEOUT as BAD_REQUEST with scary copy.
+        surfaced = _surface_comparison_failure(result)
+        if surfaced is not None:
+            return surfaced
 
     product_names = [f"{p.get('brand', '')} {p.get('name', '')}".strip()
                      for p in result.get("products", [])]
