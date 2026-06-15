@@ -1,4 +1,5 @@
 """Shared test configuration — loads .env before any test modules import."""
+import asyncio
 import os
 
 import pytest
@@ -85,4 +86,61 @@ def _reset_verdict_exemplar_cache():
         yield
         return
     vel.reset_cache()
+    yield
+
+
+# B3 (test-infra hygiene) — event-loop pollution guard.
+# Several sync tests still drive coroutines via the deprecated
+# `asyncio.get_event_loop().run_until_complete(...)` (e.g.
+# test_pharmacy_jsonld.py, test_share_routes.py). On Python 3.12 `get_event_loop()`
+# raises `RuntimeError: There is no current event loop in thread 'MainThread'`
+# when the thread has no current loop set. pytest-asyncio (strict mode) closes
+# its per-test loop and detaches it during teardown, so a `@pytest.mark.asyncio`
+# test running EARLIER in the suite leaves the MainThread loop-less — the next
+# sync `get_event_loop()` caller then errors in-suite while passing alone
+# (the documented "downstream files fail in-suite but pass alone" symptom; the
+# plan's SUPABASE_URL framing was an approximate diagnosis — the real polluter is
+# the detached event loop, not a popped env var).
+#
+# Fix: an autouse fixture that, in TEARDOWN, guarantees the MainThread has a
+# fresh, open event loop installed for the NEXT test. Runs after yield so it
+# never fights pytest-asyncio's own per-test loop setup for the CURRENT test.
+@pytest.fixture(autouse=True)
+def _ensure_event_loop_present():
+    """Leave a usable current event loop on the thread after each test so the
+    next sync `asyncio.get_event_loop()` caller doesn't hit RuntimeError."""
+    yield
+    try:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("closed")
+    except RuntimeError:
+        # No current loop, or it was closed/detached by pytest-asyncio teardown.
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+
+# B3 (test-infra hygiene) — slowapi limiter window reset.
+# The route-level slowapi limiter (`app.middleware.rate_limiter.limiter`) uses
+# in-memory MemoryStorage. TestClient-driven tests across MANY files hit the same
+# rate-limited routes (e.g. /auth/register at 10/min, /referrals/*), and the
+# in-memory window counts ACCUMULATE across files within one process. A late test
+# (e.g. test_referral_must_fixes.py::test_register_link_failure_does_not_break_signup)
+# then trips a 429 purely because earlier files already spent the window — a
+# cross-file flake that passes when the file is run alone.
+#
+# Fix: reset the limiter's storage before each test so every test starts with a
+# clean window. `limiter.reset()` clears MemoryStorage (verified no-raise on
+# memory backend). This complements `_scoped_rate_limiter_bypass` (which only
+# DISABLES the limiter for two direct-call MagicMock files) — tests that
+# intentionally assert 429 behaviour still get a fresh window to fill from zero.
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Clear the slowapi limiter's in-memory window storage before each test to
+    prevent cross-file 429 accumulation."""
+    try:
+        from app.middleware.rate_limiter import limiter as _limiter
+        _limiter.reset()
+    except Exception:  # pragma: no cover — defensive (e.g. storage not memory)
+        pass
     yield

@@ -23,6 +23,16 @@ def _make_slow_search_web(fallback_delay: float, unified_delay: float = 0.0):
     return _impl
 
 
+# B3 (test-infra hygiene): the two wall-clock tests below drive the real
+# `_fetch_product_data` orchestration with the inner races mocked but the
+# API-budget meter / cache / image / rating-collection siblings left un-mocked
+# (real network) AND assert a hard wall (<8.5s / <10s). In the degraded sandbox
+# (Redis down + Serper getaddrinfo retries) those un-mocked calls add seconds and
+# the test flakes (confirmed failing alone at ~13s). Marked `live_unit` so the
+# free-unit filter skips them. The direct-`_smart_fallback_extract` unit tests
+# further down stay unmarked — they fully mock search_web/GPT and assert no
+# wall-clock, so they're valuable FREE coverage.
+@pytest.mark.live_unit
 @pytest.mark.asyncio
 async def test_smart_fallback_runs_in_parallel_with_phase_2():
     """The smart-fallback Serper queries must run concurrently with
@@ -92,6 +102,7 @@ async def test_smart_fallback_runs_in_parallel_with_phase_2():
         )
 
 
+@pytest.mark.live_unit
 @pytest.mark.asyncio
 async def test_smart_fallback_capped_at_5_seconds():
     """If fallback Serper query exceeds 5s cap, it gets cancelled gracefully.
