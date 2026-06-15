@@ -48,6 +48,14 @@ import os
 # affects THIS warmer process.
 os.environ["PRICE_RACE_TIMEOUT"] = os.getenv("WARMER_PRICE_RACE_TIMEOUT", "60")
 os.environ["STREAM_HARD_CAP_SECONDS"] = os.getenv("WARMER_STREAM_HARD_CAP", "150")
+# WS3/D5 — raise the curl+render fan-out budget so Firecrawl/Scrape.do can finish
+# a slow luxury SPA off-clock (live keeps the 12s default; this override is
+# warmer-only). Also raise the render-scraper per-call timeouts to match, so a
+# residential-proxy render isn't cut short inside the larger budget. Set BEFORE
+# importing the comparison/scraper services (those read the env at import).
+os.environ["FAN_OUT_BUDGET_SECONDS"] = os.getenv("WARMER_FAN_OUT_BUDGET", "35")
+os.environ.setdefault("FIRECRAWL_TIMEOUT", os.getenv("WARMER_FIRECRAWL_TIMEOUT", "45"))
+os.environ.setdefault("SCRAPEDO_TIMEOUT", os.getenv("WARMER_SCRAPEDO_TIMEOUT", "35"))
 
 # Load .env for LOCAL/manual runs (Railway injects env directly — load_dotenv
 # no-ops in the container since there is no .env file). override=False preserves
@@ -59,12 +67,21 @@ except Exception:
     pass
 
 import asyncio
+import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from scripts.eval_runner import load_gold_truth, select_queries
 
 logger = logging.getLogger(__name__)
+
+# WS4/D6 — the STRUCTURAL warmer-only catalog (luxury fragrance / haircare /
+# gadgets whose genuine BH price is reachable-but-slow). Kept SEPARATE from the
+# gold-truth set so it never shifts the eval baseline. MERGED into the warmer's
+# query set in main(). Path resolves relative to the repo root (this file lives
+# in scripts/).
+_WARMER_CATALOG_PATH = Path(__file__).resolve().parent.parent / "data" / "warmer_catalog.json"
 
 # Genuine BH source methods (a real BHD shelf price). converted_usd / estimated
 # are honest but NOT genuine.
@@ -86,6 +103,44 @@ def _int_env(name: str, default: int) -> int:
         return int(os.getenv(name, str(default)))
     except (TypeError, ValueError):
         return default
+
+
+def load_warmer_catalog(path: Path = _WARMER_CATALOG_PATH) -> List[Dict[str, Any]]:
+    """Load the structural warmer-only catalog (data/warmer_catalog.json) as a
+    list of query records. Missing / malformed file -> [] (the warmer still runs
+    on the gold set). Never raises."""
+    try:
+        if not path.exists():
+            logger.info("[cron_warm] warmer catalog absent (%s) — gold set only", path)
+            return []
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        return list(doc.get("queries") or [])
+    except Exception as exc:  # noqa: BLE001 — catalog is additive, never fatal
+        logger.warning("[cron_warm] warmer catalog load failed: %s", exc)
+        return []
+
+
+def _merge_catalog(
+    gold_queries: List[Dict[str, Any]],
+    catalog_queries: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Append the structural catalog onto the (subset-selected) gold queries,
+    de-duped by the `query` string (case-insensitive) so a catalog pair already
+    present in gold isn't warmed twice. Catalog pairs go LAST so the rotation
+    cursor still cycles the gold set first on a small MAX_QUERIES_PER_RUN."""
+    seen = {(q.get("query") or "").strip().lower() for q in gold_queries}
+    merged = list(gold_queries)
+    added = 0
+    for q in catalog_queries:
+        key = (q.get("query") or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(q)
+        added += 1
+    if added:
+        logger.info("[cron_warm] merged %d structural catalog pairs", added)
+    return merged
 
 
 def _rotation_window(queries: List[Dict[str, Any]], size: int) -> List[Dict[str, Any]]:
@@ -156,6 +211,12 @@ async def main() -> Optional[Dict[str, int]]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("[cron_warm] gold load failed: %s", exc)
         return None
+
+    # WS4/D6 — always fold in the structural warmer-only pairs (luxury fragrance/
+    # haircare/gadgets incl. the Tom Ford repro). They carry `warm-*` ids absent
+    # from the smoke20 subset, so they'd never be selected from gold — merge them
+    # AFTER select_queries so they warm on every run regardless of subset.
+    queries = _merge_catalog(queries, load_warmer_catalog())
 
     window = _rotation_window(queries, max_q)
     logger.info(
