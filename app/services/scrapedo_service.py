@@ -11,7 +11,14 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 SCRAPEDO_API_URL = "https://api.scrape.do"
-SCRAPEDO_TIMEOUT = 15  # seconds — render=true needs time
+# seconds — render=true needs time. Env-driven (Genuine-BH bundle WS3/D5): the
+# OFF-CLOCK warmer raises SCRAPEDO_TIMEOUT (e.g. 35) so the residential-proxy
+# render can finish a slow SPA inside its 35s FAN_OUT_BUDGET; live keeps the 15s
+# default (the request clock bounds it there). Read at import; the warmer sets
+# the env before importing the service. NOTE: a longer timeout does NOT defeat a
+# Cloudflare bot-wall (the WS3 capability trace found bolo.bh/boutiqaat/sephora.bh
+# return a CF "you have been blocked" interstitial regardless of budget).
+SCRAPEDO_TIMEOUT = int(os.getenv("SCRAPEDO_TIMEOUT", "15"))
 
 
 # Bundle C § 1c diagnostic flag — flag-gated, zero prod overhead with off.
