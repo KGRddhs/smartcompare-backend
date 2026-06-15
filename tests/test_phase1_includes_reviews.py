@@ -8,6 +8,16 @@ from app.services.structured_comparison_service import (
     StructuredComparisonService, get_comparison_service,
 )
 
+# B3 (test-infra hygiene): these tests exercise the real `_fetch_product_data`
+# path with the inner races mocked but the L2 DB cache (get_cached_specs /
+# get_cached_price via product_data_service), the API-budget meter, and the
+# rating-collection sibling left UN-mocked — so they make REAL network calls
+# (Supabase / Redis / Serper-budget) AND assert a wall-clock budget. Under load
+# those un-mocked retries push the wall past the assertion and flake. Marking
+# the module `live_unit` keeps it out of the free-unit filter
+# (`-m "not (live_unit or live_db or integration)"`).
+pytestmark = pytest.mark.live_unit
+
 
 @pytest.mark.asyncio
 async def test_phase1_runs_reviews_in_parallel_with_specs_price():
