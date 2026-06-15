@@ -18,6 +18,15 @@ import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+# B3 (test-infra hygiene): same flake class as the phase1 / unified-search tests.
+# Both tests here drive the REAL `_get_price` path (cache/DB/search stubbed, but
+# the API-budget meter + sibling fetches left un-mocked → real network) AND assert
+# a hard wall-clock bound (<3s / <20s). Run alone the hanging-race test already
+# lands ~18s (a hair under its 20s bound); in-suite under load the un-mocked
+# network retries push it over and it flakes (confirmed: passes alone, fails
+# in-suite). Behind `live_unit` it stays out of the free-unit filter.
+pytestmark = pytest.mark.live_unit
+
 
 LUXURY_INPUTS = {
     "brand": "Louis Vuitton",
