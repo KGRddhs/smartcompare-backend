@@ -484,6 +484,7 @@ from app.services.price_service import (
     is_accessory,
     is_high_value_query,
     is_implausible_high_value_price,
+    is_implausible_low_fragrance_price,
     is_price_plausible,
     is_luxury_brand,
     is_supplement_query,
@@ -3508,6 +3509,16 @@ class StructuredComparisonService:
                 # promotes it. No estimate is fetched here just to veto.
                 if not is_price_plausible(_convert_to_bhd(price["amount"], currency), category) or is_implausible_high_value_price(full_name, _convert_to_bhd(price["amount"], currency)):
                     price = None
+            elif price.get("retailer_score", 0) < 1.0 and is_implausible_low_fragrance_price(
+                full_name, _convert_to_bhd(price["amount"], currency), price.get("title")
+            ):
+                # #17 B1 — fragrance size-plausibility. A designer-fragrance
+                # Tier-1 listing whose converted price is implausibly LOW for its
+                # detected/expected size (a sample/decant — Ombré Leather 19.93
+                # BHD) is a wrong-product hit; drop it so the cascade falls to a
+                # genuine full-bottle scrape or an honest converted/estimated
+                # figure, never serves the sample as the real price.
+                price = None
             if price and price.get("amount"):
                 price.pop("retailer_score", None)
                 # Approach A — PARK a CONVERTED_USD Tier-1 price; defer to the
@@ -3891,6 +3902,19 @@ class StructuredComparisonService:
                             winning_price.get("amount") or 0.0, full_name,
                         )
                         return None
+                    # #17 B1 — fragrance size-plausibility. A genuine-BH scrape can
+                    # land on a sample/decant PDP (a designer fragrance priced far
+                    # below its full-bottle floor for the detected size). Reject it
+                    # so a sample is never cached as the genuine full-bottle price.
+                    if is_implausible_low_fragrance_price(
+                        full_name, winning_price.get("amount"), winning_price.get("title")
+                    ):
+                        logger.info(
+                            "[PRICE] fan_out winner %.3f for %s rejected as implausible "
+                            "low fragrance (sample/decant/wrong-SKU?) — falling through",
+                            winning_price.get("amount") or 0.0, full_name,
+                        )
+                        return None
                     win_domain = str(winning_price.get("retailer") or "").replace("www.", "").lower()
                     for _link, _label, _route, _weight in harvested:
                         if _label.lower() == win_domain or win_domain.endswith("." + _label.lower()) or _label.lower().endswith("." + win_domain):
@@ -4140,6 +4164,9 @@ class StructuredComparisonService:
                     _wrong_sku
                     or not is_price_plausible(_bhd_amt, category)
                     or is_implausible_high_value_price(full_name, _bhd_amt)
+                    # #17 B1 — reject a designer-fragrance organic-extract price
+                    # implausibly low for its detected/expected size (sample/decant).
+                    or is_implausible_low_fragrance_price(full_name, _bhd_amt, price.get("title"))
                 ):
                     price = None
             if price and price.get("amount"):
