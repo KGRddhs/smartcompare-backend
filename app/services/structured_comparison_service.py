@@ -1125,7 +1125,19 @@ def _harvest_candidate_urls(
         # is_non_pdp_listing_url, so a real PDP is never dropped. Runs across ALL
         # tiers in this one place, ahead of the locale rewrite (a listing URL is
         # not worth rewriting either).
-        if is_non_pdp_listing_url(h[0]):
+        #
+        # T13 (team-lead ruling) — EXEMPT the OFFICIAL tier. D8's intent was to
+        # drop wrong-region MARKETPLACE listing/category pages (noon /egypt,
+        # generic /collections), NOT to second-guess an official-brand domain. An
+        # official-brand /shop/ URL (e.g. apple.com/shop/iphone-15) is the MOST
+        # AUTHORITATIVE source per the price philosophy (official > authorized >
+        # marketplace) — dropping it to a marketplace/converted fallback is exactly
+        # the wrong trade. Gate on the harvest route ("official") OR official-domain
+        # membership so the listing drop never removes an official-brand URL. The
+        # wrong-locale drop below STAYS tier-agnostic (a wrong-region official URL
+        # is still wrong-region).
+        _is_official = h[2] == "official" or h[1] in OFFICIAL_BRAND_DOMAINS
+        if not _is_official and is_non_pdp_listing_url(h[0]):
             _dropped_listing += 1
             continue
         if not is_wrong_locale_url(h[0]):

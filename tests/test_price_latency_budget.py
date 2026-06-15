@@ -189,15 +189,19 @@ class TestD8NonPdpListingWiredIntoHarvest:
     """D8 wire-in: _harvest_candidate_urls must DROP a non-PDP listing/category
     URL even when it passes the score_source>=1.5 registry gate (same domain as
     a kept PDP). Predicate coverage lives in test_discovery_bh_locale_filter.py;
-    this pins the INTEGRATION (the gate stays amber until the harvest calls it)."""
+    this pins the INTEGRATION (the gate stays amber until the harvest calls it).
+
+    T13: the OFFICIAL tier is EXEMPT from the listing drop — an official-brand
+    listing-path URL must survive (price philosophy: official > marketplace)."""
 
     def test_listing_url_dropped_pdp_kept_same_registry_domain(self):
         # bahrain.ounass.com is a fragrances registry domain (score 3.0). A PDP
-        # path is kept; a /shop/ listing path on the SAME domain (also score 3.0)
-        # must be dropped by the D8 filter, proving the score gate alone wouldn't
-        # have removed it.
+        # path is kept; a /category/ listing path on the SAME domain (also score
+        # 3.0) must be dropped by the D8 filter, proving the score gate alone
+        # wouldn't have removed it. (/category/ is a current listing marker;
+        # /shop/ was narrowed out of the markers by the source_router triage.)
         pdp = "https://bahrain.ounass.com/tom-ford-ombre-leather-p1"
-        listing = "https://bahrain.ounass.com/shop/fragrance"
+        listing = "https://bahrain.ounass.com/category/fragrance"
         # sanity: both pass the score gate; only `listing` is non-PDP.
         assert is_non_pdp_listing_url(pdp) is False
         assert is_non_pdp_listing_url(listing) is True
@@ -219,4 +223,46 @@ class TestD8NonPdpListingWiredIntoHarvest:
         assert listing not in links, (
             "D8 wire-in failed: non-PDP listing URL was not dropped by "
             "_harvest_candidate_urls (is_non_pdp_listing_url not wired in)"
+        )
+
+    def test_official_tier_listing_url_survives_marketplace_dropped(self):
+        # T13 regression: an OFFICIAL-brand listing-path URL must survive the D8
+        # drop (official > marketplace authority), while a non-official
+        # marketplace listing on the same path shape is still dropped.
+        #
+        # validate_scrape_url is patched True because it does a network SSRF/DNS
+        # resolution that fails-closed on this sandboxed box (no DNS) — without
+        # the patch NO candidate enters the harvest and the test is vacuous. We're
+        # pinning the D8 tier-exemption branch, not URL validation.
+        official_listing = "https://www.apple.com/category/iphone"  # official tier
+        # A non-official (registry-but-not-official) listing on a real registry
+        # electronics domain — score>=1.5 so it enters, but it's NOT official and
+        # carries a listing marker → must be dropped.
+        mkt_listing = "https://www.sharafdg.com/category/mobiles"
+        # sanity: both ARE non-PDP listings by the predicate; the exemption is
+        # what spares the official one.
+        assert is_non_pdp_listing_url(official_listing) is True
+        assert is_non_pdp_listing_url(mkt_listing) is True
+
+        results_by_tier = {
+            # official tier — apple.com matches official_domain → route "official".
+            "official": {"organic": [{"link": official_listing, "title": "iPhone"}]},
+            # gcc/authorized tier — sharafdg registry electronics domain.
+            "gcc": {"organic": [{"link": mkt_listing, "title": "Mobiles"}]},
+        }
+        with patch(
+            "app.services.structured_comparison_service.validate_scrape_url",
+            return_value=True,
+        ):
+            harvested = _harvest_candidate_urls(
+                results_by_tier, official_domain="apple.com", category="electronics",
+                query_name="iPhone 15",
+            )
+        links = [h[0] for h in harvested]
+        assert official_listing in links, (
+            "T13 regression: official-brand listing URL was wrongly dropped by "
+            "the D8 filter — official tier must be exempt (authoritative source)"
+        )
+        assert mkt_listing not in links, (
+            "non-official marketplace listing must still be dropped by D8"
         )
