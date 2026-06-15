@@ -75,7 +75,49 @@
       "query": "Sony WH-1000XM5 vs Bose QuietComfort Ultra Headphones",
       "category": "electronics",
       "region": "bahrain",
-      "note": "Premium audio gadget — slow genuine, high re-compare."
+      "note": "Premium audio gadget — slow genuine, high re-compare. Genuine BH reachable: sonyworld.bh Shopify (WH-1000XM5 = 145.0 BHD shopify_json, A1-confirmed 2026-06-15) + sharafdg/microless."
+    },
+    {
+      "id": "warm-gadget-004",
+      "query": "Sony WF-1000XM5 vs Apple AirPods Pro 2",
+      "category": "electronics",
+      "region": "bahrain",
+      "note": "A2 (2026-06-15). Premium wireless earbuds — top re-compare gadget. Genuine BH reachable: sonyworld.bh Shopify (LinkBuds/WF series in catalog, BHD) + sharafdg/microless for AirPods; slow multi-retailer confirm > 15s clock."
+    },
+    {
+      "id": "warm-gadget-005",
+      "query": "Sony WH-1000XM5 vs Sennheiser Momentum 4 Wireless",
+      "category": "electronics",
+      "region": "bahrain",
+      "note": "A2 (2026-06-15). Audiophile headphone compare. Sony side genuine via sonyworld.bh Shopify BHD; latency-heavy multi-candidate genuine scrape on the runner-up."
+    },
+    {
+      "id": "warm-gadget-006",
+      "query": "Sony PlayStation 5 Pro vs Microsoft Xbox Series X",
+      "category": "electronics",
+      "region": "bahrain",
+      "note": "A2 (2026-06-15). High-traffic console compare. Genuine BH reachable: sharafdg/microless/extra electronics rows (BHD), but a console PDP discovery + scrape blows the 15s live clock → warmer-only genuine."
+    },
+    {
+      "id": "warm-frag-005",
+      "query": "Versace Eros vs Paco Rabanne 1 Million",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "A2 (2026-06-15). Mainstream-designer crossover — very common compare. Genuine BH reachable via the registry designer route (Al Hajis / bahrain.ounass.com curl JSON-LD, BHD — same path that lands Tom Ford 80/118 BHD); slow > 30s cold → warmer-only genuine."
+    },
+    {
+      "id": "warm-frag-006",
+      "query": "Jean Paul Gaultier Le Male vs Azzaro The Most Wanted",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "A2 (2026-06-15). Popular designer pair. Genuine BH via Al Hajis / Ounass BH designer JSON-LD (BHD); latency-heavy genuine confirm."
+    },
+    {
+      "id": "warm-grocery-001",
+      "query": "Bateel Medjool Dates vs Al Foah Premium Dates",
+      "category": "grocery",
+      "region": "bahrain",
+      "note": "A2 (2026-06-15). Premium dates/gourmet — genuine BH reachable via bateel.bh (registry, BHD product pages) but a multi-candidate gourmet scrape is slow; warmer-only genuine. Real GCC gifting-season traffic."
     }
   ]
 }

@@ -100,6 +100,50 @@ def test_warmer_catalog_covers_tom_ford_pair():
     assert "fragrances" in cats and "haircare" in cats and "electronics" in cats
 
 
+def test_warmer_catalog_ids_unique_and_warm_prefixed():
+    """A2 (2026-06-15) — every catalog entry carries a unique `warm-`-prefixed id
+    and region=bahrain, so it never collides with a gold id (which would let a
+    warmer pair shift the eval baseline) and is always BH-region."""
+    cat = warmer.load_warmer_catalog()
+    ids = [q.get("id") for q in cat]
+    assert all(ids), "every catalog entry must have an id"
+    assert len(ids) == len(set(ids)), "duplicate warmer catalog ids"
+    assert all(str(i).startswith("warm-") for i in ids), "id without warm- prefix"
+    assert all((q.get("region") or "") == "bahrain" for q in cat), "non-bahrain region"
+
+
+def test_warmer_catalog_no_gold_id_collision():
+    """A2 — the warmer catalog stays SEPARATE from the gold-truth set: no id may
+    collide with a gold id (the dedupe is by query string, but an id collision
+    would corrupt any id-keyed bookkeeping)."""
+    import json
+    from pathlib import Path
+
+    cat_ids = {q.get("id") for q in warmer.load_warmer_catalog()}
+    gold_path = Path(__file__).resolve().parent.parent / "data" / "validation_gold_truth.json"
+    gold = json.loads(gold_path.read_text(encoding="utf-8"))
+    gold_ids = {q.get("id") for q in gold.get("queries", [])}
+    assert not (cat_ids & gold_ids), f"warmer ids collide with gold ids: {cat_ids & gold_ids}"
+
+
+def test_warmer_catalog_a2_structural_breadth():
+    """A2 — the expanded catalog covers the genuine-reachable structural gaps:
+    audio/wearable gadgets (sonyworld.bh / sharafdg reach), designer fragrance
+    (Al Hajis / Ounass BH reach), and premium grocery (bateel.bh)."""
+    cat = warmer.load_warmer_catalog()
+    by_cat = {}
+    for q in cat:
+        by_cat.setdefault((q.get("category") or "").lower(), []).append(q)
+    # gadget audio breadth — at least 3 electronics pairs (XM5/earbuds/console)
+    assert len(by_cat.get("electronics", [])) >= 3
+    # a Sony audio gadget pair (the A1-confirmed sonyworld.bh genuine source)
+    assert any("Sony" in (q.get("query") or "") for q in by_cat.get("electronics", []))
+    # designer-fragrance breadth beyond the oud houses (>= 5 fragrance pairs)
+    assert len(by_cat.get("fragrances", [])) >= 5
+    # premium grocery present (bateel.bh genuine route)
+    assert "grocery" in by_cat
+
+
 def test_warmer_catalog_load_missing_file_is_safe(tmp_path):
     """A missing catalog file -> [] (warmer still runs on the gold set)."""
     assert warmer.load_warmer_catalog(tmp_path / "nope.json") == []
