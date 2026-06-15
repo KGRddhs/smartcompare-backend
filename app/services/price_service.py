@@ -696,6 +696,31 @@ def variant_precision_rank(
     return (conc_rank, size_rank)
 
 
+# WS5/D4 (consistency default) — the flagship retail size for luxury fragrance.
+# When the query is size-UNSPECIFIED, two compared products should converge on
+# the SAME basis instead of one grabbing a 30ml miniature and the other a 100ml.
+# 100ml is the dominant luxury-EDP retail size, so an unspecified luxury query
+# prefers a 100ml candidate — a tie-break SMALLER than an explicit query-size
+# match (so a stated size still wins) and gated to luxury so non-fragrance is
+# untouched. Per the team-lead ruling: option A (per-product convergence +
+# annotation); active pair-level re-selection is the deferred v1.1.
+_FLAGSHIP_FRAGRANCE_SIZE = "100"
+
+
+def flagship_basis_bonus(query_name: str, title: str, is_luxury: bool) -> float:
+    """A small positive bonus (0.5) when, for a SIZE-UNSPECIFIED luxury query,
+    the candidate carries the flagship 100ml basis — so two same-category
+    products converge on a consistent size. Returns 0.0 when: not luxury, the
+    query DID specify a size (the explicit match already drives selection), or
+    the candidate isn't the flagship size. Smaller than the ±1 query-size signal
+    so a stated size always dominates. Non-luxury / non-fragrance → always 0.0."""
+    if not is_luxury or not title:
+        return 0.0
+    if extract_sizes_ml(query_name):
+        return 0.0  # query specified a size — don't override it
+    return 0.5 if _FLAGSHIP_FRAGRANCE_SIZE in extract_sizes_ml(title) else 0.0
+
+
 def get_retailer_score(retailer_name: str) -> float:
     """Score a retailer by quality tier."""
     if not retailer_name:
@@ -977,7 +1002,11 @@ def extract_price_from_shopping(
                 retailer_score = 1.0
 
         # WS5 — variant precision tie-break + size/concentration annotation.
+        # variant_rank = query size/concentration match (±1 each) + a smaller
+        # flagship-basis bonus (+0.5) that converges an UNSPECIFIED luxury query
+        # on 100ml so two compared products share a basis (D4 consistency default).
         _conc_rank, _size_rank = variant_precision_rank(product_name, title)
+        _flagship = flagship_basis_bonus(product_name, title, is_lux)
         candidates.append({
             "amount": round(amount, 2),
             "currency": currency,
@@ -992,7 +1021,7 @@ def extract_price_from_shopping(
             "retailer_score": retailer_score,
             "title": title,
             # WS5 — sort priority (higher=better variant match) + annotations.
-            "variant_rank": _conc_rank + _size_rank,
+            "variant_rank": _conc_rank + _size_rank + _flagship,
             "concentration": extract_concentration(title),
             "size": (sorted(extract_sizes_ml(title))[0] + "ml")
                      if extract_sizes_ml(title) else None,
@@ -1682,10 +1711,12 @@ def _match_shopify_product(
 
     domain = (domain or "").replace("www.", "").strip().lower()
     p_words = normalize_words(product_name)
+    _is_lux = is_luxury_brand(product_name)  # WS5 — for the flagship-basis default
     best: Optional[Dict[str, Any]] = None
     # WS5 — rank tuple (variant_rank, match_score); a better variant match
-    # (query size/concentration) wins even at equal word-overlap.
-    best_rank: Tuple[int, float] = (-(10**9), -1.0)
+    # (query size/concentration) wins even at equal word-overlap. variant_rank is
+    # a float (carries the +0.5 flagship-basis bonus).
+    best_rank: Tuple[float, float] = (-(10**9), -1.0)
 
     for product in products:
         if not isinstance(product, dict):
@@ -1732,7 +1763,8 @@ def _match_shopify_product(
         _variant_title = str(variant.get("title") or "")
         _signal_text = f"{title} {_variant_title}".strip()
         _conc_rank, _size_rank = variant_precision_rank(product_name, _signal_text)
-        _rank = (_conc_rank + _size_rank, match_score)
+        _flagship = flagship_basis_bonus(product_name, _signal_text, _is_lux)
+        _rank = (_conc_rank + _size_rank + _flagship, match_score)
         if _rank > best_rank:
             handle = product.get("handle") or ""
             url = (

@@ -20,6 +20,7 @@ from app.services.price_service import (
     extract_concentration,
     extract_sizes_ml,
     variant_precision_rank,
+    flagship_basis_bonus,
     extract_price_from_shopping,
     is_implausible_high_value_price,
 )
@@ -119,18 +120,59 @@ def test_shopping_annotates_size_and_concentration():
     assert "variant_rank" not in out
 
 
-def test_shopping_unspecified_query_keeps_cheapest_basis():
-    """When the query specifies no size, variant_rank is all-zero so the existing
-    cheapest-among-equal-authority ordering is unchanged."""
-    q = "Tom Ford Tobacco Vanille"
+def test_shopping_unspecified_luxury_converges_on_flagship_100ml():
+    """D4 consistency default (team-lead ruling, option A): a SIZE-UNSPECIFIED
+    luxury query converges on the flagship 100ml basis (so two compared products
+    share a basis) instead of grabbing the cheaper 50ml miniature."""
+    q = "Tom Ford Tobacco Vanille"  # luxury, no size specified
     items = [
         _item("Tom Ford Tobacco Vanille EDP 100ml", "BHD 118.000"),
         _item("Tom Ford Tobacco Vanille EDP 50ml", "BHD 80.000"),
     ]
     out = extract_price_from_shopping(q, items, "BHD")
     assert out is not None
-    # both rank (0,0); luxury sort falls through to cheapest -> 80
-    assert out["amount"] == 80.0
+    assert out["amount"] == 118.0  # flagship 100ml, not the cheaper 50ml
+    assert out["size"] == "100ml"
+
+
+def test_shopping_unspecified_nonluxury_unchanged_cheapest():
+    """The flagship default is LUXURY-gated — a non-luxury unspecified query keeps
+    the existing cheapest-among-equal-authority ordering (no convergence push)."""
+    q = "Adidas Ice Dive"  # not luxury
+    items = [
+        _item("Adidas Ice Dive 100ml", "BHD 4.000"),
+        _item("Adidas Ice Dive 50ml", "BHD 2.000"),
+    ]
+    out = extract_price_from_shopping(q, items, "BHD")
+    assert out is not None
+    # both variant_rank 0 (non-luxury → no flagship bonus) → cheapest wins
+    assert out["amount"] == 2.0
+
+
+# --------------------------------------------------------------------------- #
+# flagship_basis_bonus — luxury convergence default (D4)                       #
+# --------------------------------------------------------------------------- #
+def test_flagship_bonus_gating():
+    assert flagship_basis_bonus("Tom Ford X", "Tom Ford X 100ml", True) == 0.5
+    assert flagship_basis_bonus("Tom Ford X", "Tom Ford X 30ml", True) == 0.0
+    # query specified a size → don't override it
+    assert flagship_basis_bonus("Tom Ford X 50ml", "Tom Ford X 100ml", True) == 0.0
+    # non-luxury → never
+    assert flagship_basis_bonus("Body Spray", "Body Spray 100ml", False) == 0.0
+    # empty title safe
+    assert flagship_basis_bonus("Tom Ford X", "", True) == 0.0
+
+
+def test_flagship_bonus_smaller_than_explicit_size_match():
+    """A stated query size must still dominate the flagship default — the 0.5
+    bonus is smaller than the ±1 explicit-size signal."""
+    q = "Tom Ford X 50ml"  # query DOES specify 50ml
+    # candidate A matches the stated 50ml (rank +1 size); candidate B is the
+    # flagship 100ml but query specified 50ml so it gets NO flagship bonus (gated).
+    from app.services.price_service import variant_precision_rank
+    rank_a = sum(variant_precision_rank(q, "Tom Ford X 50ml"))  # (0)+1 = 1
+    rank_b = sum(variant_precision_rank(q, "Tom Ford X 100ml")) + flagship_basis_bonus(q, "Tom Ford X 100ml", True)  # -1 + 0
+    assert rank_a > rank_b  # the stated size wins
 
 
 # --------------------------------------------------------------------------- #
