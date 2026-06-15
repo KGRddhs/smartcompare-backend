@@ -611,6 +611,91 @@ def variant_mismatch(product_name: str, title: str) -> bool:
     return False
 
 
+# ============================================================================
+# WS5 (Genuine-BH latency+warmer bundle) — variant/concentration precision.
+# A fragrance PDP differs by CONCENTRATION (EDP/EDT/Parfum/EDC) and SIZE (ml).
+# The trace pair mis-compared a 118-BHD 100ml-class Ounass listing vs a 72-BHD
+# 30ml Sephora listing (a size mismatch — not a like-for-like price). These
+# helpers parse the two axes so the candidate scorer can (a) prefer the listing
+# matching a query's STATED size/concentration and (b) — when the query is
+# unspecified — let the orchestrator pick a basis CONSISTENT across both products.
+# Annotated onto the price dict as price.size / price.concentration.
+# ============================================================================
+
+# Canonical concentration tokens -> normalized label. Order matters: the longer
+# / more-specific phrases are checked first ("eau de parfum" before "parfum").
+_CONCENTRATION_PATTERNS = (
+    (re.compile(r"\bextrait(?:\s+de\s+parfum)?\b", re.I), "Extrait"),
+    (re.compile(r"\bparfum\s+intense\b", re.I), "Parfum Intense"),
+    (re.compile(r"\beau\s+de\s+parfum\b|\bedp\b", re.I), "EDP"),
+    (re.compile(r"\beau\s+de\s+toilette\b|\bedt\b", re.I), "EDT"),
+    (re.compile(r"\beau\s+de\s+cologne\b|\bedc\b", re.I), "EDC"),
+    (re.compile(r"\beau\s+fraiche\b", re.I), "Eau Fraiche"),
+    # bare "parfum" / "perfume" LAST (most generic; EDP/EDT already consumed).
+    (re.compile(r"\bparfum\b", re.I), "Parfum"),
+)
+# Size in millilitres: "100ml", "100 ml", "100-ml", "3.4 oz" -> ml is NOT
+# converted (oz left as-is in a separate axis would over-complicate); we capture
+# the ml integer. A bare "100" is NOT a size (too ambiguous) — ml unit required.
+_SIZE_ML_RE = re.compile(r"(\d{1,4})\s*(?:-?\s*)ml\b", re.I)
+
+
+def extract_concentration(text: str) -> Optional[str]:
+    """Normalized fragrance concentration label in `text` (EDP/EDT/Parfum/...),
+    or None when none is present. First (most-specific) match wins."""
+    if not text:
+        return None
+    for pat, label in _CONCENTRATION_PATTERNS:
+        if pat.search(text):
+            return label
+    return None
+
+
+def extract_sizes_ml(text: str) -> set:
+    """Set of millilitre sizes in `text` (e.g. {'50', '100'} from '50ml / 100ml').
+    Empty set when no `\\d+ml` token is present. Returned as strings to match the
+    `_size_qualifiers` style."""
+    if not text:
+        return set()
+    return {m for m in _SIZE_ML_RE.findall(text)}
+
+
+def variant_precision_rank(
+    query_name: str, title: str,
+) -> Tuple[int, int]:
+    """A (concentration_rank, size_rank) tuple — HIGHER is a better variant match
+    to the query. Used as a TIE-BREAK in the candidate sort, BEFORE price, so a
+    listing that matches the query's stated size/concentration is preferred over
+    one that doesn't. Neutral (0,0) when the query specifies neither axis or the
+    title carries no signal — so non-fragrance categories are completely
+    unaffected (no concentration/ml tokens → all-zero, sort unchanged).
+
+    Ranks:
+      concentration: +1 query+title agree; -1 both present and DISAGREE; 0 else.
+      size:          +1 query size present and title includes it; -1 query size
+                     present and title has a DIFFERENT size; 0 else.
+    """
+    if not query_name or not title:
+        return (0, 0)
+    q_conc = extract_concentration(query_name)
+    t_conc = extract_concentration(title)
+    if q_conc and t_conc:
+        conc_rank = 1 if q_conc == t_conc else -1
+    else:
+        conc_rank = 0
+
+    q_sizes = extract_sizes_ml(query_name)
+    if q_sizes:
+        t_sizes = extract_sizes_ml(title)
+        if t_sizes:
+            size_rank = 1 if (q_sizes & t_sizes) else -1
+        else:
+            size_rank = 0  # title silent on size — neither rewarded nor punished
+    else:
+        size_rank = 0
+    return (conc_rank, size_rank)
+
+
 def get_retailer_score(retailer_name: str) -> float:
     """Score a retailer by quality tier."""
     if not retailer_name:
@@ -891,6 +976,8 @@ def extract_price_from_shopping(
             if domain in OFFICIAL_BRAND_DOMAINS:
                 retailer_score = 1.0
 
+        # WS5 — variant precision tie-break + size/concentration annotation.
+        _conc_rank, _size_rank = variant_precision_rank(product_name, title)
         candidates.append({
             "amount": round(amount, 2),
             "currency": currency,
@@ -904,6 +991,11 @@ def extract_price_from_shopping(
             "match_score": match_score,
             "retailer_score": retailer_score,
             "title": title,
+            # WS5 — sort priority (higher=better variant match) + annotations.
+            "variant_rank": _conc_rank + _size_rank,
+            "concentration": extract_concentration(title),
+            "size": (sorted(extract_sizes_ml(title))[0] + "ml")
+                     if extract_sizes_ml(title) else None,
         })
 
     if not candidates:
@@ -929,20 +1021,30 @@ def extract_price_from_shopping(
     if not candidates:
         return None
 
+    # WS5 — variant_rank is the FIRST price-independent tie-break after the
+    # authority/match signals: a listing matching the query's stated size/
+    # concentration outranks one that doesn't, BEFORE cheapest-price ordering.
+    # All-zero for non-fragrance / unspecified queries → sort unchanged.
     if is_lux:
-        candidates.sort(key=lambda c: (-c["retailer_score"], -c["match_score"], c["amount"]))
+        candidates.sort(key=lambda c: (
+            -c["retailer_score"], -c["variant_rank"], -c["match_score"], c["amount"],
+        ))
     else:
-        candidates.sort(key=lambda c: (-c["match_score"], -c["retailer_score"], c["amount"]))
+        candidates.sort(key=lambda c: (
+            -c["match_score"], -c["variant_rank"], -c["retailer_score"], c["amount"],
+        ))
     best = candidates[0]
 
     logger.info(
         f"[PRICE] Selected: {best['retailer']} (tier {best['retailer_score']}) "
         f"at {best['currency']} {best['amount']} for '{product_name}' "
-        f"({len(candidates)} candidates)"
+        f"({len(candidates)} candidates; variant_rank={best['variant_rank']} "
+        f"size={best.get('size')} conc={best.get('concentration')})"
     )
 
     best.pop("match_score", None)
     best.pop("title", None)
+    best.pop("variant_rank", None)
     return best
 
 
@@ -1581,7 +1683,9 @@ def _match_shopify_product(
     domain = (domain or "").replace("www.", "").strip().lower()
     p_words = normalize_words(product_name)
     best: Optional[Dict[str, Any]] = None
-    best_score = 0.0
+    # WS5 — rank tuple (variant_rank, match_score); a better variant match
+    # (query size/concentration) wins even at equal word-overlap.
+    best_rank: Tuple[int, float] = (-(10**9), -1.0)
 
     for product in products:
         if not isinstance(product, dict):
@@ -1621,12 +1725,21 @@ def _match_shopify_product(
             if amount is None or amount <= 0:
                 continue
 
-        if match_score > best_score:
+        # WS5 — variant precision: rank on (query size/concentration match,
+        # word-overlap). The product title + the chosen variant's title (Shopify
+        # often puts the size, e.g. "100ml", in the variant title) both feed the
+        # signal. A better variant match wins even at equal/lower match_score.
+        _variant_title = str(variant.get("title") or "")
+        _signal_text = f"{title} {_variant_title}".strip()
+        _conc_rank, _size_rank = variant_precision_rank(product_name, _signal_text)
+        _rank = (_conc_rank + _size_rank, match_score)
+        if _rank > best_rank:
             handle = product.get("handle") or ""
             url = (
                 f"https://{domain}/products/{handle}" if handle and domain
                 else f"https://{domain}/" if domain else ""
             )
+            _sizes = extract_sizes_ml(_signal_text)
             best = {
                 "amount": round(amount, 2),
                 "currency": target_currency,
@@ -1637,10 +1750,12 @@ def _match_shopify_product(
                 "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
                 "estimated": False,
                 "source_method": "shopify_json",
+                "concentration": extract_concentration(_signal_text),
+                "size": (sorted(_sizes)[0] + "ml") if _sizes else None,
                 "title": title,
                 "match_score": round(match_score, 3),
             }
-            best_score = match_score
+            best_rank = _rank
 
     return best
 
