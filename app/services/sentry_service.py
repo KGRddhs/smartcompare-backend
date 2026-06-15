@@ -126,7 +126,25 @@ def _scrub_dict(data: dict) -> dict:
 
 
 def _before_send(event, hint):
-    """Scrub sensitive data from Sentry events before sending."""
+    """Scrub sensitive data from Sentry events before sending.
+
+    Also drops the DELIBERATE transient 503s (the genuine-bh-latency bundle's
+    TIMEOUT graceful-timeout surface + FEATURE_DISABLED gated routes). The
+    Starlette/FastAPI integration's default ``failed_request_status_codes``
+    captures every 5xx, so changing the timeout surface from 400 -> 503 would
+    otherwise flood Sentry with expected, user-facing-graceful responses and
+    bury real 500s. We exclude 503 at the integration level too (init_sentry);
+    this is the version-independent backstop. Timeout frequency stays visible
+    via the ``[L2.7]`` hard-cap WARNING in Railway logs, and genuine crashes
+    still surface as 500 (ErrorHandlerMiddleware ``capture_exception``).
+    """
+    # Drop deliberate transient 503s (TIMEOUT / FEATURE_DISABLED) — not bugs.
+    try:
+        _resp = (event.get("contexts") or {}).get("response") or {}
+        if int(_resp.get("status_code")) == 503:
+            return None
+    except (TypeError, ValueError):
+        pass
     # Scrub exception values
     if "exception" in event:
         for exc in event["exception"].get("values", []):
@@ -188,11 +206,23 @@ def init_sentry():
         from sentry_sdk.integrations.fastapi import FastApiIntegration
         from sentry_sdk.integrations.starlette import StarletteIntegration
 
+        # Capture 5xx as failed requests EXCEPT 503 — in this app a 503 is only
+        # ever returned deliberately (TIMEOUT graceful-timeout from the
+        # genuine-bh-latency bundle + FEATURE_DISABLED gated routes), so it is an
+        # expected transient, not a bug. Keeping it in Sentry floods the error
+        # stream and buries real 500s. Real crashes surface as 500 and are kept.
+        _captured_5xx = frozenset(range(500, 600)) - {503}
         sentry_sdk.init(
             dsn=dsn,
             integrations=[
-                FastApiIntegration(transaction_style="endpoint"),
-                StarletteIntegration(transaction_style="endpoint"),
+                FastApiIntegration(
+                    transaction_style="endpoint",
+                    failed_request_status_codes=_captured_5xx,
+                ),
+                StarletteIntegration(
+                    transaction_style="endpoint",
+                    failed_request_status_codes=_captured_5xx,
+                ),
             ],
             traces_sample_rate=0.1,
             environment=os.getenv("RAILWAY_ENVIRONMENT", "development"),
