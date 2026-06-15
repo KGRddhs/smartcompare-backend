@@ -28,6 +28,11 @@ class TestDropsWrongLocale:
         "https://www.godukkan.com/uae_en/apple-iphone-17-pro-max",
         "https://www.extra.com/en-kw/x/p/1",
         "https://www.extra.com/en-qa/x/p/1",
+        # noon bare-region locale (uae-en = AED) — WS3 (7168564) drops it for a
+        # BH compare; mirrors test_discovery_bh_locale_filter.py. Was previously
+        # (stalely) asserted as KEPT; the conservative-keep was superseded by the
+        # bare-region extension. be-sourcing-signed-off as intended D8 behavior.
+        "https://noon.com/uae-en/iphone",
     ])
     def test_wrong_gcc_locale_dropped(self, url):
         assert is_wrong_locale_url(url) is True
@@ -47,7 +52,9 @@ class TestKeepsBhAndNeutral:
 
     @pytest.mark.parametrize("url", [
         "https://www.somedomain.com/product/iphone-15",  # locale-neutral path
-        "https://noon.com/uae-en/iphone",   # noon en-uae is its own thing; not a /en-XX/ GCC-locale segment we drop
+        # NOTE: noon.com/uae-en/ moved to TestDropsWrongLocale — WS3's bare-region
+        # extension correctly drops it (uae-en = AED, not BH). A GENUINELY
+        # locale-neutral path (no recognizable GCC-locale segment) is still KEPT.
     ])
     def test_locale_neutral_or_unknown_kept(self, url):
         # We only DROP explicit wrong-GCC-locale path segments; a path with no
