@@ -420,9 +420,29 @@ _WRONG_GCC_LOCALE_SEGMENTS = (
     "/en-kw/", "/ar-kw/",   # Kuwait (KWD)
     "/en-qa/", "/ar-qa/",   # Qatar (QAR)
 )
+# Genuine-BH latency+warmer bundle D8 (2026-06-15) — REGION-in-PATH markers used
+# by retailers (esp. noon.com) that name the country as a bare path prefix rather
+# than an `xx-yy` locale segment. noon serves `noon.com/egypt-en/...`,
+# `noon.com/saudi-en/...`, `noon.com/uae-en/...` — a Bahrain query must drop these
+# (foreign currency: EGP/SAR/AED). KEEP `noon.com/bahrain-en/` (added to the BH
+# markers below). These complement `_WRONG_GCC_LOCALE_SEGMENTS` (the `xx-yy` form);
+# matched as substrings so the leading-slash/hyphen variants all catch.
+_WRONG_REGION_PATH_SEGMENTS = (
+    "/egypt-", "/egypt/",           # Egypt (EGP)
+    "/saudi-", "/saudi/", "/ksa-", "/ksa/",  # Saudi (SAR)
+    "/uae-", "/uae/",               # UAE (AED) — bare-region form (not uae_en locale)
+    "/oman-", "/oman/",             # Oman (OMR)
+    "/kuwait-", "/kuwait/",         # Kuwait (KWD)
+    "/qatar-", "/qatar/",           # Qatar (QAR)
+    "/cairo/", "/cairo-",           # Egypt city
+)
 # Bahrain locale markers — if present, the URL is explicitly BH (keep even if a
-# wrong-locale string somehow co-occurs, which it shouldn't).
-_BH_LOCALE_MARKERS = ("/en-bh/", "/ar-bh/", "/bahrain_en/", "/bahrain_ar/", "-bh/")
+# wrong-locale string somehow co-occurs, which it shouldn't). `/bahrain-` covers
+# noon's bare-region form (`noon.com/bahrain-en/...`).
+_BH_LOCALE_MARKERS = (
+    "/en-bh/", "/ar-bh/", "/bahrain_en/", "/bahrain_ar/", "-bh/",
+    "/bahrain-", "/bahrain/",
+)
 
 
 def is_wrong_locale_url(url: str) -> bool:
@@ -447,8 +467,63 @@ def is_wrong_locale_url(url: str) -> bool:
     # An explicit BH locale marker anywhere → keep.
     if any(m in path for m in _BH_LOCALE_MARKERS):
         return False
-    # An explicit wrong-GCC-locale segment → drop.
-    return any(seg in path for seg in _WRONG_GCC_LOCALE_SEGMENTS)
+    # An explicit wrong-GCC-locale segment (xx-yy form) → drop.
+    if any(seg in path for seg in _WRONG_GCC_LOCALE_SEGMENTS):
+        return True
+    # Genuine-BH bundle D8 — a wrong-REGION bare-path segment (noon's
+    # `/egypt-en/`, `/saudi-en/`, `/cairo/`, …) → drop.
+    return any(seg in path for seg in _WRONG_REGION_PATH_SEGMENTS)
+
+
+# Genuine-BH bundle D8 (2026-06-15) — PDP signals vs listing/search signals for
+# the render-wave candidate filter. A render scrape only pays off on a
+# product-detail page (one price). A category/search/listing page (no single
+# price) wastes a Firecrawl/Scrape.do credit + can mis-attribute a "from" price.
+# `_PDP_PATH_MARKERS` mirrors `_is_pdp_link` in structured_comparison_service +
+# adds Shopify (`/products/<handle>`) and a couple of common BH PDP shapes.
+_PDP_PATH_MARKERS = ("/product/", "/products/", "/p/", "/item/", "/dp/", "/buy/")
+# Explicit listing/search/category markers — present ⇒ NOT a PDP.
+_LISTING_PATH_MARKERS = (
+    "/c/", "/category/", "/categories/", "/cat/",
+    "/search", "/s/", "/sr",            # search result pages
+    "/collections/", "/collection/",    # Shopify collection (NOT /products/)
+    "/brand/", "/brands/", "/shop/", "/store/",
+    "/sale", "/deals", "/offers",
+    "/all-", "/list",
+)
+# Query params that mark a search/listing surface even on a PDP-looking path.
+_LISTING_QUERY_MARKERS = ("q=", "search=", "query=", "keyword=", "page=")
+
+
+def is_non_pdp_listing_url(url: str) -> bool:
+    """True iff `url` is a category / search / listing surface rather than a
+    product-detail page — so the render wave should DROP it (no single price to
+    extract; a render credit would be wasted / a "from N" listing price could
+    mis-attribute).
+
+    Conservative: a URL with an explicit PDP marker (`/product/`, `/products/`,
+    Shopify `/products/<handle>`, …) is KEPT even if a listing-ish token co-occurs
+    (PDP signal wins). A URL with NO PDP marker AND an explicit listing/search
+    marker (path or query) → drop. A locale-neutral, marker-free URL (e.g. a bare
+    brand homepage or an unknown slug) is KEPT — never drop a maybe-PDP.
+    """
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+    except (ValueError, TypeError):
+        return False
+    path = (parsed.path or "").lower()
+    query = (parsed.query or "").lower()
+    # An explicit PDP marker wins — keep.
+    if any(m in path for m in _PDP_PATH_MARKERS):
+        return False
+    # No PDP marker: an explicit listing/search marker (path or query) → drop.
+    if any(m in path for m in _LISTING_PATH_MARKERS):
+        return True
+    if any(m in query for m in _LISTING_QUERY_MARKERS):
+        return True
+    return False
 
 
 # S3 Lulu BH-locale (live-verified 2026-06-14) — retailers that use an IDENTICAL
