@@ -23,22 +23,41 @@ from app.services.structured_comparison_service import StructuredComparisonServi
 
 
 def test_fan_out_price_race_capped_at_12s():
-    """The fan_out_price_lookup race must be bounded by a 12s budget (was 15s).
+    """The fan_out_price_lookup race must be bounded by a 12s budget by default.
 
     S3-genuine Approach A part 2 split the single fan_out into a curl wave + a
-    render wave that SHARE one 12s deadline (_FAN_OUT_BUDGET=12.0; each wave's
-    wait_for gets the remaining budget). The 12s total cap is preserved — it's
-    just expressed as a shared budget instead of a single literal timeout=12.0.
+    render wave that SHARE one deadline; each wave's wait_for gets the remaining
+    budget. WS3/D5 (genuine-bh latency bundle) then made that shared budget
+    ENV-CONFIGURABLE: `_FAN_OUT_BUDGET = _fan_out_budget_seconds()`, which reads
+    FAN_OUT_BUDGET_SECONDS (default "12.0"). LIVE traffic keeps the sacred 12s
+    default; the off-clock warmer raises it to 35s. The 12s live cap is
+    preserved — it's just sourced from a helper instead of a hard literal.
     """
     source = inspect.getsource(StructuredComparisonService._get_price)
     assert "fan_out_price_lookup" in source, "fan_out race call missing"
-    assert "_FAN_OUT_BUDGET = 12.0" in source, (
-        "I5.7: the Tier-1.5 fan_out must be bounded by a 12s budget "
-        "(_FAN_OUT_BUDGET=12.0; shared across the curl+render waves)"
+    # WS3/D5 — the budget is now the env-config helper, not a hard literal.
+    assert "_FAN_OUT_BUDGET = _fan_out_budget_seconds()" in source, (
+        "WS3/D5: the Tier-1.5 fan_out budget must come from "
+        "_fan_out_budget_seconds() (env-config, default 12.0; shared across "
+        "the curl+render waves)"
     )
+    # Behavioral intent pin: the helper's LIVE default (env unset) is 12.0s, so
+    # live traffic still gets the sacred 12s cap. Guards a future edit that
+    # changes the default away from 12.0.
+    import os as _os
+
+    from app.services.structured_comparison_service import _fan_out_budget_seconds
+    _prior = _os.environ.pop("FAN_OUT_BUDGET_SECONDS", None)
+    try:
+        assert _fan_out_budget_seconds() == 12.0, (
+            "WS3/D5: the LIVE default fan_out budget (env unset) must stay 12.0s"
+        )
+    finally:
+        if _prior is not None:
+            _os.environ["FAN_OUT_BUDGET_SECONDS"] = _prior
     # The fan_out waits use the remaining shared budget.
     assert "timeout=_remaining" in source, (
-        "the two waves must each wait_for the remaining shared 12s budget"
+        "the two waves must each wait_for the remaining shared budget"
     )
     # The old 15s cap must be gone from the fan_out race so the tightening is real.
     assert "timeout=15.0" not in source, (
@@ -80,12 +99,23 @@ def test_price_outer_cap_exceeds_inner_fan_out_cap():
     # Outer cap = _PRICE_RACE_TIMEOUT (15.0), wired into _PHASE1_TIMEOUTS['price'].
     assert "_PRICE_RACE_TIMEOUT" in fetch_src
     outer = _scs._PRICE_RACE_TIMEOUT
-    # The inner fan_out budget is 12s, now SHARED across the curl+render waves
-    # (Approach A part 2) — so the TOTAL Tier-1.5 scrape still can't exceed 12s,
+    # The inner fan_out budget is SHARED across the curl+render waves (Approach A
+    # part 2) and, since WS3/D5, sourced from _fan_out_budget_seconds() (env
+    # default 12.0). So the LIVE total Tier-1.5 scrape still can't exceed 12s,
     # preserving the 15s-outer > 12s-inner invariant (no two-wave 24s blowout).
-    assert "_FAN_OUT_BUDGET = 12.0" in price_src
-    # outer (15.0) > inner total (12.0) — headroom for Tier 1 + Tier 3 estimate.
-    assert outer > 12.0
+    assert "_FAN_OUT_BUDGET = _fan_out_budget_seconds()" in price_src
+    # outer (15.0) > inner LIVE default (12.0) — headroom for Tier 1 + Tier 3.
+    import os as _os
+
+    from app.services.structured_comparison_service import _fan_out_budget_seconds
+    _prior = _os.environ.pop("FAN_OUT_BUDGET_SECONDS", None)
+    try:
+        inner_live_default = _fan_out_budget_seconds()
+    finally:
+        if _prior is not None:
+            _os.environ["FAN_OUT_BUDGET_SECONDS"] = _prior
+    assert inner_live_default == 12.0
+    assert outer > inner_live_default
 
 
 def test_reviews_trim_context_and_tokens():
