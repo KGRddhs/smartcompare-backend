@@ -80,3 +80,42 @@ def test_live_defaults_unchanged_when_env_unset(monkeypatch):
     finally:
         importlib.reload(firecrawl_service)
         importlib.reload(scrapedo_service)
+
+
+# ---------------------------------------------------------------------------
+# be-core (T3/WS2-D5) — the _FAN_OUT_BUDGET reader half. The shared Tier-1.5
+# curl+render budget is read LIVE from FAN_OUT_BUDGET_SECONDS so the warmer can
+# raise it to 35s while live traffic keeps the sacred 12s default. No network.
+# ---------------------------------------------------------------------------
+from app.services.structured_comparison_service import _fan_out_budget_seconds
+
+
+def test_fan_out_budget_default_is_12(monkeypatch):
+    """Live default — 12s when FAN_OUT_BUDGET_SECONDS is unset."""
+    monkeypatch.delenv("FAN_OUT_BUDGET_SECONDS", raising=False)
+    assert _fan_out_budget_seconds() == 12.0
+
+
+def test_fan_out_budget_warmer_override_to_35(monkeypatch):
+    """Warmer sets 35s so Firecrawl/Scrape.do finish luxury SPAs off-clock."""
+    monkeypatch.setenv("FAN_OUT_BUDGET_SECONDS", "35")
+    assert _fan_out_budget_seconds() == 35.0
+
+
+def test_fan_out_budget_float_value_honored(monkeypatch):
+    monkeypatch.setenv("FAN_OUT_BUDGET_SECONDS", "18.5")
+    assert _fan_out_budget_seconds() == 18.5
+
+
+def test_fan_out_budget_malformed_falls_back_to_12(monkeypatch):
+    """A garbage value must not crash the price path — fall back to 12s."""
+    monkeypatch.setenv("FAN_OUT_BUDGET_SECONDS", "not-a-number")
+    assert _fan_out_budget_seconds() == 12.0
+
+
+def test_fan_out_budget_read_is_live_not_cached(monkeypatch):
+    """Per-call read — a warmer env flip takes effect without a restart."""
+    monkeypatch.setenv("FAN_OUT_BUDGET_SECONDS", "35")
+    assert _fan_out_budget_seconds() == 35.0
+    monkeypatch.setenv("FAN_OUT_BUDGET_SECONDS", "12")
+    assert _fan_out_budget_seconds() == 12.0

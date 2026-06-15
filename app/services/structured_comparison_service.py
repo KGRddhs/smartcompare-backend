@@ -615,6 +615,20 @@ _PRICE_RACE_TIMEOUT = float(os.getenv("PRICE_RACE_TIMEOUT", "15.0"))
 # ("TIMEOUT"), so this string is the API-level fallback, not the rendered copy.
 TIMEOUT_FRIENDLY_MESSAGE = "Still gathering prices — give it another tap in a moment."
 
+
+def _fan_out_budget_seconds() -> float:
+    """WS3/D5 — the shared Tier-1.5 two-wave (curl + render) budget, in seconds.
+    Read LIVE from FAN_OUT_BUDGET_SECONDS so the off-clock warmer process can
+    raise it to 35s (letting Firecrawl/Scrape.do finish luxury SPAs) WITHOUT a
+    restart, while live traffic keeps the sacred 12s default. Malformed values
+    fall back to 12.0. Read per-call (not cached) so an env flip / monkeypatch
+    takes effect immediately; the cost is one getenv per price escalation,
+    which is negligible next to the scrape it gates."""
+    try:
+        return float(os.getenv("FAN_OUT_BUDGET_SECONDS", "12.0"))
+    except (TypeError, ValueError):
+        return 12.0
+
 # I5.6 lever-3 — per-race cap on the Phase-2 verified-rating fetch. The rating
 # cascade (Serper Tier 1→2→3 + GPT fallback) was the one UNCAPPED Phase-2 race;
 # 4s matches the measured warm rating floor with headroom while keeping a slow
@@ -3282,6 +3296,28 @@ class StructuredComparisonService:
 
         is_supplement = (category == "supplements") or is_supplement_query(full_name)
 
+        # WS2 (genuine-bh-latency bundle) — per-sub-stage price timing, gated on
+        # DEBUG_STAGE_TIMINGS so it's a true no-op in prod. Attributes the
+        # ~17-20s price_ms across serper_shopping / discovery+escalation /
+        # fan_out so the latency-trim targets the proven-dominant sub-stage
+        # (measure-before-optimize). Emitted as [PRICE_SUBSTAGE] INFO lines the
+        # _frag_pipeline_trace.py harness captures.
+        _ps_debug = _debug_timings_enabled()
+        _ps_t0 = time.monotonic()
+        _ps_last = _ps_t0
+
+        def _ps_mark(stage: str) -> None:
+            nonlocal _ps_last
+            if not _ps_debug:
+                return
+            _now = time.monotonic()
+            logger.info(
+                "[PRICE_SUBSTAGE] %s stage=%s delta_ms=%.0f cum_ms=%.0f",
+                full_name[:40], stage,
+                (_now - _ps_last) * 1000, (_now - _ps_t0) * 1000,
+            )
+            _ps_last = _now
+
         # --- S3 #34 (cascade-parallelize) — SPECULATIVE discovery prefetch ---
         # ROOT CAUSE (prove-it-works, live prod): the price race serially ran
         # serper_shopping (~5.9s) THEN the discovery site: queries (~5s) THEN the
@@ -3332,11 +3368,68 @@ class StructuredComparisonService:
 
         def _cancel_prefetched_discovery():
             """Cancel the speculative discovery tasks (genuine short-circuit /
-            no-escalation) so no orphan Serper calls survive."""
+            no-escalation) so no orphan Serper calls survive. WS2 — also drops
+            any still-pending speculative FREE direct fetches (Shopify/Algolia)
+            so the same call site covers both speculations; consumed entries
+            were already popped, so this only cancels what wasn't used."""
             for _t, _task in _prefetched_discovery:
                 if not _task.done():
                     _task.cancel()
             _prefetched_discovery.clear()
+            _cancel_prefetched_direct()
+
+        # WS2 (genuine-bh-latency bundle) — speculative FREE genuine-BH direct
+        # fetch, overlapped with the serper_shopping wait. The trace proved the
+        # ~6s serper_shopping sub-stage dominates price_ms, and for Shopify/
+        # Algolia categories (fragrances=alhajis, fashion=6thStreet) the genuine
+        # BH price comes from these FREE direct sources (Shopify /products.json +
+        # Algolia public index — ZERO Serper, zero render credits), which
+        # currently run SERIAL *after* shopping. Kicking them off here overlaps
+        # them with the 6s shopping wait so the genuine price is ready the moment
+        # escalation reaches it. UNLIKE the Serper discovery prefetch above, these
+        # cost nothing to speculate (no Serper) — so there's no budget downside to
+        # firing them even on the rare query where escalation won't fire (the
+        # cancel below just drops a couple of free HTTP GETs). The escalation block
+        # consumes these via _prefetched_direct (instant await) or, if absent,
+        # falls back to firing them inline (unchanged behaviour).
+        _shopify_sources_pf = (
+            get_shopify_sources_for_category(category) if not is_supplement else []
+        )
+        _algolia_sources_pf = (
+            get_algolia_sources_for_category(category) if not is_supplement else []
+        )
+        _prefetched_direct: Dict[str, Any] = {}
+        if ENABLE_PAGE_SCRAPE and (_shopify_sources_pf or _algolia_sources_pf):
+            if _shopify_sources_pf:
+                _prefetched_direct["shopify"] = asyncio.ensure_future(
+                    asyncio.gather(
+                        *(
+                            fetch_shopify_price(s.domain, full_name, currency)
+                            for s in _shopify_sources_pf
+                        ),
+                        return_exceptions=True,
+                    )
+                )
+            if _algolia_sources_pf:
+                from app.services.algolia_service import fetch_algolia_price
+                _prefetched_direct["algolia"] = asyncio.ensure_future(
+                    asyncio.gather(
+                        *(
+                            fetch_algolia_price(s.domain, full_name, category)
+                            for s in _algolia_sources_pf
+                        ),
+                        return_exceptions=True,
+                    )
+                )
+
+        def _cancel_prefetched_direct():
+            """Cancel the speculative FREE direct fetches (genuine Tier-1 short-
+            circuit / no-escalation) so no orphan HTTP GETs survive. No Serper
+            budget impact — these are free /products.json + Algolia calls."""
+            for _task in _prefetched_direct.values():
+                if not _task.done():
+                    _task.cancel()
+            _prefetched_direct.clear()
 
         # --- Tier 1: Direct Serper Shopping extraction ---
         shopping_region = None  # T2 — gl region the shopping items came from
@@ -3347,6 +3440,7 @@ class StructuredComparisonService:
         else:
             search_results = await search_product_prices(search_query, region_info["code"])
             self._track_serper_cost()
+            _ps_mark("serper_shopping")  # WS2 — includes gl=bh + (often) gl=us fallback
             shopping_items = search_results.get("shopping", [])
             self._shopping_items_cache[full_name] = shopping_items
             # Bundle C v1 hot-fix — always-on log of gl=us fallback activity.
@@ -3438,6 +3532,7 @@ class StructuredComparisonService:
             ),
             brand=brand,
         ):
+            _ps_mark("escalate_decision")  # WS2 — entering Tier 1.5 escalation
             scraping_mode = os.environ.get("SCRAPING_MODE", "hard")
             candidate_urls: List[Tuple[str, str]] = []
 
@@ -3470,17 +3565,27 @@ class StructuredComparisonService:
             shopify_fallback = None
             shopify_sources = get_shopify_sources_for_category(category)
             if shopify_sources:
+                # WS2 — consume the speculative fetch fired concurrently with the
+                # serper_shopping call (instant await when it already finished
+                # during the ~6s shopping wait; the 3s cap is the SAME wall, now
+                # mostly overlapped). Fall back to firing inline if the prefetch
+                # was skipped (ENABLE_PAGE_SCRAPE off / no sources at kickoff).
                 try:
-                    shop_results = await asyncio.wait_for(
-                        asyncio.gather(
-                            *(
-                                fetch_shopify_price(s.domain, full_name, currency)
-                                for s in shopify_sources
+                    if "shopify" in _prefetched_direct:
+                        shop_results = await asyncio.wait_for(
+                            _prefetched_direct.pop("shopify"), timeout=3.0
+                        )
+                    else:
+                        shop_results = await asyncio.wait_for(
+                            asyncio.gather(
+                                *(
+                                    fetch_shopify_price(s.domain, full_name, currency)
+                                    for s in shopify_sources
+                                ),
+                                return_exceptions=True,
                             ),
-                            return_exceptions=True,
-                        ),
-                        timeout=3.0,
-                    )
+                            timeout=3.0,
+                        )
                 except asyncio.TimeoutError:
                     shop_results = []
                 except Exception as e:  # noqa: BLE001 — discovery is best-effort
@@ -3554,17 +3659,26 @@ class StructuredComparisonService:
             algolia_sources = get_algolia_sources_for_category(category)
             if algolia_sources:
                 from app.services.algolia_service import fetch_algolia_price
+                # WS2 — consume the speculative Algolia fetch overlapped with the
+                # serper_shopping wait (same as the Shopify path above). Inline
+                # fallback when the prefetch was skipped.
                 try:
-                    algolia_results = await asyncio.wait_for(
-                        asyncio.gather(
-                            *(
-                                fetch_algolia_price(s.domain, full_name, category)
-                                for s in algolia_sources
+                    if "algolia" in _prefetched_direct:
+                        algolia_results = await asyncio.wait_for(
+                            _prefetched_direct.pop("algolia"),
+                            timeout=_ALGOLIA_TIER2_TIMEOUT,
+                        )
+                    else:
+                        algolia_results = await asyncio.wait_for(
+                            asyncio.gather(
+                                *(
+                                    fetch_algolia_price(s.domain, full_name, category)
+                                    for s in algolia_sources
+                                ),
+                                return_exceptions=True,
                             ),
-                            return_exceptions=True,
-                        ),
-                        timeout=_ALGOLIA_TIER2_TIMEOUT,
-                    )
+                            timeout=_ALGOLIA_TIER2_TIMEOUT,
+                        )
                 except asyncio.TimeoutError:
                     algolia_results = []
                 except Exception as e:  # noqa: BLE001 — best-effort
@@ -3787,7 +3901,13 @@ class StructuredComparisonService:
                 # so the total Tier-1.5 scrape time stays <= the 12s the single
                 # fan_out had — it never exceeds the 15s outer _PHASE1_TIMEOUTS
                 # ["price"] cap.
-                _FAN_OUT_BUDGET = 12.0
+                #
+                # WS3/D5 (genuine-bh-latency bundle) — env-configurable so the
+                # OFF-CLOCK warmer can raise it (FAN_OUT_BUDGET_SECONDS=35) to let
+                # Firecrawl/Scrape.do finish luxury SPAs. LIVE STAYS 12s (the 15s
+                # price clock is sacred); only the warmer's process sets the env.
+                _FAN_OUT_BUDGET = _fan_out_budget_seconds()
+                _ps_mark("pre_fan_out")  # WS2 — discovery+ranking done, entering scrape waves
                 _t15_start = time.monotonic()
                 for _wave in ("curl", "render"):
                     _remaining = _FAN_OUT_BUDGET - (time.monotonic() - _t15_start)
@@ -3821,6 +3941,7 @@ class StructuredComparisonService:
                     except Exception as e:  # noqa: BLE001
                         logger.warning(f"[PRICE] Tier 1.5 {_wave}-wave failed: {e}")
                         continue
+                    _ps_mark(f"fan_out_{_wave}")  # WS2 — per-wave scrape wall
                     _winner = _finalize_fan_winner(_fan)
                     if _winner is not None:
                         # Curl-wave win → genuine BH price, no render credits burned.
