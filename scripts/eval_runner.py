@@ -392,13 +392,21 @@ def count_price_source_cells(body: Dict[str, Any]) -> tuple[int, int]:
 # credit it the moment it lands. (`page_scrape_rendered` is a real rendered BH
 # page fetch, so it's genuine too.) The genuine-BH-share KPI counts this set as
 # the numerator over all produced prices.
+# MUST stay in parity with the backend's app/services/price_service.py
+# `_GENUINE_BH_SOURCE_METHODS` — otherwise a genuine method the engine stamps
+# (notably `page_scrape_jsonld`, which alhajis/ounass genuine BHD prices use)
+# counts toward `priced` but NO bucket, silently UNDER-reporting genuine-share.
+# tests/test_eval_genuine_methods_parity.py pins the two sets equal.
 GENUINE_BH_SOURCE_METHODS = frozenset({
     "local_bhd",
     "page_scrape",
+    "page_scrape_jsonld",
     "page_scrape_rendered",
     "firecrawl",
+    "firecrawl_brand_domain",
     "scrapedo_rendered",
     "shopify_json",
+    "official_brand",
 })
 
 # The one non-genuine, non-estimate bucket: a USD price converted to BHD. Real

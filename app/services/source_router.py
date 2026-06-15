@@ -126,6 +126,11 @@ SOURCE_REGISTRY: List[Source] = [
     ),  # Y.K. Almoayyed & Sons (Shopify) — AC/appliances/electronics. S3 L1.3:
     #    /products.json verified — 30 products, static BHD JSON-LD (page_scrape).
     Source(
+        "sonyworld.bh", "bahrain", ("electronics",), 3.0, is_shopify=True
+    ),  # Sony World Bahrain (official Sony, Shopify, base currency BHD). S3.1
+    #    follow-on A1: prod fetch_shopify_price → WH-1000XM5 145.0 BHD across 176
+    #    products, /products.json (shopify_json) — fills the audio-gadget gap.
+    Source(
         "bh.asgharali.com", "bahrain", ("fragrances",), 3.0, is_shopify=True
     ),  # Asgharali Perfumes BH (Shopify). S3 L1.3: /products.json verified —
     #    93 products, static BHD prices.
