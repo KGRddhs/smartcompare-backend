@@ -45,6 +45,23 @@ from app.services.response_builder import build_comparison_response
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Mirror tests/test_two_input_shape.py + test_security_regression.py —
+    slowapi caps /text/compare at 10/min by IP. The route-level tests in this
+    file make several TestClient calls; without a per-test reset they exhaust
+    the window when this file runs alongside other /text/compare suites
+    (e.g. test_http_400_cap_cut_mapping.py) in one process, surfacing flaky
+    429s instead of the asserted 200/503. Reset between every test."""
+    from app.middleware.rate_limiter import limiter
+
+    try:
+        limiter.reset()
+    except Exception:  # noqa: BLE001
+        pass
+    yield
+
+
 # ---------------------------------------------------------------------------
 # Forbidden-vocab oracle — mirrors SmartCompareApp/src/i18n/.copy-policy.json
 # scary_vocab_en + scary_vocab_ar. Kept local (the backend has no JS-policy
