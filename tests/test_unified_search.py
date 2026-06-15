@@ -26,6 +26,14 @@ def run_async(coro):
         loop.close()
 
 
+# B3 (test-infra hygiene): these "mocked" tests patch search_web + extract_* +
+# the Redis cache, but call _get_specs / _get_reviews with the default
+# nocache=False, so they still reach the un-mocked L2 DB cache
+# (product_data_service.get_cached_specs / get_cached_reviews → live Supabase).
+# That's a REAL network call, so they belong behind the live_unit mark like the
+# cost-tracking class below — keeps them out of the free-unit filter where the
+# Supabase round-trip flakes / errors under sandbox network restrictions.
+@pytest.mark.live_unit
 class TestUnifiedSearchSharing:
     def test_specs_skips_own_search_when_results_provided(self, service):
         """_get_specs() should NOT call search_web when search_results is provided."""

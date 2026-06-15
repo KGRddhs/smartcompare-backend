@@ -268,6 +268,30 @@ LUXURY_BRAND_KEYWORDS = {
     "celine", "loewe", "moncler", "balmain", "alexander mcqueen",
 }
 
+# Designer / niche fragrance brands — used by is_fragrance_query to recognise a
+# perfume even when the query omits the "perfume"/"edp" product word (e.g. "Tom
+# Ford Ombré Leather", "Creed Aventus"). Distinct from LUXURY_BRAND_KEYWORDS
+# (which spans handbags + watches): a fragrance from any of these is reliably an
+# expensive FULL bottle, so an implausibly-low scrape is a sample/decant.
+FRAGRANCE_BRAND_KEYWORDS = {
+    "tom ford", "creed", "amouage", "mfk", "maison francis kurkdjian",
+    "initio", "frederic malle", "frédéric malle", "byredo", "le labo",
+    "montale", "mancera", "xerjoff", "parfums de marly", "kilian",
+    "chanel", "dior", "guerlain", "ysl", "yves saint laurent", "armani",
+    "versace", "valentino", "givenchy", "jean paul gaultier", "gucci",
+    "lancome", "lancôme", "viktor rolf", "viktor & rolf", "carolina herrera",
+    "paco rabanne", "hermes", "hermès", "burberry", "prada", "bvlgari",
+    "ajmal", "asghar ali", "asgharali", "al haramain", "lattafa", "rasasi",
+}
+
+# Generic fragrance product words (concentration tokens covered separately by
+# extract_concentration). Presence of any → almost certainly a perfume query.
+FRAGRANCE_PRODUCT_KEYWORDS = {
+    "perfume", "perfumes", "cologne", "fragrance", "fragrances",
+    "eau de parfum", "eau de toilette", "eau de cologne", "edp", "edt", "edc",
+    "parfum", "extrait", "body spray", "body mist", "attar", "oud",
+}
+
 # Official brand domains
 OFFICIAL_BRAND_DOMAINS = {
     "hermes.com", "louisvuitton.com", "chanel.com", "gucci.com", "prada.com",
@@ -473,6 +497,103 @@ def is_supplement_query(product_name: str) -> bool:
     if any(kw in name_lower for kw in HIGH_VALUE_KEYWORDS):
         return False
     return any(kw in name_lower for kw in SUPPLEMENT_KEYWORDS)
+
+
+# ============================================
+# Fragrance size-plausibility guard (#17 B1)
+# ============================================
+#
+# The shipped accuracy guards (is_implausible_high_value_price) only floor
+# HIGH-VALUE electronics. A prod-smoke PARTIAL surfaced an implausibly-LOW
+# fragrance converted price — Tom Ford Ombré Leather 19.93 BHD (~$53), a
+# sample/decant-grade listing whose genuine full bottle is ~80 BHD. There was no
+# fragrance analog, so the cascade cached/served the sample price as if genuine.
+#
+# Fragrances legitimately vary by SIZE: a genuine 30ml decant is cheap by
+# design, so a blanket BHD floor would wrongly reject it. The guard therefore
+# floors on a price that is implausibly low FOR THE DETECTED/EXPECTED size,
+# reusing the WS5 extract_sizes_ml annotations: a size-proportional floor scaled
+# off the flagship 100ml full-bottle floor. Size-unspecified luxury fragrance
+# defaults to the flagship 100ml basis (consistent with flagship_basis_bonus).
+# Gated to DESIGNER/NICHE fragrance brands — where a full bottle is reliably
+# expensive — so a genuinely-cheap mass-market body spray is never floored.
+
+# Designer-fragrance full-bottle (100ml-basis) floor. A 100ml-basis listing
+# under this in BHD is a sample/decant/wrong-SKU mis-extraction, not the genuine
+# bottle. Tuned so the Ombré Leather 19.93 sample is caught while leaving wide
+# margin under the cheapest plausible full designer bottle (~30+ BHD = the
+# fragrances budget breakpoint). Scaled by size for smaller bottles.
+FRAGRANCE_FULL_SIZE_FLOOR_BHD = 25.0
+_FRAGRANCE_FLAGSHIP_SIZE_ML = 100.0
+# A floor never drops below this absolute BHD value (a sub-5-BHD "fragrance" at
+# any labelled size is a scrape artifact, not a real perfume).
+_FRAGRANCE_MIN_FLOOR_BHD = 5.0
+
+
+def is_fragrance_query(product_name: str) -> bool:
+    """True iff `product_name` is (almost certainly) a perfume — either a
+    designer/niche fragrance house OR a generic fragrance product word. High-value
+    electronics short-circuit to False (a phone is never a fragrance), so the two
+    guards stay mutually exclusive."""
+    if not product_name:
+        return False
+    name_lower = product_name.lower()
+    if any(kw in name_lower for kw in HIGH_VALUE_KEYWORDS):
+        return False
+    if any(brand in name_lower for brand in FRAGRANCE_BRAND_KEYWORDS):
+        return True
+    return any(kw in name_lower for kw in FRAGRANCE_PRODUCT_KEYWORDS)
+
+
+def _effective_fragrance_size_ml(query_name: str, title: Optional[str]) -> float:
+    """The size (ml) to floor against: the smallest size token found in the
+    candidate `title` first (the listing's own size is the ground truth), else
+    the query's stated size, else the flagship 100ml basis (an unspecified
+    designer-fragrance query is priced at full-bottle by convention — same basis
+    as flagship_basis_bonus). Returns a float ml."""
+    for text in (title, query_name):
+        if not text:
+            continue
+        sizes = extract_sizes_ml(text)
+        if sizes:
+            # Smallest detected size → most generous (lowest) floor, so a genuine
+            # small decant is never wrongly rejected.
+            return float(min(int(s) for s in sizes))
+    return _FRAGRANCE_FLAGSHIP_SIZE_ML
+
+
+def is_implausible_low_fragrance_price(
+    product_name: str,
+    amount: Optional[float],
+    title: Optional[str] = None,
+) -> bool:
+    """True iff `product_name` is a designer/niche fragrance but `amount` (BHD) is
+    implausibly low FOR ITS DETECTED/EXPECTED size — a sample/decant/wrong-SKU
+    listing that must NOT be served as the genuine full-bottle price.
+
+    Size-aware: the floor is the flagship 100ml floor scaled to the size the
+    listing (or query) actually carries, so a genuine 30ml priced as a 30ml is
+    KEPT while a 100ml-basis listing under the full-bottle floor is rejected.
+    Returns False for non-fragrance products, non-designer/niche fragrances
+    (mass-market body sprays can be genuinely cheap), and missing/zero amounts.
+    Gated to luxury/designer/niche so it never over-rejects a cheap real perfume."""
+    if amount is None or amount <= 0:
+        return False
+    if not is_fragrance_query(product_name):
+        return False
+    # Only DESIGNER/NICHE fragrances reliably have an expensive full bottle — a
+    # generic "body spray" can be genuinely 3 BHD, so don't floor it.
+    name_lower = product_name.lower()
+    is_designer = (
+        any(brand in name_lower for brand in FRAGRANCE_BRAND_KEYWORDS)
+        or is_luxury_brand(product_name)
+    )
+    if not is_designer:
+        return False
+    size_ml = _effective_fragrance_size_ml(product_name, title)
+    floor = FRAGRANCE_FULL_SIZE_FLOOR_BHD * (size_ml / _FRAGRANCE_FLAGSHIP_SIZE_ML)
+    floor = max(floor, _FRAGRANCE_MIN_FLOOR_BHD)
+    return amount < floor
 
 
 # ============================================

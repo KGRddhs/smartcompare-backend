@@ -17,6 +17,15 @@ import pytest
 from unittest.mock import AsyncMock, patch
 
 
+# B3 (test-infra hygiene): the two wall-clock tests below exercise the real
+# `_fetch_product_data` path with the inner races mocked but the L2 DB cache, the
+# API-budget meter, and the rating-collection sibling left UN-mocked — so they
+# make REAL network calls (Supabase / Redis / Serper-budget) AND assert a
+# wall-clock budget, which flakes under load. They're marked `live_unit` so the
+# free-unit filter skips them. The pure source-inspection test
+# (`test_per_race_timeouts_constants_are_defined_and_sane`) stays unmarked — it
+# does zero network and is valuable free coverage.
+@pytest.mark.live_unit
 @pytest.mark.asyncio
 async def test_one_slow_race_does_not_drag_others():
     """If `_get_price` hangs for 60s and the price-race timeout is 18s,
@@ -116,6 +125,7 @@ async def test_per_race_timeouts_constants_are_defined_and_sane():
     )
 
 
+@pytest.mark.live_unit
 @pytest.mark.asyncio
 async def test_all_fast_races_complete_in_parallel():
     """When every race is fast, the gather wall is approximately the slowest
