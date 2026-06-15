@@ -141,9 +141,9 @@ async def test_hardcap_partial_with_scoring_and_verdict(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_hardcap_insufficient_data_when_products_empty(monkeypatch):
+async def test_hardcap_insufficient_data_when_no_product_data(monkeypatch):
     """Products resolved but NEITHER has specs or price → INSUFFICIENT_DATA,
-    not a fake partial."""
+    not a fake partial. (WS1 spec test name.)"""
     monkeypatch.setattr(scs, "STREAM_HARD_CAP_SECONDS", 0.2)
     svc = get_comparison_service()
 

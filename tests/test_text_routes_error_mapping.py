@@ -94,3 +94,32 @@ class TestErrorHandlerPreserves503Timeout:
         assert body["code"] == "TIMEOUT"
         assert body["success"] is False
         assert body["error"] == "soft"
+
+
+class TestRoutePreservesTimeoutCodeAs503:
+    """WS1 spec-named end-to-end pin: service returns code:TIMEOUT → the route
+    surfaces HTTP 503 with body code "TIMEOUT" (the full app path through
+    _surface_comparison_failure + error_handler unwrap)."""
+
+    def test_route_preserves_timeout_code_as_503(self):
+        from unittest.mock import patch, AsyncMock
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        timeout_result = {
+            "success": False,
+            "error": "Still gathering prices — give it another tap in a moment.",
+            "code": "TIMEOUT",
+            "total_cost": 0.0,
+        }
+        client = TestClient(app)
+        with patch("app.api.text_routes.get_comparison_service") as m_svc:
+            m_svc.return_value.compare_from_text = AsyncMock(return_value=timeout_result)
+            resp = client.get(
+                "/api/v1/text/compare",
+                params={"q": "Tom Ford Ombre vs Tom Ford Tobacco", "nocache": "true"},
+            )
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["code"] == "TIMEOUT"
+        assert body["success"] is False
