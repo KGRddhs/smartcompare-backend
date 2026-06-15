@@ -254,6 +254,16 @@ async def get_usage_status(user_id: str, access_token: str) -> dict:
     daily_used = _get_redis_count(_daily_key(user_id))
     monthly_used = _get_redis_count(_monthly_key(user_id))
 
+    # Mirror check_usage_allowed (line 167): a free-tier user with lifetime-free
+    # comparisons left BYPASSES the daily/monthly counters. The DISPLAY must reflect
+    # that — otherwise a user whose lifetime counter was reset (admin reset) while
+    # the daily/monthly Redis counters are still high sees a FALSE paywall on Home,
+    # even though the gate would allow the compare. On the lifetime-free path, report
+    # the full daily/monthly allowance so the frontend's canCompare stays true.
+    on_lifetime_free = tier == "free" and lifetime_used < limits["lifetime_free"]
+    lifetime_free_remaining = (
+        max(0, limits["lifetime_free"] - lifetime_used) if tier == "free" else 0
+    )
     return {
         "tier": tier,
         "used": {
@@ -269,7 +279,8 @@ async def get_usage_status(user_id: str, access_token: str) -> dict:
             "lifetime_free": limits["lifetime_free"],
         },
         "remaining": {
-            "daily": max(0, limits["daily"] - daily_used),
-            "monthly": max(0, monthly_cap - monthly_used),
+            "daily": limits["daily"] if on_lifetime_free else max(0, limits["daily"] - daily_used),
+            "monthly": monthly_cap if on_lifetime_free else max(0, monthly_cap - monthly_used),
+            "lifetime_free": lifetime_free_remaining,
         },
     }
