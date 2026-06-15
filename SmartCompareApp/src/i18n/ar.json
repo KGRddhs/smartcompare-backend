@@ -106,6 +106,7 @@
   "home.errors.camera": "صوّر مرّة ثانية — مع تركيز أوضح.",
   "home.errors.connection": "نُعيد الاتصال…",
   "home.errors.comparison": "نتيجة أدقّ قادمة — جرّب باسم العلامة أو الطراز.",
+  "home.errors.timeout": "ما زلنا نجمع الأسعار — أعِد الضغط بعد لحظة.",
   "home.limit.max_title": "هذا يكفي حالياً",
   "home.limit.max_body": "قارن حتى {{max}} منتجات في المرّة.",
   "home.limit.rate_title": "خذ نفساً",
@@ -646,6 +647,11 @@
   "results.emptyState.visionFailed": "صوّر مرة أخرى بإضاءة أفضل ونرتّبها لك.",
   "results.loading.fromHistory": "نحضّر مقارنتك",
   "results.loading.fromCamera": "نتعرّف على منتجاتك",
+
+  "results.timeout.title": "ما زلنا نجمع الأسعار",
+  "results.timeout.body": "نُرتّب أفضل العروض المحلية — أعِد الضغط بعد لحظة.",
+  "results.timeout.retry": "اضغط لإعادة المحاولة",
+  "results.partial.note": "الأسعار ما زالت تُحدَّث — اضغط للتحديث بعد لحظة.",
 
   "register.inviteCode.placeholder": "عندك رمز دعوة؟ (اختياري)",
   "register.inviteCode.accessibility": "رمز الدعوة",

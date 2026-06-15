@@ -20,6 +20,9 @@ const APPROVED: Partial<Record<SourceMethod, string>> = {
   local_bhd: 'Direct local listing',
   converted_usd: 'Local listing',
   page_scrape: 'Retailer page',
+  // Genuine-BH bundle (WS3): curl JSON-LD off a retailer PDP — a genuine
+  // local listing, same approved phrasing as the other page-scrape methods.
+  page_scrape_jsonld: 'Retailer page',
   page_scrape_rendered: 'Retailer page',
   firecrawl: 'Retailer page',
   scrapedo_rendered: 'Retailer page',

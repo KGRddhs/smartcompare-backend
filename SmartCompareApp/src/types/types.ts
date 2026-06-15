@@ -44,6 +44,9 @@ export type SourceMethod =
   | 'local_bhd'
   | 'converted_usd'
   | 'page_scrape'
+  // Genuine-BH bundle (WS3): curl JSON-LD off a retailer PDP. Treated as a
+  // genuine retailer-page method (same UI phrasing as page_scrape).
+  | 'page_scrape_jsonld'
   | 'page_scrape_rendered'
   | 'firecrawl'
   | 'scrapedo_rendered'
@@ -260,8 +263,21 @@ export interface ComparisonResult {
     api_calls: number;
     cache_hits?: number;
     timestamp: string;
+    // Genuine-BH bundle (WS1/D1): set true when the hard-cap returned a
+    // best-available assembly rather than a fully-completed comparison.
+    // The FE renders the partial result and may show a soft "still
+    // settling" affordance, never a scary error.
+    partial?: boolean;
+    // Genuine-BH bundle (D2): the specific termination code when partial,
+    // e.g. "TIMEOUT" / "STREAM_TIMEOUT". Advisory for the FE; the partial
+    // result still renders.
+    code?: string;
   };
   error?: string;
+  // Genuine-BH bundle (D2): top-level termination code on a hard-fail
+  // envelope (success:false), mirrors the unified error code. Read by the
+  // FE to substitute friendly copy by code rather than rendering `error`.
+  code?: string;
   // New structured response fields (optional for backward compat with history)
   overview?: OverviewSection;
   specs?: SpecsSection;
