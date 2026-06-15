@@ -79,21 +79,32 @@ def test_lulu_bh_region_keep_not_rewritten_away():
     "https://www.extra.com/en-bh/c/phones",
     "https://www.lulu.com/en-bh/category/fragrances",
     "https://bahrain.ounass.com/search?q=tom+ford",
-    "https://www.example.com/en-bh/shop/perfume",
     "https://www.example.com/collections/fragrances",   # Shopify collection (NOT a product)
-    "https://www.example.com/brand/tom-ford",
-    "https://www.example.com/sale/perfume",
-    "https://www.example.com/store?query=tom+ford",
-    "https://www.example.com/p/listing?page=2",          # query-marker even on /p/-ish... see PDP win below
+    "https://www.example.com/store?query=tom+ford",     # search via ?query=
 ])
 def test_listing_search_category_dropped(url):
-    # NOTE: the /p/ case is intentionally a query-marker test; /p/ alone is a PDP
-    # marker, so confirm the PDP-marker-wins rule below separately.
-    if "/p/" in url:
-        # PDP marker present → PDP wins, kept (documented behavior)
-        assert is_non_pdp_listing_url(url) is False
-    else:
-        assert is_non_pdp_listing_url(url) is True
+    assert is_non_pdp_listing_url(url) is True
+
+
+def test_pdp_marker_wins_over_query_marker():
+    """A PDP path marker (/p/) wins even when a listing query param co-occurs."""
+    assert is_non_pdp_listing_url("https://www.example.com/p/listing?page=2") is False
+
+
+@pytest.mark.parametrize("url", [
+    # tier15 regression fix — /shop/ and /store/ are NOT listing markers: Apple
+    # PDPs live at apple.com/shop/<product>, Microsoft Store PDPs at /store/.
+    "https://www.apple.com/shop/iphone-15",
+    "https://www.example.com/en-bh/shop/perfume",
+    # /brand/ and /sale/ removed too (collide inside product slugs) — kept.
+    "https://www.example.com/brand/tom-ford",
+    "https://www.example.com/sale/perfume",
+])
+def test_delisted_markers_now_kept(url):
+    """These path tokens are too false-positive-prone on official brand sites —
+    kept (a maybe-PDP must not be dropped). Genuine category/search surfaces are
+    still caught by the high-confidence markers + the query markers."""
+    assert is_non_pdp_listing_url(url) is False
 
 
 @pytest.mark.parametrize("url", [

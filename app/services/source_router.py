@@ -482,14 +482,18 @@ def is_wrong_locale_url(url: str) -> bool:
 # `_PDP_PATH_MARKERS` mirrors `_is_pdp_link` in structured_comparison_service +
 # adds Shopify (`/products/<handle>`) and a couple of common BH PDP shapes.
 _PDP_PATH_MARKERS = ("/product/", "/products/", "/p/", "/item/", "/dp/", "/buy/")
-# Explicit listing/search/category markers — present ⇒ NOT a PDP.
+# Explicit listing/search/category markers — present ⇒ NOT a PDP. HIGH-CONFIDENCE
+# ONLY: every entry here must be unambiguous so a real PDP is never dropped.
+# DELIBERATELY EXCLUDED (false-positive prone on official brand sites — tier15
+# regression 2026-06-15): `/shop/` and `/store/` (Apple PDPs live at
+# `apple.com/shop/<product>`; Microsoft Store PDPs at `/store/`), `/s/` `/sr`
+# (too short, substring-collide), `/sale` `/deals` `/offers` `/all-` `/list`
+# `/brand(s)/` (collide inside product slugs like `/wholesale-`, `/stylist-`).
+# The remaining set still drops the genuine category/search/collection surfaces.
 _LISTING_PATH_MARKERS = (
     "/c/", "/category/", "/categories/", "/cat/",
-    "/search", "/s/", "/sr",            # search result pages
-    "/collections/", "/collection/",    # Shopify collection (NOT /products/)
-    "/brand/", "/brands/", "/shop/", "/store/",
-    "/sale", "/deals", "/offers",
-    "/all-", "/list",
+    "/search",                           # search result pages
+    "/collections/", "/collection/",     # Shopify collection (NOT /products/)
 )
 # Query params that mark a search/listing surface even on a PDP-looking path.
 _LISTING_QUERY_MARKERS = ("q=", "search=", "query=", "keyword=", "page=")
