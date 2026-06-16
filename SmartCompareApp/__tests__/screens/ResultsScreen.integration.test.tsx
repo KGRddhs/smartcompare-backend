@@ -122,9 +122,11 @@ describe('ResultsScreen — Task 3.5 scoring_v2 wiring', () => {
 
     it('DimensionBars receives dimensions array + winnerIndex', () => {
       // Design § Decision 2: bars take the same dimensions[] array
-      // the gate above checked for length>=3.
+      // the gate above checked for length>=3. Phase 4.3 wraps the prop in
+      // a price-pending filter (pricePending ? ...filter(price) :
+      // scoring_v2.dimensions) — the array is still scoring_v2.dimensions.
       expect(SOURCE).toMatch(
-        /DimensionBars[\s\S]{0,400}dimensions=\{scoring_v2\.dimensions\}/,
+        /DimensionBars[\s\S]{0,400}dimensions=\{[\s\S]{0,200}scoring_v2\.dimensions/,
       );
       expect(SOURCE).toMatch(/DimensionBars[\s\S]{0,400}winnerIndex=/);
     });
