@@ -368,27 +368,44 @@ export function ResultsAccordion({
                   style={styles.body}
                 >
                   <View style={styles.prosConsGrid}>
-                    {products.map((p, idx) => {
+                    {/*
+                     * Reference: ProsConsCol (ResultsScreen.jsx 238-263).
+                     * The WINNER column renders FIRST (left) with a ★ +
+                     * accentDark name; pros are "+ text" (accentDark "+"),
+                     * cons are "- text" (placeholder "-"). When winnerIndex
+                     * is undefined we keep the natural product order and draw
+                     * no star (legacy callers). testIDs use the ORIGINAL
+                     * product index, not the display position. */}
+                    {(
+                      typeof winnerIndex === 'number'
+                        ? [winnerIndex, winnerIndex === 0 ? 1 : 0].filter(
+                            (idx) => idx < products.length
+                          )
+                        : products.map((_, idx) => idx)
+                    ).map((idx) => {
+                      const p = products[idx];
                       const isWinner =
                         typeof winnerIndex === 'number' && winnerIndex === idx;
                       return (
                         <View key={idx} style={styles.prosConsCol}>
                           <View style={styles.prosConsNameRow}>
                             {/* Lane A-L3 Task L3.3 — emerald ★ prefix on the
-                                winning product's column header per design
-                                Screen 3 ("WHAT FANS LOVE / DRAWBACKS"). Hidden
-                                when winnerIndex is undefined so legacy callers
+                                winning product's column header. Hidden when
+                                winnerIndex is undefined so legacy callers
                                 don't render an empty star. */}
                             {isWinner ? (
                               <Text
                                 testID={`${testID}-proscons-winner-star-${idx}`}
                                 style={styles.prosConsWinnerStar}
                               >
-                                {'\u2605'}
+                                {'★'}
                               </Text>
                             ) : null}
                             <Text
-                              style={styles.prosConsName}
+                              style={[
+                                styles.prosConsName,
+                                isWinner ? styles.prosConsNameWinner : null,
+                              ]}
                               numberOfLines={1}
                             >
                               {p.name}
@@ -400,7 +417,8 @@ export function ResultsAccordion({
                               style={styles.prosConsPro}
                               numberOfLines={2}
                             >
-                              + {pro}
+                              <Text style={styles.prosConsPlus}>+ </Text>
+                              {pro}
                             </Text>
                           ))}
                           {(p.cons ?? []).map((con, ci) => (
@@ -409,7 +427,8 @@ export function ResultsAccordion({
                               style={styles.prosConsCon}
                               numberOfLines={2}
                             >
-                              − {con}
+                              <Text style={styles.prosConsMinus}>{'−'} </Text>
+                              {con}
                             </Text>
                           ))}
                         </View>
@@ -681,11 +700,17 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  // Reference: ProsConsCol name (ResultsScreen.jsx 241-248). Non-winner
+  // name = text.primary weight 600; winner name = accentDark weight 700.
   prosConsName: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     color: colors.text.primary,
     flexShrink: 1,
+  },
+  prosConsNameWinner: {
+    fontWeight: '700',
+    color: colors.accentDark,
   },
   // Lane A-L3 Task L3.3 — row container for the winner-star + name.
   prosConsNameRow: {
@@ -694,21 +719,30 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 8,
   },
-  // Lane A-L3 Task L3.3 — emerald star marking the overall winner on
-  // the pros/cons grid column header.
+  // Winner star — accentDark, matching the reference's accentDark name.
   prosConsWinnerStar: {
-    fontSize: 12,
-    color: colors.accent,
+    fontSize: 11,
+    color: colors.accentDark,
   },
+  // Pros: "+ text" — the "+" paints accentDark, the text text.primary.
   prosConsPro: {
     fontSize: 11,
+    fontWeight: '500',
     color: colors.text.primary,
     marginBottom: 3,
   },
+  prosConsPlus: {
+    color: colors.accentDark,
+  },
+  // Cons: "- text" — the "-" paints placeholder, the text text.secondary.
   prosConsCon: {
     fontSize: 11,
+    fontWeight: '500',
     color: colors.text.secondary,
     marginBottom: 3,
+  },
+  prosConsMinus: {
+    color: colors.text.placeholder,
   },
   specsTable: {},
   specsHeader: {
