@@ -1877,6 +1877,58 @@ def extract_sizes_ml(text: str) -> set:
     return {m for m in _SIZE_ML_RE.findall(text)}
 
 
+# Fluid-ounce size, e.g. "3.4 oz", "1.7 fl oz", "1oz". Fragrances are very often
+# labelled in oz on brand/PDP names/titles ("3.4 oz" = the flagship 100ml), so a
+# size-capture that ignored oz would miss the genuine size on those listings.
+_SIZE_OZ_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:fl\.?\s*)?oz\b", re.I)
+# 1 US fluid ounce ≈ 29.5735 ml.
+_ML_PER_FL_OZ = 29.5735
+# Standard retail fragrance bottle sizes (ml). Perfume oz labels are CONVENTIONAL
+# round-bottle markers, not exact conversions: a "3.4 oz" bottle is sold as 100ml
+# (raw 3.4*29.5735 = 100.55), "1.7 oz" as 50ml, "1 oz" as 30ml, "6.7/6.8 oz" as
+# 200ml. So an oz→ml conversion is SNAPPED to the nearest standard size — the
+# size the bottle is actually retailed at — rather than a raw decimal.
+_STANDARD_FRAGRANCE_SIZES_ML = (5, 10, 15, 30, 50, 75, 100, 125, 150, 200, 250)
+
+
+def _snap_to_standard_fragrance_size(ml: float) -> int:
+    """Snap a (possibly raw-converted) ml value to the nearest standard retail
+    fragrance bottle size, so "3.4 oz" (100.55 raw) resolves to the 100ml it is
+    sold as. The snap window is ±12% of the value (wide enough to absorb the
+    oz-rounding slack, tight enough not to swallow a genuinely off-standard
+    size); outside any window the rounded raw value is kept."""
+    nearest = min(_STANDARD_FRAGRANCE_SIZES_ML, key=lambda s: abs(s - ml))
+    if abs(nearest - ml) <= 0.12 * ml:
+        return nearest
+    return int(round(ml))
+
+
+def extract_size_ml_any(text: Optional[str]) -> Optional[int]:
+    """The size in MILLILITRES parsed from `text`, recognising BOTH ml and fl-oz
+    tokens. ml tokens are taken verbatim; oz tokens are converted
+    (``_ML_PER_FL_OZ``) and SNAPPED to the nearest standard fragrance bottle size
+    (so "3.4 oz" → 100, not 101). Returns the SMALLEST size found across all
+    tokens (the conservative basis when a title carries several, e.g. range text
+    "30ml / 50ml / 100ml" → 30), or None when no ml/oz token is present.
+
+    This is the size-CAPTURE primitive (it produces a single int we then store as
+    an "<n>ml" string on ``price.size``). It deliberately reuses ``_SIZE_ML_RE``
+    so the ml semantics stay in lockstep with ``extract_sizes_ml``; the oz axis
+    is added on top so a JSON-LD/PDP name like "...Eau de Parfum 3.4 oz"
+    resolves to the flagship 100. A bare number (no unit) is NOT a size."""
+    if not text:
+        return None
+    sizes_ml: List[int] = [int(m) for m in _SIZE_ML_RE.findall(text)]
+    for oz_str in _SIZE_OZ_RE.findall(text):
+        try:
+            sizes_ml.append(_snap_to_standard_fragrance_size(float(oz_str) * _ML_PER_FL_OZ))
+        except (ValueError, TypeError):
+            continue
+    if not sizes_ml:
+        return None
+    return min(sizes_ml)
+
+
 # ---------------------------------------------------------------------------
 # Category-fairness unit extractors (CATEGORY_FAIRNESS, Part 1).
 #
@@ -2539,17 +2591,76 @@ def extract_jsonld_price(
                         "amount": price_val,
                         "currency": expected_currency,
                         "in_stock": in_stock,
+                        # Size-capture (frag-size-capture): carry the matched
+                        # Product's NAME so the caller can parse a size (ml/oz)
+                        # the listing exposes here rather than in a shopping
+                        # title — e.g. "...Eau de Parfum 100ml". Harmless for
+                        # non-fragrance (no ml/oz token → no size set).
+                        "name": product_name,
                     }
 
     return best_price
 
 
+def _page_size_signals(soup, jsonld_name: str = "") -> List[str]:
+    """Free-text fields on a scraped PDP a fragrance size could be hiding in, in
+    PRECEDENCE order: the matched JSON-LD Product ``name`` first (the most
+    specific — "...Eau de Parfum 100ml"), then ``og:title``, then the page
+    ``<title>``. Used by the size-capture in extract_price_from_html so a
+    genuine listing whose size is NOT in a shopping-title "Xml" token (but IS in
+    the JSON-LD name / og:title / page title) still populates ``price.size``."""
+    signals: List[str] = []
+    if jsonld_name:
+        signals.append(jsonld_name)
+    try:
+        og = soup.find("meta", property="og:title")
+        if og and og.get("content"):
+            signals.append(og["content"])
+        if soup.title and soup.title.string:
+            signals.append(soup.title.string)
+    except Exception:  # noqa: BLE001 — a malformed head must never break pricing
+        pass
+    return signals
+
+
+def _stamp_listing_size(
+    result: Dict[str, Any],
+    product_name: str,
+    soup,
+    jsonld_name: str = "",
+) -> Dict[str, Any]:
+    """Set ``result['size']`` (an "<n>ml" string) from the listing's REAL size,
+    captured from the JSON-LD name / og:title / page <title> (ml OR oz) — but
+    ONLY for fragrance queries, so non-fragrance scrapes (electronics, etc.) are
+    completely untouched. Mutates + returns `result`. No-op (size left as-is /
+    unset) when the query isn't a fragrance or NO ml/oz token is present in any
+    signal — the flagship-100ml default remains a pair-level fairness concern,
+    never fabricated onto a single price here."""
+    if not is_fragrance_query(product_name):
+        return result
+    for text in _page_size_signals(soup, jsonld_name):
+        size_ml = extract_size_ml_any(text)
+        if size_ml is not None:
+            result["size"] = f"{size_ml}ml"
+            break
+    return result
+
+
 def extract_price_from_html(
     html: str, product_name: str, currency: str, domain: str, url: str
 ) -> Optional[Dict[str, Any]]:
-    """Extract price from HTML using structured data (JSON-LD, OG, microdata)."""
+    """Extract price from HTML using structured data (JSON-LD, OG, microdata).
+
+    For FRAGRANCE queries the returned price also carries a ``size`` ("<n>ml")
+    captured from the listing's real size signals (JSON-LD product name /
+    og:title / page <title>, ml or oz) when present — so the pair-level size
+    fairness engages on TRUE sizes instead of silently assuming the flagship
+    100ml basis (frag-size-capture). Non-fragrance scrapes are unaffected."""
     from bs4 import BeautifulSoup
     brand = product_name.split()[0] if product_name else ""
+    # Parse once up front — also needed by the size-capture (frag-size-capture)
+    # for the JSON-LD branch, which builds its result before the OG path.
+    soup = BeautifulSoup(html, 'html.parser')
 
     # Priority 1: JSON-LD (S4 — pass the full query as query_name so a brand-
     # field-only match still requires name-relatedness, no cheapest-unrelated-
@@ -2582,10 +2693,13 @@ def extract_price_from_html(
             # keeps it out of the genuine-BH-share KPI + the UI says
             # "indicative/reference", never a genuine BH price.
             result["source_method"] = "converted_usd"
+        # frag-size-capture — stamp the REAL listing size (ml/oz) from the
+        # JSON-LD name / og:title / page <title> so the pair fairness engages on
+        # true sizes (fragrance-scoped; no-op otherwise).
+        _stamp_listing_size(result, product_name, soup, price_data.get("name", ""))
         return result
 
     # Priority 2: OpenGraph meta tags
-    soup = BeautifulSoup(html, 'html.parser')
     og_price = soup.find('meta', property='og:price:amount')
     og_currency = soup.find('meta', property='og:price:currency')
     if not og_price:
@@ -2618,6 +2732,8 @@ def extract_price_from_html(
                     # S3 coverage #2 — a converted OG price is converted_usd, not
                     # a genuine local page_scrape (provenance honesty).
                     result["source_method"] = "converted_usd"
+                # frag-size-capture — size from og:title / page <title>.
+                _stamp_listing_size(result, product_name, soup)
                 return result
         except (ValueError, TypeError):
             pass
@@ -2631,6 +2747,9 @@ def extract_price_from_html(
     # Offer itemscope (not a page-global find), and normalizes lowercase "bhd".
     micro = _extract_microdata_price(soup, currency, domain, url)
     if micro:
+        # frag-size-capture — size from og:title / page <title> (microdata
+        # nodes rarely carry a volume; the name signals do).
+        _stamp_listing_size(micro, product_name, soup)
         return micro
 
     # Priority 4: WooCommerce price span. S3-genuine (PDP curl Decision-F):
@@ -2642,6 +2761,8 @@ def extract_price_from_html(
     # sale original; later spans are related products).
     wc = _extract_woocommerce_price(soup, currency, domain, url)
     if wc:
+        # frag-size-capture — size from og:title / page <title>.
+        _stamp_listing_size(wc, product_name, soup)
         return wc
 
     return None
