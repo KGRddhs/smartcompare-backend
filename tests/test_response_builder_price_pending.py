@@ -138,6 +138,21 @@ def test_electronics_genuine_unaffected():
     assert p1["amount"] == 349.0 and p1.get("unavailable") is not True
 
 
+def test_c2_size_mismatch_reason_survives_c1_normalization():
+    """A price already marked pending upstream (Task C2 size_mismatch) must NOT
+    be re-stamped to reason=pending_genuine by the C1 normalization pass."""
+    pending = {"amount": None, "currency": "BHD", "unavailable": True,
+               "reason": "size_mismatch", "size": "100ml"}
+    pd = [
+        _product("Tom Ford Ombré Leather", "fragrances", pending),
+        _product("Creed Aventus", "fragrances", dict(pending, size="30ml")),
+    ]
+    resp = _build(pd)
+    for p in _overview_prices(resp):
+        assert p["unavailable"] is True
+        assert p["reason"] == "size_mismatch"  # NOT clobbered to pending_genuine
+
+
 def test_pending_price_kills_cross_price_dimension_delta():
     """When one price is pending (amount=None), the price/value dims must take
     the honest missing-data path — no cross-price 'X less' delta surfaces."""

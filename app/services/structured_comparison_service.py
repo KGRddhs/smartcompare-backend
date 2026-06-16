@@ -486,6 +486,7 @@ from app.services.price_service import (
     is_high_value_query,
     is_implausible_high_value_price,
     is_implausible_low_fragrance_price,
+    reconcile_pair_sizes,
     is_price_plausible,
     is_luxury_brand,
     is_supplement_query,
@@ -1906,6 +1907,16 @@ class StructuredComparisonService:
                     "api_calls": self.api_calls,
                 }
 
+            # Task C2 — pair-level size-basis reconciliation (post-selection,
+            # pre-scoring). When both products carry a showable price but with
+            # mismatched bottle sizes, mark both price-pending (size_mismatch)
+            # so neither scoring nor the verdict asserts an apples-to-oranges
+            # delta. Conservative-only (no candidate re-selection / no network).
+            try:
+                reconcile_pair_sizes(product_data)
+            except Exception as _e:  # noqa: BLE001 — never block the response
+                logger.warning("size reconciliation skipped (sync): %s", _e)
+
             # Fetch behavioral profile + demographics_profile if user is logged in.
             # I5.6 lever-2: the fetch was kicked off above (concurrent with the
             # product gather); here we just await the already-running task.
@@ -2341,6 +2352,17 @@ class StructuredComparisonService:
                 yield ("settle_complete", insufficient_response)
                 yield ("complete", insufficient_response)
                 return
+
+            # Task C2 — pair-level size-basis reconciliation (post-selection,
+            # pre-scoring). Run BEFORE the `prices` SSE event so the streamed
+            # price and the final `complete` response agree: a mismatched-size
+            # pair is marked price-pending (size_mismatch) on BOTH the streamed
+            # and the assembled paths. Conservative-only (no candidate
+            # re-selection / no network — zero added latency).
+            try:
+                reconcile_pair_sizes(product_data)
+            except Exception as _e:  # noqa: BLE001 — never block the stream
+                logger.warning("size reconciliation skipped (stream): %s", _e)
 
             # Yield specs (Bundle E S3 — piggyback image_url onto specs event
             # since both land together at end of Phase 1; avoids adding a new

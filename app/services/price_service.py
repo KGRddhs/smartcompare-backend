@@ -696,6 +696,75 @@ def make_pending_price(currency: str = "BHD", reason: str = "pending_genuine",
     return pending
 
 
+def _normalize_size_ml(size: Optional[str]) -> Optional[int]:
+    """The integer ml of a price.size annotation ("100ml" / "100 ML" / "30ml"),
+    or None when absent/unparseable. Reuses extract_sizes_ml so "100 ML" and
+    "100ml" compare equal (whitespace/case-insensitive)."""
+    if not size or not isinstance(size, str):
+        return None
+    sizes = extract_sizes_ml(size)
+    if not sizes:
+        return None
+    # A size annotation is a single bottle size; take the smallest if several.
+    return min(int(s) for s in sizes)
+
+
+def reconcile_pair_sizes(product_data: List[Dict[str, Any]]) -> bool:
+    """Task C2 (conservative) — pair-level size-basis reconciliation.
+
+    When BOTH products carry a SHOWABLE price (positive amount) but their
+    price.size annotations DIFFER (different ml, OR one sized / one unsized),
+    there is no common basis for an honest price delta. Rather than render an
+    apples-to-oranges comparison, mark BOTH prices price-pending
+    (reason="size_mismatch"), each preserving its own size for FE context.
+
+    Conservative-only: NO candidate re-selection is attempted (re-picking a
+    matching-size candidate from the shopping cache re-runs the deep
+    selection/match/counterfeit/tier logic — the WS5-deferred work). Pure +
+    in-place; returns True iff it marked a mismatch (no network, no latency).
+
+    No-ops when: either price is missing/non-positive (a C1-pending side already
+    kills the cross-size delta), or both sizes are equal, or both are unknown.
+    """
+    if not isinstance(product_data, list) or len(product_data) < 2:
+        return False
+    p0, p1 = product_data[0], product_data[1]
+    price0 = p0.get("price") if isinstance(p0, dict) else None
+    price1 = p1.get("price") if isinstance(p1, dict) else None
+    if not isinstance(price0, dict) or not isinstance(price1, dict):
+        return False
+    amt0, amt1 = price0.get("amount"), price1.get("amount")
+    # Only act when BOTH sides have a real, comparable amount. If either is
+    # None/<=0 (e.g. already C1-pending), there is no cross-size delta to guard.
+    if not (isinstance(amt0, (int, float)) and amt0 > 0):
+        return False
+    if not (isinstance(amt1, (int, float)) and amt1 > 0):
+        return False
+    size0 = _normalize_size_ml(price0.get("size"))
+    size1 = _normalize_size_ml(price1.get("size"))
+    # Both unknown → consistent (no basis to declare a mismatch). Equal → fine.
+    if size0 == size1:
+        return False
+    # Differ (incl. one-None-one-present) → cannot reconcile from cached
+    # candidates safely; mark BOTH pending so no apples-to-oranges delta ships.
+    p0["price"] = make_pending_price(
+        currency=price0.get("currency") or "BHD",
+        reason="size_mismatch",
+        size=price0.get("size"),
+    )
+    p1["price"] = make_pending_price(
+        currency=price1.get("currency") or "BHD",
+        reason="size_mismatch",
+        size=price1.get("size"),
+    )
+    for p in (p0, p1):
+        if "best_price" in p:
+            p["best_price"] = None
+        if "retailer" in p:
+            p["retailer"] = None
+    return True
+
+
 # ============================================
 # Parsing / matching helpers
 # ============================================

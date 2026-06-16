@@ -1107,12 +1107,19 @@ def build_comparison_response(
         for pd_item in product_data:
             _name = pd_item.get("full_name") or pd_item.get("name") or ""
             _price = pd_item.get("price")
-            if isinstance(_price, dict) and not is_price_showable(_name, _price):
-                _size = _price.get("size")
+            if not isinstance(_price, dict):
+                continue
+            # An upstream pass (e.g. Task C2 size-basis reconciliation in the
+            # orchestrator) may already have marked this price pending with its
+            # OWN reason (size_mismatch). Don't clobber that reason — it's
+            # already non-showable and correctly shaped.
+            if _price.get("unavailable") is True:
+                continue
+            if not is_price_showable(_name, _price):
                 pd_item["price"] = make_pending_price(
                     currency=_price.get("currency") or "BHD",
                     reason="pending_genuine",
-                    size=_size,
+                    size=_price.get("size"),
                 )
                 # Keep best_price/currency/retailer mirrors honest.
                 pd_item["best_price"] = None
