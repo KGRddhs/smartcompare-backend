@@ -134,14 +134,24 @@ describe('ResultsAccordion — render coverage', () => {
     expect(getByTestId('results-accordion-body-proscons')).toBeTruthy();
   });
 
-  it('renders review highlights with sentiment markers', () => {
-    const { getByTestId, getByText } = render(
+  it('renders compact fallback quote lines from highlights (no consensus, no +/− prefix)', () => {
+    // These mock products carry NO retailer_quotes, so the reviews body
+    // hits the compact fallback: short highlight `point` lines rendered as
+    // plain quotes (curly-quote wrapped). Per the design restructure, the
+    // consensus paragraph and the +/− sentiment-prefixed bullets are gone.
+    const { getByTestId, getByText, queryByText } = render(
       <ResultsAccordion products={mockProducts} reviewProducts={mockReviewProducts} />
     );
     fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
-    expect(getByText('Reliable but pricey')).toBeTruthy();
-    expect(getByText('+ Great ecosystem integration')).toBeTruthy();
-    expect(getByText('− Battery weaker than rivals')).toBeTruthy();
+    // Consensus paragraph no longer rendered.
+    expect(queryByText('Reliable but pricey')).toBeNull();
+    // Old +/− prefixed bullets no longer rendered.
+    expect(queryByText('+ Great ecosystem integration')).toBeNull();
+    expect(queryByText('− Battery weaker than rivals')).toBeNull();
+    // Highlight points surface as plain quoted lines instead.
+    expect(getByText('“Great ecosystem integration”')).toBeTruthy();
+    expect(getByText('“Battery weaker than rivals”')).toBeTruthy();
+    expect(getByText('“Sharp low-light photos”')).toBeTruthy();
   });
 
   it('renders pros + cons per product in the proscons body', () => {
@@ -201,15 +211,30 @@ describe('ResultsAccordion — render coverage', () => {
     expect(getByTestId('results-accordion-body-specs')).toBeTruthy();
   });
 
-  it('renders reviews fallback sub when totalReviews=0', () => {
-    const noReviews = [
-      { ...mockProducts[0], review_count: 0 },
-      { ...mockProducts[1], review_count: 0 },
+  it('renders the bare reviews fallback sub when no count AND no rating', () => {
+    // Strip both review_count and rating → sub falls back to the plain
+    // phrase (no avg prefix, no count prefix).
+    const noSignal = [
+      { ...mockProducts[0], review_count: 0, rating: undefined },
+      { ...mockProducts[1], review_count: 0, rating: undefined },
     ];
     const { getByText } = render(
-      <ResultsAccordion products={noReviews as any} />
+      <ResultsAccordion products={noSignal as any} />
     );
     expect(getByText('results.accordion.reviewsSub')).toBeTruthy();
+  });
+
+  it('prepends the weighted-avg rating to the reviews sub when ratings present', () => {
+    // ratings 4.4 + 4.6 weighted by 520/720 reviews ≈ 4.5; total reviews
+    // 1,240. Sub format: "{avg}★ avg · {total} reviews across both".
+    const { getByText } = render(
+      <ResultsAccordion products={mockProducts} reviewProducts={mockReviewProducts} />
+    );
+    expect(
+      getByText(
+        '4.5results.accordion.reviewsAvg · 1,240 results.accordion.reviewsSub'
+      )
+    ).toBeTruthy();
   });
 
   it('handles missing reviewProducts (defaults to products array)', () => {

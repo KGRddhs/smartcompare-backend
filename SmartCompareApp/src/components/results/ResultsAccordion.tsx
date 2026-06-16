@@ -107,6 +107,28 @@ export function ResultsAccordion({
     (acc, p: any) => acc + (p.review_count ?? 0),
     0
   );
+  // Weighted average rating across both products (by review_count when
+  // available, else simple mean of the ratings present). Used in the
+  // Reviews header sub: "{avg}★ avg · {total} reviews across both".
+  const avgRating: number | null = (() => {
+    const rated = reviewSrc.filter(
+      (p: any) => typeof p.rating === 'number' && p.rating > 0
+    );
+    if (rated.length === 0) return null;
+    const weightTotal = rated.reduce(
+      (acc: number, p: any) => acc + (p.review_count ?? 0),
+      0
+    );
+    if (weightTotal > 0) {
+      const sum = rated.reduce(
+        (acc: number, p: any) => acc + p.rating * (p.review_count ?? 0),
+        0
+      );
+      return sum / weightTotal;
+    }
+    const sum = rated.reduce((acc: number, p: any) => acc + p.rating, 0);
+    return sum / rated.length;
+  })();
 
   // Specs section data — merged keys, diff detection
   const specsSrc = specsProducts ?? products;
@@ -166,10 +188,20 @@ export function ResultsAccordion({
       key: 'reviews',
       icon: <Star size={18} color={colors.text.secondary} />,
       label: t('results.reviews'),
-      sub:
-        totalReviews > 0
-          ? `${totalReviews.toLocaleString()} ${t('results.accordion.reviewsSub')}`
-          : t('results.accordion.reviewsSub'),
+      // Reference sub: "4.8★ avg · 1,240 reviews across both".
+      // Prepend the weighted-avg rating when available; always include the
+      // total-reviews phrase. Falls back to the bare phrase when neither
+      // a rating nor a count is present.
+      sub: (() => {
+        const tail =
+          totalReviews > 0
+            ? `${totalReviews.toLocaleString()} ${t('results.accordion.reviewsSub')}`
+            : t('results.accordion.reviewsSub');
+        if (avgRating !== null) {
+          return `${avgRating.toFixed(1)}${t('results.accordion.reviewsAvg')} · ${tail}`;
+        }
+        return tail;
+      })(),
     },
     {
       key: 'proscons',
@@ -252,71 +284,87 @@ export function ResultsAccordion({
                   testID="results-accordion-body-reviews"
                   style={styles.body}
                 >
-                  {reviewSrc.map((rp: any, idx: number) => (
-                    <View key={idx} style={styles.reviewBlock}>
-                      <Text style={styles.reviewName}>{rp.name}</Text>
-                      {rp.review_summary?.consensus ? (
-                        <Text style={styles.reviewConsensus}>
-                          {rp.review_summary.consensus}
-                        </Text>
-                      ) : null}
-                      {rp.review_summary?.highlights?.map(
-                        (h: ReviewHighlight, hi: number) => (
-                          <Text
-                            key={hi}
-                            style={[
-                              styles.reviewHighlight,
-                              h.sentiment === 'positive'
-                                ? styles.reviewHighlightPos
-                                : styles.reviewHighlightNeg,
-                            ]}
-                          >
-                            {h.sentiment === 'positive' ? '+' : '−'} {h.point}
-                          </Text>
+                  {/*
+                   * Reference: ReviewLine (ResultsScreen.jsx 213-236). Each
+                   * review = a small uppercase SOURCE pill + a row of 5 star
+                   * glyphs (filled to the rating, amber) + a short "quote".
+                   * We render a FLAT list across both products built from
+                   * `retailer_quotes` -- no product-name headers, no consensus
+                   * paragraph, no +/- highlight bullets.
+                   *
+                   * Fallback: many categories (e.g. fragrances) ship empty
+                   * `retailer_quotes` -- the backend currently emits only
+                   * consensus/highlights there. When a product has no quotes
+                   * we surface at most 3 compact lines from `highlights`
+                   * (plain short quote lines, NO +/- prefix, NOT the giant
+                   * consensus paragraph). Populating per-source quotes for
+                   * those categories is a BACKEND follow-up (review extraction
+                   * must emit retailer_quotes). When there is truly nothing,
+                   * render one calm line. */}
+                  {(() => {
+                    const lines: React.ReactNode[] = [];
+                    reviewSrc.forEach((rp: any, idx: number) => {
+                      const quotes = Array.isArray(rp.retailer_quotes)
+                        ? rp.retailer_quotes
+                        : [];
+                      if (quotes.length > 0) {
+                        quotes.slice(0, 3).forEach((q: any, qi: number) => {
+                          lines.push(
+                            <ReviewLine
+                              key={`q-${idx}-${qi}`}
+                              testID={
+                                testID
+                                  ? `${testID}-reviews-quote-${idx}-${qi}`
+                                  : undefined
+                              }
+                              source={String(q.retailer || '')}
+                              rating={
+                                typeof q.rating === 'number' ? q.rating : null
+                              }
+                              text={String(q.text || '')}
+                            />
+                          );
+                        });
+                      } else {
+                        // Compact fallback -- short highlight quote lines.
+                        const highlights: ReviewHighlight[] = Array.isArray(
+                          rp.review_summary?.highlights
                         )
-                      )}
-                      {/* Lane A-L3 Task L3.4 — per-retailer review quote block.
-                          Up to 3 quotes per product (Amazon / Noon / X). When
-                          retailer_quotes is absent, nothing renders so legacy
-                          rows stay calm. */}
-                      {Array.isArray(rp.retailer_quotes) &&
-                      rp.retailer_quotes.length > 0 ? (
-                        <View style={styles.retailerQuotesBlock}>
-                          {rp.retailer_quotes
-                            .slice(0, 3)
-                            .map((q: any, qi: number) => (
-                              <View
-                                key={qi}
-                                testID={`${testID}-reviews-quote-${idx}-${qi}`}
-                                style={styles.retailerQuote}
-                              >
-                                <View style={styles.retailerQuoteHeader}>
-                                  <Text
-                                    style={styles.retailerQuoteRetailer}
-                                    numberOfLines={1}
-                                  >
-                                    {String(q.retailer || '').toUpperCase()}
-                                  </Text>
-                                  {typeof q.rating === 'number' ? (
-                                    <Text
-                                      style={styles.retailerQuoteRating}
-                                    >
-                                      {'\u2605'} {q.rating}
-                                    </Text>
-                                  ) : null}
-                                </View>
-                                <Text
-                                  style={styles.retailerQuoteText}
-                                  numberOfLines={3}
-                                >
-                                  {String(q.text || '')}
-                                </Text>
-                              </View>
-                            ))}
-                        </View>
-                      ) : null}
-                    </View>
-                  ))}
+                          ? rp.review_summary.highlights
+                          : [];
+                        highlights
+                          .slice(0, 3)
+                          .forEach((h: ReviewHighlight, hi: number) => {
+                            if (!h?.point) return;
+                            lines.push(
+                              <ReviewLine
+                                key={`h-${idx}-${hi}`}
+                                testID={
+                                  testID
+                                    ? `${testID}-reviews-fallback-${idx}-${hi}`
+                                    : undefined
+                                }
+                                source={String(rp.name || '')}
+                                rating={
+                                  typeof rp.rating === 'number'
+                                    ? rp.rating
+                                    : null
+                                }
+                                text={String(h.point)}
+                              />
+                            );
+                          });
+                      }
+                    });
+                    if (lines.length === 0) {
+                      return (
+                        <Text style={styles.reviewsEmpty}>
+                          {t('results.accordion.reviewsEmpty')}
+                        </Text>
+                      );
+                    }
+                    return lines;
+                  })()}
                 </View>
               )}
 
@@ -553,6 +601,53 @@ export function ResultsAccordion({
   );
 }
 
+/**
+ * Reference: ReviewLine (ResultsScreen.jsx 213-236). A single review row:
+ *   [SOURCE pill]  ★★★★★ (filled to rating, amber)
+ *   "short quote in quotes"
+ * Stars round the rating to the nearest whole glyph (1-5). When no rating
+ * is present we still render the pill + quote (no star row) so a quote is
+ * never dropped for a missing rating.
+ */
+function ReviewLine({
+  source,
+  rating,
+  text,
+  testID,
+}: {
+  source: string;
+  rating?: number | null;
+  text: string;
+  testID?: string;
+}) {
+  const filled =
+    typeof rating === 'number' && rating > 0
+      ? Math.max(0, Math.min(5, Math.round(rating)))
+      : 0;
+  return (
+    <View testID={testID} style={styles.reviewLine}>
+      <View style={styles.reviewLineHeader}>
+        <Text style={styles.reviewSourcePill} numberOfLines={1}>
+          {source.toUpperCase()}
+        </Text>
+        {filled > 0 ? (
+          <View style={styles.reviewStars}>
+            {[1, 2, 3, 4, 5].map((s) => (
+              <Star
+                key={s}
+                size={10}
+                color={s <= filled ? colors.warning : colors.border.medium}
+                fill={s <= filled ? colors.warning : 'transparent'}
+              />
+            ))}
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.reviewQuote}>{`“${text}”`}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   wrapper: {
     marginBottom: spacing.base,
@@ -619,65 +714,45 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border.light,
     paddingTop: 14,
   },
-  reviewBlock: {
-    marginBottom: 12,
+  // Reference: ReviewLine (ResultsScreen.jsx 213-236). Compact source-quote
+  // rows — uppercase source pill + amber star row + a short "quote".
+  reviewLine: {
+    flexDirection: 'column',
+    gap: 4,
+    marginBottom: 10,
   },
-  reviewName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text.primary,
-    marginBottom: 4,
-  },
-  reviewConsensus: {
-    fontSize: 12,
-    color: colors.text.primary,
-    marginBottom: 6,
-  },
-  reviewHighlight: {
-    fontSize: 12,
-    marginBottom: 2,
-  },
-  reviewHighlightPos: {
-    color: colors.accent,
-  },
-  reviewHighlightNeg: {
-    color: colors.destructive,
-  },
-  // Lane A-L3 Task L3.4 — per-retailer review quote block per design
-  // Screen 2 ("WHAT REVIEWERS SAY" → 3 small cards per product).
-  retailerQuotesBlock: {
-    marginTop: 8,
-    gap: 8,
-  },
-  retailerQuote: {
-    padding: 10,
-    borderRadius: 10,
-    backgroundColor: colors.bg.secondary,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-  },
-  retailerQuoteHeader: {
+  reviewLineHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+    gap: 8,
   },
-  retailerQuoteRetailer: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.6,
+  reviewSourcePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.chip,
+    backgroundColor: colors.bg.secondary,
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.5,
     color: colors.text.secondary,
     flexShrink: 1,
+    overflow: 'hidden',
   },
-  retailerQuoteRating: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.accent,
+  reviewStars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 1,
   },
-  retailerQuoteText: {
+  reviewQuote: {
     fontSize: 12,
+    fontWeight: '500',
     color: colors.text.primary,
-    lineHeight: 12 * 1.4,
+    lineHeight: 12 * 1.5,
+  },
+  reviewsEmpty: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    lineHeight: 12 * 1.5,
   },
   prosConsGrid: {
     flexDirection: 'row',
