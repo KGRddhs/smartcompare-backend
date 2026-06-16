@@ -1044,6 +1044,654 @@ def _mark_size_pending(*products: Dict[str, Any]) -> None:
             p["retailer"] = None
 
 
+# ============================================================================
+# CATEGORY-AWARE FAIRNESS STANDARD (generalizes the fragrance pair-size fix)
+# ============================================================================
+#
+# CATEGORY_FAIRNESS is the SINGLE SOURCE OF TRUTH for "what makes two products
+# in this category comparable on price". The fragrance pair-size reconcile (a
+# pair must be priced at a COMMON ml, re-selecting genuine prices from retained
+# candidates) is now ONE instance of a general per-category rule.
+#
+# Per category → the comparable "must-match" unit (None when the category has
+# no single comparable axis — fashion/other), an `extract` that reads that
+# unit off a PRODUCT, a `user_query_value` that reads it off the USER QUERY,
+# and a `default_basis(p0, p1)` that supplies the pair target when the query is
+# silent. Shape (each value a callable unless noted):
+#
+#   {
+#     "unit":             str | None,        # the axis name (e.g. "GB", "ml")
+#     "extract":          (product) -> float | None,
+#     "normalize":        (value)   -> value, # canonicalize a raw value (identity
+#                                             #   here — extractors already
+#                                             #   normalize TB→GB / kg→g / L→ml)
+#     "user_query_value": (query)   -> float | None,
+#     "default_basis":    (p0, p1)  -> float | None,  # pair target, query-silent
+#     "label":            str,               # human label for the unit
+#   }
+#
+# Categories (per the fairness spec):
+#   electronics → storage GB (TB→GB); spec storage → variant → name; default =
+#                 the resolved base (NO force-bump — the smaller achievable
+#                 capacity in the pair); exact match.
+#   fragrances  → ml; REUSES effective_pair_size_ml + the flagship-100ml
+#                 default verbatim, so the shipped fragrance behavior is
+#                 byte-preserved (the per-fragrance helpers are the callables).
+#   supplements → unit count (caps/tablets/softgels) from spec count / name.
+#   grocery     → net weight/volume (g/kg→g, ml/L→ml) from spec size / name.
+#   makeup      → volume/weight (ml or g).
+#   skincare    → volume/weight (ml or g).
+#   haircare    → volume (ml).
+#   fashion     → None (no single comparable unit).
+#   other       → None.
+
+
+def _identity(value):
+    """Default `normalize` — the extractors already normalize units (TB→GB,
+    kg→g, L→ml), so the stored value is canonical."""
+    return value
+
+
+def _product_unit_text_fields(product: Dict[str, Any], spec_keys: Tuple[str, ...]) -> List[str]:
+    """Free-text fields a product's unit could hide in, PRECEDENCE order:
+    the named spec field(s) first (the structured value is ground truth), then
+    the top-level `variant` (e.g. "256GB"), then the product NAME, then the
+    price listing title. Mirrors _product_size_text_fields' precedence idea but
+    parameterized by the per-category spec key list."""
+    fields: List[str] = []
+    specs = product.get("specs")
+    if isinstance(specs, dict):
+        for key in spec_keys:
+            val = specs.get(key)
+            if isinstance(val, str) and val:
+                fields.append(val)
+            elif isinstance(val, (int, float)):
+                fields.append(str(val))
+    variant = product.get("variant")
+    if isinstance(variant, str) and variant:
+        fields.append(variant)
+    for key in ("full_name", "name"):
+        val = product.get(key)
+        if isinstance(val, str) and val:
+            fields.append(val)
+    price = product.get("price")
+    if isinstance(price, dict):
+        for key in ("title", "size"):
+            val = price.get(key)
+            if isinstance(val, str) and val:
+                fields.append(val)
+    return fields
+
+
+def _first_non_none(fields: List[str], parser) -> Optional[float]:
+    """Apply `parser` (returns float|None) to each field in precedence order;
+    return the first non-None result, else None."""
+    for text in fields:
+        v = parser(text)
+        if v is not None:
+            return v
+    return None
+
+
+def _extract_storage(product: Dict[str, Any]) -> Optional[float]:
+    """Electronics comparable unit: storage GB. spec `storage` → `variant` →
+    name → price title (precedence)."""
+    if not isinstance(product, dict):
+        return None
+    return _first_non_none(
+        _product_unit_text_fields(product, ("storage",)), extract_storage_gb
+    )
+
+
+def _extract_count(product: Dict[str, Any]) -> Optional[float]:
+    """Supplements comparable unit: unit count. spec `count` → name → title."""
+    if not isinstance(product, dict):
+        return None
+    return _first_non_none(
+        _product_unit_text_fields(product, ("count", "serving_size")), extract_count
+    )
+
+
+def _extract_ml_only(product: Dict[str, Any]) -> Optional[float]:
+    """Haircare comparable unit: volume (ml). spec `volume` → variant → name →
+    title. (Reuses extract_sizes_ml — ml only, no weight axis.)"""
+    if not isinstance(product, dict):
+        return None
+    def _ml(text: str) -> Optional[float]:
+        sizes = extract_sizes_ml(text)
+        return float(min(int(s) for s in sizes)) if sizes else None
+    return _first_non_none(
+        _product_unit_text_fields(product, ("volume", "size")), _ml
+    )
+
+
+def _extract_volume_or_weight(product: Dict[str, Any]) -> Optional[float]:
+    """Makeup/skincare comparable unit: volume OR weight (ml or g). spec
+    `volume`/`size` → variant → name → title. Returns the numeric magnitude;
+    the base (ml vs g) gates comparability inside reconcile via _unit_base."""
+    if not isinstance(product, dict):
+        return None
+    res = _first_non_none(
+        _product_unit_text_fields(product, ("volume", "size")),
+        lambda t: (extract_weight_or_volume(t) or (None,))[0],
+    )
+    return res
+
+
+def _extract_grocery(product: Dict[str, Any]) -> Optional[float]:
+    """Grocery comparable unit: net weight/volume (g or ml). spec `size`/
+    `count` → name → title."""
+    if not isinstance(product, dict):
+        return None
+    return _first_non_none(
+        _product_unit_text_fields(product, ("size", "net_weight")),
+        lambda t: (extract_weight_or_volume(t) or (None,))[0],
+    )
+
+
+def _unit_base(product: Dict[str, Any], spec_keys: Tuple[str, ...]) -> Optional[str]:
+    """For the weight/volume categories — which base ("ml"/"g") a product's
+    value is on, so two products on DIFFERENT bases (a 200g cream vs a 50ml
+    serum) are never declared a mismatch (they're simply incomparable → no
+    target). None when no weight/volume token present."""
+    if not isinstance(product, dict):
+        return None
+    for text in _product_unit_text_fields(product, spec_keys):
+        res = extract_weight_or_volume(text)
+        if res is not None:
+            return res[1]
+    return None
+
+
+def _resolved_base_default(p0: Dict[str, Any], p1: Dict[str, Any], extractor) -> Optional[float]:
+    """Generic query-silent default for EXACT-match units (electronics storage,
+    supplement count, volume/weight): the resolved base = the LARGER of the two
+    products' resolved values.
+
+    "NO force-bump" means we NEVER invent a value that is absent from the pair
+    (the way fragrances bump to a flagship 100ml even when neither product is
+    100ml). We only ever target a capacity/count/volume ALREADY present on one
+    of the two products. The larger is chosen because it is the more complete /
+    standard SKU and mirrors the fragrance flagship convention's spirit (target
+    the standard full size, re-selecting the partner up to it from retained
+    genuine candidates when one exists). Returns None when neither product
+    resolves a value (nothing in the pair to anchor on)."""
+    v0 = extractor(p0)
+    v1 = extractor(p1)
+    vals = [v for v in (v0, v1) if v is not None]
+    if not vals:
+        return None
+    return float(max(vals))
+
+
+# NOTE on query-side extraction: a USER QUERY mentioning TWO DISTINCT unit
+# values ("iPhone 15 256GB vs iPhone 15 128GB") names a DIFFERENT basis per
+# product — there is NO single user-stated target, so we fall through to the
+# pair default_basis. So the query helpers return a value ONLY when the query
+# resolves to exactly ONE distinct value (a genuine single stated basis). The
+# PRODUCT-side extractors keep "smallest token" semantics (a single listing
+# carries one size; range text → conservative basis).
+def _all_storage_gb(text: str) -> set:
+    out = set()
+    for num, unit in _STORAGE_GB_RE.findall(text or ""):
+        try:
+            v = float(num)
+        except (TypeError, ValueError):
+            continue
+        out.add(v * 1024.0 if unit.lower() == "tb" else v)
+    return out
+
+
+def _single_or_none(values: set) -> Optional[float]:
+    """The lone value when `values` has exactly one element, else None (zero →
+    no signal; two-or-more → ambiguous per-product bases → defer to default)."""
+    return float(next(iter(values))) if len(values) == 1 else None
+
+
+def _query_storage(query: Optional[str]) -> Optional[float]:
+    return _single_or_none(_all_storage_gb(query or ""))
+
+
+def _query_count(query: Optional[str]) -> Optional[float]:
+    counts = {float(n) for n, _u in _COUNT_RE.findall(query or "")}
+    return _single_or_none(counts)
+
+
+def _query_ml(query: Optional[str]) -> Optional[float]:
+    sizes = {float(int(s)) for s in extract_sizes_ml(query or "")}
+    return _single_or_none(sizes)
+
+
+def _query_volume_or_weight(query: Optional[str]) -> Optional[float]:
+    grams, mls = set(), set()
+    for num, unit in _WEIGHT_VOLUME_RE.findall(query or ""):
+        try:
+            v = float(num)
+        except (TypeError, ValueError):
+            continue
+        u = unit.lower()
+        if u == "kg":
+            grams.add(v * 1000.0)
+        elif u == "g":
+            grams.add(v)
+        elif u == "l":
+            mls.add(v * 1000.0)
+        elif u == "ml":
+            mls.add(v)
+    # Prefer ml when the query mixes both (rare); single-distinct within a base.
+    if mls:
+        return _single_or_none(mls)
+    if grams:
+        return _single_or_none(grams)
+    return None
+
+
+def _no_unit_extract(product: Dict[str, Any]) -> None:
+    """Fashion/other — no comparable unit, so a product never resolves a value
+    (reconcile then passes the pair through untouched)."""
+    return None
+
+
+def _no_target(p0: Dict[str, Any], p1: Dict[str, Any]) -> None:
+    return None
+
+
+def _fragrance_default_basis(p0: Dict[str, Any], p1: Dict[str, Any]) -> Optional[float]:
+    """The fragrance query-silent default — DELEGATES to target_pair_size_ml's
+    designer-flagship branch verbatim (BOTH designer/niche → 100ml, else None)
+    so the fragrance behavior is byte-preserved."""
+    return target_pair_size_ml(None, p0, p1)
+
+
+CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
+    "electronics": {
+        "unit": "GB",
+        "extract": _extract_storage,
+        "normalize": _identity,
+        "user_query_value": _query_storage,
+        "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_storage),
+        "label": "storage (GB)",
+    },
+    "fragrances": {
+        # REUSE the shipped fragrance machinery verbatim — behavior unchanged.
+        "unit": "ml",
+        "extract": effective_pair_size_ml,
+        "normalize": _identity,
+        "user_query_value": _query_ml,
+        "default_basis": _fragrance_default_basis,
+        "label": "volume (ml)",
+    },
+    "supplements": {
+        "unit": "count",
+        "extract": _extract_count,
+        "normalize": _identity,
+        "user_query_value": _query_count,
+        "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_count),
+        "label": "unit count",
+    },
+    "grocery": {
+        "unit": "net",
+        "extract": _extract_grocery,
+        "normalize": _identity,
+        "user_query_value": _query_volume_or_weight,
+        "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_grocery),
+        "label": "net weight/volume",
+    },
+    "makeup": {
+        "unit": "volume",
+        "extract": _extract_volume_or_weight,
+        "normalize": _identity,
+        "user_query_value": _query_volume_or_weight,
+        "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_volume_or_weight),
+        "label": "volume/weight",
+    },
+    "skincare": {
+        "unit": "volume",
+        "extract": _extract_volume_or_weight,
+        "normalize": _identity,
+        "user_query_value": _query_volume_or_weight,
+        "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_volume_or_weight),
+        "label": "volume/weight",
+    },
+    "haircare": {
+        "unit": "volume",
+        "extract": _extract_ml_only,
+        "normalize": _identity,
+        "user_query_value": _query_ml,
+        "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_ml_only),
+        "label": "volume (ml)",
+    },
+    "fashion": {
+        "unit": None,
+        "extract": _no_unit_extract,
+        "normalize": _identity,
+        "user_query_value": lambda q: None,
+        "default_basis": _no_target,
+        "label": "—",
+    },
+    "other": {
+        "unit": None,
+        "extract": _no_unit_extract,
+        "normalize": _identity,
+        "user_query_value": lambda q: None,
+        "default_basis": _no_target,
+        "label": "—",
+    },
+}
+
+
+def fairness_for_category(category: Optional[str]) -> Dict[str, Any]:
+    """The CATEGORY_FAIRNESS spec for `category` (free-form input is
+    canonicalized to one of the 9 keys; unknown/None → the unit=None "other"
+    spec, so an unrecognized category is safely passed through)."""
+    try:
+        from app.services.extraction_service import canonicalize_category
+        key = canonicalize_category(category)
+    except Exception:  # noqa: BLE001 — canonicalizer is best-effort
+        key = (category or "").strip().lower()
+    return CATEGORY_FAIRNESS.get(key, CATEGORY_FAIRNESS["other"])
+
+
+# Categories whose values are weight/volume and therefore carry a BASE (ml vs g)
+# that must agree before two products are comparable. Maps category → the spec
+# keys to inspect for the base.
+_BASE_GATED_CATEGORIES: Dict[str, Tuple[str, ...]] = {
+    "makeup": ("volume", "size"),
+    "skincare": ("volume", "size"),
+    "grocery": ("size", "net_weight"),
+}
+
+
+def _candidate_value(c: Dict[str, Any], category: str) -> Optional[float]:
+    """The comparable-unit value of a RETAINED price candidate for `category`,
+    read from its raw_data / own fields (price.size, then title). Returns the
+    parsed value or None when the candidate carries no signal on that axis.
+    Generalizes _candidate_size_ml to every category's unit."""
+    if not isinstance(c, dict):
+        return None
+    spec = fairness_for_category(category)
+    if spec["unit"] is None:
+        return None
+    # Build a faux-product so the candidate flows through the SAME extractor the
+    # product side uses (precedence: title/size carried on raw_data + the
+    # candidate). This keeps the candidate axis identical to the product axis.
+    raw = c.get("raw_data") if isinstance(c.get("raw_data"), dict) else {}
+    faux = {
+        "name": raw.get("title") or c.get("title") or "",
+        "full_name": raw.get("title") or c.get("title") or "",
+        "price": {
+            "title": raw.get("title") or c.get("title"),
+            "size": raw.get("size") or c.get("size"),
+        },
+        "variant": raw.get("size") or c.get("size"),
+        "specs": {},
+    }
+    return spec["extract"](faux)
+
+
+def target_pair_value(
+    user_query: Optional[str],
+    p0: Dict[str, Any],
+    p1: Dict[str, Any],
+    category: Optional[str],
+) -> Optional[float]:
+    """The comparable-unit value the PAIR should be compared at — the FAIRNESS
+    target — for `category`. Generalizes target_pair_size_ml to every category.
+
+    Precedence:
+      1. An explicit unit value in the USER QUERY (e.g. "512GB", "120 capsules",
+         "50ml") → that value. The user's stated basis is authoritative.
+      2. No user value + both products already resolve the SAME value → that
+         value (already a fair common basis — pass through, no bump).
+      3. Otherwise → the category's `default_basis(p0, p1)` (the resolved base
+         for exact-match units; the designer-flagship 100ml for fragrances).
+
+    unit=None (fashion/other) → always None (no comparable axis).
+
+    For weight/volume categories, a base mismatch (a 200g product vs a 50ml
+    product) yields None — they are incomparable, not a "mismatch" to reconcile.
+    """
+    spec = fairness_for_category(category)
+    if spec["unit"] is None:
+        return None
+    if not isinstance(p0, dict) or not isinstance(p1, dict):
+        return None
+
+    canon = _canonical_fairness_key(category)
+    # Base gate: for ml/g categories, both products must be on the SAME base.
+    base_keys = _BASE_GATED_CATEGORIES.get(canon)
+    if base_keys is not None:
+        b0 = _unit_base(p0, base_keys)
+        b1 = _unit_base(p1, base_keys)
+        if b0 is not None and b1 is not None and b0 != b1:
+            return None  # weight vs volume — incomparable, not a mismatch
+
+    user_val = spec["user_query_value"](user_query)
+    if user_val is not None:
+        return user_val
+
+    v0 = spec["extract"](p0)
+    v1 = spec["extract"](p1)
+    if v0 is not None and v0 == v1:
+        return v0  # already fair at a shared basis
+
+    return spec["default_basis"](p0, p1)
+
+
+def _canonical_fairness_key(category: Optional[str]) -> str:
+    """Canonical category key (for the base-gate / fragrance-delegation lookups)
+    using the same canonicalizer fairness_for_category uses."""
+    try:
+        from app.services.extraction_service import canonicalize_category
+        return canonicalize_category(category)
+    except Exception:  # noqa: BLE001
+        return (category or "").strip().lower()
+
+
+def reselect_to_target_value(
+    product_name: str,
+    candidates: Optional[List[Dict[str, Any]]],
+    target: float,
+    category: Optional[str],
+    currency: str = "BHD",
+) -> Optional[Dict[str, Any]]:
+    """Re-select a product's price to the comparable-unit `target` from the
+    candidates ALREADY fetched this request (NO new network). Generalizes
+    reselect_to_target_size to every category.
+
+    For fragrances this DELEGATES to reselect_to_target_size verbatim (identical
+    ranking + accuracy guards), so the shipped fragrance behavior is preserved.
+
+    For other unit-bearing categories: picks the best GENUINE candidate (genuine
+    -BH ∪ converted_usd, via is_price_showable) whose value == target, ranked
+    genuine-BH-authority → variant_rank → cheapest. None when no acceptable
+    target candidate exists (→ the caller pends that product). unit=None → None.
+    """
+    canon = _canonical_fairness_key(category)
+    if canon == "fragrances":
+        return reselect_to_target_size(product_name, candidates, target, currency=currency)
+    spec = fairness_for_category(category)
+    if spec["unit"] is None or not candidates:
+        return None
+    acceptable: List[Dict[str, Any]] = []
+    for c in candidates:
+        if not isinstance(c, dict):
+            continue
+        val = _candidate_value(c, category)
+        if val is None or val != target:
+            continue
+        raw = c.get("raw_data") if isinstance(c.get("raw_data"), dict) else None
+        price = dict(raw) if raw else None
+        if price is None:
+            amount = c.get("value")
+            if amount is None:
+                continue
+            price = {
+                "amount": amount,
+                "currency": currency,
+                "source_method": c.get("source_method") or "",
+                "retailer": c.get("retailer"),
+                "title": c.get("title"),
+                "size": c.get("size"),
+            }
+        else:
+            price.setdefault("source_method", c.get("source_method") or "")
+            if c.get("source_method"):
+                price["source_method"] = c.get("source_method")
+        # The canonical showable predicate — genuine/converted ∪ the
+        # is_implausible_* accuracy guards. A re-selected price must survive the
+        # same downstream gate.
+        if not is_price_showable(product_name, price):
+            continue
+        acceptable.append({"_cand": c, "_price": price})
+
+    if not acceptable:
+        return None
+    best = max(
+        acceptable,
+        key=lambda a: (
+            1 if _is_genuine_bh_candidate(a["_cand"]) else 0,
+            float(a["_cand"].get("variant_rank", 0) or 0),
+            -float(a["_price"].get("amount", 0) or 0),
+        ),
+    )
+    return best["_price"]
+
+
+def _mark_unit_pending(*products: Dict[str, Any]) -> None:
+    """Mark each product price-pending with the GENERAL reason="unit_mismatch"
+    (the category-general analogue of _mark_size_pending's "size_mismatch").
+    Preserves the product's own size annotation for FE context, nulls
+    best_price/retailer. The FE renders any price.unavailable the same way."""
+    for p in products:
+        if not isinstance(p, dict):
+            continue
+        price = p.get("price") if isinstance(p.get("price"), dict) else {}
+        p["price"] = make_pending_price(
+            currency=price.get("currency") or "BHD",
+            reason="unit_mismatch",
+            size=price.get("size"),
+        )
+        if "best_price" in p:
+            p["best_price"] = None
+        if "retailer" in p:
+            p["retailer"] = None
+
+
+def reconcile_pair_fairness(
+    product_data: List[Dict[str, Any]],
+    user_query: Optional[str],
+    category: Optional[str],
+    candidates_by_name: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+) -> bool:
+    """CATEGORY-AWARE pair-level fairness reconciliation — the general form of
+    reconcile_pair_sizes. The pair must be compared at a COMMON comparable unit
+    (storage GB / ml / count / net weight), and each product is RE-SELECTED to
+    that target from the candidates already fetched this request (no new
+    network). Outcomes (mirroring the fragrance reconcile):
+
+      1. BOTH reach the target → show BOTH.
+      2. Only ONE reaches the target → show that one, pend ONLY the other
+         (reason="unit_mismatch" for non-fragrance; "size_mismatch" preserved
+         for fragrances).
+      3. NEITHER reaches the target → BOTH pending.
+
+    FRAGRANCES delegate to reconcile_pair_sizes verbatim — the shipped fragrance
+    behavior (flagship-100ml target, size_mismatch reason, all three outcomes)
+    is byte-preserved.
+
+    unit=None (fashion/other) → pass through untouched (returns False).
+
+    Pure + in-place (apart from candidate-driven price swaps). Returns True iff
+    it changed any price (a swap OR a pend). No network, no latency. No-ops when
+    either price is missing/non-positive (a pending side already kills any cross-
+    basis delta) or both sides already sit at the same value.
+    """
+    if not isinstance(product_data, list) or len(product_data) < 2:
+        return False
+
+    canon = _canonical_fairness_key(category)
+    # FRAGRANCES — delegate to the shipped reconcile verbatim (behavior frozen).
+    if canon == "fragrances":
+        return reconcile_pair_sizes(
+            product_data, user_query=user_query,
+            candidates_by_name=candidates_by_name,
+        )
+
+    spec = fairness_for_category(category)
+    if spec["unit"] is None:
+        return False  # no comparable axis — never touch the pair
+
+    p0, p1 = product_data[0], product_data[1]
+    price0 = p0.get("price") if isinstance(p0, dict) else None
+    price1 = p1.get("price") if isinstance(p1, dict) else None
+    if not isinstance(price0, dict) or not isinstance(price1, dict):
+        return False
+    amt0, amt1 = price0.get("amount"), price1.get("amount")
+    if not (isinstance(amt0, (int, float)) and amt0 > 0):
+        return False
+    if not (isinstance(amt1, (int, float)) and amt1 > 0):
+        return False
+
+    extract = spec["extract"]
+    v0 = extract(p0)
+    v1 = extract(p1)
+
+    # Already fair — both resolve the SAME value (or both unknown) → pass through.
+    if v0 == v1:
+        return False
+
+    target = target_pair_value(user_query, p0, p1, category)
+    if target is None:
+        # No derivable common basis (e.g. a base mismatch ml-vs-g, or neither
+        # side resolves a value). When BOTH sides resolve DIFFERENT values and
+        # there is still no target, fall back to a both-pending divergence guard
+        # ONLY if both resolved (a genuine off-axis divergence); otherwise leave
+        # the pair alone (one/both unknown → no false mismatch).
+        if v0 is not None and v1 is not None and v0 != v1:
+            _mark_unit_pending(p0, p1)
+            return True
+        return False
+
+    candidates_by_name = candidates_by_name or {}
+    changed = False
+
+    def _resolve_to_target(p: Dict[str, Any]) -> bool:
+        nonlocal changed
+        if extract(p) == target:
+            return True
+        name = p.get("full_name") or p.get("name") or ""
+        cands = candidates_by_name.get(name) or candidates_by_name.get(p.get("name") or "")
+        new_price = reselect_to_target_value(
+            name, cands, target, category,
+            currency=(p.get("price") or {}).get("currency") or "BHD",
+        )
+        if new_price is None:
+            return False
+        p["price"] = new_price
+        amount = new_price.get("amount")
+        if "best_price" in p:
+            p["best_price"] = amount
+        if "retailer" in p:
+            p["retailer"] = new_price.get("retailer")
+        changed = True
+        return True
+
+    at0 = _resolve_to_target(p0)
+    at1 = _resolve_to_target(p1)
+
+    if at0 and at1:
+        return changed
+    if at0 and not at1:
+        _mark_unit_pending(p1)
+        return True
+    if at1 and not at0:
+        _mark_unit_pending(p0)
+        return True
+    _mark_unit_pending(p0, p1)
+    return True
+
+
 # ============================================
 # Parsing / matching helpers
 # ============================================
@@ -1227,6 +1875,104 @@ def extract_sizes_ml(text: str) -> set:
     if not text:
         return set()
     return {m for m in _SIZE_ML_RE.findall(text)}
+
+
+# ---------------------------------------------------------------------------
+# Category-fairness unit extractors (CATEGORY_FAIRNESS, Part 1).
+#
+# Each parses a SINGLE comparable axis off a free-text field. Like
+# extract_sizes_ml they are pure + return None when no token is present, so a
+# product with no signal on that axis never trips a false mismatch. They power
+# the per-category `extract`/`user_query_value` callables in CATEGORY_FAIRNESS.
+# ---------------------------------------------------------------------------
+
+# Storage: "256GB", "256 GB", "1TB", "1 TB". TB is normalized to GB (×1024) so
+# a 1TB laptop and a 512GB laptop compare on ONE axis. A bare integer is NOT
+# storage (too ambiguous) — the GB/TB unit is required.
+_STORAGE_GB_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(tb|gb)\b", re.I)
+
+# Unit count: "60 capsules", "120 tablets", "90 softgels", "30 count",
+# "60 caps", "90 gummies". The count is the integer immediately before the
+# unit word. Used by supplements (caps/tablets/softgels) and grocery packs.
+_COUNT_RE = re.compile(
+    r"(\d+)\s*(?:x\s*)?"
+    r"(capsules?|caps|tablets?|tabs|softgels?|gummies|gummy|count|ct|pieces?|pcs|sachets?)\b",
+    re.I,
+)
+
+# Net weight/volume: "200g", "5kg", "1L", "500ml", "1.5l", "250 g". Normalized
+# to a base unit: grams (g/kg→g) and millilitres (ml/L→ml) are SEPARATE bases,
+# so a 200g jar and a 250g jar compare while a 200g vs 500ml pair stays
+# incomparable (different base → None target). Returns (value, base) where base
+# is "g" or "ml", or None when no weight/volume token is present.
+_WEIGHT_VOLUME_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(kg|g|ml|l)\b", re.I)
+
+
+def extract_storage_gb(text: str) -> Optional[float]:
+    """Smallest storage size in `text`, in GB (TB→GB ×1024). None when no
+    GB/TB token is present. Smallest is the conservative basis when a listing
+    title mentions several capacities."""
+    if not text:
+        return None
+    vals: List[float] = []
+    for num, unit in _STORAGE_GB_RE.findall(text):
+        try:
+            v = float(num)
+        except (TypeError, ValueError):
+            continue
+        if unit.lower() == "tb":
+            v *= 1024.0
+        vals.append(v)
+    return min(vals) if vals else None
+
+
+def extract_count(text: str) -> Optional[float]:
+    """Unit count in `text` (caps/tablets/softgels/gummies/pieces/...), or None.
+    Largest token wins — a "60+60 free" pack reads the bottle's headline count;
+    when a single token appears it is returned as-is."""
+    if not text:
+        return None
+    vals: List[float] = []
+    for num, _unit in _COUNT_RE.findall(text):
+        try:
+            vals.append(float(num))
+        except (TypeError, ValueError):
+            continue
+    return max(vals) if vals else None
+
+
+def extract_weight_or_volume(text: str) -> Optional[Tuple[float, str]]:
+    """(value, base) net weight/volume in `text` — grams (g/kg→g) OR millilitres
+    (ml/L→ml), whichever token appears. None when neither is present. Smallest
+    matching token of the FIRST base seen wins (a single listing carries one
+    pack size). Grams and ml are distinct bases — the caller must only compare
+    same-base values, so a weight vs a volume never trips a false match."""
+    if not text:
+        return None
+    grams: List[float] = []
+    mls: List[float] = []
+    for num, unit in _WEIGHT_VOLUME_RE.findall(text):
+        try:
+            v = float(num)
+        except (TypeError, ValueError):
+            continue
+        u = unit.lower()
+        if u == "kg":
+            grams.append(v * 1000.0)
+        elif u == "g":
+            grams.append(v)
+        elif u == "l":
+            mls.append(v * 1000.0)
+        elif u == "ml":
+            mls.append(v)
+    # Prefer ml when both appear (a "200g (≈210ml)" oddity is rare; ml is the
+    # dominant cosmetics/grocery-liquid axis). Within a base, smallest is the
+    # conservative basis.
+    if mls:
+        return (min(mls), "ml")
+    if grams:
+        return (min(grams), "g")
+    return None
 
 
 def variant_precision_rank(
