@@ -696,27 +696,90 @@ def make_pending_price(currency: str = "BHD", reason: str = "pending_genuine",
     return pending
 
 
-def _normalize_size_ml(size: Optional[str]) -> Optional[int]:
-    """The integer ml of a price.size annotation ("100ml" / "100 ML" / "30ml"),
-    or None when absent/unparseable. Reuses extract_sizes_ml so "100 ML" and
-    "100ml" compare equal (whitespace/case-insensitive)."""
-    if not size or not isinstance(size, str):
+def _product_size_text_fields(product: Dict[str, Any]) -> List[str]:
+    """The free-text fields a product's size could be hiding in, in PRECEDENCE
+    order: the product NAME the user actually compared (full_name / name) first,
+    then the price listing title, then the spec volume. Each is scanned for a
+    `\\d+ml` token by effective_pair_size_ml."""
+    fields: List[str] = []
+    for key in ("full_name", "name"):
+        val = product.get(key)
+        if isinstance(val, str) and val:
+            fields.append(val)
+    price = product.get("price")
+    if isinstance(price, dict):
+        title = price.get("title")
+        if isinstance(title, str) and title:
+            fields.append(title)
+        size = price.get("size")
+        if isinstance(size, str) and size:
+            fields.append(size)
+    specs = product.get("specs")
+    if isinstance(specs, dict):
+        for key in ("volume", "size", "concentration"):
+            val = specs.get(key)
+            if isinstance(val, str) and val:
+                fields.append(val)
+    return fields
+
+
+def effective_pair_size_ml(product: Dict[str, Any]) -> Optional[float]:
+    """ITEM 2 — the SIZE (ml) a product is effectively being compared at, derived
+    from ALL available signals — product NAME first (the listing the user named
+    is ground truth), then price listing title, then price.size, then the spec
+    volume. This is the FAIRNESS basis the pair must agree on.
+
+    Returns:
+      - the smallest `\\d+ml` token found across those fields (a name like
+        "Tobacco Vanille 30 ML" resolves 30 even when price.size is None), ELSE
+      - the flagship 100ml basis for a SIZE-UNSPECIFIED DESIGNER/NICHE fragrance
+        (matches flagship_basis_bonus / the per-product selection convention, so
+        two unsized designer fragrances converge on the same 100ml basis), ELSE
+      - None for any non-fragrance / non-designer product with no size signal (so
+        two unsized phones stay None==None and never trip a false mismatch).
+    """
+    if not isinstance(product, dict):
         return None
-    sizes = extract_sizes_ml(size)
-    if not sizes:
-        return None
-    # A size annotation is a single bottle size; take the smallest if several.
-    return min(int(s) for s in sizes)
+    for text in _product_size_text_fields(product):
+        sizes = extract_sizes_ml(text)
+        if sizes:
+            # Smallest detected size — a single listing carries one bottle size;
+            # if several tokens appear ("30ml 100ml" range text) the smaller is
+            # the conservative basis.
+            return float(min(int(s) for s in sizes))
+    # No explicit size anywhere. A designer/niche fragrance defaults to the
+    # flagship 100ml retail basis (same convention as the per-product flagship
+    # bias), so two unsized designer fragrances are treated as the SAME basis.
+    name = product.get("full_name") or product.get("name") or ""
+    if is_fragrance_query(name):
+        name_lower = name.lower()
+        is_designer = (
+            any(brand in name_lower for brand in FRAGRANCE_BRAND_KEYWORDS)
+            or is_luxury_brand(name)
+        )
+        if is_designer:
+            return _FRAGRANCE_FLAGSHIP_SIZE_ML
+    return None
 
 
 def reconcile_pair_sizes(product_data: List[Dict[str, Any]]) -> bool:
-    """Task C2 (conservative) — pair-level size-basis reconciliation.
+    """Task C2 + ITEM 2 — pair-level size-basis reconciliation (FAIRNESS).
 
     When BOTH products carry a SHOWABLE price (positive amount) but their
-    price.size annotations DIFFER (different ml, OR one sized / one unsized),
-    there is no common basis for an honest price delta. Rather than render an
-    apples-to-oranges comparison, mark BOTH prices price-pending
-    (reason="size_mismatch"), each preserving its own size for FE context.
+    EFFECTIVE sizes DIFFER, there is no common basis for an honest price delta.
+    Rather than render an apples-to-oranges comparison, mark BOTH prices
+    price-pending (reason="size_mismatch"), each preserving its own size for FE
+    context.
+
+    ITEM 2 upgrade: the effective size is derived from ALL signals — product
+    NAME, price listing title, price.size, AND spec volume (via
+    effective_pair_size_ml) — NOT just the price.size annotation. This catches
+    the Ombré-Leather (flagship 100ml) vs Tobacco-Vanille-"30 ML" case where the
+    size divergence lived in the NAME and both price.size annotations were None
+    (the old price.size-only check passed it through). Two size-UNSPECIFIED
+    designer fragrances converge on the common flagship 100ml basis and pass
+    through (fair); a shared explicit size is honored; a genuine divergence is
+    marked pending.
 
     Conservative-only: NO candidate re-selection is attempted (re-picking a
     matching-size candidate from the shopping cache re-runs the deep
@@ -724,7 +787,8 @@ def reconcile_pair_sizes(product_data: List[Dict[str, Any]]) -> bool:
     in-place; returns True iff it marked a mismatch (no network, no latency).
 
     No-ops when: either price is missing/non-positive (a C1-pending side already
-    kills the cross-size delta), or both sizes are equal, or both are unknown.
+    kills the cross-size delta), or both effective sizes are equal, or both are
+    unknown (None).
     """
     if not isinstance(product_data, list) or len(product_data) < 2:
         return False
@@ -740,8 +804,12 @@ def reconcile_pair_sizes(product_data: List[Dict[str, Any]]) -> bool:
         return False
     if not (isinstance(amt1, (int, float)) and amt1 > 0):
         return False
-    size0 = _normalize_size_ml(price0.get("size"))
-    size1 = _normalize_size_ml(price1.get("size"))
+    # ITEM 2 — derive each product's EFFECTIVE size from name/title/price.size/
+    # spec (not just price.size). The price.size-only normalize is the FLOOR of
+    # this; effective_pair_size_ml is a superset (it also reads name + spec +
+    # flagship default), so genuinely-same-size price.size pairs still match.
+    size0 = effective_pair_size_ml(p0)
+    size1 = effective_pair_size_ml(p1)
     # Both unknown → consistent (no basis to declare a mismatch). Equal → fine.
     if size0 == size1:
         return False
