@@ -251,10 +251,13 @@ class TestPartialAssemblyHappyPath:
 # ===========================================================================
 class TestPartialEstimatedLastResort:
     def test_estimated_fallback_keeps_success_true(self):
-        """D1 — even when the only price available is the last-resort
-        `estimated` method, a partial with usable data is success:true; the
-        price object carries source_method='estimated' (the ENUM is allowed;
-        the UI substitutes 'indicative' microcopy per D3)."""
+        """D1 + Task C1 (price-pending) — an estimated-only partial still
+        succeeds (estimated data does NOT block success), but the price is now
+        SUPPRESSED to the price-pending shape rather than shown: an `estimated`
+        price is not showable, so the chokepoint replaces it (no misleading
+        amount, no source_method) and the FE renders a 'pricing in a future
+        update' line. (Was: D1/D3 kept source_method='estimated' + 'indicative'
+        microcopy; C1 supersedes — estimates are unacceptable to SHOW.)"""
         product_data = [
             _partial_product("Tom Ford", "Ombre Leather", source_method="estimated", amount=85.0),
             _partial_product("Tom Ford", "Tobacco Vanille", source_method="estimated", amount=120.0),
@@ -271,7 +274,10 @@ class TestPartialEstimatedLastResort:
         assert resp["success"] is True
         assert resp["metadata"]["partial"] is True
         for op in resp["overview"]["products"]:
-            assert op["price"]["source_method"] == "estimated"
+            # estimated → price-pending: no misleading amount, no source_method.
+            assert op["price"]["amount"] is None
+            assert op["price"]["unavailable"] is True
+            assert op["price"]["reason"] == "pending_genuine"
         # B.0 strips the `note` text on estimated prices (A.7.2) so no
         # "Estimated from training data" string leaks; assert no scary vocab.
         _assert_no_forbidden_vocab(resp)

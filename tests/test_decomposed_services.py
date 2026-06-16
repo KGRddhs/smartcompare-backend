@@ -185,10 +185,17 @@ class TestBuildComparisonResponse:
         assert isinstance(result["key_differences"], list)
 
     def test_price_method_mismatch_detection(self):
-        """Test that different price source methods are detected."""
+        """Test that different price source methods are detected.
+
+        Updated for Task C1 (price-pending): a price counts toward the method
+        set only when SHOWABLE (positive amount + a showable source_method).
+        `estimated` is now suppressed to a price-pending shape (no source_method),
+        so this asserts the mismatch on two SHOWABLE-but-different methods —
+        firecrawl (genuine-BH) vs converted_usd — the real apples-to-oranges case.
+        """
         product_data = [
-            {"brand": "LV", "name": "Bag", "price": {"source_method": "firecrawl"}},
-            {"brand": "Gucci", "name": "Wallet", "price": {"source_method": "estimated"}},
+            {"brand": "LV", "name": "Bag", "price": {"source_method": "firecrawl", "amount": 250.0, "currency": "BHD"}},
+            {"brand": "Gucci", "name": "Wallet", "price": {"source_method": "converted_usd", "amount": 300.0, "currency": "BHD"}},
         ]
         comparison = {"winner_index": 0}
         scoring_result = {"scores": {}, "winner_index": 0}
