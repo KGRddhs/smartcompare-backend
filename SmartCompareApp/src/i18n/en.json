@@ -135,6 +135,7 @@
   "results.feedback.submit": "Submit",
   "results.share": "Share",
   "results.priceNA": "Price N/A",
+  "results.price.pending": "Pricing lands in an upcoming update.",
   "results.convertedUSD": "(converted from USD)",
   "results.noRating": "No rating available",
   "results.value.greatValue": "Great Value",

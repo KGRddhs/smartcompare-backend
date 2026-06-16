@@ -357,7 +357,7 @@ describe('ResultsContent — render coverage', () => {
     expect(getByText(/results\.priceNA|N\/A/)).toBeTruthy();
   });
 
-  it('renders priceNA fallback when price.unavailable=true', () => {
+  it('renders the price-pending line when price.unavailable=true (Phase 4.3)', () => {
     const unavailPrice = [
       { ...mockProducts[0], price: { ...mockProducts[0].price, unavailable: true } },
       mockProducts[1],
@@ -365,7 +365,8 @@ describe('ResultsContent — render coverage', () => {
     const { getByText } = render(
       <ResultsContent {...baseProps} products={unavailPrice} />
     );
-    expect(getByText(/results\.priceNA|N\/A/)).toBeTruthy();
+    // Engaging "coming soon" copy — NOT a number, NOT "estimated", NOT "N/A".
+    expect(getByText(/results\.price\.pending|upcoming update/i)).toBeTruthy();
   });
 
   it('uses legacy result.recommendation when overview.winner absent', () => {

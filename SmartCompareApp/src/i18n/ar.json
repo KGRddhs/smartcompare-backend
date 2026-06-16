@@ -132,6 +132,7 @@
   "results.feedback.submit": "إرسال",
   "results.share": "مشاركة",
   "results.priceNA": "السعر غير متوفر",
+  "results.price.pending": "السعر يصل في تحديث قادم.",
   "results.convertedUSD": "(محول من الدولار)",
   "results.noRating": "لا يوجد تقييم متاح",
   "results.value.greatValue": "قيمة ممتازة",
