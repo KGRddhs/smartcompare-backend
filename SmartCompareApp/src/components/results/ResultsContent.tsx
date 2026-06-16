@@ -373,6 +373,8 @@ export function ResultsContent({
                   <DimensionBars
                     dimensions={scoring_v2.dimensions}
                     winnerIndex={winnerIndex}
+                    productAName={products[0]?.name}
+                    productBName={products[1]?.name}
                     testID="results-v2-bars"
                   />
 

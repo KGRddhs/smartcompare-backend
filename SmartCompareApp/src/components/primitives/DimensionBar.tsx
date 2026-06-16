@@ -22,12 +22,30 @@ interface Props {
   right: number;
   winner: 'left' | 'right' | null;
   testID?: string;
+  /**
+   * Optional per-segment testID overrides. Default to the primitive's own
+   * `dim-bar-left` / `dim-bar-right` / `dim-bar-gap` contract (consumed by
+   * `__tests__/primitives/DimensionBar.test.tsx`). Composite consumers
+   * (e.g. DimensionBars) pass row-scoped IDs so multiple bars on one
+   * screen each carry a unique hook (`bars-row-{key}-fill-a`).
+   */
+  leftTestID?: string;
+  rightTestID?: string;
+  gapTestID?: string;
 }
 
 const TRACK_HEIGHT = 8;
 const GAP_WIDTH = 2;
 
-export function DimensionBar({ left, right, winner, testID }: Props) {
+export function DimensionBar({
+  left,
+  right,
+  winner,
+  testID,
+  leftTestID = 'dim-bar-left',
+  rightTestID = 'dim-bar-right',
+  gapTestID = 'dim-bar-gap',
+}: Props) {
   const total = left + right || 1;
   const leftPct = (left / total) * 100;
   const rightPct = (right / total) * 100;
@@ -39,12 +57,12 @@ export function DimensionBar({ left, right, winner, testID }: Props) {
     <View style={styles.track} testID={testID}>
       <View
         style={[styles.segment, { flexBasis: `${leftPct}%`, backgroundColor: leftColor }]}
-        testID="dim-bar-left"
+        testID={leftTestID}
       />
-      <View style={styles.gap} testID="dim-bar-gap" />
+      <View style={styles.gap} testID={gapTestID} />
       <View
         style={[styles.segment, { flexBasis: `${rightPct}%`, backgroundColor: rightColor }]}
-        testID="dim-bar-right"
+        testID={rightTestID}
       />
     </View>
   );

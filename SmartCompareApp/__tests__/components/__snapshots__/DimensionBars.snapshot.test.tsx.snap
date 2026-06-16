@@ -36,13 +36,34 @@ exports[`snapshot — 2 dims (no expand row) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Price
+      </Text>
+      <Text
+        numberOfLines={1}
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <Text
@@ -67,46 +88,71 @@ exports[`snapshot — 2 dims (no expand row) 1`] = `
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-price-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "53.125%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "85%",
-              },
-            ]
+        testID="bars-row-price-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-price-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-price-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "46.875%",
+            },
+          ]
+        }
+        testID="bars-row-price-fill-b"
+      />
+    </View>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -143,40 +189,6 @@ exports[`snapshot — 2 dims (no expand row) 1`] = `
       >
         75
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "75%",
-              },
-            ]
-          }
-          testID="bars-row-price-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -205,73 +217,117 @@ exports[`snapshot — 2 dims (no expand row) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Reviews
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
       >
-        0.5★ higher
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-reviews-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "52.38095238095239%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "88%",
-              },
-            ]
+        testID="bars-row-reviews-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-reviews-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-reviews-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "47.61904761904761%",
+            },
+          ]
+        }
+        testID="bars-row-reviews-fill-b"
+      />
+    </View>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+          "marginTop": 4,
+        }
+      }
+    >
+      0.5★ higher
+    </Text>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -308,40 +364,6 @@ exports[`snapshot — 2 dims (no expand row) 1`] = `
       >
         80
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "80%",
-              },
-            ]
-          }
-          testID="bars-row-reviews-fill-b"
-        />
-      </View>
     </View>
   </View>
 </View>
@@ -383,13 +405,34 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Price
+      </Text>
+      <Text
+        numberOfLines={1}
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <Text
@@ -414,46 +457,71 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-price-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "53.125%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "85%",
-              },
-            ]
+        testID="bars-row-price-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-price-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-price-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "46.875%",
+            },
+          ]
+        }
+        testID="bars-row-price-fill-b"
+      />
+    </View>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -490,40 +558,6 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
       >
         75
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "75%",
-              },
-            ]
-          }
-          testID="bars-row-price-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -552,73 +586,117 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Reviews
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
       >
-        0.5★ higher
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-reviews-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "52.38095238095239%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "88%",
-              },
-            ]
+        testID="bars-row-reviews-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-reviews-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-reviews-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "47.61904761904761%",
+            },
+          ]
+        }
+        testID="bars-row-reviews-fill-b"
+      />
+    </View>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+          "marginTop": 4,
+        }
+      }
+    >
+      0.5★ higher
+    </Text>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -655,40 +733,6 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
       >
         80
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "80%",
-              },
-            ]
-          }
-          testID="bars-row-reviews-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -717,13 +761,34 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Value
+      </Text>
+      <Text
+        numberOfLines={1}
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <Text
@@ -748,46 +813,71 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-value-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "56.25%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "90%",
-              },
-            ]
+        testID="bars-row-value-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-value-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-value-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "43.75%",
+            },
+          ]
+        }
+        testID="bars-row-value-fill-b"
+      />
+    </View>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -824,40 +914,6 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
       >
         70
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "70%",
-              },
-            ]
-          }
-          testID="bars-row-value-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -886,73 +942,117 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Performance
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
       >
-        4pt
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-performance-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "51.24999999999999%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "82%",
-              },
-            ]
+        testID="bars-row-performance-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-performance-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-performance-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "48.75%",
+            },
+          ]
+        }
+        testID="bars-row-performance-fill-b"
+      />
+    </View>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+          "marginTop": 4,
+        }
+      }
+    >
+      4pt
+    </Text>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -989,40 +1089,6 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
       >
         78
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "78%",
-              },
-            ]
-          }
-          testID="bars-row-performance-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -1101,13 +1167,34 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Price
+      </Text>
+      <Text
+        numberOfLines={1}
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <Text
@@ -1132,46 +1219,71 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-price-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "53.125%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "85%",
-              },
-            ]
+        testID="bars-row-price-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-price-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-price-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "46.875%",
+            },
+          ]
+        }
+        testID="bars-row-price-fill-b"
+      />
+    </View>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -1208,40 +1320,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       >
         75
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "75%",
-              },
-            ]
-          }
-          testID="bars-row-price-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -1270,73 +1348,117 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Reviews
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
       >
-        0.5★ higher
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-reviews-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "52.38095238095239%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "88%",
-              },
-            ]
+        testID="bars-row-reviews-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-reviews-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-reviews-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "47.61904761904761%",
+            },
+          ]
+        }
+        testID="bars-row-reviews-fill-b"
+      />
+    </View>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+          "marginTop": 4,
+        }
+      }
+    >
+      0.5★ higher
+    </Text>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -1373,40 +1495,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       >
         80
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "80%",
-              },
-            ]
-          }
-          testID="bars-row-reviews-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -1435,13 +1523,34 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Value
+      </Text>
+      <Text
+        numberOfLines={1}
+        style={
+          {
+            "color": "#6B7280",
+            "flexShrink": 1,
+            "fontSize": 13,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
+            "marginStart": 8,
+            "textAlign": "right",
+          }
+        }
+      >
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <Text
@@ -1466,46 +1575,71 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-value-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "56.25%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "90%",
-              },
-            ]
+        testID="bars-row-value-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-value-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-value-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "43.75%",
+            },
+          ]
+        }
+        testID="bars-row-value-fill-b"
+      />
+    </View>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -1542,40 +1676,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       >
         70
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "70%",
-              },
-            ]
-          }
-          testID="bars-row-value-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -1604,73 +1704,117 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Performance
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
       >
-        4pt
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-performance-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "51.24999999999999%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "82%",
-              },
-            ]
+        testID="bars-row-performance-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-performance-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-performance-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "48.75%",
+            },
+          ]
+        }
+        testID="bars-row-performance-fill-b"
+      />
+    </View>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+          "marginTop": 4,
+        }
+      }
+    >
+      4pt
+    </Text>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -1707,40 +1851,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       >
         78
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "78%",
-              },
-            ]
-          }
-          testID="bars-row-performance-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -1769,73 +1879,117 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Build
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
       >
-        4pt
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-build-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "51.28205128205128%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "80%",
-              },
-            ]
+        testID="bars-row-build-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-build-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-build-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "48.717948717948715%",
+            },
+          ]
+        }
+        testID="bars-row-build-fill-b"
+      />
+    </View>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+          "marginTop": 4,
+        }
+      }
+    >
+      4pt
+    </Text>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -1872,40 +2026,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       >
         76
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "76%",
-              },
-            ]
-          }
-          testID="bars-row-build-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -1934,73 +2054,117 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Longevity
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
       >
-        3pt
+        A
+         
+        ·
+         
+        B
       </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-longevity-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "51.02040816326531%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "75%",
-              },
-            ]
+        testID="bars-row-longevity-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-longevity-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-longevity-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "48.97959183673469%",
+            },
+          ]
+        }
+        testID="bars-row-longevity-fill-b"
+      />
+    </View>
+    <Text
+      style={
+        {
+          "color": "#6B7280",
+          "fontSize": 13,
+          "fontWeight": "400",
+          "lineHeight": 19.5,
+          "marginTop": 4,
+        }
+      }
+    >
+      3pt
+    </Text>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -2037,40 +2201,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       >
         72
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "72%",
-              },
-            ]
-          }
-          testID="bars-row-longevity-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View

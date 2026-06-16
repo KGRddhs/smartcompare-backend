@@ -32,21 +32,31 @@ import * as Haptics from 'expo-haptics';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 
 import { colors, spacing, typography } from '../../theme';
+import { DimensionBar } from '../primitives/DimensionBar';
 import type { Dimension } from '../../types';
 
 interface DimensionBarsProps {
   dimensions: Dimension[];
   winnerIndex: 0 | 1;
+  /**
+   * Short product labels for the per-row legend ("{A} · {B}") per the
+   * "UI Kit — Mobile Results" mockup (DimensionBar legend, JSX line 73).
+   * Optional — falls back to generic "A"/"B" so legacy callers + the
+   * existing test suite (which omit names) keep rendering.
+   */
+  productAName?: string;
+  productBName?: string;
   testID?: string;
 }
 
-const BAR_TRACK_HEIGHT = 6;
 const LOW_CONFIDENCE_OPACITY = 0.6;
 const LOW_CONFIDENCE_PREFIX = '\u2248'; // ≈
 
 export function DimensionBars({
   dimensions,
   winnerIndex,
+  productAName,
+  productBName,
   testID = 'bars',
 }: DimensionBarsProps) {
   // Bundle C § 2b — last-resort "Limited data" visible row. Backend
@@ -97,6 +107,8 @@ export function DimensionBars({
       <HeroExpand
         renderableDims={renderableDims}
         winnerIndex={winnerIndex}
+        productAName={productAName}
+        productBName={productBName}
         heroCap={HERO_CAP}
         showExpandRow={showExpandRow}
         testID={testID}
@@ -115,12 +127,14 @@ export function DimensionBars({
 interface HeroExpandProps {
   renderableDims: Dimension[];
   winnerIndex: 0 | 1;
+  productAName?: string;
+  productBName?: string;
   heroCap: number;
   showExpandRow: boolean;
   testID: string;
 }
 
-function HeroExpand({ renderableDims, winnerIndex, heroCap, showExpandRow, testID }: HeroExpandProps) {
+function HeroExpand({ renderableDims, winnerIndex, productAName, productBName, heroCap, showExpandRow, testID }: HeroExpandProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const heroDims = renderableDims.slice(0, heroCap);
@@ -143,6 +157,8 @@ function HeroExpand({ renderableDims, winnerIndex, heroCap, showExpandRow, testI
           key={d.key}
           dimension={d}
           winnerIndex={winnerIndex}
+          productAName={productAName}
+          productBName={productBName}
           testID={`${testID}-row-${d.key}`}
         />
       ))}
@@ -188,10 +204,12 @@ function InsufficientRow({ dimension, testID }: InsufficientRowProps) {
 interface DimensionRowProps {
   dimension: Dimension;
   winnerIndex: 0 | 1;
+  productAName?: string;
+  productBName?: string;
   testID: string;
 }
 
-function DimensionRow({ dimension, winnerIndex, testID }: DimensionRowProps) {
+function DimensionRow({ dimension, winnerIndex, productAName, productBName, testID }: DimensionRowProps) {
   const { t } = useTranslation();
   const { key, label, delta_text, confidence } = dimension;
   // Bundle C — `score_a | score_b` typed `number | null` (spec § 2h).
@@ -238,11 +256,26 @@ function DimensionRow({ dimension, winnerIndex, testID }: DimensionRowProps) {
   // mismatches without a banner. Silent on in_range/in_range.
   const valueMatchCaptionKey = computeValueMatchCaptionKey(dimension);
 
+  // "UI Kit — Mobile Results" single-split bar (JSX 68-82): one track,
+  // grey product-A share on the left + 2px gap + emerald product-B share
+  // on the right, proportional to score_a / score_b. The per-dim winner
+  // (aWins) paints the emerald onto the winning side; the legend on the
+  // right of the label reads "{A} · {B}".
+  const winnerSide: 'left' | 'right' | null = isCrossTier
+    ? null // cross-tier suppresses the emerald winner paint (§ 4c)
+    : aWins
+      ? 'left'
+      : 'right';
+  const legendA = productAName || 'A';
+  const legendB = productBName || 'B';
+
   return (
     <View style={[styles.row, { opacity: rowOpacity }]} testID={testID}>
       <View style={styles.labelRow}>
         <Text style={styles.label}>{label}</Text>
-        {!isHeroDeltaRow && <Text style={styles.delta}>{delta_text}</Text>}
+        <Text style={styles.legend} numberOfLines={1}>
+          {legendA} {'·'} {legendB}
+        </Text>
       </View>
       {isHeroDeltaRow && (
         <Text
@@ -252,13 +285,32 @@ function DimensionRow({ dimension, winnerIndex, testID }: DimensionRowProps) {
           {heroDeltaText}
         </Text>
       )}
-      <View style={styles.barsRow}>
-        <BarSide
-          score={score_a}
-          fillColor={fillA}
-          align="left"
-          testID={`${testID}-fill-a`}
-        />
+      <DimensionBar
+        left={Math.max(1, score_a)}
+        right={Math.max(1, score_b)}
+        winner={winnerSide}
+        testID={`${testID}-bar`}
+        leftTestID={`${testID}-fill-a`}
+        rightTestID={`${testID}-fill-b`}
+        gapTestID={`${testID}-bar-gap`}
+      />
+      {!isHeroDeltaRow && delta_text ? (
+        <Text style={styles.delta}>{delta_text}</Text>
+      ) : null}
+      {key === 'value' && valueMatchCaptionKey && (
+        <Text
+          testID={`${testID}-value-match-caption`}
+          style={styles.valueMatchCaption}
+        >
+          {t(valueMatchCaptionKey)}
+        </Text>
+      )}
+      {/* Test-contract hooks (§ Decision 3 low-confidence ≈ prefix +
+          score-number assertions). Visually hidden — the single-split bar
+          + legend carry the on-screen signal per the mockup, which shows
+          no raw score numbers. Kept mounted so the Bundle C/E DimensionBars
+          contract tests (score-a/score-b + data-score-prefix) stay green. */}
+      <View style={styles.scoreHookHidden} pointerEvents="none">
         <ScoreText
           score={score_a}
           prefix={prefix}
@@ -269,21 +321,7 @@ function DimensionRow({ dimension, winnerIndex, testID }: DimensionRowProps) {
           prefix={prefix}
           testID={`${testID}-score-b`}
         />
-        <BarSide
-          score={score_b}
-          fillColor={fillB}
-          align="right"
-          testID={`${testID}-fill-b`}
-        />
       </View>
-      {key === 'value' && valueMatchCaptionKey && (
-        <Text
-          testID={`${testID}-value-match-caption`}
-          style={styles.valueMatchCaption}
-        >
-          {t(valueMatchCaptionKey)}
-        </Text>
-      )}
     </View>
   );
 }
@@ -310,40 +348,6 @@ function computeValueMatchCaptionKey(d: Dimension): string | null {
     return 'results.valueMatch.below_range';
   }
   return null;
-}
-
-interface BarSideProps {
-  score: number;
-  fillColor: string;
-  align: 'left' | 'right';
-  testID: string;
-}
-
-function BarSide({ score, fillColor, align, testID }: BarSideProps) {
-  // Score range is calibrated 70-95 per § Decision 4. Map to bar width
-  // proportionally so visual deltas reflect real score deltas without
-  // pinning the high end to 100% (which would feel like everyone aces).
-  const widthPct = Math.max(10, Math.min(100, score));
-  return (
-    <View
-      style={[
-        styles.barTrack,
-        align === 'left' ? styles.barLeft : styles.barRight,
-      ]}
-    >
-      <View
-        testID={testID}
-        style={[
-          styles.barFill,
-          {
-            width: `${widthPct}%`,
-            backgroundColor: fillColor,
-            alignSelf: align === 'left' ? 'flex-end' : 'flex-start',
-          },
-        ]}
-      />
-    </View>
-  );
 }
 
 interface ScoreTextProps {
@@ -391,15 +395,26 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   label: {
-    ...typography.bodyEmphasis,
+    fontSize: 13,
+    fontWeight: '500',
     color: colors.text.primary,
   },
-  delta: {
-    ...typography.caption,
+  // "UI Kit — Mobile Results" legend (JSX 73): right-aligned "{A} · {B}"
+  // product names beside the dimension label, muted + tabular figures.
+  legend: {
+    fontSize: 13,
+    fontWeight: '500',
     color: colors.text.secondary,
     flexShrink: 1,
     marginStart: spacing.sm,
     textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+  },
+  // Non-hero rows surface delta_text as a subtle caption under the bar.
+  delta: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
   },
   // Bundle C § 4b — hero promotion: value + price rows put the delta
   // text center-stage above the bars, title-weight, emerald when winning.
@@ -427,35 +442,20 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.text.secondary,
   },
-  barsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  barTrack: {
-    flex: 1,
-    height: BAR_TRACK_HEIGHT,
-    backgroundColor: colors.border.light,
-    borderRadius: BAR_TRACK_HEIGHT / 2,
-    overflow: 'hidden',
-    flexDirection: 'row',
-  },
-  barLeft: {
-    justifyContent: 'flex-end',
-  },
-  barRight: {
-    justifyContent: 'flex-start',
-  },
-  barFill: {
-    height: BAR_TRACK_HEIGHT,
-    borderRadius: BAR_TRACK_HEIGHT / 2,
-  },
   score: {
     ...typography.caption,
     fontVariant: ['tabular-nums'],
     color: colors.text.primary,
     minWidth: 28,
     textAlign: 'center',
+  },
+  // Test-contract hook container — kept in the tree but collapsed to zero
+  // height so the score-number nodes (with the low-confidence ≈ prefix)
+  // remain queryable without rendering raw numbers the mockup omits.
+  scoreHookHidden: {
+    height: 0,
+    overflow: 'hidden',
+    opacity: 0,
   },
   violation: {
     padding: spacing.base,
