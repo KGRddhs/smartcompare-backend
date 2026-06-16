@@ -751,44 +751,186 @@ def effective_pair_size_ml(product: Dict[str, Any]) -> Optional[float]:
     # flagship 100ml retail basis (same convention as the per-product flagship
     # bias), so two unsized designer fragrances are treated as the SAME basis.
     name = product.get("full_name") or product.get("name") or ""
-    if is_fragrance_query(name):
-        name_lower = name.lower()
-        is_designer = (
-            any(brand in name_lower for brand in FRAGRANCE_BRAND_KEYWORDS)
-            or is_luxury_brand(name)
-        )
-        if is_designer:
-            return _FRAGRANCE_FLAGSHIP_SIZE_ML
+    if _is_designer_fragrance_name(name):
+        return _FRAGRANCE_FLAGSHIP_SIZE_ML
     return None
 
 
-def reconcile_pair_sizes(product_data: List[Dict[str, Any]]) -> bool:
-    """Task C2 + ITEM 2 — pair-level size-basis reconciliation (FAIRNESS).
+def _is_designer_fragrance_name(name: str) -> bool:
+    """True iff `name` is a DESIGNER/NICHE fragrance — a house in
+    FRAGRANCE_BRAND_KEYWORDS or any luxury brand AND a fragrance query. This is
+    the SAME gate used by is_implausible_low_fragrance_price and the flagship-
+    basis default, hoisted to a shared helper so the flagship-target logic and
+    the per-product floor stay in lockstep (a generic 'body spray' is NOT
+    designer → never gets a flagship target/floor)."""
+    if not name or not is_fragrance_query(name):
+        return False
+    name_lower = name.lower()
+    return (
+        any(brand in name_lower for brand in FRAGRANCE_BRAND_KEYWORDS)
+        or is_luxury_brand(name)
+    )
 
-    When BOTH products carry a SHOWABLE price (positive amount) but their
-    EFFECTIVE sizes DIFFER, there is no common basis for an honest price delta.
-    Rather than render an apples-to-oranges comparison, mark BOTH prices
-    price-pending (reason="size_mismatch"), each preserving its own size for FE
-    context.
 
-    ITEM 2 upgrade: the effective size is derived from ALL signals — product
-    NAME, price listing title, price.size, AND spec volume (via
-    effective_pair_size_ml) — NOT just the price.size annotation. This catches
-    the Ombré-Leather (flagship 100ml) vs Tobacco-Vanille-"30 ML" case where the
-    size divergence lived in the NAME and both price.size annotations were None
-    (the old price.size-only check passed it through). Two size-UNSPECIFIED
-    designer fragrances converge on the common flagship 100ml basis and pass
-    through (fair); a shared explicit size is honored; a genuine divergence is
-    marked pending.
+def target_pair_size_ml(
+    user_query: Optional[str],
+    p0: Dict[str, Any],
+    p1: Dict[str, Any],
+) -> Optional[float]:
+    """The size (ml) the PAIR should be compared at — the FAIRNESS target.
 
-    Conservative-only: NO candidate re-selection is attempted (re-picking a
-    matching-size candidate from the shopping cache re-runs the deep
-    selection/match/counterfeit/tier logic — the WS5-deferred work). Pure +
-    in-place; returns True iff it marked a mismatch (no network, no latency).
+    Precedence (Part A — the target comes from the USER QUERY, never a matched
+    listing NAME the backend appended):
+      1. An explicit `\\d+ml` size in the USER QUERY → that size (applies to any
+         category; if the user typed a size, honor it).
+      2. No user size + BOTH products are designer/niche fragrances → the flagship
+         100ml retail basis (the size-UNSPECIFIED designer convention, reusing
+         _FRAGRANCE_FLAGSHIP_SIZE_ML / flagship_basis_bonus). A matched product
+         name carrying "30 ML" does NOT set the target here.
+      3. Otherwise → None (no shared target: non-fragrance pairs, mixed pairs).
+         The caller then falls back to the legacy effective-size comparison, so
+         electronics is completely untouched.
+    """
+    if user_query:
+        q_sizes = extract_sizes_ml(user_query)
+        if q_sizes:
+            return float(min(int(s) for s in q_sizes))
+    n0 = (p0.get("full_name") or p0.get("name") or "") if isinstance(p0, dict) else ""
+    n1 = (p1.get("full_name") or p1.get("name") or "") if isinstance(p1, dict) else ""
+    if _is_designer_fragrance_name(n0) and _is_designer_fragrance_name(n1):
+        return _FRAGRANCE_FLAGSHIP_SIZE_ML
+    return None
+
+
+def _candidate_size_ml(c: Dict[str, Any]) -> Optional[float]:
+    """The effective ml of a RETAINED price candidate, read from its raw_data /
+    own fields: the price.size annotation first, then the listing title (a Shopify
+    /products.json variant often carries the size only in the title). Returns the
+    smallest `\\d+ml` token, or None when the candidate carries no size signal."""
+    if not isinstance(c, dict):
+        return None
+    raw = c.get("raw_data") if isinstance(c.get("raw_data"), dict) else {}
+    for src in (raw, c):
+        for key in ("size", "title"):
+            val = src.get(key)
+            if isinstance(val, str) and val:
+                sizes = extract_sizes_ml(val)
+                if sizes:
+                    return float(min(int(s) for s in sizes))
+    return None
+
+
+def reselect_to_target_size(
+    product_name: str,
+    candidates: Optional[List[Dict[str, Any]]],
+    target_ml: float,
+    currency: str = "BHD",
+) -> Optional[Dict[str, Any]]:
+    """Re-select a product's price to `target_ml` from the candidates ALREADY
+    fetched this request (Part B — NO new network).
+
+    Picks the best GENUINE candidate (genuine-BH source ∪ converted_usd) that:
+      - carries the target size (candidate size == target_ml), AND
+      - passes the shipped accuracy guards (is_implausible_low_fragrance_price /
+        is_implausible_high_value_price) — a sample/decant/wrong-SKU 100ml under
+        the full-bottle floor is NOT a valid re-selection.
+
+    Ranking reuses the existing precedence: genuine-BH authority first, then the
+    candidate's variant_rank (the WS5 size/concentration precision signal), then
+    cheapest. Returns a clean price dict (raw_data with source_method stamped) or
+    None when no acceptable target-size candidate exists (→ the caller pends that
+    product). Pure + side-effect-free.
+    """
+    if not candidates:
+        return None
+    acceptable: List[Dict[str, Any]] = []
+    for c in candidates:
+        if not isinstance(c, dict):
+            continue
+        size = _candidate_size_ml(c)
+        if size is None or size != target_ml:
+            continue
+        raw = c.get("raw_data") if isinstance(c.get("raw_data"), dict) else None
+        price = dict(raw) if raw else None
+        if price is None:
+            # No raw_data — synthesize a minimal price dict from the candidate.
+            amount = c.get("value")
+            if amount is None:
+                continue
+            price = {
+                "amount": amount,
+                "currency": currency,
+                "source_method": c.get("source_method") or "",
+                "retailer": c.get("retailer"),
+                "title": c.get("title"),
+                "size": c.get("size"),
+            }
+        else:
+            # Stamp the selection source_method onto the price (mirrors
+            # _finalize_fan_winner: best.raw_data + best.source_method).
+            price.setdefault("source_method", c.get("source_method") or "")
+            if c.get("source_method"):
+                price["source_method"] = c.get("source_method")
+        # Use the CANONICAL showable predicate (genuine/converted source ∪ the
+        # is_implausible_* accuracy guards ∪ the sample/decant title check) — the
+        # SAME gate the response chokepoint applies downstream. This guarantees a
+        # re-selected price actually survives C1 (we never claim "show" for a
+        # price that the downstream gate would null), and never re-selects a wrong
+        # scrape / sample / decant.
+        if not is_price_showable(product_name, price):
+            continue
+        acceptable.append({"_cand": c, "_price": price})
+
+    if not acceptable:
+        return None
+    # Authority (genuine-BH first) → variant_rank (size/concentration precision)
+    # → cheapest. Mirrors _select_best + the WS5 variant tie-break.
+    best = max(
+        acceptable,
+        key=lambda a: (
+            1 if _is_genuine_bh_candidate(a["_cand"]) else 0,
+            float(a["_cand"].get("variant_rank", 0) or 0),
+            -float(a["_price"].get("amount", 0) or 0),
+        ),
+    )
+    return best["_price"]
+
+
+def reconcile_pair_sizes(
+    product_data: List[Dict[str, Any]],
+    user_query: Optional[str] = None,
+    candidates_by_name: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+) -> bool:
+    """Task C2 + ITEM 2 + same-size GENUINE re-selection — pair-level size-basis
+    reconciliation (FAIRNESS).
+
+    The pair must be compared at a COMMON size. The TARGET size comes from the
+    USER QUERY (an explicit `\\d+ml`), else the designer-fragrance flagship 100ml
+    when BOTH products are designer/niche fragrances — NEVER from a matched
+    listing NAME the backend appended (target_pair_size_ml, Part A).
+
+    Each product is then resolved to the target size, RE-SELECTING from the
+    candidates ALREADY fetched this request (`candidates_by_name`, keyed by
+    full_name) when its currently-selected price is off-target — no new network
+    (Part B, reselect_to_target_size). Outcome priority:
+
+      1. BOTH reach the target genuinely → show BOTH (the win — e.g. Ombré 80 @
+         100ml + Tobacco re-selected to its genuine 100ml listing).
+      2. Only ONE reaches the target → show that one, pend ONLY the other
+         (reason="size_mismatch"). A genuine common-basis price is never dropped
+         just because its partner can't match (the Tom Ford fallback: Ombré 80
+         shows, Tobacco pends).
+      3. NEITHER reaches the target → BOTH pending (the prior behavior).
+
+    No TARGET derivable (non-fragrance / mixed pair with no user size) → fall
+    back to the legacy effective-size comparison (both-pending on a genuine
+    divergence), so electronics is completely untouched.
+
+    Pure + in-place (apart from candidate-driven price swaps); returns True iff
+    it changed any price (a swap OR a pend). No network, no latency.
 
     No-ops when: either price is missing/non-positive (a C1-pending side already
-    kills the cross-size delta), or both effective sizes are equal, or both are
-    unknown (None).
+    kills the cross-size delta), or both sides already sit at the same basis.
     """
     if not isinstance(product_data, list) or len(product_data) < 2:
         return False
@@ -804,33 +946,102 @@ def reconcile_pair_sizes(product_data: List[Dict[str, Any]]) -> bool:
         return False
     if not (isinstance(amt1, (int, float)) and amt1 > 0):
         return False
-    # ITEM 2 — derive each product's EFFECTIVE size from name/title/price.size/
-    # spec (not just price.size). The price.size-only normalize is the FLOOR of
-    # this; effective_pair_size_ml is a superset (it also reads name + spec +
-    # flagship default), so genuinely-same-size price.size pairs still match.
-    size0 = effective_pair_size_ml(p0)
-    size1 = effective_pair_size_ml(p1)
-    # Both unknown → consistent (no basis to declare a mismatch). Equal → fine.
-    if size0 == size1:
+
+    # An EXPLICIT user size is authoritative; otherwise the only shared target is
+    # the designer-fragrance flagship default.
+    user_size = None
+    if user_query:
+        _q = extract_sizes_ml(user_query)
+        if _q:
+            user_size = float(min(int(s) for s in _q))
+
+    # FAIR ALREADY — when the user did NOT type a size, two products that sit at
+    # the SAME effective size are a valid common basis (two shared "50ml"
+    # listings, two unsized designer fragrances both at the flagship 100ml
+    # default, ...). Honor it and pass through. This must run BEFORE the
+    # flagship-target derivation so a SHARED explicit size the user didn't type is
+    # never overridden up to 100ml. (When the user DID type a size, the target is
+    # authoritative — the re-selection path below resolves to it.)
+    eff0 = effective_pair_size_ml(p0)
+    eff1 = effective_pair_size_ml(p1)
+    if user_size is None and eff0 is not None and eff0 == eff1:
         return False
-    # Differ (incl. one-None-one-present) → cannot reconcile from cached
-    # candidates safely; mark BOTH pending so no apples-to-oranges delta ships.
-    p0["price"] = make_pending_price(
-        currency=price0.get("currency") or "BHD",
-        reason="size_mismatch",
-        size=price0.get("size"),
-    )
-    p1["price"] = make_pending_price(
-        currency=price1.get("currency") or "BHD",
-        reason="size_mismatch",
-        size=price1.get("size"),
-    )
-    for p in (p0, p1):
+
+    target = target_pair_size_ml(user_query, p0, p1)
+
+    # No shared target (non-fragrance / mixed pair, no user size) → legacy
+    # effective-size comparison. Equal/both-unknown → no-op; genuine divergence →
+    # both pending. Electronics stays exactly as before.
+    if target is None:
+        size0 = effective_pair_size_ml(p0)
+        size1 = effective_pair_size_ml(p1)
+        if size0 == size1:
+            return False
+        _mark_size_pending(p0, p1)
+        return True
+
+    candidates_by_name = candidates_by_name or {}
+    changed = False
+
+    def _resolve_to_target(p: Dict[str, Any]) -> bool:
+        """Return True iff `p` ends up AT the target size. Re-selects from
+        retained candidates when the current price is off-target; on a successful
+        swap mutates p['price'] (+ best_price/retailer) in place."""
+        nonlocal changed
+        if effective_pair_size_ml(p) == target:
+            return True
+        name = p.get("full_name") or p.get("name") or ""
+        cands = candidates_by_name.get(name) or candidates_by_name.get(p.get("name") or "")
+        new_price = reselect_to_target_size(
+            name, cands, target,
+            currency=(p.get("price") or {}).get("currency") or "BHD",
+        )
+        if new_price is None:
+            return False
+        p["price"] = new_price
+        amount = new_price.get("amount")
+        if "best_price" in p:
+            p["best_price"] = amount
+        if "retailer" in p:
+            p["retailer"] = new_price.get("retailer")
+        changed = True
+        return True
+
+    at0 = _resolve_to_target(p0)
+    at1 = _resolve_to_target(p1)
+
+    if at0 and at1:
+        # Outcome 1 — both at the target basis. Either already converged (no-op)
+        # or one/both re-selected (changed=True). Show both.
+        return changed
+    if at0 and not at1:
+        # Outcome 2 — pend ONLY p1; p0's genuine common-basis price stays.
+        _mark_size_pending(p1)
+        return True
+    if at1 and not at0:
+        _mark_size_pending(p0)
+        return True
+    # Outcome 3 — neither reached the target → both pending.
+    _mark_size_pending(p0, p1)
+    return True
+
+
+def _mark_size_pending(*products: Dict[str, Any]) -> None:
+    """Mark each product price-pending (reason="size_mismatch"), preserving its
+    own size annotation for FE context and nulling best_price/retailer."""
+    for p in products:
+        if not isinstance(p, dict):
+            continue
+        price = p.get("price") if isinstance(p.get("price"), dict) else {}
+        p["price"] = make_pending_price(
+            currency=price.get("currency") or "BHD",
+            reason="size_mismatch",
+            size=price.get("size"),
+        )
         if "best_price" in p:
             p["best_price"] = None
         if "retailer" in p:
             p["retailer"] = None
-    return True
 
 
 # ============================================
