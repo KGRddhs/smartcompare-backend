@@ -1303,6 +1303,85 @@ def _fragrance_default_basis(p0: Dict[str, Any], p1: Dict[str, Any]) -> Optional
     return target_pair_size_ml(None, p0, p1)
 
 
+# Per-category comparable-value TOLERANCE (Rule 4 — "similar values are treated
+# as matching, no pend"). A pair whose two resolved values are within the band
+# is a FAIR common basis already and passes through (honor_each) without forcing
+# a reselect or a pend.
+#
+#   DISCRETE units (storage GB, unit count) — equal, or within a TIGHT 5% band.
+#     128 vs 256 (×2) is a genuine tier gap → mismatch; 60 vs 62 (a "+2 free"
+#     pack) or 250 vs 256GB (rounding) → match.
+#   CONTINUOUS units (ml, g/weight) — within ±15%. 90ml vs 100ml, a 230g vs 250g
+#     jar → "similar" → match; 30ml vs 100ml → mismatch.
+#
+# The band is fractional, measured against the LARGER of the two values, so it is
+# symmetric and scale-free.
+_DISCRETE_TOLERANCE = 0.05
+_CONTINUOUS_TOLERANCE = 0.15
+
+
+def values_within_tolerance(
+    a: Optional[float], b: Optional[float], spec: Dict[str, Any]
+) -> bool:
+    """True iff two resolved comparable values are "the same" for fairness under
+    `spec`'s per-category tolerance — equal, or within the band relative to the
+    larger value. False when either value is None (one side has no signal → not a
+    confirmed match). The single divergence-tolerance check used across ALL
+    categories (Rule 4)."""
+    if a is None or b is None:
+        return False
+    if a == b:
+        return True
+    tol = spec.get("tolerance", 0.0) or 0.0
+    larger = max(abs(a), abs(b))
+    if larger == 0:
+        return True
+    return abs(a - b) <= tol * larger
+
+
+# Pair-query separators (case-insensitive). A canonical compare query is "<A> vs
+# <B>"; the dual-shape (explicit product_a/product_b) is concatenated to the same
+# "A vs B" form upstream (text_routes.py), so splitting here recovers each side.
+_PAIR_SPLIT_RE = re.compile(r"\s+(?:vs\.?|versus|v\.?s\.?)\s+|\s*\|\s*", re.I)
+
+
+def split_pair_query(query: Optional[str]) -> Optional[Tuple[str, str]]:
+    """Split a compare query into its two sides on " vs "/" versus "/"|".
+
+    Returns (left, right) ONLY when the query splits cleanly into EXACTLY two
+    non-empty halves (a genuine pair query). Returns None otherwise (no separator,
+    or 3+ segments — ambiguous) so the caller falls back to whole-query parsing.
+    """
+    if not query or not isinstance(query, str):
+        return None
+    parts = [p.strip() for p in _PAIR_SPLIT_RE.split(query)]
+    parts = [p for p in parts if p]
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return None
+
+
+def user_value_for(query_side: Optional[str], category: Optional[str]) -> Optional[float]:
+    """The comparable-unit value the USER stated on ONE side of the query (e.g.
+    "iPhone 15 256GB" → 256, "Vitamin D3 120 capsules" → 120, "Dior 50ml" → 50).
+
+    Reads the per-category `user_query_value` parser over the single side, so it
+    returns a value ONLY when that side resolves EXACTLY ONE distinct value
+    (a genuine single stated basis; an ambiguous "256GB or 512GB" side → None).
+    unit=None categories (fashion/other) → always None.
+
+    This is the per-product MENTION parser that powers Rule 1 (both sides
+    mentioned → honor each) and the first clause of Rule 2 (one side mentioned →
+    target it). It deliberately reads the USER QUERY side, NEVER a product's
+    backend-resolved name (a matched listing's appended "30 ML" is NOT a user
+    mention).
+    """
+    spec = fairness_for_category(category)
+    if spec["unit"] is None:
+        return None
+    return spec["user_query_value"](query_side)
+
+
 CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
     "electronics": {
         "unit": "GB",
@@ -1311,6 +1390,10 @@ CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
         "user_query_value": _query_storage,
         "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_storage),
         "label": "storage (GB)",
+        # Storage is a DISCRETE tier — 128 vs 256 is a real gap, never "similar".
+        # Tight band: a 256 vs 250GB rounding still matches, 128 vs 256 (×2) does
+        # not. (See _DISCRETE_TOLERANCE / values_within_tolerance.)
+        "tolerance": _DISCRETE_TOLERANCE,
     },
     "fragrances": {
         # REUSE the shipped fragrance machinery verbatim — behavior unchanged.
@@ -1320,6 +1403,10 @@ CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
         "user_query_value": _query_ml,
         "default_basis": _fragrance_default_basis,
         "label": "volume (ml)",
+        # Continuous ml — 90ml vs 100ml is "similar". (Reconcile for fragrances
+        # delegates to reconcile_pair_sizes; the tolerance lives here so
+        # target_pair_value reports honor_each on a near-equal ml pair too.)
+        "tolerance": _CONTINUOUS_TOLERANCE,
     },
     "supplements": {
         "unit": "count",
@@ -1328,6 +1415,9 @@ CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
         "user_query_value": _query_count,
         "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_count),
         "label": "unit count",
+        # Unit count is DISCRETE — 60 vs 62 (a "+2 free" pack) is similar; 60 vs
+        # 120 (double) is not.
+        "tolerance": _DISCRETE_TOLERANCE,
     },
     "grocery": {
         "unit": "net",
@@ -1336,6 +1426,8 @@ CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
         "user_query_value": _query_volume_or_weight,
         "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_grocery),
         "label": "net weight/volume",
+        # Continuous weight/volume — a 230g vs 250g jar is similar.
+        "tolerance": _CONTINUOUS_TOLERANCE,
     },
     "makeup": {
         "unit": "volume",
@@ -1344,6 +1436,7 @@ CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
         "user_query_value": _query_volume_or_weight,
         "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_volume_or_weight),
         "label": "volume/weight",
+        "tolerance": _CONTINUOUS_TOLERANCE,
     },
     "skincare": {
         "unit": "volume",
@@ -1352,6 +1445,7 @@ CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
         "user_query_value": _query_volume_or_weight,
         "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_volume_or_weight),
         "label": "volume/weight",
+        "tolerance": _CONTINUOUS_TOLERANCE,
     },
     "haircare": {
         "unit": "volume",
@@ -1360,6 +1454,7 @@ CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
         "user_query_value": _query_ml,
         "default_basis": lambda p0, p1: _resolved_base_default(p0, p1, _extract_ml_only),
         "label": "volume (ml)",
+        "tolerance": _CONTINUOUS_TOLERANCE,
     },
     "fashion": {
         "unit": None,
@@ -1368,6 +1463,9 @@ CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
         "user_query_value": lambda q: None,
         "default_basis": _no_target,
         "label": "—",
+        # No comparable axis — tolerance is never consulted (unit is None) but the
+        # key is present so the config shape stays uniform.
+        "tolerance": _DISCRETE_TOLERANCE,
     },
     "other": {
         "unit": None,
@@ -1376,6 +1474,7 @@ CATEGORY_FAIRNESS: Dict[str, Dict[str, Any]] = {
         "user_query_value": lambda q: None,
         "default_basis": _no_target,
         "label": "—",
+        "tolerance": _DISCRETE_TOLERANCE,
     },
 }
 
@@ -1429,33 +1528,76 @@ def _candidate_value(c: Dict[str, Any], category: str) -> Optional[float]:
     return spec["extract"](faux)
 
 
+def _candidate_value_set(
+    candidates: Optional[List[Dict[str, Any]]], category: Optional[str]
+) -> set:
+    """The DISTINCT comparable-unit values a product's RETAINED candidates carry
+    on this category's axis (e.g. {128.0, 256.0} from a pool with both storages).
+    Candidates with no signal on the axis are skipped. Empty set when no pool /
+    no signal. Used for fixed-size detection + the largest-common-value
+    (common-standard) target."""
+    out: set = set()
+    for c in candidates or []:
+        v = _candidate_value(c, category)
+        if v is not None:
+            out.add(v)
+    return out
+
+
+def _largest_common_value(
+    cands0: Optional[List[Dict[str, Any]]],
+    cands1: Optional[List[Dict[str, Any]]],
+    category: Optional[str],
+) -> Optional[float]:
+    """The LARGEST comparable value BOTH products can satisfy from their retained
+    candidate pools (Rule 3 — common standard). Falls back to the next-smaller
+    shared value implicitly (it is just the max of the intersection). None when
+    the pools share no value at all (no common basis)."""
+    shared = _candidate_value_set(cands0, category) & _candidate_value_set(cands1, category)
+    return float(max(shared)) if shared else None
+
+
 def target_pair_value(
     user_query: Optional[str],
     p0: Dict[str, Any],
     p1: Dict[str, Any],
     category: Optional[str],
-) -> Optional[float]:
-    """The comparable-unit value the PAIR should be compared at — the FAIRNESS
-    target — for `category`. Generalizes target_pair_size_ml to every category.
+    candidates_by_name: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+) -> Dict[str, Any]:
+    """The pair-fairness PLAN for `category` — Ahmed's 4-rule target selection.
 
-    Precedence:
-      1. An explicit unit value in the USER QUERY (e.g. "512GB", "120 capsules",
-         "50ml") → that value. The user's stated basis is authoritative.
-      2. No user value + both products already resolve the SAME value → that
-         value (already a fair common basis — pass through, no bump).
-      3. Otherwise → the category's `default_basis(p0, p1)` (the resolved base
-         for exact-match units; the designer-flagship 100ml for fragrances).
+    Returns a RICH result:
+        {
+          "mode": "honor_each" | "target" | "none",
+          "target": <float | None>,      # the common value, when mode == "target"
+          "per_product": {0: <float|None>, 1: <float|None>},  # each side's value
+        }
 
-    unit=None (fashion/other) → always None (no comparable axis).
+    Rule priority (highest first):
+      1. MENTIONED PER PRODUCT → "honor_each". The USER QUERY states a value for
+         BOTH products (split "A vs B" / explicit pair, per-product). Keep each
+         price at its own value — no force-match, no pend.
+      2a. ONE MENTIONED → "target" = that value (reconcile the other to it).
+      2b. FIXED-SIZE → one product's retained candidates all share a SINGLE value
+          → "target" = that value (the other matches it). Both fixed at DIFFERENT
+          single values → "honor_each" (each is genuinely single-size).
+      3. NEITHER MENTIONED → "target" = the LARGEST value BOTH candidate pools
+         share (common standard); else the category `default_basis` (resolved
+         base for exact-match units; designer-flagship 100ml for fragrances).
+      4. SIMILAR VALUES → "honor_each". When the two products already resolve
+         values within the per-category tolerance (90ml vs 100ml; 60 vs 62 count)
+         they are a fair common basis already — pass through, no pend.
 
-    For weight/volume categories, a base mismatch (a 200g product vs a 50ml
-    product) yields None — they are incomparable, not a "mismatch" to reconcile.
+    unit=None (fashion/other) → always {"mode": "none", ...}. A weight/volume
+    base mismatch (200g vs 50ml) → {"mode": "none", ...} (incomparable, not a
+    mismatch to reconcile).
     """
+    none_plan = {"mode": "none", "target": None, "per_product": {0: None, 1: None}}
     spec = fairness_for_category(category)
     if spec["unit"] is None:
-        return None
+        return none_plan
     if not isinstance(p0, dict) or not isinstance(p1, dict):
-        return None
+        return none_plan
 
     canon = _canonical_fairness_key(category)
     # Base gate: for ml/g categories, both products must be on the SAME base.
@@ -1464,18 +1606,79 @@ def target_pair_value(
         b0 = _unit_base(p0, base_keys)
         b1 = _unit_base(p1, base_keys)
         if b0 is not None and b1 is not None and b0 != b1:
-            return None  # weight vs volume — incomparable, not a mismatch
+            return none_plan  # weight vs volume — incomparable
 
-    user_val = spec["user_query_value"](user_query)
-    if user_val is not None:
-        return user_val
+    # --- Rule 1 / 2a: per-product MENTIONED values from the USER QUERY ---------
+    # Split the canonical "A vs B" (or explicit-pair concatenation) into sides and
+    # map side i → product i by order. A non-pair query (no separator / 3+
+    # segments) yields a single shared mention instead.
+    sides = split_pair_query(user_query)
+    if sides is not None:
+        m0 = user_value_for(sides[0], category)
+        m1 = user_value_for(sides[1], category)
+    else:
+        shared = user_value_for(user_query, category)
+        # Can't attribute a single shared mention to one product → treat as BOTH
+        # mentioning the same value only when there genuinely is one (so a bare
+        # "256GB" query targets 256 via Rule 2a below; honor_each needs two
+        # DISTINCT per-product mentions which a non-split query can't express).
+        m0 = m1 = None
+        if shared is not None:
+            # A shared single value behaves like "one stated basis" → target it.
+            return {"mode": "target", "target": shared,
+                    "per_product": {0: shared, 1: shared}}
 
+    if m0 is not None and m1 is not None:
+        # Rule 1 — both sides mentioned. Honor each (even when equal: reconcile
+        # then no-ops on an already-matching pair).
+        return {"mode": "honor_each", "target": None,
+                "per_product": {0: m0, 1: m1}}
+    if m0 is not None or m1 is not None:
+        # Rule 2a — exactly one side mentioned → target it.
+        target = m0 if m0 is not None else m1
+        return {"mode": "target", "target": target,
+                "per_product": {0: m0, 1: m1}}
+
+    # --- Rule 2b: fixed-size detection from retained candidate pools -----------
+    cbn = candidates_by_name or {}
+    n0 = (p0.get("full_name") or p0.get("name") or "") if isinstance(p0, dict) else ""
+    n1 = (p1.get("full_name") or p1.get("name") or "") if isinstance(p1, dict) else ""
+    cands0 = cbn.get(n0) or cbn.get(p0.get("name") or "")
+    cands1 = cbn.get(n1) or cbn.get(p1.get("name") or "")
+    vals0 = _candidate_value_set(cands0, category)
+    vals1 = _candidate_value_set(cands1, category)
+    fixed0 = next(iter(vals0)) if len(vals0) == 1 else None
+    fixed1 = next(iter(vals1)) if len(vals1) == 1 else None
+    if fixed0 is not None and fixed1 is not None and fixed0 != fixed1:
+        # Both genuinely single-size at different values → honor each.
+        return {"mode": "honor_each", "target": None,
+                "per_product": {0: fixed0, 1: fixed1}}
+    if fixed0 is not None and fixed1 is None:
+        return {"mode": "target", "target": float(fixed0),
+                "per_product": {0: fixed0, 1: None}}
+    if fixed1 is not None and fixed0 is None:
+        return {"mode": "target", "target": float(fixed1),
+                "per_product": {0: None, 1: fixed1}}
+
+    # --- Rule 4: already-fair within tolerance → honor each --------------------
     v0 = spec["extract"](p0)
     v1 = spec["extract"](p1)
-    if v0 is not None and v0 == v1:
-        return v0  # already fair at a shared basis
+    if values_within_tolerance(v0, v1, spec):
+        return {"mode": "honor_each", "target": None,
+                "per_product": {0: v0, 1: v1}}
 
-    return spec["default_basis"](p0, p1)
+    # --- Rule 3: common standard — largest value both candidate pools share ----
+    common = _largest_common_value(cands0, cands1, category)
+    if common is not None:
+        return {"mode": "target", "target": common,
+                "per_product": {0: v0, 1: v1}}
+
+    # Fall back to the category default_basis (resolved base / flagship 100ml).
+    default = spec["default_basis"](p0, p1)
+    if default is not None:
+        return {"mode": "target", "target": default,
+                "per_product": {0: v0, 1: v1}}
+    return {"mode": "none", "target": None, "per_product": {0: v0, 1: v1}}
 
 
 def _canonical_fairness_key(category: Optional[str]) -> str:
@@ -1585,16 +1788,23 @@ def reconcile_pair_fairness(
     candidates_by_name: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> bool:
     """CATEGORY-AWARE pair-level fairness reconciliation — the general form of
-    reconcile_pair_sizes. The pair must be compared at a COMMON comparable unit
-    (storage GB / ml / count / net weight), and each product is RE-SELECTED to
-    that target from the candidates already fetched this request (no new
-    network). Outcomes (mirroring the fragrance reconcile):
+    reconcile_pair_sizes. Drives off the `target_pair_value` PLAN (Ahmed's 4-rule
+    target selection):
 
-      1. BOTH reach the target → show BOTH.
-      2. Only ONE reaches the target → show that one, pend ONLY the other
-         (reason="unit_mismatch" for non-fragrance; "size_mismatch" preserved
-         for fragrances).
-      3. NEITHER reaches the target → BOTH pending.
+      • mode "honor_each" → the USER mentioned a value for BOTH products (Rule 1)
+        OR the pair already sits at similar/single-size values (Rule 4 tolerance
+        / Rule 2b both-fixed). Leave BOTH prices exactly as they are — NO
+        re-select, NO pend. The verdict's like-for-like rule flags any tier
+        difference (e.g. "iPhone 256GB vs Galaxy 128GB" → both shown).
+      • mode "target" → a single common value (Rule 2a one-mentioned / Rule 2b
+        one-fixed / Rule 3 common-standard). Each product is RE-SELECTED to that
+        value from candidates already fetched this request (no new network):
+          1. BOTH reach the target → show BOTH.
+          2. Only ONE reaches it → show that one, pend ONLY the other
+             (reason="unit_mismatch"). A side already WITHIN tolerance of the
+             target counts as at-target (no false pend).
+          3. NEITHER reaches it → BOTH pending.
+      • mode "none" → no comparable axis / incomparable base → pass through.
 
     FRAGRANCES delegate to reconcile_pair_sizes verbatim — the shipped fragrance
     behavior (flagship-100ml target, size_mismatch reason, all three outcomes)
@@ -1605,7 +1815,7 @@ def reconcile_pair_fairness(
     Pure + in-place (apart from candidate-driven price swaps). Returns True iff
     it changed any price (a swap OR a pend). No network, no latency. No-ops when
     either price is missing/non-positive (a pending side already kills any cross-
-    basis delta) or both sides already sit at the same value.
+    basis delta).
     """
     if not isinstance(product_data, list) or len(product_data) < 2:
         return False
@@ -1634,31 +1844,46 @@ def reconcile_pair_fairness(
         return False
 
     extract = spec["extract"]
-    v0 = extract(p0)
-    v1 = extract(p1)
+    candidates_by_name = candidates_by_name or {}
 
-    # Already fair — both resolve the SAME value (or both unknown) → pass through.
-    if v0 == v1:
+    plan = target_pair_value(
+        user_query, p0, p1, category, candidates_by_name=candidates_by_name
+    )
+    mode = plan.get("mode")
+
+    # Rule 1 / 4 / 2b-both-fixed — honor each: leave BOTH prices untouched.
+    if mode == "honor_each":
         return False
 
-    target = target_pair_value(user_query, p0, p1, category)
-    if target is None:
-        # No derivable common basis (e.g. a base mismatch ml-vs-g, or neither
-        # side resolves a value). When BOTH sides resolve DIFFERENT values and
-        # there is still no target, fall back to a both-pending divergence guard
-        # ONLY if both resolved (a genuine off-axis divergence); otherwise leave
-        # the pair alone (one/both unknown → no false mismatch).
-        if v0 is not None and v1 is not None and v0 != v1:
+    # mode "none" — no derivable common basis. Pend BOTH only on a genuine
+    # off-axis divergence (both resolve DIFFERENT, non-tolerant values); otherwise
+    # leave the pair alone (one/both unknown, or within tolerance → no false
+    # mismatch).
+    if mode != "target":
+        v0 = extract(p0)
+        v1 = extract(p1)
+        if (v0 is not None and v1 is not None
+                and not values_within_tolerance(v0, v1, spec)):
             _mark_unit_pending(p0, p1)
             return True
         return False
 
-    candidates_by_name = candidates_by_name or {}
+    target = plan.get("target")
+    if target is None:  # defensive — a "target" plan always carries a value
+        return False
+
     changed = False
 
     def _resolve_to_target(p: Dict[str, Any]) -> bool:
+        """True iff `p` ends up at (or within tolerance of) the target. Re-selects
+        from retained candidates when off-target; mutates p['price'] on a swap."""
         nonlocal changed
-        if extract(p) == target:
+        cur = extract(p)
+        # A value already within the per-category tolerance of the target is a
+        # fair basis — never re-select or pend it (Rule 4 applied to the target).
+        if cur is not None and values_within_tolerance(cur, target, spec):
+            return True
+        if cur == target:
             return True
         name = p.get("full_name") or p.get("name") or ""
         cands = candidates_by_name.get(name) or candidates_by_name.get(p.get("name") or "")

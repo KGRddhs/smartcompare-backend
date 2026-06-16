@@ -201,51 +201,70 @@ class TestFashionOtherExtractor:
 
 
 # ===========================================================================
-# Part 2a — target_pair_value: the fairness target per category
+# Part 2a — target_pair_value: the fairness PLAN per category
+#
+# REFACTORED (feature/fairness-target-rules): target_pair_value now returns the
+# rich plan {"mode", "target", "per_product"} driving Ahmed's 4-rule selection,
+# instead of a bare scalar target. These assertions read .mode/.target. The
+# semantic targets are PRESERVED except where the new rules intentionally differ
+# (a per-product-mentioned pair → honor_each instead of a forced common target).
 # ===========================================================================
 class TestTargetPairValue:
     def test_electronics_matched_pair_target(self):
-        # Both 256GB -> target 256 (resolved base; no force-bump).
+        # Both 256GB, no per-product MENTION in the query -> already fair within
+        # tolerance -> honor_each (both stay at 256; outcome identical to the old
+        # "target 256").
         p0 = _prod("iPhone 15 256GB", 400.0)
         p1 = _prod("Galaxy S24 256GB", 450.0)
-        assert target_pair_value("iPhone vs Galaxy", p0, p1, "electronics") == 256.0
+        plan = target_pair_value("iPhone vs Galaxy", p0, p1, "electronics")
+        assert plan["mode"] == "honor_each"
+        assert plan["per_product"][0] == 256.0
+        assert plan["per_product"][1] == 256.0
 
     def test_electronics_mismatch_target_no_force_bump(self):
-        # 128 vs 256 -> default_basis is the resolved base (smaller/common), NOT a
-        # forced bump to a flagship. We pick the common achievable basis: 128.
+        # 128 vs 256, neither mentioned, no candidates -> common-standard falls
+        # back to the resolved base (the larger present value, no invented flagship).
         p0 = _prod("iPhone 15 128GB", 400.0)
         p1 = _prod("Galaxy S24 256GB", 450.0)
-        t = target_pair_value("iPhone vs Galaxy", p0, p1, "electronics")
-        assert t in (128.0, 256.0)  # a resolved base, not None
+        plan = target_pair_value("iPhone vs Galaxy", p0, p1, "electronics")
+        assert plan["mode"] == "target"
+        assert plan["target"] in (128.0, 256.0)  # a resolved base, not None
 
     def test_electronics_user_query_size_honored(self):
-        # User typed "512GB" -> that is the target.
+        # User typed "512GB" on ONE side -> target 512 (Rule 2a, one mentioned).
         p0 = _prod("iPhone 15", 400.0)
         p1 = _prod("Galaxy S24", 450.0)
-        assert target_pair_value("iPhone vs Galaxy 512GB", p0, p1, "electronics") == 512.0
+        plan = target_pair_value("iPhone vs Galaxy 512GB", p0, p1, "electronics")
+        assert plan["mode"] == "target"
+        assert plan["target"] == 512.0
 
     def test_supplements_user_count(self):
+        # "60 capsules" on the FIRST side, nothing on "B" -> one mentioned -> 60.
         p0 = _prod("Vit D3", 5.0)
         p1 = _prod("Vit D3 B", 6.0)
-        assert target_pair_value("Vit D3 60 capsules vs B", p0, p1, "supplements") == 60.0
+        plan = target_pair_value("Vit D3 60 capsules vs B", p0, p1, "supplements")
+        assert plan["mode"] == "target"
+        assert plan["target"] == 60.0
 
     def test_fashion_target_always_none(self):
         p0 = _prod("Tote A", 200.0)
         p1 = _prod("Tote B", 250.0)
-        assert target_pair_value("Tote A vs Tote B", p0, p1, "fashion") is None
+        assert target_pair_value("Tote A vs Tote B", p0, p1, "fashion")["mode"] == "none"
 
     def test_other_target_always_none(self):
         p0 = _prod("Thing A", 20.0)
         p1 = _prod("Thing B", 25.0)
-        assert target_pair_value("Thing A vs Thing B", p0, p1, "other") is None
+        assert target_pair_value("Thing A vs Thing B", p0, p1, "other")["mode"] == "none"
 
     def test_fragrance_target_matches_legacy(self):
-        # The fragrance target MUST equal the existing target_pair_size_ml exactly.
+        # No user sizes -> the fragrance target MUST still equal the existing
+        # target_pair_size_ml (flagship 100ml). The plan's .target carries it.
         p0 = _prod("Tom Ford Ombré Leather", 80.0)
         p1 = _prod("Tom Ford Tobacco Vanille 30 ML", 28.2)
         q = "Tom Ford Ombré vs Tobacco Vanille"
-        assert target_pair_value(q, p0, p1, "fragrances") == target_pair_size_ml(q, p0, p1)
-        assert target_pair_value(q, p0, p1, "fragrances") == 100.0
+        plan = target_pair_value(q, p0, p1, "fragrances")
+        assert plan["target"] == target_pair_size_ml(q, p0, p1)
+        assert plan["target"] == 100.0
 
 
 # ===========================================================================
@@ -359,6 +378,10 @@ class TestReconcileElectronics:
 
 class TestReconcileSupplements:
     def test_60_vs_120_mismatch_reselects(self):
+        # NEITHER count is in the QUERY ("Vit D3 vs Vit D3 B") -> Rule 3 common
+        # standard. The product NAMES carry the differing counts (120 vs 60), no
+        # shared candidate value -> resolved-base default = 120. The 60-count side
+        # re-selects UP to its genuine 120 candidate; both priced.
         pd = [
             _prod("Vit D3 120 caps", 9.0, source_method="page_scrape_jsonld"),
             _prod("Vit D3 60 caps", 5.0, source_method="page_scrape_jsonld"),
@@ -370,13 +393,31 @@ class TestReconcileSupplements:
             ],
         }
         changed = reconcile_pair_fairness(
-            pd, "Vit D3 120 caps vs Vit D3 60 caps", "supplements",
+            pd, "Vit D3 vs Vit D3 B", "supplements",
             candidates_by_name=cands)
         assert changed is True
         assert pd[0]["price"]["amount"] == 9.0
         assert pd[1]["price"]["amount"] == 9.0  # re-selected to 120 count
 
     def test_60_vs_120_pends_off_basis_when_no_candidate(self):
+        # NEITHER count mentioned in the query -> Rule 3. No candidate to reach the
+        # 120 default for the 60-count side -> pend ONLY it.
+        pd = [
+            _prod("Vit D3 120 caps", 9.0, source_method="page_scrape_jsonld"),
+            _prod("Vit D3 60 caps", 5.0, source_method="page_scrape_jsonld"),
+        ]
+        changed = reconcile_pair_fairness(
+            pd, "Vit D3 vs Vit D3 B", "supplements",
+            candidates_by_name={})
+        assert changed is True
+        pended = [p for p in pd if p["price"].get("unavailable") is True]
+        assert len(pended) == 1
+        assert pended[0]["price"]["reason"] == "unit_mismatch"
+
+    def test_both_counts_mentioned_honor_each_no_pend(self):
+        # REFINED RULE 1: when the QUERY mentions BOTH counts ("120 caps vs 60
+        # caps") -> honor each. Both prices kept at their own count, NEITHER pended
+        # (the directive's net-effect change for an explicitly-stated pair).
         pd = [
             _prod("Vit D3 120 caps", 9.0, source_method="page_scrape_jsonld"),
             _prod("Vit D3 60 caps", 5.0, source_method="page_scrape_jsonld"),
@@ -384,10 +425,11 @@ class TestReconcileSupplements:
         changed = reconcile_pair_fairness(
             pd, "Vit D3 120 caps vs Vit D3 60 caps", "supplements",
             candidates_by_name={})
-        assert changed is True
-        pended = [p for p in pd if p["price"].get("unavailable") is True]
-        assert len(pended) == 1
-        assert pended[0]["price"]["reason"] == "unit_mismatch"
+        assert changed is False
+        assert pd[0]["price"]["amount"] == 9.0
+        assert pd[1]["price"]["amount"] == 5.0
+        assert pd[0]["price"].get("unavailable") is not True
+        assert pd[1]["price"].get("unavailable") is not True
 
     def test_matched_count_passes_through(self):
         pd = [
