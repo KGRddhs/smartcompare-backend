@@ -196,45 +196,37 @@ const advProducts: any = [
   },
 ];
 
-describe('ResultsAccordion — Highlights mini-section (spec_advantages)', () => {
-  it('renders the Highlights block when spec_advantages are present', () => {
-    const { getByTestId } = render(
+// Design-structure pass (2026-06-16): the spec_advantages "Highlights"
+// mini-section was REMOVED from the Specs body to match the design-system
+// reference (SpecRow, ResultsScreen.jsx 265-284 — value · CENTERED-label ·
+// value, no highlights block, no toggle). The spec TABLE itself stays.
+describe('ResultsAccordion — Specs body no longer renders the Highlights block', () => {
+  it('does NOT render the spec_advantages Highlights block even when present', () => {
+    const { getByTestId, queryByTestId } = render(
       <ResultsAccordion
         products={minimalProducts}
         specsProducts={advProducts}
       />
     );
     fireEvent.press(getByTestId('results-specs-toggle'));
-    expect(getByTestId('results-spec-advantages')).toBeTruthy();
+    expect(queryByTestId('results-spec-advantages')).toBeNull();
+    expect(queryByTestId('results-spec-advantages-product-0')).toBeNull();
+    expect(queryByTestId('results-spec-advantages-product-1')).toBeNull();
   });
 
-  it('renders each product spec_advantages line', () => {
-    const { getByTestId, getByText } = render(
+  it('does NOT render the spec_advantages sentences as text', () => {
+    const { getByTestId, queryByText } = render(
       <ResultsAccordion
         products={minimalProducts}
         specsProducts={advProducts}
       />
     );
     fireEvent.press(getByTestId('results-specs-toggle'));
-    expect(getByText('A16 Bionic chipset for enhanced performance.')).toBeTruthy();
-    expect(getByText('Lighter weight at 171g.')).toBeTruthy();
-    expect(getByText('Display brightness of 2,600 nits.')).toBeTruthy();
-    expect(getByText('50MP main camera sensor.')).toBeTruthy();
+    expect(queryByText('A16 Bionic chipset for enhanced performance.')).toBeNull();
+    expect(queryByText('Display brightness of 2,600 nits.')).toBeNull();
   });
 
-  it('groups advantages under each product (per-product testIDs)', () => {
-    const { getByTestId } = render(
-      <ResultsAccordion
-        products={minimalProducts}
-        specsProducts={advProducts}
-      />
-    );
-    fireEvent.press(getByTestId('results-specs-toggle'));
-    expect(getByTestId('results-spec-advantages-product-0')).toBeTruthy();
-    expect(getByTestId('results-spec-advantages-product-1')).toBeTruthy();
-  });
-
-  it('renders spec rows alongside Highlights (em-dash when all N/A)', () => {
+  it('still renders the spec table rows (em-dash when all N/A)', () => {
     const { getByTestId, getAllByText } = render(
       <ResultsAccordion
         products={minimalProducts}
@@ -242,32 +234,9 @@ describe('ResultsAccordion — Highlights mini-section (spec_advantages)', () =>
       />
     );
     fireEvent.press(getByTestId('results-specs-toggle'));
-    expect(getByTestId('results-spec-advantages')).toBeTruthy();
+    expect(getByTestId('results-accordion-body-specs')).toBeTruthy();
     // Spec rows still rendered — values em-dash since all N/A
     // (3 keys × 2 products = 6 em-dashes minimum)
     expect(getAllByText('—').length).toBeGreaterThanOrEqual(6);
-  });
-
-  it('does NOT render the Highlights block when no product has spec_advantages', () => {
-    const noAdv = advProducts.map((p: any) => ({ ...p, spec_advantages: [] }));
-    const { getByTestId, queryByTestId } = render(
-      <ResultsAccordion products={minimalProducts} specsProducts={noAdv} />
-    );
-    fireEvent.press(getByTestId('results-specs-toggle'));
-    expect(queryByTestId('results-spec-advantages')).toBeNull();
-  });
-
-  it('handles single-product spec_advantages (only one product has any)', () => {
-    const oneSided = [
-      { ...advProducts[0] },
-      { ...advProducts[1], spec_advantages: [] },
-    ];
-    const { getByTestId, queryByTestId } = render(
-      <ResultsAccordion products={minimalProducts} specsProducts={oneSided} />
-    );
-    fireEvent.press(getByTestId('results-specs-toggle'));
-    expect(getByTestId('results-spec-advantages')).toBeTruthy();
-    expect(getByTestId('results-spec-advantages-product-0')).toBeTruthy();
-    expect(queryByTestId('results-spec-advantages-product-1')).toBeNull();
   });
 });

@@ -647,6 +647,7 @@
   "results.accordion.reviewsEmpty": "Reviews are still coming in.",
   "results.accordion.prosConsSub": "Each product, both sides",
   "results.accordion.specsSub": "Side-by-side comparison",
+  "results.accordion.specsDimensions": "dimensions",
   "results.accordion.prosConsLabel": "Pros & Cons",
   "results.bestForYou": "Ideal for you",
   "results.emptyState.title": "No comparison loaded",

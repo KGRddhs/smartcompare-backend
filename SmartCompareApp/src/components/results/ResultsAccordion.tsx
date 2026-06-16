@@ -10,10 +10,10 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronDown, Star, ListChecks, BarChart3 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
-import { colors, spacing, radii, typography } from '../../theme';
+import { colors, spacing, radii } from '../../theme';
 import type { Product, ReviewSummary, ReviewHighlight } from '../../types';
 
 type AccordionKey = 'reviews' | 'proscons' | 'specs';
@@ -95,7 +95,6 @@ export function ResultsAccordion({
 }: ResultsAccordionProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState<AccordionKey | null>(null);
-  const [showDiffsOnly, setShowDiffsOnly] = useState(false);
 
   const toggle = (k: AccordionKey) => {
     setOpen((curr) => (curr === k ? null : k));
@@ -156,12 +155,6 @@ export function ResultsAccordion({
     });
     return rich.size > 0 ? Array.from(rich) : Array.from(structural);
   })();
-  const isSpecDifferent = (key: string): boolean => {
-    if (specsSrc.length < 2) return true;
-    const v0 = (specsSrc[0] as any)?.specs?.[key];
-    const v1 = (specsSrc[1] as any)?.specs?.[key];
-    return String(v0) !== String(v1);
-  };
 
   // Lane A-L3 Task L3.2 — fast O(1) lookup of per-row winner index from
   // the backend's specs_comparison array. Null/missing → no emerald
@@ -213,10 +206,11 @@ export function ResultsAccordion({
       key: 'specs',
       icon: <BarChart3 size={18} color={colors.text.secondary} />,
       label: t('results.specs'),
+      // Reference sub: "8 dimensions" — the count of rendered spec rows.
       sub:
         allSpecKeys.length > 0
-          ? `${allSpecKeys.length} ${t('results.accordion.specsSub')}`
-          : t('results.accordion.specsSub'),
+          ? `${allSpecKeys.length} ${t('results.accordion.specsDimensions')}`
+          : t('results.accordion.specsDimensions'),
     },
   ];
 
@@ -430,79 +424,6 @@ export function ResultsAccordion({
                   testID="results-accordion-body-specs"
                   style={styles.body}
                 >
-                  {/*
-                   * Highlights mini-section — Bundle E S3 hotfix.
-                   * When `specs.products[i].spec_advantages` carries
-                   * pre-summarized sentences from the backend, render
-                   * them above the spec table. For low-confidence
-                   * categories the spec rows themselves are all "N/A"
-                   * (em-dash), so this block is the only spec-signal
-                   * the user sees. Hidden when no product has any
-                   * advantages — keeps the section calm in the common
-                   * case where the spec table itself is populated.
-                   */}
-                  {(() => {
-                    const hasAdvantages = specsSrc.some(
-                      (p: any) =>
-                        Array.isArray(p.spec_advantages) &&
-                        p.spec_advantages.length > 0
-                    );
-                    if (!hasAdvantages) return null;
-                    return (
-                      <View
-                        testID="results-spec-advantages"
-                        style={styles.specAdvantagesBlock}
-                      >
-                        <Text style={styles.specAdvantagesEyebrow}>
-                          {t('results.specsHighlights')}
-                        </Text>
-                        {specsSrc.map((p: any, pi: number) => {
-                          const adv: string[] = Array.isArray(p.spec_advantages)
-                            ? p.spec_advantages
-                            : [];
-                          if (adv.length === 0) return null;
-                          return (
-                            <View
-                              key={pi}
-                              testID={`results-spec-advantages-product-${pi}`}
-                              style={styles.specAdvantagesCol}
-                            >
-                              <Text
-                                style={styles.specAdvantagesName}
-                                numberOfLines={1}
-                              >
-                                {p.name}
-                              </Text>
-                              {adv.map((line: string, li: number) => (
-                                <Text
-                                  key={li}
-                                  style={styles.specAdvantagesLine}
-                                >
-                                  {line}
-                                </Text>
-                              ))}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    );
-                  })()}
-                  <View style={styles.specsToggleRow}>
-                    <Text style={styles.specsToggleLabel}>
-                      {t('results.specsShowDiff')}
-                    </Text>
-                    <Switch
-                      value={showDiffsOnly}
-                      onValueChange={setShowDiffsOnly}
-                      trackColor={{
-                        false: colors.border.medium,
-                        true: colors.accentLight,
-                      }}
-                      thumbColor={
-                        showDiffsOnly ? colors.accent : '#f4f3f4'
-                      }
-                    />
-                  </View>
                   {/* Phase 4.4 — comparison table per the "UI Kit — Mobile
                       Results" mockup (SpecRow, JSX 265-284): each row is
                       value · CENTERED-label · value (1fr / center / 1fr).
@@ -525,9 +446,7 @@ export function ResultsAccordion({
                         {(specsSrc[1] as any)?.name ?? ''}
                       </Text>
                     </View>
-                    {allSpecKeys
-                      .filter((k) => !showDiffsOnly || isSpecDifferent(k))
-                      .map((key) => {
+                    {allSpecKeys.map((key) => {
                         const values = specsSrc.map((p: any) => {
                           const raw = p.specs?.[key];
                           if (raw == null || typeof raw === 'object')
@@ -790,45 +709,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.text.secondary,
     marginBottom: 3,
-  },
-  specAdvantagesBlock: {
-    marginBottom: 14,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
-  },
-  specAdvantagesEyebrow: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.text.secondary,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  specAdvantagesCol: {
-    marginBottom: 8,
-  },
-  specAdvantagesName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text.primary,
-    marginBottom: 4,
-  },
-  specAdvantagesLine: {
-    fontSize: 12,
-    color: colors.text.primary,
-    lineHeight: 12 * 1.5,
-    marginBottom: 2,
-  },
-  specsToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  specsToggleLabel: {
-    ...typography.small,
-    color: colors.text.secondary,
   },
   specsTable: {},
   specsHeader: {

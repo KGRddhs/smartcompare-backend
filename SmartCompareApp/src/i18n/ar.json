@@ -644,6 +644,7 @@
   "results.accordion.reviewsEmpty": "الآراء قيد الوصول.",
   "results.accordion.prosConsSub": "كل منتج، الجانبان",
   "results.accordion.specsSub": "مقارنة جنباً إلى جنب",
+  "results.accordion.specsDimensions": "مواصفات",
   "results.accordion.prosConsLabel": "الإيجابيات والسلبيات",
   "results.bestForYou": "الأفضل لك",
   "results.emptyState.title": "لا توجد مقارنة محملة",

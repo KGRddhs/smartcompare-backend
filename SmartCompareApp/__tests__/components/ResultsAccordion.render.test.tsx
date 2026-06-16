@@ -188,15 +188,15 @@ describe('ResultsAccordion — render coverage', () => {
     expect(queryByText('na')).toBeNull();
   });
 
-  it('toggles Show-differences-only switch', () => {
+  it('always shows same-on-both spec rows (no Show-differences-only toggle)', () => {
+    // Design-structure pass (2026-06-16): the "Show differences only"
+    // Switch was removed to match the reference. Same-on-both rows like
+    // 'storage' (128 GB on both) now always render.
     const { getByTestId, queryByText } = render(
       <ResultsAccordion products={mockProducts} />
     );
     fireEvent.press(getByTestId('results-specs-toggle'));
-    // 'storage' is the same on both — filtered when diff-only is on.
     expect(queryByText('storage')).toBeTruthy();
-    // Switch is rendered; on-press toggles. The Switch mock may not be
-    // tappable but we can at least assert it's there in the DOM.
   });
 
   it('renders specs eyebrow with key count fallback when no specs', () => {
@@ -264,10 +264,8 @@ describe('ResultsAccordion — render coverage', () => {
     expect(reFetched.props.accessibilityState).toMatchObject({ expanded: true });
   });
 
-  it('isSpecDifferent returns true for single-product degenerate case', () => {
-    // When specsSrc.length < 2, isSpecDifferent (lines 86-89 of
-    // ResultsAccordion.tsx) returns true so the row stays visible
-    // under showDiffsOnly.
+  it('renders spec rows for the single-product degenerate case', () => {
+    // With one product the table still surfaces its spec rows.
     const oneProduct = [mockProducts[0]];
     const { getByTestId, getByText } = render(
       <ResultsAccordion products={oneProduct as any} />
