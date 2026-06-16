@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 load_dotenv(override=True)  # Load .env FIRST before anything else
 
 import os
+import re
 import json
 import hashlib
 import logging
@@ -649,6 +650,110 @@ COMPARISON_PROMPT = COMPARISON_SYSTEM
 
 
 # ============================================
+# CATEGORY CANONICALIZATION (keystone fix)
+# ============================================
+#
+# The product `category` string from the LLM parser/extractor is free-form
+# ("Fragrances", "Perfume", "ELECTRONICS", "Make Up", ...) but every downstream
+# lookup keys on the lowercase canonical strings that index CATEGORY_SPEC_SCHEMAS
+# (specs), CATEGORY_DIMENSIONS (scoring), and CATEGORY_PRIORITY_ADJUSTMENTS
+# (personalization). Without normalization, "Fragrances" fails the exact-match
+# `in` checks and silently falls back to "other" — whose dimensions include
+# build_score (a nonsensical "Build" dim on a perfume), whose spec schema is the
+# generic one (blank fragrance specs), and whose priority map reweights generic
+# dims (broken personalization). Canonicalizing the category ONCE fixes all three.
+#
+# The canonical set is derived directly from CATEGORY_SPEC_SCHEMAS so it can
+# never drift from the source of truth (the same 9 keys index CATEGORY_DIMENSIONS).
+_CANONICAL_CATEGORIES = frozenset(CATEGORY_SPEC_SCHEMAS.keys())
+
+# Synonym map: free-form input (case-folded, whitespace/punctuation-normalized)
+# -> canonical key. Anything not here AND not already canonical -> "other".
+_CATEGORY_SYNONYMS = {
+    # fragrances
+    "fragrance": "fragrances",
+    "perfume": "fragrances",
+    "perfumes": "fragrances",
+    "cologne": "fragrances",
+    "colognes": "fragrances",
+    "scent": "fragrances",
+    "scents": "fragrances",
+    "edp": "fragrances",
+    "edt": "fragrances",
+    "eaudeparfum": "fragrances",
+    "eaudetoilette": "fragrances",
+    "parfum": "fragrances",
+    # electronics
+    "electronic": "electronics",
+    "phone": "electronics",
+    "phones": "electronics",
+    "smartphone": "electronics",
+    "smartphones": "electronics",
+    "mobile": "electronics",
+    "mobiles": "electronics",
+    "laptop": "electronics",
+    "laptops": "electronics",
+    "tablet": "electronics",
+    "tablets": "electronics",
+    "gadget": "electronics",
+    "gadgets": "electronics",
+    # makeup
+    "makeup": "makeup",
+    "cosmetic": "makeup",
+    "cosmetics": "makeup",
+    # haircare
+    "haircare": "haircare",
+    "hair": "haircare",
+    # skincare
+    "skincare": "skincare",
+    "skin": "skincare",
+    # supplements
+    "supplement": "supplements",
+    "vitamin": "supplements",
+    "vitamins": "supplements",
+    # grocery
+    "grocery": "grocery",
+    "groceries": "grocery",
+    "food": "grocery",
+    # fashion
+    "fashion": "fashion",
+    "clothing": "fashion",
+    "apparel": "fashion",
+}
+
+
+def canonicalize_category(raw: Any) -> str:
+    """Normalize a free-form category string to one of the 9 canonical keys.
+
+    Case-folds, strips, removes internal whitespace/hyphens/underscores
+    ("Make Up" / "make-up" / "make_up" -> "makeup"; "hair care" -> "haircare"),
+    then maps via synonym table with singular/plural tolerance. Returns "other"
+    for None, non-string, empty, or unrecognized input.
+
+    Pure + deterministic — same input always yields same output.
+    """
+    if not isinstance(raw, str):
+        return "other"
+    # Normalize: lowercase, strip, collapse internal separators so multi-word /
+    # hyphenated / underscored variants reduce to a single token.
+    normalized = re.sub(r"[\s\-_]+", "", raw.strip().lower())
+    if not normalized:
+        return "other"
+    # Already canonical (after normalization)?
+    if normalized in _CANONICAL_CATEGORIES:
+        return normalized
+    # Synonym / singular-plural map.
+    if normalized in _CATEGORY_SYNONYMS:
+        return _CATEGORY_SYNONYMS[normalized]
+    # Trailing-'s' plural tolerance against the canonical set
+    # (e.g. an unexpected "fashions" -> "fashion" is NOT canonical so this also
+    # catches plural forms of canonical singulars).
+    if normalized.endswith("s") and normalized[:-1] in _CANONICAL_CATEGORIES:
+        return normalized[:-1]
+    return "other"
+
+
+# ============================================
 # EXTRACTION FUNCTIONS
 # ============================================
 
@@ -731,8 +836,13 @@ async def extract_specs(
 
         raw = json.loads(result)
 
-        # Enforce schema: only keep fields in the category schema + meta keys + _source citations
-        schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
+        # Enforce schema: only keep fields in the category schema + meta keys + _source citations.
+        # KEYSTONE FIX: canonicalize so "Fragrances" picks the fragrance schema
+        # (scent_family/notes/longevity/...) instead of falling to the generic
+        # "other" schema, which left fragrance specs blank.
+        schema_key = canonicalize_category(category)
+        if schema_key not in CATEGORY_SPEC_SCHEMAS:
+            schema_key = "other"
         allowed_fields = set(CATEGORY_SPEC_SCHEMAS[schema_key])
         meta_keys = {"brand", "model", "variant", "category"}
 

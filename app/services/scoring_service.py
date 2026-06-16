@@ -8,7 +8,7 @@ import logging
 import re
 from typing import Dict, Any, List, Optional
 
-from app.services.extraction_service import CATEGORY_SPEC_SCHEMAS
+from app.services.extraction_service import CATEGORY_SPEC_SCHEMAS, canonicalize_category
 
 logger = logging.getLogger(__name__)
 
@@ -1059,7 +1059,12 @@ class ScoringService:
         if not products_data or len(products_data) < 2:
             return self._empty_result(len(products_data))
 
-        category = products_data[0].get("category", "other")
+        # KEYSTONE FIX: canonicalize the product category ("Fragrances" ->
+        # "fragrances") so it keys CATEGORY_DIMENSIONS / CATEGORY_PRIORITY_
+        # ADJUSTMENTS correctly. Without this a capital-cased category fell to
+        # "other", surfacing build_score ("Build" dim) on a perfume and
+        # reweighting generic dims under priority personalization.
+        category = canonicalize_category(products_data[0].get("category"))
         if category not in CATEGORY_DIMENSIONS:
             category = "other"
         weights = self._compute_weights(preferences, category)
@@ -2903,9 +2908,15 @@ def build_dimensions_v2(
         _dim_reviews(products_data),
         _dim_value(products_data, is_cross_tier=is_cross_tier),
     ]
-    cat_a = products_data[0].get("category")
-    cat_b = products_data[1].get("category")
-    same_category = cat_a == cat_b and cat_a is not None
+    # KEYSTONE FIX: canonicalize both product categories AND the passed-in
+    # `category` so a capital-cased / synonym category ("Fragrances") routes to
+    # its own per-dim breakdown instead of the generic price/reviews/value-only
+    # set. same_category compares the canonical forms so "Fragrances" vs
+    # "fragrances" still counts as same-category.
+    cat_a = canonicalize_category(products_data[0].get("category"))
+    cat_b = canonicalize_category(products_data[1].get("category"))
+    category = canonicalize_category(category)
+    same_category = cat_a == cat_b
     if same_category and category in CATEGORY_DIMENSIONS:
         # CATEGORY_DIMENSIONS[category] is exactly 6 keys; pick the first
         # 5 that aren't already covered by the core price/reviews/value
