@@ -2366,6 +2366,17 @@ def _dim_reviews(products: list[dict]) -> dict:
     # Non-numeric rating shapes (e.g. {} from upstream extraction) are missing data
     ra = ra if isinstance(ra, (int, float)) else None
     rb = rb if isinstance(rb, (int, float)) else None
+    # Task C6: a synthetic rating injected by derive_rating_from_scores
+    # (response_builder mutates pd_item["rating"] + flags rating_derived=True
+    # BEFORE dimensions are built) is NOT a real review score — the frontend
+    # renders N/A for it. Treat a derived rating as MISSING so this dim takes
+    # the "Limited review data" path instead of asserting "x stars higher"
+    # against a displayed N/A. The flag rides on the same product dict passed
+    # here, so no threading is needed. `is True` keeps an explicit False real.
+    if a.get("rating_derived") is True:
+        ra = None
+    if b.get("rating_derived") is True:
+        rb = None
     caption_key = None  # Bundle C § 2b A.4.4
     if ra is None or rb is None:
         score_a = score_b = _NEUTRAL_DISPLAY_SCORE
