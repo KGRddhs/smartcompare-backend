@@ -1092,6 +1092,35 @@ def build_comparison_response(
             if "note" in _price:
                 _price["note"] = None
 
+    # Task C1 — price-pending presentation. A resolved price that is NOT
+    # genuine/showable (estimated, fails an accuracy guard, or a
+    # sample/decant listing) must NOT surface a misleading amount. Normalize
+    # it to the price-pending shape so the FE (Phase 4) renders a "pricing in
+    # a future update" line. This is the SINGLE chokepoint shared by both the
+    # sync and streaming paths (build_comparison_response), so the rule is
+    # applied consistently. Showable prices (genuine BHD + a real converted_usd)
+    # pass through unchanged. Nulling the amount also makes _dim_price /
+    # _dim_value (built below via _build_scoring_v2) take their honest
+    # missing-data path, so no cross-price delta is asserted on a pending price.
+    try:
+        from app.services.price_service import is_price_showable, make_pending_price
+        for pd_item in product_data:
+            _name = pd_item.get("full_name") or pd_item.get("name") or ""
+            _price = pd_item.get("price")
+            if isinstance(_price, dict) and not is_price_showable(_name, _price):
+                _size = _price.get("size")
+                pd_item["price"] = make_pending_price(
+                    currency=_price.get("currency") or "BHD",
+                    reason="pending_genuine",
+                    size=_size,
+                )
+                # Keep best_price/currency/retailer mirrors honest.
+                pd_item["best_price"] = None
+                if "retailer" in pd_item:
+                    pd_item["retailer"] = None
+    except Exception:  # noqa: BLE001 — price-pending must never crash the response
+        logger.warning("price-pending normalization skipped", exc_info=True)
+
     # Detect price method mismatch
     price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
     unique_methods = set(m for m in price_methods if m)

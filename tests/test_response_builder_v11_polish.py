@@ -42,7 +42,12 @@ class TestA72StripPriceNote:
             },
         ]
 
-    def test_estimated_price_note_stripped_to_none(self):
+    def test_estimated_price_becomes_pending(self):
+        """SUPERSEDED by Task C1 (price-pending presentation): an `estimated`
+        price is NOT showable, so the chokepoint now replaces the whole price
+        object with the price-pending shape — NO misleading amount AND no note
+        leak. (Was: A.7.2 kept source_method=estimated and only nulled note;
+        C1's null-the-amount supersedes that for the estimated case.)"""
         from app.services.response_builder import build_comparison_response
 
         products = self._minimal_products(
@@ -53,14 +58,12 @@ class TestA72StripPriceNote:
             products=products,
             comparison={"winner_index": 0},
         )
-        # Product 0 was source_method=estimated → note must be None
+        # Product 0 was source_method=estimated → price-pending, no amount, no note.
         p0_price = response["overview"]["products"][0]["price"]
-        assert p0_price["source_method"] == "estimated", (
-            "source_method enum value must be preserved (analytics/dashboards consume it)"
-        )
-        assert p0_price.get("note") is None, (
-            f"price.note must be None when source_method=estimated, got: {p0_price.get('note')!r}"
-        )
+        assert p0_price["amount"] is None
+        assert p0_price["unavailable"] is True
+        assert p0_price["reason"] == "pending_genuine"
+        assert p0_price.get("note") is None
 
     def test_non_estimated_price_note_preserved(self):
         """source_method=local_bhd / converted_usd / page_scrape / etc.
@@ -109,11 +112,11 @@ class TestA72StripPriceNote:
             products=products,
             comparison={"winner_index": 0},
         )
+        # SUPERSEDED by Task C1: estimated price (no note) → price-pending shape.
         p0_price = response["overview"]["products"][0]["price"]
-        assert p0_price["source_method"] == "estimated"
-        # Should remain absent — not auto-injected to None on a field that
-        # was never there. (Either absent OR explicitly None is acceptable;
-        # absent is the cleaner outcome.)
+        assert p0_price["amount"] is None
+        assert p0_price["unavailable"] is True
+        # No spurious note key on the pending shape.
         if "note" in p0_price:
             assert p0_price["note"] is None
 
@@ -132,11 +135,15 @@ class TestA72StripPriceNote:
             },
             {"name": "B", "specs": {}, "price": None},  # degraded
         ]
-        # Should not raise — A.7.2 isinstance(dict) guard skips None
+        # Should not raise — A.7.2 + C1 isinstance(dict) guards skip None
         response = build_comparison_response(
             products=products,
             comparison={"winner_index": 0},
         )
         assert response["success"] is True
-        # Product A's note still scrubbed
-        assert response["overview"]["products"][0]["price"]["note"] is None
+        # SUPERSEDED by Task C1: Product A's estimated price → price-pending
+        # (no amount, no note leak). Product B's None price stays None.
+        p0_price = response["overview"]["products"][0]["price"]
+        assert p0_price["amount"] is None
+        assert p0_price["unavailable"] is True
+        assert p0_price.get("note") is None
