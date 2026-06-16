@@ -1320,6 +1320,13 @@ class StructuredComparisonService:
         # frame — but this survives on self, so the Phase-1 timeout handler returns
         # it instead of None. Never regress price->no-price.
         self._parked_price: Dict[str, Dict[str, Any]] = {}
+        # Fragrance same-size re-selection — per-request retained price
+        # candidates, keyed by full_name. _get_price's Tier-1.5 fan_out stashes
+        # the completed candidates here (best + alternates) so reconcile_pair_sizes
+        # can re-rank them to the pair's COMMON target size WITHOUT a new fetch
+        # (the WS5-deferred candidate-retention work). Reset per request alongside
+        # _parked_price.
+        self._price_candidates: Dict[str, List[Dict[str, Any]]] = {}
         # WS1 (genuine-bh-latency bundle, D1) — per-request best-available
         # partial stash. `_compare_from_text_impl` writes each stage onto these
         # as it lands (product_data after Phase-1 gather, scoring_result/names/
@@ -1756,6 +1763,7 @@ class StructuredComparisonService:
         self._source_trace: Dict[str, Any] = {}
         self._tier15_routes = {}
         self._parked_price = {}  # Fix A — per-request parked-price stash reset
+        self._price_candidates = {}  # per-request retained price candidates (re-selection)
 
         # WS1 (D1) — reset the best-available partial stash for this run. The
         # build context carries everything _build_partial_response needs that is
@@ -1912,13 +1920,19 @@ class StructuredComparisonService:
                     "api_calls": self.api_calls,
                 }
 
-            # Task C2 — pair-level size-basis reconciliation (post-selection,
-            # pre-scoring). When both products carry a showable price but with
-            # mismatched bottle sizes, mark both price-pending (size_mismatch)
-            # so neither scoring nor the verdict asserts an apples-to-oranges
-            # delta. Conservative-only (no candidate re-selection / no network).
+            # Task C2 + same-size GENUINE re-selection — pair-level size-basis
+            # reconciliation (post-selection, pre-scoring). The pair targets a
+            # COMMON size (the user QUERY's explicit size, else designer-fragrance
+            # flagship 100ml) and RE-SELECTS each product to it from the candidates
+            # already fetched this request (self._price_candidates — no new
+            # network). Both reach it → show both; only one → pend only the other;
+            # neither → both pending. So neither scoring nor the verdict asserts an
+            # apples-to-oranges delta.
             try:
-                reconcile_pair_sizes(product_data)
+                reconcile_pair_sizes(
+                    product_data, user_query=query,
+                    candidates_by_name=self._price_candidates,
+                )
             except Exception as _e:  # noqa: BLE001 — never block the response
                 logger.warning("size reconciliation skipped (sync): %s", _e)
 
@@ -2211,6 +2225,7 @@ class StructuredComparisonService:
         self._source_trace: Dict[str, Any] = {}
         self._tier15_routes = {}
         self._parked_price = {}  # Fix A — per-request parked-price stash reset
+        self._price_candidates = {}  # per-request retained price candidates (re-selection)
 
         # L1 content safety pre-filter (spec sec 5.2). Same gate as sync path —
         # blocked queries terminate the stream with an error event before any
@@ -2368,14 +2383,19 @@ class StructuredComparisonService:
                 yield ("complete", insufficient_response)
                 return
 
-            # Task C2 — pair-level size-basis reconciliation (post-selection,
-            # pre-scoring). Run BEFORE the `prices` SSE event so the streamed
-            # price and the final `complete` response agree: a mismatched-size
-            # pair is marked price-pending (size_mismatch) on BOTH the streamed
-            # and the assembled paths. Conservative-only (no candidate
-            # re-selection / no network — zero added latency).
+            # Task C2 + same-size GENUINE re-selection — pair-level size-basis
+            # reconciliation (post-selection, pre-scoring). Run BEFORE the
+            # `prices` SSE event so the streamed price and the final `complete`
+            # response agree. The pair targets a COMMON size (user QUERY's
+            # explicit size, else designer-fragrance flagship 100ml) and
+            # RE-SELECTS each product to it from candidates already fetched this
+            # request (self._price_candidates — no new network): both reach it →
+            # show both; only one → pend only the other; neither → both pending.
             try:
-                reconcile_pair_sizes(product_data)
+                reconcile_pair_sizes(
+                    product_data, user_query=query,
+                    candidates_by_name=self._price_candidates,
+                )
             except Exception as _e:  # noqa: BLE001 — never block the stream
                 logger.warning("size reconciliation skipped (stream): %s", _e)
 
@@ -4121,6 +4141,21 @@ class StructuredComparisonService:
                         logger.warning(f"[PRICE] Tier 1.5 {_wave}-wave failed: {e}")
                         continue
                     _ps_mark(f"fan_out_{_wave}")  # WS2 — per-wave scrape wall
+                    # Fragrance same-size re-selection — RETAIN this wave's
+                    # completed candidates (best + alternates) so a later
+                    # pair-level reconcile can re-rank them to the COMMON target
+                    # size without a new fetch. Accumulates across the curl +
+                    # render waves; pure stash, no behaviour change to selection.
+                    try:
+                        _retained = []
+                        _fan_best = _fan.get("best")
+                        if _fan_best:
+                            _retained.append(_fan_best)
+                        _retained.extend(_fan.get("alternates") or [])
+                        if _retained:
+                            self._price_candidates.setdefault(full_name, []).extend(_retained)
+                    except Exception:  # noqa: BLE001 — retention must never block a price
+                        pass
                     _winner = _finalize_fan_winner(_fan)
                     if _winner is not None:
                         # Curl-wave win → genuine BH price, no render credits burned.
