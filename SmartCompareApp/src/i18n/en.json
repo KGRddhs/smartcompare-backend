@@ -630,7 +630,7 @@
   "results.tips.cohort_match": "47 cohort peers in {{governorate}} helped train this match.",
   "results.tips.save_offline": "Save any comparison to revisit later — even offline.",
 
-  "results.cohort_badge": "Like {{count}} shoppers in {{governorate}}",
+  "results.cohort_badge": "{{count}}+ shoppers in {{governorate}} leaned the same way.",
 
   "results.stage.init": "Understanding your query",
   "results.stage.specs": "Reading specs",

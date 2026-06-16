@@ -627,7 +627,7 @@
   "results.tips.cohort_match": "ساعد ٤٧ شخصاً مثلك في {{governorate}} على تدريب هذه المقارنة.",
   "results.tips.save_offline": "احفظ أي مقارنة لمراجعتها لاحقاً — حتى دون إنترنت.",
 
-  "results.cohort_badge": "مثل {{count}} متسوقين في {{governorate}}",
+  "results.cohort_badge": "{{count}}+ متسوقين في {{governorate}} مالوا إلى الخيار نفسه.",
 
   "results.stage.init": "نفهم طلبك",
   "results.stage.specs": "نقرأ المواصفات",

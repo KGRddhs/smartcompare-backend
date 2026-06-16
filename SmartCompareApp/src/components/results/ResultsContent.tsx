@@ -314,6 +314,16 @@ export function ResultsContent({
               ) : null}
             </>
           )}
+          {/* Phase 4.4 — PersonalizationChip relocated here, directly under
+              the "Why this fits you" headline (mockup subline "Weighted ↑
+              Camera ↑ Battery — based on your priorities", JSX 343-345). It
+              previously lived inside the scoring_v2 hero card. */}
+          {scoring_v2 ? (
+            <PersonalizationChip
+              appliedShifts={scoring_v2.personalization?.applied_shifts}
+              testID="results-v2-personalization-chip"
+            />
+          ) : null}
         </Animated.View>
 
         {/* ─── # 4 scoring_v2 hero card (JSX 349-353 — DimensionBars stack) ───
@@ -374,11 +384,6 @@ export function ResultsContent({
                       testID="results-v2-hero-rings"
                     />
                   )}
-
-                  <PersonalizationChip
-                    appliedShifts={scoring_v2.personalization?.applied_shifts}
-                    testID="results-v2-personalization-chip"
-                  />
 
                   <DimensionBars
                     dimensions={
