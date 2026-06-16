@@ -141,14 +141,27 @@ def clean_review_citations(reviews: dict, search_results: list) -> dict:
         if link:
             snippet_source_map[str(i + 1)] = _extract_domain(link)
 
+    def _attribute(num: str) -> str:
+        domain = snippet_source_map.get(num, "")
+        return f"Per {domain}: " if domain else ""
+
     def replace_citation(text: str) -> str:
-        def replacer(match):
-            snippet_num = match.group(1)
-            domain = snippet_source_map.get(snippet_num, "")
-            if domain:
-                return f"Per {domain}: "
-            return ""
-        return re.sub(r'\[snippet_(\d+)\]\s*', replacer, text)
+        def snippet_replacer(match):
+            return _attribute(match.group(1))
+
+        # 1) Attributed `[snippet_N]` markers (existing behavior preserved).
+        text = re.sub(r'\[snippet_(\d+)\]\s*', snippet_replacer, text)
+
+        # Task C5: 2) bare numeric `[2]`/`[3]` markers leak from the model when
+        # it cites by raw index instead of `[snippet_N]`. They render literally
+        # in the UI ("Great scent [2] lasts long"). Strip/attribute them with the
+        # same source map. Anchored to `\[\d+\]` so it can NEVER touch the just-
+        # inserted "Per domain:" text (no brackets) nor inline ratios like 5/5.
+        def bare_replacer(match):
+            return _attribute(match.group(1))
+
+        text = re.sub(r'\[(\d+)\]\s*', bare_replacer, text)
+        return text
 
     cleaned = dict(reviews)
 
@@ -157,14 +170,24 @@ def clean_review_citations(reviews: dict, search_results: list) -> dict:
         if key in cleaned and isinstance(cleaned[key], list):
             cleaned[key] = [replace_citation(str(item)) for item in cleaned[key]]
 
-    # FIX M5: Current format — review_summary.highlights[].point
+    # FIX M5 + Task C5: current format — review_summary.consensus + highlights[].point
     review_summary = cleaned.get("review_summary", {})
     if isinstance(review_summary, dict):
+        if isinstance(review_summary.get("consensus"), str):
+            review_summary["consensus"] = replace_citation(review_summary["consensus"])
         highlights = review_summary.get("highlights", [])
         if highlights and isinstance(highlights, list):
             for h in highlights:
                 if isinstance(h, dict) and "point" in h:
                     h["point"] = replace_citation(str(h["point"]))
+
+    # Task C5: review-source editorial quotes (ENABLE_REVIEW_SOURCE_CONSULT path).
+    # Each quote carries a `text` field that can leak bare/snippet markers too.
+    quotes = cleaned.get("review_source_quotes")
+    if isinstance(quotes, list):
+        for q in quotes:
+            if isinstance(q, dict) and isinstance(q.get("text"), str):
+                q["text"] = replace_citation(q["text"])
 
     return cleaned
 

@@ -455,18 +455,27 @@ export function ResultsAccordion({
                       }
                     />
                   </View>
+                  {/* Phase 4.4 — comparison table per the "UI Kit — Mobile
+                      Results" mockup (SpecRow, JSX 265-284): each row is
+                      value · CENTERED-label · value (1fr / center / 1fr).
+                      The header mirrors the layout with the two product
+                      names flanking the centered eyebrow column. Winning
+                      cell value paints bold-emerald. */}
                   <View style={styles.specsTable}>
                     <View style={styles.specsHeader}>
-                      <Text style={styles.specsCellKey}></Text>
-                      {specsSrc.map((p: any, hi: number) => (
-                        <Text
-                          key={hi}
-                          style={styles.specsCellValue}
-                          numberOfLines={1}
-                        >
-                          {p.name}
-                        </Text>
-                      ))}
+                      <Text
+                        style={[styles.specsCellValue, styles.specsCellValueLeft]}
+                        numberOfLines={1}
+                      >
+                        {(specsSrc[0] as any)?.name ?? ''}
+                      </Text>
+                      <Text style={styles.specsCellKey} />
+                      <Text
+                        style={[styles.specsCellValue, styles.specsCellValueRight]}
+                        numberOfLines={1}
+                      >
+                        {(specsSrc[1] as any)?.name ?? ''}
+                      </Text>
                     </View>
                     {allSpecKeys
                       .filter((k) => !showDiffsOnly || isSpecDifferent(k))
@@ -485,6 +494,16 @@ export function ResultsAccordion({
                         // winner === 1 → p1 wins (cell idx 1 paints emerald).
                         // winner === null or absent → neutral (both stay default).
                         const winner = winnerByField[key];
+                        // value · CENTERED-label · value. Cell idx 0 is the
+                        // left (right-aligned) value, idx 1 the right
+                        // (left-aligned) value. The label sits centered
+                        // between them.
+                        const cellStyle = (vi: number, sideStyle: any) => {
+                          const isWinnerCell = winner === vi && winner !== null;
+                          return isWinnerCell
+                            ? [styles.specsCellValue, sideStyle, styles.specsCellWinner]
+                            : [styles.specsCellValue, sideStyle];
+                        };
                         return (
                           <View
                             key={key}
@@ -495,33 +514,31 @@ export function ResultsAccordion({
                             }
                             style={styles.specsRow}
                           >
+                            <Text
+                              testID={
+                                testID
+                                  ? `${testID}-specs-cell-${key}-0`
+                                  : undefined
+                              }
+                              style={cellStyle(0, styles.specsCellValueLeft)}
+                              numberOfLines={2}
+                            >
+                              {values[0] ?? '—'}
+                            </Text>
                             <Text style={styles.specsCellKey}>
                               {key.replace(/_/g, ' ')}
                             </Text>
-                            {values.map((v: string, vi: number) => {
-                              const isWinnerCell =
-                                winner === vi && winner !== null;
-                              return (
-                                <Text
-                                  key={vi}
-                                  testID={
-                                    testID
-                                      ? `${testID}-specs-cell-${key}-${vi}`
-                                      : undefined
-                                  }
-                                  style={
-                                    isWinnerCell
-                                      ? [
-                                          styles.specsCellValue,
-                                          styles.specsCellWinner,
-                                        ]
-                                      : styles.specsCellValue
-                                  }
-                                >
-                                  {v}
-                                </Text>
-                              );
-                            })}
+                            <Text
+                              testID={
+                                testID
+                                  ? `${testID}-specs-cell-${key}-1`
+                                  : undefined
+                              }
+                              style={cellStyle(1, styles.specsCellValueRight)}
+                              numberOfLines={2}
+                            >
+                              {values[1] ?? '—'}
+                            </Text>
                           </View>
                         );
                       })}
@@ -741,27 +758,44 @@ const styles = StyleSheet.create({
   specsTable: {},
   specsHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
   },
   specsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
   },
+  // Phase 4.4 — CENTERED label column (mockup SpecRow center cell: 90px,
+  // centered, uppercase eyebrow).
   specsCellKey: {
-    flex: 1.2,
+    width: 96,
     fontSize: 11,
+    fontWeight: '500',
     color: colors.text.secondary,
+    textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
   specsCellValue: {
     flex: 1,
     fontSize: 12,
+    fontWeight: '500',
     color: colors.text.primary,
+  },
+  // Left value cell hugs the centered label (right-aligned per mockup).
+  specsCellValueLeft: {
+    textAlign: 'right',
+  },
+  // Right value cell reads outward from the centered label (left-aligned).
+  specsCellValueRight: {
+    textAlign: 'left',
   },
   // Lane A-L3 Task L3.2 — winning spec cell paints emerald (accent),
   // bold weight, per design Screen 4.

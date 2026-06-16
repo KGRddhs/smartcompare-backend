@@ -20,7 +20,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import { colors, spacing, typography, radii } from '../theme';
+import { colors, spacing } from '../theme';
 
 interface Props {
   /** Number of cohort peers who also picked the winner. */
@@ -64,7 +64,7 @@ export function CohortBadge({ peerCount, governorate, isRTL = false, testID }: P
   const copy = t('results.cohort_badge', {
     count: peerCount,
     governorate,
-    defaultValue: `Like ${peerCount} shoppers in ${governorate}`,
+    defaultValue: `${peerCount}+ shoppers in ${governorate} leaned the same way.`,
   });
 
   return (
@@ -78,36 +78,28 @@ export function CohortBadge({ peerCount, governorate, isRTL = false, testID }: P
       }}
       accessibilityRole="text"
       accessibilityLabel={copy}
-      style={[styles.badge, animatedStyle]}
+      style={[styles.box, animatedStyle]}
     >
-      <View style={styles.dot} />
       <Text style={styles.copy}>{copy}</Text>
     </Animated.View>
   );
 }
 
-const DOT_SIZE = 8;
-
 const styles = StyleSheet.create({
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: colors.accentLight,
-    borderRadius: radii.chip,
+  // Phase 4.4 — subtle social-proof box per the "UI Kit — Mobile Results"
+  // mockup (JSX 367-377): a soft full-width bg.secondary panel with a
+  // muted, calm paragraph. No emerald chip, no dot — the cohort line is
+  // quiet reassurance, not a loud badge.
+  box: {
+    backgroundColor: colors.bg.secondary,
+    borderRadius: 12,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  dot: {
-    width: DOT_SIZE,
-    height: DOT_SIZE,
-    borderRadius: DOT_SIZE / 2,
-    backgroundColor: colors.accent,
   },
   copy: {
-    ...typography.caption,
-    color: colors.text.primary,
-    fontWeight: '600',
+    fontSize: 12,
+    lineHeight: 12 * 1.5,
+    fontWeight: '500',
+    color: colors.text.secondary,
   },
 });

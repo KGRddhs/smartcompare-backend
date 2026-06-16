@@ -22,6 +22,7 @@ from urllib.parse import urlparse, quote_plus
 
 from app.services.extraction_service import (
     parse_product_query,
+    canonicalize_category,
     extract_specs,
     extract_price,
     extract_price_from_training_data,
@@ -485,6 +486,7 @@ from app.services.price_service import (
     is_high_value_query,
     is_implausible_high_value_price,
     is_implausible_low_fragrance_price,
+    reconcile_pair_sizes,
     is_price_plausible,
     is_luxury_brand,
     is_supplement_query,
@@ -1618,6 +1620,10 @@ class StructuredComparisonService:
             serper_calls=self.serper_calls,
             elapsed_seconds=elapsed_seconds,
             metadata={"partial": True},
+            # Phase 3.1 — cohort proof line on the partial path too. ctx carries
+            # demographics_profile only if the await landed before the hard cap;
+            # absent → None → key omitted (badge hides). Same chokepoint, same gate.
+            cohort_summary=self._build_cohort_summary(ctx.get("demographics_profile")),
         )
         return result
 
@@ -1832,11 +1838,14 @@ class StructuredComparisonService:
 
                 products = parsed["products"][:2]
 
-            # Determine category
-            detected_category = products[0].get("category", "other")
+            # Determine category. KEYSTONE FIX: canonicalize the LLM-emitted
+            # category string ("Fragrances" -> "fragrances") so every downstream
+            # lookup (scoring dims, spec schema, priority personalization) keys
+            # correctly instead of silently falling back to "other".
+            detected_category = canonicalize_category(products[0].get("category"))
             category_switched = False
             original_category = None
-            if selected_category and selected_category != detected_category:
+            if selected_category and canonicalize_category(selected_category) != detected_category:
                 category_switched = True
                 original_category = selected_category
             category_used = detected_category
@@ -1902,6 +1911,16 @@ class StructuredComparisonService:
                     "api_calls": self.api_calls,
                 }
 
+            # Task C2 — pair-level size-basis reconciliation (post-selection,
+            # pre-scoring). When both products carry a showable price but with
+            # mismatched bottle sizes, mark both price-pending (size_mismatch)
+            # so neither scoring nor the verdict asserts an apples-to-oranges
+            # delta. Conservative-only (no candidate re-selection / no network).
+            try:
+                reconcile_pair_sizes(product_data)
+            except Exception as _e:  # noqa: BLE001 — never block the response
+                logger.warning("size reconciliation skipped (sync): %s", _e)
+
             # Fetch behavioral profile + demographics_profile if user is logged in.
             # I5.6 lever-2: the fetch was kicked off above (concurrent with the
             # product gather); here we just await the already-running task.
@@ -1909,6 +1928,13 @@ class StructuredComparisonService:
             demographics_profile = None
             if _profile_task is not None:
                 behavior_profile, demographics_profile = await _profile_task
+
+            # WS1 (D1) + Phase 3.1 — stash demographics into the partial build
+            # ctx so a hard-cap timeout AFTER this point can still emit the
+            # cohort proof line on the partial response (the partial path reads
+            # ctx, not the local frame).
+            if self._partial_build_ctx is not None:
+                self._partial_build_ctx["demographics_profile"] = demographics_profile
 
             # Step 3: Compute deterministic scores
             scoring_service = get_scoring_service()
@@ -2067,6 +2093,9 @@ class StructuredComparisonService:
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
                 metadata=_metadata_override or None,
+                # Phase 3.1 — cohort proof line. None when no cohort matched /
+                # flag off / governorate or N missing → key omitted, badge hides.
+                cohort_summary=self._build_cohort_summary(demographics_profile),
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
@@ -2249,11 +2278,14 @@ class StructuredComparisonService:
 
                 products = parsed["products"][:2]
 
-            # Determine category
-            detected_category = products[0].get("category", "other")
+            # Determine category. KEYSTONE FIX: canonicalize the LLM-emitted
+            # category string ("Fragrances" -> "fragrances") so every downstream
+            # lookup (scoring dims, spec schema, priority personalization) keys
+            # correctly instead of silently falling back to "other".
+            detected_category = canonicalize_category(products[0].get("category"))
             category_switched = False
             original_category = None
-            if selected_category and selected_category != detected_category:
+            if selected_category and canonicalize_category(selected_category) != detected_category:
                 category_switched = True
                 original_category = selected_category
             category_used = detected_category
@@ -2334,6 +2366,17 @@ class StructuredComparisonService:
                 yield ("settle_complete", insufficient_response)
                 yield ("complete", insufficient_response)
                 return
+
+            # Task C2 — pair-level size-basis reconciliation (post-selection,
+            # pre-scoring). Run BEFORE the `prices` SSE event so the streamed
+            # price and the final `complete` response agree: a mismatched-size
+            # pair is marked price-pending (size_mismatch) on BOTH the streamed
+            # and the assembled paths. Conservative-only (no candidate
+            # re-selection / no network — zero added latency).
+            try:
+                reconcile_pair_sizes(product_data)
+            except Exception as _e:  # noqa: BLE001 — never block the stream
+                logger.warning("size reconciliation skipped (stream): %s", _e)
 
             # Yield specs (Bundle E S3 — piggyback image_url onto specs event
             # since both land together at end of Phase 1; avoids adding a new
@@ -2558,6 +2601,8 @@ class StructuredComparisonService:
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
                 metadata=_metadata_override or None,
+                # Phase 3.1 — cohort proof line (streaming mirror of the sync path).
+                cohort_summary=self._build_cohort_summary(demographics_profile),
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
@@ -2676,6 +2721,61 @@ class StructuredComparisonService:
             logger.debug("cohort_profile derivation skipped: %s", exc)
         return None
 
+    # Governorate values treated as "missing" for the cohort proof line —
+    # mirrors cohort_service.SKIP_SENTINELS + the extraction_service block's
+    # ("Prefer not to say", "") guard. No region line for these.
+    _COHORT_GOV_SKIP = frozenset(
+        ["", "Prefer not to say", "أفضل عدم الإجابة", "أفضل عدم الإجابة "]
+    )
+
+    @staticmethod
+    def _build_cohort_summary(
+        demographics_profile: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Phase 3.1 — build the `cohort_summary` root block for the FE cohort
+        proof line ("N shoppers in {governorate} leaned the same way").
+
+        Sources both fields from the persisted demographics snapshot (written by
+        auth_routes.save_demographics at demographics-submission time):
+          - peer_count  = demographics_profile["cohort_match"]["n"] — the REAL
+            survey sample size N from cohort_priors.json (NOT invented);
+          - governorate = demographics_profile["governorate"] — the user's typed
+            governorate from onboarding Step 04.
+
+        Gating mirrors `was_cohort_block_active` (ENABLE_COHORT_PERSONALIZATION
+        flag + match_quality in the inject set + a confidence + a cohort_key) so
+        a cohort line is emitted only when cohort personalization actually ran.
+        Additionally requires peer_count > 0 and a non-sentinel governorate so
+        the FE CohortBadge (hides when peer_count <= 0 or !governorate) never
+        renders an empty line.
+
+        Returns None when the data isn't present/renderable (→ caller omits the
+        key, badge hides). Fail-soft: any error → None; a cohort line must never
+        break a comparison.
+        """
+        try:
+            if not demographics_profile:
+                return None
+            # Flag + match-quality + confidence + cohort_key gate (single source
+            # of truth — the cohort-injection predicate from extraction_service).
+            if not was_cohort_block_active(demographics_profile):
+                return None
+
+            cohort_match = demographics_profile.get("cohort_match") or {}
+            n = cohort_match.get("n", 0)
+            if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+                return None
+
+            governorate = demographics_profile.get("governorate")
+            gov = str(governorate).strip() if governorate is not None else ""
+            if gov in StructuredComparisonService._COHORT_GOV_SKIP:
+                return None
+
+            return {"peer_count": n, "governorate": gov}
+        except Exception as exc:  # noqa: BLE001 — cohort proof line is best-effort
+            logger.debug("cohort_summary build skipped: %s", exc)
+            return None
+
     async def _fetch_behavior_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Fetch user's behavioral profile from Supabase."""
         try:
@@ -2715,7 +2815,10 @@ class StructuredComparisonService:
         brand = product_info.get("brand", "")
         name = product_info.get("name", "")
         variant = product_info.get("variant")
-        category = product_info.get("category", "other")
+        # KEYSTONE FIX: canonicalize so `category` keys the spec schema
+        # (extract_specs), the critical-field fallback cascade, and the
+        # per-product `result["category"]` (consumed by scoring) correctly.
+        category = canonicalize_category(product_info.get("category"))
         search_query = product_info.get("search_query", f"{brand} {name} {variant or ''}")
         is_vision = product_info.get("_vision", False)
 
@@ -3056,7 +3159,10 @@ class StructuredComparisonService:
         # silently dropped the 3rd, producing flaky test_post_d2_per_category_
         # critical_fields_intact failures.
         from app.services.extraction_service import CRITICAL_SCHEMA_FIELDS
-        critical_fields = CRITICAL_SCHEMA_FIELDS.get(category, [])
+        # KEYSTONE FIX: `category` is already canonicalized at the top of
+        # _fetch_product_data; re-normalize defensively so the critical-field
+        # fallback cascade keys correctly even if a caller mutated it.
+        critical_fields = CRITICAL_SCHEMA_FIELDS.get(canonicalize_category(category), [])
         specs_so_far = result.get("specs") or {}
         missing_critical = [
             f for f in critical_fields

@@ -13,8 +13,9 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { Star } from 'lucide-react-native';
 
-import { colors, spacing, radii, typography } from '../../theme';
+import { colors, spacing, radii } from '../../theme';
 
 export interface TopMatchBadgeProps {
   testID?: string;
@@ -24,6 +25,9 @@ export function TopMatchBadge({ testID = 'top-match-badge' }: TopMatchBadgeProps
   const { t } = useTranslation();
   return (
     <View style={styles.pill} testID={testID}>
+      {/* Phase 4.4 — leading ★ per the "UI Kit — Mobile Results" mockup
+          (emerald-tinted pill, uppercase label). */}
+      <Star size={13} color={colors.accentDark} fill={colors.accentDark} />
       <Text style={styles.label}>{t('results.topMatch', { defaultValue: 'Top match' })}</Text>
     </View>
   );
@@ -31,19 +35,22 @@ export function TopMatchBadge({ testID = 'top-match-badge' }: TopMatchBadgeProps
 
 const styles = StyleSheet.create({
   pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: colors.accent,
+    gap: 6,
+    backgroundColor: colors.accentLight,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radii.chip,
   },
   label: {
-    ...typography.body,
-    color: colors.text.onInverse,
+    color: colors.accentDark,
     fontWeight: '600',
-    fontSize: 14,
-    lineHeight: 18,
-    letterSpacing: 0.2,
+    fontSize: 11,
+    lineHeight: 11 * 1.4,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
   },
 });
 

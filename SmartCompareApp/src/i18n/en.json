@@ -135,6 +135,7 @@
   "results.feedback.submit": "Submit",
   "results.share": "Share",
   "results.priceNA": "Price N/A",
+  "results.price.pending": "Pricing lands in an upcoming update.",
   "results.convertedUSD": "(converted from USD)",
   "results.noRating": "No rating available",
   "results.value.greatValue": "Great Value",
@@ -147,6 +148,9 @@
   "results.confidence.pill.price": "Price",
   "results.confidence.pill.reviews": "Reviews",
   "results.confidence.pill.specs": "Specs",
+  "results.confidence.level.high": "High",
+  "results.confidence.level.medium": "Medium",
+  "results.confidence.level.low": "Low",
   "results.confidence.sheet.title": "What we know",
   "results.confidence.sheet.close": "Close",
   "results.valueMatch.above_range": "Above your usual range",
@@ -626,7 +630,7 @@
   "results.tips.cohort_match": "47 cohort peers in {{governorate}} helped train this match.",
   "results.tips.save_offline": "Save any comparison to revisit later — even offline.",
 
-  "results.cohort_badge": "Like {{count}} shoppers in {{governorate}}",
+  "results.cohort_badge": "{{count}}+ shoppers in {{governorate}} leaned the same way.",
 
   "results.stage.init": "Understanding your query",
   "results.stage.specs": "Reading specs",

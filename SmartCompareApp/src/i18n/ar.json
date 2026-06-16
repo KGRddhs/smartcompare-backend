@@ -132,6 +132,7 @@
   "results.feedback.submit": "إرسال",
   "results.share": "مشاركة",
   "results.priceNA": "السعر غير متوفر",
+  "results.price.pending": "السعر يصل في تحديث قادم.",
   "results.convertedUSD": "(محول من الدولار)",
   "results.noRating": "لا يوجد تقييم متاح",
   "results.value.greatValue": "قيمة ممتازة",
@@ -144,6 +145,9 @@
   "results.confidence.pill.price": "السعر",
   "results.confidence.pill.reviews": "التقييمات",
   "results.confidence.pill.specs": "المواصفات",
+  "results.confidence.level.high": "عالية",
+  "results.confidence.level.medium": "متوسطة",
+  "results.confidence.level.low": "منخفضة",
   "results.confidence.sheet.title": "ما نعرفه",
   "results.confidence.sheet.close": "إغلاق",
   "results.valueMatch.above_range": "أعلى من نطاقك المعتاد",
@@ -623,7 +627,7 @@
   "results.tips.cohort_match": "ساعد ٤٧ شخصاً مثلك في {{governorate}} على تدريب هذه المقارنة.",
   "results.tips.save_offline": "احفظ أي مقارنة لمراجعتها لاحقاً — حتى دون إنترنت.",
 
-  "results.cohort_badge": "مثل {{count}} متسوقين في {{governorate}}",
+  "results.cohort_badge": "{{count}}+ متسوقين في {{governorate}} مالوا إلى الخيار نفسه.",
 
   "results.stage.init": "نفهم طلبك",
   "results.stage.specs": "نقرأ المواصفات",

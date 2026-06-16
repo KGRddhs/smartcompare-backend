@@ -123,3 +123,54 @@ class TestCitationCleanup:
         assert service._extract_domain("https://amazon.com/dp/123") == "amazon.com"
         assert service._extract_domain("") == ""
         assert service._extract_domain("not-a-url") == ""
+
+
+class TestBareNumericCitations:
+    """Task C5 — bare numeric `[2]`/`[3]` markers must be stripped/attributed,
+    not rendered literally; ALL review text fields must be scrubbed."""
+
+    def test_bare_numeric_marker_stripped_when_no_source(self, service):
+        reviews = {"common_praises": ["Great scent [2] lasts long"]}
+        cleaned = service._clean_review_citations(reviews, [])
+        assert "[2]" not in cleaned["common_praises"][0]
+
+    def test_bare_numeric_marker_attributed_when_source_known(self, service, mock_search_results):
+        # snippet index 2 -> amazon.com (search_results[1])
+        reviews = {"common_praises": ["Great scent [2] lasts long"]}
+        cleaned = service._clean_review_citations(reviews, mock_search_results)
+        assert "[2]" not in cleaned["common_praises"][0]
+        assert "amazon.com" in cleaned["common_praises"][0]
+
+    def test_mixed_bare_and_snippet_markers(self, service, mock_search_results):
+        reviews = {"common_praises": ["Great scent [2] lasts long [snippet_3]"]}
+        cleaned = service._clean_review_citations(reviews, mock_search_results)
+        text = cleaned["common_praises"][0]
+        assert "[2]" not in text
+        assert "[snippet_3]" not in text
+        # snippet_3 -> ebay.com (search_results[2]) preserved as attribution
+        assert "ebay.com" in text
+
+    def test_consensus_field_scrubbed(self, service, mock_search_results):
+        reviews = {"review_summary": {"consensus": "Reviewers love the build [1] overall."}}
+        cleaned = service._clean_review_citations(reviews, mock_search_results)
+        assert "[1]" not in cleaned["review_summary"]["consensus"]
+
+    def test_highlights_bare_marker_scrubbed(self, service, mock_search_results):
+        reviews = {"review_summary": {"highlights": [
+            {"point": "Battery lasts all day [2]", "sentiment": "positive"}
+        ]}}
+        cleaned = service._clean_review_citations(reviews, mock_search_results)
+        assert "[2]" not in cleaned["review_summary"]["highlights"][0]["point"]
+
+    def test_review_source_quotes_text_scrubbed(self, service, mock_search_results):
+        reviews = {"review_source_quotes": [
+            {"domain": "gulfnews.com", "text": "Excellent value for money [3]"}
+        ]}
+        cleaned = service._clean_review_citations(reviews, mock_search_results)
+        assert "[3]" not in cleaned["review_source_quotes"][0]["text"]
+
+    def test_plain_text_with_no_markers_unchanged(self, service, mock_search_results):
+        reviews = {"common_praises": ["Genuinely a 5/5 build, no issues at all"]}
+        cleaned = service._clean_review_citations(reviews, mock_search_results)
+        # A bare "5/5" is NOT a citation marker and must survive untouched.
+        assert cleaned["common_praises"][0] == "Genuinely a 5/5 build, no issues at all"

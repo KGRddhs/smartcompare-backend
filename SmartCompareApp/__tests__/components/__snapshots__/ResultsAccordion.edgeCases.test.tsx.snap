@@ -379,44 +379,60 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
           <View
             style={
               {
+                "alignItems": "center",
                 "borderBottomColor": "#E5E7EB",
                 "borderBottomWidth": 1,
                 "flexDirection": "row",
+                "gap": 12,
                 "paddingVertical": 8,
               }
             }
           >
             <Text
+              numberOfLines={1}
+              style={
+                [
+                  {
+                    "color": "#0A0A0B",
+                    "flex": 1,
+                    "fontSize": 12,
+                    "fontWeight": "500",
+                  },
+                  {
+                    "textAlign": "right",
+                  },
+                ]
+              }
+            >
+              iPhone 15
+            </Text>
+            <Text
               style={
                 {
                   "color": "#6B7280",
-                  "flex": 1.2,
                   "fontSize": 11,
+                  "fontWeight": "500",
                   "letterSpacing": 0.4,
+                  "textAlign": "center",
                   "textTransform": "uppercase",
+                  "width": 96,
                 }
               }
             />
             <Text
               numberOfLines={1}
               style={
-                {
-                  "color": "#0A0A0B",
-                  "flex": 1,
-                  "fontSize": 12,
-                }
-              }
-            >
-              iPhone 15
-            </Text>
-            <Text
-              numberOfLines={1}
-              style={
-                {
-                  "color": "#0A0A0B",
-                  "flex": 1,
-                  "fontSize": 12,
-                }
+                [
+                  {
+                    "color": "#0A0A0B",
+                    "flex": 1,
+                    "fontSize": 12,
+                    "fontWeight": "500",
+                  },
+                  {
+                    "textAlign": "left",
+                  },
+                ]
               }
             >
               Galaxy S24
@@ -425,33 +441,29 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
           <View
             style={
               {
+                "alignItems": "center",
                 "borderBottomColor": "#E5E7EB",
                 "borderBottomWidth": 1,
                 "flexDirection": "row",
+                "gap": 12,
                 "paddingVertical": 8,
               }
             }
           >
             <Text
+              numberOfLines={2}
               style={
-                {
-                  "color": "#6B7280",
-                  "flex": 1.2,
-                  "fontSize": 11,
-                  "letterSpacing": 0.4,
-                  "textTransform": "uppercase",
-                }
-              }
-            >
-              display
-            </Text>
-            <Text
-              style={
-                {
-                  "color": "#0A0A0B",
-                  "flex": 1,
-                  "fontSize": 12,
-                }
+                [
+                  {
+                    "color": "#0A0A0B",
+                    "flex": 1,
+                    "fontSize": 12,
+                    "fontWeight": "500",
+                  },
+                  {
+                    "textAlign": "right",
+                  },
+                ]
               }
             >
               6.1" OLED
@@ -459,10 +471,32 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
             <Text
               style={
                 {
-                  "color": "#0A0A0B",
-                  "flex": 1,
-                  "fontSize": 12,
+                  "color": "#6B7280",
+                  "fontSize": 11,
+                  "fontWeight": "500",
+                  "letterSpacing": 0.4,
+                  "textAlign": "center",
+                  "textTransform": "uppercase",
+                  "width": 96,
                 }
+              }
+            >
+              display
+            </Text>
+            <Text
+              numberOfLines={2}
+              style={
+                [
+                  {
+                    "color": "#0A0A0B",
+                    "flex": 1,
+                    "fontSize": 12,
+                    "fontWeight": "500",
+                  },
+                  {
+                    "textAlign": "left",
+                  },
+                ]
               }
             >
               6.2" AMOLED
@@ -471,33 +505,29 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
           <View
             style={
               {
+                "alignItems": "center",
                 "borderBottomColor": "#E5E7EB",
                 "borderBottomWidth": 1,
                 "flexDirection": "row",
+                "gap": 12,
                 "paddingVertical": 8,
               }
             }
           >
             <Text
+              numberOfLines={2}
               style={
-                {
-                  "color": "#6B7280",
-                  "flex": 1.2,
-                  "fontSize": 11,
-                  "letterSpacing": 0.4,
-                  "textTransform": "uppercase",
-                }
-              }
-            >
-              battery
-            </Text>
-            <Text
-              style={
-                {
-                  "color": "#0A0A0B",
-                  "flex": 1,
-                  "fontSize": 12,
-                }
+                [
+                  {
+                    "color": "#0A0A0B",
+                    "flex": 1,
+                    "fontSize": 12,
+                    "fontWeight": "500",
+                  },
+                  {
+                    "textAlign": "right",
+                  },
+                ]
               }
             >
               3,349 mAh
@@ -505,10 +535,32 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
             <Text
               style={
                 {
-                  "color": "#0A0A0B",
-                  "flex": 1,
-                  "fontSize": 12,
+                  "color": "#6B7280",
+                  "fontSize": 11,
+                  "fontWeight": "500",
+                  "letterSpacing": 0.4,
+                  "textAlign": "center",
+                  "textTransform": "uppercase",
+                  "width": 96,
                 }
+              }
+            >
+              battery
+            </Text>
+            <Text
+              numberOfLines={2}
+              style={
+                [
+                  {
+                    "color": "#0A0A0B",
+                    "flex": 1,
+                    "fontSize": 12,
+                    "fontWeight": "500",
+                  },
+                  {
+                    "textAlign": "left",
+                  },
+                ]
               }
             >
               4,000 mAh
@@ -517,33 +569,29 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
           <View
             style={
               {
+                "alignItems": "center",
                 "borderBottomColor": "#E5E7EB",
                 "borderBottomWidth": 1,
                 "flexDirection": "row",
+                "gap": 12,
                 "paddingVertical": 8,
               }
             }
           >
             <Text
+              numberOfLines={2}
               style={
-                {
-                  "color": "#6B7280",
-                  "flex": 1.2,
-                  "fontSize": 11,
-                  "letterSpacing": 0.4,
-                  "textTransform": "uppercase",
-                }
-              }
-            >
-              storage
-            </Text>
-            <Text
-              style={
-                {
-                  "color": "#0A0A0B",
-                  "flex": 1,
-                  "fontSize": 12,
-                }
+                [
+                  {
+                    "color": "#0A0A0B",
+                    "flex": 1,
+                    "fontSize": 12,
+                    "fontWeight": "500",
+                  },
+                  {
+                    "textAlign": "right",
+                  },
+                ]
               }
             >
               128 GB
@@ -551,10 +599,32 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
             <Text
               style={
                 {
-                  "color": "#0A0A0B",
-                  "flex": 1,
-                  "fontSize": 12,
+                  "color": "#6B7280",
+                  "fontSize": 11,
+                  "fontWeight": "500",
+                  "letterSpacing": 0.4,
+                  "textAlign": "center",
+                  "textTransform": "uppercase",
+                  "width": 96,
                 }
+              }
+            >
+              storage
+            </Text>
+            <Text
+              numberOfLines={2}
+              style={
+                [
+                  {
+                    "color": "#0A0A0B",
+                    "flex": 1,
+                    "fontSize": 12,
+                    "fontWeight": "500",
+                  },
+                  {
+                    "textAlign": "left",
+                  },
+                ]
               }
             >
               128 GB

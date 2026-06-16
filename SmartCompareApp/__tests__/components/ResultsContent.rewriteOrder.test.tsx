@@ -303,19 +303,33 @@ describe('ResultsContent — REWRITE element order per ResultsScreen.jsx', () =>
     );
   });
 
-  it('the scoring_v2 hero contains the DimensionBars, PersonalizationChip, and HeroRings', () => {
+  it('the scoring_v2 hero contains the DimensionBars and HeroRings', () => {
     const r = render(<ResultsContent {...baseProps} />);
     const order = buildTestIdOrder(r.toJSON(), [
       'results-scoring-v2',
       'results-v2-hero-rings',
       'results-v2-bars',
-      'results-v2-personalization-chip',
     ]);
     // scoring_v2 wrapper comes first (parent encountered first in DFS)
     expect(order['results-scoring-v2']).toBeLessThan(order['results-v2-hero-rings']);
     expect(order['results-scoring-v2']).toBeLessThan(order['results-v2-bars']);
-    expect(order['results-scoring-v2']).toBeLessThan(
+  });
+
+  it('PersonalizationChip sits under the "Why this fits you" block, before the scoring_v2 hero (Phase 4.4)', () => {
+    // Phase 4.4 relocated the chip out of the scoring_v2 hero and under the
+    // verdict headline (mockup subline). It must now appear AFTER the "why"
+    // block opens and BEFORE the scoring_v2 hero.
+    const r = render(<ResultsContent {...baseProps} />);
+    const order = buildTestIdOrder(r.toJSON(), [
+      'results-content-why',
+      'results-v2-personalization-chip',
+      'results-scoring-v2',
+    ]);
+    expect(order['results-content-why']).toBeLessThan(
       order['results-v2-personalization-chip']
+    );
+    expect(order['results-v2-personalization-chip']).toBeLessThan(
+      order['results-scoring-v2']
     );
   });
 });

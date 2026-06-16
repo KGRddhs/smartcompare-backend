@@ -597,6 +597,175 @@ def is_implausible_low_fragrance_price(
 
 
 # ============================================
+# Task C1 — price-pending presentation (showable predicate)
+# ============================================
+#
+# Per Ahmed's decision (fragrance-quality redesign): we do NOT raise a floor to
+# fabricate a "plausible" amount. Instead, when a resolved price is NOT
+# genuine/showable, the backend flags it (price-pending shape) so the app can
+# render an engaging "pricing in a future update" line (FE work, Phase 4). This
+# aligns with the standing "estimates unacceptable" KPI.
+
+# A real converted price is fine to show (an honest converted label is shipped
+# already). So the showable set is the genuine-BH methods PLUS converted_usd.
+# `estimated` is the canonical NON-showable method. `_GENUINE_BH_SOURCE_METHODS`
+# is defined further down the module, so resolve the set lazily at call time.
+def _showable_source_methods() -> frozenset:
+    return frozenset(_GENUINE_BH_SOURCE_METHODS) | {"converted_usd"}
+
+# A title token that marks a listing as a sample/decant/tester — never the
+# genuine full-bottle price regardless of the amount.
+_SAMPLE_LISTING_RE = re.compile(r"\b(sample|decant|tester|vial)s?\b", re.I)
+
+# A "tiny" fragrance listing (<= this ml) priced at/above this BHD is a decant
+# masquerading at full-bottle money — not a genuine showable price. Kept narrow
+# (only flags small sizes carrying a clearly-too-high amount) so a genuine 30ml
+# at a sane price is untouched.
+_TINY_FRAGRANCE_SIZE_ML = 10
+_TINY_FRAGRANCE_IMPLAUSIBLE_BHD = 30.0
+
+
+def _is_sample_or_decant_listing(product_name: str, title: Optional[str], amount: Optional[float]) -> bool:
+    """True iff the price clearly comes from a sample/decant/tester listing —
+    either an explicit token in the title OR a tiny fragrance size (<=10ml)
+    carrying a full-bottle-grade price. Returns False for non-fragrance products
+    (a small electronics SKU is not a 'decant')."""
+    text = title or ""
+    if _SAMPLE_LISTING_RE.search(text):
+        return True
+    # Tiny-size-with-implausible-price only applies to fragrances (a 5ml phone
+    # makes no sense; this heuristic is about decants priced like bottles).
+    if amount and amount > 0 and is_fragrance_query(product_name):
+        sizes = extract_sizes_ml(text)
+        if sizes:
+            smallest = min(int(s) for s in sizes)
+            if smallest <= _TINY_FRAGRANCE_SIZE_ML and amount >= _TINY_FRAGRANCE_IMPLAUSIBLE_BHD:
+                return True
+    return False
+
+
+def is_price_showable(product_name: str, price: Optional[Dict[str, Any]]) -> bool:
+    """True iff a resolved `price` object is GENUINE/showable to the user.
+
+    NOT showable (→ Phase-4 price-pending line) when:
+      - no price / no positive amount, OR
+      - source_method is missing or not in the showable set (e.g. ``estimated``), OR
+      - it fails an accuracy guard (low-fragrance sample floor / high-value
+        accessory leak), OR
+      - it is a sample/decant/tester/vial listing.
+
+    `converted_usd` and the genuine-BH methods (local_bhd / page_scrape* /
+    shopify_json / firecrawl* / scrapedo_rendered / official_brand) are showable.
+    This is the single predicate the response chokepoint uses for BOTH the sync
+    and streaming paths; it never weakens the existing is_implausible_* guards —
+    it composes them.
+    """
+    if not isinstance(price, dict):
+        return False
+    amount = price.get("amount")
+    if not isinstance(amount, (int, float)) or amount <= 0:
+        return False
+    source_method = price.get("source_method") or ""
+    if source_method not in _showable_source_methods():
+        return False
+    title = price.get("title")
+    # Compose the shipped accuracy guards — a price that fails either is not
+    # showable (the guards already encode the "no wrong scrapes" contract).
+    if is_implausible_low_fragrance_price(product_name, amount, title=title):
+        return False
+    if is_implausible_high_value_price(product_name, amount):
+        return False
+    if _is_sample_or_decant_listing(product_name, title, amount):
+        return False
+    return True
+
+
+def make_pending_price(currency: str = "BHD", reason: str = "pending_genuine",
+                       size: Optional[str] = None) -> Dict[str, Any]:
+    """The price-pending object the FE (Phase 4) renders as a 'pricing in a
+    future update' line. No misleading amount is emitted. `size` carried through
+    when known so the FE can still show the bottle size context."""
+    pending: Dict[str, Any] = {
+        "amount": None,
+        "currency": currency or "BHD",
+        "unavailable": True,
+        "reason": reason,
+    }
+    if size:
+        pending["size"] = size
+    return pending
+
+
+def _normalize_size_ml(size: Optional[str]) -> Optional[int]:
+    """The integer ml of a price.size annotation ("100ml" / "100 ML" / "30ml"),
+    or None when absent/unparseable. Reuses extract_sizes_ml so "100 ML" and
+    "100ml" compare equal (whitespace/case-insensitive)."""
+    if not size or not isinstance(size, str):
+        return None
+    sizes = extract_sizes_ml(size)
+    if not sizes:
+        return None
+    # A size annotation is a single bottle size; take the smallest if several.
+    return min(int(s) for s in sizes)
+
+
+def reconcile_pair_sizes(product_data: List[Dict[str, Any]]) -> bool:
+    """Task C2 (conservative) — pair-level size-basis reconciliation.
+
+    When BOTH products carry a SHOWABLE price (positive amount) but their
+    price.size annotations DIFFER (different ml, OR one sized / one unsized),
+    there is no common basis for an honest price delta. Rather than render an
+    apples-to-oranges comparison, mark BOTH prices price-pending
+    (reason="size_mismatch"), each preserving its own size for FE context.
+
+    Conservative-only: NO candidate re-selection is attempted (re-picking a
+    matching-size candidate from the shopping cache re-runs the deep
+    selection/match/counterfeit/tier logic — the WS5-deferred work). Pure +
+    in-place; returns True iff it marked a mismatch (no network, no latency).
+
+    No-ops when: either price is missing/non-positive (a C1-pending side already
+    kills the cross-size delta), or both sizes are equal, or both are unknown.
+    """
+    if not isinstance(product_data, list) or len(product_data) < 2:
+        return False
+    p0, p1 = product_data[0], product_data[1]
+    price0 = p0.get("price") if isinstance(p0, dict) else None
+    price1 = p1.get("price") if isinstance(p1, dict) else None
+    if not isinstance(price0, dict) or not isinstance(price1, dict):
+        return False
+    amt0, amt1 = price0.get("amount"), price1.get("amount")
+    # Only act when BOTH sides have a real, comparable amount. If either is
+    # None/<=0 (e.g. already C1-pending), there is no cross-size delta to guard.
+    if not (isinstance(amt0, (int, float)) and amt0 > 0):
+        return False
+    if not (isinstance(amt1, (int, float)) and amt1 > 0):
+        return False
+    size0 = _normalize_size_ml(price0.get("size"))
+    size1 = _normalize_size_ml(price1.get("size"))
+    # Both unknown → consistent (no basis to declare a mismatch). Equal → fine.
+    if size0 == size1:
+        return False
+    # Differ (incl. one-None-one-present) → cannot reconcile from cached
+    # candidates safely; mark BOTH pending so no apples-to-oranges delta ships.
+    p0["price"] = make_pending_price(
+        currency=price0.get("currency") or "BHD",
+        reason="size_mismatch",
+        size=price0.get("size"),
+    )
+    p1["price"] = make_pending_price(
+        currency=price1.get("currency") or "BHD",
+        reason="size_mismatch",
+        size=price1.get("size"),
+    )
+    for p in (p0, p1):
+        if "best_price" in p:
+            p["best_price"] = None
+        if "retailer" in p:
+            p["retailer"] = None
+    return True
+
+
+# ============================================
 # Parsing / matching helpers
 # ============================================
 

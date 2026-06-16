@@ -41,8 +41,9 @@ describe('ResultsScreen Bundle C integration — confidence pills + chip', () =>
 
   it('renders ConfidencePills with hidePricePill computed from anyEstimated(products)', () => {
     expect(SOURCE).toMatch(/<ConfidencePills/);
-    // hidePricePill prop must be wired from the helper.
-    expect(SOURCE).toMatch(/hidePricePill=\{anyEstimated\(products\)\}/);
+    // hidePricePill prop must be wired from the helper. Phase 4.3 also OR's
+    // in `pricePending` so the Price pill drops when a price is unavailable.
+    expect(SOURCE).toMatch(/hidePricePill=\{anyEstimated\(products\)(\s*\|\|\s*pricePending)?\}/);
   });
 
   it('renders ConfidenceDetailsSheet at the scoring_v2 layer with local sheetLeg state', () => {

@@ -36,71 +36,104 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Value
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
-      />
+      >
+        A
+         
+        ·
+         
+        B
+      </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-undefined-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "52%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "78%",
-              },
-            ]
+        testID="bars-row-undefined-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-undefined-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-undefined-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "48%",
+            },
+          ]
+        }
+        testID="bars-row-undefined-fill-b"
+      />
+    </View>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -137,40 +170,6 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
       >
         72
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "72%",
-              },
-            ]
-          }
-          testID="bars-row-undefined-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -199,71 +198,104 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Reviews
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
-      />
+      >
+        A
+         
+        ·
+         
+        B
+      </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-undefined-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "51.515151515151516%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "85%",
-              },
-            ]
+        testID="bars-row-undefined-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-undefined-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-undefined-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "48.484848484848484%",
+            },
+          ]
+        }
+        testID="bars-row-undefined-fill-b"
+      />
+    </View>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -300,40 +332,6 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
       >
         80
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "80%",
-              },
-            ]
-          }
-          testID="bars-row-undefined-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -362,71 +360,104 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Price
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
-      />
+      >
+        A
+         
+        ·
+         
+        B
+      </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-undefined-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "51.61290322580645%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "80%",
-              },
-            ]
+        testID="bars-row-undefined-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-undefined-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-undefined-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "48.38709677419355%",
+            },
+          ]
+        }
+        testID="bars-row-undefined-fill-b"
+      />
+    </View>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -463,40 +494,6 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
       >
         75
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "75%",
-              },
-            ]
-          }
-          testID="bars-row-undefined-fill-b"
-        />
-      </View>
     </View>
   </View>
   <View
@@ -525,71 +522,104 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
         style={
           {
             "color": "#0A0A0B",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "lineHeight": 24,
+            "fontSize": 13,
+            "fontWeight": "500",
           }
         }
       >
         Performance
       </Text>
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#6B7280",
             "flexShrink": 1,
             "fontSize": 13,
-            "fontWeight": "400",
-            "lineHeight": 19.5,
+            "fontVariant": [
+              "tabular-nums",
+            ],
+            "fontWeight": "500",
             "marginStart": 8,
             "textAlign": "right",
           }
         }
-      />
+      >
+        A
+         
+        ·
+         
+        B
+      </Text>
     </View>
     <View
       style={
         {
-          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "gap": 4,
+          "height": 8,
+          "overflow": "hidden",
+          "width": "100%",
         }
       }
+      testID="bars-row-undefined-bar"
     >
       <View
         style={
           [
             {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
             },
             {
-              "justifyContent": "flex-end",
+              "backgroundColor": "#10B981",
+              "flexBasis": "50.931677018633536%",
             },
           ]
         }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-end",
-                "backgroundColor": "#10B981",
-                "width": "82%",
-              },
-            ]
+        testID="bars-row-undefined-fill-a"
+      />
+      <View
+        style={
+          {
+            "backgroundColor": "#FFFFFF",
+            "height": 8,
+            "width": 2,
           }
-          testID="bars-row-undefined-fill-a"
-        />
-      </View>
+        }
+        testID="bars-row-undefined-bar-gap"
+      />
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "flexGrow": 0,
+              "flexShrink": 1,
+              "height": 8,
+            },
+            {
+              "backgroundColor": "#6B7280",
+              "flexBasis": "49.06832298136646%",
+            },
+          ]
+        }
+        testID="bars-row-undefined-fill-b"
+      />
+    </View>
+    <View
+      pointerEvents="none"
+      style={
+        {
+          "height": 0,
+          "opacity": 0,
+          "overflow": "hidden",
+        }
+      }
+    >
       <Text
         style={
           {
@@ -626,40 +656,6 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
       >
         79
       </Text>
-      <View
-        style={
-          [
-            {
-              "backgroundColor": "#E5E7EB",
-              "borderRadius": 3,
-              "flex": 1,
-              "flexDirection": "row",
-              "height": 6,
-              "overflow": "hidden",
-            },
-            {
-              "justifyContent": "flex-start",
-            },
-          ]
-        }
-      >
-        <View
-          style={
-            [
-              {
-                "borderRadius": 3,
-                "height": 6,
-              },
-              {
-                "alignSelf": "flex-start",
-                "backgroundColor": "#6B7280",
-                "width": "79%",
-              },
-            ]
-          }
-          testID="bars-row-undefined-fill-b"
-        />
-      </View>
     </View>
   </View>
 </View>

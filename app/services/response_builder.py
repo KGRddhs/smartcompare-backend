@@ -983,6 +983,7 @@ def build_comparison_response(
     serper_calls: int = 0,
     elapsed_seconds: float = 0.0,
     metadata: Optional[Dict[str, Any]] = None,
+    cohort_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the full structured comparison response.
 
@@ -999,6 +1000,15 @@ def build_comparison_response(
     - All other positional-style params now have defaults so a minimal
       call (just `products` + `comparison`) works for unit tests and
       lightweight callers. Production callers still pass everything.
+
+    Phase 3.1 — `cohort_summary` ({"peer_count": int, "governorate": str})
+    is attached at the response ROOT when present and shape-valid. The FE
+    ResultsScreen reads `result.cohort_summary` to render the cohort proof
+    line ("N shoppers in {governorate} leaned the same way"). The orchestrator
+    decides WHEN to pass it (gated by ENABLE_COHORT_PERSONALIZATION + cohort
+    match quality via _build_cohort_summary); the builder defensively
+    re-validates so a malformed/zero/blank value is OMITTED (the badge hides
+    when peer_count <= 0 or governorate is blank).
     """
     # Resolve product_data / products alias
     if products is not None and product_data is None:
@@ -1091,6 +1101,42 @@ def build_comparison_response(
         if isinstance(_price, dict) and _price.get("source_method") == "estimated":
             if "note" in _price:
                 _price["note"] = None
+
+    # Task C1 — price-pending presentation. A resolved price that is NOT
+    # genuine/showable (estimated, fails an accuracy guard, or a
+    # sample/decant listing) must NOT surface a misleading amount. Normalize
+    # it to the price-pending shape so the FE (Phase 4) renders a "pricing in
+    # a future update" line. This is the SINGLE chokepoint shared by both the
+    # sync and streaming paths (build_comparison_response), so the rule is
+    # applied consistently. Showable prices (genuine BHD + a real converted_usd)
+    # pass through unchanged. Nulling the amount also makes _dim_price /
+    # _dim_value (built below via _build_scoring_v2) take their honest
+    # missing-data path, so no cross-price delta is asserted on a pending price.
+    try:
+        from app.services.price_service import is_price_showable, make_pending_price
+        for pd_item in product_data:
+            _name = pd_item.get("full_name") or pd_item.get("name") or ""
+            _price = pd_item.get("price")
+            if not isinstance(_price, dict):
+                continue
+            # An upstream pass (e.g. Task C2 size-basis reconciliation in the
+            # orchestrator) may already have marked this price pending with its
+            # OWN reason (size_mismatch). Don't clobber that reason — it's
+            # already non-showable and correctly shaped.
+            if _price.get("unavailable") is True:
+                continue
+            if not is_price_showable(_name, _price):
+                pd_item["price"] = make_pending_price(
+                    currency=_price.get("currency") or "BHD",
+                    reason="pending_genuine",
+                    size=_price.get("size"),
+                )
+                # Keep best_price/currency/retailer mirrors honest.
+                pd_item["best_price"] = None
+                if "retailer" in pd_item:
+                    pd_item["retailer"] = None
+    except Exception:  # noqa: BLE001 — price-pending must never crash the response
+        logger.warning("price-pending normalization skipped", exc_info=True)
 
     # Detect price method mismatch
     price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
@@ -1301,6 +1347,29 @@ def build_comparison_response(
     # partial updates — keys not in the override are left untouched.
     if metadata:
         result["metadata"].update(metadata)
+
+    # Phase 3.1 — cohort proof line. Attach `cohort_summary` at the response
+    # ROOT only when the orchestrator resolved a real cohort match AND the
+    # shape is renderable (peer_count > 0, non-blank governorate). The
+    # CohortBadge on ResultsScreen hides when peer_count <= 0 or !governorate,
+    # so we OMIT the key entirely in those cases rather than ship a zero line.
+    # Defensive re-validate here keeps a malformed orchestrator value from ever
+    # reaching the FE; the orchestrator's _build_cohort_summary owns the
+    # ENABLE_COHORT_PERSONALIZATION + match-quality gating.
+    if isinstance(cohort_summary, dict):
+        _peer_count = cohort_summary.get("peer_count")
+        _gov = cohort_summary.get("governorate")
+        if (
+            isinstance(_peer_count, int)
+            and not isinstance(_peer_count, bool)
+            and _peer_count > 0
+            and isinstance(_gov, str)
+            and _gov.strip()
+        ):
+            result["cohort_summary"] = {
+                "peer_count": _peer_count,
+                "governorate": _gov,
+            }
 
     # Backward compatibility aliases
     # Bundle C v1.1 § 1a defensive — the canonical v2 path

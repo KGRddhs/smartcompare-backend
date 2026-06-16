@@ -115,10 +115,20 @@ export function ResultsContent({
   const { t } = useTranslation();
 
   const formatPrice = (price?: Product['price']) => {
-    if (!price || price.unavailable || price.amount === null)
-      return t('results.priceNA');
+    // Phase 4.3 — price-pending: when the backend marks a price
+    // `unavailable` (reason pending_genuine | size_mismatch) we render an
+    // engaging "coming soon" line rather than a number or a bare "N/A".
+    // No "estimated", no scary copy.
+    if (price?.unavailable) return t('results.price.pending');
+    if (!price || price.amount === null) return t('results.priceNA');
     return `${price.currency} ${price.amount.toLocaleString()}`;
   };
+
+  // Phase 4.3 — when ANY product's price is pending we suppress the price
+  // comparison surfaces (the Price dimension bar row + the Price confidence
+  // pill) so we never show a price delta that doesn't exist, and we strip
+  // the price clause from the headline below.
+  const pricePending = products.some((p) => p.price?.unavailable === true);
 
   // Per JSX, verdict body uses recommendation. For new format, overview.winner.reason.
   const isNewFormat = !!(result as any)?.overview?.winner;
@@ -304,6 +314,16 @@ export function ResultsContent({
               ) : null}
             </>
           )}
+          {/* Phase 4.4 — PersonalizationChip relocated here, directly under
+              the "Why this fits you" headline (mockup subline "Weighted ↑
+              Camera ↑ Battery — based on your priorities", JSX 343-345). It
+              previously lived inside the scoring_v2 hero card. */}
+          {scoring_v2 ? (
+            <PersonalizationChip
+              appliedShifts={scoring_v2.personalization?.applied_shifts}
+              testID="results-v2-personalization-chip"
+            />
+          ) : null}
         </Animated.View>
 
         {/* ─── # 4 scoring_v2 hero card (JSX 349-353 — DimensionBars stack) ───
@@ -365,14 +385,17 @@ export function ResultsContent({
                     />
                   )}
 
-                  <PersonalizationChip
-                    appliedShifts={scoring_v2.personalization?.applied_shifts}
-                    testID="results-v2-personalization-chip"
-                  />
-
                   <DimensionBars
-                    dimensions={scoring_v2.dimensions}
+                    dimensions={
+                      pricePending
+                        ? scoring_v2.dimensions.filter(
+                            (d: any) => d?.key !== 'price',
+                          )
+                        : scoring_v2.dimensions
+                    }
                     winnerIndex={winnerIndex}
+                    productAName={products[0]?.name}
+                    productBName={products[1]?.name}
                     testID="results-v2-bars"
                   />
 
@@ -400,7 +423,7 @@ export function ResultsContent({
             <Text style={styles.eyebrow}>{t('results.whatWeKnow')}</Text>
             <ConfidencePills
               confidence={scoring_v2.confidence_legs}
-              hidePricePill={anyEstimated(products)}
+              hidePricePill={anyEstimated(products) || pricePending}
               onPillPress={onPillPress}
               testID="results-content-confidence-pills"
             />
