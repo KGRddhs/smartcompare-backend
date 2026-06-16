@@ -192,6 +192,120 @@ def clean_review_citations(reviews: dict, search_results: list) -> dict:
     return cleaned
 
 
+# ITEM 1 — surface retailer_quotes from REAL review material (esp. fragrances).
+#
+# The FE Reviews accordion (ResultsAccordion.tsx) renders
+# `reviews.products[i].retailer_quotes` (`{retailer, text, rating?}`) as compact
+# per-source lines (AMAZON ★★★★★ "quote"). Fragrances previously emitted only
+# review_summary.{consensus,highlights}, so the FE fell back. This builder
+# surfaces up to 3 of the SAME organic Serper snippets the review extraction
+# already consumed (ZERO extra API calls), attributed to their real source
+# domain — category-general (works for fragrances).
+#
+# HARD CONSTRAINT (CLAUDE.md invariant): ratings are NEVER AI-generated. So this
+# never fabricates a per-quote star rating. `rating` is set ONLY when a REAL
+# numeric rating for that source exists in the search data (Serper richSnippet
+# or a top-level `rating`); otherwise the key is OMITTED (the FE ReviewLine
+# renders no stars when rating is absent — verified gracefully handled).
+
+# A highlight quote text must be at least this long to be a meaningful display
+# snippet (mirrors fetch_retailer_quotes' 20-char floor).
+_MIN_QUOTE_CHARS = 20
+
+# Matches both `[snippet_N]` and bare `[N]` citation markers the review model
+# emits in highlights[].point — used to map a highlight back to its organic
+# source index. (The same two marker forms clean_review_citations scrubs.)
+_CITATION_MARKER_RE = re.compile(r"\[(?:snippet_)?(\d+)\]")
+
+
+def _snippet_real_rating(result: Dict[str, Any]) -> Optional[float]:
+    """A REAL numeric rating for an organic search result, or None.
+
+    Reads a top-level `rating` first, then the Serper richSnippet
+    detected_extensions rating (the same shape fetch_retailer_quotes reads).
+    NEVER synthesizes — returns None when no real rating is present so the
+    caller OMITS the rating key entirely (no fabricated stars)."""
+    if not isinstance(result, dict):
+        return None
+    top_level = result.get("rating")
+    if isinstance(top_level, (int, float)):
+        return float(top_level)
+    rich = result.get("richSnippet") or {}
+    top = rich.get("top") if isinstance(rich, dict) else None
+    if isinstance(top, dict):
+        detected = top.get("detected_extensions") or {}
+        rating_val = detected.get("rating") or detected.get("starRating")
+        if isinstance(rating_val, (int, float)):
+            return float(rating_val)
+    return None
+
+
+def build_retailer_quotes_from_reviews(
+    reviews: Optional[Dict[str, Any]],
+    search_results: Optional[List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """Up to 3 `{retailer, text, rating?}` quotes from REAL review snippets.
+
+    For each review_summary highlight (in order), parse its `[snippet_N]` /
+    bare `[N]` citation, map the index to the organic search result it cites,
+    and emit that result's real source domain (`retailer`) + its real snippet
+    text (`text`). Deduped by source domain (no duplicate AMAZON lines), capped
+    at 3. `rating` is included ONLY when the cited result carries a real numeric
+    rating — never fabricated.
+
+    Returns [] when reviews/highlights/search_results are missing, when no
+    highlight is source-attributable, or when every cited snippet is too short.
+    Pure + zero network — operates on data the pipeline already has.
+    """
+    if not isinstance(reviews, dict) or not isinstance(search_results, list) or not search_results:
+        return []
+    review_summary = reviews.get("review_summary")
+    if not isinstance(review_summary, dict):
+        return []
+    highlights = review_summary.get("highlights")
+    if not isinstance(highlights, list) or not highlights:
+        return []
+
+    # snippet index (1-based) → organic result (same convention as
+    # clean_review_citations' snippet_source_map).
+    by_index: Dict[int, Dict[str, Any]] = {}
+    for i, result in enumerate(search_results):
+        if isinstance(result, dict):
+            by_index[i + 1] = result
+
+    quotes: List[Dict[str, Any]] = []
+    seen_domains = set()
+    for h in highlights:
+        if len(quotes) >= 3:
+            break
+        if not isinstance(h, dict):
+            continue
+        point = h.get("point")
+        if not isinstance(point, str):
+            continue
+        m = _CITATION_MARKER_RE.search(point)
+        if not m:
+            continue  # uncited claim — cannot attribute a real source, skip
+        idx = int(m.group(1))
+        result = by_index.get(idx)
+        if not isinstance(result, dict):
+            continue
+        domain = _extract_domain(result.get("link", ""))
+        if not domain or domain in seen_domains:
+            continue  # dedupe by source domain
+        text = (result.get("snippet") or "").strip()
+        if len(text) < _MIN_QUOTE_CHARS:
+            continue  # too short to be a meaningful display quote
+        quote: Dict[str, Any] = {"retailer": domain, "text": text}
+        rating = _snippet_real_rating(result)
+        if rating is not None:
+            quote["rating"] = rating  # REAL rating only — never fabricated
+        quotes.append(quote)
+        seen_domains.add(domain)
+
+    return quotes
+
+
 def format_review_search_results(results: Dict, retailer_ratings: List[Dict]) -> str:
     """Format search results for review extraction."""
     if not results:
