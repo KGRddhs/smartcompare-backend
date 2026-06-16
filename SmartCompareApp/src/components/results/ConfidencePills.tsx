@@ -1,18 +1,18 @@
 /**
- * ConfidencePills — Bundle C spec § 5b + § 5c + § 5d.
+ * ConfidencePills — "UI Kit — Mobile Results" rebuild (Phase 4.2).
  *
- * Replaces the legacy single-word confidence banner on the Results screen
- * with a 3-pill horizontal row (💰 Price / ⭐ Reviews / 📋 Specs). Tap
- * opens "What we know" bottom sheet (caller-owned modal state).
+ * 3-pill horizontal row under "What we know". Each pill is the unused
+ * primitives/ConfidencePill (a COLORED DOT + label), e.g. "● Price · High"
+ * (green dot), "● Reviews · Medium" (amber dot), "● Specs · High". The dot
+ * is the load-bearing signal; the pill body is a calm bg.secondary chip
+ * with a hairline border (mockup ConfidencePill, JSX 84-101). Tap opens the
+ * "What we know" bottom sheet (caller-owned modal state via onPillPress).
  *
- * Color contract:
- *  - strong     → emerald-tinted (uses `colors.accentLight` background +
- *                 `colors.accentDark` text). Confident, not loud.
- *  - acceptable → amber (`colors.warning` at 13% alpha background + warning
- *                 text). Soft middle ground; never reads as warning/error.
- *  - weak       → muted (`colors.bg.secondary` background + secondary text).
- *                 Never red, never destructive — the calibrated-honesty
- *                 anchor (spec § 0) forbids alarmist signal.
+ * Backend confidence_legs use the strong|acceptable|weak vocabulary; the
+ * primitive uses high|medium|low dot colors. Mapping:
+ *  - strong     → high   (emerald dot)
+ *  - acceptable → medium (amber dot — soft middle ground, never alarmist)
+ *  - weak       → low    (muted gray dot — never red, never destructive)
  *
  * Suppression rules:
  *  - When `hidePricePill === true` (caller computes via `anyEstimated()`
@@ -27,9 +27,11 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { colors, spacing, typography, radii } from '../../theme';
+import { colors, spacing } from '../../theme';
+import { ConfidencePill } from '../primitives/ConfidencePill';
 
 type Level = 'strong' | 'acceptable' | 'weak';
+type DotLevel = 'high' | 'medium' | 'low';
 type Leg = 'price' | 'reviews' | 'specs';
 
 interface Props {
@@ -43,11 +45,18 @@ interface Props {
   testID?: string;
 }
 
-const PILLS: Array<{ leg: Leg; emoji: string; labelKey: string }> = [
-  { leg: 'price',   emoji: '💰', labelKey: 'results.confidence.pill.price' },
-  { leg: 'reviews', emoji: '⭐', labelKey: 'results.confidence.pill.reviews' },
-  { leg: 'specs',   emoji: '📋', labelKey: 'results.confidence.pill.specs' },
+const PILLS: Array<{ leg: Leg; labelKey: string }> = [
+  { leg: 'price',   labelKey: 'results.confidence.pill.price' },
+  { leg: 'reviews', labelKey: 'results.confidence.pill.reviews' },
+  { leg: 'specs',   labelKey: 'results.confidence.pill.specs' },
 ];
+
+// Backend strong|acceptable|weak → primitive dot level + level-word key.
+const LEVEL_MAP: Record<Level, { dot: DotLevel; wordKey: string }> = {
+  strong:     { dot: 'high',   wordKey: 'results.confidence.level.high' },
+  acceptable: { dot: 'medium', wordKey: 'results.confidence.level.medium' },
+  weak:       { dot: 'low',    wordKey: 'results.confidence.level.low' },
+};
 
 export function ConfidencePills({ confidence, hidePricePill, onPillPress, testID = 'confidence-pills' }: Props) {
   const { t } = useTranslation();
@@ -63,19 +72,31 @@ export function ConfidencePills({ confidence, hidePricePill, onPillPress, testID
     <View style={styles.row} testID={testID}>
       {renderable.map((p) => {
         const level = confidence[p.leg]!;
-        const palette = PALETTES[level];
+        const { dot, wordKey } = LEVEL_MAP[level];
+        // Composed label "Leg · Level". The leg name is a nested <Text> so
+        // it stays individually queryable (existing ConfidencePills test
+        // does getByText on the leg key); the primitive renders the whole
+        // node inside its label <Text>.
+        const label = (
+          <>
+            <Text>{t(p.labelKey)}</Text>
+            {' · '}
+            {t(wordKey)}
+          </>
+        );
         return (
           <TouchableOpacity
             key={p.leg}
             testID={`${testID}-${p.leg}`}
             accessibilityRole="button"
+            activeOpacity={0.7}
             onPress={() => onPillPress(p.leg)}
-            style={[styles.pill, { backgroundColor: palette.bg }]}
           >
-            <Text style={styles.emoji}>{p.emoji}</Text>
-            <Text style={[styles.label, { color: palette.fg }]}>
-              {t(p.labelKey)}
-            </Text>
+            <ConfidencePill
+              label={label}
+              level={dot}
+              dotTestID={`${testID}-${p.leg}-dot`}
+            />
           </TouchableOpacity>
         );
       })}
@@ -83,33 +104,11 @@ export function ConfidencePills({ confidence, hidePricePill, onPillPress, testID
   );
 }
 
-const PALETTES: Record<Level, { bg: string; fg: string }> = {
-  strong:     { bg: colors.accentLight,           fg: colors.accentDark },
-  // Amber at low alpha — soft, never alarmist.
-  acceptable: { bg: colors.warning + '22',        fg: colors.warning },
-  weak:       { bg: colors.bg.secondary,          fg: colors.text.secondary },
-};
-
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: spacing.sm,
     flexWrap: 'wrap',
     paddingVertical: spacing.xs,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.chip,
-    gap: spacing.xs,
-  },
-  emoji: {
-    fontSize: 14,
-  },
-  label: {
-    ...typography.caption,
-    fontWeight: '600',
   },
 });

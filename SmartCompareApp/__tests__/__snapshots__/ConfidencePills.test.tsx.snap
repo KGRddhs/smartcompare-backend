@@ -15,96 +15,112 @@ exports[`ConfidencePills (Bundle C §5) snapshot — Price pill hidden, mixed st
   <View
     accessibilityRole="button"
     accessible={true}
+    activeOpacity={0.7}
     onPress={[Function]}
-    style={
-      [
-        {
-          "alignItems": "center",
-          "borderRadius": 999,
-          "flexDirection": "row",
-          "gap": 4,
-          "paddingHorizontal": 12,
-          "paddingVertical": 4,
-        },
-        {
-          "backgroundColor": "#ECFDF5",
-        },
-      ]
-    }
     testID="confidence-pills-reviews"
   >
-    <Text
+    <View
       style={
         {
-          "fontSize": 14,
+          "alignItems": "center",
+          "alignSelf": "flex-start",
+          "backgroundColor": "#F8F8FA",
+          "borderColor": "#E5E7EB",
+          "borderRadius": 999,
+          "borderWidth": 1,
+          "flexDirection": "row",
+          "gap": 8,
+          "paddingHorizontal": 12,
+          "paddingVertical": 4,
         }
       }
     >
-      ⭐
-    </Text>
-    <Text
-      style={
-        [
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "height": 8,
+              "width": 8,
+            },
+            {
+              "backgroundColor": "#10B981",
+            },
+          ]
+        }
+        testID="confidence-pills-reviews-dot"
+      />
+      <Text
+        style={
           {
+            "color": "#0A0A0B",
             "fontSize": 13,
-            "fontWeight": "600",
-            "lineHeight": 19.5,
-          },
-          {
-            "color": "#059669",
-          },
-        ]
-      }
-    >
-      results.confidence.pill.reviews
-    </Text>
+            "fontWeight": "500",
+          }
+        }
+      >
+        <Text>
+          results.confidence.pill.reviews
+        </Text>
+         · 
+        results.confidence.level.high
+      </Text>
+    </View>
   </View>
   <View
     accessibilityRole="button"
     accessible={true}
+    activeOpacity={0.7}
     onPress={[Function]}
-    style={
-      [
-        {
-          "alignItems": "center",
-          "borderRadius": 999,
-          "flexDirection": "row",
-          "gap": 4,
-          "paddingHorizontal": 12,
-          "paddingVertical": 4,
-        },
-        {
-          "backgroundColor": "#F59E0B22",
-        },
-      ]
-    }
     testID="confidence-pills-specs"
   >
-    <Text
+    <View
       style={
         {
-          "fontSize": 14,
+          "alignItems": "center",
+          "alignSelf": "flex-start",
+          "backgroundColor": "#F8F8FA",
+          "borderColor": "#E5E7EB",
+          "borderRadius": 999,
+          "borderWidth": 1,
+          "flexDirection": "row",
+          "gap": 8,
+          "paddingHorizontal": 12,
+          "paddingVertical": 4,
         }
       }
     >
-      📋
-    </Text>
-    <Text
-      style={
-        [
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "height": 8,
+              "width": 8,
+            },
+            {
+              "backgroundColor": "#F59E0B",
+            },
+          ]
+        }
+        testID="confidence-pills-specs-dot"
+      />
+      <Text
+        style={
           {
+            "color": "#0A0A0B",
             "fontSize": 13,
-            "fontWeight": "600",
-            "lineHeight": 19.5,
-          },
-          {
-            "color": "#F59E0B",
-          },
-        ]
-      }
-    >
-      results.confidence.pill.specs
-    </Text>
+            "fontWeight": "500",
+          }
+        }
+      >
+        <Text>
+          results.confidence.pill.specs
+        </Text>
+         · 
+        results.confidence.level.medium
+      </Text>
+    </View>
   </View>
 </View>
 `;
@@ -124,143 +140,167 @@ exports[`ConfidencePills (Bundle C §5) snapshot — all 3 strong, no hide 1`] =
   <View
     accessibilityRole="button"
     accessible={true}
+    activeOpacity={0.7}
     onPress={[Function]}
-    style={
-      [
-        {
-          "alignItems": "center",
-          "borderRadius": 999,
-          "flexDirection": "row",
-          "gap": 4,
-          "paddingHorizontal": 12,
-          "paddingVertical": 4,
-        },
-        {
-          "backgroundColor": "#ECFDF5",
-        },
-      ]
-    }
     testID="confidence-pills-price"
   >
-    <Text
+    <View
       style={
         {
-          "fontSize": 14,
+          "alignItems": "center",
+          "alignSelf": "flex-start",
+          "backgroundColor": "#F8F8FA",
+          "borderColor": "#E5E7EB",
+          "borderRadius": 999,
+          "borderWidth": 1,
+          "flexDirection": "row",
+          "gap": 8,
+          "paddingHorizontal": 12,
+          "paddingVertical": 4,
         }
       }
     >
-      💰
-    </Text>
-    <Text
-      style={
-        [
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "height": 8,
+              "width": 8,
+            },
+            {
+              "backgroundColor": "#10B981",
+            },
+          ]
+        }
+        testID="confidence-pills-price-dot"
+      />
+      <Text
+        style={
           {
+            "color": "#0A0A0B",
             "fontSize": 13,
-            "fontWeight": "600",
-            "lineHeight": 19.5,
-          },
-          {
-            "color": "#059669",
-          },
-        ]
-      }
-    >
-      results.confidence.pill.price
-    </Text>
+            "fontWeight": "500",
+          }
+        }
+      >
+        <Text>
+          results.confidence.pill.price
+        </Text>
+         · 
+        results.confidence.level.high
+      </Text>
+    </View>
   </View>
   <View
     accessibilityRole="button"
     accessible={true}
+    activeOpacity={0.7}
     onPress={[Function]}
-    style={
-      [
-        {
-          "alignItems": "center",
-          "borderRadius": 999,
-          "flexDirection": "row",
-          "gap": 4,
-          "paddingHorizontal": 12,
-          "paddingVertical": 4,
-        },
-        {
-          "backgroundColor": "#ECFDF5",
-        },
-      ]
-    }
     testID="confidence-pills-reviews"
   >
-    <Text
+    <View
       style={
         {
-          "fontSize": 14,
+          "alignItems": "center",
+          "alignSelf": "flex-start",
+          "backgroundColor": "#F8F8FA",
+          "borderColor": "#E5E7EB",
+          "borderRadius": 999,
+          "borderWidth": 1,
+          "flexDirection": "row",
+          "gap": 8,
+          "paddingHorizontal": 12,
+          "paddingVertical": 4,
         }
       }
     >
-      ⭐
-    </Text>
-    <Text
-      style={
-        [
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "height": 8,
+              "width": 8,
+            },
+            {
+              "backgroundColor": "#10B981",
+            },
+          ]
+        }
+        testID="confidence-pills-reviews-dot"
+      />
+      <Text
+        style={
           {
+            "color": "#0A0A0B",
             "fontSize": 13,
-            "fontWeight": "600",
-            "lineHeight": 19.5,
-          },
-          {
-            "color": "#059669",
-          },
-        ]
-      }
-    >
-      results.confidence.pill.reviews
-    </Text>
+            "fontWeight": "500",
+          }
+        }
+      >
+        <Text>
+          results.confidence.pill.reviews
+        </Text>
+         · 
+        results.confidence.level.high
+      </Text>
+    </View>
   </View>
   <View
     accessibilityRole="button"
     accessible={true}
+    activeOpacity={0.7}
     onPress={[Function]}
-    style={
-      [
-        {
-          "alignItems": "center",
-          "borderRadius": 999,
-          "flexDirection": "row",
-          "gap": 4,
-          "paddingHorizontal": 12,
-          "paddingVertical": 4,
-        },
-        {
-          "backgroundColor": "#ECFDF5",
-        },
-      ]
-    }
     testID="confidence-pills-specs"
   >
-    <Text
+    <View
       style={
         {
-          "fontSize": 14,
+          "alignItems": "center",
+          "alignSelf": "flex-start",
+          "backgroundColor": "#F8F8FA",
+          "borderColor": "#E5E7EB",
+          "borderRadius": 999,
+          "borderWidth": 1,
+          "flexDirection": "row",
+          "gap": 8,
+          "paddingHorizontal": 12,
+          "paddingVertical": 4,
         }
       }
     >
-      📋
-    </Text>
-    <Text
-      style={
-        [
+      <View
+        style={
+          [
+            {
+              "borderRadius": 4,
+              "height": 8,
+              "width": 8,
+            },
+            {
+              "backgroundColor": "#10B981",
+            },
+          ]
+        }
+        testID="confidence-pills-specs-dot"
+      />
+      <Text
+        style={
           {
+            "color": "#0A0A0B",
             "fontSize": 13,
-            "fontWeight": "600",
-            "lineHeight": 19.5,
-          },
-          {
-            "color": "#059669",
-          },
-        ]
-      }
-    >
-      results.confidence.pill.specs
-    </Text>
+            "fontWeight": "500",
+          }
+        }
+      >
+        <Text>
+          results.confidence.pill.specs
+        </Text>
+         · 
+        results.confidence.level.high
+      </Text>
+    </View>
   </View>
 </View>
 `;

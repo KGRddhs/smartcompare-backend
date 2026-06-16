@@ -29,7 +29,11 @@ test('renders 3 pills with translated labels', () => {
   expect(getByText('results.confidence.pill.specs')).toBeTruthy();
 });
 
-test('strong = emerald, acceptable = amber/warning, weak = muted', () => {
+test('strong = emerald dot, acceptable = amber dot, weak = muted-gray dot', () => {
+  // Phase 4.2 — the "UI Kit — Mobile Results" pill carries the level
+  // signal on a COLORED DOT (not the pill background, which is now a
+  // calm bg.secondary chip). strong→high(emerald) / acceptable→medium(amber)
+  // / weak→low(gray).
   const { getByTestId } = render(
     <ConfidencePills
       confidence={{ price: 'strong', reviews: 'acceptable', specs: 'weak' }}
@@ -37,12 +41,12 @@ test('strong = emerald, acceptable = amber/warning, weak = muted', () => {
       testID="pills"
     />,
   );
-  const strong = StyleSheet.flatten(getByTestId('pills-price').props.style);
-  const acceptable = StyleSheet.flatten(getByTestId('pills-reviews').props.style);
-  const weak = StyleSheet.flatten(getByTestId('pills-specs').props.style);
-  expect(strong.backgroundColor).toBe(colors.accentLight); // emerald-tinted background, accent text
-  expect(acceptable.backgroundColor).toBe(colors.warning + '22');
-  expect(weak.backgroundColor).toBe(colors.bg.secondary);
+  const strongDot = StyleSheet.flatten(getByTestId('pills-price-dot').props.style);
+  const acceptableDot = StyleSheet.flatten(getByTestId('pills-reviews-dot').props.style);
+  const weakDot = StyleSheet.flatten(getByTestId('pills-specs-dot').props.style);
+  expect(strongDot.backgroundColor).toBe(colors.accent); // emerald #10B981
+  expect(acceptableDot.backgroundColor).toBe(colors.warning); // amber
+  expect(weakDot.backgroundColor).toBe(colors.text.secondary); // muted gray
 });
 
 test('omits Price pill when hidePricePill prop is true (spec § 5c)', () => {
