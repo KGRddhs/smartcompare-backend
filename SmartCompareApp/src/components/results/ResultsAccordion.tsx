@@ -10,10 +10,10 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronDown, Star, ListChecks, BarChart3 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
-import { colors, spacing, radii, typography } from '../../theme';
+import { colors, spacing, radii } from '../../theme';
 import type { Product, ReviewSummary, ReviewHighlight } from '../../types';
 
 type AccordionKey = 'reviews' | 'proscons' | 'specs';
@@ -95,7 +95,6 @@ export function ResultsAccordion({
 }: ResultsAccordionProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState<AccordionKey | null>(null);
-  const [showDiffsOnly, setShowDiffsOnly] = useState(false);
 
   const toggle = (k: AccordionKey) => {
     setOpen((curr) => (curr === k ? null : k));
@@ -107,6 +106,28 @@ export function ResultsAccordion({
     (acc, p: any) => acc + (p.review_count ?? 0),
     0
   );
+  // Weighted average rating across both products (by review_count when
+  // available, else simple mean of the ratings present). Used in the
+  // Reviews header sub: "{avg}★ avg · {total} reviews across both".
+  const avgRating: number | null = (() => {
+    const rated = reviewSrc.filter(
+      (p: any) => typeof p.rating === 'number' && p.rating > 0
+    );
+    if (rated.length === 0) return null;
+    const weightTotal = rated.reduce(
+      (acc: number, p: any) => acc + (p.review_count ?? 0),
+      0
+    );
+    if (weightTotal > 0) {
+      const sum = rated.reduce(
+        (acc: number, p: any) => acc + p.rating * (p.review_count ?? 0),
+        0
+      );
+      return sum / weightTotal;
+    }
+    const sum = rated.reduce((acc: number, p: any) => acc + p.rating, 0);
+    return sum / rated.length;
+  })();
 
   // Specs section data — merged keys, diff detection
   const specsSrc = specsProducts ?? products;
@@ -134,12 +155,6 @@ export function ResultsAccordion({
     });
     return rich.size > 0 ? Array.from(rich) : Array.from(structural);
   })();
-  const isSpecDifferent = (key: string): boolean => {
-    if (specsSrc.length < 2) return true;
-    const v0 = (specsSrc[0] as any)?.specs?.[key];
-    const v1 = (specsSrc[1] as any)?.specs?.[key];
-    return String(v0) !== String(v1);
-  };
 
   // Lane A-L3 Task L3.2 — fast O(1) lookup of per-row winner index from
   // the backend's specs_comparison array. Null/missing → no emerald
@@ -166,10 +181,20 @@ export function ResultsAccordion({
       key: 'reviews',
       icon: <Star size={18} color={colors.text.secondary} />,
       label: t('results.reviews'),
-      sub:
-        totalReviews > 0
-          ? `${totalReviews.toLocaleString()} ${t('results.accordion.reviewsSub')}`
-          : t('results.accordion.reviewsSub'),
+      // Reference sub: "4.8★ avg · 1,240 reviews across both".
+      // Prepend the weighted-avg rating when available; always include the
+      // total-reviews phrase. Falls back to the bare phrase when neither
+      // a rating nor a count is present.
+      sub: (() => {
+        const tail =
+          totalReviews > 0
+            ? `${totalReviews.toLocaleString()} ${t('results.accordion.reviewsSub')}`
+            : t('results.accordion.reviewsSub');
+        if (avgRating !== null) {
+          return `${avgRating.toFixed(1)}${t('results.accordion.reviewsAvg')} · ${tail}`;
+        }
+        return tail;
+      })(),
     },
     {
       key: 'proscons',
@@ -181,10 +206,11 @@ export function ResultsAccordion({
       key: 'specs',
       icon: <BarChart3 size={18} color={colors.text.secondary} />,
       label: t('results.specs'),
+      // Reference sub: "8 dimensions" — the count of rendered spec rows.
       sub:
         allSpecKeys.length > 0
-          ? `${allSpecKeys.length} ${t('results.accordion.specsSub')}`
-          : t('results.accordion.specsSub'),
+          ? `${allSpecKeys.length} ${t('results.accordion.specsDimensions')}`
+          : t('results.accordion.specsDimensions'),
     },
   ];
 
@@ -252,71 +278,87 @@ export function ResultsAccordion({
                   testID="results-accordion-body-reviews"
                   style={styles.body}
                 >
-                  {reviewSrc.map((rp: any, idx: number) => (
-                    <View key={idx} style={styles.reviewBlock}>
-                      <Text style={styles.reviewName}>{rp.name}</Text>
-                      {rp.review_summary?.consensus ? (
-                        <Text style={styles.reviewConsensus}>
-                          {rp.review_summary.consensus}
-                        </Text>
-                      ) : null}
-                      {rp.review_summary?.highlights?.map(
-                        (h: ReviewHighlight, hi: number) => (
-                          <Text
-                            key={hi}
-                            style={[
-                              styles.reviewHighlight,
-                              h.sentiment === 'positive'
-                                ? styles.reviewHighlightPos
-                                : styles.reviewHighlightNeg,
-                            ]}
-                          >
-                            {h.sentiment === 'positive' ? '+' : '−'} {h.point}
-                          </Text>
+                  {/*
+                   * Reference: ReviewLine (ResultsScreen.jsx 213-236). Each
+                   * review = a small uppercase SOURCE pill + a row of 5 star
+                   * glyphs (filled to the rating, amber) + a short "quote".
+                   * We render a FLAT list across both products built from
+                   * `retailer_quotes` -- no product-name headers, no consensus
+                   * paragraph, no +/- highlight bullets.
+                   *
+                   * Fallback: many categories (e.g. fragrances) ship empty
+                   * `retailer_quotes` -- the backend currently emits only
+                   * consensus/highlights there. When a product has no quotes
+                   * we surface at most 3 compact lines from `highlights`
+                   * (plain short quote lines, NO +/- prefix, NOT the giant
+                   * consensus paragraph). Populating per-source quotes for
+                   * those categories is a BACKEND follow-up (review extraction
+                   * must emit retailer_quotes). When there is truly nothing,
+                   * render one calm line. */}
+                  {(() => {
+                    const lines: React.ReactNode[] = [];
+                    reviewSrc.forEach((rp: any, idx: number) => {
+                      const quotes = Array.isArray(rp.retailer_quotes)
+                        ? rp.retailer_quotes
+                        : [];
+                      if (quotes.length > 0) {
+                        quotes.slice(0, 3).forEach((q: any, qi: number) => {
+                          lines.push(
+                            <ReviewLine
+                              key={`q-${idx}-${qi}`}
+                              testID={
+                                testID
+                                  ? `${testID}-reviews-quote-${idx}-${qi}`
+                                  : undefined
+                              }
+                              source={String(q.retailer || '')}
+                              rating={
+                                typeof q.rating === 'number' ? q.rating : null
+                              }
+                              text={String(q.text || '')}
+                            />
+                          );
+                        });
+                      } else {
+                        // Compact fallback -- short highlight quote lines.
+                        const highlights: ReviewHighlight[] = Array.isArray(
+                          rp.review_summary?.highlights
                         )
-                      )}
-                      {/* Lane A-L3 Task L3.4 — per-retailer review quote block.
-                          Up to 3 quotes per product (Amazon / Noon / X). When
-                          retailer_quotes is absent, nothing renders so legacy
-                          rows stay calm. */}
-                      {Array.isArray(rp.retailer_quotes) &&
-                      rp.retailer_quotes.length > 0 ? (
-                        <View style={styles.retailerQuotesBlock}>
-                          {rp.retailer_quotes
-                            .slice(0, 3)
-                            .map((q: any, qi: number) => (
-                              <View
-                                key={qi}
-                                testID={`${testID}-reviews-quote-${idx}-${qi}`}
-                                style={styles.retailerQuote}
-                              >
-                                <View style={styles.retailerQuoteHeader}>
-                                  <Text
-                                    style={styles.retailerQuoteRetailer}
-                                    numberOfLines={1}
-                                  >
-                                    {String(q.retailer || '').toUpperCase()}
-                                  </Text>
-                                  {typeof q.rating === 'number' ? (
-                                    <Text
-                                      style={styles.retailerQuoteRating}
-                                    >
-                                      {'\u2605'} {q.rating}
-                                    </Text>
-                                  ) : null}
-                                </View>
-                                <Text
-                                  style={styles.retailerQuoteText}
-                                  numberOfLines={3}
-                                >
-                                  {String(q.text || '')}
-                                </Text>
-                              </View>
-                            ))}
-                        </View>
-                      ) : null}
-                    </View>
-                  ))}
+                          ? rp.review_summary.highlights
+                          : [];
+                        highlights
+                          .slice(0, 3)
+                          .forEach((h: ReviewHighlight, hi: number) => {
+                            if (!h?.point) return;
+                            lines.push(
+                              <ReviewLine
+                                key={`h-${idx}-${hi}`}
+                                testID={
+                                  testID
+                                    ? `${testID}-reviews-fallback-${idx}-${hi}`
+                                    : undefined
+                                }
+                                source={String(rp.name || '')}
+                                rating={
+                                  typeof rp.rating === 'number'
+                                    ? rp.rating
+                                    : null
+                                }
+                                text={String(h.point)}
+                              />
+                            );
+                          });
+                      }
+                    });
+                    if (lines.length === 0) {
+                      return (
+                        <Text style={styles.reviewsEmpty}>
+                          {t('results.accordion.reviewsEmpty')}
+                        </Text>
+                      );
+                    }
+                    return lines;
+                  })()}
                 </View>
               )}
 
@@ -326,27 +368,44 @@ export function ResultsAccordion({
                   style={styles.body}
                 >
                   <View style={styles.prosConsGrid}>
-                    {products.map((p, idx) => {
+                    {/*
+                     * Reference: ProsConsCol (ResultsScreen.jsx 238-263).
+                     * The WINNER column renders FIRST (left) with a ★ +
+                     * accentDark name; pros are "+ text" (accentDark "+"),
+                     * cons are "- text" (placeholder "-"). When winnerIndex
+                     * is undefined we keep the natural product order and draw
+                     * no star (legacy callers). testIDs use the ORIGINAL
+                     * product index, not the display position. */}
+                    {(
+                      typeof winnerIndex === 'number'
+                        ? [winnerIndex, winnerIndex === 0 ? 1 : 0].filter(
+                            (idx) => idx < products.length
+                          )
+                        : products.map((_, idx) => idx)
+                    ).map((idx) => {
+                      const p = products[idx];
                       const isWinner =
                         typeof winnerIndex === 'number' && winnerIndex === idx;
                       return (
                         <View key={idx} style={styles.prosConsCol}>
                           <View style={styles.prosConsNameRow}>
                             {/* Lane A-L3 Task L3.3 — emerald ★ prefix on the
-                                winning product's column header per design
-                                Screen 3 ("WHAT FANS LOVE / DRAWBACKS"). Hidden
-                                when winnerIndex is undefined so legacy callers
+                                winning product's column header. Hidden when
+                                winnerIndex is undefined so legacy callers
                                 don't render an empty star. */}
                             {isWinner ? (
                               <Text
                                 testID={`${testID}-proscons-winner-star-${idx}`}
                                 style={styles.prosConsWinnerStar}
                               >
-                                {'\u2605'}
+                                {'★'}
                               </Text>
                             ) : null}
                             <Text
-                              style={styles.prosConsName}
+                              style={[
+                                styles.prosConsName,
+                                isWinner ? styles.prosConsNameWinner : null,
+                              ]}
                               numberOfLines={1}
                             >
                               {p.name}
@@ -358,7 +417,8 @@ export function ResultsAccordion({
                               style={styles.prosConsPro}
                               numberOfLines={2}
                             >
-                              + {pro}
+                              <Text style={styles.prosConsPlus}>+ </Text>
+                              {pro}
                             </Text>
                           ))}
                           {(p.cons ?? []).map((con, ci) => (
@@ -367,7 +427,8 @@ export function ResultsAccordion({
                               style={styles.prosConsCon}
                               numberOfLines={2}
                             >
-                              − {con}
+                              <Text style={styles.prosConsMinus}>{'−'} </Text>
+                              {con}
                             </Text>
                           ))}
                         </View>
@@ -382,79 +443,6 @@ export function ResultsAccordion({
                   testID="results-accordion-body-specs"
                   style={styles.body}
                 >
-                  {/*
-                   * Highlights mini-section — Bundle E S3 hotfix.
-                   * When `specs.products[i].spec_advantages` carries
-                   * pre-summarized sentences from the backend, render
-                   * them above the spec table. For low-confidence
-                   * categories the spec rows themselves are all "N/A"
-                   * (em-dash), so this block is the only spec-signal
-                   * the user sees. Hidden when no product has any
-                   * advantages — keeps the section calm in the common
-                   * case where the spec table itself is populated.
-                   */}
-                  {(() => {
-                    const hasAdvantages = specsSrc.some(
-                      (p: any) =>
-                        Array.isArray(p.spec_advantages) &&
-                        p.spec_advantages.length > 0
-                    );
-                    if (!hasAdvantages) return null;
-                    return (
-                      <View
-                        testID="results-spec-advantages"
-                        style={styles.specAdvantagesBlock}
-                      >
-                        <Text style={styles.specAdvantagesEyebrow}>
-                          {t('results.specsHighlights')}
-                        </Text>
-                        {specsSrc.map((p: any, pi: number) => {
-                          const adv: string[] = Array.isArray(p.spec_advantages)
-                            ? p.spec_advantages
-                            : [];
-                          if (adv.length === 0) return null;
-                          return (
-                            <View
-                              key={pi}
-                              testID={`results-spec-advantages-product-${pi}`}
-                              style={styles.specAdvantagesCol}
-                            >
-                              <Text
-                                style={styles.specAdvantagesName}
-                                numberOfLines={1}
-                              >
-                                {p.name}
-                              </Text>
-                              {adv.map((line: string, li: number) => (
-                                <Text
-                                  key={li}
-                                  style={styles.specAdvantagesLine}
-                                >
-                                  {line}
-                                </Text>
-                              ))}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    );
-                  })()}
-                  <View style={styles.specsToggleRow}>
-                    <Text style={styles.specsToggleLabel}>
-                      {t('results.specsShowDiff')}
-                    </Text>
-                    <Switch
-                      value={showDiffsOnly}
-                      onValueChange={setShowDiffsOnly}
-                      trackColor={{
-                        false: colors.border.medium,
-                        true: colors.accentLight,
-                      }}
-                      thumbColor={
-                        showDiffsOnly ? colors.accent : '#f4f3f4'
-                      }
-                    />
-                  </View>
                   {/* Phase 4.4 — comparison table per the "UI Kit — Mobile
                       Results" mockup (SpecRow, JSX 265-284): each row is
                       value · CENTERED-label · value (1fr / center / 1fr).
@@ -477,9 +465,7 @@ export function ResultsAccordion({
                         {(specsSrc[1] as any)?.name ?? ''}
                       </Text>
                     </View>
-                    {allSpecKeys
-                      .filter((k) => !showDiffsOnly || isSpecDifferent(k))
-                      .map((key) => {
+                    {allSpecKeys.map((key) => {
                         const values = specsSrc.map((p: any) => {
                           const raw = p.specs?.[key];
                           if (raw == null || typeof raw === 'object')
@@ -553,6 +539,53 @@ export function ResultsAccordion({
   );
 }
 
+/**
+ * Reference: ReviewLine (ResultsScreen.jsx 213-236). A single review row:
+ *   [SOURCE pill]  ★★★★★ (filled to rating, amber)
+ *   "short quote in quotes"
+ * Stars round the rating to the nearest whole glyph (1-5). When no rating
+ * is present we still render the pill + quote (no star row) so a quote is
+ * never dropped for a missing rating.
+ */
+function ReviewLine({
+  source,
+  rating,
+  text,
+  testID,
+}: {
+  source: string;
+  rating?: number | null;
+  text: string;
+  testID?: string;
+}) {
+  const filled =
+    typeof rating === 'number' && rating > 0
+      ? Math.max(0, Math.min(5, Math.round(rating)))
+      : 0;
+  return (
+    <View testID={testID} style={styles.reviewLine}>
+      <View style={styles.reviewLineHeader}>
+        <Text style={styles.reviewSourcePill} numberOfLines={1}>
+          {source.toUpperCase()}
+        </Text>
+        {filled > 0 ? (
+          <View style={styles.reviewStars}>
+            {[1, 2, 3, 4, 5].map((s) => (
+              <Star
+                key={s}
+                size={10}
+                color={s <= filled ? colors.warning : colors.border.medium}
+                fill={s <= filled ? colors.warning : 'transparent'}
+              />
+            ))}
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.reviewQuote}>{`“${text}”`}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   wrapper: {
     marginBottom: spacing.base,
@@ -619,65 +652,45 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border.light,
     paddingTop: 14,
   },
-  reviewBlock: {
-    marginBottom: 12,
+  // Reference: ReviewLine (ResultsScreen.jsx 213-236). Compact source-quote
+  // rows — uppercase source pill + amber star row + a short "quote".
+  reviewLine: {
+    flexDirection: 'column',
+    gap: 4,
+    marginBottom: 10,
   },
-  reviewName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text.primary,
-    marginBottom: 4,
-  },
-  reviewConsensus: {
-    fontSize: 12,
-    color: colors.text.primary,
-    marginBottom: 6,
-  },
-  reviewHighlight: {
-    fontSize: 12,
-    marginBottom: 2,
-  },
-  reviewHighlightPos: {
-    color: colors.accent,
-  },
-  reviewHighlightNeg: {
-    color: colors.destructive,
-  },
-  // Lane A-L3 Task L3.4 — per-retailer review quote block per design
-  // Screen 2 ("WHAT REVIEWERS SAY" → 3 small cards per product).
-  retailerQuotesBlock: {
-    marginTop: 8,
-    gap: 8,
-  },
-  retailerQuote: {
-    padding: 10,
-    borderRadius: 10,
-    backgroundColor: colors.bg.secondary,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-  },
-  retailerQuoteHeader: {
+  reviewLineHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+    gap: 8,
   },
-  retailerQuoteRetailer: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.6,
+  reviewSourcePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.chip,
+    backgroundColor: colors.bg.secondary,
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.5,
     color: colors.text.secondary,
     flexShrink: 1,
+    overflow: 'hidden',
   },
-  retailerQuoteRating: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.accent,
+  reviewStars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 1,
   },
-  retailerQuoteText: {
+  reviewQuote: {
     fontSize: 12,
+    fontWeight: '500',
     color: colors.text.primary,
-    lineHeight: 12 * 1.4,
+    lineHeight: 12 * 1.5,
+  },
+  reviewsEmpty: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    lineHeight: 12 * 1.5,
   },
   prosConsGrid: {
     flexDirection: 'row',
@@ -687,11 +700,17 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  // Reference: ProsConsCol name (ResultsScreen.jsx 241-248). Non-winner
+  // name = text.primary weight 600; winner name = accentDark weight 700.
   prosConsName: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     color: colors.text.primary,
     flexShrink: 1,
+  },
+  prosConsNameWinner: {
+    fontWeight: '700',
+    color: colors.accentDark,
   },
   // Lane A-L3 Task L3.3 — row container for the winner-star + name.
   prosConsNameRow: {
@@ -700,60 +719,30 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 8,
   },
-  // Lane A-L3 Task L3.3 — emerald star marking the overall winner on
-  // the pros/cons grid column header.
+  // Winner star — accentDark, matching the reference's accentDark name.
   prosConsWinnerStar: {
-    fontSize: 12,
-    color: colors.accent,
+    fontSize: 11,
+    color: colors.accentDark,
   },
+  // Pros: "+ text" — the "+" paints accentDark, the text text.primary.
   prosConsPro: {
     fontSize: 11,
+    fontWeight: '500',
     color: colors.text.primary,
     marginBottom: 3,
   },
+  prosConsPlus: {
+    color: colors.accentDark,
+  },
+  // Cons: "- text" — the "-" paints placeholder, the text text.secondary.
   prosConsCon: {
     fontSize: 11,
+    fontWeight: '500',
     color: colors.text.secondary,
     marginBottom: 3,
   },
-  specAdvantagesBlock: {
-    marginBottom: 14,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
-  },
-  specAdvantagesEyebrow: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.text.secondary,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  specAdvantagesCol: {
-    marginBottom: 8,
-  },
-  specAdvantagesName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text.primary,
-    marginBottom: 4,
-  },
-  specAdvantagesLine: {
-    fontSize: 12,
-    color: colors.text.primary,
-    lineHeight: 12 * 1.5,
-    marginBottom: 2,
-  },
-  specsToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  specsToggleLabel: {
-    ...typography.small,
-    color: colors.text.secondary,
+  prosConsMinus: {
+    color: colors.text.placeholder,
   },
   specsTable: {},
   specsHeader: {

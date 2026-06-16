@@ -303,7 +303,7 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
               }
             }
           >
-            3 results.accordion.specsSub
+            3 results.accordion.specsDimensions
           </Text>
         </View>
         <View
@@ -339,40 +339,6 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
         }
         testID="results-accordion-body-specs"
       >
-        <View
-          style={
-            {
-              "alignItems": "center",
-              "flexDirection": "row",
-              "justifyContent": "space-between",
-              "marginBottom": 10,
-            }
-          }
-        >
-          <Text
-            style={
-              {
-                "color": "#6B7280",
-                "fontSize": 11,
-                "fontWeight": "400",
-                "lineHeight": 16.5,
-              }
-            }
-          >
-            results.specsShowDiff
-          </Text>
-          <RCTSwitch
-            onValueChange={[Function]}
-            thumbColor="#f4f3f4"
-            trackColor={
-              {
-                "false": "#D1D5DB",
-                "true": "#ECFDF5",
-              }
-            }
-            value={false}
-          />
-        </View>
         <View
           style={{}}
         >

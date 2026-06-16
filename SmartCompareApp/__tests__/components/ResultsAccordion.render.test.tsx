@@ -134,14 +134,24 @@ describe('ResultsAccordion — render coverage', () => {
     expect(getByTestId('results-accordion-body-proscons')).toBeTruthy();
   });
 
-  it('renders review highlights with sentiment markers', () => {
-    const { getByTestId, getByText } = render(
+  it('renders compact fallback quote lines from highlights (no consensus, no +/− prefix)', () => {
+    // These mock products carry NO retailer_quotes, so the reviews body
+    // hits the compact fallback: short highlight `point` lines rendered as
+    // plain quotes (curly-quote wrapped). Per the design restructure, the
+    // consensus paragraph and the +/− sentiment-prefixed bullets are gone.
+    const { getByTestId, getByText, queryByText } = render(
       <ResultsAccordion products={mockProducts} reviewProducts={mockReviewProducts} />
     );
     fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
-    expect(getByText('Reliable but pricey')).toBeTruthy();
-    expect(getByText('+ Great ecosystem integration')).toBeTruthy();
-    expect(getByText('− Battery weaker than rivals')).toBeTruthy();
+    // Consensus paragraph no longer rendered.
+    expect(queryByText('Reliable but pricey')).toBeNull();
+    // Old +/− prefixed bullets no longer rendered.
+    expect(queryByText('+ Great ecosystem integration')).toBeNull();
+    expect(queryByText('− Battery weaker than rivals')).toBeNull();
+    // Highlight points surface as plain quoted lines instead.
+    expect(getByText('“Great ecosystem integration”')).toBeTruthy();
+    expect(getByText('“Battery weaker than rivals”')).toBeTruthy();
+    expect(getByText('“Sharp low-light photos”')).toBeTruthy();
   });
 
   it('renders pros + cons per product in the proscons body', () => {
@@ -178,15 +188,15 @@ describe('ResultsAccordion — render coverage', () => {
     expect(queryByText('na')).toBeNull();
   });
 
-  it('toggles Show-differences-only switch', () => {
+  it('always shows same-on-both spec rows (no Show-differences-only toggle)', () => {
+    // Design-structure pass (2026-06-16): the "Show differences only"
+    // Switch was removed to match the reference. Same-on-both rows like
+    // 'storage' (128 GB on both) now always render.
     const { getByTestId, queryByText } = render(
       <ResultsAccordion products={mockProducts} />
     );
     fireEvent.press(getByTestId('results-specs-toggle'));
-    // 'storage' is the same on both — filtered when diff-only is on.
     expect(queryByText('storage')).toBeTruthy();
-    // Switch is rendered; on-press toggles. The Switch mock may not be
-    // tappable but we can at least assert it's there in the DOM.
   });
 
   it('renders specs eyebrow with key count fallback when no specs', () => {
@@ -201,15 +211,30 @@ describe('ResultsAccordion — render coverage', () => {
     expect(getByTestId('results-accordion-body-specs')).toBeTruthy();
   });
 
-  it('renders reviews fallback sub when totalReviews=0', () => {
-    const noReviews = [
-      { ...mockProducts[0], review_count: 0 },
-      { ...mockProducts[1], review_count: 0 },
+  it('renders the bare reviews fallback sub when no count AND no rating', () => {
+    // Strip both review_count and rating → sub falls back to the plain
+    // phrase (no avg prefix, no count prefix).
+    const noSignal = [
+      { ...mockProducts[0], review_count: 0, rating: undefined },
+      { ...mockProducts[1], review_count: 0, rating: undefined },
     ];
     const { getByText } = render(
-      <ResultsAccordion products={noReviews as any} />
+      <ResultsAccordion products={noSignal as any} />
     );
     expect(getByText('results.accordion.reviewsSub')).toBeTruthy();
+  });
+
+  it('prepends the weighted-avg rating to the reviews sub when ratings present', () => {
+    // ratings 4.4 + 4.6 weighted by 520/720 reviews ≈ 4.5; total reviews
+    // 1,240. Sub format: "{avg}★ avg · {total} reviews across both".
+    const { getByText } = render(
+      <ResultsAccordion products={mockProducts} reviewProducts={mockReviewProducts} />
+    );
+    expect(
+      getByText(
+        '4.5results.accordion.reviewsAvg · 1,240 results.accordion.reviewsSub'
+      )
+    ).toBeTruthy();
   });
 
   it('handles missing reviewProducts (defaults to products array)', () => {
@@ -239,10 +264,8 @@ describe('ResultsAccordion — render coverage', () => {
     expect(reFetched.props.accessibilityState).toMatchObject({ expanded: true });
   });
 
-  it('isSpecDifferent returns true for single-product degenerate case', () => {
-    // When specsSrc.length < 2, isSpecDifferent (lines 86-89 of
-    // ResultsAccordion.tsx) returns true so the row stays visible
-    // under showDiffsOnly.
+  it('renders spec rows for the single-product degenerate case', () => {
+    // With one product the table still surfaces its spec rows.
     const oneProduct = [mockProducts[0]];
     const { getByTestId, getByText } = render(
       <ResultsAccordion products={oneProduct as any} />
