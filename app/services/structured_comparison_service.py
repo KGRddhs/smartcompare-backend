@@ -1620,6 +1620,10 @@ class StructuredComparisonService:
             serper_calls=self.serper_calls,
             elapsed_seconds=elapsed_seconds,
             metadata={"partial": True},
+            # Phase 3.1 — cohort proof line on the partial path too. ctx carries
+            # demographics_profile only if the await landed before the hard cap;
+            # absent → None → key omitted (badge hides). Same chokepoint, same gate.
+            cohort_summary=self._build_cohort_summary(ctx.get("demographics_profile")),
         )
         return result
 
@@ -1925,6 +1929,13 @@ class StructuredComparisonService:
             if _profile_task is not None:
                 behavior_profile, demographics_profile = await _profile_task
 
+            # WS1 (D1) + Phase 3.1 — stash demographics into the partial build
+            # ctx so a hard-cap timeout AFTER this point can still emit the
+            # cohort proof line on the partial response (the partial path reads
+            # ctx, not the local frame).
+            if self._partial_build_ctx is not None:
+                self._partial_build_ctx["demographics_profile"] = demographics_profile
+
             # Step 3: Compute deterministic scores
             scoring_service = get_scoring_service()
             t_score = time.perf_counter() if orchestrator_timings is not None else None
@@ -2082,6 +2093,9 @@ class StructuredComparisonService:
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
                 metadata=_metadata_override or None,
+                # Phase 3.1 — cohort proof line. None when no cohort matched /
+                # flag off / governorate or N missing → key omitted, badge hides.
+                cohort_summary=self._build_cohort_summary(demographics_profile),
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
@@ -2587,6 +2601,8 @@ class StructuredComparisonService:
                 serper_calls=self.serper_calls,
                 elapsed_seconds=elapsed,
                 metadata=_metadata_override or None,
+                # Phase 3.1 — cohort proof line (streaming mirror of the sync path).
+                cohort_summary=self._build_cohort_summary(demographics_profile),
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
@@ -2704,6 +2720,61 @@ class StructuredComparisonService:
         except Exception as exc:  # noqa: BLE001 — cohort scoring is best-effort
             logger.debug("cohort_profile derivation skipped: %s", exc)
         return None
+
+    # Governorate values treated as "missing" for the cohort proof line —
+    # mirrors cohort_service.SKIP_SENTINELS + the extraction_service block's
+    # ("Prefer not to say", "") guard. No region line for these.
+    _COHORT_GOV_SKIP = frozenset(
+        ["", "Prefer not to say", "أفضل عدم الإجابة", "أفضل عدم الإجابة "]
+    )
+
+    @staticmethod
+    def _build_cohort_summary(
+        demographics_profile: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Phase 3.1 — build the `cohort_summary` root block for the FE cohort
+        proof line ("N shoppers in {governorate} leaned the same way").
+
+        Sources both fields from the persisted demographics snapshot (written by
+        auth_routes.save_demographics at demographics-submission time):
+          - peer_count  = demographics_profile["cohort_match"]["n"] — the REAL
+            survey sample size N from cohort_priors.json (NOT invented);
+          - governorate = demographics_profile["governorate"] — the user's typed
+            governorate from onboarding Step 04.
+
+        Gating mirrors `was_cohort_block_active` (ENABLE_COHORT_PERSONALIZATION
+        flag + match_quality in the inject set + a confidence + a cohort_key) so
+        a cohort line is emitted only when cohort personalization actually ran.
+        Additionally requires peer_count > 0 and a non-sentinel governorate so
+        the FE CohortBadge (hides when peer_count <= 0 or !governorate) never
+        renders an empty line.
+
+        Returns None when the data isn't present/renderable (→ caller omits the
+        key, badge hides). Fail-soft: any error → None; a cohort line must never
+        break a comparison.
+        """
+        try:
+            if not demographics_profile:
+                return None
+            # Flag + match-quality + confidence + cohort_key gate (single source
+            # of truth — the cohort-injection predicate from extraction_service).
+            if not was_cohort_block_active(demographics_profile):
+                return None
+
+            cohort_match = demographics_profile.get("cohort_match") or {}
+            n = cohort_match.get("n", 0)
+            if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+                return None
+
+            governorate = demographics_profile.get("governorate")
+            gov = str(governorate).strip() if governorate is not None else ""
+            if gov in StructuredComparisonService._COHORT_GOV_SKIP:
+                return None
+
+            return {"peer_count": n, "governorate": gov}
+        except Exception as exc:  # noqa: BLE001 — cohort proof line is best-effort
+            logger.debug("cohort_summary build skipped: %s", exc)
+            return None
 
     async def _fetch_behavior_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Fetch user's behavioral profile from Supabase."""

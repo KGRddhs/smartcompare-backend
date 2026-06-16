@@ -983,6 +983,7 @@ def build_comparison_response(
     serper_calls: int = 0,
     elapsed_seconds: float = 0.0,
     metadata: Optional[Dict[str, Any]] = None,
+    cohort_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the full structured comparison response.
 
@@ -999,6 +1000,15 @@ def build_comparison_response(
     - All other positional-style params now have defaults so a minimal
       call (just `products` + `comparison`) works for unit tests and
       lightweight callers. Production callers still pass everything.
+
+    Phase 3.1 — `cohort_summary` ({"peer_count": int, "governorate": str})
+    is attached at the response ROOT when present and shape-valid. The FE
+    ResultsScreen reads `result.cohort_summary` to render the cohort proof
+    line ("N shoppers in {governorate} leaned the same way"). The orchestrator
+    decides WHEN to pass it (gated by ENABLE_COHORT_PERSONALIZATION + cohort
+    match quality via _build_cohort_summary); the builder defensively
+    re-validates so a malformed/zero/blank value is OMITTED (the badge hides
+    when peer_count <= 0 or governorate is blank).
     """
     # Resolve product_data / products alias
     if products is not None and product_data is None:
@@ -1337,6 +1347,29 @@ def build_comparison_response(
     # partial updates — keys not in the override are left untouched.
     if metadata:
         result["metadata"].update(metadata)
+
+    # Phase 3.1 — cohort proof line. Attach `cohort_summary` at the response
+    # ROOT only when the orchestrator resolved a real cohort match AND the
+    # shape is renderable (peer_count > 0, non-blank governorate). The
+    # CohortBadge on ResultsScreen hides when peer_count <= 0 or !governorate,
+    # so we OMIT the key entirely in those cases rather than ship a zero line.
+    # Defensive re-validate here keeps a malformed orchestrator value from ever
+    # reaching the FE; the orchestrator's _build_cohort_summary owns the
+    # ENABLE_COHORT_PERSONALIZATION + match-quality gating.
+    if isinstance(cohort_summary, dict):
+        _peer_count = cohort_summary.get("peer_count")
+        _gov = cohort_summary.get("governorate")
+        if (
+            isinstance(_peer_count, int)
+            and not isinstance(_peer_count, bool)
+            and _peer_count > 0
+            and isinstance(_gov, str)
+            and _gov.strip()
+        ):
+            result["cohort_summary"] = {
+                "peer_count": _peer_count,
+                "governorate": _gov,
+            }
 
     # Backward compatibility aliases
     # Bundle C v1.1 § 1a defensive — the canonical v2 path

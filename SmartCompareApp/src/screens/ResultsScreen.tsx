@@ -765,11 +765,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
 /**
  * Phase 3 § 4b helpers — surface cohort match details inline on Results.
- * Backend already includes a `cohort_summary` block on the comparison
- * result when match quality is exact / broadened-governorate / broadened-
- * language (per CLAUDE.md cohort personalization invariant). When absent
- * or low-confidence, the helpers return values that make CohortBadge
- * render nothing (peerCount=0 OR governorate='').
+ * The backend (Phase 3.1) emits a root `cohort_summary` block —
+ * `{ peer_count, governorate }` — ONLY when ENABLE_COHORT_PERSONALIZATION
+ * is on AND a real cohort matched (quality exact / broadened-governorate /
+ * broadened-language) AND peer_count > 0 with a non-blank governorate. When
+ * the key is absent (no match / flag off / low-confidence), these helpers
+ * return values that make CohortBadge render nothing (peerCount=0 OR
+ * governorate=''). Falls back to `personalization.cohort` for forward-compat.
  */
 function resolveCohortPeerCount(result: ComparisonResult): number {
   const summary: any =
