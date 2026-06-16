@@ -487,6 +487,7 @@ from app.services.price_service import (
     is_implausible_high_value_price,
     is_implausible_low_fragrance_price,
     reconcile_pair_sizes,
+    reconcile_pair_fairness,
     is_price_plausible,
     is_luxury_brand,
     is_supplement_query,
@@ -1920,21 +1921,24 @@ class StructuredComparisonService:
                     "api_calls": self.api_calls,
                 }
 
-            # Task C2 + same-size GENUINE re-selection — pair-level size-basis
-            # reconciliation (post-selection, pre-scoring). The pair targets a
-            # COMMON size (the user QUERY's explicit size, else designer-fragrance
-            # flagship 100ml) and RE-SELECTS each product to it from the candidates
-            # already fetched this request (self._price_candidates — no new
-            # network). Both reach it → show both; only one → pend only the other;
-            # neither → both pending. So neither scoring nor the verdict asserts an
-            # apples-to-oranges delta.
+            # CATEGORY-AWARE FAIRNESS — pair-level comparable-unit reconciliation
+            # (post-selection, pre-scoring). The pair targets a COMMON comparable
+            # unit for `category_used` (storage GB / ml / count / net weight; the
+            # user QUERY's explicit value, else the per-category default) and
+            # RE-SELECTS each product to it from the candidates already fetched
+            # this request (self._price_candidates — no new network). Both reach it
+            # → show both; only one → pend only the other (unit_mismatch /
+            # size_mismatch for fragrances); neither → both pending. So neither
+            # scoring nor the verdict asserts an apples-to-oranges delta across a
+            # different storage/volume/count. Fragrances retain the exact shipped
+            # behavior (reconcile_pair_fairness delegates to reconcile_pair_sizes).
             try:
-                reconcile_pair_sizes(
-                    product_data, user_query=query,
+                reconcile_pair_fairness(
+                    product_data, query, category_used,
                     candidates_by_name=self._price_candidates,
                 )
             except Exception as _e:  # noqa: BLE001 — never block the response
-                logger.warning("size reconciliation skipped (sync): %s", _e)
+                logger.warning("fairness reconciliation skipped (sync): %s", _e)
 
             # Fetch behavioral profile + demographics_profile if user is logged in.
             # I5.6 lever-2: the fetch was kicked off above (concurrent with the
@@ -2383,21 +2387,23 @@ class StructuredComparisonService:
                 yield ("complete", insufficient_response)
                 return
 
-            # Task C2 + same-size GENUINE re-selection — pair-level size-basis
-            # reconciliation (post-selection, pre-scoring). Run BEFORE the
-            # `prices` SSE event so the streamed price and the final `complete`
-            # response agree. The pair targets a COMMON size (user QUERY's
-            # explicit size, else designer-fragrance flagship 100ml) and
-            # RE-SELECTS each product to it from candidates already fetched this
-            # request (self._price_candidates — no new network): both reach it →
-            # show both; only one → pend only the other; neither → both pending.
+            # CATEGORY-AWARE FAIRNESS — pair-level comparable-unit reconciliation
+            # (post-selection, pre-scoring). Run BEFORE the `prices` SSE event so
+            # the streamed price and the final `complete` response agree. The pair
+            # targets a COMMON comparable unit for `category_used` (storage GB / ml
+            # / count / net weight; the user QUERY's explicit value, else the
+            # per-category default) and RE-SELECTS each product to it from
+            # candidates already fetched this request (self._price_candidates — no
+            # new network): both reach it → show both; only one → pend only the
+            # other; neither → both pending. Fragrances retain the exact shipped
+            # behavior (reconcile_pair_fairness delegates to reconcile_pair_sizes).
             try:
-                reconcile_pair_sizes(
-                    product_data, user_query=query,
+                reconcile_pair_fairness(
+                    product_data, query, category_used,
                     candidates_by_name=self._price_candidates,
                 )
             except Exception as _e:  # noqa: BLE001 — never block the stream
-                logger.warning("size reconciliation skipped (stream): %s", _e)
+                logger.warning("fairness reconciliation skipped (stream): %s", _e)
 
             # Yield specs (Bundle E S3 — piggyback image_url onto specs event
             # since both land together at end of Phase 1; avoids adding a new
