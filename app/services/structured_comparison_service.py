@@ -553,6 +553,7 @@ from app.services.confidence_service import (
 from app.services.review_service import (
     clean_review_content,
     clean_review_citations,
+    build_retailer_quotes_from_reviews,
     format_review_search_results,
     get_reviews as _get_reviews_standalone,
     REVIEWS_CACHE_TTL,
@@ -2421,6 +2422,10 @@ class StructuredComparisonService:
                             "overall_sentiment": "mixed", "consensus": "",
                             "highlights": [], "review_volume": "minimal", "agreement_level": "moderate",
                         }),
+                        # ITEM 1 — streaming parity with the non-streaming reviews
+                        # section (response_builder.py): per-source retailer_quotes
+                        # built in _fetch_product_data from REAL organic snippets.
+                        "retailer_quotes": (pd.get("reviews") or {}).get("retailer_quotes", []),
                         # S3 L2 — streaming parity with the non-streaming reviews
                         # section (response_builder). Flag-gated; None when
                         # ENABLE_YOUTUBE_SOURCE OFF / no signal.
@@ -3312,6 +3317,25 @@ class StructuredComparisonService:
 
         if result.get("reviews") and isinstance(result["reviews"], dict):
             result["reviews"] = clean_review_content(result["reviews"])
+
+        # ITEM 1 — surface per-source retailer_quotes from REAL review material
+        # (esp. fragrances, which previously emitted only consensus/highlights).
+        # MUST run BEFORE clean_review_citations: the builder maps each highlight
+        # back to its organic source via the still-intact [snippet_N] markers (the
+        # citation cleaner replaces those markers in place). Zero extra API calls —
+        # it reuses the unified_search organic the review extraction already
+        # consumed. Ratings are NEVER fabricated (omitted unless real). Defensive
+        # — never blocks the response.
+        if result.get("reviews") and isinstance(result["reviews"], dict):
+            try:
+                quotes = build_retailer_quotes_from_reviews(
+                    result["reviews"],
+                    unified_search.get("organic", []) if unified_search else [],
+                )
+                if quotes:
+                    result["reviews"]["retailer_quotes"] = quotes
+            except Exception as _e:  # noqa: BLE001 — best-effort, never critical-path
+                logger.warning("retailer_quotes build skipped: %s", _e)
 
         if result.get("reviews") and isinstance(result["reviews"], dict):
             result["reviews"] = clean_review_citations(

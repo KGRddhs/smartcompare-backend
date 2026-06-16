@@ -1264,6 +1264,12 @@ def build_comparison_response(
                         "review_volume": "minimal",
                         "agreement_level": "moderate",
                     }),
+                    # ITEM 1 — up to 3 per-source review quotes the FE Reviews
+                    # accordion renders as compact AMAZON ★★★★★ "quote" lines.
+                    # Built in _fetch_product_data from REAL organic snippets
+                    # (no fabricated ratings); [] when none could be attributed
+                    # (FE falls back to highlights, then a calm empty line).
+                    "retailer_quotes": (pd.get("reviews") or {}).get("retailer_quotes", []),
                     # S3 L2 — cited YouTube review signal (flag-gated). None
                     # when ENABLE_YOUTUBE_SOURCE OFF / no signal. Frontend
                     # renders "~N views · top video by <channel>" as a cited
