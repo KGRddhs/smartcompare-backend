@@ -33,6 +33,7 @@ exports[`snapshot — 2 dims (no expand row) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -42,28 +43,6 @@ exports[`snapshot — 2 dims (no expand row) 1`] = `
         }
       >
         Price
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <Text
@@ -214,6 +193,7 @@ exports[`snapshot — 2 dims (no expand row) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -223,28 +203,6 @@ exports[`snapshot — 2 dims (no expand row) 1`] = `
         }
       >
         Reviews
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View
@@ -402,6 +360,7 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -411,28 +370,6 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
         }
       >
         Price
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <Text
@@ -583,6 +520,7 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -592,28 +530,6 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
         }
       >
         Reviews
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View
@@ -758,6 +674,7 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -767,28 +684,6 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
         }
       >
         Value
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <Text
@@ -939,6 +834,7 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -948,28 +844,6 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
         }
       >
         Performance
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View
@@ -1164,6 +1038,7 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -1173,28 +1048,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         }
       >
         Price
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <Text
@@ -1345,6 +1198,7 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -1354,28 +1208,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         }
       >
         Reviews
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View
@@ -1520,6 +1352,7 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -1529,28 +1362,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         }
       >
         Value
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <Text
@@ -1701,6 +1512,7 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -1710,28 +1522,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         }
       >
         Performance
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View
@@ -1876,6 +1666,7 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -1885,28 +1676,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         }
       >
         Build
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View
@@ -2051,6 +1820,7 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -2060,28 +1830,6 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         }
       >
         Longevity
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View

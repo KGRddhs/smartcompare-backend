@@ -374,6 +374,13 @@ export interface Dimension {
   confidence?: 'high' | 'medium' | 'low';
   is_core?: boolean;
   data_insufficient?: boolean;
+  // Backend per-row caption marker. `'limited_data'` flags a dimension the
+  // backend could NOT score from real data (placeholder 75/75 tie with a
+  // "Limited X data" / "...unavailable" delta_text) — the FE DROPS these
+  // dims entirely rather than showing an apologetic "Limited X data" line
+  // (walk-fix 2026-06-17). Other caption_key values are handled by the
+  // value-row value-match caption path.
+  caption_key?: string | null;
   value_match_a?: ValueMatch;
   value_match_b?: ValueMatch;
   is_cross_tier?: boolean;

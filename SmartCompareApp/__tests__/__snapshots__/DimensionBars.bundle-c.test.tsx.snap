@@ -33,6 +33,7 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -42,28 +43,6 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
         }
       >
         Value
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View
@@ -195,6 +174,7 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -204,28 +184,6 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
         }
       >
         Reviews
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View
@@ -357,6 +315,7 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -366,28 +325,6 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
         }
       >
         Price
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View
@@ -519,6 +456,7 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
       }
     >
       <Text
+        numberOfLines={1}
         style={
           {
             "color": "#0A0A0B",
@@ -528,28 +466,6 @@ exports[`DimensionBars (Bundle C §6 — hero + expand + silent omission) snapsh
         }
       >
         Performance
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={
-          {
-            "color": "#6B7280",
-            "flexShrink": 1,
-            "fontSize": 13,
-            "fontVariant": [
-              "tabular-nums",
-            ],
-            "fontWeight": "500",
-            "marginStart": 8,
-            "textAlign": "right",
-          }
-        }
-      >
-        A
-         
-        ·
-         
-        B
       </Text>
     </View>
     <View
