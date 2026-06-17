@@ -1,8 +1,22 @@
 # Pre-impl free-unit failure baseline — Faithful-Results bundle
 
+> **CANONICAL SOURCE OF TRUTH = QA's `.qa-discovery/BASELINE_FAILURES.txt`** (dispatcher
+> ruling: ONE ignore-set the 7.3 gate trusts). This file's local snapshot
+> `tests/.pre_impl_failures.txt` was **reconciled set-identical to QA's (59 == 59, zero
+> diff)** and serves only as the harness FALLBACK when the main tree's `.qa-discovery/`
+> isn't on disk (fresh clone / CI). `scripts/regression_gate_diff.py` defaults to QA's
+> file when present, else the snapshot. Never fork the set — reconcile with QA.
+>
+> **Network-flaky EXCLUDE set** (`NETWORK_FLAKY_EXCLUDE` in `regression_gate_diff.py` —
+> gate ignores regardless of baseline membership): the two
+> `test_price_cache_bust_probe.py::TestPriceReadBypass` methods (Backend-flagged; live
+> Tier-1.5 escalation not mocked) + `test_rate_limiting_complete.py::...prices_endpoint_rate_limited`
+> (real GET). These pass-or-fail by live-network reachability, so they must never read as a
+> code regression.
+
 **Captured by:** Test member, 2026-06-17, worktree `feature/faithful-test` BEFORE any
 Backend/Frontend impl landed (both branches still at main HEAD `2c10cb8` for `app/`
-code at capture time).
+code at capture time). Verified set-identical to QA's independently-captured baseline.
 
 **Command:**
 ```

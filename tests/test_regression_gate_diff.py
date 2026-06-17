@@ -126,3 +126,70 @@ def test_format_report_clean_when_no_regression():
     text = rgd.format_report(result)
     low = text.lower()
     assert "no regression" in low or "no new" in low
+
+
+# ---------------------------------------------------------------------------
+# Network-flaky exclude set — a flaky test never counts as a regression
+# ---------------------------------------------------------------------------
+
+def test_excluded_flaky_test_is_not_a_regression():
+    """A network-flaky test (absent from baseline) that fails in the current run
+    must NOT be flagged as a NEW regression — it's reported as excluded_failing."""
+    flaky = next(iter(rgd.NETWORK_FLAKY_EXCLUDE))
+    result = rgd.diff_failures({flaky}, set())  # flaky failed, not in baseline
+    assert result.new_failures == set()
+    assert result.has_regression is False
+    assert flaky in result.excluded_failing
+
+
+def test_excluded_flaky_alongside_real_regression():
+    """A real regression still trips the gate even when a flaky also failed."""
+    flaky = next(iter(rgd.NETWORK_FLAKY_EXCLUDE))
+    result = rgd.diff_failures({flaky, "tests/real.py::t_reg"}, set())
+    assert result.new_failures == {"tests/real.py::t_reg"}
+    assert result.has_regression is True
+    assert flaky in result.excluded_failing
+
+
+def test_exclude_set_removed_from_baseline_too():
+    """If a flaky test is (historically) in the baseline, it's removed from BOTH
+    sides so it can't show up as 'fixed' either — fully neutral."""
+    flaky = next(iter(rgd.NETWORK_FLAKY_EXCLUDE))
+    result = rgd.diff_failures(set(), {flaky})  # flaky in baseline, passed now
+    assert result.fixed == set()  # not counted as a fix
+    assert result.new_failures == set()
+
+
+def test_custom_exclude_overrides_default():
+    result = rgd.diff_failures({"tests/x.py::t"}, set(), exclude={"tests/x.py::t"})
+    assert result.new_failures == set()
+    assert "tests/x.py::t" in result.excluded_failing
+
+
+def test_known_network_flaky_members_present():
+    """The price-cache-bust probe (Backend-flagged) + the real-GET rate-limit
+    test are in the exclude set."""
+    excl = rgd.NETWORK_FLAKY_EXCLUDE
+    assert any("test_price_cache_bust_probe.py" in e for e in excl)
+    assert any("test_rate_limiting_complete.py" in e for e in excl)
+
+
+def test_format_report_shows_ignored_flaky():
+    flaky = next(iter(rgd.NETWORK_FLAKY_EXCLUDE))
+    result = rgd.diff_failures({flaky}, set())
+    text = rgd.format_report(result)
+    assert "net-flaky" in text.lower() or "ignored" in text.lower()
+    text.encode("ascii")
+
+
+# ---------------------------------------------------------------------------
+# Canonical baseline default — reconciled identical to QA's source of truth
+# ---------------------------------------------------------------------------
+
+def test_default_baseline_matches_committed_snapshot_set():
+    """The harness DEFAULT baseline (QA canonical when on disk, else the local
+    snapshot) must be set-identical to the committed local snapshot — proving the
+    dispatcher's 'ONE ignore-set' invariant holds (QA == mine, verified 59==59)."""
+    default_ids = rgd.load_baseline(rgd.DEFAULT_BASELINE)
+    snapshot_ids = rgd.load_baseline(BASELINE_FILE)
+    assert default_ids == snapshot_ids
