@@ -38,6 +38,11 @@ if not hasattr(_price_service, "should_negative_cache"):
 negative_cache_key = _price_service.negative_cache_key
 should_negative_cache = _price_service.should_negative_cache
 _GENUINE_BH_SOURCE_METHODS = _price_service._GENUINE_BH_SOURCE_METHODS
+# Phase 1b wrong-cheap guard helper — exposed for the gap test below (the
+# integrated-tree --cov pass found is_haircare_query had ZERO test coverage:
+# is_implausible_low_haircare_price checks premium brands directly, so the
+# is_haircare_query predicate itself was never exercised).
+is_haircare_query = getattr(_price_service, "is_haircare_query", None)
 
 
 class TestShouldNegativeCacheGaps:
@@ -100,3 +105,35 @@ class TestNegativeCacheKeyGaps:
         a = negative_cache_key("price:bahrain:iphone_15_256gb")
         b = negative_cache_key("price:bahrain:iphone_15_128gb")
         assert a != b
+
+
+@pytest.mark.skipif(is_haircare_query is None, reason="is_haircare_query not on this tree")
+class TestIsHaircareQueryGap:
+    """Phase 1b gap: the integrated-tree --cov pass found is_haircare_query had
+    ZERO coverage (is_implausible_low_haircare_price checks premium brands
+    directly, never via this predicate). Fill it — pure function, exported."""
+
+    def test_empty_name_is_not_haircare(self):
+        assert is_haircare_query("") is False
+        assert is_haircare_query(None) is False  # falsy guard (line 718-719)
+
+    def test_premium_haircare_brand_matches(self):
+        # A known premium haircare brand → True (the brand branch).
+        from app.services.price_service import PREMIUM_HAIRCARE_BRAND_KEYWORDS
+        brand = next(iter(PREMIUM_HAIRCARE_BRAND_KEYWORDS))
+        assert is_haircare_query(f"{brand} repair mask") is True
+
+    def test_generic_haircare_word_matches(self):
+        # A generic haircare product word → True (the keyword branch).
+        from app.services.price_service import HAIRCARE_PRODUCT_KEYWORDS
+        kw = next(iter(HAIRCARE_PRODUCT_KEYWORDS))
+        assert is_haircare_query(f"SomeBrand {kw}") is True
+
+    def test_non_haircare_is_false(self):
+        # An electronics query is not haircare (both branches fall through).
+        assert is_haircare_query("iPhone 15 Pro Max 256GB") is False
+
+    def test_case_insensitive(self):
+        from app.services.price_service import HAIRCARE_PRODUCT_KEYWORDS
+        kw = next(iter(HAIRCARE_PRODUCT_KEYWORDS))
+        assert is_haircare_query(f"BRAND {kw.upper()}") is True

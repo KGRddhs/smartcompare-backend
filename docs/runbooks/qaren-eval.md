@@ -57,6 +57,39 @@ smoke20 gate needs a smoke20 baseline:
   (0.4) is the structural baseline; pass_rate is floored at 0 by the cold-pend price
   behavior (so "no pass_rate regression" is trivially true — don't read it as the signal).
 
+## Wave-2 #12 record (Faithful-Results, 2026-06-17)
+
+- **Unit free-unit regression gate: PASS.** `scripts/regression_gate_diff.py` vs QA's
+  integrated free-unit suite (HEAD `ad4d25b`) → EXIT 0, FAILED set ⊆ the canonical 48.
+  Canonical baseline = QA's `.qa-discovery/BASELINE_FAILURES.txt` (48, creds-present);
+  shared `NETWORK_FLAKY_EXCLUDE` = the 2 `test_price_cache_bust_probe::TestPriceReadBypass`
+  + `test_rate_limiting_complete::...prices_endpoint_rate_limited` + algolia
+  (`test_algolia_service::test_fetch_price_happy_path_genuine_bhd`, mocked-pollution-flaky).
+  Parser gotcha fixed (`3a0a427`): pytest `-rf`/`-q` prints BARE nodeids in the
+  WARNINGS-summary section (passing tests above their DeprecationWarning) — the gate
+  counts ONLY `FAILED `-prefixed lines when the input is pytest output, else treats a
+  bare id-list (the baseline mirror) as all-failures.
+- **Coverage (per-diff / new-code standard, NOT whole-module):** the new pure-logic
+  modules are well-covered (response_builder 71%, scoring_service 66%); price/review/
+  extraction whole-module sit 24-28% because ~75% is the live-network/LLM cascade that
+  only `live_unit` tests reach (excluded from free-unit — same ceiling on main). Per-diff
+  check on the new functions: all covered after filling the one gap — BE's
+  `is_haircare_query` had zero coverage (its sibling `is_implausible_low_haircare_price`
+  checks premium brands directly, bypassing the predicate) → filled (`20e3c89`).
+- **Post-deploy eval: PASS (2026-06-17, prod `3d870c8`).** smoke20 regression vs
+  `7a5fc55b` after QA's per-category smoke went green. All 20 queries, 0 errors, p50
+  17375ms / p95 20359ms (within cap). Axes vs baseline (tol 2pp): price 0.000->0.000
+  (held, cold-pend floored), **specs 0.9875->0.9875 (HELD)**, winner 0.400->0.450
+  (IMPROVED +5pp), **factual 1.000->1.000 (HELD)**. GATE TEETH (specs+factual no-regress)
+  = PASS; no axis regressed >2pp. genuine-BH 3/3 priced (estimate-share 0%) — the new
+  genuine-cache path produced more genuine prices than the baseline run's 1.
+  - **Exit-code caveat (NOT a regression):** the runner printed `GATE FAIL [regression]:
+    baseline ... not found in eval_runs` + exit 1 because `eval_gate._regression_gate`
+    `fetch_eval_run()`s the baseline from Supabase and the eval box can't DNS-reach it
+    (`getaddrinfo failed` — same wall as `--persist`). The axis comparison was done
+    MANUALLY vs the known baseline values (all green above). To get the harness's own
+    verdict, run from a Supabase-reachable env OR eyeball row `7a5fc55b` via Supabase MCP.
+
 ## Persistence (`--persist`)
 
 Writes ONE `eval_runs` row (migration 031) via the service-role Supabase client:

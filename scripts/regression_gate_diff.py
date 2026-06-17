@@ -56,6 +56,11 @@ NETWORK_FLAKY_EXCLUDE: Set[str] = {
     "tests/test_price_cache_bust_probe.py::TestPriceReadBypass::test_bust_skips_price_redis_read",
     "tests/test_price_cache_bust_probe.py::TestPriceReadBypass::test_specs_reviews_cache_untouched_by_price_bust",
     "tests/test_rate_limiting_complete.py::TestRateLimitCoverage::test_prices_endpoint_rate_limited",
+    # Mocked-but-pollution-flaky (QA Wave-2): an async/event-loop pollution from a
+    # prior test can flip this on some runs; proven pre-existing on main. Shared
+    # ONE exclude list with QA's integration gate so neither side reads it as a
+    # regression.
+    "tests/test_algolia_service.py::test_fetch_price_happy_path_genuine_bhd",
 }
 
 
@@ -82,21 +87,33 @@ def _strip_reason_suffix(line: str) -> str:
 
 
 def parse_failure_ids(text: str) -> Set[str]:
-    """Extract pytest nodeids from pytest -q output (or a saved id list).
+    """Extract failing pytest nodeids from pytest output OR a saved id list.
 
-    Tolerant of:
-      - a leading 'FAILED ' prefix (pytest -q summary lines),
-      - a trailing ' - <reason>' the -q summary appends, stripped at the first
-        ' - ' OUTSIDE any '[...]' param bracket (so a parametrized id with a dash
-        in its params survives),
-      - blank / whitespace-only lines.
-    A nodeid is recognized by containing '::'."""
+    TWO INPUT MODES (auto-detected):
+      - **pytest output** (ANY line starts with 'FAILED ') -> count ONLY the
+        'FAILED '-prefixed lines. CRITICAL: pytest -rf/-q ALSO prints BARE
+        `tests/...::test` lines in the WARNINGS-summary + traceback sections
+        (e.g. a PASSING test's nodeid printed above its DeprecationWarning).
+        Counting every '::' line there falsely flags passing tests as failures
+        (the Wave-2 false-positive: 8 phantom regressions from the warnings
+        section). The 'FAILED ' summary is the authoritative failure list.
+      - **bare id-list** (NO 'FAILED ' anywhere -- the baseline mirror) -> count
+        every bare-nodeid line, since each line IS a failure id.
+
+    Tolerant of: a trailing ' - <reason>' (stripped at the first ' - ' OUTSIDE
+    any '[...]' param bracket, so a parametrized id with a dash survives) and
+    blank/whitespace-only lines."""
+    lines = text.splitlines()
+    pytest_mode = any(ln.lstrip().startswith("FAILED ") for ln in lines)
     ids: Set[str] = set()
-    for raw in text.splitlines():
+    for raw in lines:
         line = raw.strip()
         if not line:
             continue
-        if line.startswith("FAILED "):
+        if pytest_mode:
+            # Authoritative failures = 'FAILED '-prefixed lines ONLY.
+            if not line.startswith("FAILED "):
+                continue
             line = line[len("FAILED "):].strip()
         line = _strip_reason_suffix(line)
         if "::" in line:
