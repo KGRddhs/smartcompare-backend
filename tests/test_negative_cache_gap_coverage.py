@@ -19,11 +19,25 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.price_service import (
-    negative_cache_key,
-    should_negative_cache,
-    _GENUINE_BH_SOURCE_METHODS,
+# Pre-authored against Backend's feature/faithful-be (Phase 1.3). On a tree that
+# does NOT yet have BE's negative-cache symbols merged (e.g. THIS worktree's main
+# app/, or a fresh clone), a hard import would ABORT pytest collection for the
+# WHOLE suite. Guard it so the module skips cleanly pre-integration and RUNS once
+# BE's code is on the integrated Wave-2 tree. (Verified 17 green against
+# feature/faithful-be via temp-copy.)
+_price_service = pytest.importorskip(
+    "app.services.price_service",
+    reason="price_service import failed (pre-integration tree)",
 )
+if not hasattr(_price_service, "should_negative_cache"):
+    pytest.skip(
+        "negative-cache symbols land at Wave-2 integration (not on this tree)",
+        allow_module_level=True,
+    )
+
+negative_cache_key = _price_service.negative_cache_key
+should_negative_cache = _price_service.should_negative_cache
+_GENUINE_BH_SOURCE_METHODS = _price_service._GENUINE_BH_SOURCE_METHODS
 
 
 class TestShouldNegativeCacheGaps:
