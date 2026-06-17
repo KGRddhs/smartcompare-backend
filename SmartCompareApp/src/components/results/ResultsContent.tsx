@@ -372,11 +372,15 @@ export function ResultsContent({
                     </View>
                   ) : null}
 
+                  {/* Walk-fix 2026-06-17 — when prices pend, drop BOTH `price`
+                      and the price-derived `value` dim (no real data). (Belt-
+                      and-suspenders: DimensionBars also drops any
+                      caption_key:'limited_data' dim.) */}
                   <DimensionBars
                     dimensions={
                       pricePending
                         ? scoring_v2.dimensions.filter(
-                            (d: any) => d?.key !== 'price',
+                            (d: any) => d?.key !== 'price' && d?.key !== 'value',
                           )
                         : scoring_v2.dimensions
                     }

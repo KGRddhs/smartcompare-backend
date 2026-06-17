@@ -121,6 +121,95 @@ describe('DimensionBars — Bundle E Phase 3 § Decision 3', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Walk-fix 2026-06-17 — results-screen organization (on-device fragrance walk).
+// Grounded in the FRESH real payload (.qa-discovery/_walk_frag.json): when
+// prices pend, the backend emits placeholder dims (price/reviews/value) as a
+// 75/75 tie with confidence:'low', a "Limited X data" / "...unavailable"
+// delta_text, and caption_key:'limited_data'. The real dims (character /
+// longevity) carry distinct scores + no caption_key.
+//   #1 drop caption_key:'limited_data' dims entirely (no "Limited X data" line)
+//   #2 render the two products ONCE as a compact top legend, not per-row
+// ---------------------------------------------------------------------------
+describe('DimensionBars — walk-fix (limited-data suppression + single legend)', () => {
+  // Mirrors the real walk payload's dimension shapes.
+  const WALK_DIMS: any[] = [
+    { key: 'price', label: 'Price', score_a: 75, score_b: 75, delta_text: 'Price data unavailable', confidence: 'low', caption_key: 'limited_data', is_core: true, winner: null },
+    { key: 'reviews', label: 'Reviews', score_a: 75, score_b: 75, delta_text: 'Limited review data', confidence: 'low', caption_key: 'limited_data', is_core: true, winner: null },
+    { key: 'value', label: 'Value', score_a: 75, score_b: 75, delta_text: 'Limited value data', confidence: 'low', caption_key: 'limited_data', is_core: true, winner: null },
+    { key: 'character', label: 'Character', score_a: 74.1, score_b: 55.9, delta_text: '+18pt distinctiveness', confidence: 'medium', is_core: false, winner: 0 },
+    { key: 'longevity', label: 'Longevity', score_a: 74.1, score_b: 55.9, delta_text: '+18pt longevity', confidence: 'medium', is_core: false, winner: 0 },
+  ];
+
+  it('drops caption_key:"limited_data" dims (price/reviews/value), keeps the real dims', () => {
+    const { queryByTestId, getByTestId } = render(
+      <DimensionBars dimensions={WALK_DIMS} winnerIndex={0} testID="bars" />,
+    );
+    // Placeholder no-data dims are GONE (no row at all).
+    expect(queryByTestId('bars-row-price')).toBeNull();
+    expect(queryByTestId('bars-row-reviews')).toBeNull();
+    expect(queryByTestId('bars-row-value')).toBeNull();
+    // Real dims render.
+    expect(getByTestId('bars-row-character')).toBeTruthy();
+    expect(getByTestId('bars-row-longevity')).toBeTruthy();
+  });
+
+  it('never renders the "Limited X data" / "unavailable" placeholder text', () => {
+    const { queryByText } = render(
+      <DimensionBars dimensions={WALK_DIMS} winnerIndex={0} testID="bars" />,
+    );
+    expect(queryByText('Limited value data')).toBeNull();
+    expect(queryByText('Limited review data')).toBeNull();
+    expect(queryByText('Price data unavailable')).toBeNull();
+    expect(queryByText(/limited .* data/i)).toBeNull();
+  });
+
+  it('renders the two products ONCE in a compact top legend, not repeated per row', () => {
+    const { getAllByText, getByTestId } = render(
+      <DimensionBars
+        dimensions={WALK_DIMS}
+        winnerIndex={0}
+        productAName="Black Orchid"
+        productBName="Oud Wood"
+        testID="bars"
+      />,
+    );
+    // The single top legend exists and names each product EXACTLY ONCE
+    // (previously the names repeated on every bar row).
+    expect(getByTestId('bars-legend')).toBeTruthy();
+    expect(getAllByText('Black Orchid')).toHaveLength(1);
+    expect(getAllByText('Oud Wood')).toHaveLength(1);
+  });
+
+  it('truncates long product names in the legend to one line (no overflow)', () => {
+    const longA = 'Tom Ford Black Orchid Eau de Parfum 100 ml';
+    const { getByText } = render(
+      <DimensionBars
+        dimensions={WALK_DIMS}
+        winnerIndex={0}
+        productAName={longA}
+        productBName="Tom Ford Oud Wood Eau de Parfum 100 ml"
+        testID="bars"
+      />,
+    );
+    expect(getByText(longA).props.numberOfLines).toBe(1);
+  });
+
+  it('omits the top legend when no product names are supplied (legacy callers)', () => {
+    const { queryByTestId } = render(
+      <DimensionBars dimensions={WALK_DIMS} winnerIndex={0} testID="bars" />,
+    );
+    expect(queryByTestId('bars-legend')).toBeNull();
+  });
+
+  it('a long dimension label is single-line (no horizontal overflow)', () => {
+    const { getByText } = render(
+      <DimensionBars dimensions={WALK_DIMS} winnerIndex={0} testID="bars" />,
+    );
+    expect(getByText('Character').props.numberOfLines).toBe(1);
+  });
+});
+
 /**
  * RED→GREEN trajectory:
  *

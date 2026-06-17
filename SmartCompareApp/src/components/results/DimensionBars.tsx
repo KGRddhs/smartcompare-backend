@@ -69,8 +69,20 @@ export function DimensionBars({
   // side (and NOT flagged data_insufficient) disappear from the rendered
   // tree entirely. Done at component entry so the downstream contract-
   // violation check + DimensionRow logic see only renderable rows.
+  //
+  // Walk-fix 2026-06-17 — ALSO drop any dim the backend marked
+  // `caption_key === 'limited_data'`: a no-real-data placeholder (a 75/75
+  // tie with a "Limited X data" / "...unavailable" delta_text, e.g. price /
+  // reviews / value when prices pend). We hide these rows entirely rather
+  // than render an apologetic "Limited X data" line — if a dim has no real
+  // data, it does not appear. Real dims (character/longevity here) have no
+  // such caption_key and render normally.
   const renderableDims = dimensions.filter(
-    (d) => !d.data_insufficient && d.score_a != null && d.score_b != null,
+    (d) =>
+      !d.data_insufficient &&
+      d.score_a != null &&
+      d.score_b != null &&
+      d.caption_key !== 'limited_data',
   );
 
   // § Decision 2 invariant — fail loud on ACTUAL zero scores. A score of
@@ -104,6 +116,24 @@ export function DimensionBars({
 
   return (
     <View style={styles.container} testID={testID}>
+      {/* Walk-fix 2026-06-17 — render the two products ONCE as a compact
+          legend at the TOP (left = product A, right = product B, matching the
+          bar's A-left / B-right split) instead of repeating the full product
+          names on EVERY bar row (long fragrance names like "Tom Ford Black
+          Orchid 100 ml" cluttered + truncated each row). Each name is single-
+          line + flex so it truncates cleanly rather than running off-screen.
+          Hidden when neither name is supplied (legacy callers). */}
+      {(productAName || productBName) && renderableDims.length > 0 ? (
+        <View style={styles.legendRow} testID={`${testID}-legend`}>
+          <Text style={styles.legendName} numberOfLines={1}>
+            {productAName || 'A'}
+          </Text>
+          <Text style={styles.legendDot}> {'·'} </Text>
+          <Text style={[styles.legendName, styles.legendNameRight]} numberOfLines={1}>
+            {productBName || 'B'}
+          </Text>
+        </View>
+      ) : null}
       <HeroExpand
         renderableDims={renderableDims}
         winnerIndex={winnerIndex}
@@ -266,16 +296,15 @@ function DimensionRow({ dimension, winnerIndex, productAName, productBName, test
     : aWins
       ? 'left'
       : 'right';
-  const legendA = productAName || 'A';
-  const legendB = productBName || 'B';
 
   return (
     <View style={[styles.row, { opacity: rowOpacity }]} testID={testID}>
+      {/* Walk-fix 2026-06-17 — per-row product-name legend REMOVED; the two
+          products now show ONCE in the top legend (DimensionBars). The row
+          keeps only the dimension label so long names no longer repeat +
+          truncate on every bar. */}
       <View style={styles.labelRow}>
-        <Text style={styles.label}>{label}</Text>
-        <Text style={styles.legend} numberOfLines={1}>
-          {legendA} {'·'} {legendB}
-        </Text>
+        <Text style={styles.label} numberOfLines={1}>{label}</Text>
       </View>
       {isHeroDeltaRow && (
         <Text
@@ -399,16 +428,26 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.text.primary,
   },
-  // "UI Kit — Mobile Results" legend (JSX 73): right-aligned "{A} · {B}"
-  // product names beside the dimension label, muted + tabular figures.
-  legend: {
-    fontSize: 13,
-    fontWeight: '500',
+  // Walk-fix 2026-06-17 — single compact top legend: the two product names
+  // shown ONCE (A on the left, B on the right, mirroring the bar split),
+  // each flex + single-line so long fragrance names truncate, never overflow.
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: spacing.xs,
+  },
+  legendName: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.text.secondary,
-    flexShrink: 1,
-    marginStart: spacing.sm,
+  },
+  legendNameRight: {
     textAlign: 'right',
-    fontVariant: ['tabular-nums'],
+  },
+  legendDot: {
+    fontSize: 12,
+    color: colors.text.placeholder,
   },
   // Non-hero rows surface delta_text as a subtle caption under the bar.
   delta: {
