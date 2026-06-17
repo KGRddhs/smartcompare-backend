@@ -17,6 +17,7 @@ from app.services.extraction_service import (
     extract_price,
     extract_price_from_training_data,
     get_price_cache_key,
+    generate_cache_key,
     GCC_REGIONS,
 )
 from app.services.serper_service import search_product_prices, search_price_organic, search_web
@@ -2290,6 +2291,92 @@ def extract_weight_or_volume(text: str) -> Optional[Tuple[float, str]]:
     if grams:
         return (min(grams), "g")
     return None
+
+
+# A union of every size/storage/count token the extractors recognize — used to
+# STRIP the size out of name/variant before hashing the size-agnostic base key
+# (build_size_aware_price_cache_key). Mirrors _STORAGE_GB_RE / _SIZE_ML_RE /
+# _WEIGHT_VOLUME_RE / _COUNT_RE so the strip is exhaustive.
+_SIZE_STRIP_RE = re.compile(
+    r"\b\d+(?:\.\d+)?\s*"
+    r"(?:tb|gb|ml|l|kg|g|"
+    r"capsules?|caps|tablets?|tabs|softgels?|gummies|gummy|count|ct|pieces?|pcs|sachets?)\b",
+    re.I,
+)
+
+
+def size_variant_token(text: Optional[str]) -> str:
+    """A stable normalized size/variant token for a product identity string, or
+    "" when no size is present (Faithful-Results Task 1.4).
+
+    Reuses the SAME unit extractors `CATEGORY_FAIRNESS` uses, so the cache-key
+    notion of "size" matches the fairness notion of "comparable unit". Fixed
+    precedence (so a single product yields one deterministic token):
+      storage GB > fragrance/volume ml > supplement count > weight g.
+    TB is normalized to GB and L to ml by the underlying extractors, so "1TB"
+    and "1024GB" (or "1L" and "1000ml") collapse to one token. Numbers are
+    rendered without a trailing ".0" so "256GB" → "256gb" (not "256.0gb").
+
+    The point: two SIZE variants of the same product (iPhone 256GB vs 128GB,
+    Aventus 50ml vs 100ml) get DISTINCT tokens → distinct cache keys; two
+    listings of the SAME size get the SAME token → cache hits preserved.
+    """
+    if not text or not isinstance(text, str):
+        return ""
+
+    def _fmt(v: float) -> str:
+        # 256.0 -> "256", 1.5 -> "1.5"
+        return str(int(v)) if float(v).is_integer() else str(v)
+
+    gb = extract_storage_gb(text)
+    if gb:
+        return f"{_fmt(gb)}gb"
+    ml = extract_size_ml_any(text)
+    if ml:
+        return f"{_fmt(ml)}ml"
+    count = extract_count(text)
+    if count:
+        return f"{_fmt(count)}ct"
+    wv = extract_weight_or_volume(text)
+    if wv:
+        value, base = wv
+        return f"{_fmt(value)}{base}"
+    return ""
+
+
+def build_size_aware_price_cache_key(
+    brand: str, name: str, variant: Optional[str], region: str,
+    identity_text: str = "",
+) -> str:
+    """Price cache key that folds in a normalized size/variant token so distinct
+    sizes never collide (Task 1.4).
+
+    `identity_text` is any extra product-identity string to mine the size from
+    (the search query / full title) — combined with name+variant so a size that
+    lives in EITHER reaches the key. When NO size is found anywhere, the key is
+    IDENTICAL to the legacy `get_price_cache_key(...)` so sizeless products are
+    backward-compatible (no cache-warm invalidation).
+
+    The same product+size yields the SAME key regardless of WHERE the size
+    appears: the resolved token is STRIPPED out of name/variant before hashing
+    the base components, then re-appended once — so name="iPhone 15 256GB" and
+    name="iPhone 15"+identity="… 256GB" collapse to one key.
+    """
+    token = size_variant_token(f"{name} {variant or ''} {identity_text or ''}")
+    if not token:
+        return get_price_cache_key(brand, name, variant, region)
+    # Strip ANY size/storage token out of name+variant so the base key is
+    # size-agnostic; the normalized token is the single size component. Without
+    # this, the same size living in `name` vs `search_query` would hash
+    # differently (name differs) — defeating cache hits.
+    base_name = _SIZE_STRIP_RE.sub(" ", name or "").strip()
+    base_name = re.sub(r"\s+", " ", base_name)
+    base_variant = _SIZE_STRIP_RE.sub(" ", variant or "").strip() if variant else variant
+    if base_variant:
+        base_variant = re.sub(r"\s+", " ", base_variant)
+    # Append the size token as an extra key component (generate_cache_key joins
+    # truthy args with "|" before hashing), keeping the "price:" prefix.
+    return generate_cache_key("price", brand, base_name, base_variant, region, token)
 
 
 def variant_precision_rank(

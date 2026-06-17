@@ -519,6 +519,9 @@ from app.services.price_service import (
     GENUINE_PRICE_CACHE_TTL,
     NEGATIVE_PRICE_CACHE_TTL,
     price_cache_ttl,
+    # Task 1.4 — size-aware price cache key (no storage/size variant collision).
+    build_size_aware_price_cache_key,
+    size_variant_token,
     RETAILER_TIERS,
     DEFAULT_RETAILER_SCORE,
     RETAILER_SEARCH_URLS,
@@ -3453,7 +3456,16 @@ class StructuredComparisonService:
         if not validate_price_query(brand, name, region):
             return {"amount": 0, "currency": "BHD", "estimated": True, "source_method": "validation_rejected"}
 
-        cache_key = get_price_cache_key(brand, name, variant, region)
+        # Faithful-Results Task 1.4 — size-aware key so two SIZE/STORAGE variants
+        # of the same product (iPhone 256GB vs 128GB, Aventus 50ml vs 100ml) get
+        # DISTINCT cache keys and never pollute each other's slot. Falls back to
+        # the legacy key (identical) when no size is present anywhere, so sizeless
+        # products keep their warmed cache. `search_query` carries the size when
+        # the parser left it out of name/variant (electronics fixture: storage in
+        # specs, variant=None).
+        cache_key = build_size_aware_price_cache_key(
+            brand, name, variant, region, search_query
+        )
         # I5.1 — price-only cache-bust probe forces the price reads to miss so
         # the routing escalation re-runs deterministically (specs/reviews stay
         # warm — they gate on `nocache` in _fetch_product_data, not this flag).
