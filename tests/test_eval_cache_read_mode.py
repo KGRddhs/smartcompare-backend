@@ -201,3 +201,130 @@ def test_main_default_is_cold(monkeypatch):
     # Default must be falsy (None or False) — NOT True.
     assert not seen.get("read_cache")
     assert rc in (0, 1)
+
+
+# ---------------------------------------------------------------------------
+# Cache-observability extractors — the per-response metadata signal that makes
+# a --read-cache run actually measure the WARMED state, not just smoke the wire.
+#
+# Backend confirmed the exact top-level keys (response_builder.py:1415):
+#   response.metadata.cache_hit          (bool) — any product price from cache
+#   response.metadata.genuine_from_cache (bool) — a GENUINE-BH price from cache
+# Always present (default False). For a --read-cache run that hits warmed genuine
+# prices, genuine_from_cache flips True — THAT is the warmed-genuine signal A4
+# exists to measure (vs the cold nocache run where it's always False).
+# ---------------------------------------------------------------------------
+
+def _body_with_cache_meta(cache_hit=None, genuine_from_cache=None) -> dict:
+    body = _ok_body()
+    meta = {}
+    if cache_hit is not None:
+        meta["cache_hit"] = cache_hit
+    if genuine_from_cache is not None:
+        meta["genuine_from_cache"] = genuine_from_cache
+    if meta:
+        body["metadata"] = meta
+    return body
+
+
+def test_extract_cache_hit_reads_metadata():
+    assert eval_runner.extract_cache_hit(_body_with_cache_meta(cache_hit=True)) is True
+    assert eval_runner.extract_cache_hit(_body_with_cache_meta(cache_hit=False)) is False
+
+
+def test_extract_genuine_from_cache_reads_metadata():
+    body = _body_with_cache_meta(cache_hit=True, genuine_from_cache=True)
+    assert eval_runner.extract_genuine_from_cache(body) is True
+    body2 = _body_with_cache_meta(cache_hit=True, genuine_from_cache=False)
+    assert eval_runner.extract_genuine_from_cache(body2) is False
+
+
+def test_cache_meta_extractors_default_false_when_absent():
+    """Older backend / error row with no metadata → False, no crash (the keys
+    are always present in current prod, but the extractor must not assume so)."""
+    assert eval_runner.extract_cache_hit(_ok_body()) is False
+    assert eval_runner.extract_cache_hit({}) is False
+    assert eval_runner.extract_cache_hit({"metadata": {}}) is False
+    assert eval_runner.extract_genuine_from_cache(_ok_body()) is False
+    assert eval_runner.extract_genuine_from_cache({}) is False
+
+
+def test_cache_meta_extractors_coerce_truthy():
+    """A non-bool truthy/falsy value coerces to bool (defensive)."""
+    assert eval_runner.extract_cache_hit({"metadata": {"cache_hit": 1}}) is True
+    assert eval_runner.extract_cache_hit({"metadata": {"cache_hit": 0}}) is False
+
+
+@pytest.mark.asyncio
+async def test_run_eval_aggregates_cache_observability():
+    """A --read-cache run aggregates how many queries served a price from cache
+    and how many served a GENUINE price from cache — the warmed-genuine signal."""
+    transport = _capturing_transport([])
+    # Override the transport to return cache-meta bodies.
+    body = _body_with_cache_meta(cache_hit=True, genuine_from_cache=True)
+
+    def handler(request):
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    queries = [_record(qid=f"q-{i}", query=f"q{i}") for i in range(4)]
+    report = await eval_runner.run_eval(
+        queries, base_url="http://test", transport=transport,
+        concurrency=2, read_cache=True,
+    )
+    # All 4 hit cache + genuine-from-cache.
+    assert report.cache_hit_count == 4
+    assert report.genuine_from_cache_count == 4
+
+
+def test_aggregate_cache_observability_empty_run_no_zerodiv():
+    report = eval_runner.aggregate([])
+    assert report.cache_hit_count == 0
+    assert report.genuine_from_cache_count == 0
+
+
+def test_format_report_shows_cache_read_line_when_signal():
+    """A run with a cache hit surfaces the A4 cache-read line; a cold run (0/0)
+    stays quiet so it doesn't add noise."""
+    graded_hit = eval_runner.grade_run_result(
+        eval_runner.QueryRunResult(
+            id="q1", query="x", category="electronics", http_status=200,
+            wall_ms=1000, error=None,
+            response=_body_with_cache_meta(cache_hit=True, genuine_from_cache=True),
+        ),
+        {"id": "q1", "expected_prices": {}, "expected_specs": {},
+         "expected_winner_index": None, "forbidden_facts": []},
+    )
+    text_hit = eval_runner._format_report(eval_runner.aggregate([graded_hit]))
+    assert "cache-read" in text_hit.lower() or "genuine-from-cache" in text_hit.lower()
+    text_hit.encode("ascii")  # ASCII-only (cp1252 capture trap)
+
+    # Cold run (no cache meta) → no cache-read line.
+    graded_cold = eval_runner.grade_run_result(
+        eval_runner.QueryRunResult(
+            id="q2", query="x", category="electronics", http_status=200,
+            wall_ms=1000, error=None, response=_ok_body(),
+        ),
+        {"id": "q2", "expected_prices": {}, "expected_specs": {},
+         "expected_winner_index": None, "forbidden_facts": []},
+    )
+    text_cold = eval_runner._format_report(eval_runner.aggregate([graded_cold]))
+    assert "genuine-from-cache" not in text_cold.lower()
+
+
+def test_per_query_jsonl_includes_cache_meta():
+    """The --out JSONL row carries the per-query cache_hit / genuine_from_cache
+    bools (dataclasses.asdict of the new GradedQuery fields)."""
+    import dataclasses
+    graded = eval_runner.grade_run_result(
+        eval_runner.QueryRunResult(
+            id="q1", query="x", category="electronics", http_status=200,
+            wall_ms=1000, error=None,
+            response=_body_with_cache_meta(cache_hit=True, genuine_from_cache=False),
+        ),
+        {"id": "q1", "expected_prices": {}, "expected_specs": {},
+         "expected_winner_index": None, "forbidden_facts": []},
+    )
+    row = dataclasses.asdict(graded)
+    assert row["cache_hit"] is True
+    assert row["genuine_from_cache"] is False

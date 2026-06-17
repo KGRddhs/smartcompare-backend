@@ -476,6 +476,39 @@ def extract_missing_dim_cells(body: Dict[str, Any]) -> int:
     return int(count) if isinstance(count, (int, float)) else 0
 
 
+# A4 — per-response cache-observability signal. Backend emits these as TOP-LEVEL
+# metadata bools (response_builder.py:1415), always present (default False):
+#   metadata.cache_hit          — any product price served from cache
+#   metadata.genuine_from_cache — a GENUINE-BH price (a _GENUINE_BH_SOURCE_METHODS
+#                                 method) served from cache.
+# In a cold (?nocache=true) run both are False; in a --read-cache run that hits
+# warmed genuine prices, genuine_from_cache flips True. That flip is the
+# warmed-genuine signal the A4 mode exists to measure. (Distinct from the
+# /admin/costs `cache_observability` 7-day aggregate, which uses different key
+# names — these are the PER-RESPONSE keys.)
+
+def _extract_metadata_bool(body: Dict[str, Any], key: str) -> bool:
+    """Read a top-level metadata bool, coercing truthy/falsy. Absent → False
+    (older backend / error row with no metadata) — never raises."""
+    if not isinstance(body, dict):
+        return False
+    metadata = body.get("metadata")
+    if not isinstance(metadata, dict):
+        return False
+    return bool(metadata.get(key, False))
+
+
+def extract_cache_hit(body: Dict[str, Any]) -> bool:
+    """A4 — metadata.cache_hit (any product price served from cache)."""
+    return _extract_metadata_bool(body, "cache_hit")
+
+
+def extract_genuine_from_cache(body: Dict[str, Any]) -> bool:
+    """A4 — metadata.genuine_from_cache (a genuine-BH price served from cache).
+    The warmed-genuine-share signal for a --read-cache run."""
+    return _extract_metadata_bool(body, "genuine_from_cache")
+
+
 def collect_verdict_text(body: Dict[str, Any]) -> str:
     """All free-text the factual grader scans for forbidden facts: the
     overview verdict block, scoring_v2.factual_verdict lines, per-product
@@ -683,6 +716,13 @@ class GradedQuery:
     # share. 0 on error rows.
     genuine_bh_price_cells: int = 0
     converted_usd_price_cells: int = 0
+    # A4 — per-response cache-observability bools (metadata.cache_hit /
+    # genuine_from_cache). False on cold (?nocache) runs + error rows; in a
+    # --read-cache run genuine_from_cache flips True when a warmed genuine price
+    # is served. Aggregated into the run-level cache_hit_count /
+    # genuine_from_cache_count so an A4 run reports the warmed-genuine signal.
+    cache_hit: bool = False
+    genuine_from_cache: bool = False
 
 
 @dataclasses.dataclass
@@ -727,6 +767,13 @@ class EvalReport:
     per_category_provenance: Dict[str, Dict[str, Any]] = dataclasses.field(
         default_factory=dict
     )
+    # A4 — cache-observability roll-up (the warmed-genuine signal for a
+    # --read-cache run). cache_hit_count = queries that served ANY price from
+    # cache; genuine_from_cache_count = queries that served a GENUINE-BH price
+    # from cache. Both 0 on a cold run. Surfaced in the report + (when read_cache)
+    # the eval_runs metadata so the warmed genuine-share is measurable post-warmer.
+    cache_hit_count: int = 0
+    genuine_from_cache_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -842,6 +889,8 @@ def grade_run_result(run_result: QueryRunResult, record: Dict[str, Any],
         priced_cells=prov["priced"],
         genuine_bh_price_cells=prov["genuine_bh"],
         converted_usd_price_cells=prov["converted_usd"],
+        cache_hit=extract_cache_hit(body),
+        genuine_from_cache=extract_genuine_from_cache(body),
     )
 
 
@@ -891,6 +940,11 @@ def aggregate(graded: List[GradedQuery]) -> EvalReport:
     genuine_bh_share = round(genuine_total / priced_total, 4) if priced_total else 0.0
     converted_usd_share = round(converted_total / priced_total, 4) if priced_total else 0.0
 
+    # A4 — cache-observability roll-up (the warmed-genuine signal for a
+    # --read-cache run; both 0 on a cold ?nocache run).
+    cache_hit_count = sum(1 for g in graded if g.cache_hit)
+    genuine_from_cache_count = sum(1 for g in graded if g.genuine_from_cache)
+
     # S3 E1 — per-category provenance: bucket the cells by query category so the
     # report shows WHERE estimates persist (e.g. supplements still estimate-
     # heavy while electronics are genuine). Categories with zero produced prices
@@ -936,6 +990,8 @@ def aggregate(graded: List[GradedQuery]) -> EvalReport:
         genuine_bh_share=genuine_bh_share,
         converted_usd_share=converted_usd_share,
         per_category_provenance=per_category_provenance,
+        cache_hit_count=cache_hit_count,
+        genuine_from_cache_count=genuine_from_cache_count,
     )
 
 
@@ -1032,7 +1088,7 @@ def _format_report(report: EvalReport) -> str:
         f"mean={report.missing_dim_cells_mean:.2f}/query (I3.6 KPI dial)",
         f"estimate-share  -  {report.estimate_share:.1%} "
         f"({report.estimated_price_cells_total}/{report.priced_cells_total} "
-        f"produced prices are estimates · L4.1 KPI · lower=better)",
+        f"produced prices are estimates -- L4.1 KPI -- lower=better)",
         # S3 E1 — genuine-BH-share is the PRIMARY success dial (higher=better).
         # ASCII-only separators (no U+00B7) so captured/redirected reports don't
         # mojibake under the Windows cp1252 console codec (CLAUDE.md trap).
@@ -1053,6 +1109,18 @@ def _format_report(report: EvalReport) -> str:
                 f"converted={p['converted_usd_share']:.0%} "
                 f"estimated={p['estimate_share']:.0%}  (n={p['priced']})"
             )
+    # A4 — cache-observability (the warmed-genuine signal). Only shown when a
+    # cache hit occurred (a cold ?nocache run = both 0, stays quiet). For a
+    # --read-cache run post-warmer, genuine-from-cache is the real warmed share.
+    if report.cache_hit_count or report.genuine_from_cache_count:
+        n = report.queries_total or 1
+        lines.append(
+            f"cache-read  -  cache_hit {report.cache_hit_count}/{report.queries_total} "
+            f"({report.cache_hit_count / n:.0%}) | genuine-from-cache "
+            f"{report.genuine_from_cache_count}/{report.queries_total} "
+            f"({report.genuine_from_cache_count / n:.0%}) "
+            f"-- A4 warmed-genuine signal (read-cache runs only)"
+        )
     if report.failing_ids:
         lines.append(f"failing: {', '.join(report.failing_ids)}")
     lines.append("=" * 60)
@@ -1174,7 +1242,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                       "converted_usd_share": report.converted_usd_share,
                       "genuine_bh_price_cells_total": report.genuine_bh_price_cells_total,
                       "converted_usd_price_cells_total": report.converted_usd_price_cells_total,
-                      "per_category_provenance": report.per_category_provenance},
+                      "per_category_provenance": report.per_category_provenance,
+                      # A4 — cache-read mode + warmed-genuine signal (so an A4
+                      # run's eval_runs row records whether it measured cold or
+                      # warmed, and the warmed genuine-from-cache count).
+                      "read_cache": bool(args.read_cache),
+                      "cache_hit_count": report.cache_hit_count,
+                      "genuine_from_cache_count": report.genuine_from_cache_count},
         )
         print(f"# eval_runs row: {run_id}")
 
