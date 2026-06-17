@@ -56,6 +56,9 @@ smoke20 gate needs a smoke20 baseline:
   **Gate teeth = the AXES** — specs (0.9875) + factual (1.0) must NOT regress; winner
   (0.4) is the structural baseline; pass_rate is floored at 0 by the cold-pend price
   behavior (so "no pass_rate regression" is trivially true — don't read it as the signal).
+  **➤ SUPERSEDED for FUTURE gates by `54b603e8-4eab-41c9-a34d-a5e391446559`** (post-bundle-next,
+  winner 0.50 — see the "Bundle-next #16" section below). Use `54b603e8` as the baseline-run-id
+  going forward; `7a5fc55b` (this row) is the historical pre-bundle-next baseline.
 
 ## Wave-2 #12 record (Faithful-Results, 2026-06-17)
 
@@ -91,6 +94,11 @@ smoke20 gate needs a smoke20 baseline:
     verdict, run from a Supabase-reachable env OR eyeball row `7a5fc55b` via Supabase MCP.
 
 ## Bundle-next #16 (longevity scorer) post-deploy eval: PASS (2026-06-17, prod `5999799`)
+
+> **NEW smoke20 regression ANCHOR = `54b603e8-4eab-41c9-a34d-a5e391446559`** (eval_runs,
+> MCP-inserted; winner 0.50, prod_sha `5999799`, `supersedes: 7a5fc55b`). **Future smoke20
+> `--mode regression` gates use `54b603e8`** (`--baseline-run-id 54b603e8-4eab-41c9-a34d-a5e391446559`).
+> `7a5fc55b` (winner 0.40) is retained as the HISTORICAL pre-bundle-next baseline only.
 
 smoke20 regression vs `7a5fc55b` after QA's S1/S2/S3 prod smoke went green. All 20 queries,
 0 errors, p50 16014ms / p95 19608ms (within cap). Axes (tol 2pp): price 0.000->0.000
