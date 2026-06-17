@@ -306,6 +306,102 @@ def build_retailer_quotes_from_reviews(
     return quotes
 
 
+# ============================================
+# Phase 5.1 (Faithful-Results Task #6) — review paraphrase
+# ============================================
+# Per Ahmed's D4 directive: reviews become a SYNTHESIZED praise line —
+# NON-verbatim, NO citations, NO source domains, NO [N]/[snippet_N] markers.
+# Built from the REAL review sentiment the pipeline already has (zero extra API
+# calls). Ratings stay real-only elsewhere (this never fabricates a rating).
+
+# Strips a leading "Per <domain>: " attribution prefix the review model emits on
+# each highlight point (e.g. "Per fragrantica.com: ...").
+_PER_DOMAIN_PREFIX_RE = re.compile(r"^\s*per\s+[^\s:]+\.[a-z]{2,}[^:]*:\s*", re.I)
+# Any leftover domain token (foo.com / foo.bh / foo.co.uk) anywhere in the text.
+_BARE_DOMAIN_RE = re.compile(r"\b[a-z0-9][a-z0-9-]*\.[a-z]{2,}(?:\.[a-z]{2,})?\b", re.I)
+
+
+def _strip_attribution(text: str) -> str:
+    """Remove a "Per <domain>:" prefix, any [N]/[snippet_N] markers, and any
+    leftover bare domain tokens from a review clause. Returns a clean,
+    citation-free, domain-free fragment."""
+    if not isinstance(text, str):
+        return ""
+    t = _PER_DOMAIN_PREFIX_RE.sub("", text)
+    t = _CITATION_MARKER_RE.sub("", t)          # [snippet_N] / [N]
+    t = re.sub(r"\[\d+\]", "", t)               # any residual bare [N]
+    t = _BARE_DOMAIN_RE.sub("", t)              # leftover domains
+    t = re.sub(r"\s{2,}", " ", t).strip()
+    # Drop dangling leading punctuation left by a stripped domain/marker.
+    t = re.sub(r"^[\s,;:.\-–—]+", "", t)
+    return t.strip()
+
+
+def _lower_first(s: str) -> str:
+    return s[0].lower() + s[1:] if s else s
+
+
+def build_review_praise(reviews: Optional[Dict[str, Any]]) -> Optional[str]:
+    """A SYNTHESIZED 1–2 sentence praise line from real review sentiment, or None.
+
+    Sources (in order of preference), all de-attributed (no domains, no [N]):
+      1. POSITIVE highlights' clauses → woven into a synthesizing lead so the
+         output is non-verbatim (never a raw highlight copy).
+      2. A consensus summary, but ONLY when overall_sentiment is NOT negative —
+         we never present a negative consensus as "praise".
+
+    Returns None when there is no positive signal (insufficient/negative reviews)
+    — we never fabricate praise (CLAUDE.md "ratings/claims never invented").
+    Praise-only by construction: negative highlights are excluded.
+    """
+    if not isinstance(reviews, dict):
+        return None
+    summary = reviews.get("review_summary")
+    if not isinstance(summary, dict):
+        return None
+
+    sentiment = (summary.get("overall_sentiment") or "").lower()
+    highlights = summary.get("highlights") if isinstance(summary.get("highlights"), list) else []
+
+    # 1) Collect de-attributed POSITIVE highlight clauses (deduped, non-empty).
+    positive_clauses: List[str] = []
+    seen = set()
+    for h in highlights:
+        if not isinstance(h, dict):
+            continue
+        if (h.get("sentiment") or "").lower() != "positive":
+            continue
+        clause = _strip_attribution(str(h.get("point") or ""))
+        # Trim a trailing period so clauses join cleanly.
+        clause = clause.rstrip(" .")
+        if len(clause) < 8:
+            continue
+        key = clause.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        positive_clauses.append(clause)
+        if len(positive_clauses) >= 2:
+            break
+
+    if positive_clauses:
+        # Weave into a synthesizing lead so the line is NON-verbatim and clearly
+        # an aggregate ("Owners consistently ..."), not a copied quote.
+        woven = " and ".join(_lower_first(c) for c in positive_clauses)
+        praise = f"Owners consistently highlight {woven}."
+        # Collapse any double spaces / stray punctuation from the join.
+        praise = re.sub(r"\s{2,}", " ", praise).replace(" .", ".").strip()
+        return praise
+
+    # 2) Fall back to a de-attributed consensus, but never a negative one.
+    if sentiment and sentiment != "negative":
+        consensus = _strip_attribution(str(summary.get("consensus") or ""))
+        if len(consensus) >= 12:
+            return consensus
+
+    return None
+
+
 def format_review_search_results(results: Dict, retailer_ratings: List[Dict]) -> str:
     """Format search results for review extraction."""
     if not results:

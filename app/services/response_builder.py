@@ -69,6 +69,16 @@ def _compute_cache_observability(
     return out
 
 
+def _safe_review_praise(pd: Dict[str, Any]) -> Optional[str]:
+    """Synthesized review praise for a product's reviews, fail-soft to None.
+    Faithful-Results Phase 5 (Contract 2). Never raises."""
+    try:
+        from app.services.review_service import build_review_praise
+        return build_review_praise((pd or {}).get("reviews"))
+    except Exception:  # noqa: BLE001 — praise is additive; never break the response
+        return None
+
+
 def _factual_verdict_present_in_scoring_v2(scoring_v2: Dict[str, Any]) -> bool:
     """Return True iff scoring_v2 has a factual_verdict with line1 or line2.
     Used by the § 1b diagnostic and patchable from tests to simulate the
@@ -1305,6 +1315,12 @@ def build_comparison_response(
                     # (no fabricated ratings); [] when none could be attributed
                     # (FE falls back to highlights, then a calm empty line).
                     "retailer_quotes": (pd.get("reviews") or {}).get("retailer_quotes", []),
+                    # Faithful-Results Phase 5 (Contract 2) — synthesized praise
+                    # line (non-verbatim, no citations/domains), mirrored here for
+                    # streaming/section parity (canonical home is products[i]).
+                    # None when no positive signal — FE branches on presence and
+                    # stops rendering retailer_quotes/highlights for this surface.
+                    "review_praise": _safe_review_praise(pd),
                     # S3 L2 — cited YouTube review signal (flag-gated). None
                     # when ENABLE_YOUTUBE_SOURCE OFF / no signal. Frontend
                     # renders "~N views · top video by <channel>" as a cited
@@ -1439,6 +1455,14 @@ def build_comparison_response(
         # KeyError; mirror the canonical `overview.products[*].image_url`.
         if "image_url" not in pd:
             pd["image_url"] = None
+        # Faithful-Results Phase 5 (Contract 2) — synthesized review praise line
+        # (non-verbatim, no citations, no domains) + a canonical real-only
+        # rating_count. review_praise is None when there's no positive signal
+        # (FE branches on presence). Built from the reviews the pipeline already
+        # has — zero extra API calls; ratings never fabricated.
+        pd["review_praise"] = _safe_review_praise(pd)
+        if "rating_count" not in pd:
+            pd["rating_count"] = pd.get("review_count")
     result["products"] = product_data
     result["comparison"] = comparison
     result["recommendation"] = comparison.get("winner_reason", "")
