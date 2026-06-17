@@ -47,6 +47,30 @@ def test_parse_failure_ids_drops_trailing_reason_after_dash():
     assert ids == {"tests/x.py::t"}
 
 
+def test_parse_failure_ids_preserves_dash_inside_params():
+    """Backend review nit: a parametrized id with ' - ' INSIDE its [params] must
+    survive — the reason split only fires at a ' - ' outside the bracket."""
+    # param value 'a - b' has a dash; the reason 'AssertionError' is after ']'.
+    ids = rgd.parse_failure_ids(
+        "FAILED tests/x.py::test_k[a - b] - AssertionError: boom\n"
+    )
+    assert ids == {"tests/x.py::test_k[a - b]"}
+
+
+def test_parse_failure_ids_param_dash_no_reason():
+    """A param-with-dash id and NO trailing reason is kept verbatim."""
+    ids = rgd.parse_failure_ids("tests/x.py::test_k[mid - top_tier]\n")
+    assert ids == {"tests/x.py::test_k[mid - top_tier]"}
+
+
+def test_parse_failure_ids_param_dash_then_dashed_reason():
+    """Param dash preserved even when the reason ALSO contains ' - '."""
+    ids = rgd.parse_failure_ids(
+        "FAILED tests/x.py::test_k[a - b] - some - dashed - reason\n"
+    )
+    assert ids == {"tests/x.py::test_k[a - b]"}
+
+
 def test_parse_failure_ids_empty_text_is_empty_set():
     assert rgd.parse_failure_ids("") == set()
     assert rgd.parse_failure_ids("\n\n  \n") == set()

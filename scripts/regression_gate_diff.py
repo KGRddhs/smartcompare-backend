@@ -59,13 +59,36 @@ NETWORK_FLAKY_EXCLUDE: Set[str] = {
 }
 
 
+def _strip_reason_suffix(line: str) -> str:
+    """Drop the pytest -q trailing ' - <reason>' from a FAILED line, but only at
+    a ' - ' that is OUTSIDE a '[...]' param bracket. A parametrized nodeid can
+    carry a dash inside its params (e.g. 'test_x[a - b]'); the reason separator
+    always comes AFTER the closing ']', so a bracket-depth scan keeps the param
+    intact. (Backend review nit — inert on today's 48-baseline/smoke20 set, hardened
+    for future param-with-dash ids.)"""
+    depth = 0
+    i = 0
+    n = len(line)
+    while i < n:
+        c = line[i]
+        if c == "[":
+            depth += 1
+        elif c == "]":
+            depth = max(0, depth - 1)
+        elif depth == 0 and c == " " and line[i:i + 3] == " - ":
+            return line[:i].strip()
+        i += 1
+    return line.strip()
+
+
 def parse_failure_ids(text: str) -> Set[str]:
     """Extract pytest nodeids from pytest -q output (or a saved id list).
 
     Tolerant of:
       - a leading 'FAILED ' prefix (pytest -q summary lines),
-      - a trailing ' - <reason>' the -q summary appends (the nodeid is the part
-        before the first ' - '),
+      - a trailing ' - <reason>' the -q summary appends, stripped at the first
+        ' - ' OUTSIDE any '[...]' param bracket (so a parametrized id with a dash
+        in its params survives),
       - blank / whitespace-only lines.
     A nodeid is recognized by containing '::'."""
     ids: Set[str] = set()
@@ -75,9 +98,7 @@ def parse_failure_ids(text: str) -> Set[str]:
             continue
         if line.startswith("FAILED "):
             line = line[len("FAILED "):].strip()
-        # Drop the pytest -q trailing ' - <reason>' (split on the FIRST ' - ').
-        if " - " in line:
-            line = line.split(" - ", 1)[0].strip()
+        line = _strip_reason_suffix(line)
         if "::" in line:
             ids.add(line)
     return ids
