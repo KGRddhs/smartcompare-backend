@@ -134,24 +134,36 @@ describe('ResultsAccordion — render coverage', () => {
     expect(getByTestId('results-accordion-body-proscons')).toBeTruthy();
   });
 
-  it('renders compact fallback quote lines from highlights (no consensus, no +/− prefix)', () => {
-    // These mock products carry NO retailer_quotes, so the reviews body
-    // hits the compact fallback: short highlight `point` lines rendered as
-    // plain quotes (curly-quote wrapped). Per the design restructure, the
-    // consensus paragraph and the +/− sentiment-prefixed bullets are gone.
+  it('Phase 5.2 — renders review_praise per product; NO consensus, highlights, or verbatim quotes', () => {
+    // Faithful-results Phase 5.2 (Contract 2): the reviews body shows a
+    // synthesized praise line per product. The consensus paragraph, the
+    // +/− sentiment bullets, AND the highlight-point quote lines are all
+    // gone — `review_summary.highlights` is no longer a render source.
+    const reviewProductsWithPraise = mockReviewProducts.map((p: any, i: number) => ({
+      ...p,
+      review_praise:
+        i === 0
+          ? 'Owners praise the ecosystem and overall reliability.'
+          : 'Reviewers highlight the sharp low-light camera.',
+    }));
     const { getByTestId, getByText, queryByText } = render(
-      <ResultsAccordion products={mockProducts} reviewProducts={mockReviewProducts} />
+      <ResultsAccordion
+        products={mockProducts}
+        reviewProducts={reviewProductsWithPraise}
+      />
     );
     fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
-    // Consensus paragraph no longer rendered.
+    // Consensus paragraph not rendered.
     expect(queryByText('Reliable but pricey')).toBeNull();
-    // Old +/− prefixed bullets no longer rendered.
+    // Old +/− prefixed bullets not rendered.
     expect(queryByText('+ Great ecosystem integration')).toBeNull();
     expect(queryByText('− Battery weaker than rivals')).toBeNull();
-    // Highlight points surface as plain quoted lines instead.
-    expect(getByText('“Great ecosystem integration”')).toBeTruthy();
-    expect(getByText('“Battery weaker than rivals”')).toBeTruthy();
-    expect(getByText('“Sharp low-light photos”')).toBeTruthy();
+    // Highlight points are NO LONGER surfaced as quote lines.
+    expect(queryByText('“Great ecosystem integration”')).toBeNull();
+    expect(queryByText('“Sharp low-light photos”')).toBeNull();
+    // The synthesized praise lines ARE rendered.
+    expect(getByText('Owners praise the ecosystem and overall reliability.')).toBeTruthy();
+    expect(getByText('Reviewers highlight the sharp low-light camera.')).toBeTruthy();
   });
 
   it('renders pros + cons per product in the proscons body', () => {

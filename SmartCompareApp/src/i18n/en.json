@@ -649,6 +649,7 @@
   "results.accordion.specsSub": "Side-by-side comparison",
   "results.accordion.specsDimensions": "dimensions",
   "results.accordion.prosConsLabel": "Pros & Cons",
+  "results.reviews.ratingWithCount": "{{rating}} · {{count}} reviews",
   "results.categoryProfile.title": "At a glance",
   "results.spec.display": "Display",
   "results.spec.processor": "Processor",

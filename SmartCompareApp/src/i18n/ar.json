@@ -646,6 +646,7 @@
   "results.accordion.specsSub": "مقارنة جنباً إلى جنب",
   "results.accordion.specsDimensions": "مواصفات",
   "results.accordion.prosConsLabel": "الإيجابيات والسلبيات",
+  "results.reviews.ratingWithCount": "{{rating}} · {{count}} تقييم",
   "results.categoryProfile.title": "نظرة سريعة",
   "results.spec.display": "الشاشة",
   "results.spec.processor": "المعالج",
