@@ -62,6 +62,7 @@ import { ConfidencePills } from './ConfidencePills';
 import { ConfidenceDetailsSheet } from './ConfidenceDetailsSheet';
 import { PersonalizationChip } from './PersonalizationChip';
 import { RevealBurst } from '../hero/RevealBurst';
+import { CategoryProfile } from './CategoryProfile';
 import { ResultsAccordion } from './ResultsAccordion';
 import { anyEstimated } from '../../services/sourceMethod';
 import { ProductImage } from '../primitives/ProductImage';
@@ -427,6 +428,20 @@ export function ResultsContent({
             isRTL={isRTL}
           />
         </View>
+
+        {/* ─── # 6b Category profile (Faithful-results Phase 3.1, Contract 1) ───
+            A curated, category-appropriate `label · value` block per product
+            (fragrance scent family + notes + longevity/sillage; supplements
+            count/dosage/form; electronics key specs; …) — driven entirely by
+            the backend `products[i].category_profile.fields`. Surfaces what
+            DEFINES each product above the full side-by-side Specs table (which
+            stays one tap away in "Dig deeper"). The component hides itself when
+            neither product carries profile fields (legacy/cached payloads). */}
+        <CategoryProfile
+          products={products}
+          winnerIndex={winnerIndex}
+          testID="results-content-category-profile"
+        />
 
         {/*
          * Bundle E § Decision 3 one-release backward-compat. When the

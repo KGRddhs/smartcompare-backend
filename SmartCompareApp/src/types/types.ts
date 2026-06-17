@@ -99,6 +99,37 @@ export interface Product {
   // A3 deploy may omit the field entirely (undefined). All three states
   // resolve to the placeholder primitive via ProductImage.
   image_url?: string | null;
+
+  // Faithful-results Contract 1 — category-appropriate curated profile block
+  // (CATEGORY_SPEC_SCHEMAS-driven, populated subset). Additive; absent on
+  // legacy/cached payloads → CategoryProfile renders nothing.
+  category_profile?: CategoryProfile | null;
+
+  // Faithful-results Contract 2 — synthesized praise line (non-verbatim, no
+  // citations). null when there is insufficient real review signal. `rating`
+  // (above) is the REAL rating; `rating_count` is the canonical real count
+  // (mirrors `review_count`).
+  review_praise?: string | null;
+  rating_count?: number | null;
+}
+
+// Faithful-results Contract 1 — one generic, category-driven profile block.
+// Backend emits an ORDERED key/label/value list already correct for the
+// product's category; the FE renders it without per-category branching.
+export interface CategoryProfileField {
+  /** stable snake_case field id from CATEGORY_SPEC_SCHEMAS (i18n join key). */
+  key: string;
+  /** humanized English fallback label (used only when no i18n key exists). */
+  label: string;
+  /** cleaned display string — never "N/A"/"None"/null/""/an object. */
+  value: string;
+}
+
+export interface CategoryProfile {
+  /** canonicalized category (lowercase) — equals response.category. */
+  category: string;
+  /** ordered fields; render in order; hide the block when empty/missing. */
+  fields: CategoryProfileField[];
 }
 
 // --- Comparison types ---
