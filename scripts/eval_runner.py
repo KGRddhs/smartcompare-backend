@@ -733,8 +733,16 @@ class EvalReport:
 # Single-query execution + grading
 # ---------------------------------------------------------------------------
 
-async def run_query(client: httpx.AsyncClient, record: Dict[str, Any]) -> QueryRunResult:
-    """Hit /api/v1/text/compare for one gold record (?nocache=true).
+async def run_query(client: httpx.AsyncClient, record: Dict[str, Any],
+                    *, read_cache: bool = False) -> QueryRunResult:
+    """Hit /api/v1/text/compare for one gold record.
+
+    By default (cold path) sends ?nocache=true so the run measures cold
+    scraping — what the baseline/regression gates compare. When
+    `read_cache=True` (A4 --read-cache mode), nocache is OMITTED entirely so
+    the engine serves from its L1/L2 price cache (what the warmer populated).
+    That cache-read measurement is meaningful only AFTER the price-cache
+    warmer cron is activated (see read_cache_note()).
 
     Records http status, wall-time (ms), parsed JSON, and any network/parse
     error. Never raises  -  failures are captured on the result so the run
@@ -742,8 +750,9 @@ async def run_query(client: httpx.AsyncClient, record: Dict[str, Any]) -> QueryR
     params = {
         "q": record["query"],
         "region": record.get("region", "bahrain"),
-        "nocache": "true",
     }
+    if not read_cache:
+        params["nocache"] = "true"
     timeout = float(record.get("max_wall_seconds", 25.0)) + TIMEOUT_SLACK_SECONDS
     start = time.monotonic()
     http_status = 0
@@ -937,11 +946,14 @@ async def run_eval(
     transport: Optional[httpx.BaseTransport] = None,
     concurrency: int = DEFAULT_CONCURRENCY,
     weights: Optional[Dict[str, float]] = None,
+    read_cache: bool = False,
 ) -> EvalReport:
     """Execute every query against base_url with a bounded-concurrency pool,
     grade each, and aggregate. `transport` lets tests inject a MockTransport.
     `weights` (canonical, from the gold file via load_axis_weights) is
-    threaded into per-query grading; defaults to AXIS_WEIGHTS."""
+    threaded into per-query grading; defaults to AXIS_WEIGHTS. `read_cache`
+    (A4 --read-cache mode) omits ?nocache=true on every query so the engine
+    serves cached prices — meaningful only post-warmer (read_cache_note())."""
     semaphore = asyncio.Semaphore(concurrency)
     client_kwargs: Dict[str, Any] = {"base_url": base_url}
     if transport is not None:
@@ -950,7 +962,7 @@ async def run_eval(
     async with httpx.AsyncClient(**client_kwargs) as client:
         async def _one(record: Dict[str, Any]) -> GradedQuery:
             async with semaphore:
-                run_result = await run_query(client, record)
+                run_result = await run_query(client, record, read_cache=read_cache)
             return grade_run_result(run_result, record, weights=weights)
 
         graded = await asyncio.gather(*[_one(q) for q in queries])
@@ -976,6 +988,30 @@ def select_queries(gold: Dict[str, Any], subset: Optional[str] = None,
         ids = set(subset_doc.get("ids") or [])
         return [q for q in queries if q["id"] in ids]
     return queries
+
+
+# ---------------------------------------------------------------------------
+# A4 — cache-read mode caveat
+# ---------------------------------------------------------------------------
+
+def read_cache_note() -> str:
+    """The caveat printed for a --read-cache run.
+
+    The default eval measures COLD scraping (?nocache=true). --read-cache omits
+    nocache so the engine serves cached prices — but that only reflects the
+    warmer's genuine-share AFTER the price-cache warmer cron is activated
+    (ENABLE_PRICE_CACHE_WARMER). Before activation a cache-read run mostly hits
+    cold misses and is NOT a valid genuine-share measurement. ASCII-only (no
+    em-dash/U+00B7) so captured/redirected logs don't mojibake under the
+    Windows cp1252 console codec (CLAUDE.md trap)."""
+    return (
+        "NOTE [--read-cache]: this run does NOT pass nocache=true, so it reads "
+        "the engine's cached prices. The genuine-BH-share it reports is only "
+        "meaningful AFTER the price-cache warmer cron is activated "
+        "(ENABLE_PRICE_CACHE_WARMER). Before activation most queries hit cold "
+        "cache misses, so treat the numbers as a wiring smoke-check, not a "
+        "genuine-share measurement."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1052,6 +1088,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="Override the OpenAI cost-guard refusal for an "
                              "authorized big run (dispatcher GO).")
     parser.add_argument("--out", default=None, help="Write per-query JSON lines to PATH")
+    parser.add_argument("--read-cache", action="store_true",
+                        help="A4 cache-read mode: do NOT pass nocache=true, so "
+                             "the engine serves cached prices. Meaningful only "
+                             "AFTER the price-cache warmer cron is activated "
+                             "(ENABLE_PRICE_CACHE_WARMER) — see read_cache_note().")
     args = parser.parse_args(argv)
 
     try:
@@ -1093,11 +1134,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(openai_msg, file=sys.stderr)
         return 3
 
+    # A4 — a cache-read run reads the warmer's cached prices instead of
+    # force-missing the cache. Surface the caveat loudly so a reader doesn't
+    # mistake a pre-warmer cache-read number for a real genuine-share.
+    cache_mode = "read-cache" if args.read_cache else "cold(nocache)"
+    if args.read_cache:
+        print(f"# {read_cache_note()}")
     print(f"# eval run: base={args.base_url} n={len(queries)} mode={args.mode} "
-          f"subset={args.subset or 'full'} weights={axis_weights}")
+          f"subset={args.subset or 'full'} cache={cache_mode} weights={axis_weights}")
     report = asyncio.run(run_eval(queries, base_url=args.base_url,
                                   concurrency=args.concurrency,
-                                  weights=axis_weights))
+                                  weights=axis_weights,
+                                  read_cache=args.read_cache))
 
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
