@@ -26,9 +26,13 @@ BASELINE_FILE = REPO_ROOT / "tests" / ".pre_impl_failures.txt"
 # ---------------------------------------------------------------------------
 
 def test_parse_failure_ids_strips_failed_prefix_and_blanks():
+    """In pytest-mode (FAILED lines present), strip the 'FAILED ' prefix + the
+    reason, skip blanks, and count ONLY FAILED-prefixed lines. The bare
+    `tests/test_b.py::test_two` line here is the warnings/traceback-section case
+    and is correctly IGNORED (it is not a 'FAILED ' line)."""
     text = (
         "FAILED tests/test_a.py::test_one - AssertionError: x\n"
-        "tests/test_b.py::test_two\n"
+        "tests/test_b.py::test_two\n"          # bare (warnings/traceback noise) -> ignored
         "\n"
         "   \n"
         "FAILED tests/test_c.py::TestK::test_three\n"
@@ -36,7 +40,6 @@ def test_parse_failure_ids_strips_failed_prefix_and_blanks():
     ids = rgd.parse_failure_ids(text)
     assert ids == {
         "tests/test_a.py::test_one",
-        "tests/test_b.py::test_two",
         "tests/test_c.py::TestK::test_three",
     }
 
@@ -69,6 +72,58 @@ def test_parse_failure_ids_param_dash_then_dashed_reason():
         "FAILED tests/x.py::test_k[a - b] - some - dashed - reason\n"
     )
     assert ids == {"tests/x.py::test_k[a - b]"}
+
+
+def test_parse_failure_ids_ignores_warnings_section_nodeids():
+    """REGRESSION (Wave-2 false-positive): pytest -rf groups the warnings summary
+    by the nodeid that emitted them, printing BARE `tests/...::test` lines for
+    PASSING tests above their DeprecationWarning. When the input is pytest output
+    (has FAILED lines), ONLY FAILED-prefixed lines count — bare nodeids in the
+    warnings/traceback sections must NOT be read as failures."""
+    text = (
+        "FAILED tests/real.py::test_actually_failed - AssertionError\n"
+        "\n"
+        "..\\..\\site-packages\\supabase\\_sync\\client.py:309\n"
+        "tests/test_auth_interceptor.py::test_login_user_success\n"   # warnings-section, PASSING
+        "  DeprecationWarning: The 'timeout' parameter is deprecated.\n"
+        "tests/test_personalization.py::TestPreferenceEndpoints::test_save_preferences_success\n"
+        "  DeprecationWarning: There is no current event loop\n"
+    )
+    ids = rgd.parse_failure_ids(text)
+    # ONLY the genuinely-FAILED test, NOT the two warnings-section passers.
+    assert ids == {"tests/real.py::test_actually_failed"}
+
+
+def test_parse_failure_ids_bare_list_mode_when_no_failed_prefix():
+    """A pure id-list file (the baseline mirror: every line a bare nodeid, NO
+    FAILED prefix anywhere) still parses every nodeid — bare-list mode."""
+    text = (
+        "tests/a.py::t1\n"
+        "tests/b.py::TestK::t2\n"
+        "tests/c.py::t3[param]\n"
+    )
+    ids = rgd.parse_failure_ids(text)
+    assert ids == {"tests/a.py::t1", "tests/b.py::TestK::t2", "tests/c.py::t3[param]"}
+
+
+def test_real_qa_integrated_suite_has_no_new_failures():
+    """End-to-end against QA's REAL Wave-2 integrated suite output (the file that
+    surfaced the false-positive). With the warnings-section fix it must diff
+    CLEAN (subset of the 48 + flaky-excludes) — matching QA's '48 failed' summary
+    and EMPTY preview diff. Skips if the file isn't on disk (CI/fresh clone)."""
+    qa_file = Path(
+        r"C:\Users\SynAckITPC\Documents\AI\smartcompare-faithful-qa"
+        r"\.qa-discovery-integrated-suite.txt"
+    )
+    if not qa_file.exists():
+        import pytest
+        pytest.skip("QA integrated-suite output not on disk")
+    current = rgd.parse_failure_ids(qa_file.read_text(encoding="utf-8"))
+    result = rgd.diff_failures(current, rgd.load_baseline())
+    assert result.new_failures == set(), (
+        f"unexpected NEW failures vs the 48 baseline: {sorted(result.new_failures)}"
+    )
+    assert result.has_regression is False
 
 
 def test_parse_failure_ids_empty_text_is_empty_set():
