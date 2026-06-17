@@ -121,6 +121,46 @@ MODEL_VARIANT_PATTERN = re.compile(r'\s+(pro|plus|max|ultra|\d{2,}gb|\d+tb)$', r
 # Cache TTL
 PRICE_CACHE_TTL = 24 * 60 * 60  # 24 hours
 
+# Faithful-Results Phase 1 (Task 1.1 / 1.3) — TTL policy keyed on source_method.
+#   - A GENUINE Bahrain shelf price (a `_GENUINE_BH_SOURCE_METHODS` method) is
+#     stable for a week — cache it 7 days so the genuine-share survives without
+#     re-burning a scrape on every TTL tick. THIS is the free-tier-survival lever
+#     (scrape rarely, serve from cache long).
+#   - A converted_usd / estimated / converted_fallback figure is short-lived
+#     (rates drift, a genuine price may appear) — keep the 24h TTL so it refreshes
+#     toward a genuine price sooner.
+#   - A negative-cache sentinel for a structural dead-end (no genuine BH source
+#     exists at all — luxury fragrance/haircare/gadgets) is cached 30 days so the
+#     scrape cascade is not re-attempted on every request (Task 1.3).
+# Env-overridable so an ops tune does not need a code change.
+GENUINE_PRICE_CACHE_TTL = int(os.getenv("GENUINE_PRICE_CACHE_TTL_SECONDS", str(7 * 24 * 60 * 60)))  # 7 days
+NEGATIVE_PRICE_CACHE_TTL = int(os.getenv("NEGATIVE_PRICE_CACHE_TTL_SECONDS", str(30 * 24 * 60 * 60)))  # 30 days
+
+
+def price_cache_ttl(price: Optional[Dict[str, Any]]) -> int:
+    """The cache TTL (seconds) for a resolved price, branched on source_method.
+
+    Returns GENUINE_PRICE_CACHE_TTL (7d) when the price carries a genuine-BH
+    source method (`_GENUINE_BH_SOURCE_METHODS`), else PRICE_CACHE_TTL (24h) for
+    converted/estimated/unknown. Single point of policy so the ~12 price
+    `set_cached` call sites in the cascade don't each duplicate the branch.
+
+    Defensive: anything containing "converted" or "estimate" in the method is
+    NEVER treated as genuine even if it also matches a genuine token, and a
+    missing/blank method or a non-dict input falls back to the short TTL (a price
+    we can't vouch for as genuine should refresh sooner, not linger a week).
+    `_GENUINE_BH_SOURCE_METHODS` is defined further down the module, so it is
+    resolved lazily at call time (same pattern as `_showable_source_methods`).
+    """
+    if not isinstance(price, dict):
+        return PRICE_CACHE_TTL
+    sm = (price.get("source_method") or "").lower()
+    if not sm or "converted" in sm or "estimate" in sm:
+        return PRICE_CACHE_TTL
+    if sm in _GENUINE_BH_SOURCE_METHODS:
+        return GENUINE_PRICE_CACHE_TTL
+    return PRICE_CACHE_TTL
+
 # Retailer quality tiers
 RETAILER_TIERS = {
     # Tier 1: Official stores & major authorized retailers (score 1.0)

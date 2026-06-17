@@ -18,6 +18,35 @@ SPECS_DB_TTL = timedelta(days=30)
 PRICE_DB_TTL = timedelta(days=1)
 REVIEWS_DB_TTL = timedelta(days=14)
 
+# Faithful-Results Phase 1 (Task 1.1) — a GENUINE Bahrain shelf price stays
+# fresh at L2 for a week (matches the L1 GENUINE_PRICE_CACHE_TTL). The OLD flat
+# 24h window wrongly rejected a 3-day-old genuine row at L2 → re-burned a scrape.
+# A converted/estimated row keeps the 24h window so it refreshes toward a genuine
+# price sooner. Env-overridable to mirror the L1 knob.
+import os as _os
+GENUINE_PRICE_DB_TTL = timedelta(
+    seconds=int(_os.getenv("GENUINE_PRICE_CACHE_TTL_SECONDS", str(7 * 24 * 60 * 60)))
+)
+
+
+def _price_row_fresh(source_method: Optional[str], age: timedelta) -> bool:
+    """True iff a stored price row of `age` is still fresh for its source_method.
+
+    Genuine-BH methods get the 7d window (GENUINE_PRICE_DB_TTL); converted /
+    estimated / unknown methods get the 24h window (PRICE_DB_TTL). Pure decision
+    so it is unit-tested without touching Supabase. Defensive: a method
+    containing "converted"/"estimate", or a missing one, always uses the short
+    window."""
+    sm = (source_method or "").lower()
+    if sm and "converted" not in sm and "estimate" not in sm:
+        try:
+            from app.services.price_service import _GENUINE_BH_SOURCE_METHODS
+            if sm in _GENUINE_BH_SOURCE_METHODS:
+                return age <= GENUINE_PRICE_DB_TTL
+        except Exception:  # noqa: BLE001 — never let the import block the read
+            pass
+    return age <= PRICE_DB_TTL
+
 
 async def get_cached_specs(product_key: str) -> Optional[Dict[str, Any]]:
     """Fetch specs from DB if fresher than 30 days."""
@@ -82,7 +111,10 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
             return None
         row = response.data[0]
         fetched_at = datetime.fromisoformat(row["fetched_at"].replace("Z", "+00:00"))
-        if datetime.now(timezone.utc) - fetched_at > PRICE_DB_TTL:
+        # Faithful-Results Phase 1 — freshness window depends on source_method:
+        # genuine BH price = 7d, converted/estimated = 24h.
+        age = datetime.now(timezone.utc) - fetched_at
+        if not _price_row_fresh(row.get("source_method"), age):
             return None
         return {
             "amount": float(row["amount"]) if row["amount"] is not None else None,

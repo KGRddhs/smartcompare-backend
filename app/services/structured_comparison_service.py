@@ -515,6 +515,10 @@ from app.services.price_service import (
     # Constants re-exported for backward compat
     MODEL_VARIANT_PATTERN,
     PRICE_CACHE_TTL,
+    # Faithful-Results Phase 1 — source_method-keyed cache TTL policy.
+    GENUINE_PRICE_CACHE_TTL,
+    NEGATIVE_PRICE_CACHE_TTL,
+    price_cache_ttl,
     RETAILER_TIERS,
     DEFAULT_RETAILER_SCORE,
     RETAILER_SEARCH_URLS,
@@ -3464,7 +3468,7 @@ class StructuredComparisonService:
             from app.services.product_data_service import get_cached_price
             db_price = await get_cached_price(cache_key, region)
             if db_price:
-                set_cached(cache_key, db_price, PRICE_CACHE_TTL)
+                set_cached(cache_key, db_price, price_cache_ttl(db_price))
                 db_price["_cached"] = True
                 db_price["_cache_source"] = "db"
                 return db_price
@@ -3691,7 +3695,7 @@ class StructuredComparisonService:
                     # Genuine Tier-1 short-circuit — the speculative discovery
                     # prefetch is not needed; cancel it (no orphan Serper calls).
                     _cancel_prefetched_discovery()
-                    set_cached(cache_key, price, PRICE_CACHE_TTL)
+                    set_cached(cache_key, price, price_cache_ttl(price))
                     self._save_price_to_db(cache_key, brand, name, variant, region, price)
                     price["_cached"] = False
                     return price
@@ -3819,7 +3823,7 @@ class StructuredComparisonService:
                         # Official-Shopify short-circuit — cancel the speculative
                         # discovery prefetch (no orphan Serper calls; L5.3).
                         _cancel_prefetched_discovery()
-                        set_cached(cache_key, shop_best, PRICE_CACHE_TTL)
+                        set_cached(cache_key, shop_best, price_cache_ttl(shop_best))
                         self._save_price_to_db(
                             cache_key, brand, name, variant, region, shop_best
                         )
@@ -3903,7 +3907,7 @@ class StructuredComparisonService:
                     record_tier15_hit(category, win_domain or None)
                     # Algolia genuine short-circuit — cancel speculative prefetch.
                     _cancel_prefetched_discovery()
-                    set_cached(cache_key, algolia_best, PRICE_CACHE_TTL)
+                    set_cached(cache_key, algolia_best, price_cache_ttl(algolia_best))
                     self._save_price_to_db(
                         cache_key, brand, name, variant, region, algolia_best
                     )
@@ -4084,7 +4088,7 @@ class StructuredComparisonService:
                             ),
                         }
                     record_tier15_hit(category, win_domain or None)
-                    set_cached(cache_key, winning_price, PRICE_CACHE_TTL)
+                    set_cached(cache_key, winning_price, price_cache_ttl(winning_price))
                     self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
                     winning_price["_cached"] = False
                     if fan_result.get("cancelled_count", 0) > 0:
@@ -4187,7 +4191,7 @@ class StructuredComparisonService:
                 }
                 record_tier15_attempt(category)
                 record_tier15_hit(category, win_domain or None)
-                set_cached(cache_key, shopify_fallback, PRICE_CACHE_TTL)
+                set_cached(cache_key, shopify_fallback, price_cache_ttl(shopify_fallback))
                 self._save_price_to_db(
                     cache_key, brand, name, variant, region, shopify_fallback
                 )
@@ -4228,7 +4232,7 @@ class StructuredComparisonService:
                         "link": iherb_price["url"],
                         "title": full_name,
                     }]
-                set_cached(cache_key, iherb_price, PRICE_CACHE_TTL)
+                set_cached(cache_key, iherb_price, price_cache_ttl(iherb_price))
                 return iherb_price
 
             iherb_task = search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
@@ -4242,7 +4246,7 @@ class StructuredComparisonService:
             pharmacy_price = await fetch_pharmacy_price(bh_organic, brand, full_name, currency, track_serper_cost_fn=self._track_serper_cost)
             if pharmacy_price:
                 pharmacy_price["_cached"] = False
-                set_cached(cache_key, pharmacy_price, PRICE_CACHE_TTL)
+                set_cached(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
                 return pharmacy_price
 
             if ENABLE_PAGE_SCRAPE:
@@ -4254,7 +4258,7 @@ class StructuredComparisonService:
                         page_price = await fetch_page_price(link, full_name, currency)
                         if page_price and page_price.get("amount"):
                             page_price["_cached"] = False
-                            set_cached(cache_key, page_price, PRICE_CACHE_TTL)
+                            set_cached(cache_key, page_price, price_cache_ttl(page_price))
                             return page_price
 
             combined_organic = iherb_organic + bh_organic
@@ -4343,7 +4347,7 @@ class StructuredComparisonService:
             if price and price.get("amount"):
                 if price.get("retailer") and not price.get("url"):
                     price["url"] = build_retailer_url(price["retailer"], full_name)
-                set_cached(cache_key, price, PRICE_CACHE_TTL)
+                set_cached(cache_key, price, price_cache_ttl(price))
                 self._save_price_to_db(cache_key, brand, name, variant, region, price)
                 price["_cached"] = False
                 return price
@@ -4367,7 +4371,7 @@ class StructuredComparisonService:
                 )
                 if price and price.get("amount"):
                     price.pop("retailer_score", None)
-                    set_cached(cache_key, price, PRICE_CACHE_TTL)
+                    set_cached(cache_key, price, price_cache_ttl(price))
                     self._save_price_to_db(cache_key, brand, name, variant, region, price)
                     price["_cached"] = False
                     return price
@@ -4381,7 +4385,7 @@ class StructuredComparisonService:
                 converted_fallback["url"] = build_retailer_url(
                     converted_fallback["retailer"], full_name
                 )
-            set_cached(cache_key, converted_fallback, PRICE_CACHE_TTL)
+            set_cached(cache_key, converted_fallback, price_cache_ttl(converted_fallback))
             self._save_price_to_db(cache_key, brand, name, variant, region, converted_fallback)
             converted_fallback["_cached"] = False
             logger.info(
