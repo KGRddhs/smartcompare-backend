@@ -3057,6 +3057,11 @@ class StructuredComparisonService:
                     full_name, region=region,
                     page_scrape_image=None,  # piggyback evaluated post-Phase1 below
                     organic_results=(unified_search.get("organic", []) if unified_search else None),
+                    # #21 — pass the full unified search so Tier 1.5b can read a
+                    # FREE Knowledge-Graph/organic image (fragrance-placeholder
+                    # fix; independent of the price-scrape + the Serper-Images
+                    # budget). Falls back to Serper-Images/GPT when absent.
+                    search_payload=unified_search,
                 ), stage_timings),
                 timeout=_PHASE1_TIMEOUTS["image_url"],
             ))

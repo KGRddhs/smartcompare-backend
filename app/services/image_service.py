@@ -56,6 +56,55 @@ def _is_valid_image_url(value: Any) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Tier 1.5b — FREE image from the unified Serper search payload (#21)
+# ---------------------------------------------------------------------------
+# Fragrance cards showed placeholders: the FREE piggyback image (Tier 1.5) rides
+# the price-scrape, which doesn't fire when the price PENDS, and the paid Serper-
+# Images tier can miss OR be exhausted (500/day budget). The unified Serper
+# search the pipeline ALREADY ran almost always carries a usable image for a
+# branded product in its Google Knowledge Graph card (and sometimes on an organic
+# result) — a $0, budget-FREE, price-scrape-INDEPENDENT source. This tier reads
+# it BEFORE the paid Serper-Images tier. Real-URL-only; never fabricated.
+
+# Organic-result keys that have carried an image URL across Serper API shapes.
+_ORGANIC_IMAGE_KEYS = ("imageUrl", "thumbnailUrl", "thumbnail", "image")
+
+
+def extract_image_from_search(search_payload: Optional[Dict[str, Any]]) -> Optional[str]:
+    """A product image URL from the unified Serper search payload, or None.
+
+    Precedence: the Knowledge Graph card's image first (highest-fidelity branded
+    hero shot — `knowledgeGraph`/`knowledge_graph`, `imageUrl`/`image`), then the
+    first organic result carrying an image field. Drift-tolerant (any non-dict /
+    unexpected shape -> None, never raises). Validated by `_is_valid_image_url`.
+    """
+    if not isinstance(search_payload, dict):
+        return None
+
+    # 1) Knowledge Graph card (camelCase + snake_case shapes).
+    for kg_key in ("knowledgeGraph", "knowledge_graph"):
+        kg = search_payload.get(kg_key)
+        if isinstance(kg, dict):
+            for img_key in ("imageUrl", "image", "imageURL", "thumbnailUrl"):
+                cand = kg.get(img_key)
+                if _is_valid_image_url(cand):
+                    return cand.strip()
+
+    # 2) First organic result carrying an image field.
+    organic = search_payload.get("organic")
+    if isinstance(organic, list):
+        for item in organic:
+            if not isinstance(item, dict):
+                continue
+            for img_key in _ORGANIC_IMAGE_KEYS:
+                cand = item.get(img_key)
+                if _is_valid_image_url(cand):
+                    return cand.strip()
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Tier 3 — GPT extraction from organic results
 # ---------------------------------------------------------------------------
 
@@ -146,6 +195,7 @@ async def get_product_image_url(
     region: str = "bahrain",
     page_scrape_image: Optional[str] = None,
     organic_results: Optional[List[Dict[str, Any]]] = None,
+    search_payload: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     """Resolve product image URL via tier cascade. Returns None on full miss.
 
@@ -155,6 +205,9 @@ async def get_product_image_url(
         page_scrape_image: Tier 1.5 piggyback — image already retrieved by the
             price tier. When truthy + valid URL, returned immediately (FREE).
         organic_results: Serper organic results (for Tier 3 GPT fallback).
+        search_payload: #21 — the unified Serper search payload (knowledgeGraph +
+            organic). Tier 1.5b reads a FREE, budget-free, price-scrape-INDEPENDENT
+            image from it (the fragrance-placeholder fix). None for legacy callers.
 
     Returns:
         A URL string (real image) or None (frontend should render placeholder).
@@ -163,10 +216,19 @@ async def get_product_image_url(
     if not name:
         return None
 
-    # ----- Tier 1.5 — piggyback page-scrape image (FREE) -----
+    # ----- Tier 1.5 — piggyback page-scrape image (FREE, highest fidelity) -----
     if page_scrape_image and _is_valid_image_url(page_scrape_image):
         logger.info("[image] Tier 1.5 piggyback hit for %r", name[:60])
         return page_scrape_image.strip()
+
+    # ----- Tier 1.5b — FREE image from the unified search payload (#21) -----
+    # Reads the Knowledge Graph / organic image the pipeline ALREADY fetched.
+    # $0, no Serper-Images budget, independent of the price-scrape — fixes the
+    # fragrance placeholder when the price pends.
+    search_img = extract_image_from_search(search_payload)
+    if search_img:
+        logger.info("[image] Tier 1.5b unified-search image hit for %r", name[:60])
+        return search_img
 
     # ----- Tier 1 — Serper Images (paid, budget-gated) -----
     if try_consume_serper_image_credit(1):
