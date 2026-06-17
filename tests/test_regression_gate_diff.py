@@ -207,3 +207,46 @@ def test_local_mirror_is_locked_48():
     # The 9 youtube + invitee_quiz partial-cred artifacts must be GONE.
     assert not any("test_youtube" in i for i in mirror_ids)
     assert not any("test_invitee_quiz" in i for i in mirror_ids)
+
+
+# ---------------------------------------------------------------------------
+# main() CLI — exit 0 clean / 1 regression / 3 bad input
+# ---------------------------------------------------------------------------
+
+def test_main_exit_0_when_current_is_subset_of_baseline(tmp_path):
+    """A current FAILED set ⊆ baseline → exit 0 (no regression)."""
+    base = tmp_path / "base.txt"
+    base.write_text("tests/a.py::t1\ntests/b.py::t2\n", encoding="utf-8")
+    cur = tmp_path / "cur.txt"
+    cur.write_text("FAILED tests/a.py::t1 - boom\n", encoding="utf-8")  # subset
+    rc = rgd.main(["--current", str(cur), "--baseline", str(base)])
+    assert rc == 0
+
+
+def test_main_exit_1_on_new_failure(tmp_path, capsys):
+    base = tmp_path / "base.txt"
+    base.write_text("tests/a.py::t1\n", encoding="utf-8")
+    cur = tmp_path / "cur.txt"
+    cur.write_text("tests/a.py::t1\ntests/new.py::t_reg\n", encoding="utf-8")
+    rc = rgd.main(["--current", str(cur), "--baseline", str(base)])
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "tests/new.py::t_reg" in out
+
+
+def test_main_exit_3_on_unreadable_current(tmp_path, capsys):
+    rc = rgd.main(["--current", str(tmp_path / "missing.txt")])
+    assert rc == 3
+    assert "ERROR" in capsys.readouterr().err
+
+
+def test_main_excludes_network_flaky(tmp_path):
+    """A current set that adds ONLY a network-flaky test → exit 0 (the exclude
+    neutralizes it even via the CLI)."""
+    flaky = next(iter(rgd.NETWORK_FLAKY_EXCLUDE))
+    base = tmp_path / "base.txt"
+    base.write_text("tests/a.py::t1\n", encoding="utf-8")
+    cur = tmp_path / "cur.txt"
+    cur.write_text(f"tests/a.py::t1\n{flaky}\n", encoding="utf-8")
+    rc = rgd.main(["--current", str(cur), "--baseline", str(base)])
+    assert rc == 0
