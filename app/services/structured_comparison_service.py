@@ -42,6 +42,11 @@ from app.services.cache_service import (
     record_tier15_attempt,
     record_tier15_hit,
     record_price_outcome,
+    # Faithful-Results Task 1.3 — negative-cache for structural genuine-BH gaps.
+    get_negative_cache,
+    set_negative_cache,
+    # Task 1.6 — cache hit-rate observability counter.
+    record_cache_observability,
 )
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
@@ -515,6 +520,18 @@ from app.services.price_service import (
     # Constants re-exported for backward compat
     MODEL_VARIANT_PATTERN,
     PRICE_CACHE_TTL,
+    # Faithful-Results Phase 1 — source_method-keyed cache TTL policy.
+    GENUINE_PRICE_CACHE_TTL,
+    NEGATIVE_PRICE_CACHE_TTL,
+    price_cache_ttl,
+    # Task 1.4 — size-aware price cache key (no storage/size variant collision).
+    build_size_aware_price_cache_key,
+    size_variant_token,
+    # Task 1.3 — negative-cache for structural genuine-BH dead-ends.
+    negative_cache_key,
+    should_negative_cache,
+    # Task 1.6 — genuine-method set for the cache-observability classification.
+    _GENUINE_BH_SOURCE_METHODS,
     RETAILER_TIERS,
     DEFAULT_RETAILER_SCORE,
     RETAILER_SEARCH_URLS,
@@ -1600,6 +1617,9 @@ class StructuredComparisonService:
                     scoring_result.get("dimension_winners", {}),
                     product_names,
                     scoring_result.get("winner_index", 0),
+                    # F4.2 — pass scores so a winner-sweep falls back to the
+                    # loser's strongest dim (non-empty runner-up card).
+                    scores=scoring_result.get("scores"),
                 )
             confidence = scoring_service.compute_confidence(
                 product_data,
@@ -1608,6 +1628,20 @@ class StructuredComparisonService:
             )
         except Exception as e:  # noqa: BLE001 — partial must never crash
             logger.warning("[WS1] partial tradeoff/confidence derive failed: %s", e)
+
+        # F4.4 — on the hard-cap partial path the LLM verdict may be empty
+        # (comparison == {}), leaving the user with no recommendation at all.
+        # When scoring landed, synthesize a DETERMINISTIC verdict from the scores
+        # so the user always gets SOMETHING (winner + a score-based reason +
+        # the loser's strongest dim as the tradeoff). Never overwrites a real LLM
+        # verdict — only fills when winner_reason/declaration are missing.
+        if scoring_result and not (comparison.get("winner_reason") and comparison.get("winner_declaration")):
+            try:
+                comparison = self._deterministic_partial_verdict(
+                    comparison, scoring_result, product_names, tradeoffs
+                )
+            except Exception as e:  # noqa: BLE001 — partial must never crash
+                logger.warning("[WS1] deterministic partial verdict failed: %s", e)
 
         result = build_comparison_response(
             product_data=product_data,
@@ -2028,7 +2062,7 @@ class StructuredComparisonService:
 
             # Trust validation
             from app.services.trust_validation_service import validate_verdict
-            verdict_validation = validate_verdict(comparison, scoring_result, detected_category)
+            verdict_validation = validate_verdict(comparison, scoring_result, detected_category, products=product_data)
 
             # Extract pros/cons
             if include_pros_cons:
@@ -2068,7 +2102,9 @@ class StructuredComparisonService:
 
             # Compute tradeoffs and confidence
             tradeoffs = scoring_service.compute_tradeoff_pairs(
-                scoring_result.get("dimension_winners", {}), product_names, scoring_result.get("winner_index", 0)
+                scoring_result.get("dimension_winners", {}), product_names,
+                scoring_result.get("winner_index", 0),
+                scores=scoring_result.get("scores"),  # F4.2 sweep fallback
             )
             from_cache = not nocache
             confidence = scoring_service.compute_confidence(
@@ -2538,7 +2574,7 @@ class StructuredComparisonService:
             )
 
             from app.services.trust_validation_service import validate_verdict
-            verdict_validation = validate_verdict(comparison, scoring_result, detected_category)
+            verdict_validation = validate_verdict(comparison, scoring_result, detected_category, products=product_data)
 
             if include_pros_cons:
                 # Bundle C v1 hot-fix (round 2) § 1a diagnostic — streaming path
@@ -2572,7 +2608,9 @@ class StructuredComparisonService:
 
             # Compute tradeoffs
             tradeoffs = scoring_service.compute_tradeoff_pairs(
-                scoring_result.get("dimension_winners", {}), product_names, scoring_result.get("winner_index", 0)
+                scoring_result.get("dimension_winners", {}), product_names,
+                scoring_result.get("winner_index", 0),
+                scores=scoring_result.get("scores"),  # F4.2 sweep fallback
             )
 
             winner_index = comparison.get("winner_index", 0)
@@ -3068,6 +3106,20 @@ class StructuredComparisonService:
             _settled_price = result.get("price")
             if isinstance(_settled_price, dict) and _settled_price.get("amount"):
                 record_price_outcome(category, _settled_price.get("source_method"))
+                # Task 1.6 — cache hit-rate observability: was this price served
+                # from cache, and was it a genuine-BH price (the warmer win) vs a
+                # freshly-scraped genuine price (a scrape spent)? Fail-open.
+                _sm = (_settled_price.get("source_method") or "").lower()
+                _is_genuine = (
+                    _sm in _GENUINE_BH_SOURCE_METHODS
+                    and "converted" not in _sm and "estimate" not in _sm
+                )
+                _from_cache = bool(_settled_price.get("_cached"))
+                record_cache_observability(
+                    cache_hit=_from_cache,
+                    genuine_from_cache=_is_genuine and _from_cache,
+                    genuine_fresh=_is_genuine and not _from_cache,
+                )
         except Exception:  # noqa: BLE001 — metric must never break the response
             pass
 
@@ -3449,7 +3501,16 @@ class StructuredComparisonService:
         if not validate_price_query(brand, name, region):
             return {"amount": 0, "currency": "BHD", "estimated": True, "source_method": "validation_rejected"}
 
-        cache_key = get_price_cache_key(brand, name, variant, region)
+        # Faithful-Results Task 1.4 — size-aware key so two SIZE/STORAGE variants
+        # of the same product (iPhone 256GB vs 128GB, Aventus 50ml vs 100ml) get
+        # DISTINCT cache keys and never pollute each other's slot. Falls back to
+        # the legacy key (identical) when no size is present anywhere, so sizeless
+        # products keep their warmed cache. `search_query` carries the size when
+        # the parser left it out of name/variant (electronics fixture: storage in
+        # specs, variant=None).
+        cache_key = build_size_aware_price_cache_key(
+            brand, name, variant, region, search_query
+        )
         # I5.1 — price-only cache-bust probe forces the price reads to miss so
         # the routing escalation re-runs deterministically (specs/reviews stay
         # warm — they gate on `nocache` in _fetch_product_data, not this flag).
@@ -3464,10 +3525,28 @@ class StructuredComparisonService:
             from app.services.product_data_service import get_cached_price
             db_price = await get_cached_price(cache_key, region)
             if db_price:
-                set_cached(cache_key, db_price, PRICE_CACHE_TTL)
+                set_cached(cache_key, db_price, price_cache_ttl(db_price))
                 db_price["_cached"] = True
                 db_price["_cache_source"] = "db"
                 return db_price
+
+        # Task 1.3 — negative-cache for structural genuine-BH dead-ends. When a
+        # PRIOR full resolution found no genuine BH source (luxury fragrance/
+        # haircare/gadgets behind Cloudflare), a `nogenuine:{key}` sentinel holds
+        # the last non-genuine result. Serve it directly + SKIP the expensive
+        # Tier-1.5 scrape cascade — the free-tier-survival lever: never re-burn a
+        # scrape on a known dead-end. Bypassed on nocache (forced refresh).
+        if not price_nocache:
+            neg = get_negative_cache(negative_cache_key(cache_key))
+            if neg:
+                neg = dict(neg)
+                neg["_cached"] = True
+                neg["_cache_source"] = "negative"
+                logger.info(
+                    "[PRICE] negative-cache hit (structural genuine-BH gap) for "
+                    "%s %s — scrape cascade skipped", brand, name,
+                )
+                return neg
 
         region_info = GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])
         currency = region_info["currency"]
@@ -3691,7 +3770,7 @@ class StructuredComparisonService:
                     # Genuine Tier-1 short-circuit — the speculative discovery
                     # prefetch is not needed; cancel it (no orphan Serper calls).
                     _cancel_prefetched_discovery()
-                    set_cached(cache_key, price, PRICE_CACHE_TTL)
+                    set_cached(cache_key, price, price_cache_ttl(price))
                     self._save_price_to_db(cache_key, brand, name, variant, region, price)
                     price["_cached"] = False
                     return price
@@ -3819,7 +3898,7 @@ class StructuredComparisonService:
                         # Official-Shopify short-circuit — cancel the speculative
                         # discovery prefetch (no orphan Serper calls; L5.3).
                         _cancel_prefetched_discovery()
-                        set_cached(cache_key, shop_best, PRICE_CACHE_TTL)
+                        set_cached(cache_key, shop_best, price_cache_ttl(shop_best))
                         self._save_price_to_db(
                             cache_key, brand, name, variant, region, shop_best
                         )
@@ -3903,7 +3982,7 @@ class StructuredComparisonService:
                     record_tier15_hit(category, win_domain or None)
                     # Algolia genuine short-circuit — cancel speculative prefetch.
                     _cancel_prefetched_discovery()
-                    set_cached(cache_key, algolia_best, PRICE_CACHE_TTL)
+                    set_cached(cache_key, algolia_best, price_cache_ttl(algolia_best))
                     self._save_price_to_db(
                         cache_key, brand, name, variant, region, algolia_best
                     )
@@ -4084,7 +4163,7 @@ class StructuredComparisonService:
                             ),
                         }
                     record_tier15_hit(category, win_domain or None)
-                    set_cached(cache_key, winning_price, PRICE_CACHE_TTL)
+                    set_cached(cache_key, winning_price, price_cache_ttl(winning_price))
                     self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
                     winning_price["_cached"] = False
                     if fan_result.get("cancelled_count", 0) > 0:
@@ -4187,7 +4266,7 @@ class StructuredComparisonService:
                 }
                 record_tier15_attempt(category)
                 record_tier15_hit(category, win_domain or None)
-                set_cached(cache_key, shopify_fallback, PRICE_CACHE_TTL)
+                set_cached(cache_key, shopify_fallback, price_cache_ttl(shopify_fallback))
                 self._save_price_to_db(
                     cache_key, brand, name, variant, region, shopify_fallback
                 )
@@ -4228,7 +4307,7 @@ class StructuredComparisonService:
                         "link": iherb_price["url"],
                         "title": full_name,
                     }]
-                set_cached(cache_key, iherb_price, PRICE_CACHE_TTL)
+                set_cached(cache_key, iherb_price, price_cache_ttl(iherb_price))
                 return iherb_price
 
             iherb_task = search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
@@ -4242,7 +4321,7 @@ class StructuredComparisonService:
             pharmacy_price = await fetch_pharmacy_price(bh_organic, brand, full_name, currency, track_serper_cost_fn=self._track_serper_cost)
             if pharmacy_price:
                 pharmacy_price["_cached"] = False
-                set_cached(cache_key, pharmacy_price, PRICE_CACHE_TTL)
+                set_cached(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
                 return pharmacy_price
 
             if ENABLE_PAGE_SCRAPE:
@@ -4254,7 +4333,7 @@ class StructuredComparisonService:
                         page_price = await fetch_page_price(link, full_name, currency)
                         if page_price and page_price.get("amount"):
                             page_price["_cached"] = False
-                            set_cached(cache_key, page_price, PRICE_CACHE_TTL)
+                            set_cached(cache_key, page_price, price_cache_ttl(page_price))
                             return page_price
 
             combined_organic = iherb_organic + bh_organic
@@ -4343,7 +4422,7 @@ class StructuredComparisonService:
             if price and price.get("amount"):
                 if price.get("retailer") and not price.get("url"):
                     price["url"] = build_retailer_url(price["retailer"], full_name)
-                set_cached(cache_key, price, PRICE_CACHE_TTL)
+                set_cached(cache_key, price, price_cache_ttl(price))
                 self._save_price_to_db(cache_key, brand, name, variant, region, price)
                 price["_cached"] = False
                 return price
@@ -4367,7 +4446,7 @@ class StructuredComparisonService:
                 )
                 if price and price.get("amount"):
                     price.pop("retailer_score", None)
-                    set_cached(cache_key, price, PRICE_CACHE_TTL)
+                    set_cached(cache_key, price, price_cache_ttl(price))
                     self._save_price_to_db(cache_key, brand, name, variant, region, price)
                     price["_cached"] = False
                     return price
@@ -4381,8 +4460,11 @@ class StructuredComparisonService:
                 converted_fallback["url"] = build_retailer_url(
                     converted_fallback["retailer"], full_name
                 )
-            set_cached(cache_key, converted_fallback, PRICE_CACHE_TTL)
+            set_cached(cache_key, converted_fallback, price_cache_ttl(converted_fallback))
             self._save_price_to_db(cache_key, brand, name, variant, region, converted_fallback)
+            # Task 1.3 — the FULL genuine-BH cascade ran and missed; this is a
+            # structural dead-end. Record it so the next call skips the cascade.
+            self._record_negative_price_cache(cache_key, converted_fallback)
             converted_fallback["_cached"] = False
             logger.info(
                 "[PRICE] parked converted_usd fallback used for %s (BH curl+render "
@@ -4411,6 +4493,11 @@ class StructuredComparisonService:
                 price["url"] = build_retailer_url(price["retailer"], full_name)
             set_cached(cache_key, price, PRICE_CACHE_TTL // 2)
             self._save_price_to_db(cache_key, brand, name, variant, region, price)
+            # Task 1.3 — Tier-3 GPT estimate means no real BH price exists; the
+            # cascade is a structural dead-end. Record it so we don't re-run the
+            # full discovery+scrape next time (just serve this estimate from the
+            # negative cache).
+            self._record_negative_price_cache(cache_key, price)
             price["_cached"] = False
             return price
 
@@ -4570,6 +4657,72 @@ class StructuredComparisonService:
             save_price(cache_key, brand, name, variant, region, price),
             label="save_price",
         )
+
+    def _deterministic_partial_verdict(
+        self,
+        comparison: Dict[str, Any],
+        scoring_result: Dict[str, Any],
+        product_names: List[str],
+        tradeoffs: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """F4.4 — synthesize a deterministic verdict from scores for the hard-cap
+        partial path so the user never gets an empty recommendation.
+
+        Fills winner_index / winner_declaration / winner_reason from the
+        deterministic scores, and key_tradeoff from the loser's strongest dim
+        (the F4.2 tradeoff already computed). Merges onto whatever the LLM
+        verdict had — never overwrites a present field. Returns a NEW dict."""
+        out = dict(comparison or {})
+        scores = scoring_result.get("scores") or {}
+        winner_index = scoring_result.get("winner_index", 0)
+        if not (0 <= winner_index < len(product_names)):
+            winner_index = 0
+        winner_name = product_names[winner_index] if product_names else ""
+        w_overall = ((scores.get(f"product_{winner_index}") or {}).get("overall"))
+        l_overall = ((scores.get(f"product_{1 - winner_index}") or {}).get("overall"))
+
+        out.setdefault("winner_index", winner_index)
+        if not out.get("winner_declaration"):
+            out["winner_declaration"] = winner_name
+        if not out.get("winner_reason"):
+            if isinstance(w_overall, (int, float)) and isinstance(l_overall, (int, float)):
+                margin = round(abs(w_overall - l_overall), 1)
+                out["winner_reason"] = (
+                    f"{winner_name} leads on the overall score by {margin} points."
+                    if margin > 0 else
+                    f"{winner_name} edges ahead on the overall picture."
+                )
+            elif winner_name:
+                out["winner_reason"] = f"{winner_name} leads on the overall picture."
+        # key_tradeoff from the loser's strongest dim (F4.2 tradeoff result).
+        if not out.get("key_tradeoff") and tradeoffs:
+            lw = (tradeoffs[0] or {}).get("loser_wins") or {}
+            dim = lw.get("dimension")
+            loser_name = lw.get("product")
+            if dim and loser_name:
+                dim_label = dim.replace("_score", "").replace("_", " ")
+                out["key_tradeoff"] = f"{loser_name} stays competitive on {dim_label}."
+        return out
+
+    def _record_negative_price_cache(self, cache_key: str, price: Dict) -> None:
+        """Task 1.3 — record a structural genuine-BH dead-end so the next call
+        skips the expensive Tier-1.5 scrape cascade.
+
+        Called only at the NON-genuine terminals (converted_fallback / Tier-3
+        estimate) — the full discovery+scrape ran and found no genuine BH price.
+        Gated on `should_negative_cache` (defense-in-depth: never sentinel a
+        genuine price or a validation rejection). Stores the resolved non-genuine
+        result so the sentinel hit can serve it directly. Fail-open: a Redis
+        error is swallowed (the sentinel is an optimization, not correctness).
+        """
+        try:
+            if not should_negative_cache(price):
+                return
+            set_negative_cache(
+                negative_cache_key(cache_key), price, NEGATIVE_PRICE_CACHE_TTL
+            )
+        except Exception as e:  # noqa: BLE001 — never let the optimization break a resolution
+            logger.debug(f"negative-cache write skipped: {e}")
 
     async def _apply_self_critique(
         self,

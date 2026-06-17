@@ -634,7 +634,7 @@ RULES:
 - winner_reason MUST be under 20 words and cite the single most important numeric advantage
 - key_tradeoff: ONE sentence naming the losing product's single strongest advantage
 - value_context: per-product dict with keys product_0 and product_1. Each value is ONE sentence about THAT product's price-to-quality relationship for the GCC market. The two sentences MUST be distinct -- never reuse the same string for both products. If cross-tier, frame each as "different products for different needs" but still describe each product specifically.
-- best_for: one sentence per product describing the ideal buyer profile
+- best_for: one sentence per product describing the ideal buyer profile. For the RUNNER-UP (the product that did NOT win), best_for MUST name a CONCRETE buyer who should genuinely pick it over the winner and WHY (e.g. "Someone who wears fragrance to the office and needs all-day longevity over projection") -- a real reason-to-choose-the-other, not a generic restatement of the product. The runner-up almost always wins for SOME buyer; name that buyer specifically.
 - Be DECISIVE -- pick a clear winner and defend it with data
 - For luxury/designer products, consider brand prestige and craftsmanship in value assessment
 - ANTI-PATTERN -- spec-sheet edge at price parity: when performance is near parity, do NOT let a marginal spec-sheet edge decide the winner. Prefer the lower Bahrain price on value-per-dinar UNLESS a durability, service-network, or update-guarantee gap licenses the premium. This cuts BOTH ways: a cheaper product is not automatically better value, and a pricier product is not automatically more capable -- weigh whether the gap is actually worth the extra dinars for THIS buyer.
@@ -752,6 +752,109 @@ def canonicalize_category(raw: Any) -> str:
     if normalized.endswith("s") and normalized[:-1] in _CANONICAL_CATEGORIES:
         return normalized[:-1]
     return "other"
+
+
+# ============================================
+# Faithful-Results Phase 3.2 (Contract 1) — category_profile
+# ============================================
+# A category-appropriate ORDERED label/value list per product, built from the
+# product's specs + CATEGORY_SPEC_SCHEMAS. The FE renders ONE generic component
+# from this (no per-category branching) and hides the block when fields == [].
+
+# Values that mean "no data" — filtered out so the profile is the curated,
+# populated subset (the side-by-side Specs table keeps em-dash rows; this block
+# does not).
+_PROFILE_NA_VALUES = {"n/a", "na", "null", "none", "unknown", "", "-", "—"}
+
+# Humanized English labels for fields whose snake→Title default reads wrong.
+# Everything else falls back to key.replace("_"," ").capitalize(). These MUST
+# stay copy-policy-safe (neutral spec names — no banned vocab).
+_CATEGORY_PROFILE_LABEL_OVERRIDES = {
+    "ram": "RAM",
+    "os": "OS",
+    "spf": "SPF",
+    "ph_level": "pH level",
+    "notes_top": "Top notes",
+    "notes_heart": "Heart notes",
+    "notes_base": "Base notes",
+    "rear_camera": "Rear camera",
+    "front_camera": "Front camera",
+    "water_resistance": "Water resistance",
+    "scent_family": "Scent family",
+    "active_ingredient": "Active ingredient",
+    "serving_size": "Serving size",
+    "shelf_life": "Shelf life",
+    "skin_type": "Skin type",
+    "skin_concern": "Skin concern",
+    "hair_type": "Hair type",
+    "hair_concern": "Hair concern",
+    "fragrance_free": "Fragrance-free",
+    "cruelty_free": "Cruelty-free",
+    "sulfate_free": "Sulfate-free",
+    "paraben_free": "Paraben-free",
+    "silicone_free": "Silicone-free",
+    "shade_range": "Shade range",
+    "long_lasting": "Long-lasting",
+    "heat_stability": "Heat stability",
+    "closure_type": "Closure type",
+    "size_options": "Size options",
+    "care_instructions": "Care instructions",
+    "collection_season": "Collection season",
+    "design_details": "Design details",
+    "nutrition_calories": "Calories",
+    "nutrition_protein": "Protein",
+    "nutrition_fat": "Fat",
+    "nutrition_carbs": "Carbs",
+}
+
+
+def _profile_label(key: str) -> str:
+    """Humanized English label for a spec field key (Contract 1 fallback)."""
+    if key in _CATEGORY_PROFILE_LABEL_OVERRIDES:
+        return _CATEGORY_PROFILE_LABEL_OVERRIDES[key]
+    return key.replace("_", " ").capitalize()
+
+
+def _profile_value_ok(value: Any) -> bool:
+    """True iff a spec value is a real, displayable scalar (not N/A/null/object)."""
+    if value is None:
+        return False
+    if isinstance(value, (dict, list)):
+        return False
+    s = str(value).strip()
+    if not s or s.lower() in _PROFILE_NA_VALUES:
+        return False
+    return True
+
+
+def build_category_profile(category: Any, specs: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build the Contract-1 `category_profile` for one product.
+
+    Returns `{"category": <canonical>, "fields": [{key, label, value}, ...]}` —
+    fields ORDERED per CATEGORY_SPEC_SCHEMAS, each value cleaned (no N/A / null /
+    object / internal `_`-prefixed field), with a copy-policy-safe English label.
+    A field a product lacks is OMITTED (symmetry: both products iterate the same
+    schema order, so the FE aligns by key with no blank second product). `fields`
+    is `[]` when nothing populates (FE hides the block).
+
+    Defensive: canonicalizes the category (the keystone — "Fragrances"→"fragrances"
+    so the right schema is used), tolerates a None/empty specs dict, and falls
+    back to the "other" schema for an unknown category.
+    """
+    canonical = canonicalize_category(category)
+    schema = CATEGORY_SPEC_SCHEMAS.get(canonical) or CATEGORY_SPEC_SCHEMAS.get("other", [])
+    fields: List[Dict[str, str]] = []
+    if isinstance(specs, dict):
+        for key in schema:
+            value = specs.get(key)
+            if not _profile_value_ok(value):
+                continue
+            fields.append({
+                "key": key,
+                "label": _profile_label(key),
+                "value": str(value).strip(),
+            })
+    return {"category": canonical, "fields": fields}
 
 
 # ============================================
@@ -1083,13 +1186,13 @@ def _build_preferences_prompt(
 
 Based on these preferences, your verdict MUST:
 1. Explain WHY this product is better FOR THIS USER (not generically)
-2. Reference specific preferences ("You prioritize battery life, and Product A has 5000mAh vs 3349mAh")
+2. The MAIN winner_reason itself MUST name the user's TOP priority and connect it to the winning product with a specific fact (e.g. "You prioritize battery life -- Product A's 5000mAh beats the 3349mAh here"). Do NOT bury the priority only in the side-insights -- the primary verdict sentence the user reads first must reflect what THEY care about. (This is the difference between personalization that lands and a generic verdict.)
 3. Interpret budget contextually: "budget" for phones means <$300, for supplements means <$15
 4. Flag if a product conflicts with lifestyle (e.g., non-vegan supplement for vegan user)
 5. For brand_loyal users: weight established brand reputation higher
 6. For function_first users: ignore brand entirely, focus on specs and value
 7. For best_of_both users: prefer branded options when specs are similar, but recommend better-performing product even if lesser brand
-8. In best_for, if a product aligns with the user's stated priorities, note which priorities it aligns with"""
+8. In best_for, name which of the user's stated priorities each product aligns with -- and for the runner-up, frame its best_for around the priority where IT would serve this user better, so the user sees a real reason the other option could fit them."""
 
     cohort_block = _build_cohort_priors_block(demographics_profile)
     return base + cohort_block

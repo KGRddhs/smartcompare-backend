@@ -8,7 +8,7 @@ import asyncio
 import os
 import re
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from urllib.parse import urlparse
 
 from app.services.extraction_service import (
@@ -304,6 +304,205 @@ def build_retailer_quotes_from_reviews(
         seen_domains.add(domain)
 
     return quotes
+
+
+# ============================================
+# Phase 5.1 (Faithful-Results Task #6) — review paraphrase
+# ============================================
+# Per Ahmed's D4 directive: reviews become a SYNTHESIZED praise line —
+# NON-verbatim, NO citations, NO source domains, NO [N]/[snippet_N] markers.
+# Built from the REAL review sentiment the pipeline already has (zero extra API
+# calls). Ratings stay real-only elsewhere (this never fabricates a rating).
+
+# Strips a leading "Per <domain>: " attribution prefix the review model emits on
+# each highlight point (e.g. "Per fragrantica.com: ...").
+_PER_DOMAIN_PREFIX_RE = re.compile(r"^\s*per\s+[^\s:]+\.[a-z]{2,}[^:]*:\s*", re.I)
+# Any leftover domain token (foo.com / foo.bh / foo.co.uk) anywhere in the text.
+_BARE_DOMAIN_RE = re.compile(r"\b[a-z0-9][a-z0-9-]*\.[a-z]{2,}(?:\.[a-z]{2,})?\b", re.I)
+
+
+def _strip_attribution(text: str) -> str:
+    """Remove a "Per <domain>:" prefix, any [N]/[snippet_N] markers, and any
+    leftover bare domain tokens from a review clause. Returns a clean,
+    citation-free, domain-free fragment."""
+    if not isinstance(text, str):
+        return ""
+    t = _PER_DOMAIN_PREFIX_RE.sub("", text)
+    t = _CITATION_MARKER_RE.sub("", t)          # [snippet_N] / [N]
+    t = re.sub(r"\[\d+\]", "", t)               # any residual bare [N]
+    t = _BARE_DOMAIN_RE.sub("", t)              # leftover domains
+    t = re.sub(r"\s{2,}", " ", t).strip()
+    # Drop dangling leading punctuation left by a stripped domain/marker.
+    t = re.sub(r"^[\s,;:.\-–—]+", "", t)
+    return t.strip()
+
+
+def _lower_first(s: str) -> str:
+    return s[0].lower() + s[1:] if s else s
+
+
+# --- #6 send-back: copy-policy scrub (single source of truth) ---------------
+# review_praise is built from REAL snippets, which carry banned EVALUATIVE vocab
+# ("best camera", "excellent battery", "beats every rival"). Contract 2 (Ahmed's
+# D4) requires the praise to pass the COPY FENCE. We scrub against the SAME
+# .copy-policy.json the FE fence uses (ONE source of truth — no invented list)
+# AND reframe toward neutral aspect-aggregation (name WHAT owners praise, not the
+# superlative). Loaded once, cached; fail-open to a small builtin if the file is
+# absent (the worktree always has it, but never crash praise on a missing file).
+_COPY_POLICY_REL = ("SmartCompareApp", "src", "i18n", ".copy-policy.json")
+_BANNED_VOCAB_PATTERNS: Optional[List["re.Pattern"]] = None
+
+
+def _load_banned_vocab_patterns() -> List["re.Pattern"]:
+    """Compiled banned/scary patterns from .copy-policy.json (cached)."""
+    global _BANNED_VOCAB_PATTERNS
+    if _BANNED_VOCAB_PATTERNS is not None:
+        return _BANNED_VOCAB_PATTERNS
+    pats: List[str] = []
+    try:
+        import json as _json
+        # app/services/review_service.py -> repo root is two parents up.
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        path = os.path.join(root, *_COPY_POLICY_REL)
+        with open(path, encoding="utf-8") as f:
+            cp = _json.load(f)
+        pats = [b["pattern"] for b in cp.get("banned_en", []) if isinstance(b, dict) and b.get("pattern")]
+        pats += [re.escape(w) for w in cp.get("scary_vocab_en", []) if isinstance(w, str)]
+    except Exception as e:  # noqa: BLE001 — never crash praise on a policy-file read
+        logger.debug(f"copy-policy load failed, using builtin banned set: {e}")
+        pats = [
+            r"\bBest Pick\b", r"\bBest Choice\b", r"\bSmart Pick\b", r"\bWinner\b",
+            r"\bExcellent\b", r"\bBeats\b", r"\bBest for\b", r"\bWe recommend\b",
+        ]
+    # Also scrub the bare superlative "best <noun>" form snippets love (the policy
+    # lists "Best Pick"/"Best Choice"/"Best for" but a raw "best camera" still
+    # reads as an absolute endorsement → strip the leading "best ").
+    compiled = [re.compile(p, re.IGNORECASE) for p in pats]
+    compiled.append(re.compile(r"\bbest\b", re.IGNORECASE))
+    _BANNED_VOCAB_PATTERNS = compiled
+    return compiled
+
+
+def _scrub_banned_vocab(text: str) -> str:
+    """Remove banned/scary evaluative vocab (the .copy-policy.json fence) from a
+    clause, leaving the neutral aspect behind ("best camera" -> "camera",
+    "excellent battery" -> "battery"). Collapses the whitespace/punctuation the
+    removal leaves so the result reads cleanly."""
+    if not text:
+        return ""
+    out = text
+    for rx in _load_banned_vocab_patterns():
+        out = rx.sub("", out)
+    out = re.sub(r"\s{2,}", " ", out)
+    out = re.sub(r"\s+([,.;:])", r"\1", out)        # space before punctuation
+    out = re.sub(r"^[\s,;:.\-–—]+", "", out)         # leading punctuation
+    out = re.sub(r"[\s,;:\-–—]+$", "", out)          # trailing junk
+    return out.strip()
+
+
+def _has_banned_vocab(text: str) -> bool:
+    """True iff any banned/scary pattern still matches (post-scrub safety check)."""
+    return any(rx.search(text) for rx in _load_banned_vocab_patterns())
+
+
+def build_review_praise(reviews: Optional[Dict[str, Any]]) -> Optional[str]:
+    """A SYNTHESIZED 1–2 sentence praise line from real review sentiment, or None.
+
+    Sources (in order of preference), all de-attributed (no domains, no [N]) AND
+    copy-policy-scrubbed (neutral aspect-aggregation — name WHAT owners praise,
+    NOT the snippet's superlatives; #6 send-back):
+      1. POSITIVE highlights' clauses → woven into a synthesizing lead so the
+         output is non-verbatim (never a raw highlight copy).
+      2. A consensus summary, but ONLY when overall_sentiment is NOT negative —
+         we never present a negative consensus as "praise".
+
+    Returns None when there is no CLEAN positive signal (insufficient/negative
+    reviews, or every clause collapses to nothing after the banned-vocab scrub)
+    — we never fabricate praise and never ship banned vocab.
+    """
+    if not isinstance(reviews, dict):
+        return None
+    summary = reviews.get("review_summary")
+    if not isinstance(summary, dict):
+        return None
+
+    sentiment = (summary.get("overall_sentiment") or "").lower()
+    highlights = summary.get("highlights") if isinstance(summary.get("highlights"), list) else []
+
+    def _clean_clause(raw: str) -> Optional[Tuple[str, bool]]:
+        """De-attribute + scrub banned vocab. Returns (clause, was_scrubbed) or
+        None when nothing usable survives.
+
+        Readability rule (neutral aspect-aggregation): removing a banned word from
+        the INTERIOR of a clause usually breaks its grammar ("it beats every
+        rival" -> "it every rival"; "an excellent warm scent" -> "an warm scent").
+        So a scrubbed clause is KEPT only when the removal was a clean LEADING
+        adjective strip that still parses as an aspect phrase (e.g. "best camera"
+        -> "camera"); any interior removal -> DROP (prefer a cleaner clause /
+        the consensus / None). Clean-as-is clauses are preferred by the caller."""
+        de = _strip_attribution(raw).rstrip(" .")
+        c = _scrub_banned_vocab(de)
+        if len(c) < 8 or _has_banned_vocab(c):
+            return None
+        was_scrubbed = c != de
+        if was_scrubbed:
+            # Keep ONLY if the cleaned clause is a SUFFIX of the original (the
+            # removed text was a leading run — "best camera ..." -> "camera ...").
+            # An interior removal makes c NOT a suffix of de -> drop as broken.
+            if not de.lower().rstrip(" .").endswith(c.lower().rstrip(" .")):
+                return None
+        return c, was_scrubbed
+
+    # 1) Collect POSITIVE clauses, PREFERRING clean-as-is ones over scrubbed ones
+    #    (neutral aspect-aggregation reads better than a scrubbed fragment).
+    clean_clauses: List[str] = []
+    scrubbed_clauses: List[str] = []
+    seen = set()
+    for h in highlights:
+        if not isinstance(h, dict):
+            continue
+        if (h.get("sentiment") or "").lower() != "positive":
+            continue
+        res = _clean_clause(str(h.get("point") or ""))
+        if not res:
+            continue
+        clause, was_scrubbed = res
+        key = clause.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        (scrubbed_clauses if was_scrubbed else clean_clauses).append(clause)
+
+    # Clean clauses first, then scrubbed ones as fill, capped at 2.
+    positive_clauses = (clean_clauses + scrubbed_clauses)[:2]
+
+    if positive_clauses:
+        # Weave into a synthesizing lead so the line is NON-verbatim and clearly
+        # an aggregate ("Owners consistently ..."), not a copied quote.
+        woven = " and ".join(_lower_first(c) for c in positive_clauses)
+        praise = f"Owners consistently highlight {woven}."
+        praise = re.sub(r"\s{2,}", " ", praise).replace(" .", ".").strip()
+        # Final safety net — never return a line that still trips the fence.
+        if _has_banned_vocab(praise):
+            return None
+        return praise
+
+    # 2) Fall back to a de-attributed + scrubbed consensus, never a negative one.
+    if sentiment and sentiment != "negative":
+        de_consensus = _strip_attribution(str(summary.get("consensus") or "")).rstrip(" .")
+        consensus = _scrub_banned_vocab(de_consensus)
+        # Same readability rule as clauses: an INTERIOR removal ("an excellent
+        # warm scent" -> "an warm scent") reads broken — keep the consensus only
+        # when it is clean-as-is OR a clean leading strip (a suffix of the
+        # original). Otherwise drop to None (never ship a broken line).
+        scrubbed = consensus != de_consensus
+        suffix_ok = de_consensus.lower().endswith(consensus.lower()) if consensus else False
+        if scrubbed and not suffix_ok:
+            return None
+        if len(consensus) >= 12 and not _has_banned_vocab(consensus):
+            return consensus
+
+    return None
 
 
 def format_review_search_results(results: Dict, retailer_ratings: List[Dict]) -> str:

@@ -12,6 +12,8 @@ from app.services.cache_service import (
     get_tier15_hit_rate,
     get_tier15_source_hits,
     get_real_price_coverage,
+    # Faithful-Results Task 1.6 — cache hit-rate observability.
+    get_cache_observability,
 )
 from app.services.database_service import get_supabase_client, get_admin_supabase_client
 from app.middleware.rate_limiter import limiter
@@ -158,6 +160,22 @@ async def api_costs(request: Request, _=Depends(verify_admin_key)):
     except Exception as e:
         logger.warning(f"[ADMIN] real_price_coverage aggregate failed: {e}")
         summary["real_price_coverage"] = {"window_days": 7, "by_category": {}}
+
+    # Faithful-Results Task 1.6 — cache hit-rate observability: how much of the
+    # genuine-price load is served from cache ($0) vs freshly scraped. The dial
+    # that proves the warmer + 7d genuine-TTL cache are working
+    # (genuine_cache_share). Fail-open zeroed block.
+    try:
+        summary["cache_observability"] = {
+            "window_days": 7,
+            **get_cache_observability(days=7),
+        }
+    except Exception as e:
+        logger.warning(f"[ADMIN] cache_observability aggregate failed: {e}")
+        summary["cache_observability"] = {
+            "window_days": 7, "cache_hits": 0, "genuine_from_cache": 0,
+            "genuine_fresh": 0, "genuine_cache_share": 0.0,
+        }
 
     # I5.0 (Bundle B S2) — Serper burn status vs the 80% ceiling. This is the
     # run-integrity canary: a measurement run that crosses 80% trips the

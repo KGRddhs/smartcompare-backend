@@ -1142,6 +1142,98 @@ class TestTradeoffPairs:
         assert "product" in t["loser_wins"]
         assert "margin" in t["loser_wins"]
 
+    # Faithful-Results F4.2 — when the winner SWEEPS all dims, the dedicated
+    # "where the runner-up wins" card was empty. With the optional `scores`
+    # param, fall back to the loser's RELATIVELY-STRONGEST dimension so the card
+    # renders. The 3-arg call (no scores) stays [] — backward-compatible.
+
+    def _sweep_winners(self):
+        return {
+            "performance_score": {"winner": "Product A", "margin": 15.0},
+            "value_score": {"winner": "Product A", "margin": 12.0},
+            "build_quality_score": {"winner": "Product A", "margin": 10.0},
+            "feature_score": {"winner": "Product A", "margin": 8.0},
+            "ecosystem_score": {"winner": "Product A", "margin": 7.0},
+            "futureproof_score": {"winner": "Product A", "margin": 6.0},
+        }
+
+    def test_sweep_without_scores_stays_empty(self):
+        # Backward-compat: no scores param → no fallback (existing behavior).
+        service = ScoringService()
+        tradeoffs = service.compute_tradeoff_pairs(
+            self._sweep_winners(), ["Product A", "Product B"], winner_index=0
+        )
+        assert tradeoffs == []
+
+    def test_sweep_with_scores_falls_back_to_loser_strongest(self):
+        service = ScoringService()
+        scores = {
+            "product_0": {"breakdown": {
+                "performance_score": 90, "value_score": 85, "build_quality_score": 88,
+                "feature_score": 80, "ecosystem_score": 75, "futureproof_score": 70,
+            }},
+            # Loser's RELATIVELY strongest dim is value_score (62 — highest of theirs).
+            "product_1": {"breakdown": {
+                "performance_score": 55, "value_score": 62, "build_quality_score": 50,
+                "feature_score": 48, "ecosystem_score": 45, "futureproof_score": 40,
+            }},
+        }
+        tradeoffs = service.compute_tradeoff_pairs(
+            self._sweep_winners(), ["Product A", "Product B"], winner_index=0, scores=scores
+        )
+        assert len(tradeoffs) >= 1
+        # The fallback pairs the winner's top dim with the loser's strongest dim.
+        assert tradeoffs[0]["loser_wins"]["product"] == "Product B"
+        assert tradeoffs[0]["loser_wins"]["dimension"] == "value_score"
+
+    def test_sweep_fallback_winner_idx_1(self):
+        service = ScoringService()
+        winners = {
+            "performance_score": {"winner": "Product B", "margin": 15.0},
+            "value_score": {"winner": "Product B", "margin": 12.0},
+            "build_quality_score": {"winner": "Product B", "margin": 10.0},
+            "feature_score": {"winner": "Product B", "margin": 8.0},
+            "ecosystem_score": {"winner": "Product B", "margin": 7.0},
+            "futureproof_score": {"winner": "Product B", "margin": 6.0},
+        }
+        scores = {
+            "product_0": {"breakdown": {  # the LOSER here
+                "performance_score": 50, "value_score": 48, "build_quality_score": 66,
+                "feature_score": 45, "ecosystem_score": 40, "futureproof_score": 38,
+            }},
+            "product_1": {"breakdown": {
+                "performance_score": 90, "value_score": 85, "build_quality_score": 80,
+                "feature_score": 78, "ecosystem_score": 75, "futureproof_score": 70,
+            }},
+        }
+        tradeoffs = service.compute_tradeoff_pairs(
+            winners, ["Product A", "Product B"], winner_index=1, scores=scores
+        )
+        assert len(tradeoffs) >= 1
+        assert tradeoffs[0]["loser_wins"]["product"] == "Product A"
+        assert tradeoffs[0]["loser_wins"]["dimension"] == "build_quality_score"
+
+    def test_normal_two_sided_unaffected_by_scores(self):
+        # When the loser already wins a dim, scores does NOT change the pairing.
+        service = ScoringService()
+        dimension_winners = {
+            "performance_score": {"winner": "Product A", "margin": 15.0},
+            "value_score": {"winner": "Product B", "margin": 12.0},
+            "build_quality_score": {"winner": "tie", "margin": 2.0},
+            "feature_score": {"winner": "tie", "margin": 2.0},
+            "ecosystem_score": {"winner": "tie", "margin": 1.0},
+            "futureproof_score": {"winner": "tie", "margin": 1.0},
+        }
+        scores = {
+            "product_0": {"breakdown": {"performance_score": 90, "value_score": 60}},
+            "product_1": {"breakdown": {"performance_score": 70, "value_score": 80}},
+        }
+        tradeoffs = service.compute_tradeoff_pairs(
+            dimension_winners, ["Product A", "Product B"], winner_index=0, scores=scores
+        )
+        assert len(tradeoffs) == 1
+        assert tradeoffs[0]["loser_wins"]["dimension"] == "value_score"
+
 
 # ===========================================
 # CONFIDENCE INDICATORS

@@ -1931,11 +1931,20 @@ class ScoringService:
         dimension_winners: Dict[str, Any],
         product_names: List[str],
         winner_index: int,
+        scores: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Build tradeoff pairs from dimension winners.
 
         Pairs each winner-winning dimension with the loser's strongest dimension.
         Filters margins <= 5, returns max 3 sorted by combined impact.
+
+        Faithful-Results F4.2 — when the winner SWEEPS all dimensions (the loser
+        wins none by >5pt) the runner-up card was empty. When the optional
+        `scores` (the per-product breakdown, `scoring_result["scores"]`) is
+        provided, fall back to the loser's RELATIVELY-STRONGEST dimension (their
+        highest raw sub-score) so the "where the runner-up wins" card always has
+        the loser's best case. Backward-compatible: with no `scores`, a sweep
+        still returns [] (the prior behavior the 3-arg callers/tests expect).
         """
         winner_name = product_names[winner_index]
         loser_name = product_names[1 - winner_index]
@@ -1958,6 +1967,14 @@ class ScoringService:
             elif info["winner"] == loser_name:
                 loser_dims.append(entry)
 
+        # F4.2 — winner sweeps (loser wins no dim by >5pt) but we have winner dims
+        # and the per-product scores: surface the loser's relatively-strongest dim
+        # so the runner-up card renders the loser's best case (not nothing).
+        if winner_dims and not loser_dims and scores:
+            fallback = self._loser_strongest_dim(scores, winner_index, loser_name)
+            if fallback:
+                loser_dims = [fallback]
+
         if not winner_dims or not loser_dims:
             return []
 
@@ -1968,7 +1985,7 @@ class ScoringService:
         for i in range(min(len(winner_dims), len(loser_dims), 3)):
             pairs.append({
                 "winner_wins": winner_dims[i],
-                "loser_wins": loser_dims[i],
+                "loser_wins": loser_dims[i % len(loser_dims)],
             })
 
         pairs.sort(
@@ -1977,6 +1994,41 @@ class ScoringService:
         )
 
         return pairs[:3]
+
+    def _loser_strongest_dim(
+        self, scores: Dict[str, Any], winner_index: int, loser_name: str
+    ) -> Optional[Dict[str, Any]]:
+        """F4.2 helper — the loser's relatively-strongest dimension as a
+        tradeoff entry, or None.
+
+        'Relatively strongest' = the dimension where the loser's own raw
+        sub-score is HIGHEST (their best showing), so the runner-up card names a
+        real strength even when they lost every head-to-head. `margin` is the
+        loser's lead over the winner on that dim when positive, else 0 (the card
+        still renders the loser's best dimension as their case)."""
+        loser_key = f"product_{1 - winner_index}"
+        winner_key = f"product_{winner_index}"
+        loser_breakdown = ((scores.get(loser_key) or {}).get("breakdown") or {})
+        winner_breakdown = ((scores.get(winner_key) or {}).get("breakdown") or {})
+        if not loser_breakdown:
+            return None
+        best_dim = None
+        best_val = None
+        for dim, val in loser_breakdown.items():
+            if not isinstance(val, (int, float)):
+                continue
+            if best_val is None or val > best_val:
+                best_val = val
+                best_dim = dim
+        if best_dim is None:
+            return None
+        w_val = winner_breakdown.get(best_dim)
+        margin = round(best_val - w_val, 1) if isinstance(w_val, (int, float)) else 0
+        return {
+            "dimension": best_dim,
+            "product": loser_name,
+            "margin": max(margin, 0),
+        }
 
     def compute_confidence(
         self,
@@ -2857,15 +2909,39 @@ _DIM_LABEL_FALLBACKS = {
 }
 
 
+# F4.1 — qualitative longevity phrases map to representative hour values so a
+# fragrance described "all day" is NOT scored/ranked BELOW one described
+# "5-6 hours" (the prod contradiction: a no-digit "all day" parsed to None and
+# lost to a numeric "5-6 hours"). Ranges chosen to be defensible mid-points.
+_LONGEVITY_PHRASE_HOURS = (
+    ("all day", 10.0), ("all-day", 10.0), ("eternal", 12.0), ("very long", 10.0),
+    ("long lasting", 9.0), ("long-lasting", 9.0), ("excellent", 9.0),
+    ("beast mode", 12.0), ("very strong", 10.0), ("strong", 8.0),
+    ("moderate", 5.0), ("average", 5.0), ("decent", 5.0),
+    ("short", 3.0), ("weak", 2.0), ("poor", 2.0), ("a few hours", 3.0),
+    ("fleeting", 2.0),
+)
+
+
 def _extract_hours(value) -> float | None:
-    """Pull the first numeric value (assumed hours) out of strings like
-    `'8 hours'`, `'6-8h'`, or pre-numeric values. Returns None on no match."""
+    """Pull an hours value out of a longevity string.
+
+    Numeric forms first (`'8 hours'`, `'6-8h'`, a raw number). When there is NO
+    digit, fall back to a QUALITATIVE phrase map (F4.1) so "all day" → ~10h
+    instead of None (which would wrongly rank it below a numeric "5-6 hours").
+    Returns None only when neither a number nor a known phrase is present."""
     if isinstance(value, (int, float)):
         return float(value)
     if not isinstance(value, str):
         return None
     match = re.search(r"(\d+(?:\.\d+)?)", value)
-    return float(match.group(1)) if match else None
+    if match:
+        return float(match.group(1))
+    low = value.lower()
+    for phrase, hours in _LONGEVITY_PHRASE_HOURS:
+        if phrase in low:
+            return hours
+    return None
 
 
 def _extract_dose(value) -> float | None:

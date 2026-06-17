@@ -17,6 +17,7 @@ from app.services.extraction_service import (
     extract_price,
     extract_price_from_training_data,
     get_price_cache_key,
+    generate_cache_key,
     GCC_REGIONS,
 )
 from app.services.serper_service import search_product_prices, search_price_organic, search_web
@@ -120,6 +121,81 @@ MODEL_VARIANT_PATTERN = re.compile(r'\s+(pro|plus|max|ultra|\d{2,}gb|\d+tb)$', r
 
 # Cache TTL
 PRICE_CACHE_TTL = 24 * 60 * 60  # 24 hours
+
+# Faithful-Results Phase 1 (Task 1.1 / 1.3) — TTL policy keyed on source_method.
+#   - A GENUINE Bahrain shelf price (a `_GENUINE_BH_SOURCE_METHODS` method) is
+#     stable for a week — cache it 7 days so the genuine-share survives without
+#     re-burning a scrape on every TTL tick. THIS is the free-tier-survival lever
+#     (scrape rarely, serve from cache long).
+#   - A converted_usd / estimated / converted_fallback figure is short-lived
+#     (rates drift, a genuine price may appear) — keep the 24h TTL so it refreshes
+#     toward a genuine price sooner.
+#   - A negative-cache sentinel for a structural dead-end (no genuine BH source
+#     exists at all — luxury fragrance/haircare/gadgets) is cached 30 days so the
+#     scrape cascade is not re-attempted on every request (Task 1.3).
+# Env-overridable so an ops tune does not need a code change.
+GENUINE_PRICE_CACHE_TTL = int(os.getenv("GENUINE_PRICE_CACHE_TTL_SECONDS", str(7 * 24 * 60 * 60)))  # 7 days
+NEGATIVE_PRICE_CACHE_TTL = int(os.getenv("NEGATIVE_PRICE_CACHE_TTL_SECONDS", str(30 * 24 * 60 * 60)))  # 30 days
+
+
+def price_cache_ttl(price: Optional[Dict[str, Any]]) -> int:
+    """The cache TTL (seconds) for a resolved price, branched on source_method.
+
+    Returns GENUINE_PRICE_CACHE_TTL (7d) when the price carries a genuine-BH
+    source method (`_GENUINE_BH_SOURCE_METHODS`), else PRICE_CACHE_TTL (24h) for
+    converted/estimated/unknown. Single point of policy so the ~12 price
+    `set_cached` call sites in the cascade don't each duplicate the branch.
+
+    Defensive: anything containing "converted" or "estimate" in the method is
+    NEVER treated as genuine even if it also matches a genuine token, and a
+    missing/blank method or a non-dict input falls back to the short TTL (a price
+    we can't vouch for as genuine should refresh sooner, not linger a week).
+    `_GENUINE_BH_SOURCE_METHODS` is defined further down the module, so it is
+    resolved lazily at call time (same pattern as `_showable_source_methods`).
+    """
+    if not isinstance(price, dict):
+        return PRICE_CACHE_TTL
+    sm = (price.get("source_method") or "").lower()
+    if not sm or "converted" in sm or "estimate" in sm:
+        return PRICE_CACHE_TTL
+    if sm in _GENUINE_BH_SOURCE_METHODS:
+        return GENUINE_PRICE_CACHE_TTL
+    return PRICE_CACHE_TTL
+
+
+def negative_cache_key(price_cache_key: str) -> str:
+    """The negative-cache (structural dead-end) sentinel key for a price key.
+
+    `nogenuine:{price_cache_key}` — namespaced off the SAME size-aware price key
+    so a structural gap is recorded per normalized product+size+region (Task 1.3).
+    """
+    return f"nogenuine:{price_cache_key}"
+
+
+def should_negative_cache(price: Optional[Dict[str, Any]]) -> bool:
+    """True iff a resolved price represents a structural genuine-BH dead-end that
+    is worth negative-caching so the expensive scrape cascade is NOT re-run
+    (Task 1.3).
+
+    A dead-end is: no price at all, a price-pending shape, or a NON-genuine
+    method (estimated / converted_usd / converted_fallback / unknown) — i.e. the
+    full cascade ran and could not find a genuine Bahrain shelf price. A genuine
+    price (`_GENUINE_BH_SOURCE_METHODS`) is NOT a dead-end.
+
+    Exception: a `validation_rejected` price is a garbage-QUERY rejection, not a
+    structural product gap — it must NOT be negative-cached (a real product typed
+    later under the same key must re-resolve).
+    """
+    if not isinstance(price, dict):
+        return True  # None / missing → dead-end
+    sm = (price.get("source_method") or "").lower()
+    if sm == "validation_rejected":
+        return False
+    # A genuine BH price is never a dead-end.
+    if sm in _GENUINE_BH_SOURCE_METHODS and "converted" not in sm and "estimate" not in sm:
+        return False
+    # Everything else (estimated, converted_*, pending, blank method) is a gap.
+    return True
 
 # Retailer quality tiers
 RETAILER_TIERS = {
@@ -525,6 +601,19 @@ def is_supplement_query(product_name: str) -> bool:
 # fragrances budget breakpoint). Scaled by size for smaller bottles.
 FRAGRANCE_FULL_SIZE_FLOOR_BHD = 25.0
 _FRAGRANCE_FLAGSHIP_SIZE_ML = 100.0
+
+# F1.2a — PREMIUM/niche houses genuinely cost 80-150+/100ml, so the flat 25/100ml
+# floor was too low and let a decant/body-spray leak through (Tom Ford Tobacco
+# Vanille showed 28.2 BHD; genuine ~118). These houses get a higher 50/100ml
+# floor; the broader designer set (Versace/Gucci/...) keeps the 25 floor so the
+# cheaper-designer tier is not over-rejected.
+PREMIUM_FRAGRANCE_BRAND_KEYWORDS = {
+    "tom ford", "creed", "amouage", "mfk", "maison francis kurkdjian",
+    "initio", "frederic malle", "frédéric malle", "byredo", "le labo",
+    "montale", "mancera", "xerjoff", "parfums de marly", "kilian",
+    "roja", "clive christian", "nishane", "bdk", "ormonde jayne",
+}
+PREMIUM_FRAGRANCE_FULL_SIZE_FLOOR_BHD = 50.0
 # A floor never drops below this absolute BHD value (a sub-5-BHD "fragrance" at
 # any labelled size is a scrape artifact, not a real perfume).
 _FRAGRANCE_MIN_FLOOR_BHD = 5.0
@@ -590,10 +679,67 @@ def is_implausible_low_fragrance_price(
     )
     if not is_designer:
         return False
+    # F1.2a — PREMIUM/niche houses use a higher per-100ml floor (50 vs 25), so a
+    # decant/body-spray leak (Tobacco Vanille 28.2) is caught; the broader
+    # designer set keeps the standard floor (no over-rejection of cheaper tiers).
+    is_premium = any(brand in name_lower for brand in PREMIUM_FRAGRANCE_BRAND_KEYWORDS)
+    base_floor = (
+        PREMIUM_FRAGRANCE_FULL_SIZE_FLOOR_BHD if is_premium
+        else FRAGRANCE_FULL_SIZE_FLOOR_BHD
+    )
     size_ml = _effective_fragrance_size_ml(product_name, title)
-    floor = FRAGRANCE_FULL_SIZE_FLOOR_BHD * (size_ml / _FRAGRANCE_FLAGSHIP_SIZE_ML)
+    floor = base_floor * (size_ml / _FRAGRANCE_FLAGSHIP_SIZE_ML)
     floor = max(floor, _FRAGRANCE_MIN_FLOOR_BHD)
     return amount < floor
+
+
+# F1.2b — PREMIUM haircare brands (K18, Olaplex, Kerastase, ...) are never a few
+# BHD — K18 showed 4.51 BHD (genuine ~30+). A flat absolute floor (not size-aware:
+# haircare sizes are small/varied and the price doesn't scale as cleanly as
+# fragrance ml). Only PREMIUM brands are floored — a drugstore shampoo can be
+# genuinely cheap.
+PREMIUM_HAIRCARE_BRAND_KEYWORDS = {
+    "k18", "olaplex", "kerastase", "kérastase", "redken", "moroccanoil",
+    "oribe", "ouai", "living proof", "briogeo", "color wow", "k 18",
+    "aveda", "pureology", "shu uemura", "davines", "virtue",
+}
+HAIRCARE_PRODUCT_KEYWORDS = {
+    "shampoo", "conditioner", "hair mask", "hair oil", "hair serum",
+    "leave-in", "leave in", "hair treatment", "scalp", "hair repair",
+    "hair perfector", "bond builder", "heat protectant",
+}
+# A premium haircare product below this BHD is a wrong-SKU/sample leak.
+PREMIUM_HAIRCARE_FLOOR_BHD = 12.0
+
+
+def is_haircare_query(product_name: str) -> bool:
+    """True iff `product_name` is (almost certainly) a haircare product — a known
+    premium haircare brand OR a generic haircare product word."""
+    if not product_name:
+        return False
+    name_lower = product_name.lower()
+    if any(brand in name_lower for brand in PREMIUM_HAIRCARE_BRAND_KEYWORDS):
+        return True
+    return any(kw in name_lower for kw in HAIRCARE_PRODUCT_KEYWORDS)
+
+
+def is_implausible_low_haircare_price(
+    product_name: str, amount: Optional[float]
+) -> bool:
+    """True iff `product_name` is a PREMIUM haircare brand but `amount` (BHD) is
+    implausibly low — a wrong-SKU/sample leak that must NOT be served as the
+    genuine price (F1.2: K18 showed 4.51 BHD; genuine ~30+).
+
+    Gated to premium brands only (a drugstore shampoo is genuinely cheap). Returns
+    False for non-haircare products, non-premium haircare, and missing/zero
+    amounts."""
+    if amount is None or amount <= 0:
+        return False
+    name_lower = product_name.lower()
+    is_premium = any(brand in name_lower for brand in PREMIUM_HAIRCARE_BRAND_KEYWORDS)
+    if not is_premium:
+        return False
+    return amount < PREMIUM_HAIRCARE_FLOOR_BHD
 
 
 # ============================================
@@ -669,9 +815,12 @@ def is_price_showable(product_name: str, price: Optional[Dict[str, Any]]) -> boo
     if source_method not in _showable_source_methods():
         return False
     title = price.get("title")
-    # Compose the shipped accuracy guards — a price that fails either is not
+    # Compose the shipped accuracy guards — a price that fails any is not
     # showable (the guards already encode the "no wrong scrapes" contract).
     if is_implausible_low_fragrance_price(product_name, amount, title=title):
+        return False
+    # F1.2b — premium haircare wrong-cheap leak (K18 4.51 BHD).
+    if is_implausible_low_haircare_price(product_name, amount):
         return False
     if is_implausible_high_value_price(product_name, amount):
         return False
@@ -2250,6 +2399,92 @@ def extract_weight_or_volume(text: str) -> Optional[Tuple[float, str]]:
     if grams:
         return (min(grams), "g")
     return None
+
+
+# A union of every size/storage/count token the extractors recognize — used to
+# STRIP the size out of name/variant before hashing the size-agnostic base key
+# (build_size_aware_price_cache_key). Mirrors _STORAGE_GB_RE / _SIZE_ML_RE /
+# _WEIGHT_VOLUME_RE / _COUNT_RE so the strip is exhaustive.
+_SIZE_STRIP_RE = re.compile(
+    r"\b\d+(?:\.\d+)?\s*"
+    r"(?:tb|gb|ml|l|kg|g|"
+    r"capsules?|caps|tablets?|tabs|softgels?|gummies|gummy|count|ct|pieces?|pcs|sachets?)\b",
+    re.I,
+)
+
+
+def size_variant_token(text: Optional[str]) -> str:
+    """A stable normalized size/variant token for a product identity string, or
+    "" when no size is present (Faithful-Results Task 1.4).
+
+    Reuses the SAME unit extractors `CATEGORY_FAIRNESS` uses, so the cache-key
+    notion of "size" matches the fairness notion of "comparable unit". Fixed
+    precedence (so a single product yields one deterministic token):
+      storage GB > fragrance/volume ml > supplement count > weight g.
+    TB is normalized to GB and L to ml by the underlying extractors, so "1TB"
+    and "1024GB" (or "1L" and "1000ml") collapse to one token. Numbers are
+    rendered without a trailing ".0" so "256GB" → "256gb" (not "256.0gb").
+
+    The point: two SIZE variants of the same product (iPhone 256GB vs 128GB,
+    Aventus 50ml vs 100ml) get DISTINCT tokens → distinct cache keys; two
+    listings of the SAME size get the SAME token → cache hits preserved.
+    """
+    if not text or not isinstance(text, str):
+        return ""
+
+    def _fmt(v: float) -> str:
+        # 256.0 -> "256", 1.5 -> "1.5"
+        return str(int(v)) if float(v).is_integer() else str(v)
+
+    gb = extract_storage_gb(text)
+    if gb:
+        return f"{_fmt(gb)}gb"
+    ml = extract_size_ml_any(text)
+    if ml:
+        return f"{_fmt(ml)}ml"
+    count = extract_count(text)
+    if count:
+        return f"{_fmt(count)}ct"
+    wv = extract_weight_or_volume(text)
+    if wv:
+        value, base = wv
+        return f"{_fmt(value)}{base}"
+    return ""
+
+
+def build_size_aware_price_cache_key(
+    brand: str, name: str, variant: Optional[str], region: str,
+    identity_text: str = "",
+) -> str:
+    """Price cache key that folds in a normalized size/variant token so distinct
+    sizes never collide (Task 1.4).
+
+    `identity_text` is any extra product-identity string to mine the size from
+    (the search query / full title) — combined with name+variant so a size that
+    lives in EITHER reaches the key. When NO size is found anywhere, the key is
+    IDENTICAL to the legacy `get_price_cache_key(...)` so sizeless products are
+    backward-compatible (no cache-warm invalidation).
+
+    The same product+size yields the SAME key regardless of WHERE the size
+    appears: the resolved token is STRIPPED out of name/variant before hashing
+    the base components, then re-appended once — so name="iPhone 15 256GB" and
+    name="iPhone 15"+identity="… 256GB" collapse to one key.
+    """
+    token = size_variant_token(f"{name} {variant or ''} {identity_text or ''}")
+    if not token:
+        return get_price_cache_key(brand, name, variant, region)
+    # Strip ANY size/storage token out of name+variant so the base key is
+    # size-agnostic; the normalized token is the single size component. Without
+    # this, the same size living in `name` vs `search_query` would hash
+    # differently (name differs) — defeating cache hits.
+    base_name = _SIZE_STRIP_RE.sub(" ", name or "").strip()
+    base_name = re.sub(r"\s+", " ", base_name)
+    base_variant = _SIZE_STRIP_RE.sub(" ", variant or "").strip() if variant else variant
+    if base_variant:
+        base_variant = re.sub(r"\s+", " ", base_variant)
+    # Append the size token as an extra key component (generate_cache_key joins
+    # truthy args with "|" before hashing), keeping the "price:" prefix.
+    return generate_cache_key("price", brand, base_name, base_variant, region, token)
 
 
 def variant_precision_rank(

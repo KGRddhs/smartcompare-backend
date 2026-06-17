@@ -34,6 +34,66 @@ def _factual_verdict_diag_enabled() -> bool:
     return _FACTUAL_VERDICT_DIAG_FLAG
 
 
+def _compute_cache_observability(
+    product_data: Optional[List[Dict[str, Any]]],
+) -> Dict[str, bool]:
+    """Faithful-Results Task 1.6 — per-response cache hit-rate signal.
+
+    Returns `{cache_hit, genuine_from_cache}`:
+      - `cache_hit`: True iff ANY product's price was served from cache
+        (price `_cached` truthy).
+      - `genuine_from_cache`: True iff a GENUINE-BH price (a
+        `_GENUINE_BH_SOURCE_METHODS` method) was served from cache — the dial
+        that proves the warmer serves genuine prices at $0 instead of
+        re-scraping them.
+
+    Defensive: price may be None / missing source_method / a pending shape.
+    """
+    out = {"cache_hit": False, "genuine_from_cache": False}
+    if not product_data:
+        return out
+    try:
+        from app.services.price_service import _GENUINE_BH_SOURCE_METHODS
+    except Exception:  # noqa: BLE001 — never let the import break response build
+        _GENUINE_BH_SOURCE_METHODS = frozenset()
+    for p in product_data:
+        price = (p or {}).get("price")
+        if not isinstance(price, dict):
+            continue
+        if not price.get("_cached"):
+            continue
+        out["cache_hit"] = True
+        sm = (price.get("source_method") or "").lower()
+        if sm in _GENUINE_BH_SOURCE_METHODS and "converted" not in sm and "estimate" not in sm:
+            out["genuine_from_cache"] = True
+    return out
+
+
+def _safe_review_praise(pd: Dict[str, Any]) -> Optional[str]:
+    """Synthesized review praise for a product's reviews, fail-soft to None.
+    Faithful-Results Phase 5 (Contract 2). Never raises."""
+    try:
+        from app.services.review_service import build_review_praise
+        return build_review_praise((pd or {}).get("reviews"))
+    except Exception:  # noqa: BLE001 — praise is additive; never break the response
+        return None
+
+
+def _safe_category_profile(pd: Dict[str, Any], category_used: str) -> Dict[str, Any]:
+    """Contract-1 category_profile for a product, fail-soft to an empty block.
+
+    Prefers the per-product `category`; falls back to the response-level
+    `category_used` so BOTH products key the SAME schema (symmetry — no blank
+    second product from a category mismatch). Never raises."""
+    try:
+        from app.services.extraction_service import build_category_profile
+        pdd = pd or {}
+        cat = pdd.get("category") or category_used
+        return build_category_profile(cat, pdd.get("specs"))
+    except Exception:  # noqa: BLE001 — additive; never break the response
+        return {"category": category_used or "other", "fields": []}
+
+
 def _factual_verdict_present_in_scoring_v2(scoring_v2: Dict[str, Any]) -> bool:
     """Return True iff scoring_v2 has a factual_verdict with line1 or line2.
     Used by the § 1b diagnostic and patchable from tests to simulate the
@@ -1270,6 +1330,12 @@ def build_comparison_response(
                     # (no fabricated ratings); [] when none could be attributed
                     # (FE falls back to highlights, then a calm empty line).
                     "retailer_quotes": (pd.get("reviews") or {}).get("retailer_quotes", []),
+                    # Faithful-Results Phase 5 (Contract 2) — synthesized praise
+                    # line (non-verbatim, no citations/domains), mirrored here for
+                    # streaming/section parity (canonical home is products[i]).
+                    # None when no positive signal — FE branches on presence and
+                    # stops rendering retailer_quotes/highlights for this surface.
+                    "review_praise": _safe_review_praise(pd),
                     # S3 L2 — cited YouTube review signal (flag-gated). None
                     # when ENABLE_YOUTUBE_SOURCE OFF / no signal. Frontend
                     # renders "~N views · top video by <channel>" as a cited
@@ -1342,6 +1408,11 @@ def build_comparison_response(
             "missing_dim_cells": count_missing_dim_cells(
                 scoring_result or {}, category_used
             ),
+            # Faithful-Results Task 1.6 — per-response cache hit-rate signal:
+            # cache_hit (any price from cache) + genuine_from_cache (a genuine-BH
+            # price served from cache — the warmer-working dial). Spread so both
+            # keys land directly on metadata.
+            **_compute_cache_observability(product_data),
         },
     }
 
@@ -1399,6 +1470,21 @@ def build_comparison_response(
         # KeyError; mirror the canonical `overview.products[*].image_url`.
         if "image_url" not in pd:
             pd["image_url"] = None
+        # Faithful-Results Phase 5 (Contract 2) — synthesized review praise line
+        # (non-verbatim, no citations, no domains) + a canonical real-only
+        # rating_count. review_praise is None when there's no positive signal
+        # (FE branches on presence). Built from the reviews the pipeline already
+        # has — zero extra API calls; ratings never fabricated.
+        pd["review_praise"] = _safe_review_praise(pd)
+        if "rating_count" not in pd:
+            pd["rating_count"] = pd.get("review_count")
+        # Faithful-Results Phase 3.2 (Contract 1) — category_profile: an ordered,
+        # category-appropriate label/value list the FE renders from one generic
+        # component (hidden when fields == []). Built from the product's specs +
+        # CATEGORY_SPEC_SCHEMAS; canonicalizes its own category (keystone). Uses
+        # the response-level category_used as the fallback when the per-product
+        # category is missing, so BOTH products key the SAME schema (symmetry).
+        pd["category_profile"] = _safe_category_profile(pd, category_used)
     result["products"] = product_data
     result["comparison"] = comparison
     result["recommendation"] = comparison.get("winner_reason", "")
