@@ -246,11 +246,13 @@ def test_custom_exclude_overrides_default():
 
 
 def test_known_network_flaky_members_present():
-    """The price-cache-bust probe (Backend-flagged) + the real-GET rate-limit
-    test are in the exclude set."""
+    """The shared flaky-exclude (aligned with QA's integration gate): the
+    price-cache-bust probe (Backend-flagged) + the real-GET rate-limit test +
+    the algolia mocked-pollution flaky (QA Wave-2)."""
     excl = rgd.NETWORK_FLAKY_EXCLUDE
     assert any("test_price_cache_bust_probe.py" in e for e in excl)
     assert any("test_rate_limiting_complete.py" in e for e in excl)
+    assert any("test_algolia_service.py" in e for e in excl)
 
 
 def test_format_report_shows_ignored_flaky():

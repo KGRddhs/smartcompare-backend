@@ -57,6 +57,29 @@ smoke20 gate needs a smoke20 baseline:
   (0.4) is the structural baseline; pass_rate is floored at 0 by the cold-pend price
   behavior (so "no pass_rate regression" is trivially true — don't read it as the signal).
 
+## Wave-2 #12 record (Faithful-Results, 2026-06-17)
+
+- **Unit free-unit regression gate: PASS.** `scripts/regression_gate_diff.py` vs QA's
+  integrated free-unit suite (HEAD `ad4d25b`) → EXIT 0, FAILED set ⊆ the canonical 48.
+  Canonical baseline = QA's `.qa-discovery/BASELINE_FAILURES.txt` (48, creds-present);
+  shared `NETWORK_FLAKY_EXCLUDE` = the 2 `test_price_cache_bust_probe::TestPriceReadBypass`
+  + `test_rate_limiting_complete::...prices_endpoint_rate_limited` + algolia
+  (`test_algolia_service::test_fetch_price_happy_path_genuine_bhd`, mocked-pollution-flaky).
+  Parser gotcha fixed (`3a0a427`): pytest `-rf`/`-q` prints BARE nodeids in the
+  WARNINGS-summary section (passing tests above their DeprecationWarning) — the gate
+  counts ONLY `FAILED `-prefixed lines when the input is pytest output, else treats a
+  bare id-list (the baseline mirror) as all-failures.
+- **Coverage (per-diff / new-code standard, NOT whole-module):** the new pure-logic
+  modules are well-covered (response_builder 71%, scoring_service 66%); price/review/
+  extraction whole-module sit 24-28% because ~75% is the live-network/LLM cascade that
+  only `live_unit` tests reach (excluded from free-unit — same ceiling on main). Per-diff
+  check on the new functions: all covered after filling the one gap — BE's
+  `is_haircare_query` had zero coverage (its sibling `is_implausible_low_haircare_price`
+  checks premium brands directly, bypassing the predicate) → filled (`20e3c89`).
+- **Post-deploy eval (this section's anchor):** prod is `3d870c8` post-merge. The smoke20
+  eval regression runs vs `7a5fc55b` AFTER the deploy settles (dispatcher GO-LIVE) — gate
+  teeth = the axes above.
+
 ## Persistence (`--persist`)
 
 Writes ONE `eval_runs` row (migration 031) via the service-role Supabase client:
