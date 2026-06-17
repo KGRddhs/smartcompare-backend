@@ -155,3 +155,82 @@ class TestL2FreshnessWindow:
     def test_missing_method_uses_short_window(self):
         assert _price_row_fresh(None, timedelta(days=3)) is False
         assert _price_row_fresh(None, timedelta(hours=12)) is True
+
+
+# ------------------------------------------- A4 cache-read provenance round-trip ---
+# Test member's A4 (--read-cache eval mode) reads overview.products[i].price.
+# source_method from the WARMER's CACHED prices to measure genuine-BH-share. So a
+# genuine price written to cache MUST round-trip its source_method (+ amount /
+# currency / url) unchanged — a stripped/re-stamped cache value would make a
+# genuine page_scrape_jsonld read as no-provenance and UNDER-report the share.
+# This pins that round-trip in the cache layer (FakeRedis → no live Redis dep).
+
+class _FakeRedis:
+    """Minimal Redis stand-in capturing setex/set + serving get, so we test the
+    L1 cache write→read round-trip without a live Upstash connection."""
+    def __init__(self):
+        self.store = {}
+    def setex(self, k, ex, v):
+        self.store[k] = v
+    def set(self, k, v):
+        self.store[k] = v
+    def get(self, k):
+        return self.store.get(k)
+
+
+class TestCachedPriceProvenanceRoundTrip:
+    @pytest.fixture(autouse=True)
+    def _restore_redis_client(self):
+        # Mutating the module-global redis_client is necessary to test the L1
+        # round-trip without live Redis — but RESTORE it after each test so the
+        # FakeRedis never leaks into other tests (ordering-safe).
+        from app.services import cache_service as cs
+        original = cs.redis_client
+        yield
+        cs.redis_client = original
+
+    def _with_fake_redis(self):
+        from app.services import cache_service as cs
+        cs.redis_client = _FakeRedis()
+        return cs
+
+    @pytest.mark.parametrize("method", sorted(_GENUINE_BH_SOURCE_METHODS))
+    def test_genuine_source_method_round_trips(self, method):
+        cs = self._with_fake_redis()
+        price = {
+            "amount": 244.99, "currency": "BHD", "retailer": "sharafdg.com",
+            "url": "https://sharafdg.com/p/x", "source_method": method,
+            "in_stock": True, "size": "256GB",
+        }
+        cs.set_cached("price:rt", price, price_cache_ttl(price))
+        back = cs.get_cached("price:rt")
+        # The cached value preserves provenance + the price fields A4 reads.
+        assert back is not None
+        assert back["source_method"] == method        # the A4-critical field
+        assert back["amount"] == 244.99
+        assert back["currency"] == "BHD"
+        assert back["url"] == "https://sharafdg.com/p/x"
+        assert back == price                            # FULL dict, nothing dropped
+
+    def test_genuine_price_writes_at_7d_ttl(self):
+        # Sanity: a genuine price both round-trips AND lands on the 7d TTL.
+        cs = self._with_fake_redis()
+        captured = {}
+        class _TTLCapture(_FakeRedis):
+            def setex(self, k, ex, v):
+                captured["ex"] = ex
+                super().setex(k, ex, v)
+        cs.redis_client = _TTLCapture()
+        price = {"amount": 80.0, "currency": "BHD", "source_method": "page_scrape_jsonld"}
+        cs.set_cached("price:rt2", price, price_cache_ttl(price))
+        assert captured["ex"] == GENUINE_PRICE_CACHE_TTL
+        assert cs.get_cached("price:rt2")["source_method"] == "page_scrape_jsonld"
+
+    def test_converted_price_round_trips_too(self):
+        # A converted price also round-trips its source_method (so A4 correctly
+        # classifies it as NON-genuine, not no-provenance).
+        cs = self._with_fake_redis()
+        price = {"amount": 85.0, "currency": "BHD", "source_method": "converted_usd",
+                 "retailer": "Nordstrom", "url": "https://x"}
+        cs.set_cached("price:rt3", price, price_cache_ttl(price))
+        assert cs.get_cached("price:rt3")["source_method"] == "converted_usd"
