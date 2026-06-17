@@ -90,6 +90,24 @@ smoke20 gate needs a smoke20 baseline:
     MANUALLY vs the known baseline values (all green above). To get the harness's own
     verdict, run from a Supabase-reachable env OR eyeball row `7a5fc55b` via Supabase MCP.
 
+## Bundle-next #16 (longevity scorer) post-deploy eval: PASS (2026-06-17, prod `5999799`)
+
+smoke20 regression vs `7a5fc55b` after QA's S1/S2/S3 prod smoke went green. All 20 queries,
+0 errors, p50 16014ms / p95 19608ms (within cap). Axes (tol 2pp): price 0.000->0.000
+(held), **specs 0.9875->0.9875 (HELD)**, **winner 0.400->0.500 (IMPROVED +10pp)**,
+**factual 1.000->1.000 (HELD)**. GATE TEETH PASS; no axis regressed. genuine-BH 4/4 priced.
+- #16's longevity reconcile fired where data populated (frag-006 winner now correct);
+  frag-001 still cold-unscored (longevity field absent cold → the >=1h precondition isn't
+  met → reconcile can't fire — the known cold-data limitation, NOT a fault; #16's logic is
+  proven by its 152 unit tests + the prod-contradiction fixture). True effect lands
+  post-warmer when longevity data is present across more pairs.
+- Same exit-code caveat as above (Supabase-DNS baseline-fetch fail → manual axis compare).
+- **Pre-flight lesson:** a single cold price probe returning all-`estimated` does NOT prove
+  a dead Serper key (it can be product-specific empty). Disambiguate with a SECOND cold
+  probe on a different well-known product BEFORE a 250cr eval — a genuine result there
+  (shopify_json / local_bhd) confirms the key is live with headroom. (iPhone 15 Pro
+  all-estimated scared, Sony WH-1000XM5 genuine confirmed live — then ran.)
+
 ## Persistence (`--persist`)
 
 Writes ONE `eval_runs` row (migration 031) via the service-role Supabase client:
