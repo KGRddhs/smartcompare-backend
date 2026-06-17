@@ -188,8 +188,22 @@ def test_format_report_shows_ignored_flaky():
 
 def test_default_baseline_matches_committed_snapshot_set():
     """The harness DEFAULT baseline (QA canonical when on disk, else the local
-    snapshot) must be set-identical to the committed local snapshot — proving the
-    dispatcher's 'ONE ignore-set' invariant holds (QA == mine, verified 59==59)."""
+    mirror) must be set-identical to the committed local mirror — proving the
+    dispatcher's 'ONE ignore-set' invariant holds (QA == mirror). LOCKED at 48
+    (QA full-cred capture; the partial-cred 59 was discarded)."""
     default_ids = rgd.load_baseline(rgd.DEFAULT_BASELINE)
-    snapshot_ids = rgd.load_baseline(BASELINE_FILE)
-    assert default_ids == snapshot_ids
+    mirror_ids = rgd.load_baseline(BASELINE_FILE)
+    assert default_ids == mirror_ids
+
+
+def test_local_mirror_is_locked_48():
+    """The committed mirror is exactly the LOCKED 48-node canonical (re-synced
+    from QA). A drift here means someone forked the ignore-set — reconcile."""
+    mirror_ids = rgd.load_baseline(BASELINE_FILE)
+    assert len(mirror_ids) == 48, (
+        f"local mirror has {len(mirror_ids)} nodes, expected the LOCKED 48 "
+        f"(re-sync from QA's .qa-discovery/BASELINE_FAILURES.txt)"
+    )
+    # The 9 youtube + invitee_quiz partial-cred artifacts must be GONE.
+    assert not any("test_youtube" in i for i in mirror_ids)
+    assert not any("test_invitee_quiz" in i for i in mirror_ids)
