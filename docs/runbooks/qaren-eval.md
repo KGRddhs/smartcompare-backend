@@ -46,9 +46,16 @@ smoke20 gate needs a smoke20 baseline:
   `nocache` run (priced_cells=1/40), so the price axis collapses to 0 and drags weighted
   scores below the 0.80 pass floor. THIS is the genuine-price problem the bundle attacks;
   the A4 `--read-cache` variant is what will measure the warmed state.
-  gold_truth_version = `aed2cc9bb7f5d15bd530d5e91c99e3e09860f829`. Run-id: **eval_runs row
-  inserted via Supabase MCP** (the eval box can't DNS-reach Supabase to `--persist`;
-  `getaddrinfo failed`) — `<TBD: dispatcher-inserted run-id>`.
+  gold_truth_version = `aed2cc9bb7f5d15bd530d5e91c99e3e09860f829`. Run-id:
+  **`7a5fc55b-126c-4097-9295-976541a523d0`** (eval_runs, project `qulajmyxdbdkchvecmvc`,
+  created_at 2026-06-17 16:54Z) — inserted via Supabase MCP because the eval box can't
+  DNS-reach Supabase to `--persist` (`getaddrinfo failed`). **This is the smoke20
+  regression anchor; it SUPERSEDES the mismatched full-200 `4aee8e88...` for any
+  `--subset smoke20` run.** Post-deploy 7.3 gate:
+  `python -m scripts.eval_runner --subset smoke20 --mode regression --baseline-run-id 7a5fc55b-126c-4097-9295-976541a523d0 --concurrency 1`.
+  **Gate teeth = the AXES** — specs (0.9875) + factual (1.0) must NOT regress; winner
+  (0.4) is the structural baseline; pass_rate is floored at 0 by the cold-pend price
+  behavior (so "no pass_rate regression" is trivially true — don't read it as the signal).
 
 ## Persistence (`--persist`)
 
