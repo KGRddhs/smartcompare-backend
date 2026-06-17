@@ -162,6 +162,41 @@ def price_cache_ttl(price: Optional[Dict[str, Any]]) -> int:
         return GENUINE_PRICE_CACHE_TTL
     return PRICE_CACHE_TTL
 
+
+def negative_cache_key(price_cache_key: str) -> str:
+    """The negative-cache (structural dead-end) sentinel key for a price key.
+
+    `nogenuine:{price_cache_key}` — namespaced off the SAME size-aware price key
+    so a structural gap is recorded per normalized product+size+region (Task 1.3).
+    """
+    return f"nogenuine:{price_cache_key}"
+
+
+def should_negative_cache(price: Optional[Dict[str, Any]]) -> bool:
+    """True iff a resolved price represents a structural genuine-BH dead-end that
+    is worth negative-caching so the expensive scrape cascade is NOT re-run
+    (Task 1.3).
+
+    A dead-end is: no price at all, a price-pending shape, or a NON-genuine
+    method (estimated / converted_usd / converted_fallback / unknown) — i.e. the
+    full cascade ran and could not find a genuine Bahrain shelf price. A genuine
+    price (`_GENUINE_BH_SOURCE_METHODS`) is NOT a dead-end.
+
+    Exception: a `validation_rejected` price is a garbage-QUERY rejection, not a
+    structural product gap — it must NOT be negative-cached (a real product typed
+    later under the same key must re-resolve).
+    """
+    if not isinstance(price, dict):
+        return True  # None / missing → dead-end
+    sm = (price.get("source_method") or "").lower()
+    if sm == "validation_rejected":
+        return False
+    # A genuine BH price is never a dead-end.
+    if sm in _GENUINE_BH_SOURCE_METHODS and "converted" not in sm and "estimate" not in sm:
+        return False
+    # Everything else (estimated, converted_*, pending, blank method) is a gap.
+    return True
+
 # Retailer quality tiers
 RETAILER_TIERS = {
     # Tier 1: Official stores & major authorized retailers (score 1.0)

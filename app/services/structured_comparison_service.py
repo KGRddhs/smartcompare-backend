@@ -42,6 +42,9 @@ from app.services.cache_service import (
     record_tier15_attempt,
     record_tier15_hit,
     record_price_outcome,
+    # Faithful-Results Task 1.3 — negative-cache for structural genuine-BH gaps.
+    get_negative_cache,
+    set_negative_cache,
 )
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
@@ -522,6 +525,9 @@ from app.services.price_service import (
     # Task 1.4 — size-aware price cache key (no storage/size variant collision).
     build_size_aware_price_cache_key,
     size_variant_token,
+    # Task 1.3 — negative-cache for structural genuine-BH dead-ends.
+    negative_cache_key,
+    should_negative_cache,
     RETAILER_TIERS,
     DEFAULT_RETAILER_SCORE,
     RETAILER_SEARCH_URLS,
@@ -3485,6 +3491,24 @@ class StructuredComparisonService:
                 db_price["_cache_source"] = "db"
                 return db_price
 
+        # Task 1.3 — negative-cache for structural genuine-BH dead-ends. When a
+        # PRIOR full resolution found no genuine BH source (luxury fragrance/
+        # haircare/gadgets behind Cloudflare), a `nogenuine:{key}` sentinel holds
+        # the last non-genuine result. Serve it directly + SKIP the expensive
+        # Tier-1.5 scrape cascade — the free-tier-survival lever: never re-burn a
+        # scrape on a known dead-end. Bypassed on nocache (forced refresh).
+        if not price_nocache:
+            neg = get_negative_cache(negative_cache_key(cache_key))
+            if neg:
+                neg = dict(neg)
+                neg["_cached"] = True
+                neg["_cache_source"] = "negative"
+                logger.info(
+                    "[PRICE] negative-cache hit (structural genuine-BH gap) for "
+                    "%s %s — scrape cascade skipped", brand, name,
+                )
+                return neg
+
         region_info = GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])
         currency = region_info["currency"]
         if variant and variant.lower() in name.lower():
@@ -4399,6 +4423,9 @@ class StructuredComparisonService:
                 )
             set_cached(cache_key, converted_fallback, price_cache_ttl(converted_fallback))
             self._save_price_to_db(cache_key, brand, name, variant, region, converted_fallback)
+            # Task 1.3 — the FULL genuine-BH cascade ran and missed; this is a
+            # structural dead-end. Record it so the next call skips the cascade.
+            self._record_negative_price_cache(cache_key, converted_fallback)
             converted_fallback["_cached"] = False
             logger.info(
                 "[PRICE] parked converted_usd fallback used for %s (BH curl+render "
@@ -4427,6 +4454,11 @@ class StructuredComparisonService:
                 price["url"] = build_retailer_url(price["retailer"], full_name)
             set_cached(cache_key, price, PRICE_CACHE_TTL // 2)
             self._save_price_to_db(cache_key, brand, name, variant, region, price)
+            # Task 1.3 — Tier-3 GPT estimate means no real BH price exists; the
+            # cascade is a structural dead-end. Record it so we don't re-run the
+            # full discovery+scrape next time (just serve this estimate from the
+            # negative cache).
+            self._record_negative_price_cache(cache_key, price)
             price["_cached"] = False
             return price
 
@@ -4586,6 +4618,26 @@ class StructuredComparisonService:
             save_price(cache_key, brand, name, variant, region, price),
             label="save_price",
         )
+
+    def _record_negative_price_cache(self, cache_key: str, price: Dict) -> None:
+        """Task 1.3 — record a structural genuine-BH dead-end so the next call
+        skips the expensive Tier-1.5 scrape cascade.
+
+        Called only at the NON-genuine terminals (converted_fallback / Tier-3
+        estimate) — the full discovery+scrape ran and found no genuine BH price.
+        Gated on `should_negative_cache` (defense-in-depth: never sentinel a
+        genuine price or a validation rejection). Stores the resolved non-genuine
+        result so the sentinel hit can serve it directly. Fail-open: a Redis
+        error is swallowed (the sentinel is an optimization, not correctness).
+        """
+        try:
+            if not should_negative_cache(price):
+                return
+            set_negative_cache(
+                negative_cache_key(cache_key), price, NEGATIVE_PRICE_CACHE_TTL
+            )
+        except Exception as e:  # noqa: BLE001 — never let the optimization break a resolution
+            logger.debug(f"negative-cache write skipped: {e}")
 
     async def _apply_self_critique(
         self,

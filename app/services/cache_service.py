@@ -474,6 +474,26 @@ def delete_cached(key: str) -> bool:
 
 
 # ============================================
+# NEGATIVE CACHE (Faithful-Results Task 1.3)
+# ============================================
+# A structural genuine-BH dead-end (luxury fragrance/haircare/gadgets behind
+# Cloudflare — no genuine BH source exists) is recorded under a `nogenuine:`
+# sentinel so the expensive Tier-1.5 scrape cascade is not re-run on every
+# request. The stored value is the LAST non-genuine resolution (a converted/
+# estimated price or a price-pending shape), served directly on a sentinel hit.
+# Fail-open like the rest of the cache: a missing/down Redis is a normal miss.
+
+def get_negative_cache(negative_key: str) -> Optional[Dict[str, Any]]:
+    """Read a negative-cache sentinel (the stored non-genuine result), or None."""
+    return get_cached(negative_key)
+
+
+def set_negative_cache(negative_key: str, value: Dict[str, Any], ttl: int) -> bool:
+    """Write a negative-cache sentinel with the structural-dead-end TTL (30d)."""
+    return set_cached(negative_key, value, ttl)
+
+
+# ============================================
 # CACHE KEY GENERATORS
 # ============================================
 
