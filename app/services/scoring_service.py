@@ -1284,6 +1284,18 @@ class ScoringService:
             scores["spec_raw"] = None
             scores["_spec_missing"] = True
 
+        # F4.1 (#16) — capture the REAL longevity-hours signal so the fragrance/
+        # makeup longevity_score dim can be reconciled to it (the dim is sourced
+        # from a generic spec/review composite that ignores the actual longevity
+        # value, which let a shorter-lasting product win the longevity dim).
+        # _extract_hours is qualitative-aware ("all day"->~10h, "weak"->2h).
+        scores["_longevity_hours"] = None
+        if specs and isinstance(specs, dict):
+            lv = specs.get("longevity") or specs.get("longevity_hours") or specs.get("long_lasting")
+            hrs = _extract_hours(lv)
+            if hrs is not None:
+                scores["_longevity_hours"] = hrs
+
         # Review signal (raw: rating out of 5)
         rating = product.get("rating")
         if rating is not None:
@@ -1702,6 +1714,40 @@ class ScoringService:
                     raw_scores[i][f"_{dim}_missing"] = True
 
             normalized.append(scores)
+
+        # F4.1 (#16) — reconcile the longevity_score dim ORDERING with the real
+        # longevity-hours signal. The dim is sourced from a generic spec/review
+        # composite that ignores the actual longevity value, so a shorter-lasting
+        # product could win the longevity dim (prod: Ombre '5-6h' 78.9 beat
+        # Tobacco 'all day' 69.5 — a contradiction the verdict's key_tradeoff +
+        # reviews flagged). When BOTH products carry a clear, meaningfully-
+        # different hours signal AND the computed longevity_scores DISAGREE with
+        # the hours order, re-assign the two scores in hours-order. This fixes the
+        # WINNER without inventing new magnitudes (eval-safe: same composite
+        # values, only their product assignment is corrected when contradicted).
+        # Scoped to the exactly-two-product compare with a `longevity_score` dim.
+        if (
+            "longevity_score" in CATEGORY_DIMENSIONS.get(category, [])
+            and len(normalized) == 2
+        ):
+            h0 = raw_scores[0].get("_longevity_hours")
+            h1 = raw_scores[1].get("_longevity_hours")
+            s0 = normalized[0].get("longevity_score")
+            s1 = normalized[1].get("longevity_score")
+            if (
+                isinstance(h0, (int, float)) and isinstance(h1, (int, float))
+                and isinstance(s0, (int, float)) and isinstance(s1, (int, float))
+                and s0 != MISSING_SCORE and s1 != MISSING_SCORE
+                # meaningful hours gap (>=1h) so a 7 vs 7.5h rounding never flips
+                and abs(h0 - h1) >= 1.0
+            ):
+                hours_leader = 0 if h0 > h1 else 1
+                score_leader = 0 if s0 >= s1 else 1
+                if hours_leader != score_leader:
+                    # Contradiction — assign the HIGHER score to the longer-
+                    # lasting product (swap the two values).
+                    normalized[0]["longevity_score"] = s1
+                    normalized[1]["longevity_score"] = s0
 
         return normalized, price_tiers, is_cross_tier_flag
 
