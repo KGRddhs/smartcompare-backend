@@ -145,6 +145,103 @@ class TestNoFabrication:
         assert praise is None
 
 
+# --------------------------------------- copy-policy compliance (#6 send-back) ---
+# Contract 2 (Ahmed's D4): review_praise MUST pass the copy fence. Real snippets
+# carry banned evaluative vocab ("best camera", "excellent battery", "beats every
+# rival") — the praise line must NOT parrot them. We assert against the SAME
+# .copy-policy.json banned/scary lists the FE fence uses (one source of truth).
+
+import json as _json
+import os as _os
+import re as _re
+
+_COPY_POLICY_PATH = _os.path.join(
+    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+    "SmartCompareApp", "src", "i18n", ".copy-policy.json",
+)
+
+
+def _banned_patterns():
+    with open(_COPY_POLICY_PATH, encoding="utf-8") as f:
+        cp = _json.load(f)
+    pats = [b["pattern"] for b in cp.get("banned_en", [])]
+    pats += [_re.escape(w) for w in cp.get("scary_vocab_en", [])]
+    return [_re.compile(p, _re.IGNORECASE) for p in pats]
+
+
+def _assert_policy_clean(text):
+    assert text is not None
+    for rx in _banned_patterns():
+        assert not rx.search(text), f"review_praise '{text}' contains banned vocab /{rx.pattern}/"
+
+
+class TestReviewPraiseCopyPolicy:
+    def test_superlative_laden_highlights_scrubbed(self):
+        # The exact send-back repro: best/excellent/beats in real snippets must
+        # NOT leak into the praise line. The line is either policy-CLEAN or None
+        # (Contract 2 allows null) — but NEVER a line carrying banned vocab.
+        reviews = {
+            "review_summary": {
+                "overall_sentiment": "positive",
+                "consensus": "",
+                "highlights": [
+                    {"point": "Per amazon.com: best camera in this price range and excellent battery.", "sentiment": "positive"},
+                    {"point": "Per reddit.com: it beats every rival for value.", "sentiment": "positive"},
+                ],
+            }
+        }
+        praise = build_review_praise(reviews)
+        if praise is not None:
+            _assert_policy_clean(praise)
+
+    def test_excellent_in_consensus_scrubbed(self):
+        reviews = {
+            "review_summary": {
+                "overall_sentiment": "positive",
+                "consensus": "An excellent scent that beats the competition; the best value around.",
+                "highlights": [],
+            }
+        }
+        praise = build_review_praise(reviews)
+        # Either a clean line or None — never a line carrying banned vocab.
+        if praise is not None:
+            _assert_policy_clean(praise)
+
+    def test_clean_praise_still_produced_when_clause_is_clean(self):
+        # When a POSITIVE highlight is already clean (no banned vocab), a clean
+        # aggregate line IS produced (we don't nuke clean signal) — neutral
+        # aspect-aggregation, not a superlative echo.
+        reviews = {
+            "review_summary": {
+                "overall_sentiment": "positive",
+                "consensus": "",
+                "highlights": [
+                    {"point": "Per amazon.com: the battery comfortably lasts a full day of heavy use.", "sentiment": "positive"},
+                    {"point": "Per reddit.com: the camera handles low light impressively well.", "sentiment": "positive"},
+                ],
+            }
+        }
+        praise = build_review_praise(reviews)
+        assert praise is not None
+        _assert_policy_clean(praise)
+        low = praise.lower()
+        assert "camera" in low or "battery" in low
+
+    def test_all_categories_sample_clean(self):
+        # A spread of category-flavored superlative snippets all come back clean.
+        samples = [
+            "Per x.com: best longevity and excellent projection.",          # fragrance
+            "Per y.com: the best moisturizer, beats everything for dry skin.",  # skincare
+            "Per z.com: excellent flavor, the best value snack.",           # grocery
+        ]
+        for snip in samples:
+            reviews = {"review_summary": {"overall_sentiment": "positive", "consensus": "",
+                                          "highlights": [{"point": snip, "sentiment": "positive"}]}}
+            praise = build_review_praise(reviews)
+            if praise is not None:
+                _assert_policy_clean(praise)
+
+
 # ----------------------------------------- response integration (Contract 2) ---
 
 class TestReviewPraiseInResponse:
