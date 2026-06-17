@@ -424,4 +424,55 @@ describe('ResultsContent — render coverage', () => {
     );
     expect(getByText(/results\.runnerUpWins|runner-up/i)).toBeTruthy();
   });
+
+  // Bundle-next Task #18 — INTEGRATED tree: ResultsContent passes the root
+  // `products` straight to the REAL CategoryProfile (not mocked in this file),
+  // so a fuller 2nd-product category_profile renders in-context within the
+  // scroll between the cohort badge and the "Dig deeper" accordion.
+  it('renders the REAL CategoryProfile in-context with a fuller 2nd-product payload (#18)', () => {
+    const fullerProducts = [
+      {
+        ...mockProducts[0],
+        category_profile: {
+          category: 'electronics',
+          fields: [
+            { key: 'storage', label: 'Storage', value: '128 GB' },
+            { key: 'battery', label: 'Battery', value: '3,349 mAh' },
+          ],
+        },
+      },
+      {
+        ...mockProducts[1],
+        category_profile: {
+          category: 'electronics',
+          fields: [
+            { key: 'display', label: 'Display', value: '6.8" AMOLED, 120Hz, peak 2600 nits' },
+            { key: 'processor', label: 'Processor', value: 'Snapdragon 8 Gen 3 for Galaxy' },
+            { key: 'ram', label: 'RAM', value: '12 GB' },
+            { key: 'storage', label: 'Storage', value: '256 GB' },
+            { key: 'battery', label: 'Battery', value: '5,000 mAh, 45W' },
+            { key: 'rear_camera', label: 'Rear camera', value: '200 MP + 50 MP + 10 MP + 12 MP' },
+            { key: 'water_resistance', label: 'Water resistance', value: 'IP68' },
+          ],
+        },
+      },
+    ];
+    const { getByTestId } = render(
+      <ResultsContent {...baseProps} products={fullerProducts} />
+    );
+    // The block renders in the integrated scroll.
+    expect(getByTestId('results-content-category-profile')).toBeTruthy();
+    // Both columns + the fuller product B fields present (winner-first: idx 1).
+    expect(getByTestId('results-content-category-profile-col-0')).toBeTruthy();
+    expect(getByTestId('results-content-category-profile-col-1')).toBeTruthy();
+    expect(
+      getByTestId('results-content-category-profile-field-1-rear_camera')
+    ).toBeTruthy();
+  });
+
+  it('hides CategoryProfile in-context when products carry no category_profile (#18 default)', () => {
+    // baseProps mockProducts have no category_profile → block omitted, no crash.
+    const { queryByTestId } = render(<ResultsContent {...baseProps} />);
+    expect(queryByTestId('results-content-category-profile')).toBeNull();
+  });
 });

@@ -282,3 +282,140 @@ describe('CategoryProfile — Contract 1', () => {
     expect(getAllByText('5000 IU').length).toBe(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Bundle-next Task #18(b) — fuller-payload 2-up column does NOT overflow/break.
+// Backend #15 deepens 2nd-product extraction (MORE fields, longer values) — no
+// contract change. RNTL has no real layout engine, so we verify the STRUCTURAL
+// guards that prevent horizontal overflow + the graceful asymmetric render:
+//   - col: flex:1 + minWidth:0 (lets each column shrink below content width so a
+//     wide value/long token can't blow out the 50/50 split).
+//   - product name: numberOfLines={1} (truncates a long name, never wrap-blowout).
+//   - field value: NO numberOfLines (a long value WRAPS — vertical growth, not
+//     horizontal overflow), full column width via label-above-value layout.
+//   - a fuller / ASYMMETRIC payload (B has many more fields than A) renders both
+//     columns with every field, no crash.
+// ---------------------------------------------------------------------------
+describe('CategoryProfile — Task #18(b) fuller-payload column overflow guards', () => {
+  const flatten = (style: any) =>
+    Object.assign({}, ...(Array.isArray(style) ? style : [style]).filter(Boolean));
+
+  // All 11 electronics schema fields on product B (fuller), incl. deliberately
+  // LONG values; product A intentionally sparse (asymmetric).
+  const fullerProducts: any = [
+    {
+      name: 'iPhone 15',
+      category_profile: {
+        category: 'electronics',
+        fields: [
+          { key: 'storage', label: 'Storage', value: '128 GB' },
+          { key: 'battery', label: 'Battery', value: '3,349 mAh' },
+        ],
+      },
+    },
+    {
+      // A very long product name to exercise name truncation.
+      name: 'Samsung Galaxy S24 Ultra 5G Titanium Black 1TB Unlocked International',
+      category_profile: {
+        category: 'electronics',
+        fields: [
+          { key: 'display', label: 'Display', value: '6.8" Dynamic AMOLED 2X, 120Hz, 1440 x 3120, peak 2600 nits' },
+          { key: 'processor', label: 'Processor', value: 'Snapdragon 8 Gen 3 for Galaxy (4nm)' },
+          { key: 'ram', label: 'RAM', value: '12 GB LPDDR5X' },
+          { key: 'storage', label: 'Storage', value: '256 GB / 512 GB / 1 TB UFS 4.0' },
+          { key: 'battery', label: 'Battery', value: '5,000 mAh, 45W wired, 15W wireless' },
+          { key: 'rear_camera', label: 'Rear camera', value: '200 MP wide + 50 MP periscope + 10 MP tele + 12 MP ultrawide' },
+          { key: 'front_camera', label: 'Front camera', value: '12 MP' },
+          { key: 'os', label: 'OS', value: 'Android 14, One UI 6.1' },
+          { key: 'connectivity', label: 'Connectivity', value: '5G, Wi-Fi 7, Bluetooth 5.3, NFC, UWB' },
+          { key: 'weight', label: 'Weight', value: '232 g' },
+          { key: 'water_resistance', label: 'Water resistance', value: 'IP68' },
+        ],
+      },
+    },
+  ];
+
+  it('renders BOTH columns with every field for an asymmetric fuller payload (no crash)', () => {
+    const { getByTestId } = render(
+      <CategoryProfile products={fullerProducts} winnerIndex={1} testID="cp" />
+    );
+    expect(getByTestId('cp-col-0')).toBeTruthy();
+    expect(getByTestId('cp-col-1')).toBeTruthy();
+    // Sparse product A — its 2 fields.
+    expect(getByTestId('cp-field-0-storage')).toBeTruthy();
+    expect(getByTestId('cp-field-0-battery')).toBeTruthy();
+    // Fuller product B — all 11 fields rendered.
+    for (const k of [
+      'display', 'processor', 'ram', 'storage', 'battery', 'rear_camera',
+      'front_camera', 'os', 'connectivity', 'weight', 'water_resistance',
+    ]) {
+      expect(getByTestId(`cp-field-1-${k}`)).toBeTruthy();
+    }
+  });
+
+  it('each column carries the flex:1 + minWidth:0 overflow guard', () => {
+    const { getByTestId } = render(
+      <CategoryProfile products={fullerProducts} winnerIndex={1} testID="cp" />
+    );
+    for (const colId of ['cp-col-0', 'cp-col-1']) {
+      const style = flatten(getByTestId(colId).props.style);
+      expect(style.flex).toBe(1);
+      // minWidth:0 is THE guard that lets a column shrink below its content
+      // width — without it a long value/token blows out the 50/50 split.
+      expect(style.minWidth).toBe(0);
+    }
+  });
+
+  it('a long product name truncates to one line (numberOfLines=1), never wraps to blow out the row', () => {
+    const { getByText } = render(
+      <CategoryProfile products={fullerProducts} winnerIndex={1} testID="cp" />
+    );
+    const nameNode = getByText(
+      'Samsung Galaxy S24 Ultra 5G Titanium Black 1TB Unlocked International'
+    );
+    expect(nameNode.props.numberOfLines).toBe(1);
+  });
+
+  it('long field VALUES wrap (no numberOfLines) — vertical growth, never horizontal overflow', () => {
+    const { getByText } = render(
+      <CategoryProfile products={fullerProducts} winnerIndex={1} testID="cp" />
+    );
+    // The longest value renders in full (present in the tree) and is NOT capped
+    // to a line count — it wraps within the column.
+    const longValue = getByText(
+      '6.8" Dynamic AMOLED 2X, 120Hz, 1440 x 3120, peak 2600 nits'
+    );
+    expect(longValue.props.numberOfLines).toBeUndefined();
+  });
+
+  it('handles a fuller Arabic (RTL) payload value without crash or truncation', () => {
+    const arProducts: any = [
+      {
+        name: 'منتج أ',
+        category_profile: {
+          category: 'fragrances',
+          fields: [{ key: 'scent_family', label: 'Scent family', value: 'عنبري / حار' }],
+        },
+      },
+      {
+        name: 'منتج ب الطويل جداً لاختبار الاقتطاع في العمود الضيق',
+        category_profile: {
+          category: 'fragrances',
+          fields: [
+            { key: 'scent_family', label: 'Scent family', value: 'جلدي / زهري' },
+            { key: 'notes_top', label: 'Top notes', value: 'برغموت، فلفل أسود، هيل، زعفران، فلفل وردي' },
+            { key: 'longevity', label: 'Longevity', value: 'من ٨ إلى ١٠ ساعات على البشرة' },
+          ],
+        },
+      },
+    ];
+    const { getByTestId, getByText } = render(
+      <CategoryProfile products={arProducts} winnerIndex={1} testID="cp" />
+    );
+    expect(getByTestId('cp-col-0')).toBeTruthy();
+    expect(getByTestId('cp-col-1')).toBeTruthy();
+    // The long Arabic value renders in full and wraps (not line-capped).
+    const arVal = getByText('برغموت، فلفل أسود، هيل، زعفران، فلفل وردي');
+    expect(arVal.props.numberOfLines).toBeUndefined();
+  });
+});
