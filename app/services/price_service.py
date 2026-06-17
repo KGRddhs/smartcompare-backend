@@ -601,6 +601,19 @@ def is_supplement_query(product_name: str) -> bool:
 # fragrances budget breakpoint). Scaled by size for smaller bottles.
 FRAGRANCE_FULL_SIZE_FLOOR_BHD = 25.0
 _FRAGRANCE_FLAGSHIP_SIZE_ML = 100.0
+
+# F1.2a — PREMIUM/niche houses genuinely cost 80-150+/100ml, so the flat 25/100ml
+# floor was too low and let a decant/body-spray leak through (Tom Ford Tobacco
+# Vanille showed 28.2 BHD; genuine ~118). These houses get a higher 50/100ml
+# floor; the broader designer set (Versace/Gucci/...) keeps the 25 floor so the
+# cheaper-designer tier is not over-rejected.
+PREMIUM_FRAGRANCE_BRAND_KEYWORDS = {
+    "tom ford", "creed", "amouage", "mfk", "maison francis kurkdjian",
+    "initio", "frederic malle", "frédéric malle", "byredo", "le labo",
+    "montale", "mancera", "xerjoff", "parfums de marly", "kilian",
+    "roja", "clive christian", "nishane", "bdk", "ormonde jayne",
+}
+PREMIUM_FRAGRANCE_FULL_SIZE_FLOOR_BHD = 50.0
 # A floor never drops below this absolute BHD value (a sub-5-BHD "fragrance" at
 # any labelled size is a scrape artifact, not a real perfume).
 _FRAGRANCE_MIN_FLOOR_BHD = 5.0
@@ -666,10 +679,67 @@ def is_implausible_low_fragrance_price(
     )
     if not is_designer:
         return False
+    # F1.2a — PREMIUM/niche houses use a higher per-100ml floor (50 vs 25), so a
+    # decant/body-spray leak (Tobacco Vanille 28.2) is caught; the broader
+    # designer set keeps the standard floor (no over-rejection of cheaper tiers).
+    is_premium = any(brand in name_lower for brand in PREMIUM_FRAGRANCE_BRAND_KEYWORDS)
+    base_floor = (
+        PREMIUM_FRAGRANCE_FULL_SIZE_FLOOR_BHD if is_premium
+        else FRAGRANCE_FULL_SIZE_FLOOR_BHD
+    )
     size_ml = _effective_fragrance_size_ml(product_name, title)
-    floor = FRAGRANCE_FULL_SIZE_FLOOR_BHD * (size_ml / _FRAGRANCE_FLAGSHIP_SIZE_ML)
+    floor = base_floor * (size_ml / _FRAGRANCE_FLAGSHIP_SIZE_ML)
     floor = max(floor, _FRAGRANCE_MIN_FLOOR_BHD)
     return amount < floor
+
+
+# F1.2b — PREMIUM haircare brands (K18, Olaplex, Kerastase, ...) are never a few
+# BHD — K18 showed 4.51 BHD (genuine ~30+). A flat absolute floor (not size-aware:
+# haircare sizes are small/varied and the price doesn't scale as cleanly as
+# fragrance ml). Only PREMIUM brands are floored — a drugstore shampoo can be
+# genuinely cheap.
+PREMIUM_HAIRCARE_BRAND_KEYWORDS = {
+    "k18", "olaplex", "kerastase", "kérastase", "redken", "moroccanoil",
+    "oribe", "ouai", "living proof", "briogeo", "color wow", "k 18",
+    "aveda", "pureology", "shu uemura", "davines", "virtue",
+}
+HAIRCARE_PRODUCT_KEYWORDS = {
+    "shampoo", "conditioner", "hair mask", "hair oil", "hair serum",
+    "leave-in", "leave in", "hair treatment", "scalp", "hair repair",
+    "hair perfector", "bond builder", "heat protectant",
+}
+# A premium haircare product below this BHD is a wrong-SKU/sample leak.
+PREMIUM_HAIRCARE_FLOOR_BHD = 12.0
+
+
+def is_haircare_query(product_name: str) -> bool:
+    """True iff `product_name` is (almost certainly) a haircare product — a known
+    premium haircare brand OR a generic haircare product word."""
+    if not product_name:
+        return False
+    name_lower = product_name.lower()
+    if any(brand in name_lower for brand in PREMIUM_HAIRCARE_BRAND_KEYWORDS):
+        return True
+    return any(kw in name_lower for kw in HAIRCARE_PRODUCT_KEYWORDS)
+
+
+def is_implausible_low_haircare_price(
+    product_name: str, amount: Optional[float]
+) -> bool:
+    """True iff `product_name` is a PREMIUM haircare brand but `amount` (BHD) is
+    implausibly low — a wrong-SKU/sample leak that must NOT be served as the
+    genuine price (F1.2: K18 showed 4.51 BHD; genuine ~30+).
+
+    Gated to premium brands only (a drugstore shampoo is genuinely cheap). Returns
+    False for non-haircare products, non-premium haircare, and missing/zero
+    amounts."""
+    if amount is None or amount <= 0:
+        return False
+    name_lower = product_name.lower()
+    is_premium = any(brand in name_lower for brand in PREMIUM_HAIRCARE_BRAND_KEYWORDS)
+    if not is_premium:
+        return False
+    return amount < PREMIUM_HAIRCARE_FLOOR_BHD
 
 
 # ============================================
@@ -745,9 +815,12 @@ def is_price_showable(product_name: str, price: Optional[Dict[str, Any]]) -> boo
     if source_method not in _showable_source_methods():
         return False
     title = price.get("title")
-    # Compose the shipped accuracy guards — a price that fails either is not
+    # Compose the shipped accuracy guards — a price that fails any is not
     # showable (the guards already encode the "no wrong scrapes" contract).
     if is_implausible_low_fragrance_price(product_name, amount, title=title):
+        return False
+    # F1.2b — premium haircare wrong-cheap leak (K18 4.51 BHD).
+    if is_implausible_low_haircare_price(product_name, amount):
         return False
     if is_implausible_high_value_price(product_name, amount):
         return False
