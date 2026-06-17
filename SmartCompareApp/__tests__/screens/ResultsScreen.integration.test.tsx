@@ -48,16 +48,16 @@ const SOURCE = [
 ].join('\n');
 
 describe('ResultsScreen — Task 3.5 scoring_v2 wiring', () => {
-  describe('imports the four Bundle E components', () => {
+  describe('imports the Bundle E components still in the render path', () => {
     // Design § Decision 3 + plan § Task 3.5 list these as the new
     // surface. If any import goes missing the render breaks silently
     // because of the gate below.
-    it('imports HeroRings from components/results/HeroRings', () => {
-      expect(SOURCE).toMatch(
-        /import\s*\{\s*HeroRings\s*\}\s*from\s*['"]\.\.\/components\/results\/HeroRings['"]/,
-      );
-    });
-
+    //
+    // Faithful-results Phase 2.1 — HeroRings was PRUNED from the render
+    // path (the score-rings card is not in the Qaren design-system Results
+    // layout). It is therefore no longer required to be imported here. The
+    // component file + its isolated unit tests remain; only the wiring is
+    // removed. DimensionBars / TopMatchBadge / FactualVerdict stay wired.
     it('imports DimensionBars from components/results/DimensionBars', () => {
       expect(SOURCE).toMatch(
         /import\s*\{\s*DimensionBars\s*\}\s*from\s*['"]\.\.\/components\/results\/DimensionBars['"]/,
@@ -107,17 +107,11 @@ describe('ResultsScreen — Task 3.5 scoring_v2 wiring', () => {
   });
 
   describe('passes correct props to each Bundle E component', () => {
-    it('HeroRings receives scoreA, scoreB, winnerIndex from overall_score', () => {
-      // Design § Decision 3: rings read overall_score.product_a/b
-      // and compute winnerIndex from the comparison. Direct prop pass
-      // with `?? 0` fallback for null overall_score.
-      expect(SOURCE).toMatch(
-        /HeroRings[\s\S]{0,400}scoreA=\{scoring_v2\.overall_score\?\.product_a\s*\?\?\s*0\}/,
-      );
-      expect(SOURCE).toMatch(
-        /HeroRings[\s\S]{0,400}scoreB=\{scoring_v2\.overall_score\?\.product_b\s*\?\?\s*0\}/,
-      );
-      expect(SOURCE).toMatch(/HeroRings[\s\S]{0,400}winnerIndex=/);
+    it('does NOT render the pruned HeroRings score-rings card (Phase 2.1)', () => {
+      // Faithful-results Phase 2.1 — the HeroRings card is removed from the
+      // render path. No <HeroRings .../> element may remain in the wired
+      // source (the import + JSX usage are both gone from ResultsContent).
+      expect(SOURCE).not.toMatch(/<HeroRings\b/);
     });
 
     it('DimensionBars receives dimensions array + winnerIndex', () => {
@@ -135,8 +129,14 @@ describe('ResultsScreen — Task 3.5 scoring_v2 wiring', () => {
       // Design § Decision 5: factual_verdict is optional — runner-up
       // with no meaningful delta has no verdict line. The wiring must
       // gate the component on `factual_verdict?.line1` truthiness.
+      //
+      // Faithful-results Phase 2.2 — the gate is now a ternary
+      // (`factual_verdict?.line1 ? <FactualVerdict> : <verdict body>`)
+      // so the recommendation prose still shows when there is no factual
+      // verdict, while the runner-up caption renders independently below.
+      // Either `&&` (legacy) or `?` (current) form satisfies the gate.
       expect(SOURCE).toMatch(
-        /scoring_v2\.factual_verdict\?\.line1\s*&&[\s\S]{0,200}FactualVerdict/,
+        /scoring_v2\.factual_verdict\?\.line1\s*(?:&&|\?)[\s\S]{0,200}FactualVerdict/,
       );
     });
 
@@ -173,11 +173,12 @@ describe('ResultsScreen — Task 3.5 scoring_v2 wiring', () => {
     // backward-compat and ships out on the next release. We scope this
     // check to the v2 section only.
     it('the v2 scoring section uses no orange/red color tokens', () => {
-      // Slice the source to just the v2 card region — between the
-      // `{/* 8a. Bundle E` comment and the legacy `{!scoring_v2 &&`
-      // gate. Banned: any hex literal in the F-row (warning oranges)
-      // OR explicit `orange|red|destructive` token names.
-      const v2Start = SOURCE.indexOf('Bundle E § Decision 2/3 — scoring_v2 hero card');
+      // Slice the source to just the v2 dimension-bars region — between
+      // the `# 4 Dimension bars` comment (Faithful-results Phase 2.1
+      // renamed the former scoring-hero comment) and the legacy
+      // `{!scoring_v2 &&` gate. Banned: any hex literal in the F-row
+      // (warning oranges) OR explicit `orange|red|destructive` token names.
+      const v2Start = SOURCE.indexOf('# 4 Dimension bars');
       const v2End = SOURCE.indexOf('!scoring_v2', v2Start);
       expect(v2Start).toBeGreaterThan(-1);
       expect(v2End).toBeGreaterThan(v2Start);

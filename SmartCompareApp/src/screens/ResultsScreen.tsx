@@ -86,7 +86,8 @@ import {
   DemographicsPayload,
 } from '../services/api';
 import { LoadingRings } from '../components/hero/LoadingRings';
-import { HeroRings } from '../components/results/HeroRings';
+// Faithful-results Phase 2.1 — HeroRings pruned from the render path (the
+// score-rings card is not in the Qaren design-system Results layout).
 import { DimensionBars } from '../components/results/DimensionBars';
 import { TopMatchBadge } from '../components/results/TopMatchBadge';
 import { ResultsContent } from '../components/results/ResultsContent';

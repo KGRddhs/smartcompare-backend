@@ -262,20 +262,30 @@ describe('ResultsContent — render coverage', () => {
     expect(queryByTestId('mock-cohort-badge')).toBeNull();
   });
 
-  it('renders scoring_v2 hero card when dimensions length >= 3', () => {
-    const { getByTestId } = render(<ResultsContent {...baseProps} />);
+  it('renders the dimension-bars section when dimensions length >= 3', () => {
+    // Faithful-results Phase 2.1 — the scoring_v2 slot holds DimensionBars
+    // ONLY. The former HeroRings score-rings card was pruned (not in the Qaren
+    // design-system Results layout). PersonalizationChip moved up under the
+    // verdict (Phase 4.4) but still renders whenever scoring_v2 exists.
+    const { getByTestId, queryByTestId } = render(<ResultsContent {...baseProps} />);
     expect(getByTestId('results-scoring-v2')).toBeTruthy();
-    expect(getByTestId('results-v2-hero-rings')).toBeTruthy();
     expect(getByTestId('results-v2-bars')).toBeTruthy();
     expect(getByTestId('results-v2-personalization-chip')).toBeTruthy();
+    // The pruned rings card must NOT render.
+    expect(queryByTestId('results-v2-hero-rings')).toBeNull();
   });
 
-  it('renders weird-mode em-dash hero when comparison_quality === weird', () => {
+  it('renders NO rings card and NO em-dash placeholder in weird mode (Phase 2.1 prune)', () => {
+    // Faithful-results Phase 2.1 — both the HeroRings (normal) and the
+    // em-dash placeholder (the weird-mode stand-in for those rings) are gone.
+    // In weird mode the bars still render; the winner-reveal burst stays
+    // suppressed (gated `!isWeird`); weird meaning is carried by the verdict.
     const sv2 = { ...mockScoringV2, comparison_quality: 'weird' };
     const { getByTestId, queryByTestId } = render(
       <ResultsContent {...baseProps} scoring_v2={sv2} />
     );
-    expect(getByTestId('results-v2-hero-em-dash')).toBeTruthy();
+    expect(getByTestId('results-v2-bars')).toBeTruthy();
+    expect(queryByTestId('results-v2-hero-em-dash')).toBeNull();
     expect(queryByTestId('results-v2-hero-rings')).toBeNull();
     expect(queryByTestId('results-v2-reveal-burst-slot')).toBeNull();
   });
