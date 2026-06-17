@@ -457,11 +457,17 @@ REQUIRED SCHEMA:
     {fields_json}
 }}
 
-CATEGORY-SPECIFIC GUIDANCE:
+CATEGORY-SPECIFIC GUIDANCE (seek these fields for BOTH products; include a field ONLY when a snippet or your training data genuinely supports it — omit/null when truly unknown, never invent):
 - Electronics: include all tech specs (display, processor, ram, storage, battery, camera)
 - Fashion: focus on material, style, craftsmanship, origin, design_details. Skip irrelevant fields.
 - Supplements: include count, dosage, form, certifications. Skip tech fields.
-- Fragrances: include scent notes, longevity, sillage, concentration. Skip tech fields."""
+- Fragrances: include scent notes, longevity, sillage, concentration. Skip tech fields.
+- Makeup: seek shade_range, finish, coverage, skin_type, spf, volume, cruelty_free, vegan, waterproof. Foundations/concealers usually list finish + coverage + shade range; many state vegan/cruelty-free and SPF on the label.
+- Skincare: seek skin_type, skin_concern, active_ingredient, ingredients, spf, volume, fragrance_free, ph_level. Most products state their key active (e.g. niacinamide, retinol, hyaluronic acid) + target skin type/concern.
+- Haircare: seek hair_type, hair_concern, ingredients, volume, scent, sulfate_free, paraben_free, silicone_free. Most products state hair type/concern + a free-from claim.
+- Grocery: seek count, size, ingredients, nutrition_calories, nutrition_protein, nutrition_fat, nutrition_carbs, origin, allergens. Packaged foods list net weight/size + nutrition per serving + allergens.
+- Other: seek the schema fields that apply (dimensions, weight, material, color, features, warranty, origin). Include only what the data supports.
+For makeup/skincare/haircare/grocery especially, do NOT leave a field null just because the FIRST product's snippets were richer — check this product's own snippets AND your training data for the SAME fields, so both products reach comparable depth where the data genuinely exists."""
 
     if drug_context:
         system_prompt += f"\n\nBAHRAIN DRUG DATABASE MATCHES:\n{drug_context}"
