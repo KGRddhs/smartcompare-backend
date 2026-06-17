@@ -13,8 +13,8 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronDown, Star, ListChecks, BarChart3 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
-import { colors, spacing, radii } from '../../theme';
-import type { Product, ReviewSummary, ReviewHighlight } from '../../types';
+import { colors, spacing } from '../../theme';
+import type { Product, ReviewSummary } from '../../types';
 
 type AccordionKey = 'reviews' | 'proscons' | 'specs';
 
@@ -25,11 +25,19 @@ interface ResultsAccordionProps {
     name: string;
     rating?: number | null;
     review_count?: number | null;
+    /** Faithful-results Contract 2 — canonical real review count (mirrors
+     *  review_count). */
+    rating_count?: number | null;
     rating_source?: { name?: string; url?: string } | null;
     review_summary?: ReviewSummary;
+    /** Faithful-results Contract 2 — synthesized praise line (non-verbatim,
+     *  no citations/source domains). null when insufficient real signal. */
+    review_praise?: string | null;
     /** Lane A-L3 Task L3.4 — up to 3 retailer quotes per product
      *  (Amazon / Noon / X). Backend writes
-     *  `reviews.products[i].retailer_quotes`. */
+     *  `reviews.products[i].retailer_quotes`. Faithful-results Phase 5.2:
+     *  kept in the type for backward-compat but NO LONGER RENDERED (dormant
+     *  per Contract 2). */
     retailer_quotes?: Array<{
       retailer: string;
       rating?: number | null;
@@ -279,85 +287,87 @@ export function ResultsAccordion({
                   style={styles.body}
                 >
                   {/*
-                   * Reference: ReviewLine (ResultsScreen.jsx 213-236). Each
-                   * review = a small uppercase SOURCE pill + a row of 5 star
-                   * glyphs (filled to the rating, amber) + a short "quote".
-                   * We render a FLAT list across both products built from
-                   * `retailer_quotes` -- no product-name headers, no consensus
-                   * paragraph, no +/- highlight bullets.
+                   * Faithful-results Phase 5.2 (Contract 2) — paraphrased
+                   * praise, no citations. One synthesized praise line PER
+                   * PRODUCT (backend `review_praise`, non-verbatim, no [N]
+                   * markers, no source domains), with REAL stars + count only
+                   * when a genuine rating exists. The prior verbatim
+                   * `retailer_quotes` + `review_summary.highlights` rendering
+                   * (per-source AMAZON/NOON/X pills + "quote" lines) is REMOVED
+                   * — `retailer_quotes` stays in the payload but is no longer
+                   * shown (dormant per Contract 2).
                    *
-                   * Fallback: many categories (e.g. fragrances) ship empty
-                   * `retailer_quotes` -- the backend currently emits only
-                   * consensus/highlights there. When a product has no quotes
-                   * we surface at most 3 compact lines from `highlights`
-                   * (plain short quote lines, NO +/- prefix, NOT the giant
-                   * consensus paragraph). Populating per-source quotes for
-                   * those categories is a BACKEND follow-up (review extraction
-                   * must emit retailer_quotes). When there is truly nothing,
-                   * render one calm line. */}
+                   * Winner-first product order (mirrors the pros/cons grid).
+                   * review_praise / rating / rating_count are read from the
+                   * review projection when present, falling back to the root
+                   * product (Contract 2 locates review_praise on root
+                   * `products[i]`). A product with neither a praise line nor a
+                   * rating is skipped; when NO product has any signal we render
+                   * one calm line. */}
                   {(() => {
-                    const lines: React.ReactNode[] = [];
-                    reviewSrc.forEach((rp: any, idx: number) => {
-                      const quotes = Array.isArray(rp.retailer_quotes)
-                        ? rp.retailer_quotes
-                        : [];
-                      if (quotes.length > 0) {
-                        quotes.slice(0, 3).forEach((q: any, qi: number) => {
-                          lines.push(
-                            <ReviewLine
-                              key={`q-${idx}-${qi}`}
-                              testID={
-                                testID
-                                  ? `${testID}-reviews-quote-${idx}-${qi}`
-                                  : undefined
-                              }
-                              source={String(q.retailer || '')}
-                              rating={
-                                typeof q.rating === 'number' ? q.rating : null
-                              }
-                              text={String(q.text || '')}
-                            />
-                          );
-                        });
-                      } else {
-                        // Compact fallback -- short highlight quote lines.
-                        const highlights: ReviewHighlight[] = Array.isArray(
-                          rp.review_summary?.highlights
-                        )
-                          ? rp.review_summary.highlights
-                          : [];
-                        highlights
-                          .slice(0, 3)
-                          .forEach((h: ReviewHighlight, hi: number) => {
-                            if (!h?.point) return;
-                            lines.push(
-                              <ReviewLine
-                                key={`h-${idx}-${hi}`}
-                                testID={
-                                  testID
-                                    ? `${testID}-reviews-fallback-${idx}-${hi}`
-                                    : undefined
-                                }
-                                source={String(rp.name || '')}
-                                rating={
-                                  typeof rp.rating === 'number'
-                                    ? rp.rating
-                                    : null
-                                }
-                                text={String(h.point)}
-                              />
-                            );
-                          });
+                    const order: number[] =
+                      typeof winnerIndex === 'number'
+                        ? [winnerIndex, winnerIndex === 0 ? 1 : 0].filter(
+                            (i) => i < reviewSrc.length
+                          )
+                        : reviewSrc.map((_, i) => i);
+
+                    const blocks: React.ReactNode[] = [];
+                    order.forEach((idx) => {
+                      const rp: any = reviewSrc[idx] ?? {};
+                      const root: any = (products as any)[idx] ?? {};
+                      const praise: string | null =
+                        (typeof rp.review_praise === 'string' &&
+                        rp.review_praise.trim().length > 0
+                          ? rp.review_praise
+                          : null) ??
+                        (typeof root.review_praise === 'string' &&
+                        root.review_praise.trim().length > 0
+                          ? root.review_praise
+                          : null);
+                      const rating: number | null =
+                        typeof rp.rating === 'number'
+                          ? rp.rating
+                          : typeof root.rating === 'number'
+                            ? root.rating
+                            : null;
+                      const ratingCount: number | null =
+                        typeof rp.rating_count === 'number'
+                          ? rp.rating_count
+                          : typeof rp.review_count === 'number'
+                            ? rp.review_count
+                            : typeof root.rating_count === 'number'
+                              ? root.rating_count
+                              : typeof root.review_count === 'number'
+                                ? root.review_count
+                                : null;
+
+                      // Skip a product with no real review signal at all.
+                      if (!praise && !(typeof rating === 'number' && rating > 0)) {
+                        return;
                       }
+                      blocks.push(
+                        <ReviewPraiseBlock
+                          key={`praise-${idx}`}
+                          testID={
+                            testID ? `${testID}-reviews-praise-${idx}` : undefined
+                          }
+                          name={String(rp.name || root.name || '')}
+                          rating={rating}
+                          ratingCount={ratingCount}
+                          praise={praise}
+                        />
+                      );
                     });
-                    if (lines.length === 0) {
+
+                    if (blocks.length === 0) {
                       return (
                         <Text style={styles.reviewsEmpty}>
                           {t('results.accordion.reviewsEmpty')}
                         </Text>
                       );
                     }
-                    return lines;
+                    return blocks;
                   })()}
                 </View>
               )}
@@ -540,48 +550,73 @@ export function ResultsAccordion({
 }
 
 /**
- * Reference: ReviewLine (ResultsScreen.jsx 213-236). A single review row:
- *   [SOURCE pill]  ★★★★★ (filled to rating, amber)
- *   "short quote in quotes"
- * Stars round the rating to the nearest whole glyph (1-5). When no rating
- * is present we still render the pill + quote (no star row) so a quote is
- * never dropped for a missing rating.
+ * Faithful-results Phase 5.2 (Contract 2) — paraphrased praise block.
+ * Per product:
+ *   {Product name}   ★★★★★ {rating} · {count}   (stars + meta only when a
+ *                                                 REAL rating exists)
+ *   {synthesized praise line — non-verbatim, no citations, no source domains}
+ *
+ * Stars round the rating to the nearest whole glyph (1-5). Ratings are NEVER
+ * AI-generated (CLAUDE.md hard invariant) — the backend only supplies a real
+ * one, else `rating` is null and no stars render. `praise` may be null when a
+ * product has a rating but no synthesized line; the block still renders the
+ * rating row. Callers skip a product with neither signal.
  */
-function ReviewLine({
-  source,
+function ReviewPraiseBlock({
+  name,
   rating,
-  text,
+  ratingCount,
+  praise,
   testID,
 }: {
-  source: string;
+  name: string;
   rating?: number | null;
-  text: string;
+  ratingCount?: number | null;
+  praise?: string | null;
   testID?: string;
 }) {
-  const filled =
-    typeof rating === 'number' && rating > 0
-      ? Math.max(0, Math.min(5, Math.round(rating)))
-      : 0;
+  const { t } = useTranslation();
+  const hasRating = typeof rating === 'number' && rating > 0;
+  const filled = hasRating
+    ? Math.max(0, Math.min(5, Math.round(rating as number)))
+    : 0;
   return (
     <View testID={testID} style={styles.reviewLine}>
       <View style={styles.reviewLineHeader}>
-        <Text style={styles.reviewSourcePill} numberOfLines={1}>
-          {source.toUpperCase()}
+        <Text style={styles.reviewProductName} numberOfLines={1}>
+          {name}
         </Text>
-        {filled > 0 ? (
-          <View style={styles.reviewStars}>
-            {[1, 2, 3, 4, 5].map((s) => (
-              <Star
-                key={s}
-                size={10}
-                color={s <= filled ? colors.warning : colors.border.medium}
-                fill={s <= filled ? colors.warning : 'transparent'}
-              />
-            ))}
+        {hasRating ? (
+          <View style={styles.reviewRatingMeta}>
+            <View style={styles.reviewStars}>
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Star
+                  key={s}
+                  size={10}
+                  color={s <= filled ? colors.warning : colors.border.medium}
+                  fill={s <= filled ? colors.warning : 'transparent'}
+                />
+              ))}
+            </View>
+            <Text style={styles.reviewRatingText}>
+              {typeof ratingCount === 'number' && ratingCount > 0
+                ? t('results.reviews.ratingWithCount', {
+                    rating: (rating as number).toFixed(1),
+                    count: ratingCount.toLocaleString(),
+                  })
+                : (rating as number).toFixed(1)}
+            </Text>
           </View>
         ) : null}
       </View>
-      <Text style={styles.reviewQuote}>{`“${text}”`}</Text>
+      {praise ? (
+        <Text
+          style={styles.reviewPraise}
+          testID={testID ? `${testID}-text` : undefined}
+        >
+          {praise}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -653,35 +688,41 @@ const styles = StyleSheet.create({
     paddingTop: 14,
   },
   // Reference: ReviewLine (ResultsScreen.jsx 213-236). Compact source-quote
-  // rows — uppercase source pill + amber star row + a short "quote".
+  // Faithful-results Phase 5.2 — per-product praise block: product name +
+  // (real stars + rating·count) header, then the synthesized praise line.
   reviewLine: {
     flexDirection: 'column',
     gap: 4,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   reviewLineHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
   },
-  reviewSourcePill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radii.chip,
-    backgroundColor: colors.bg.secondary,
-    fontSize: 9,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    color: colors.text.secondary,
+  reviewProductName: {
     flexShrink: 1,
-    overflow: 'hidden',
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  reviewRatingMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   reviewStars: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 1,
   },
-  reviewQuote: {
+  reviewRatingText: {
+    fontSize: 11,
+    color: colors.text.secondary,
+    fontVariant: ['tabular-nums'],
+  },
+  reviewPraise: {
     fontSize: 12,
     fontWeight: '500',
     color: colors.text.primary,

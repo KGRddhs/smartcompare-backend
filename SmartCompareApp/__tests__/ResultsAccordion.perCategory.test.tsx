@@ -131,32 +131,52 @@ describe.each(FIXTURES)(
       });
     });
 
-    describe('L3.4 — per-retailer review quote block (graceful degradation)', () => {
-      it('renders retailer quote cards when reviewProducts[i].retailer_quotes is populated', () => {
-        const { getByTestId } = render(<ResultsAccordion {...makeProps(fixture)} />);
-        fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
-
-        // For every product that has quotes, at least one quote testID must render.
-        fixture.reviews.products.forEach((p: any, idx: number) => {
-          if (Array.isArray(p.retailer_quotes) && p.retailer_quotes.length > 0) {
-            // At least the first quote must be present.
-            expect(getByTestId(`accordion-reviews-quote-${idx}-0`)).toBeTruthy();
-          }
+    describe('Phase 5.2 — paraphrased praise review block (Contract 2)', () => {
+      it('renders a synthesized praise line per product, NOT verbatim retailer quotes', () => {
+        // Inject a synthesized praise line per product (Contract 2 field).
+        const withPraise = JSON.parse(JSON.stringify(fixture));
+        withPraise.reviews.products.forEach((p: any, i: number) => {
+          p.review_praise = `Reviewers speak well of ${p.name} (${name}).`;
         });
-      });
-
-      it('omits retailer-quote block entirely when retailer_quotes is absent', () => {
-        const stripped = JSON.parse(JSON.stringify(fixture));
-        stripped.reviews.products.forEach((p: any) => {
-          delete p.retailer_quotes;
-        });
-        const { queryByTestId, getByTestId } = render(
-          <ResultsAccordion {...makeProps(stripped)} />
+        const { getByTestId, queryByTestId } = render(
+          <ResultsAccordion {...makeProps(withPraise)} />
         );
         fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
-        // No quote testIDs should be present.
+
+        // Each product's synthesized praise line renders (winner-first order,
+        // so at least the winner's block is present).
+        const winnerIdx = (withPraise.winner_index ??
+          withPraise.overview.winner.product_index) as 0 | 1;
+        expect(getByTestId(`accordion-reviews-praise-${winnerIdx}-text`)).toBeTruthy();
+
+        // The dormant verbatim retailer_quotes are NO LONGER rendered.
         expect(queryByTestId('accordion-reviews-quote-0-0')).toBeNull();
         expect(queryByTestId('accordion-reviews-quote-1-0')).toBeNull();
+      });
+
+      it('still renders the rating row (real stars) when a genuine rating exists, even with no praise', () => {
+        // Fixture products carry real ratings; with no review_praise the block
+        // still renders the rating header (skips only when BOTH are absent).
+        const noPraise = JSON.parse(JSON.stringify(fixture));
+        noPraise.reviews.products.forEach((p: any) => {
+          delete p.retailer_quotes;
+          delete p.review_praise;
+        });
+        const { getByTestId, queryByTestId } = render(
+          <ResultsAccordion {...makeProps(noPraise)} />
+        );
+        fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
+        // No verbatim quote testIDs.
+        expect(queryByTestId('accordion-reviews-quote-0-0')).toBeNull();
+        // At least the winner's block renders when it has a rating.
+        const winnerIdx = (noPraise.winner_index ??
+          noPraise.overview.winner.product_index) as 0 | 1;
+        const hasRating =
+          typeof noPraise.reviews.products[winnerIdx]?.rating === 'number' &&
+          noPraise.reviews.products[winnerIdx].rating > 0;
+        if (hasRating) {
+          expect(getByTestId(`accordion-reviews-praise-${winnerIdx}`)).toBeTruthy();
+        }
       });
     });
   }

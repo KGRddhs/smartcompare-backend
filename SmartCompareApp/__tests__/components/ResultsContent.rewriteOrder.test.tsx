@@ -303,16 +303,18 @@ describe('ResultsContent — REWRITE element order per ResultsScreen.jsx', () =>
     );
   });
 
-  it('the scoring_v2 hero contains the DimensionBars and HeroRings', () => {
+  it('the scoring_v2 slot contains the DimensionBars and NO rings card (Phase 2.1 prune)', () => {
     const r = render(<ResultsContent {...baseProps} />);
     const order = buildTestIdOrder(r.toJSON(), [
       'results-scoring-v2',
-      'results-v2-hero-rings',
       'results-v2-bars',
     ]);
     // scoring_v2 wrapper comes first (parent encountered first in DFS)
-    expect(order['results-scoring-v2']).toBeLessThan(order['results-v2-hero-rings']);
+    expect(order['results-scoring-v2']).toBeDefined();
     expect(order['results-scoring-v2']).toBeLessThan(order['results-v2-bars']);
+    // Faithful-results Phase 2.1 — the HeroRings score-rings card is pruned;
+    // it must NOT appear in the rendered tree.
+    expect(r.queryByTestId('results-v2-hero-rings')).toBeNull();
   });
 
   it('PersonalizationChip sits under the "Why this fits you" block, before the scoring_v2 hero (Phase 4.4)', () => {

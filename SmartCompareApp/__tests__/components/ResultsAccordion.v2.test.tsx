@@ -17,20 +17,27 @@ import React from 'react';
 import { render } from '@testing-library/react-native';
 import fixture from '../fixtures/v2_response_electronics.json';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) => {
-      let str = (opts?.defaultValue as string) ?? key;
-      if (opts) {
-        for (const [k, v] of Object.entries(opts)) {
-          if (k === 'defaultValue') continue;
-          str = str.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v));
+// Consult the REAL en.json catalog so keys like
+// `results.reviews.ratingWithCount` interpolate their actual template
+// ("{{rating}} · {{count}} reviews") — this exercises the real i18n string,
+// not a passthrough that would leave the bare key.
+jest.mock('react-i18next', () => {
+  const en = require('../../src/i18n/en.json') as Record<string, string>;
+  return {
+    useTranslation: () => ({
+      t: (key: string, opts?: Record<string, unknown>) => {
+        let str = en[key] ?? (opts?.defaultValue as string) ?? key;
+        if (opts) {
+          for (const [k, v] of Object.entries(opts)) {
+            if (k === 'defaultValue') continue;
+            str = str.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v));
+          }
         }
-      }
-      return str;
-    },
-  }),
-}));
+        return str;
+      },
+    }),
+  };
+});
 
 import { ResultsAccordion } from '../../src/components/results/ResultsAccordion';
 import { colors } from '../../src/theme';
@@ -140,46 +147,146 @@ describe('L3.3 — winner-star (★) on the winning product in pros/cons', () =>
   });
 });
 
-describe('L3.4 — per-retailer review quote block (Screen 2)', () => {
-  it('renders all 3 retailer quotes per product when present', () => {
+describe('Phase 5.2 — paraphrased praise review block (Contract 2)', () => {
+  const allTextIn = (node: any): string => {
+    if (!node) return '';
+    if (typeof node === 'string') return node;
+    if (Array.isArray(node)) return node.map(allTextIn).join(' ');
+    if (node.props?.children !== undefined) return allTextIn(node.props.children);
+    return '';
+  };
+
+  function withPraise() {
+    return (fixture as any).reviews.products.map((p: any, i: number) => ({
+      ...p,
+      review_praise:
+        i === 0
+          ? 'Owners praise the bright display and dependable battery life.'
+          : 'Reviewers highlight the standout camera and smooth performance.',
+      rating_count: p.review_count,
+    }));
+  }
+
+  it('renders one synthesized praise line per product (no verbatim quotes, no source pills)', () => {
     const { getByTestId, getByText } = render(
-      <ResultsAccordion {...makeProps()} />
+      <ResultsAccordion {...makeProps({ reviewProducts: withPraise() })} />
     );
     const { fireEvent } = require('@testing-library/react-native');
     fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
 
-    // First product (iPhone) retailer block carries 3 quotes from fixture.
-    expect(getByTestId('accordion-reviews-quote-0-0')).toBeTruthy();
-    expect(getByTestId('accordion-reviews-quote-0-1')).toBeTruthy();
-    expect(getByTestId('accordion-reviews-quote-0-2')).toBeTruthy();
-    // Surfaces retailer name + the unique quote text inside the iPhone block.
-    const quote0 = getByTestId('accordion-reviews-quote-0-0');
-    const quote1 = getByTestId('accordion-reviews-quote-0-1');
-    const allTextIn = (node: any): string => {
-      if (!node) return '';
-      if (typeof node === 'string') return node;
-      if (Array.isArray(node)) return node.map(allTextIn).join(' ');
-      if (node.props?.children !== undefined) return allTextIn(node.props.children);
-      return '';
-    };
-    expect(allTextIn(quote0).toLowerCase()).toContain('amazon');
-    expect(allTextIn(quote1).toLowerCase()).toContain(
-      'camera in low light is the best'
-    );
+    // Praise line testIDs (winner-first: winnerIndex 0 → product 0 first).
+    expect(getByTestId('accordion-reviews-praise-0-text')).toBeTruthy();
+    expect(getByTestId('accordion-reviews-praise-1-text')).toBeTruthy();
+    expect(
+      getByText('Owners praise the bright display and dependable battery life.')
+    ).toBeTruthy();
+    expect(
+      getByText('Reviewers highlight the standout camera and smooth performance.')
+    ).toBeTruthy();
   });
 
-  it('gracefully omits the block when retailer_quotes is absent', () => {
-    const noQuotesProducts = (fixture as any).reviews.products.map((p: any) => ({
-      ...p,
-      retailer_quotes: undefined,
-    }));
+  it('NO LONGER renders the dormant retailer_quotes (Contract 2)', () => {
+    // Fixture products carry retailer_quotes; the new surface must NOT render
+    // them as per-source verbatim quote cards.
     const { queryByTestId, getByTestId } = render(
-      <ResultsAccordion
-        {...makeProps({ reviewProducts: noQuotesProducts })}
-      />
+      <ResultsAccordion {...makeProps({ reviewProducts: withPraise() })} />
     );
     const { fireEvent } = require('@testing-library/react-native');
     fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
     expect(queryByTestId('accordion-reviews-quote-0-0')).toBeNull();
+    expect(queryByTestId('accordion-reviews-quote-0-1')).toBeNull();
+    expect(queryByTestId('accordion-reviews-quote-1-0')).toBeNull();
+  });
+
+  it('does not surface any source-domain text in the praise block', () => {
+    const withDomain = (fixture as any).reviews.products.map((p: any, i: number) => ({
+      ...p,
+      // praise is synthesized prose; even if a domain were present in raw data
+      // it must not be rendered as a citation.
+      review_praise:
+        i === 0
+          ? 'Owners consistently call out the long-lasting battery.'
+          : 'Reviewers love the camera in everyday use.',
+    }));
+    const { getByTestId } = render(
+      <ResultsAccordion {...makeProps({ reviewProducts: withDomain })} />
+    );
+    const { fireEvent } = require('@testing-library/react-native');
+    fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
+    const block = getByTestId('accordion-reviews-praise-0');
+    const text = allTextIn(block).toLowerCase();
+    expect(text).not.toContain('amazon');
+    expect(text).not.toContain('noon');
+    expect(text).not.toContain('.com');
+    // No bracketed citation markers.
+    expect(text).not.toMatch(/\[\d+\]/);
+  });
+
+  it('renders real stars + rating·count when a genuine rating exists', () => {
+    const { getByTestId, getByText } = render(
+      <ResultsAccordion {...makeProps({ reviewProducts: withPraise() })} />
+    );
+    const { fireEvent } = require('@testing-library/react-native');
+    fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
+    // iPhone rating 4.6 / 12,450 from fixture → "4.6 · 12,450 reviews".
+    expect(getByText('4.6 · 12,450 reviews')).toBeTruthy();
+  });
+
+  it('skips a product with neither praise nor a rating', () => {
+    const sparse = [
+      {
+        ...(fixture as any).reviews.products[0],
+        review_praise: 'Owners praise the battery.',
+      },
+      {
+        name: 'Galaxy S24',
+        rating: null,
+        review_count: null,
+        retailer_quotes: undefined,
+        review_praise: null,
+      },
+    ];
+    // Also blank the ROOT product 1 — the component falls back to root
+    // rating/praise (Contract 2 locates them there), so a true "no signal"
+    // product must lack them in BOTH the review projection and the root.
+    const rootProducts = [
+      (fixture as any).overview.products[0],
+      { name: 'Galaxy S24', rating: null, review_count: null, review_praise: null },
+    ];
+    const { getByTestId, queryByTestId } = render(
+      <ResultsAccordion
+        {...makeProps({ reviewProducts: sparse, products: rootProducts })}
+      />
+    );
+    const { fireEvent } = require('@testing-library/react-native');
+    fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
+    expect(getByTestId('accordion-reviews-praise-0')).toBeTruthy();
+    expect(queryByTestId('accordion-reviews-praise-1')).toBeNull();
+  });
+
+  it('renders the calm empty line when no product has any review signal', () => {
+    const empty = (fixture as any).reviews.products.map((p: any) => ({
+      name: p.name,
+      rating: null,
+      review_count: null,
+      review_praise: null,
+      retailer_quotes: undefined,
+    }));
+    // Root products in the fixture DO carry ratings, so blank those too via
+    // the products override to exercise the true-empty path.
+    const emptyRoot = (fixture as any).overview.products.map((p: any) => ({
+      name: p.name,
+      rating: null,
+      review_count: null,
+      review_praise: null,
+    }));
+    const { getByText, getByTestId } = render(
+      <ResultsAccordion
+        {...makeProps({ reviewProducts: empty, products: emptyRoot })}
+      />
+    );
+    const { fireEvent } = require('@testing-library/react-native');
+    fireEvent.press(getByTestId('results-accordion-toggle-reviews'));
+    expect(getByText('Reviews are still coming in.')).toBeTruthy();
   });
 });
