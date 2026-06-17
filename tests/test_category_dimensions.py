@@ -138,6 +138,28 @@ class TestCategoryDimensions:
         from app.services.scoring_service import CATEGORY_WEIGHTS
         assert CATEGORY_WEIGHTS is CATEGORY_DIMENSION_WEIGHTS
 
+    # Faithful-Results Phase 3.3 — the explicit no-cross-category-leak invariant.
+    # The keystone (canonicalize_category) routes "Fragrances"→"fragrances" so
+    # each category scores on its OWN dims; this pins that electronics-only dims
+    # never leak into a non-electronics category (the Thrust-C "Build dim on a
+    # fragrance" class of bug).
+    _ELECTRONICS_ONLY_DIMS = {
+        "performance_score", "build_quality_score", "feature_score",
+        "ecosystem_score", "futureproof_score",
+    }
+
+    def test_no_electronics_only_dim_leaks_to_other_categories(self):
+        for cat in self.EXPECTED_CATEGORIES:
+            if cat == "electronics":
+                continue
+            leaked = set(CATEGORY_DIMENSIONS[cat]) & self._ELECTRONICS_ONLY_DIMS
+            assert not leaked, f"{cat} leaks electronics-only dims: {leaked}"
+
+    def test_fragrance_scores_on_scent_dims_not_build(self):
+        dims = CATEGORY_DIMENSIONS["fragrances"]
+        assert "character_score" in dims and "longevity_score" in dims and "projection_score" in dims
+        assert "build_quality_score" not in dims and "feature_score" not in dims
+
 
 from app.services.scoring_service import ScoringService
 

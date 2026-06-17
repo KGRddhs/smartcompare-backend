@@ -755,6 +755,109 @@ def canonicalize_category(raw: Any) -> str:
 
 
 # ============================================
+# Faithful-Results Phase 3.2 (Contract 1) — category_profile
+# ============================================
+# A category-appropriate ORDERED label/value list per product, built from the
+# product's specs + CATEGORY_SPEC_SCHEMAS. The FE renders ONE generic component
+# from this (no per-category branching) and hides the block when fields == [].
+
+# Values that mean "no data" — filtered out so the profile is the curated,
+# populated subset (the side-by-side Specs table keeps em-dash rows; this block
+# does not).
+_PROFILE_NA_VALUES = {"n/a", "na", "null", "none", "unknown", "", "-", "—"}
+
+# Humanized English labels for fields whose snake→Title default reads wrong.
+# Everything else falls back to key.replace("_"," ").capitalize(). These MUST
+# stay copy-policy-safe (neutral spec names — no banned vocab).
+_CATEGORY_PROFILE_LABEL_OVERRIDES = {
+    "ram": "RAM",
+    "os": "OS",
+    "spf": "SPF",
+    "ph_level": "pH level",
+    "notes_top": "Top notes",
+    "notes_heart": "Heart notes",
+    "notes_base": "Base notes",
+    "rear_camera": "Rear camera",
+    "front_camera": "Front camera",
+    "water_resistance": "Water resistance",
+    "scent_family": "Scent family",
+    "active_ingredient": "Active ingredient",
+    "serving_size": "Serving size",
+    "shelf_life": "Shelf life",
+    "skin_type": "Skin type",
+    "skin_concern": "Skin concern",
+    "hair_type": "Hair type",
+    "hair_concern": "Hair concern",
+    "fragrance_free": "Fragrance-free",
+    "cruelty_free": "Cruelty-free",
+    "sulfate_free": "Sulfate-free",
+    "paraben_free": "Paraben-free",
+    "silicone_free": "Silicone-free",
+    "shade_range": "Shade range",
+    "long_lasting": "Long-lasting",
+    "heat_stability": "Heat stability",
+    "closure_type": "Closure type",
+    "size_options": "Size options",
+    "care_instructions": "Care instructions",
+    "collection_season": "Collection season",
+    "design_details": "Design details",
+    "nutrition_calories": "Calories",
+    "nutrition_protein": "Protein",
+    "nutrition_fat": "Fat",
+    "nutrition_carbs": "Carbs",
+}
+
+
+def _profile_label(key: str) -> str:
+    """Humanized English label for a spec field key (Contract 1 fallback)."""
+    if key in _CATEGORY_PROFILE_LABEL_OVERRIDES:
+        return _CATEGORY_PROFILE_LABEL_OVERRIDES[key]
+    return key.replace("_", " ").capitalize()
+
+
+def _profile_value_ok(value: Any) -> bool:
+    """True iff a spec value is a real, displayable scalar (not N/A/null/object)."""
+    if value is None:
+        return False
+    if isinstance(value, (dict, list)):
+        return False
+    s = str(value).strip()
+    if not s or s.lower() in _PROFILE_NA_VALUES:
+        return False
+    return True
+
+
+def build_category_profile(category: Any, specs: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build the Contract-1 `category_profile` for one product.
+
+    Returns `{"category": <canonical>, "fields": [{key, label, value}, ...]}` —
+    fields ORDERED per CATEGORY_SPEC_SCHEMAS, each value cleaned (no N/A / null /
+    object / internal `_`-prefixed field), with a copy-policy-safe English label.
+    A field a product lacks is OMITTED (symmetry: both products iterate the same
+    schema order, so the FE aligns by key with no blank second product). `fields`
+    is `[]` when nothing populates (FE hides the block).
+
+    Defensive: canonicalizes the category (the keystone — "Fragrances"→"fragrances"
+    so the right schema is used), tolerates a None/empty specs dict, and falls
+    back to the "other" schema for an unknown category.
+    """
+    canonical = canonicalize_category(category)
+    schema = CATEGORY_SPEC_SCHEMAS.get(canonical) or CATEGORY_SPEC_SCHEMAS.get("other", [])
+    fields: List[Dict[str, str]] = []
+    if isinstance(specs, dict):
+        for key in schema:
+            value = specs.get(key)
+            if not _profile_value_ok(value):
+                continue
+            fields.append({
+                "key": key,
+                "label": _profile_label(key),
+                "value": str(value).strip(),
+            })
+    return {"category": canonical, "fields": fields}
+
+
+# ============================================
 # EXTRACTION FUNCTIONS
 # ============================================
 

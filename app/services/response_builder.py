@@ -79,6 +79,21 @@ def _safe_review_praise(pd: Dict[str, Any]) -> Optional[str]:
         return None
 
 
+def _safe_category_profile(pd: Dict[str, Any], category_used: str) -> Dict[str, Any]:
+    """Contract-1 category_profile for a product, fail-soft to an empty block.
+
+    Prefers the per-product `category`; falls back to the response-level
+    `category_used` so BOTH products key the SAME schema (symmetry — no blank
+    second product from a category mismatch). Never raises."""
+    try:
+        from app.services.extraction_service import build_category_profile
+        pdd = pd or {}
+        cat = pdd.get("category") or category_used
+        return build_category_profile(cat, pdd.get("specs"))
+    except Exception:  # noqa: BLE001 — additive; never break the response
+        return {"category": category_used or "other", "fields": []}
+
+
 def _factual_verdict_present_in_scoring_v2(scoring_v2: Dict[str, Any]) -> bool:
     """Return True iff scoring_v2 has a factual_verdict with line1 or line2.
     Used by the § 1b diagnostic and patchable from tests to simulate the
@@ -1463,6 +1478,13 @@ def build_comparison_response(
         pd["review_praise"] = _safe_review_praise(pd)
         if "rating_count" not in pd:
             pd["rating_count"] = pd.get("review_count")
+        # Faithful-Results Phase 3.2 (Contract 1) — category_profile: an ordered,
+        # category-appropriate label/value list the FE renders from one generic
+        # component (hidden when fields == []). Built from the product's specs +
+        # CATEGORY_SPEC_SCHEMAS; canonicalizes its own category (keystone). Uses
+        # the response-level category_used as the fallback when the per-product
+        # category is missing, so BOTH products key the SAME schema (symmetry).
+        pd["category_profile"] = _safe_category_profile(pd, category_used)
     result["products"] = product_data
     result["comparison"] = comparison
     result["recommendation"] = comparison.get("winner_reason", "")
