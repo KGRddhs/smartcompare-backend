@@ -1617,6 +1617,9 @@ class StructuredComparisonService:
                     scoring_result.get("dimension_winners", {}),
                     product_names,
                     scoring_result.get("winner_index", 0),
+                    # F4.2 — pass scores so a winner-sweep falls back to the
+                    # loser's strongest dim (non-empty runner-up card).
+                    scores=scoring_result.get("scores"),
                 )
             confidence = scoring_service.compute_confidence(
                 product_data,
@@ -1625,6 +1628,20 @@ class StructuredComparisonService:
             )
         except Exception as e:  # noqa: BLE001 — partial must never crash
             logger.warning("[WS1] partial tradeoff/confidence derive failed: %s", e)
+
+        # F4.4 — on the hard-cap partial path the LLM verdict may be empty
+        # (comparison == {}), leaving the user with no recommendation at all.
+        # When scoring landed, synthesize a DETERMINISTIC verdict from the scores
+        # so the user always gets SOMETHING (winner + a score-based reason +
+        # the loser's strongest dim as the tradeoff). Never overwrites a real LLM
+        # verdict — only fills when winner_reason/declaration are missing.
+        if scoring_result and not (comparison.get("winner_reason") and comparison.get("winner_declaration")):
+            try:
+                comparison = self._deterministic_partial_verdict(
+                    comparison, scoring_result, product_names, tradeoffs
+                )
+            except Exception as e:  # noqa: BLE001 — partial must never crash
+                logger.warning("[WS1] deterministic partial verdict failed: %s", e)
 
         result = build_comparison_response(
             product_data=product_data,
@@ -2045,7 +2062,7 @@ class StructuredComparisonService:
 
             # Trust validation
             from app.services.trust_validation_service import validate_verdict
-            verdict_validation = validate_verdict(comparison, scoring_result, detected_category)
+            verdict_validation = validate_verdict(comparison, scoring_result, detected_category, products=product_data)
 
             # Extract pros/cons
             if include_pros_cons:
@@ -2085,7 +2102,9 @@ class StructuredComparisonService:
 
             # Compute tradeoffs and confidence
             tradeoffs = scoring_service.compute_tradeoff_pairs(
-                scoring_result.get("dimension_winners", {}), product_names, scoring_result.get("winner_index", 0)
+                scoring_result.get("dimension_winners", {}), product_names,
+                scoring_result.get("winner_index", 0),
+                scores=scoring_result.get("scores"),  # F4.2 sweep fallback
             )
             from_cache = not nocache
             confidence = scoring_service.compute_confidence(
@@ -2555,7 +2574,7 @@ class StructuredComparisonService:
             )
 
             from app.services.trust_validation_service import validate_verdict
-            verdict_validation = validate_verdict(comparison, scoring_result, detected_category)
+            verdict_validation = validate_verdict(comparison, scoring_result, detected_category, products=product_data)
 
             if include_pros_cons:
                 # Bundle C v1 hot-fix (round 2) § 1a diagnostic — streaming path
@@ -2589,7 +2608,9 @@ class StructuredComparisonService:
 
             # Compute tradeoffs
             tradeoffs = scoring_service.compute_tradeoff_pairs(
-                scoring_result.get("dimension_winners", {}), product_names, scoring_result.get("winner_index", 0)
+                scoring_result.get("dimension_winners", {}), product_names,
+                scoring_result.get("winner_index", 0),
+                scores=scoring_result.get("scores"),  # F4.2 sweep fallback
             )
 
             winner_index = comparison.get("winner_index", 0)
@@ -4636,6 +4657,52 @@ class StructuredComparisonService:
             save_price(cache_key, brand, name, variant, region, price),
             label="save_price",
         )
+
+    def _deterministic_partial_verdict(
+        self,
+        comparison: Dict[str, Any],
+        scoring_result: Dict[str, Any],
+        product_names: List[str],
+        tradeoffs: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """F4.4 — synthesize a deterministic verdict from scores for the hard-cap
+        partial path so the user never gets an empty recommendation.
+
+        Fills winner_index / winner_declaration / winner_reason from the
+        deterministic scores, and key_tradeoff from the loser's strongest dim
+        (the F4.2 tradeoff already computed). Merges onto whatever the LLM
+        verdict had — never overwrites a present field. Returns a NEW dict."""
+        out = dict(comparison or {})
+        scores = scoring_result.get("scores") or {}
+        winner_index = scoring_result.get("winner_index", 0)
+        if not (0 <= winner_index < len(product_names)):
+            winner_index = 0
+        winner_name = product_names[winner_index] if product_names else ""
+        w_overall = ((scores.get(f"product_{winner_index}") or {}).get("overall"))
+        l_overall = ((scores.get(f"product_{1 - winner_index}") or {}).get("overall"))
+
+        out.setdefault("winner_index", winner_index)
+        if not out.get("winner_declaration"):
+            out["winner_declaration"] = winner_name
+        if not out.get("winner_reason"):
+            if isinstance(w_overall, (int, float)) and isinstance(l_overall, (int, float)):
+                margin = round(abs(w_overall - l_overall), 1)
+                out["winner_reason"] = (
+                    f"{winner_name} leads on the overall score by {margin} points."
+                    if margin > 0 else
+                    f"{winner_name} edges ahead on the overall picture."
+                )
+            elif winner_name:
+                out["winner_reason"] = f"{winner_name} leads on the overall picture."
+        # key_tradeoff from the loser's strongest dim (F4.2 tradeoff result).
+        if not out.get("key_tradeoff") and tradeoffs:
+            lw = (tradeoffs[0] or {}).get("loser_wins") or {}
+            dim = lw.get("dimension")
+            loser_name = lw.get("product")
+            if dim and loser_name:
+                dim_label = dim.replace("_score", "").replace("_", " ")
+                out["key_tradeoff"] = f"{loser_name} stays competitive on {dim_label}."
+        return out
 
     def _record_negative_price_cache(self, cache_key: str, price: Dict) -> None:
         """Task 1.3 — record a structural genuine-BH dead-end so the next call

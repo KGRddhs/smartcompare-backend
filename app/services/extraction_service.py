@@ -634,7 +634,7 @@ RULES:
 - winner_reason MUST be under 20 words and cite the single most important numeric advantage
 - key_tradeoff: ONE sentence naming the losing product's single strongest advantage
 - value_context: per-product dict with keys product_0 and product_1. Each value is ONE sentence about THAT product's price-to-quality relationship for the GCC market. The two sentences MUST be distinct -- never reuse the same string for both products. If cross-tier, frame each as "different products for different needs" but still describe each product specifically.
-- best_for: one sentence per product describing the ideal buyer profile
+- best_for: one sentence per product describing the ideal buyer profile. For the RUNNER-UP (the product that did NOT win), best_for MUST name a CONCRETE buyer who should genuinely pick it over the winner and WHY (e.g. "Someone who wears fragrance to the office and needs all-day longevity over projection") -- a real reason-to-choose-the-other, not a generic restatement of the product. The runner-up almost always wins for SOME buyer; name that buyer specifically.
 - Be DECISIVE -- pick a clear winner and defend it with data
 - For luxury/designer products, consider brand prestige and craftsmanship in value assessment
 - ANTI-PATTERN -- spec-sheet edge at price parity: when performance is near parity, do NOT let a marginal spec-sheet edge decide the winner. Prefer the lower Bahrain price on value-per-dinar UNLESS a durability, service-network, or update-guarantee gap licenses the premium. This cuts BOTH ways: a cheaper product is not automatically better value, and a pricier product is not automatically more capable -- weigh whether the gap is actually worth the extra dinars for THIS buyer.
@@ -1186,13 +1186,13 @@ def _build_preferences_prompt(
 
 Based on these preferences, your verdict MUST:
 1. Explain WHY this product is better FOR THIS USER (not generically)
-2. Reference specific preferences ("You prioritize battery life, and Product A has 5000mAh vs 3349mAh")
+2. The MAIN winner_reason itself MUST name the user's TOP priority and connect it to the winning product with a specific fact (e.g. "You prioritize battery life -- Product A's 5000mAh beats the 3349mAh here"). Do NOT bury the priority only in the side-insights -- the primary verdict sentence the user reads first must reflect what THEY care about. (This is the difference between personalization that lands and a generic verdict.)
 3. Interpret budget contextually: "budget" for phones means <$300, for supplements means <$15
 4. Flag if a product conflicts with lifestyle (e.g., non-vegan supplement for vegan user)
 5. For brand_loyal users: weight established brand reputation higher
 6. For function_first users: ignore brand entirely, focus on specs and value
 7. For best_of_both users: prefer branded options when specs are similar, but recommend better-performing product even if lesser brand
-8. In best_for, if a product aligns with the user's stated priorities, note which priorities it aligns with"""
+8. In best_for, name which of the user's stated priorities each product aligns with -- and for the runner-up, frame its best_for around the priority where IT would serve this user better, so the user sees a real reason the other option could fit them."""
 
     cohort_block = _build_cohort_priors_block(demographics_profile)
     return base + cohort_block

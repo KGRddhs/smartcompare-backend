@@ -124,3 +124,61 @@ class TestVerdictValidation:
         assert result["winner_aligned"] is True
         # Should still work with "other" dimensions
         assert isinstance(result["claims_validated"], int)
+
+
+class TestLongevityConsistency:
+    """F4.1 — flag a fragrance longevity contradiction: the longevity_score
+    dimension winner disagrees with the spec-stated longevity ("all day" vs
+    "5-6 hours"). Cross-check via the optional `products` param (specs), so a
+    backwards longevity scorer is CAUGHT at the validation layer without
+    changing scoring math."""
+
+    def _scoring(self, long0, long1, winner_index=0):
+        # longevity_score has p0 LEADING (the contradiction: p0 wins the dim
+        # while its spec longevity is SHORTER).
+        return {
+            "scores": {
+                "product_0": {"overall": 70, "breakdown": {"longevity_score": long0, "character_score": 70}},
+                "product_1": {"overall": 61, "breakdown": {"longevity_score": long1, "character_score": 58}},
+            },
+            "winner_index": winner_index,
+            "dimension_winners": {},
+        }
+
+    def test_longevity_contradiction_flagged(self):
+        # p0 wins longevity_score (78.7 > 70.5) BUT p0 spec "5-6 hours" < p1 "all day".
+        scoring = self._scoring(78.7, 70.5)
+        products = [
+            {"specs": {"longevity": "5-6 hours"}},
+            {"specs": {"longevity": "all day"}},
+        ]
+        result = validate_verdict({"winner_index": 0}, scoring, "fragrances", products=products)
+        assert result.get("longevity_consistent") is False
+
+    def test_longevity_consistent_when_aligned(self):
+        # p0 wins longevity_score AND p0 spec "all day" > p1 "5-6 hours" — consistent.
+        scoring = self._scoring(78.7, 70.5)
+        products = [
+            {"specs": {"longevity": "all day"}},
+            {"specs": {"longevity": "5-6 hours"}},
+        ]
+        result = validate_verdict({"winner_index": 0}, scoring, "fragrances", products=products)
+        assert result.get("longevity_consistent") is True
+
+    def test_no_products_no_longevity_key(self):
+        # Backward-compat: without products, no longevity check is performed.
+        scoring = self._scoring(78.7, 70.5)
+        result = validate_verdict({"winner_index": 0}, scoring, "fragrances")
+        assert "longevity_consistent" not in result or result["longevity_consistent"] is None
+
+    def test_non_fragrance_skips_longevity_check(self):
+        scoring = {
+            "scores": {
+                "product_0": {"overall": 70, "breakdown": {"performance_score": 80}},
+                "product_1": {"overall": 60, "breakdown": {"performance_score": 60}},
+            },
+            "winner_index": 0, "dimension_winners": {},
+        }
+        products = [{"specs": {"longevity": "5-6 hours"}}, {"specs": {"longevity": "all day"}}]
+        result = validate_verdict({"winner_index": 0}, scoring, "electronics", products=products)
+        assert "longevity_consistent" not in result or result["longevity_consistent"] is None
