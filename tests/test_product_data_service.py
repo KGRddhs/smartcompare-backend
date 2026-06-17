@@ -129,6 +129,10 @@ async def test_get_cached_price_returns_latest_when_fresh():
 
 @pytest.mark.asyncio
 async def test_get_cached_price_returns_none_when_stale():
+    # Faithful-Results Task 1.1 — a GENUINE source_method (local_bhd) now uses the
+    # 7d window, so staleness must be measured against GENUINE_PRICE_DB_TTL. A
+    # price stale past 7d is None.
+    from app.services.product_data_service import GENUINE_PRICE_DB_TTL
     client = _mock_supabase()
     client.execute.return_value = MagicMock(data=[{
         "amount": "299.00",
@@ -137,7 +141,47 @@ async def test_get_cached_price_returns_none_when_stale():
         "url": None,
         "source_method": "local_bhd",
         "estimated": False,
-        "fetched_at": _stale_timestamp(PRICE_DB_TTL),
+        "fetched_at": _stale_timestamp(GENUINE_PRICE_DB_TTL),
+    }])
+    with patch("app.services.product_data_service.get_admin_supabase_client", return_value=client):
+        result = await get_cached_price("price:abc123def4", "bahrain")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_cached_genuine_price_fresh_within_7d():
+    # Faithful-Results Task 1.1 — a genuine price 1 day old is STILL fresh under
+    # the 7d genuine window (the OLD flat-24h window wrongly rejected it and
+    # re-burned a scrape). This is the core behavior change.
+    client = _mock_supabase()
+    client.execute.return_value = MagicMock(data=[{
+        "amount": "299.00",
+        "currency": "BHD",
+        "retailer": "amazon.sa",
+        "url": None,
+        "source_method": "local_bhd",
+        "estimated": False,
+        "fetched_at": _stale_timestamp(PRICE_DB_TTL),  # ~25h old
+    }])
+    with patch("app.services.product_data_service.get_admin_supabase_client", return_value=client):
+        result = await get_cached_price("price:abc123def4", "bahrain")
+    assert result is not None
+    assert result["amount"] == 299.0
+
+
+@pytest.mark.asyncio
+async def test_get_cached_converted_price_stale_after_24h():
+    # Faithful-Results Task 1.1 — a CONVERTED price keeps the 24h window, so it is
+    # stale past 24h (refreshes toward a genuine price sooner).
+    client = _mock_supabase()
+    client.execute.return_value = MagicMock(data=[{
+        "amount": "299.00",
+        "currency": "BHD",
+        "retailer": "amazon.sa",
+        "url": None,
+        "source_method": "converted_usd",
+        "estimated": False,
+        "fetched_at": _stale_timestamp(PRICE_DB_TTL),  # ~25h old
     }])
     with patch("app.services.product_data_service.get_admin_supabase_client", return_value=client):
         result = await get_cached_price("price:abc123def4", "bahrain")

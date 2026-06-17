@@ -109,12 +109,21 @@ class TestCurrencyConversion:
 
 class TestAllTiersFail:
     def test_all_tiers_fail_returns_none_amount(self, service):
-        """When all 3 tiers fail, price.amount should be None."""
+        """When all 3 tiers fail, price.amount should be None.
+
+        Hermetic isolation (Faithful-Results Phase 1): also mock the L2 DB read,
+        the negative-cache, and the Tier-1.5 escalation gate so the test cannot
+        be served a cached/scraped genuine price from prod (the L2 7d genuine
+        window now correctly serves a recent genuine row, which this 'all tiers
+        fail' test must isolate from)."""
         with patch("app.services.structured_comparison_service.search_product_prices", new_callable=AsyncMock) as mock_shop, \
              patch("app.services.structured_comparison_service.search_price_organic", new_callable=AsyncMock) as mock_organic, \
              patch("app.services.structured_comparison_service.extract_price", new_callable=AsyncMock) as mock_gpt_price, \
              patch("app.services.structured_comparison_service.extract_price_from_training_data", new_callable=AsyncMock) as mock_tier3, \
-             patch("app.services.structured_comparison_service.get_cached", return_value=None):
+             patch("app.services.structured_comparison_service.get_cached", return_value=None), \
+             patch("app.services.product_data_service.get_cached_price", new_callable=AsyncMock, return_value=None), \
+             patch("app.services.structured_comparison_service.get_negative_cache", return_value=None), \
+             patch("app.services.structured_comparison_service.should_escalate", return_value=False):
             mock_shop.return_value = {"shopping": [], "organic": []}
             mock_organic.return_value = {"organic": [], "knowledge_graph": None}
             mock_gpt_price.return_value = ({"amount": None}, {"prompt_tokens": 0, "completion_tokens": 0})
