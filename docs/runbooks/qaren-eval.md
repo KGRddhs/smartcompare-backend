@@ -56,6 +56,9 @@ smoke20 gate needs a smoke20 baseline:
   **Gate teeth = the AXES** — specs (0.9875) + factual (1.0) must NOT regress; winner
   (0.4) is the structural baseline; pass_rate is floored at 0 by the cold-pend price
   behavior (so "no pass_rate regression" is trivially true — don't read it as the signal).
+  **➤ SUPERSEDED for FUTURE gates by `54b603e8-4eab-41c9-a34d-a5e391446559`** (post-bundle-next,
+  winner 0.50 — see the "Bundle-next #16" section below). Use `54b603e8` as the baseline-run-id
+  going forward; `7a5fc55b` (this row) is the historical pre-bundle-next baseline.
 
 ## Wave-2 #12 record (Faithful-Results, 2026-06-17)
 
@@ -89,6 +92,29 @@ smoke20 gate needs a smoke20 baseline:
     (`getaddrinfo failed` — same wall as `--persist`). The axis comparison was done
     MANUALLY vs the known baseline values (all green above). To get the harness's own
     verdict, run from a Supabase-reachable env OR eyeball row `7a5fc55b` via Supabase MCP.
+
+## Bundle-next #16 (longevity scorer) post-deploy eval: PASS (2026-06-17, prod `5999799`)
+
+> **NEW smoke20 regression ANCHOR = `54b603e8-4eab-41c9-a34d-a5e391446559`** (eval_runs,
+> MCP-inserted; winner 0.50, prod_sha `5999799`, `supersedes: 7a5fc55b`). **Future smoke20
+> `--mode regression` gates use `54b603e8`** (`--baseline-run-id 54b603e8-4eab-41c9-a34d-a5e391446559`).
+> `7a5fc55b` (winner 0.40) is retained as the HISTORICAL pre-bundle-next baseline only.
+
+smoke20 regression vs `7a5fc55b` after QA's S1/S2/S3 prod smoke went green. All 20 queries,
+0 errors, p50 16014ms / p95 19608ms (within cap). Axes (tol 2pp): price 0.000->0.000
+(held), **specs 0.9875->0.9875 (HELD)**, **winner 0.400->0.500 (IMPROVED +10pp)**,
+**factual 1.000->1.000 (HELD)**. GATE TEETH PASS; no axis regressed. genuine-BH 4/4 priced.
+- #16's longevity reconcile fired where data populated (frag-006 winner now correct);
+  frag-001 still cold-unscored (longevity field absent cold → the >=1h precondition isn't
+  met → reconcile can't fire — the known cold-data limitation, NOT a fault; #16's logic is
+  proven by its 152 unit tests + the prod-contradiction fixture). True effect lands
+  post-warmer when longevity data is present across more pairs.
+- Same exit-code caveat as above (Supabase-DNS baseline-fetch fail → manual axis compare).
+- **Pre-flight lesson:** a single cold price probe returning all-`estimated` does NOT prove
+  a dead Serper key (it can be product-specific empty). Disambiguate with a SECOND cold
+  probe on a different well-known product BEFORE a 250cr eval — a genuine result there
+  (shopify_json / local_bhd) confirms the key is live with headroom. (iPhone 15 Pro
+  all-estimated scared, Sony WH-1000XM5 genuine confirmed live — then ran.)
 
 ## Persistence (`--persist`)
 
