@@ -45,6 +45,8 @@ from app.services.cache_service import (
     # Faithful-Results Task 1.3 — negative-cache for structural genuine-BH gaps.
     get_negative_cache,
     set_negative_cache,
+    # Task 1.6 — cache hit-rate observability counter.
+    record_cache_observability,
 )
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
@@ -528,6 +530,8 @@ from app.services.price_service import (
     # Task 1.3 — negative-cache for structural genuine-BH dead-ends.
     negative_cache_key,
     should_negative_cache,
+    # Task 1.6 — genuine-method set for the cache-observability classification.
+    _GENUINE_BH_SOURCE_METHODS,
     RETAILER_TIERS,
     DEFAULT_RETAILER_SCORE,
     RETAILER_SEARCH_URLS,
@@ -3081,6 +3085,20 @@ class StructuredComparisonService:
             _settled_price = result.get("price")
             if isinstance(_settled_price, dict) and _settled_price.get("amount"):
                 record_price_outcome(category, _settled_price.get("source_method"))
+                # Task 1.6 — cache hit-rate observability: was this price served
+                # from cache, and was it a genuine-BH price (the warmer win) vs a
+                # freshly-scraped genuine price (a scrape spent)? Fail-open.
+                _sm = (_settled_price.get("source_method") or "").lower()
+                _is_genuine = (
+                    _sm in _GENUINE_BH_SOURCE_METHODS
+                    and "converted" not in _sm and "estimate" not in _sm
+                )
+                _from_cache = bool(_settled_price.get("_cached"))
+                record_cache_observability(
+                    cache_hit=_from_cache,
+                    genuine_from_cache=_is_genuine and _from_cache,
+                    genuine_fresh=_is_genuine and not _from_cache,
+                )
         except Exception:  # noqa: BLE001 — metric must never break the response
             pass
 

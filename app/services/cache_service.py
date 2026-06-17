@@ -323,6 +323,81 @@ def get_real_price_coverage(
     return out
 
 
+# ============================================
+# S? Faithful-Results Task 1.6 — cache hit-rate observability
+# ============================================
+# Per-day counters of price cache outcomes so /admin/costs shows how much of the
+# genuine-price load is served from cache ($0) vs freshly scraped — the dial that
+# proves the warmer + long-TTL cache are working. Three buckets per day:
+#   cache_hit       — a price served from cache (any method)
+#   genuine_cache   — a GENUINE-BH price served from cache (the warmer win)
+#   genuine_fresh   — a GENUINE-BH price freshly resolved (a scrape was spent)
+# Fire-and-forget + fail-open, same shape as record_price_outcome.
+
+def record_cache_observability(cache_hit: bool, genuine_from_cache: bool, genuine_fresh: bool) -> None:
+    """Count one comparison's price cache outcome (today, UTC). Each flag that is
+    True increments its day bucket. Fail-open — no-op when Redis is down."""
+    if not redis_client:
+        return
+    ds = _utc_daystamp()
+    for flag, name in (
+        (cache_hit, "cache_hit"),
+        (genuine_from_cache, "genuine_cache"),
+        (genuine_fresh, "genuine_fresh"),
+    ):
+        if flag:
+            key = f"cache_obs:{name}:{ds}"
+            if _redis_incr(key) == 1:
+                _redis_expire(key, _TIER15_METRIC_TTL)
+
+
+def get_cache_observability(days: int = 7) -> Dict[str, Any]:
+    """Aggregate the trailing `days`-window cache outcomes.
+
+    Returns `{cache_hits, genuine_from_cache, genuine_fresh, genuine_cache_share}`
+    where genuine_cache_share = genuine_from_cache / (genuine_from_cache +
+    genuine_fresh) — the fraction of genuine prices served at $0. Fail-open to a
+    zeroed block; single mget for the whole window."""
+    out = {
+        "cache_hits": 0, "genuine_from_cache": 0, "genuine_fresh": 0,
+        "genuine_cache_share": 0.0,
+    }
+    if not redis_client:
+        return out
+    daystamps = [_utc_daystamp(i) for i in range(days)]
+    names = ["cache_hit", "genuine_cache", "genuine_fresh"]
+    keys = [f"cache_obs:{n}:{ds}" for n in names for ds in daystamps]
+    try:
+        values = redis_client.mget(*keys)
+    except TypeError:
+        try:
+            values = redis_client.mget(keys)
+        except Exception as e:
+            logger.warning(f"[CACHE_OBS] mget failed: {e}")
+            return out
+    except Exception as e:
+        logger.warning(f"[CACHE_OBS] mget failed: {e}")
+        return out
+    totals = {n: 0 for n in names}
+    idx = 0
+    for n in names:
+        for _ in daystamps:
+            v = values[idx] if idx < len(values) else None
+            idx += 1
+            try:
+                totals[n] += int(v) if v else 0
+            except (TypeError, ValueError):
+                pass
+    gen_cache = totals["genuine_cache"]
+    gen_fresh = totals["genuine_fresh"]
+    gen_total = gen_cache + gen_fresh
+    out["cache_hits"] = totals["cache_hit"]
+    out["genuine_from_cache"] = gen_cache
+    out["genuine_fresh"] = gen_fresh
+    out["genuine_cache_share"] = round(gen_cache / gen_total, 4) if gen_total > 0 else 0.0
+    return out
+
+
 def _registry_domains() -> List[str]:
     """Domains to probe for per-domain source-hit aggregation. Defaults to the
     Bahrain-first source registry so the dashboard works without a

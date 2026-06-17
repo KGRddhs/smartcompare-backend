@@ -34,6 +34,41 @@ def _factual_verdict_diag_enabled() -> bool:
     return _FACTUAL_VERDICT_DIAG_FLAG
 
 
+def _compute_cache_observability(
+    product_data: Optional[List[Dict[str, Any]]],
+) -> Dict[str, bool]:
+    """Faithful-Results Task 1.6 — per-response cache hit-rate signal.
+
+    Returns `{cache_hit, genuine_from_cache}`:
+      - `cache_hit`: True iff ANY product's price was served from cache
+        (price `_cached` truthy).
+      - `genuine_from_cache`: True iff a GENUINE-BH price (a
+        `_GENUINE_BH_SOURCE_METHODS` method) was served from cache — the dial
+        that proves the warmer serves genuine prices at $0 instead of
+        re-scraping them.
+
+    Defensive: price may be None / missing source_method / a pending shape.
+    """
+    out = {"cache_hit": False, "genuine_from_cache": False}
+    if not product_data:
+        return out
+    try:
+        from app.services.price_service import _GENUINE_BH_SOURCE_METHODS
+    except Exception:  # noqa: BLE001 — never let the import break response build
+        _GENUINE_BH_SOURCE_METHODS = frozenset()
+    for p in product_data:
+        price = (p or {}).get("price")
+        if not isinstance(price, dict):
+            continue
+        if not price.get("_cached"):
+            continue
+        out["cache_hit"] = True
+        sm = (price.get("source_method") or "").lower()
+        if sm in _GENUINE_BH_SOURCE_METHODS and "converted" not in sm and "estimate" not in sm:
+            out["genuine_from_cache"] = True
+    return out
+
+
 def _factual_verdict_present_in_scoring_v2(scoring_v2: Dict[str, Any]) -> bool:
     """Return True iff scoring_v2 has a factual_verdict with line1 or line2.
     Used by the § 1b diagnostic and patchable from tests to simulate the
@@ -1342,6 +1377,11 @@ def build_comparison_response(
             "missing_dim_cells": count_missing_dim_cells(
                 scoring_result or {}, category_used
             ),
+            # Faithful-Results Task 1.6 — per-response cache hit-rate signal:
+            # cache_hit (any price from cache) + genuine_from_cache (a genuine-BH
+            # price served from cache — the warmer-working dial). Spread so both
+            # keys land directly on metadata.
+            **_compute_cache_observability(product_data),
         },
     }
 
