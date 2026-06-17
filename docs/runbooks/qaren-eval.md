@@ -26,6 +26,37 @@ Authored by Lane F4, Bundle B Session 1 (2026-06-10).
   `--allow-full` is REQUIRED (cost guard). A cold-cache full run burns ~600–1,000 Serper
   credits (~half a fresh free key) + GPT — NEVER run without explicit dispatcher GO.
 
+## Baselines (run-ids the gate compares against)
+
+The documented S1 full-200 baseline `4aee8e88-da97-41b3-974b-3e75c2c9c10e` is **subset
+`full` (200)** — it MISMATCHES the smoke20 regression gate (long-standing caveat). The
+smoke20 gate needs a smoke20 baseline:
+
+- **smoke20 cold baseline (Faithful-Results, 2026-06-17)** — prod = main `2c10cb8`
+  (current main; prod stays here until the bundle's Phase-8 deploy). ACTUAL command run
+  (the plan's `--mode baseline` was a doc error — there is no `baseline` mode; use
+  `absolute --threshold 0.0` to capture+persist without gating):
+  ```bash
+  TARGET_BASE_URL=https://web-production-58776.up.railway.app python -u -m scripts.eval_runner \
+    --subset smoke20 --mode absolute --threshold 0.0 --persist --concurrency 1 --run-kind manual
+  ```
+  Result: pass_rate **0.0%** (0/20); axis price=0.000 specs=0.988 winner=0.400
+  factual=1.000; p50=16656ms p95=21327ms (within 30s cap); 0 errors. The 0% is the honest
+  cold-cache price-pending state — current-main pends almost all prices on a cold
+  `nocache` run (priced_cells=1/40), so the price axis collapses to 0 and drags weighted
+  scores below the 0.80 pass floor. THIS is the genuine-price problem the bundle attacks;
+  the A4 `--read-cache` variant is what will measure the warmed state.
+  gold_truth_version = `aed2cc9bb7f5d15bd530d5e91c99e3e09860f829`. Run-id:
+  **`7a5fc55b-126c-4097-9295-976541a523d0`** (eval_runs, project `qulajmyxdbdkchvecmvc`,
+  created_at 2026-06-17 16:54Z) — inserted via Supabase MCP because the eval box can't
+  DNS-reach Supabase to `--persist` (`getaddrinfo failed`). **This is the smoke20
+  regression anchor; it SUPERSEDES the mismatched full-200 `4aee8e88...` for any
+  `--subset smoke20` run.** Post-deploy 7.3 gate:
+  `python -m scripts.eval_runner --subset smoke20 --mode regression --baseline-run-id 7a5fc55b-126c-4097-9295-976541a523d0 --concurrency 1`.
+  **Gate teeth = the AXES** — specs (0.9875) + factual (1.0) must NOT regress; winner
+  (0.4) is the structural baseline; pass_rate is floored at 0 by the cold-pend price
+  behavior (so "no pass_rate regression" is trivially true — don't read it as the signal).
+
 ## Persistence (`--persist`)
 
 Writes ONE `eval_runs` row (migration 031) via the service-role Supabase client:
