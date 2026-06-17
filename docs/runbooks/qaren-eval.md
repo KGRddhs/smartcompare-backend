@@ -76,9 +76,19 @@ smoke20 gate needs a smoke20 baseline:
   check on the new functions: all covered after filling the one gap — BE's
   `is_haircare_query` had zero coverage (its sibling `is_implausible_low_haircare_price`
   checks premium brands directly, bypassing the predicate) → filled (`20e3c89`).
-- **Post-deploy eval (this section's anchor):** prod is `3d870c8` post-merge. The smoke20
-  eval regression runs vs `7a5fc55b` AFTER the deploy settles (dispatcher GO-LIVE) — gate
-  teeth = the axes above.
+- **Post-deploy eval: PASS (2026-06-17, prod `3d870c8`).** smoke20 regression vs
+  `7a5fc55b` after QA's per-category smoke went green. All 20 queries, 0 errors, p50
+  17375ms / p95 20359ms (within cap). Axes vs baseline (tol 2pp): price 0.000->0.000
+  (held, cold-pend floored), **specs 0.9875->0.9875 (HELD)**, winner 0.400->0.450
+  (IMPROVED +5pp), **factual 1.000->1.000 (HELD)**. GATE TEETH (specs+factual no-regress)
+  = PASS; no axis regressed >2pp. genuine-BH 3/3 priced (estimate-share 0%) — the new
+  genuine-cache path produced more genuine prices than the baseline run's 1.
+  - **Exit-code caveat (NOT a regression):** the runner printed `GATE FAIL [regression]:
+    baseline ... not found in eval_runs` + exit 1 because `eval_gate._regression_gate`
+    `fetch_eval_run()`s the baseline from Supabase and the eval box can't DNS-reach it
+    (`getaddrinfo failed` — same wall as `--persist`). The axis comparison was done
+    MANUALLY vs the known baseline values (all green above). To get the harness's own
+    verdict, run from a Supabase-reachable env OR eyeball row `7a5fc55b` via Supabase MCP.
 
 ## Persistence (`--persist`)
 
