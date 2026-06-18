@@ -178,9 +178,15 @@ def should_negative_cache(price: Optional[Dict[str, Any]]) -> bool:
     (Task 1.3).
 
     A dead-end is: no price at all, a price-pending shape, or a NON-genuine
-    method (estimated / converted_usd / converted_fallback / unknown) — i.e. the
-    full cascade ran and could not find a genuine Bahrain shelf price. A genuine
-    price (`_GENUINE_BH_SOURCE_METHODS`) is NOT a dead-end.
+    method (estimated / converted_fallback / unknown) — i.e. the full cascade ran
+    and could not find a genuine Bahrain shelf price. A genuine price
+    (`_GENUINE_BH_SOURCE_METHODS`) is NOT a dead-end.
+
+    Exception: `converted_usd` is a LIVE Serper-cited price (USD→BHD), not a
+    structural dead-end — the genuine scrape may succeed on a later request (a
+    transient render failure) or the price-cache warmer may resolve it, so it
+    must NOT be 30d-negative-cached (SF-1, code review 2026-06-18). Retrying the
+    cascade costs some Firecrawl/Scrape.do budget but yields correct info.
 
     Exception: a `validation_rejected` price is a garbage-QUERY rejection, not a
     structural product gap — it must NOT be negative-cached (a real product typed
@@ -194,7 +200,10 @@ def should_negative_cache(price: Optional[Dict[str, Any]]) -> bool:
     # A genuine BH price is never a dead-end.
     if sm in _GENUINE_BH_SOURCE_METHODS and "converted" not in sm and "estimate" not in sm:
         return False
-    # Everything else (estimated, converted_*, pending, blank method) is a gap.
+    # `converted_usd` is a live cited price, not a structural gap — see docstring.
+    if sm == "converted_usd":
+        return False
+    # Everything else (estimated, converted_fallback, pending, blank method) is a gap.
     return True
 
 # Retailer quality tiers

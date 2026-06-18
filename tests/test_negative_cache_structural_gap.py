@@ -58,10 +58,12 @@ class TestShouldNegativeCache:
     def test_estimated_should_negative_cache(self):
         assert should_negative_cache({"amount": 70.0, "source_method": "estimated"}) is True
 
-    def test_converted_usd_should_negative_cache(self):
-        # converted_usd is NOT genuine BH — it's a structural fallback; cache it
-        # so we don't re-scrape hunting for a genuine price that isn't there.
-        assert should_negative_cache({"amount": 85.0, "source_method": "converted_usd"}) is True
+    def test_converted_usd_NOT_negative_cached(self):
+        # SF-1 (code review 2026-06-18): converted_usd is a LIVE Serper-cited
+        # price, not a structural dead-end — the genuine scrape may succeed on a
+        # later request or the price-cache warmer may resolve it, so it must NOT
+        # be 30d-negative-cached. (converted_fallback still is — see below.)
+        assert should_negative_cache({"amount": 85.0, "source_method": "converted_usd"}) is False
 
     def test_converted_fallback_should_negative_cache(self):
         assert should_negative_cache({"amount": 85.0, "source_method": "converted_fallback"}) is True

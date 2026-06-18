@@ -562,7 +562,7 @@ export function ResultsAccordion({
                               {values[0] ?? '—'}
                             </Text>
                             <Text style={styles.specsCellKey}>
-                              {key.replace(/_/g, ' ')}
+                              {t(`results.spec.${key}`, { defaultValue: key.replace(/_/g, ' ') })}
                             </Text>
                             <Text
                               testID={

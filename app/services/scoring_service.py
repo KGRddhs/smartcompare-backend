@@ -1742,7 +1742,9 @@ class ScoringService:
                 and abs(h0 - h1) >= 1.0
             ):
                 hours_leader = 0 if h0 > h1 else 1
-                score_leader = 0 if s0 >= s1 else 1
+                # strict `>`: an exact computed tie (s0 == s1) needs no swap (it
+                # would be a no-op anyway), and never let a tie count as p0 leading.
+                score_leader = 0 if s0 > s1 else 1
                 if hours_leader != score_leader:
                     # Contradiction — assign the HIGHER score to the longer-
                     # lasting product (swap the two values).

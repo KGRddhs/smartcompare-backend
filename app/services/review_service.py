@@ -318,7 +318,14 @@ def build_retailer_quotes_from_reviews(
 # each highlight point (e.g. "Per fragrantica.com: ...").
 _PER_DOMAIN_PREFIX_RE = re.compile(r"^\s*per\s+[^\s:]+\.[a-z]{2,}[^:]*:\s*", re.I)
 # Any leftover domain token (foo.com / foo.bh / foo.co.uk) anywhere in the text.
-_BARE_DOMAIN_RE = re.compile(r"\b[a-z0-9][a-z0-9-]*\.[a-z]{2,}(?:\.[a-z]{2,})?\b", re.I)
+# Anchored to real TLDs (incl. GCC ccTLDs) so it strips bare retailer domains
+# (fragrantica.com, bn.boots.com) WITHOUT eating dot-joined product strings like
+# "S24.Ultra" or "12.Pro" (which would shrink a clause below the min-length and
+# drop real praise) — SF-3, code review 2026-06-18.
+_BARE_DOMAIN_RE = re.compile(
+    r"\b[a-z0-9][a-z0-9-]*\.(?:com|net|org|io|co|app|ai|bh|sa|ae|kw|qa|om|uk)(?:\.[a-z]{2})?\b",
+    re.I,
+)
 
 
 def _strip_attribution(text: str) -> str:
