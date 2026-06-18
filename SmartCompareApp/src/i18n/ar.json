@@ -648,6 +648,7 @@
   "results.accordion.prosConsLabel": "الإيجابيات والسلبيات",
   "results.reviews.ratingWithCount": "{{rating}} · {{count}} تقييم",
   "results.categoryProfile.title": "نظرة سريعة",
+  "results.categoryProfile.sub": "أبرز التفاصيل للمنتجين",
   "results.spec.display": "الشاشة",
   "results.spec.processor": "المعالج",
   "results.spec.ram": "الذاكرة العشوائية",

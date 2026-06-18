@@ -41,6 +41,14 @@ export interface CategoryProfileProps {
   /** Overall winner index — emphasizes that product's column (★ + accent name).
    *  Undefined → no star, natural product order (legacy/低-confidence callers). */
   winnerIndex?: 0 | 1;
+  /**
+   * W1 walk-fix 2026-06-18 — when `true`, render ONLY the 2-up grid (no own
+   * card chrome, no "At a glance" eyebrow). Used when CategoryProfile is
+   * EMBEDDED as a section inside the "Dig deeper" accordion, which already
+   * supplies the panel card + the section label. Default `false` keeps the
+   * standalone card form (own wrapper + eyebrow) for any other caller.
+   */
+  embedded?: boolean;
   testID?: string;
 }
 
@@ -60,9 +68,19 @@ function profileFields(product: Product | undefined): CategoryProfileField[] {
   );
 }
 
+/**
+ * True iff at least one product carries renderable category_profile fields.
+ * Exported so a host (e.g. ResultsAccordion) can decide whether to surface
+ * the embedded profile section WITHOUT duplicating the field-filter logic.
+ */
+export function hasCategoryProfile(products: Product[] | undefined): boolean {
+  return Array.isArray(products) && products.some((p) => profileFields(p).length > 0);
+}
+
 export function CategoryProfile({
   products,
   winnerIndex,
+  embedded = false,
   testID = 'category-profile',
 }: CategoryProfileProps) {
   const { t } = useTranslation();
@@ -81,10 +99,12 @@ export function CategoryProfile({
       ? [winnerIndex, winnerIndex === 0 ? 1 : 0].filter((i) => i < products.length)
       : products.map((_, i) => i);
 
-  return (
-    <View style={styles.wrapper} testID={testID}>
-      <Text style={styles.eyebrow}>{t('results.categoryProfile.title')}</Text>
-      <View style={styles.grid}>
+  // W1 walk-fix — EMBEDDED in the "Dig deeper" accordion: render only the
+  // 2-up grid (the accordion supplies the panel card + the section header
+  // label, so the standalone wrapper card + "At a glance" eyebrow would
+  // double up). Standalone callers keep the full card.
+  const grid = (
+    <View style={styles.grid}>
         {order.map((idx) => {
           const product = products[idx];
           const fields = perProduct[idx];
@@ -129,7 +149,22 @@ export function CategoryProfile({
             </View>
           );
         })}
+    </View>
+  );
+
+  if (embedded) {
+    // The accordion section owns the card + the "At a glance" label.
+    return (
+      <View testID={testID}>
+        {grid}
       </View>
+    );
+  }
+
+  return (
+    <View style={styles.wrapper} testID={testID}>
+      <Text style={styles.eyebrow}>{t('results.categoryProfile.title')}</Text>
+      {grid}
     </View>
   );
 }

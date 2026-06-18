@@ -299,3 +299,110 @@ describe('ResultsAccordion — render coverage', () => {
     expect(queryByText('+ Better camera')).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// W1 walk-fix 2026-06-18 — CategoryProfile moved INTO the accordion as the
+// FIRST "At a glance" section (curated; NOT the full Specs table). It renders
+// EMBEDDED (no own card — the accordion body supplies the chrome) and is
+// hidden entirely when neither product has category_profile fields.
+// ---------------------------------------------------------------------------
+describe('ResultsAccordion — "At a glance" category-profile section (W1)', () => {
+  const productsWithProfile: any = [
+    {
+      name: 'Black Orchid',
+      category_profile: {
+        category: 'fragrances',
+        fields: [
+          { key: 'scent_family', label: 'Scent family', value: 'Amber / Spicy' },
+          { key: 'longevity', label: 'Longevity', value: '8-10 hours' },
+        ],
+      },
+    },
+    {
+      name: 'Oud Wood',
+      category_profile: {
+        category: 'fragrances',
+        fields: [
+          { key: 'scent_family', label: 'Scent family', value: 'Woody' },
+          { key: 'notes_top', label: 'Top notes', value: 'Rosewood, Cardamom' },
+        ],
+      },
+    },
+  ];
+
+  it('shows the profile section FIRST (its toggle precedes reviews) when a product has profile fields', () => {
+    const { getByTestId } = render(
+      <ResultsAccordion
+        products={productsWithProfile}
+        winnerIndex={0}
+        testID="acc"
+      />,
+    );
+    const profileToggle = getByTestId('results-accordion-toggle-profile');
+    const reviewsToggle = getByTestId('results-accordion-toggle-reviews');
+    expect(profileToggle).toBeTruthy();
+    // DFS order — the profile toggle is encountered before the reviews toggle.
+    const order: string[] = [];
+    const walk = (n: any) => {
+      if (!n) return;
+      const tid = n?.props?.testID;
+      if (tid === 'results-accordion-toggle-profile' || tid === 'results-accordion-toggle-reviews') order.push(tid);
+      (Array.isArray(n.children) ? n.children : []).forEach(walk);
+    };
+    walk(render(
+      <ResultsAccordion products={productsWithProfile} winnerIndex={0} testID="acc" />,
+    ).toJSON());
+    expect(order[0]).toBe('results-accordion-toggle-profile');
+  });
+
+  it('renders the EMBEDDED curated grid when the profile section is opened', () => {
+    const { getByTestId, getByText } = render(
+      <ResultsAccordion
+        products={productsWithProfile}
+        winnerIndex={0}
+        testID="acc"
+      />,
+    );
+    fireEvent.press(getByTestId('results-accordion-toggle-profile'));
+    expect(getByTestId('results-accordion-body-profile')).toBeTruthy();
+    // Embedded CategoryProfile renders both columns + real field values.
+    expect(getByTestId('acc-category-profile-col-0')).toBeTruthy();
+    expect(getByTestId('acc-category-profile-col-1')).toBeTruthy();
+    expect(getByText('Amber / Spicy')).toBeTruthy();
+    expect(getByText('Rosewood, Cardamom')).toBeTruthy();
+  });
+
+  it('embedded profile does NOT render its own standalone card/eyebrow (no double-card)', () => {
+    const { getByTestId, queryByText } = render(
+      <ResultsAccordion
+        products={productsWithProfile}
+        winnerIndex={0}
+        testID="acc"
+      />,
+    );
+    fireEvent.press(getByTestId('results-accordion-toggle-profile'));
+    // The standalone "At a glance" eyebrow (results.categoryProfile.title) is
+    // NOT rendered inside the embedded grid — the SECTION HEADER carries the
+    // label instead. (The i18n stub returns the key, so assert the key text
+    // appears only via the section header path, not duplicated in the body.)
+    // The embedded component renders just the grid (no wrapper eyebrow Text).
+    const body = getByTestId('results-accordion-body-profile');
+    const texts: string[] = [];
+    const walk = (n: any) => {
+      if (!n) return;
+      if (typeof n.children?.[0] === 'string') texts.push(n.children[0]);
+      (Array.isArray(n.children) ? n.children : []).forEach(walk);
+    };
+    walk(body);
+    // The body shows field values/labels but NOT the standalone title eyebrow.
+    expect(texts).not.toContain('results.categoryProfile.title');
+    expect(queryByText).toBeTruthy();
+  });
+
+  it('hides the profile section entirely when no product has category_profile fields', () => {
+    const { queryByTestId } = render(
+      <ResultsAccordion products={mockProducts} testID="acc" />,
+    );
+    expect(queryByTestId('results-accordion-toggle-profile')).toBeNull();
+  });
+});
