@@ -1,0 +1,113 @@
+<!doctype html>
+<!-- @dsCard group="UI Kit — Mobile" name="Results — Category Structure" subtitle="Per-category dimensions · field order · fairness basis (all 9 categories)" viewport="900x1280" -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Qaren — Results · Category Structure (reference)</title>
+<link rel="stylesheet" href="../../colors_and_type.css" />
+<style>
+  :root {
+    --bg: #FFFFFF; --panel: #F8F8FA; --line: #E5E7EB;
+    --ink: #0A0A0B; --muted: #6B7280; --faint: #9CA3AF;
+    --accent: #10B981; --accentDark: #059669; --accentLight: #ECFDF5; --warn: #F59E0B;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #EFEFF3; font-family: var(--qaren-font-en, system-ui); color: var(--ink); }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 24px 48px; }
+  header h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; letter-spacing: -0.2px; }
+  header p { margin: 0 0 4px; font-size: 13px; line-height: 1.55; color: var(--muted); }
+  header .src { font-size: 11px; color: var(--faint); margin-top: 8px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 14px 0 4px; font-size: 11px; color: var(--muted); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; vertical-align: middle; margin-right: 5px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+  .cat { background: var(--bg); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  .cat h2 { margin: 0 0 10px; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .fair { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.2px; padding: 3px 8px; border-radius: 999px; }
+  .fair.has { background: var(--accentLight); color: var(--accentDark); }
+  .fair.none { background: #F3F4F6; color: var(--muted); }
+  .sect { margin-top: 12px; }
+  .sect h3 { margin: 0 0 6px; font-size: 10px; font-weight: 600; letter-spacing: 1.1px; text-transform: uppercase; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 11.5px; line-height: 1.2; padding: 4px 9px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--ink); }
+  .chip.hero { background: var(--accentLight); border-color: #BBF7D6; color: var(--accentDark); font-weight: 600; }
+  .fields { font-size: 11.5px; line-height: 1.7; color: var(--ink); }
+  .fields b { color: var(--ink); font-weight: 600; }
+  .note { font-size: 10.5px; color: var(--faint); margin-top: 6px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Results — Category Structure</h1>
+      <p><b>One shell, nine categories.</b> The Results layout is fixed; the <i>data</i> is per-category. Each comparison renders its own dimensions, its own ordered fields (which drive both the “Specs” table and the “At&nbsp;a&nbsp;glance” curated list), and its own price-comparability (“like-for-like”) basis.</p>
+      <p>These are the canonical structures the backend emits — the design agent should build category results from <i>these</i>, not invent dimensions or specs.</p>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--accent)"></span>Hero dimension (shown by default — top 4 by weight)</span>
+        <span><span class="dot" style="background:var(--panel);border:1px solid var(--line)"></span>Behind “See full breakdown”</span>
+      </div>
+      <div class="src">Source of truth: scoring_service.py <b>CATEGORY_DIMENSIONS</b> · extraction_service.py <b>CATEGORY_SPEC_SCHEMAS</b> + <b>build_category_profile</b> · price_service.py <b>CATEGORY_FAIRNESS</b>.</div>
+    </header>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <script>
+  // Authoritative per-category structure (verbatim from the backend schemas).
+  // dims: 6 in canonical order; the first 4 are the hero set (top-4 by weight).
+  // fields: CATEGORY_SPEC_SCHEMAS order (drives Specs table AND, filtered to
+  //   populated, the "At a glance" curated list). fairness: CATEGORY_FAIRNESS.
+  const DATA = [
+    { name: 'Electronics', fair: 'Like-for-like: storage (GB) · discrete', has: true,
+      dims: ['Performance','Value','Features','Build quality','Ecosystem','Future-proofing'],
+      fields: ['Display','Processor','RAM','Storage','Battery','Rear camera','Front camera','OS','Connectivity','Weight','Water resistance'] },
+    { name: 'Grocery', fair: 'Like-for-like: net weight / volume · continuous', has: true,
+      dims: ['Nutrition','Ingredients','Taste','Value per serving','Dietary fit','Availability'],
+      fields: ['Count','Size','Ingredients','Calories','Protein','Fat','Carbs','Origin','Organic','Allergens','Shelf life'] },
+    { name: 'Supplements', fair: 'Like-for-like: unit count · discrete', has: true,
+      dims: ['Efficacy','Safety','Dosage','Value per serving','Form','Trust'],
+      fields: ['Count','Serving size','Active ingredient','Dosage','Form','Allergens','Certifications','Origin','Organic','Shelf life','Calories'] },
+    { name: 'Makeup', fair: 'Like-for-like: volume / weight · continuous', has: true,
+      dims: ['Longevity','Shade match','Skin compatibility','Finish','Ingredient safety','Performance value'],
+      fields: ['Shade range','Finish','Coverage','Skin type','Ingredients','Cruelty-free','Vegan','SPF','Volume','Waterproof','Long-lasting','Heat stability'] },
+    { name: 'Skincare', fair: 'Like-for-like: volume / weight · continuous', has: true,
+      dims: ['Active ingredients','Efficacy evidence','Skin compatibility','Formulation','Sensory experience','Results value'],
+      fields: ['Skin type','Skin concern','Ingredients','Active ingredient','SPF','Fragrance-free','Cruelty-free','Vegan','Volume','pH level','Heat stability'] },
+    { name: 'Haircare', fair: 'Like-for-like: volume (ml) · continuous', has: true,
+      dims: ['Hair type match','Results','Ingredients','Scent','Multi-benefit value','Scalp safety'],
+      fields: ['Hair type','Hair concern','Ingredients','Sulfate-free','Paraben-free','Silicone-free','Cruelty-free','Vegan','Volume','Scent'] },
+    { name: 'Fragrances', fair: 'Like-for-like: volume (ml) · continuous', has: true,
+      dims: ['Scent character','Longevity','Projection','Versatility','Value per wear','Presentation'],
+      fields: ['Scent family','Top notes','Heart notes','Base notes','Longevity','Sillage','Season','Occasion','Volume','Concentration','Heat stability'] },
+    { name: 'Fashion', fair: 'No common unit — compared as listed', has: false,
+      dims: ['Craftsmanship','Fit & comfort','Style','Durability','Brand heritage','Cost per wear'],
+      fields: ['Material','Style','Closure type','Size options','Care instructions','Craftsmanship','Collection season','Origin','Color','Design details'] },
+    { name: 'Other', fair: 'No common unit — compared as listed', has: false,
+      dims: ['Core function','Reviews','Build quality','Value','Reliability','Feature match'],
+      fields: ['Dimensions','Weight','Material','Color','Features','Origin','Warranty'] },
+  ];
+
+  const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+  const grid = document.getElementById('grid');
+  for (const c of DATA) {
+    const card = el('div', 'cat');
+    const h2 = el('h2', null, c.name);
+    h2.appendChild(el('span', 'fair ' + (c.has ? 'has' : 'none'), c.fair));
+    card.appendChild(h2);
+
+    const dimSect = el('div', 'sect');
+    dimSect.appendChild(el('h3', null, 'Dimensions (6) — emerald = hero'));
+    const chips = el('div', 'chips');
+    c.dims.forEach((d, i) => chips.appendChild(el('span', 'chip' + (i < 4 ? ' hero' : ''), d)));
+    dimSect.appendChild(chips);
+    card.appendChild(dimSect);
+
+    const fSect = el('div', 'sect');
+    fSect.appendChild(el('h3', null, 'Fields — Specs table + “At a glance”, in this order'));
+    fSect.appendChild(el('div', 'fields', c.fields.map((f, i) => (i === 0 ? '<b>' + f + '</b>' : f)).join(' &nbsp;·&nbsp; ')));
+    fSect.appendChild(el('div', 'note', '“At a glance” shows the populated subset of these, in the same order; “Specs” shows the side-by-side table.'));
+    card.appendChild(fSect);
+
+    grid.appendChild(card);
+  }
+  </script>
+</body>
+</html>

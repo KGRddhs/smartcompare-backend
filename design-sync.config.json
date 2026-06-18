@@ -1,0 +1,11 @@
+{
+  "projectId": "c57eb43f-cabf-47bc-b980-ff4956512b26",
+  "projectName": "Qaren Design System",
+  "projectKind": "hand-authored-web-references",
+  "note": "NOT a converter target. The app (SmartCompareApp/) is React Native + Expo and does not render in a browser. The design project holds hand-authored WEB JSX references (ui_kits/mobile/*.jsx, exporting window.Qaren<Screen>, previewed by ui_kits/mobile/*.html) that mirror the RN screens. A re-sync means: diff the RN source-of-truth against the matching .jsx reference and integrate by hand — do NOT run package-build.mjs / the storybook or package converter against SmartCompareApp. See .design-sync/NOTES.md.",
+  "scope": "results-page-only (per user, 2026-06-18)",
+  "sourceOfTruth": {
+    "ui_kits/mobile/ResultsScreen.jsx": "CATEGORY-DRIVEN: ONE shell + a per-category config for all 9 Qaren categories (electronics, grocery, supplements, makeup, skincare, haircare, fragrances, fashion, other). RN source: SmartCompareApp/src/components/results/ResultsContent.tsx (+ ResultsAccordion, RunnerUpWinsCard, CategoryProfile, DimensionBars, ConfidencePills, FactualVerdict, PersonalizationChip, TopMatchBadge). Per-category structure: app/services/scoring_service.py CATEGORY_DIMENSIONS + DIMENSION_DISPLAY_NAMES; extraction_service.py CATEGORY_SPEC_SCHEMAS + build_category_profile; price_service.py CATEGORY_FAIRNESS. Copy keys: SmartCompareApp/src/i18n/en.json results.*",
+    "ui_kits/mobile/results*.html": "9 preview cards (results.html=Electronics + results-<category>.html), each rendering <QarenResultsScreen category=\"<key>\"/> from the shared JSX."
+  }
+}
