@@ -101,6 +101,19 @@ def extract_image_from_search(search_payload: Optional[Dict[str, Any]]) -> Optio
                 if _is_valid_image_url(cand):
                     return cand.strip()
 
+    # 3) Top-level inline image pack — Serper sometimes returns an `images`
+    #    block on a web search. Lowest precedence (often a thumbnail) but a free
+    #    extra fallback before the placeholder (N-4, code review 2026-06-18).
+    images = search_payload.get("images")
+    if isinstance(images, list):
+        for item in images:
+            if not isinstance(item, dict):
+                continue
+            for img_key in _ORGANIC_IMAGE_KEYS:
+                cand = item.get(img_key)
+                if _is_valid_image_url(cand):
+                    return cand.strip()
+
     return None
 
 
