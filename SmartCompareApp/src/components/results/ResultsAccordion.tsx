@@ -11,12 +11,16 @@
 
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { ChevronDown, Star, ListChecks, BarChart3 } from 'lucide-react-native';
+import { ChevronDown, Star, ListChecks, BarChart3, Info } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { colors, spacing } from '../../theme';
 import type { Product, ReviewSummary } from '../../types';
+// W1 walk-fix 2026-06-18 — CategoryProfile is now the FIRST "Dig deeper"
+// section (curated "At a glance"), embedded (no own card — the accordion
+// panel supplies it). `hasCategoryProfile` gates whether the section shows.
+import { CategoryProfile, hasCategoryProfile } from './CategoryProfile';
 
-type AccordionKey = 'reviews' | 'proscons' | 'specs';
+type AccordionKey = 'profile' | 'reviews' | 'proscons' | 'specs';
 
 interface ResultsAccordionProps {
   products: Product[];
@@ -108,6 +112,11 @@ export function ResultsAccordion({
     setOpen((curr) => (curr === k ? null : k));
   };
 
+  // W1 walk-fix — does any product have curated category_profile fields? Gates
+  // the "At a glance" section (first in the accordion). Hidden entirely when
+  // neither product populates (legacy/cached payloads).
+  const showProfile = hasCategoryProfile(products);
+
   // Reviews section data
   const reviewSrc = reviewProducts ?? products;
   const totalReviews = reviewSrc.reduce(
@@ -185,6 +194,19 @@ export function ResultsAccordion({
     label: string;
     sub: string;
   }> = [
+    // W1 walk-fix — "At a glance" FIRST: the curated category profile (a
+    // populated subset, NOT the full Specs table below). Only present when a
+    // product has profile fields.
+    ...(showProfile
+      ? [
+          {
+            key: 'profile' as AccordionKey,
+            icon: <Info size={18} color={colors.text.secondary} />,
+            label: t('results.categoryProfile.title'),
+            sub: t('results.categoryProfile.sub'),
+          },
+        ]
+      : []),
     {
       key: 'reviews',
       icon: <Star size={18} color={colors.text.secondary} />,
@@ -280,6 +302,24 @@ export function ResultsAccordion({
                   <ChevronDown size={16} color={colors.text.placeholder} />
                 </View>
               </TouchableOpacity>
+
+              {/* W1 walk-fix — "At a glance" curated profile, embedded (no own
+                  card; the accordion body provides the chrome). */}
+              {isOpen && s.key === 'profile' && (
+                <View
+                  testID="results-accordion-body-profile"
+                  style={styles.body}
+                >
+                  <CategoryProfile
+                    products={products}
+                    winnerIndex={winnerIndex}
+                    embedded
+                    testID={
+                      testID ? `${testID}-category-profile` : 'category-profile'
+                    }
+                  />
+                </View>
+              )}
 
               {isOpen && s.key === 'reviews' && (
                 <View

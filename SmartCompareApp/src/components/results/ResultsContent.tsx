@@ -58,11 +58,13 @@ import FeedbackCard from '../FeedbackCard';
 import { TopMatchBadge } from './TopMatchBadge';
 import { DimensionBars } from './DimensionBars';
 import { FactualVerdict } from './FactualVerdict';
+import { RunnerUpWinsCard } from './RunnerUpWinsCard';
 import { ConfidencePills } from './ConfidencePills';
 import { ConfidenceDetailsSheet } from './ConfidenceDetailsSheet';
 import { PersonalizationChip } from './PersonalizationChip';
 import { RevealBurst } from '../hero/RevealBurst';
-import { CategoryProfile } from './CategoryProfile';
+// W1 walk-fix 2026-06-18 — CategoryProfile now lives INSIDE the "Dig deeper"
+// accordion (ResultsAccordion), not as a standalone block here.
 import { ResultsAccordion } from './ResultsAccordion';
 import { anyEstimated } from '../../services/sourceMethod';
 import { ProductImage } from '../primitives/ProductImage';
@@ -313,14 +315,9 @@ export function ResultsContent({
           ) : (
             <Text style={styles.verdictBody}>{verdictBody}</Text>
           )}
-          {verdictCaption ? (
-            <>
-              <Text style={styles.verdictRunnerUpEyebrow}>
-                {t('results.runnerUpWins')}
-              </Text>
-              <Text style={styles.verdictCaption}>{verdictCaption}</Text>
-            </>
-          ) : null}
+          {/* Task #24 2026-06-18 — the inline one-line runner-up caption that
+              used to render here moved into the richer structured
+              <RunnerUpWinsCard> block below (after this verdict section). */}
           {/* Phase 4.4 — PersonalizationChip relocated here, directly under
               the "Why this fits you" headline (mockup subline "Weighted ↑
               Camera ↑ Battery — based on your priorities", JSX 343-345). It
@@ -332,6 +329,21 @@ export function ResultsContent({
             />
           ) : null}
         </Animated.View>
+
+        {/* ─── # 3b "Where the runner-up wins" card (Task #24) ───
+            Richer structured runner-up block — replaces the old one-line
+            caption that lived in the verdict block above. Lists the dims the
+            runner-up actually leads (derived from scoring_v2.dimensions) +
+            the verdict prompt's key_tradeoff prose. Self-hides when there's
+            neither a winning dim nor key_tradeoff (no empty card). Gray, not
+            emerald; placed between the verdict and the dimension bars. */}
+        <RunnerUpWinsCard
+          products={products}
+          winnerIndex={winnerIndex}
+          dimensions={scoring_v2?.dimensions}
+          keyTradeoff={verdictCaption}
+          testID="results-content-runner-up-wins"
+        />
 
         {/* ─── # 4 Dimension bars (JSX 348-353) ───
             Faithful-results Phase 2.1 — the design's slot between the verdict
@@ -433,19 +445,12 @@ export function ResultsContent({
           />
         </View>
 
-        {/* ─── # 6b Category profile (Faithful-results Phase 3.1, Contract 1) ───
-            A curated, category-appropriate `label · value` block per product
-            (fragrance scent family + notes + longevity/sillage; supplements
-            count/dosage/form; electronics key specs; …) — driven entirely by
-            the backend `products[i].category_profile.fields`. Surfaces what
-            DEFINES each product above the full side-by-side Specs table (which
-            stays one tap away in "Dig deeper"). The component hides itself when
-            neither product carries profile fields (legacy/cached payloads). */}
-        <CategoryProfile
-          products={products}
-          winnerIndex={winnerIndex}
-          testID="results-content-category-profile"
-        />
+        {/* W1 walk-fix 2026-06-18 — CategoryProfile moved OUT of this standalone
+            slot and INTO the "Dig deeper" accordion (first section). A standalone
+            "At a glance" block here confused users into thinking they had to pick
+            a category before comparing; folding it into the accordion (one tap
+            away, alongside Specs) reads as the curated highlight it is. See
+            ResultsAccordion.tsx. */}
 
         {/*
          * Bundle E § Decision 3 one-release backward-compat. When the
@@ -666,21 +671,8 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     lineHeight: 18 * 1.45,
   },
-  verdictCaption: {
-    fontSize: 13,
-    color: colors.text.secondary,
-    marginTop: 8,
-    lineHeight: 13 * 1.5,
-  },
-  verdictRunnerUpEyebrow: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.text.secondary,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    marginTop: 12,
-    marginBottom: 4,
-  },
+  // Task #24 — the inline runner-up caption styles (verdictCaption /
+  // verdictRunnerUpEyebrow) moved into RunnerUpWinsCard.tsx.
 
   cohortSlot: {
     marginBottom: spacing.base,

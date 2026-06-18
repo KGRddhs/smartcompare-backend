@@ -425,20 +425,18 @@ describe('ResultsContent — render coverage', () => {
     expect(getByText(/results\.runnerUpWins|runner-up/i)).toBeTruthy();
   });
 
-  // Bundle-next Task #18 — INTEGRATED tree: ResultsContent passes the root
-  // `products` straight to the REAL CategoryProfile (not mocked in this file),
-  // so a fuller 2nd-product category_profile renders in-context within the
-  // scroll between the cohort badge and the "Dig deeper" accordion.
-  it('renders the REAL CategoryProfile in-context with a fuller 2nd-product payload (#18)', () => {
+  // W1 walk-fix 2026-06-18 — CategoryProfile MOVED out of ResultsContent into
+  // the "Dig deeper" accordion (ResultsAccordion). ResultsContent must NOT
+  // render a standalone category-profile block any more — even with a fuller
+  // payload. (The real embedded render is covered in the ResultsAccordion
+  // suite, where CategoryProfile now lives.)
+  it('does NOT render a standalone CategoryProfile (moved into the accordion, W1)', () => {
     const fullerProducts = [
       {
         ...mockProducts[0],
         category_profile: {
           category: 'electronics',
-          fields: [
-            { key: 'storage', label: 'Storage', value: '128 GB' },
-            { key: 'battery', label: 'Battery', value: '3,349 mAh' },
-          ],
+          fields: [{ key: 'storage', label: 'Storage', value: '128 GB' }],
         },
       },
       {
@@ -446,33 +444,58 @@ describe('ResultsContent — render coverage', () => {
         category_profile: {
           category: 'electronics',
           fields: [
-            { key: 'display', label: 'Display', value: '6.8" AMOLED, 120Hz, peak 2600 nits' },
-            { key: 'processor', label: 'Processor', value: 'Snapdragon 8 Gen 3 for Galaxy' },
-            { key: 'ram', label: 'RAM', value: '12 GB' },
-            { key: 'storage', label: 'Storage', value: '256 GB' },
-            { key: 'battery', label: 'Battery', value: '5,000 mAh, 45W' },
-            { key: 'rear_camera', label: 'Rear camera', value: '200 MP + 50 MP + 10 MP + 12 MP' },
-            { key: 'water_resistance', label: 'Water resistance', value: 'IP68' },
+            { key: 'display', label: 'Display', value: '6.8" AMOLED' },
+            { key: 'rear_camera', label: 'Rear camera', value: '200 MP' },
           ],
         },
       },
     ];
-    const { getByTestId } = render(
+    const { queryByTestId } = render(
       <ResultsContent {...baseProps} products={fullerProducts} />
     );
-    // The block renders in the integrated scroll.
-    expect(getByTestId('results-content-category-profile')).toBeTruthy();
-    // Both columns + the fuller product B fields present (winner-first: idx 1).
-    expect(getByTestId('results-content-category-profile-col-0')).toBeTruthy();
-    expect(getByTestId('results-content-category-profile-col-1')).toBeTruthy();
-    expect(
-      getByTestId('results-content-category-profile-field-1-rear_camera')
-    ).toBeTruthy();
+    // No standalone block in ResultsContent — it's inside the accordion now.
+    expect(queryByTestId('results-content-category-profile')).toBeNull();
+    // The accordion (mocked here) still receives products → embedded profile
+    // gets its data downstream. The accordion slot itself renders.
+    expect(queryByTestId('results-content-accordion')).toBeTruthy();
   });
 
-  it('hides CategoryProfile in-context when products carry no category_profile (#18 default)', () => {
-    // baseProps mockProducts have no category_profile → block omitted, no crash.
-    const { queryByTestId } = render(<ResultsContent {...baseProps} />);
-    expect(queryByTestId('results-content-category-profile')).toBeNull();
+  // Task #24 — the richer "Where the runner-up wins" CARD renders in-context
+  // (RunnerUpWinsCard is NOT mocked in this file → renders real). baseProps'
+  // mockResult carries overview.winner.key_tradeoff, so the card shows (prose
+  // path) between the verdict block and the dimension bars.
+  it('renders the runner-up wins card in-context after the verdict (#24)', () => {
+    const { getByTestId } = render(<ResultsContent {...baseProps} />);
+    const card = getByTestId('results-content-runner-up-wins');
+    expect(card).toBeTruthy();
+    // Card sits AFTER the verdict block in DFS order.
+    const order: Record<string, number> = {};
+    let n = 0;
+    const walk = (node: any) => {
+      if (!node) return;
+      n++;
+      const tid = node?.props?.testID;
+      if (tid && !(tid in order)) order[tid] = n;
+      (Array.isArray(node.children) ? node.children : []).forEach(walk);
+    };
+    walk(render(<ResultsContent {...baseProps} />).toJSON());
+    expect(order['results-content-why']).toBeLessThan(
+      order['results-content-runner-up-wins'],
+    );
+  });
+
+  it('hides the runner-up wins card when no key_tradeoff and no runner-up-winning dims (#24)', () => {
+    const result = {
+      ...mockResult,
+      overview: {
+        ...mockResult.overview,
+        winner: { ...mockResult.overview.winner, key_tradeoff: undefined },
+      },
+    };
+    // mockScoringV2 dims have no score_a/score_b → no runner-up-winning dims.
+    const { queryByTestId } = render(
+      <ResultsContent {...baseProps} result={result} />
+    );
+    expect(queryByTestId('results-content-runner-up-wins')).toBeNull();
   });
 });
