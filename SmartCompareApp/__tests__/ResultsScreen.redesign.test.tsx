@@ -22,7 +22,8 @@ const RESULTS_PATH = path.resolve(
 );
 
 // Bundle E S3 — Lane A2: presentation extracted to ResultsContent.tsx +
-// ResultsAccordion.tsx. The redesign assertions read all three files.
+// ResultsAccordion.tsx. Task #24 2026-06-18: the runner-up surface moved into
+// RunnerUpWinsCard.tsx. The redesign assertions read all four files.
 const RESULTS_CONTENT_PATH = path.resolve(
   __dirname,
   '../src/components/results/ResultsContent.tsx'
@@ -31,6 +32,10 @@ const RESULTS_ACCORDION_PATH = path.resolve(
   __dirname,
   '../src/components/results/ResultsAccordion.tsx'
 );
+const RUNNER_UP_CARD_PATH = path.resolve(
+  __dirname,
+  '../src/components/results/RunnerUpWinsCard.tsx'
+);
 const SOURCE = [
   fs.readFileSync(RESULTS_PATH, 'utf8'),
   fs.existsSync(RESULTS_CONTENT_PATH)
@@ -38,6 +43,9 @@ const SOURCE = [
     : '',
   fs.existsSync(RESULTS_ACCORDION_PATH)
     ? fs.readFileSync(RESULTS_ACCORDION_PATH, 'utf8')
+    : '',
+  fs.existsSync(RUNNER_UP_CARD_PATH)
+    ? fs.readFileSync(RUNNER_UP_CARD_PATH, 'utf8')
     : '',
 ].join('\n');
 

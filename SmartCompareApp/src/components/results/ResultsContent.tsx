@@ -58,6 +58,7 @@ import FeedbackCard from '../FeedbackCard';
 import { TopMatchBadge } from './TopMatchBadge';
 import { DimensionBars } from './DimensionBars';
 import { FactualVerdict } from './FactualVerdict';
+import { RunnerUpWinsCard } from './RunnerUpWinsCard';
 import { ConfidencePills } from './ConfidencePills';
 import { ConfidenceDetailsSheet } from './ConfidenceDetailsSheet';
 import { PersonalizationChip } from './PersonalizationChip';
@@ -314,14 +315,9 @@ export function ResultsContent({
           ) : (
             <Text style={styles.verdictBody}>{verdictBody}</Text>
           )}
-          {verdictCaption ? (
-            <>
-              <Text style={styles.verdictRunnerUpEyebrow}>
-                {t('results.runnerUpWins')}
-              </Text>
-              <Text style={styles.verdictCaption}>{verdictCaption}</Text>
-            </>
-          ) : null}
+          {/* Task #24 2026-06-18 — the inline one-line runner-up caption that
+              used to render here moved into the richer structured
+              <RunnerUpWinsCard> block below (after this verdict section). */}
           {/* Phase 4.4 — PersonalizationChip relocated here, directly under
               the "Why this fits you" headline (mockup subline "Weighted ↑
               Camera ↑ Battery — based on your priorities", JSX 343-345). It
@@ -333,6 +329,21 @@ export function ResultsContent({
             />
           ) : null}
         </Animated.View>
+
+        {/* ─── # 3b "Where the runner-up wins" card (Task #24) ───
+            Richer structured runner-up block — replaces the old one-line
+            caption that lived in the verdict block above. Lists the dims the
+            runner-up actually leads (derived from scoring_v2.dimensions) +
+            the verdict prompt's key_tradeoff prose. Self-hides when there's
+            neither a winning dim nor key_tradeoff (no empty card). Gray, not
+            emerald; placed between the verdict and the dimension bars. */}
+        <RunnerUpWinsCard
+          products={products}
+          winnerIndex={winnerIndex}
+          dimensions={scoring_v2?.dimensions}
+          keyTradeoff={verdictCaption}
+          testID="results-content-runner-up-wins"
+        />
 
         {/* ─── # 4 Dimension bars (JSX 348-353) ───
             Faithful-results Phase 2.1 — the design's slot between the verdict
@@ -660,21 +671,8 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     lineHeight: 18 * 1.45,
   },
-  verdictCaption: {
-    fontSize: 13,
-    color: colors.text.secondary,
-    marginTop: 8,
-    lineHeight: 13 * 1.5,
-  },
-  verdictRunnerUpEyebrow: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.text.secondary,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    marginTop: 12,
-    marginBottom: 4,
-  },
+  // Task #24 — the inline runner-up caption styles (verdictCaption /
+  // verdictRunnerUpEyebrow) moved into RunnerUpWinsCard.tsx.
 
   cohortSlot: {
     marginBottom: spacing.base,

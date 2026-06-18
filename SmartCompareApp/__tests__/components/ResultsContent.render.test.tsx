@@ -459,4 +459,43 @@ describe('ResultsContent — render coverage', () => {
     // gets its data downstream. The accordion slot itself renders.
     expect(queryByTestId('results-content-accordion')).toBeTruthy();
   });
+
+  // Task #24 — the richer "Where the runner-up wins" CARD renders in-context
+  // (RunnerUpWinsCard is NOT mocked in this file → renders real). baseProps'
+  // mockResult carries overview.winner.key_tradeoff, so the card shows (prose
+  // path) between the verdict block and the dimension bars.
+  it('renders the runner-up wins card in-context after the verdict (#24)', () => {
+    const { getByTestId } = render(<ResultsContent {...baseProps} />);
+    const card = getByTestId('results-content-runner-up-wins');
+    expect(card).toBeTruthy();
+    // Card sits AFTER the verdict block in DFS order.
+    const order: Record<string, number> = {};
+    let n = 0;
+    const walk = (node: any) => {
+      if (!node) return;
+      n++;
+      const tid = node?.props?.testID;
+      if (tid && !(tid in order)) order[tid] = n;
+      (Array.isArray(node.children) ? node.children : []).forEach(walk);
+    };
+    walk(render(<ResultsContent {...baseProps} />).toJSON());
+    expect(order['results-content-why']).toBeLessThan(
+      order['results-content-runner-up-wins'],
+    );
+  });
+
+  it('hides the runner-up wins card when no key_tradeoff and no runner-up-winning dims (#24)', () => {
+    const result = {
+      ...mockResult,
+      overview: {
+        ...mockResult.overview,
+        winner: { ...mockResult.overview.winner, key_tradeoff: undefined },
+      },
+    };
+    // mockScoringV2 dims have no score_a/score_b → no runner-up-winning dims.
+    const { queryByTestId } = render(
+      <ResultsContent {...baseProps} result={result} />
+    );
+    expect(queryByTestId('results-content-runner-up-wins')).toBeNull();
+  });
 });
