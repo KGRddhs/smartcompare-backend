@@ -188,3 +188,19 @@ async def test_classify_category_llm_unknown_output_returns_other():
     with patch.object(extraction_service, "get_client", return_value=fake_client):
         result = await extraction_service.classify_category_llm(["X", "Y"])
     assert result == "other"
+
+
+@pytest.mark.asyncio
+async def test_classify_category_llm_empty_input_returns_other_without_calling_openai():
+    # The empty-input short-circuit returns "other" and must NOT spend a GPT call.
+    from app.services import extraction_service
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = AsyncMock(
+        return_value=_mock_openai_response("fragrances")
+    )
+    with patch.object(extraction_service, "get_client", return_value=fake_client):
+        assert await extraction_service.classify_category_llm([]) == "other"
+        assert await extraction_service.classify_category_llm(None) == "other"
+        # all-whitespace / non-str entries are dropped -> still empty -> "other"
+        assert await extraction_service.classify_category_llm(["  ", 123, None]) == "other"
+    fake_client.chat.completions.create.assert_not_called()
