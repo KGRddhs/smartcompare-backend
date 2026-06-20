@@ -106,33 +106,60 @@ def _phase1_completely_failed(pd: Dict[str, Any]) -> bool:
     return pd.get("specs") is None and pd.get("price") is None
 
 
-async def _resolve_pair_category(products, selected_category):
+async def _resolve_pair_category(products, selected_category, parser_path=False):
     """A3/A4 — resolve the AUTHORITATIVE pair category for the sync + stream
     paths (single source of truth so both paths stay in lockstep).
 
-    This is resolve_category's precedence ladder with one extra seam: on the
-    PARSER (q=) path the LLM parse already emitted a REAL per-product ``category``
-    field, which is a detection signal that must outrank a user chip. So the
-    effective detection is "confident name hit OR (when names are blind) the
-    LLM-emitted category". explicit_pair / vision dicts carry only the
-    deterministic ``classify_category_from_text`` stub in that field here, so the
-    seam is a no-op for them (the stub == the name classification).
+    The "effective detection" depends on the input PATH (FIX-1):
 
-    Returns ``(category_used, category_switched, original_category)``:
-      1. effective detection (name hit, else LLM/parser hint) wins, overriding a
-         conflicting real chip (``switched=True``);
+    - ``parser_path=True`` (the q= path): ``products[i]["category"]`` is the LLM's
+      FULL-CONTEXT judgment from ``parse_product_query`` and is AUTHORITATIVE.
+      ``classify_category_from_text(names)`` is only a FALLBACK for when the LLM
+      said "other" — so a blunt category WORD inside a name (``is_supplement_query``
+      'iron'/'vitamin', or a 'skin'/'food' synonym) can NOT override the LLM
+      ("Tefal steam iron" stays electronics, not supplements).
+    - ``parser_path=False`` (explicit_pair / vision): the per-product ``category``
+      field is only the deterministic ``classify_category_from_text`` stub (no real
+      LLM judgment), so NAME detection drives; the stub is consulted only when the
+      names are blind (a no-op, since stub == det).
+
+    Then, regardless of path, the precedence ladder is:
+      1. effective detection wins, overriding a conflicting real chip (``switched=True``);
       2. else a real chip is honored;
-      3. else (blind name + blind hint + no chip) escalate to the bounded A2b
-         GPT-mini classifier.
+      3. else (blind detection + no chip) escalate to the bounded A2b GPT-mini classifier.
+
+    Returns ``(category_used, category_switched, original_category)``.
     """
     product_names = [p.get("search_query") or p.get("name") for p in products]
     combined = " ".join(n for n in product_names if n)
-    det = classify_category_from_text(combined)
-    if det == "other" and products:
-        # Parser/LLM hint (no-op for explicit_pair/vision: their field is the stub).
-        det = canonicalize_category(products[0].get("category"))
+    llm_cat = canonicalize_category(products[0].get("category")) if products else "other"
+    name_cat = classify_category_from_text(combined)
     sel = canonicalize_category(selected_category) if selected_category else None
 
+    if parser_path:
+        # q= path: parse_product_query already classified with FULL context, so its
+        # category (including a deliberate "other") is the final word. We do NOT
+        # fall back to a blunt name keyword (that's the FIX-1 bug: "Lock and Lock
+        # food container" -> the LLM's "other", not grocery) and do NOT re-escalate
+        # to A2b (the LLM already decided). The chip can only re-flag a switch.
+        det = llm_cat
+        if det != "other":
+            category_used = det
+            category_switched = bool(sel and sel != "other" and sel != det)
+        elif sel and sel != "other":
+            # LLM abstained ("other") AND the user set a real chip -> honor the chip.
+            category_used = sel
+            category_switched = False
+        else:
+            category_used = "other"
+            category_switched = False
+        original_category = selected_category if category_switched else None
+        return category_used, category_switched, original_category
+
+    # explicit_pair / vision: the per-product field is only the deterministic
+    # classify stub, so NAME detection drives; the stub is consulted as a fallback
+    # when names are blind (a no-op since stub == name_cat), then A2b escalation.
+    det = name_cat if name_cat != "other" else llm_cat
     if det != "other":
         category_used = det
         category_switched = bool(sel and sel != "other" and sel != det)
@@ -1934,15 +1961,15 @@ class StructuredComparisonService:
 
                 products = parsed["products"][:2]
 
-            # A3 — Determine the AUTHORITATIVE pair category. Detection runs on the
-            # product NAMES so an explicit_pair / vision compare whose names carry a
-            # category word ("perfume"/"cologne") is classified even when the
-            # per-product `category` field is the deterministic stub ("other"). A
-            # confident name-hit overrides a conflicting chip; the parser path's
-            # LLM-emitted category seeds detection when names are blind; a fully
-            # blind detection with no chip escalates to the A2b GPT-mini classifier.
+            # A3 / FIX-1 — Determine the AUTHORITATIVE pair category. On the q=
+            # parser path the LLM-emitted products[i]["category"] is the
+            # full-context judgment and is authoritative (a blunt name keyword
+            # must not override it); on explicit_pair / vision the field is only
+            # the deterministic stub, so name detection drives. parser_path is
+            # True only when neither vision nor explicit_pair was supplied.
+            _parser_path = not (vision_products or explicit_pair)
             category_used, category_switched, original_category = (
-                await _resolve_pair_category(products, selected_category)
+                await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
             )
 
             # WS1 (D1) — fold the resolved category context into the partial
@@ -2398,15 +2425,17 @@ class StructuredComparisonService:
 
                 products = parsed["products"][:2]
 
-            # A4 — Determine the AUTHORITATIVE pair category (mirror of the sync
-            # path via the shared _resolve_pair_category helper; the stream path has
-            # NO _partial_build_ctx so that block is intentionally omitted). The
-            # resolved category is then stamped onto BOTH per-product dicts so
-            # _fetch_product_data -> result["category"] (scoring, spec-schema,
-            # category-aware source discovery) keys off the TRUE category, not the
-            # deterministic "other" stub — before the gather below.
+            # A4 / FIX-1 — Determine the AUTHORITATIVE pair category (mirror of the
+            # sync path via the shared _resolve_pair_category helper; the stream path
+            # has NO _partial_build_ctx so that block is intentionally omitted).
+            # parser_path mirrors the sync path: True only when neither vision nor
+            # explicit_pair was supplied, so the LLM-emitted category is authoritative
+            # on q=. The resolved category is then stamped onto BOTH per-product dicts
+            # so _fetch_product_data -> result["category"] (scoring, spec-schema,
+            # category-aware source discovery) keys off the TRUE category.
+            _parser_path = not (vision_products or explicit_pair)
             category_used, category_switched, original_category = (
-                await _resolve_pair_category(products, selected_category)
+                await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
             )
             for _p in products:
                 _p["category"] = category_used

@@ -229,20 +229,27 @@ def test_resolve_pair_category_parser_hint_overrides_chip():
         {"category": "electronics", "search_query": "Apple iPhone 15", "name": "iPhone 15"},
         {"category": "electronics", "search_query": "Samsung Galaxy S24", "name": "Galaxy S24"},
     ]
-    cat, switched, original = asyncio.run(_resolve_pair_category(products, "grocery"))
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, "grocery", parser_path=True)
+    )
     assert cat == "electronics"
     assert switched is True
     assert original == "grocery"
 
 
-def test_resolve_pair_category_name_hit_beats_parser_hint():
+def test_resolve_pair_category_explicit_name_hit_drives():
     from app.services.structured_comparison_service import _resolve_pair_category
-    # A confident NAME hit (perfume/cologne) wins over a stale parser hint.
+    # EXPLICIT/vision path (parser_path=False): the per-product field is only the
+    # deterministic stub, so a confident NAME hit (perfume/cologne) drives. (On the
+    # q= parser path the LLM category would be authoritative instead — see the
+    # FIX-1 block below.)
     products = [
-        {"category": "electronics", "search_query": "Dior Sauvage perfume", "name": "Dior Sauvage perfume"},
-        {"category": "electronics", "search_query": "Creed Aventus cologne", "name": "Creed Aventus cologne"},
+        {"category": "other", "search_query": "Dior Sauvage perfume", "name": "Dior Sauvage perfume"},
+        {"category": "other", "search_query": "Creed Aventus cologne", "name": "Creed Aventus cologne"},
     ]
-    cat, switched, original = asyncio.run(_resolve_pair_category(products, None))
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, None, parser_path=False)
+    )
     assert cat == "fragrances"
 
 
@@ -253,7 +260,9 @@ def test_resolve_pair_category_explicit_stub_other_uses_chip():
         {"category": "other", "search_query": "Soleil Neige", "name": "Soleil Neige"},
         {"category": "other", "search_query": "Oud Voyager", "name": "Oud Voyager"},
     ]
-    cat, switched, original = asyncio.run(_resolve_pair_category(products, "fragrances"))
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, "fragrances", parser_path=False)
+    )
     assert cat == "fragrances"
     assert switched is False
 
@@ -270,8 +279,148 @@ def test_resolve_pair_category_blind_everything_escalates():
 
     with patch("app.services.structured_comparison_service.classify_category_llm",
                side_effect=fake_llm):
-        cat, switched, original = asyncio.run(_resolve_pair_category(products, None))
+        cat, switched, original = asyncio.run(
+            _resolve_pair_category(products, None, parser_path=False)
+        )
     assert cat == "skincare"
+
+
+# ============================================
+# FIX-1 (HIGH) — q= PARSER path: the LLM-emitted category is AUTHORITATIVE.
+# A blunt category WORD inside a product NAME (is_supplement_query 'iron'/'vitamin',
+# or 'skin'/'food' synonyms) must NOT override the LLM's full-context judgment from
+# parse_product_query. classify_category_from_text is the FALLBACK only when the LLM
+# said 'other'. (Confirmed misclassifications on merged code: iron->supplements,
+# vitamin->supplements, skin->skincare, food->grocery.)
+# ============================================
+
+def _parser_products(cat0, name0, cat1, name1):
+    # Parser-path shape: products[i]['category'] is the LLM's real per-product
+    # judgment from parse_product_query (NOT the deterministic stub).
+    return [
+        {"category": cat0, "search_query": name0, "name": name0, "brand": ""},
+        {"category": cat1, "search_query": name1, "name": name1, "brand": ""},
+    ]
+
+
+def test_parser_path_llm_category_beats_iron_supplement_keyword():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # "Tefal steam iron vs Philips steam iron" — is_supplement_query fires on 'iron'
+    # in classify_category_from_text, but the LLM said electronics. LLM wins.
+    products = _parser_products(
+        "electronics", "Tefal steam iron", "electronics", "Philips steam iron"
+    )
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, None, parser_path=True)
+    )
+    assert cat == "electronics", f"iron-keyword overrode the LLM category: {cat}"
+
+
+def test_parser_path_llm_category_beats_vitamin_keyword():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # "Garnier Vitamin C serum ..." — 'vitamin' fires is_supplement_query, LLM said skincare.
+    products = _parser_products(
+        "skincare", "Garnier Vitamin C serum", "skincare", "The Ordinary Vitamin C serum"
+    )
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, None, parser_path=True)
+    )
+    assert cat == "skincare", f"vitamin-keyword overrode the LLM category: {cat}"
+
+
+def test_parser_path_llm_category_beats_skin_keyword():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # "... concealer" — 'skin' synonym fires (skincare), but the LLM said makeup.
+    products = _parser_products(
+        "makeup", "Revolution Pro concealer", "makeup", "Catrice True Skin concealer"
+    )
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, None, parser_path=True)
+    )
+    assert cat == "makeup", f"skin-keyword overrode the LLM category: {cat}"
+
+
+def test_parser_path_llm_category_beats_food_keyword():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # "Lock and Lock food container set ..." — 'food' fires (grocery), LLM said other.
+    products = _parser_products(
+        "other", "Lock and Lock food container set", "other", "Sistema food storage set"
+    )
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, None, parser_path=True)
+    )
+    assert cat == "other", f"food-keyword overrode the LLM category: {cat}"
+
+
+def test_parser_path_llm_other_is_authoritative_no_name_fallback():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # FIX-1: on the q= path the LLM saw the FULL names ("perfume"/"cologne") and
+    # still returned "other" — that deliberate judgment is final. We do NOT fall
+    # back to a blunt name keyword (that's exactly what caused the food->grocery
+    # false positive). A real perfume query would have the LLM return fragrances,
+    # not "other", so this scenario is the safety contract, not a realistic miss.
+    products = _parser_products(
+        "other", "Dior Sauvage perfume", "other", "Creed Aventus cologne"
+    )
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, None, parser_path=True)
+    )
+    assert cat == "other", "parser-path LLM 'other' must not be overridden by a name keyword"
+
+
+def test_parser_path_llm_other_with_chip_honors_chip():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # LLM abstained ("other") on the parser path AND a real chip is set -> chip honored.
+    products = _parser_products(
+        "other", "Mystery gadget A", "other", "Mystery gadget B"
+    )
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, "electronics", parser_path=True)
+    )
+    assert cat == "electronics"
+    assert switched is False
+
+
+def test_parser_path_iphone_galaxy_still_other_when_llm_other():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # The common case: brand/model names classify_category_from_text -> 'other',
+    # and if the LLM also said 'other' the result stays 'other' (no false hit).
+    products = _parser_products(
+        "other", "iPhone 15", "other", "Galaxy S24"
+    )
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, None, parser_path=True)
+    )
+    assert cat == "other"
+
+
+def test_parser_path_llm_category_overrides_conflicting_chip():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # Parser LLM=electronics + chip=grocery -> electronics + switched (aligns with
+    # test_streaming::test_category_switching_in_streaming).
+    products = _parser_products(
+        "electronics", "Apple iPhone 15", "electronics", "Samsung Galaxy S24"
+    )
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, "grocery", parser_path=True)
+    )
+    assert cat == "electronics"
+    assert switched is True
+    assert original == "grocery"
+
+
+def test_explicit_path_name_detection_still_authoritative():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # explicit_pair/vision (parser_path=False): the per-product field is just the
+    # deterministic stub, so NAME detection drives. A fragrance name -> fragrances.
+    products = [
+        {"category": "other", "search_query": "Dior Sauvage perfume", "name": "Dior Sauvage perfume", "brand": ""},
+        {"category": "other", "search_query": "Creed Aventus cologne", "name": "Creed Aventus cologne", "brand": ""},
+    ]
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, None, parser_path=False)
+    )
+    assert cat == "fragrances"
 
 
 def test_fragrance_dicts_score_with_fragrance_dims():
