@@ -12,7 +12,10 @@ None / non-str / unknown.
 """
 import pytest
 
-from app.services.extraction_service import canonicalize_category
+from app.services.extraction_service import (
+    canonicalize_category,
+    classify_category_from_text,
+)
 
 
 @pytest.mark.parametrize("raw,expected", [
@@ -84,3 +87,41 @@ def test_canonicalize_category_non_string_returns_other():
     assert canonicalize_category(123) == "other"
     assert canonicalize_category(["fragrances"]) == "other"
     assert canonicalize_category({"category": "fragrances"}) == "other"
+
+
+# ============================================
+# A1: classify_category_from_text — deterministic product-type classifier
+# ============================================
+#
+# Cheap $0/no-LLM classifier that recognizes generic category WORDS (perfume,
+# cologne, edp, laptop, vitamin, ...) in a free-form product name. A bare
+# brand/model with NO category word ("iPhone 15 Pro", "Tom Ford Soleil Neige")
+# is EXPECTED to return "other" — the caller resolves it via a user chip or the
+# A2b GPT-mini escalation. We do NOT widen the synonym map with brand names.
+
+@pytest.mark.parametrize("text,expected", [
+    ("Dior Sauvage perfume", "fragrances"),
+    ("Creed Aventus cologne", "fragrances"),
+    ("Tom Ford Oud Wood EDP", "fragrances"),        # 'edp' token
+    ("NOW Foods Vitamin D3", "supplements"),
+    ("gaming laptop", "electronics"),               # 'laptop' token
+    ("iPhone 15 Pro", "other"),                     # brand/model only -> other (chip/A2b resolves)
+    ("Tom Ford Soleil Neige 100ml", "other"),       # no category word -> other
+    ("plain mystery object", "other"),
+    ("", "other"),
+    (None, "other"),
+])
+def test_classify_category_from_text(text, expected):
+    assert classify_category_from_text(text) == expected
+
+
+def test_classify_category_from_text_supplement_precedence():
+    # is_supplement_query fires before the synonym scan: a multivitamin name with
+    # no other category word still classifies as supplements.
+    assert classify_category_from_text("Centrum Multivitamin tablets") == "supplements"
+
+
+def test_classify_category_from_text_non_string_returns_other():
+    # Defensive: non-str inputs must not raise.
+    assert classify_category_from_text(123) == "other"
+    assert classify_category_from_text(["perfume"]) == "other"

@@ -760,6 +760,32 @@ def canonicalize_category(raw: Any) -> str:
     return "other"
 
 
+def classify_category_from_text(text: str) -> str:
+    """Cheap deterministic product-type -> canonical category. $0, no LLM.
+
+    Recognizes generic category WORDS only (perfume / cologne / edp / laptop /
+    vitamin ...), NOT brand/model strings. A bare brand/model with no category
+    word ("iPhone 15 Pro", "Tom Ford Soleil Neige") returns "other" — the caller
+    honors a user chip or escalates to the A2b GPT-mini classifier. We do NOT
+    widen the synonym map with brand names (brittle, unbounded).
+
+    Pure + deterministic. Returns "other" for None / non-str / empty / unmatched.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return "other"
+    # Function-local import avoids a circular import: price_service imports
+    # extraction_service at module load (price_service.py:16).
+    from app.services.price_service import is_supplement_query
+    if is_supplement_query(text):
+        return "supplements"
+    low = text.lower()
+    # Longest synonym first so multi-char tokens win over substrings.
+    for token in sorted(_CATEGORY_SYNONYMS, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(token)}\b", low):
+            return _CATEGORY_SYNONYMS[token]
+    return "other"
+
+
 # ============================================
 # Faithful-Results Phase 3.2 (Contract 1) — category_profile
 # ============================================
