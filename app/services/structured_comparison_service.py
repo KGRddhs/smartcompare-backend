@@ -2569,7 +2569,14 @@ class StructuredComparisonService:
                 "products": [
                     {
                         "brand": pd.get("brand"), "name": pd.get("name"),
-                        "rating": pd.get("rating"), "review_count": pd.get("review_count"),
+                        # FIX-2 — apply the A5 NO-FAB guard here too: a derived /
+                        # estimated rating (rating_derived=True, set by
+                        # gpt_review_aggregate or derive_rating_from_scores) must NOT
+                        # surface as authoritative in the SSE intermediate event.
+                        # Mirrors the non-streaming response_builder projection. Real
+                        # review_count is preserved.
+                        "rating": (None if pd.get("rating_derived") is True else pd.get("rating")),
+                        "review_count": pd.get("review_count"),
                         "rating_verified": pd.get("rating_verified"),
                         "rating_source": pd.get("rating_source"),
                         # See response_builder.py:963 — same (X or {}).get fix.

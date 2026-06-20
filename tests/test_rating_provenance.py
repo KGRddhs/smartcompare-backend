@@ -249,3 +249,87 @@ def test_variant_string_real_values_unaffected():
     product = {"specs": {"storage": "512GB", "color": "Black", "ram": "12GB"}}
     variant = _compose_variant_string(product, "electronics")
     assert variant == "512GB · Black · 12GB"
+
+
+# ============================================
+# FIX-2 (MEDIUM) — the SSE streaming `reviews` event must apply the same
+# rating_derived NO-FAB guard as the non-streaming response_builder projection.
+# A gpt_review_aggregate ESTIMATE (rating_derived=True) was leaking RAW into the
+# intermediate reviews event (the comment falsely claimed it was guarded).
+# ============================================
+
+import asyncio  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
+
+
+def _drive_stream_reviews_event(product_data):
+    """Drive compare_from_text_streaming with _fetch_product_data + verdict +
+    scoring mocked, and return the payload of the SSE `reviews` event."""
+    from app.services.structured_comparison_service import StructuredComparisonService
+
+    svc = StructuredComparisonService()
+
+    async def fake_fetch(product_info, *a, **k):
+        # Echo a prepared product dict per call (index by name match).
+        name = product_info.get("name") or product_info.get("search_query") or ""
+        for pd in product_data:
+            if pd["name"] in name or name in pd["name"]:
+                return dict(pd)
+        return dict(product_data[0])
+
+    scoring_svc = MagicMock()
+    scoring_svc.compute_scores.return_value = {
+        "scores": {
+            "product_0": {"overall": 80, "breakdown": {}, "weights_used": {}},
+            "product_1": {"overall": 70, "breakdown": {}, "weights_used": {}},
+        },
+        "winner_index": 0,
+        "scoring_method": "category_weighted",
+    }
+    static_verdict = ({"winner_index": 0, "winner_declaration": "A"},
+                      {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
+
+    captured = {}
+
+    async def drive():
+        with patch.object(svc, "_fetch_product_data", side_effect=fake_fetch), \
+             patch("app.services.structured_comparison_service.generate_comparison",
+                   new=AsyncMock(return_value=static_verdict)), \
+             patch("app.services.structured_comparison_service.get_scoring_service",
+                   return_value=scoring_svc):
+            async for event_type, data in svc.compare_from_text_streaming(
+                query="iPhone 15 vs Galaxy S24",
+                explicit_pair=("iPhone 15", "Galaxy S24"),
+                selected_category="electronics",
+            ):
+                if event_type == "reviews":
+                    captured["reviews"] = data
+    asyncio.run(drive())
+    return captured.get("reviews")
+
+
+def test_sse_reviews_event_nulls_derived_rating():
+    # A gpt_review_aggregate estimate: rating present but rating_derived=True.
+    product_data = [
+        {"brand": "Apple", "name": "iPhone 15", "full_name": "Apple iPhone 15",
+         "variant": None, "category": "electronics", "query": "iPhone 15",
+         "specs": {}, "price": {"amount": 299, "currency": "BHD"},
+         "rating": 4.3, "rating_derived": True, "review_count": None,
+         "rating_verified": False, "rating_source": {"extract_method": "gpt_review_aggregate"},
+         "reviews": {"review_summary": {}}},
+        {"brand": "Samsung", "name": "Galaxy S24", "full_name": "Samsung Galaxy S24",
+         "variant": None, "category": "electronics", "query": "Galaxy S24",
+         "specs": {}, "price": {"amount": 279, "currency": "BHD"},
+         "rating": 4.5, "review_count": 800,
+         "rating_verified": True, "rating_source": {"name": "Noon"},
+         "reviews": {"review_summary": {}}},
+    ]
+    reviews = _drive_stream_reviews_event(product_data)
+    assert reviews is not None, "no SSE reviews event was emitted"
+    p = reviews["products"]
+    # The derived (gpt_review_aggregate) rating must be nulled in the SSE event.
+    assert p[0]["rating"] is None, f"derived rating leaked into SSE reviews event: {p[0]['rating']}"
+    # The REAL rating on the other product must still render.
+    assert p[1]["rating"] == 4.5
+    # review_count untouched (real on p1, already None on p0).
+    assert p[1]["review_count"] == 800
