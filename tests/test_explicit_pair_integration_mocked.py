@@ -56,9 +56,13 @@ from app.services.structured_comparison_service import (  # noqa: E402
 # against whatever CATEGORY_DIMENSIONS currently declares).
 _FRAGRANCE_DIMS = set(CATEGORY_DIMENSIONS["fragrances"])
 _ELECTRONICS_DIMS = set(CATEGORY_DIMENSIONS["electronics"])
-# Dims that appear in electronics/other but NOT fragrances — their presence in a
-# fragrance comparison is the regression signature this test guards against.
-_NON_FRAGRANCE_TELL = "build_quality_score"
+# CLEANUP-3(a): the real "other"-category tell is `build_score` (a fragrance
+# silently falling back to "other" would surface it). The previous
+# "build_quality_score" was the ELECTRONICS dim and is NOT in
+# CATEGORY_DIMENSIONS["other"], so the negative assertion was VACUOUS (a fragrance
+# routed to "other" carries build_score, never build_quality_score). Use the
+# genuine "other" tell so the leak guard actually bites.
+_NON_FRAGRANCE_TELL = "build_score"
 
 
 def _frag_product_dict(category, *, brand, name, amount):
@@ -240,6 +244,58 @@ def test_explicit_pair_response_category_used_is_fragrances_e2e():
     assert "build" not in dim_keys, (
         f"a 'build' dimension rendered on a fragrance comparison: "
         f"dimension keys = {sorted(k for k in dim_keys if k)}"
+    )
+
+
+def test_explicit_pair_category_switched_surfaces_on_response_e2e():
+    """CLEANUP-3(c): a detection-overrides-chip explicit pair must surface
+    category_switched=True + original_category on the ASSEMBLED response (not just
+    on the internal resolver). Perfume/cologne NAMES classify -> fragrances, which
+    overrides a conflicting electronics chip."""
+    svc = get_comparison_service()
+
+    async def fake_fetch(product_info, region, include_specs, include_reviews, nocache=False):
+        cat = product_info.get("category") or "other"
+        name = product_info.get("name") or product_info.get("search_query") or "Fragrance"
+        amount = 78.0 if "Sauvage" in str(name) else 64.0
+        return _frag_product_dict(cat, brand="", name=name, amount=amount)
+
+    from app.services import scoring_service as _ss
+    real_service = _ss.get_scoring_service()
+    static_verdict = (
+        {"winner_index": 0, "winner_declaration": "A fine signature.",
+         "key_differences": [], "recommendation": "Pick by the notes."},
+        {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    )
+    with patch.object(svc, "_fetch_product_data", side_effect=fake_fetch), \
+        patch(
+            "app.services.structured_comparison_service.generate_comparison",
+            new=AsyncMock(return_value=static_verdict),
+        ), \
+        patch(
+            "app.services.structured_comparison_service.get_scoring_service",
+            return_value=real_service,
+        ):
+        response = asyncio.run(
+            svc.compare_from_text(
+                query="Dior Sauvage perfume vs Creed Aventus cologne",
+                explicit_pair=("Dior Sauvage perfume", "Creed Aventus cologne"),
+                selected_category="electronics",  # conflicting chip -> detection overrides
+                user_id=None,
+                nocache=True,
+            )
+        )
+
+    assert response.get("success") is not False, (
+        f"comparison failed unexpectedly: code={response.get('code')!r}"
+    )
+    # Detection (fragrances) won over the electronics chip -> switched + original.
+    assert response.get("category_used") == "fragrances", response.get("category_used")
+    assert response.get("category_switched") is True, (
+        f"category_switched not surfaced on the response: {response.get('category_switched')!r}"
+    )
+    assert response.get("original_category") == "electronics", (
+        f"original_category not surfaced: {response.get('original_category')!r}"
     )
 
 

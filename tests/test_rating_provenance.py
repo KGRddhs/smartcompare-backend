@@ -192,32 +192,60 @@ def test_dim_value_two_real_ratings_still_computes():
 # gpt_review_aggregate — flagged derived at source + count nulled
 # ============================================
 
-@pytest.mark.asyncio
-async def test_gpt_review_aggregate_flags_derived_and_nulls_count():
-    """The gpt_review_aggregate fallback promotes a GPT average_rating +
-    total_reviews ESTIMATE onto the product. It must flag rating_derived=True and
-    null the estimated review_count so no downstream surface presents it as real.
-    We exercise the fallback by constructing the post-Phase-2 state it runs on."""
-    # Mirror the source block's preconditions: rating None from providers,
-    # reviews dict carries a GPT-estimated average_rating + total_reviews.
+def test_gpt_review_aggregate_flags_derived_and_nulls_count():
+    """CLEANUP-3(b): exercise the REAL production code (the extracted
+    _apply_gpt_review_aggregate_fallback that _fetch_product_data calls), NOT an
+    inlined copy. A GPT average_rating + total_reviews ESTIMATE is promoted but
+    flagged rating_derived=True with review_count nulled."""
+    from app.services.structured_comparison_service import (
+        _apply_gpt_review_aggregate_fallback,
+    )
     result = {
         "rating": None,
         "review_count": None,
         "reviews": {"average_rating": 4.3, "total_reviews": 2187},
     }
-    # Inline the exact source logic the service runs (the block is private; this
-    # asserts the contract the block must satisfy).
-    avg = result["reviews"].get("average_rating")
-    avg_float = round(float(avg), 1)
-    if 1.0 <= avg_float <= 5.0:
-        result["rating"] = avg_float
-        result["rating_derived"] = True
-        result["review_count"] = None
+    _apply_gpt_review_aggregate_fallback(result)  # the real service function
     assert result["rating"] == 4.3
     assert result["rating_derived"] is True
-    assert result["review_count"] is None
+    assert result["review_count"] is None  # the fabricated "2,187" estimate is nulled
+    assert result["rating_source"]["extract_method"] == "gpt_review_aggregate"
     # And the guard chain treats it as not-authoritative:
     assert _safe_rating(result) is None
+
+
+def test_gpt_review_aggregate_noop_when_real_rating_present():
+    # Regression: a REAL provider rating must NOT be overwritten/flagged.
+    from app.services.structured_comparison_service import (
+        _apply_gpt_review_aggregate_fallback,
+    )
+    result = {
+        "rating": 4.6, "review_count": 1200,
+        "reviews": {"average_rating": 4.3, "total_reviews": 2187},
+    }
+    _apply_gpt_review_aggregate_fallback(result)
+    assert result["rating"] == 4.6
+    assert result["review_count"] == 1200
+    assert result.get("rating_derived") is not True
+
+
+def test_gpt_review_aggregate_noop_when_no_average():
+    from app.services.structured_comparison_service import (
+        _apply_gpt_review_aggregate_fallback,
+    )
+    result = {"rating": None, "review_count": None, "reviews": {"consensus": "ok"}}
+    _apply_gpt_review_aggregate_fallback(result)
+    assert result["rating"] is None
+    assert result.get("rating_derived") is not True
+
+
+def test_gpt_review_aggregate_noop_when_out_of_range():
+    from app.services.structured_comparison_service import (
+        _apply_gpt_review_aggregate_fallback,
+    )
+    result = {"rating": None, "review_count": None, "reviews": {"average_rating": 9.9}}
+    _apply_gpt_review_aggregate_fallback(result)
+    assert result["rating"] is None  # 9.9 fails the 1.0–5.0 sanity band
 
 
 # ============================================

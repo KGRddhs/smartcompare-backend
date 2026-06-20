@@ -173,6 +173,38 @@ async def _resolve_pair_category(products, selected_category, parser_path=False)
     return category_used, category_switched, original_category
 
 
+def _apply_gpt_review_aggregate_fallback(result: Dict[str, Any]) -> None:
+    """A5/FIX-2 — last-resort rating fallback: when NO real rating provider
+    produced a rating but the reviews dict carries a GPT-extracted
+    ``average_rating``, promote it BUT flag it honestly.
+
+    Mutates ``result`` in place. The promoted rating is a GPT ESTIMATE, so we set
+    ``rating_derived=True`` AT THE SOURCE (every downstream guard — _safe_rating,
+    the overview/reviews projections, scoring _dim_value/_dim_reviews, AND the SSE
+    intermediate reviews event — then treats it as not-authoritative) and NULL the
+    ``review_count`` (the reviews dict's ``total_reviews`` is an LLM estimate, not a
+    real count). No-op unless rating is missing AND a valid 1.0–5.0 average exists.
+
+    Extracted from _fetch_product_data so the provenance contract is unit-testable
+    against the REAL code (not an inlined copy)."""
+    if result.get("rating") is None and result.get("reviews") and isinstance(result["reviews"], dict):
+        avg = result["reviews"].get("average_rating")
+        if avg is not None:
+            try:
+                avg_float = round(float(avg), 1)
+                if 1.0 <= avg_float <= 5.0:
+                    result["rating"] = avg_float
+                    result["rating_derived"] = True
+                    result["review_count"] = None
+                    result["rating_verified"] = False
+                    result["rating_source"] = {
+                        "name": "Aggregated from reviews", "url": None,
+                        "extract_method": "gpt_review_aggregate", "confidence": "low",
+                    }
+            except (ValueError, TypeError):
+                pass
+
+
 async def _cancel_profile_task(task) -> None:
     """I5.6 lever-2: cleanly cancel the early-started behavior/demographics fetch
     task on an early-return path (INSUFFICIENT_DATA / stream timeout) so no
@@ -3459,31 +3491,10 @@ class StructuredComparisonService:
         result["rating_verified"] = rating_data.get("rating_verified", False)
         result["rating_source"] = rating_data.get("rating_source")
 
-        # Fallback: use GPT-extracted average_rating
-        if result["rating"] is None and result.get("reviews") and isinstance(result["reviews"], dict):
-            avg = result["reviews"].get("average_rating")
-            if avg is not None:
-                try:
-                    avg_float = round(float(avg), 1)
-                    if 1.0 <= avg_float <= 5.0:
-                        result["rating"] = avg_float
-                        # A5 — this rating is a GPT ESTIMATE, not from a real
-                        # rating provider. Flag rating_derived=True AT THE SOURCE so
-                        # every downstream guard (_safe_rating, the overview/reviews
-                        # projections, scoring _dim_value/_dim_reviews) AND the SSE
-                        # intermediate reviews event treat it as not-authoritative.
-                        result["rating_derived"] = True
-                        # The "total_reviews" here is an LLM estimate promoted to a
-                        # count (the fabricated "2,187 reviews"). Null it — we never
-                        # present an estimated count as a real review count.
-                        result["review_count"] = None
-                        result["rating_verified"] = False
-                        result["rating_source"] = {
-                            "name": "Aggregated from reviews", "url": None,
-                            "extract_method": "gpt_review_aggregate", "confidence": "low",
-                        }
-                except (ValueError, TypeError):
-                    pass
+        # Fallback: use GPT-extracted average_rating (flagged rating_derived +
+        # count nulled at source). Extracted to a module helper so the provenance
+        # contract is unit-testable against the real code.
+        _apply_gpt_review_aggregate_fallback(result)
 
         # Inject verified rating into reviews
         if result.get("reviews") and isinstance(result["reviews"], dict) and rating_data.get("rating"):
