@@ -57,7 +57,24 @@ fixes is sound — the matrix is GREEN on dims/profile/fairness for all 9.**
 
 ## GAPS (proposed fixes — Phase 2, GO-gated; NOT applied)
 
-### ⚠️ G1 (HIGH severity, render correctness) — subtype prompt fields silently dropped by the category-schema filter
+> **DISPATCHER RULING (2026-06-20): G1 = DEFERRED to its own follow-on bundle.**
+> Rationale (confirmed): pre-existing + orthogonal to this bundle's explicit-pair/vision
+> category-ROUTING fix (G1 also hits the already-correct `q=` parser path, so folding it
+> in would muddy the clean smoke20 no-regression story); fragrances render correctly
+> WITHOUT it; large blast radius. **B2 Phase 2 shipped ZERO shared-file edits.** This
+> section is the tracked carry-over: the evidence, the proposed-fix sketch, and the
+> blast-radius list below are the follow-on's starting point. The pin
+> `tests/test_all_category_render.py::test_G1_fragrances_survive_enough_for_this_bundle`
+> guards that fragrances stay adequate; the `test_G1_subtype_fields_fully_dropped_*`
+> parametrized test documents the live gap (flips RED — a prompt to write a survival guard
+> — the day G1 is fixed).
+>
+> **➡️ DEFERRED FOLLOW-UP — "subtype spec-schema survival" (P1, ~$0, no Serper):** make
+> `extract_specs`'s render filter use the SAME effective schema the prompt used (subtype
+> when one was detected), so subtype-specific fields survive instead of being silently
+> dropped. Scope below.
+
+### ⚠️ G1 (HIGH severity, render correctness) — subtype prompt fields silently dropped by the category-schema filter — **[DEFERRED — see ruling above]**
 
 **The bug.** `_build_specs_prompt` (`extraction_service.py:439-443`) prompts GPT with
 `PRODUCT_TYPE_SCHEMAS[subtype]` field names when `detect_product_type` matches (it
@@ -98,18 +115,21 @@ else keep `CATEGORY_SPEC_SCHEMAS[category]`. Then `build_category_profile` must 
 subtype fields too (extend `_CATEGORY_PROFILE_LABEL_OVERRIDES` for the new keys, OR have
 the profile read the same effective schema).
 
-**⚠️ Scope caution / for dispatcher decision:** this is a PRE-EXISTING gap in the L2.12
-product-type layer — it also affects the already-correct `q=` parser path, so it is
-*orthogonal* to this bundle's explicit-pair/vision category routing. It is large
-(touches `extract_specs` + the `category_profile` contract + labels + the side-by-side
-Specs table + likely the fairness extractors that key off category fields). **My
-recommendation: split it into its own follow-on sub-bundle, not fold it into catfix.**
-The catfix DoD's fragrance render is already GREEN without it (fragrances survive 9/12,
-including `scent_family`/notes/`sillage`/`concentration`). If the dispatcher wants a
-*minimal* in-scope slice: dual-register the highest-traffic dropped fragrance fields
-(`longevity_hrs`→already have `longevity`; add nothing — fragrances are fine) — i.e.
-**fragrances need NO G1 fix for this bundle.** G1 is a general-electronics/fashion/
-supplements problem best handled separately.
+**Blast-radius (the follow-on must touch ALL of these — why it's its own bundle):**
+this is a PRE-EXISTING gap in the L2.12 product-type layer — it also affects the
+already-correct `q=` parser path, so it is *orthogonal* to this bundle's explicit-pair/
+vision category routing. A complete fix touches:
+- `extract_specs` filter (`extraction_service.py:982-998`) — the survival logic
+- the `category_profile` Contract-1 surface (`build_category_profile`) — render subtype fields
+- `_CATEGORY_PROFILE_LABEL_OVERRIDES` — humanized labels for the new subtype keys
+  (`capacity_kg`→"Capacity (kg)", `screen_size`, `protein_g_serving`, `perfumer`, …)
+- the FE generic `CategoryProfile` consumer + i18n `results.spec.<key>` (EN+AR) for new keys
+- likely the `CATEGORY_FAIRNESS` extractors that key off category-schema field names
+- the L2.12 tests (`test_specs_prompt_product_type_schema.py`) must add a SURVIVAL assertion
+**DEFERRED per dispatcher ruling (above).** The catfix DoD's fragrance render is GREEN
+without it (fragrances survive 9/12 incl. `scent_family`/notes/`sillage`/`concentration`);
+the dropped `longevity_hrs`/`volume_ml` have category equivalents `longevity`/`volume`. So
+**fragrances need NO G1 fix.** G1 is a general electronics/fashion/supplements problem.
 
 ### ⚠️ G2 (LOW, cosmetic) — haircare `scent` field label
 
@@ -144,13 +164,17 @@ product), and the design says keep `other` as the generic fallback.
 
 ---
 
-## Phase-2 recommendation summary (for dispatcher GO)
+## Phase-2 outcome (dispatcher-ruled 2026-06-20)
 
-1. **G1** — real HIGH-severity render gap (empty spec tables for TV/watch/protein/etc.),
-   but **recommend deferring to a dedicated follow-on** (orthogonal to catfix's category
-   routing; large blast radius across extract_specs + profile + labels + fairness).
-   **Fragrances do NOT need it for this bundle's DoD.** Dispatcher decides scope.
-2. **G2 / G3** — cosmetic, **no fix** recommended.
+1. **G1** — real HIGH-severity render gap (empty spec tables for TV/watch/protein/etc.).
+   **RULING: DEFERRED to a dedicated follow-on** (orthogonal to catfix's category routing;
+   large blast radius across extract_specs + profile + labels + FE i18n + fairness).
+   Fragrances do NOT need it for this bundle's DoD. Tracked above as the "subtype
+   spec-schema survival" follow-up; pinned by the two `test_G1_*` tests.
+2. **G2 / G3** — cosmetic, **no fix** (ruled).
+
+**B2 Phase 2 = ZERO shared-file edits.** Only be-render-owned files were created/edited
+(this matrix + `tests/test_all_category_render.py`).
 
 **Net: the all-9 routing/dims/profile/fairness layer is GREEN. The one genuine render
 gap (G1) is pre-existing, fragrance-irrelevant, and best handled as its own bundle.**
