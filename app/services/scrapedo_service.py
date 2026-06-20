@@ -101,11 +101,28 @@ async def render_page(url: str) -> Optional[str]:
         return None
 
 
-async def render_page_with_status(url: str) -> tuple[Optional[str], int]:
-    """Like render_page but returns (html_or_none, status_code) for circuit breaker."""
+def _parse_request_cost(resp) -> int:
+    """A7 — read the per-request credit cost Scrape.do bills via the
+    `Scrape.do-Request-Cost` response header. Defaults to 5 (a render=true
+    request) when the header is absent or unparseable. Never raises."""
+    try:
+        return int(resp.headers.get("Scrape.do-Request-Cost", 5))
+    except (TypeError, ValueError):
+        return 5
+
+
+async def render_page_with_status(url: str) -> tuple[Optional[str], int, int]:
+    """Like render_page but returns (html_or_none, status_code, cost) where cost
+    is the real credit count Scrape.do billed.
+
+    A7 — cost is 0 on the NO-REQUEST paths (token missing, timeout, generic
+    exception — no `resp`, 0 credits billed) and the metered header value (fallback
+    5) wherever a `resp` exists (200 with html, 200 with no usable content, and a
+    billed non-200 like 400/404/410/429/503). The caller meters this via
+    record_usage("scrapedo", count=cost)."""
     token = os.environ.get("SCRAPEDO_API_TOKEN")
     if not token:
-        return None, 0
+        return None, 0, 0
 
     _log_invocation(url)
 
@@ -120,19 +137,20 @@ async def render_page_with_status(url: str) -> tuple[Optional[str], int]:
                 },
             )
 
+            cost = _parse_request_cost(resp)
             if resp.status_code == 200:
                 html = resp.text
                 if html and len(html) > 500:
                     logger.info(f"[SCRAPEDO] Got {len(html)//1024}KB HTML from {url}")
-                    return html, 200
-                return None, 200
+                    return html, 200, cost
+                return None, 200, cost
 
             logger.warning(f"[SCRAPEDO] HTTP {resp.status_code} for {url}")
-            return None, resp.status_code
+            return None, resp.status_code, cost
 
     except httpx.TimeoutException:
         logger.warning(f"[SCRAPEDO] Timeout ({SCRAPEDO_TIMEOUT}s) for {url}")
-        return None, 0
+        return None, 0, 0
     except Exception as e:
         logger.warning(f"[SCRAPEDO] Error: {e}")
-        return None, 0
+        return None, 0, 0

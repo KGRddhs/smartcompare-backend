@@ -52,7 +52,7 @@ class TestCacheFirstSkipsScrapers:
                 new=AsyncMock(return_value=(None, 0))))
             m_sd = es.enter_context(patch(
                 "app.services.scrapedo_service.render_page_with_status",
-                new=AsyncMock(return_value=(None, 0))))
+                new=AsyncMock(return_value=(None, 0, 0))))
             result = run_async(service._get_price(
                 "Apple", "iPhone 15", "256GB", "bahrain",
                 "Apple iPhone 15 256GB", nocache=False, category="electronics",
@@ -87,7 +87,7 @@ class TestCacheFirstSkipsScrapers:
                 new=AsyncMock(return_value=(None, 0))))
             m_sd = es.enter_context(patch(
                 "app.services.scrapedo_service.render_page_with_status",
-                new=AsyncMock(return_value=(None, 0))))
+                new=AsyncMock(return_value=(None, 0, 0))))
             result = run_async(service._get_price(
                 "Sony", "WH-1000XM5", None, "bahrain",
                 "Sony WH-1000XM5", nocache=False, category="electronics",
@@ -125,7 +125,7 @@ class TestCacheFirstSkipsScrapers:
                 new=AsyncMock(return_value=(None, 0))))
             m_sd = es.enter_context(patch(
                 "app.services.scrapedo_service.render_page_with_status",
-                new=AsyncMock(return_value=(None, 0))))
+                new=AsyncMock(return_value=(None, 0, 0))))
             result = run_async(service._get_price(
                 "Tom Ford", "Tobacco Vanille", None, "bahrain",
                 "Tom Ford Tobacco Vanille", nocache=False, category="fragrances",

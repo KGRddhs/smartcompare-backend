@@ -832,12 +832,17 @@ async def _scrapedo_scraper(
     if not validate_scrape_url(url):
         return None
     try:
-        html, status = await scrapedo_service.render_page_with_status(url)
+        html, status, cost = await scrapedo_service.render_page_with_status(url)
     except Exception as e:  # noqa: BLE001
         logger.debug(f"[fan_out scrapedo] {url} raised: {e}")
         return None
-    if status == 200:
-        record_usage("scrapedo")
+    # A7 — meter the REAL credit cost Scrape.do billed (header-derived, fallback
+    # 5). cost>0 means a request reached the API and was charged (200 OR a billed
+    # non-200 like 400/404/410/429/503); cost==0 is a no-request path (token
+    # missing / timeout / generic exception). Record usage for every billed call,
+    # not just 200, so the budget meter reflects true spend.
+    if cost > 0:
+        record_usage("scrapedo", count=cost)
     if not html:
         if status in (429, 503) or status == 0:
             record_failure("scrapedo")
@@ -2042,7 +2047,7 @@ class StructuredComparisonService:
                 product_data[0], product_data[1], region,
                 parsed.get("comparison_type", "value") if not vision_products else "value",
                 user_preferences=user_preferences,
-                scores_summary=scores_summary, category=detected_category,
+                scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
             )
             if orchestrator_timings is not None:
@@ -2059,7 +2064,7 @@ class StructuredComparisonService:
                     product1=product_data[0], product2=product_data[1], region=region,
                     concern=parsed.get("comparison_type", "value") if not vision_products else "value",
                     user_preferences=user_preferences, scores_summary=scores_summary,
-                    category=detected_category, demographics_profile=demographics_profile,
+                    category=category_used, demographics_profile=demographics_profile,
                 ),
                 pain_workflow_context=scores_summary,
                 stage_timings=orchestrator_timings,
@@ -2080,7 +2085,7 @@ class StructuredComparisonService:
 
             # Trust validation
             from app.services.trust_validation_service import validate_verdict
-            verdict_validation = validate_verdict(comparison, scoring_result, detected_category, products=product_data)
+            verdict_validation = validate_verdict(comparison, scoring_result, category_used, products=product_data)
 
             # Extract pros/cons
             if include_pros_cons:
@@ -2357,17 +2362,24 @@ class StructuredComparisonService:
 
                 products = parsed["products"][:2]
 
-            # Determine category. KEYSTONE FIX: canonicalize the LLM-emitted
-            # category string ("Fragrances" -> "fragrances") so every downstream
-            # lookup (scoring dims, spec schema, priority personalization) keys
-            # correctly instead of silently falling back to "other".
-            detected_category = canonicalize_category(products[0].get("category"))
-            category_switched = False
-            original_category = None
-            if selected_category and canonicalize_category(selected_category) != detected_category:
-                category_switched = True
-                original_category = selected_category
-            category_used = detected_category
+            # A4 — Determine the AUTHORITATIVE pair category (mirror of the sync
+            # path; the stream path has NO _partial_build_ctx so that block is
+            # intentionally omitted). Detection runs on the product NAMES via
+            # resolve_category, a confident name-hit overrides a conflicting chip,
+            # and a blind detection with no chip escalates to the A2b GPT-mini
+            # classifier. The resolved category is then stamped onto BOTH per-product
+            # dicts so _fetch_product_data -> result["category"] (scoring,
+            # spec-schema, category-aware source discovery) keys off the TRUE
+            # category, not the deterministic "other" stub — before the gather below.
+            product_names = [p.get("search_query") or p.get("name") for p in products]
+            category_used, category_switched, _needs_llm = resolve_category(
+                product_names, selected_category
+            )
+            if _needs_llm:
+                category_used = await classify_category_llm(product_names)
+            original_category = selected_category if category_switched else None
+            for _p in products:
+                _p["category"] = category_used
 
             # Step 2: Fetch product data
             yield ("status", {"message": "Fetching specs and prices...", "progress": 20})
@@ -2574,7 +2586,7 @@ class StructuredComparisonService:
                 product_data[0], product_data[1], region,
                 parsed.get("comparison_type", "value") if not vision_products else "value",
                 user_preferences=user_preferences,
-                scores_summary=scores_summary, category=detected_category,
+                scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
             )
             if orchestrator_timings is not None:
@@ -2590,14 +2602,14 @@ class StructuredComparisonService:
                     product1=product_data[0], product2=product_data[1], region=region,
                     concern=parsed.get("comparison_type", "value") if not vision_products else "value",
                     user_preferences=user_preferences, scores_summary=scores_summary,
-                    category=detected_category, demographics_profile=demographics_profile,
+                    category=category_used, demographics_profile=demographics_profile,
                 ),
                 pain_workflow_context=scores_summary,
                 stage_timings=orchestrator_timings,
             )
 
             from app.services.trust_validation_service import validate_verdict
-            verdict_validation = validate_verdict(comparison, scoring_result, detected_category, products=product_data)
+            verdict_validation = validate_verdict(comparison, scoring_result, category_used, products=product_data)
 
             if include_pros_cons:
                 # Bundle C v1 hot-fix (round 2) § 1a diagnostic — streaming path

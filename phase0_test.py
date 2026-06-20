@@ -91,8 +91,8 @@ async def test_scrapedo():
     print(f"\nRendering: {url}")
 
     try:
-        html, status = await scrapedo_service.render_page_with_status(url)
-        print(f"Status: {status}")
+        html, status, cost = await scrapedo_service.render_page_with_status(url)
+        print(f"Status: {status} (cost={cost})")
         print(f"HTML length: {len(html) if html else 0}")
 
         if html:
