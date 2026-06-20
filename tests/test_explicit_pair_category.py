@@ -215,6 +215,65 @@ def test_sync_stream_category_parity():
 # test_category_keystone_scoring.py): fragrance dicts -> fragrance dims.
 # ============================================
 
+# ============================================
+# _resolve_pair_category — parser-hint seam (A3/A4 helper, the Option-B home of
+# the parser-path category authority). The LLM-emitted per-product `category`
+# outranks a user chip when the NAMES are blind; explicit_pair/vision (whose
+# field is the deterministic stub) are unaffected.
+# ============================================
+
+def test_resolve_pair_category_parser_hint_overrides_chip():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # Parser path: brand-only names + parser category="electronics" + chip="grocery".
+    products = [
+        {"category": "electronics", "search_query": "Apple iPhone 15", "name": "iPhone 15"},
+        {"category": "electronics", "search_query": "Samsung Galaxy S24", "name": "Galaxy S24"},
+    ]
+    cat, switched, original = asyncio.run(_resolve_pair_category(products, "grocery"))
+    assert cat == "electronics"
+    assert switched is True
+    assert original == "grocery"
+
+
+def test_resolve_pair_category_name_hit_beats_parser_hint():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # A confident NAME hit (perfume/cologne) wins over a stale parser hint.
+    products = [
+        {"category": "electronics", "search_query": "Dior Sauvage perfume", "name": "Dior Sauvage perfume"},
+        {"category": "electronics", "search_query": "Creed Aventus cologne", "name": "Creed Aventus cologne"},
+    ]
+    cat, switched, original = asyncio.run(_resolve_pair_category(products, None))
+    assert cat == "fragrances"
+
+
+def test_resolve_pair_category_explicit_stub_other_uses_chip():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    # explicit_pair shape: field is the "other" stub, names blind -> chip honored.
+    products = [
+        {"category": "other", "search_query": "Soleil Neige", "name": "Soleil Neige"},
+        {"category": "other", "search_query": "Oud Voyager", "name": "Oud Voyager"},
+    ]
+    cat, switched, original = asyncio.run(_resolve_pair_category(products, "fragrances"))
+    assert cat == "fragrances"
+    assert switched is False
+
+
+def test_resolve_pair_category_blind_everything_escalates():
+    from app.services.structured_comparison_service import _resolve_pair_category
+    products = [
+        {"category": "other", "search_query": "Mystery A", "name": "Mystery A"},
+        {"category": "other", "search_query": "Mystery B", "name": "Mystery B"},
+    ]
+
+    async def fake_llm(_names):
+        return "skincare"
+
+    with patch("app.services.structured_comparison_service.classify_category_llm",
+               side_effect=fake_llm):
+        cat, switched, original = asyncio.run(_resolve_pair_category(products, None))
+    assert cat == "skincare"
+
+
 def test_fragrance_dicts_score_with_fragrance_dims():
     from app.services.scoring_service import ScoringService, CATEGORY_DIMENSIONS
     products = [

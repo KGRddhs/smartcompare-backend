@@ -107,6 +107,46 @@ def _phase1_completely_failed(pd: Dict[str, Any]) -> bool:
     return pd.get("specs") is None and pd.get("price") is None
 
 
+async def _resolve_pair_category(products, selected_category):
+    """A3/A4 — resolve the AUTHORITATIVE pair category for the sync + stream
+    paths (single source of truth so both paths stay in lockstep).
+
+    This is resolve_category's precedence ladder with one extra seam: on the
+    PARSER (q=) path the LLM parse already emitted a REAL per-product ``category``
+    field, which is a detection signal that must outrank a user chip. So the
+    effective detection is "confident name hit OR (when names are blind) the
+    LLM-emitted category". explicit_pair / vision dicts carry only the
+    deterministic ``classify_category_from_text`` stub in that field here, so the
+    seam is a no-op for them (the stub == the name classification).
+
+    Returns ``(category_used, category_switched, original_category)``:
+      1. effective detection (name hit, else LLM/parser hint) wins, overriding a
+         conflicting real chip (``switched=True``);
+      2. else a real chip is honored;
+      3. else (blind name + blind hint + no chip) escalate to the bounded A2b
+         GPT-mini classifier.
+    """
+    product_names = [p.get("search_query") or p.get("name") for p in products]
+    combined = " ".join(n for n in product_names if n)
+    det = classify_category_from_text(combined)
+    if det == "other" and products:
+        # Parser/LLM hint (no-op for explicit_pair/vision: their field is the stub).
+        det = canonicalize_category(products[0].get("category"))
+    sel = canonicalize_category(selected_category) if selected_category else None
+
+    if det != "other":
+        category_used = det
+        category_switched = bool(sel and sel != "other" and sel != det)
+    elif sel and sel != "other":
+        category_used = sel
+        category_switched = False
+    else:
+        category_used = await classify_category_llm(product_names)
+        category_switched = False
+    original_category = selected_category if category_switched else None
+    return category_used, category_switched, original_category
+
+
 async def _cancel_profile_task(task) -> None:
     """I5.6 lever-2: cleanly cancel the early-started behavior/demographics fetch
     task on an early-return path (INSUFFICIENT_DATA / stream timeout) so no
@@ -1896,18 +1936,15 @@ class StructuredComparisonService:
                 products = parsed["products"][:2]
 
             # A3 — Determine the AUTHORITATIVE pair category. Detection runs on the
-            # product NAMES (resolve_category), so an explicit_pair / vision compare
-            # whose names carry a category word ("perfume"/"cologne") is classified
-            # even when the per-product `category` field is the deterministic stub
-            # ("other"). A confident name-hit overrides a conflicting chip; a blind
-            # detection with no chip escalates to the bounded A2b GPT-mini classifier.
-            product_names = [p.get("search_query") or p.get("name") for p in products]
-            category_used, category_switched, _needs_llm = resolve_category(
-                product_names, selected_category
+            # product NAMES so an explicit_pair / vision compare whose names carry a
+            # category word ("perfume"/"cologne") is classified even when the
+            # per-product `category` field is the deterministic stub ("other"). A
+            # confident name-hit overrides a conflicting chip; the parser path's
+            # LLM-emitted category seeds detection when names are blind; a fully
+            # blind detection with no chip escalates to the A2b GPT-mini classifier.
+            category_used, category_switched, original_category = (
+                await _resolve_pair_category(products, selected_category)
             )
-            if _needs_llm:
-                category_used = await classify_category_llm(product_names)
-            original_category = selected_category if category_switched else None
 
             # WS1 (D1) — fold the resolved category context into the partial
             # build ctx so a hard-cap timeout after this point can still build
@@ -2363,21 +2400,15 @@ class StructuredComparisonService:
                 products = parsed["products"][:2]
 
             # A4 — Determine the AUTHORITATIVE pair category (mirror of the sync
-            # path; the stream path has NO _partial_build_ctx so that block is
-            # intentionally omitted). Detection runs on the product NAMES via
-            # resolve_category, a confident name-hit overrides a conflicting chip,
-            # and a blind detection with no chip escalates to the A2b GPT-mini
-            # classifier. The resolved category is then stamped onto BOTH per-product
-            # dicts so _fetch_product_data -> result["category"] (scoring,
-            # spec-schema, category-aware source discovery) keys off the TRUE
-            # category, not the deterministic "other" stub — before the gather below.
-            product_names = [p.get("search_query") or p.get("name") for p in products]
-            category_used, category_switched, _needs_llm = resolve_category(
-                product_names, selected_category
+            # path via the shared _resolve_pair_category helper; the stream path has
+            # NO _partial_build_ctx so that block is intentionally omitted). The
+            # resolved category is then stamped onto BOTH per-product dicts so
+            # _fetch_product_data -> result["category"] (scoring, spec-schema,
+            # category-aware source discovery) keys off the TRUE category, not the
+            # deterministic "other" stub — before the gather below.
+            category_used, category_switched, original_category = (
+                await _resolve_pair_category(products, selected_category)
             )
-            if _needs_llm:
-                category_used = await classify_category_llm(product_names)
-            original_category = selected_category if category_switched else None
             for _p in products:
                 _p["category"] = category_used
 
