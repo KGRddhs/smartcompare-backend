@@ -65,7 +65,7 @@ text, and vision paths (URL engine = follow-on). Replaces the hardcoded binary a
 
 **Source of truth (definitions unchanged):** `CATEGORY_DIMENSIONS`(+weights) → hero bars (top-4 by weight);
 `CATEGORY_SPEC_SCHEMAS` in schema order → "At a glance" + Specs; `CATEGORY_FAIRNESS` → like-for-like basis;
-design-sync JSX refs (`.design-sync/`, `ui_kits/mobile/ResultsScreen.jsx`) = visual reference.
+design-sync JSX refs (`.design-sync/staging/ui_kits/mobile/ResultsScreen.jsx`; Glob for it — duplicates under `docs/claude-design-handoff/`) = visual reference.
 
 Once Section 1 routes correctly, each category gets its own structure. The team then **audits all 9**
 (electronics, grocery, supplements, makeup, skincare, haircare, fragrances, fashion, other) end-to-end —
