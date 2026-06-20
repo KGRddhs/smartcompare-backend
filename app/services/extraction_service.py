@@ -7,6 +7,7 @@ load_dotenv(override=True)  # Load .env FIRST before anything else
 import os
 import re
 import json
+import asyncio
 import hashlib
 import logging
 from typing import Optional, List, Dict, Any
@@ -790,37 +791,11 @@ def classify_category_from_text(text: str) -> str:
     return "other"
 
 
-def resolve_category(
-    product_names: list,
-    selected_category: Optional[str] = None,
-) -> tuple:
-    """Decide the authoritative category for an explicit-pair / vision compare.
-
-    Precedence ladder (returns ``(category, switched, needs_llm)``):
-      1. A confident deterministic hit on the product NAMES wins — even over a
-         conflicting user chip (``switched=True`` flags the override).
-      2. else a REAL chip (``selected_category`` that canonicalizes to something
-         other than ``"other"``) is honored.
-      3. else (blind detection AND no usable chip) -> ``("other", False, True)``;
-         the caller fires the A2b GPT-mini classifier (``classify_category_llm``).
-
-    Detection runs on the combined product NAMES (NOT the about-to-be-overwritten
-    per-product ``category`` field). ``product_names`` is a list of strings; any
-    falsy/non-string entries are dropped.
-    """
-    names = [n for n in (product_names or []) if isinstance(n, str) and n.strip()]
-    combined = " ".join(names)
-    det = classify_category_from_text(combined)
-    sel = canonicalize_category(selected_category) if selected_category else None
-
-    if det != "other":
-        # Confident detection is authoritative; flag a switch only against a REAL
-        # conflicting chip ("other"/unknown chips are not a real opinion).
-        switched = bool(sel and sel != "other" and sel != det)
-        return det, switched, False
-    if sel and sel != "other":
-        return sel, False, False
-    return "other", False, True
+# CLEANUP-1: the former `resolve_category` precedence helper was removed as
+# prod-dead. The live pair-category resolver is `_resolve_pair_category` in
+# structured_comparison_service (path-aware: parser vs explicit/vision). The A2b
+# escalation below (`classify_category_llm`) is still live — that resolver calls
+# it on the fully-blind branch.
 
 
 # System prompt for the A2b bounded classify-only escalation. Deliberately tiny
@@ -835,14 +810,20 @@ _CLASSIFY_CATEGORY_LLM_PROMPT = (
     "other."
 )
 
+# CLEANUP-4(a) — latency hygiene cap on the blind-path classify call so a hung
+# OpenAI request can't drag the comparison wall. Env-tunable; tests patch it tiny.
+_CLASSIFY_LLM_TIMEOUT = float(os.getenv("CLASSIFY_LLM_TIMEOUT", "4.0"))
+
 
 async def classify_category_llm(texts: list) -> str:
     """Bounded gpt-4o-mini classify-only escalation (A2b).
 
-    Fires ONLY when ``resolve_category`` returns ``needs_llm=True`` (blind
-    detection AND no usable chip). This is a NEW classify-only call — it is NOT
-    ``parse_product_query`` (the explicit_pair path asserts that stays unused).
-    Returns one canonical category key; any error/timeout/unknown -> ``"other"``.
+    Fires ONLY on the fully-blind branch of ``_resolve_pair_category`` (no name
+    hit, no LLM/parser category, no usable chip). This is a NEW classify-only call
+    — it is NOT ``parse_product_query`` (the explicit_pair path asserts that stays
+    unused). Capped by ``_CLASSIFY_LLM_TIMEOUT`` so a hung request degrades
+    gracefully. Returns one canonical category key; any error/timeout/unknown ->
+    ``"other"``.
     """
     try:
         names = [t for t in (texts or []) if isinstance(t, str) and t.strip()]
@@ -850,18 +831,23 @@ async def classify_category_llm(texts: list) -> str:
             return "other"
         user_content = sanitize_prompt_input(" | ".join(names), max_length=300)
         client = get_client()
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": _CLASSIFY_CATEGORY_LLM_PROMPT},
-                {"role": "user", "content": f"<PRODUCTS>{user_content}</PRODUCTS>"},
-            ],
-            max_tokens=10,
-            temperature=0.0,
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": _CLASSIFY_CATEGORY_LLM_PROMPT},
+                    {"role": "user", "content": f"<PRODUCTS>{user_content}</PRODUCTS>"},
+                ],
+                max_tokens=10,
+                temperature=0.0,
+            ),
+            timeout=_CLASSIFY_LLM_TIMEOUT,
         )
         raw = (response.choices[0].message.content or "").strip()
         return canonicalize_category(raw)
     except Exception as e:
+        # asyncio.TimeoutError is an Exception subclass (TimeoutError since 3.11),
+        # so a cap breach is caught here and degrades to "other".
         logger.warning(f"classify_category_llm failed, defaulting to 'other': {e}")
         return "other"
 

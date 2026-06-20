@@ -1,130 +1,17 @@
-"""Tests for resolve_category() + classify_category_llm() — A2 / A2b.
+"""Tests for classify_category_llm() — A2b.
 
-resolve_category(product_names, selected_category) decides the authoritative
-category for an explicit-pair / vision comparison via a precedence ladder:
+classify_category_llm(texts) is a classify-only gpt-4o-mini call (NOT
+parse_product_query) that returns one canonical category key, "other" on any
+error / timeout / unknown output.
 
-  1. confident deterministic detection on the product NAMES wins (overrides a
-     conflicting chip -> switched=True);
-  2. else a real chip (selected_category, not "other"/unknown) is honored;
-  3. else (blind detection AND no usable chip) -> ("other", False, True)
-     escalation sentinel -> caller fires the A2b GPT-mini classifier.
-
-classify_category_llm(texts) is a NEW classify-only gpt-4o-mini call (NOT
-parse_product_query) that returns one canonical key, "other" on any error.
+NOTE (CLEANUP-1): the old `resolve_category` precedence ladder was deleted as
+prod-dead — the live resolver is `_resolve_pair_category` in
+structured_comparison_service. Its precedence coverage (incl. the cases this file
+used to assert) now lives in tests/test_explicit_pair_category.py
+(`_resolve_pair_category` direct tests, both parser_path branches).
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-
-from app.services.extraction_service import resolve_category
-
-
-# ============================================
-# A2: resolve_category precedence
-# ============================================
-
-def test_confident_detection_wins_no_chip():
-    # Combined names carry a fragrance word -> fragrances, no chip needed.
-    cat, switched, needs_llm = resolve_category(
-        ["Dior Sauvage perfume", "Creed Aventus cologne"], None
-    )
-    assert cat == "fragrances"
-    assert switched is False
-    assert needs_llm is False
-
-
-def test_chip_used_when_detection_blind():
-    # Brand/model only (no category word) -> detection blind -> honor the chip.
-    cat, switched, needs_llm = resolve_category(
-        ["Tom Ford Soleil Neige 100ml", "Tom Ford Oud Voyager 100ml"], "fragrances"
-    )
-    assert cat == "fragrances"
-    assert switched is False
-    assert needs_llm is False
-
-
-def test_confident_detection_overrides_conflicting_chip():
-    # Names say fragrances, chip says electronics -> detection wins, switched=True.
-    cat, switched, needs_llm = resolve_category(
-        ["Dior Sauvage perfume", "Creed Aventus cologne"], "electronics"
-    )
-    assert cat == "fragrances"
-    assert switched is True
-    assert needs_llm is False
-
-
-def test_other_chip_never_clobbers_confident_detection():
-    cat, switched, needs_llm = resolve_category(
-        ["gaming laptop", "business laptop"], "other"
-    )
-    assert cat == "electronics"
-    assert switched is False     # "other" sel is not a real opinion -> no switch flagged
-    assert needs_llm is False
-
-
-def test_unknown_chip_never_clobbers_confident_detection():
-    # An unrecognized chip canonicalizes to "other" -> ignored, detection wins.
-    cat, switched, needs_llm = resolve_category(
-        ["Dior Sauvage perfume", "Creed Aventus cologne"], "totally-bogus-category"
-    )
-    assert cat == "fragrances"
-    assert switched is False
-    assert needs_llm is False
-
-
-def test_blind_detection_no_chip_returns_needs_llm():
-    cat, switched, needs_llm = resolve_category(
-        ["Tom Ford Soleil Neige 100ml", "Tom Ford Oud Voyager 100ml"], None
-    )
-    assert cat == "other"
-    assert switched is False
-    assert needs_llm is True
-
-
-def test_blind_detection_other_chip_returns_needs_llm():
-    # chip == "other" is not a real opinion -> still escalate.
-    cat, switched, needs_llm = resolve_category(
-        ["Tom Ford Soleil Neige 100ml", "Tom Ford Oud Voyager 100ml"], "other"
-    )
-    assert cat == "other"
-    assert needs_llm is True
-
-
-def test_mixed_token_pair_resolves_both():
-    # One fragrance name + one ambiguous brand-only name -> a confident hit on
-    # the combined string still resolves the pair to fragrances.
-    cat, switched, needs_llm = resolve_category(
-        ["Dior Sauvage perfume", "Bleu de Chanel"], None
-    )
-    assert cat == "fragrances"
-    assert needs_llm is False
-
-
-def test_supplement_pair_classified():
-    cat, switched, needs_llm = resolve_category(
-        ["NOW Foods Vitamin D3", "Solgar Vitamin D3"], None
-    )
-    assert cat == "supplements"
-    assert needs_llm is False
-
-
-def test_chip_honored_when_detection_blind_supplements():
-    cat, switched, needs_llm = resolve_category(
-        ["Mystery Brand A", "Mystery Brand B"], "skincare"
-    )
-    assert cat == "skincare"
-    assert needs_llm is False
-
-
-def test_empty_names_with_chip():
-    cat, switched, needs_llm = resolve_category([], "fragrances")
-    assert cat == "fragrances"
-    assert needs_llm is False
-
-
-def test_empty_names_no_chip_escalates():
-    cat, switched, needs_llm = resolve_category([], None)
-    assert cat == "other"
-    assert needs_llm is True
 
 
 # ============================================
@@ -204,3 +91,22 @@ async def test_classify_category_llm_empty_input_returns_other_without_calling_o
         # all-whitespace / non-str entries are dropped -> still empty -> "other"
         assert await extraction_service.classify_category_llm(["  ", 123, None]) == "other"
     fake_client.chat.completions.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_classify_category_llm_times_out_to_other():
+    """CLEANUP-4(a): a hung OpenAI create() must not block the blind path — the
+    wait_for cap fires and returns 'other' (latency hygiene)."""
+    import asyncio as _asyncio
+    from app.services import extraction_service
+
+    async def _hang(*a, **k):
+        await _asyncio.sleep(5.0)  # longer than the (patched-tiny) cap
+        return _mock_openai_response("fragrances")
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = _hang
+    with patch.object(extraction_service, "get_client", return_value=fake_client), \
+         patch.object(extraction_service, "_CLASSIFY_LLM_TIMEOUT", 0.05):
+        result = await extraction_service.classify_category_llm(["Mystery A", "Mystery B"])
+    assert result == "other"
