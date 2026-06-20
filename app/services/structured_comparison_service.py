@@ -1910,11 +1910,25 @@ class StructuredComparisonService:
         # build context carries everything _build_partial_response needs that is
         # NOT a fetched stage (query/region/category/cache flag/prefs). Stages
         # are stashed below as they land.
+        #
+        # CLEANUP-4(b) — seed a best-effort category at init ($0, deterministic) so
+        # a hard-cap timeout that fires DURING category resolution (before the real
+        # `_partial_build_ctx.update` below) still renders a sensible category
+        # instead of a bare "other". The real resolved category overwrites this the
+        # moment resolution completes; this only matters on the narrow
+        # mid-resolution timeout window. Prefer a confident name/query hit, else the
+        # user's chip, else "other".
+        _seed_category = classify_category_from_text(query)
+        if _seed_category == "other" and selected_category:
+            _seed_category = canonicalize_category(selected_category)
         self._partial_build_ctx = {
             "query": query,
             "region": region,
             "from_cache": not nocache,
             "user_preferences": user_preferences,
+            "category_used": _seed_category,
+            "category_switched": False,
+            "original_category": None,
         }
         self._partial_product_data = None
         self._partial_scoring_result = None
