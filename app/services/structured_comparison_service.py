@@ -23,6 +23,9 @@ from urllib.parse import urlparse, quote_plus
 from app.services.extraction_service import (
     parse_product_query,
     canonicalize_category,
+    classify_category_from_text,
+    resolve_category,
+    classify_category_llm,
     extract_specs,
     extract_price,
     extract_price_from_training_data,
@@ -1846,7 +1849,10 @@ class StructuredComparisonService:
                     brand = vp.get("brand", "Unknown")
                     vname = vp.get("name", "Unknown Product")
                     full = f"{brand} {vname}".strip()
-                    category = "supplements" if is_supplement_query(full) else "other"
+                    # A3/A4: deterministic per-name classify (supplements ride the
+                    # is_supplement_query branch inside classify_category_from_text);
+                    # the authoritative pair category is resolved + written back below.
+                    category = classify_category_from_text(full)
                     products.append({
                         "brand": brand, "name": vname,
                         "variant": vp.get("size_or_count"),
@@ -1861,7 +1867,9 @@ class StructuredComparisonService:
                 products = []
                 for raw in explicit_pair[:2]:
                     safe = sanitize_prompt_input(raw, max_length=80)
-                    category = "supplements" if is_supplement_query(safe) else "other"
+                    # A3/A4: deterministic per-name classify; the authoritative
+                    # pair category is resolved (+ A2b escalation) + written back below.
+                    category = classify_category_from_text(safe)
                     products.append({
                         "brand": "", "name": safe, "variant": None,
                         "category": category, "search_query": safe, "_explicit": True,
@@ -1882,17 +1890,19 @@ class StructuredComparisonService:
 
                 products = parsed["products"][:2]
 
-            # Determine category. KEYSTONE FIX: canonicalize the LLM-emitted
-            # category string ("Fragrances" -> "fragrances") so every downstream
-            # lookup (scoring dims, spec schema, priority personalization) keys
-            # correctly instead of silently falling back to "other".
-            detected_category = canonicalize_category(products[0].get("category"))
-            category_switched = False
-            original_category = None
-            if selected_category and canonicalize_category(selected_category) != detected_category:
-                category_switched = True
-                original_category = selected_category
-            category_used = detected_category
+            # A3 — Determine the AUTHORITATIVE pair category. Detection runs on the
+            # product NAMES (resolve_category), so an explicit_pair / vision compare
+            # whose names carry a category word ("perfume"/"cologne") is classified
+            # even when the per-product `category` field is the deterministic stub
+            # ("other"). A confident name-hit overrides a conflicting chip; a blind
+            # detection with no chip escalates to the bounded A2b GPT-mini classifier.
+            product_names = [p.get("search_query") or p.get("name") for p in products]
+            category_used, category_switched, _needs_llm = resolve_category(
+                product_names, selected_category
+            )
+            if _needs_llm:
+                category_used = await classify_category_llm(product_names)
+            original_category = selected_category if category_switched else None
 
             # WS1 (D1) — fold the resolved category context into the partial
             # build ctx so a hard-cap timeout after this point can still build
@@ -1903,6 +1913,14 @@ class StructuredComparisonService:
                     "category_switched": category_switched,
                     "original_category": original_category,
                 })
+
+            # A3 KEYSTONE WRITE-BACK — stamp the resolved category onto BOTH
+            # per-product dicts so _fetch_product_data -> result["category"]
+            # (scoring, spec-schema, category-aware source discovery) all key off
+            # the TRUE category, not the deterministic "other" stub. Must happen
+            # before the _fetch_product_data gather below.
+            for _p in products:
+                _p["category"] = category_used
 
             # I5.6 lever-2 — start the behavioral-profile + demographics fetch
             # CONCURRENTLY with the product-data gather. Both fetches depend ONLY
@@ -2300,7 +2318,10 @@ class StructuredComparisonService:
                     brand = vp.get("brand", "Unknown")
                     vname = vp.get("name", "Unknown Product")
                     full = f"{brand} {vname}".strip()
-                    category = "supplements" if is_supplement_query(full) else "other"
+                    # A3/A4: deterministic per-name classify (supplements ride the
+                    # is_supplement_query branch inside classify_category_from_text);
+                    # the authoritative pair category is resolved + written back below.
+                    category = classify_category_from_text(full)
                     products.append({
                         "brand": brand, "name": vname,
                         "variant": vp.get("size_or_count"),
@@ -2314,7 +2335,9 @@ class StructuredComparisonService:
                 products = []
                 for raw in explicit_pair[:2]:
                     safe = sanitize_prompt_input(raw, max_length=80)
-                    category = "supplements" if is_supplement_query(safe) else "other"
+                    # A3/A4: deterministic per-name classify; the authoritative
+                    # pair category is resolved (+ A2b escalation) + written back below.
+                    category = classify_category_from_text(safe)
                     products.append({
                         "brand": "", "name": safe, "variant": None,
                         "category": category, "search_query": safe, "_explicit": True,
