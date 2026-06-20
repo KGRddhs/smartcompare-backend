@@ -231,7 +231,11 @@ CRITICAL_SCHEMA_FIELDS_PREFERRED: Dict[str, List[str]] = {
     "supplements": ["count", "serving_size"],
     # Spec § 2f lists `notes_top/heart/base` as one item — we split into
     # the three discrete schema fields so Tier 1 fallback can target each.
-    "fragrances":  ["sillage", "notes_top", "notes_heart", "notes_base", "season"],
+    # B1 (catfix): scent_family added to PREFERRED only — it rides the existing
+    # batched _smart_fallback_extract (one shared call when any field is blank),
+    # NOT the per-field Serper+GPT NON_NEGOTIABLE fan-out (~0 Serper delta). It
+    # must stay OUT of NON_NEGOTIABLE["fragrances"] = {concentration, longevity}.
+    "fragrances":  ["scent_family", "sillage", "notes_top", "notes_heart", "notes_base", "season"],
     "fashion":     ["origin", "style", "closure_type", "care_instructions"],
     # active_ingredient moved to non-negotiable (S2 I3.6) — removed here.
     "skincare":    ["skin_type", "spf"],
@@ -461,7 +465,7 @@ CATEGORY-SPECIFIC GUIDANCE (seek these fields for BOTH products; include a field
 - Electronics: include all tech specs (display, processor, ram, storage, battery, camera)
 - Fashion: focus on material, style, craftsmanship, origin, design_details. Skip irrelevant fields.
 - Supplements: include count, dosage, form, certifications. Skip tech fields.
-- Fragrances: include scent notes, longevity, sillage, concentration. Skip tech fields.
+- Fragrances: include scent_family (the olfactive family — floral / woody / oriental / fresh / etc.), scent notes (top/heart/base), longevity, sillage, concentration. Skip tech fields. Set scent_family to null when the scent family is genuinely unknown or unsure — never guess or invent one.
 - Makeup: seek shade_range, finish, coverage, skin_type, spf, volume, cruelty_free, vegan, waterproof. Foundations/concealers usually list finish + coverage + shade range; many state vegan/cruelty-free and SPF on the label.
 - Skincare: seek skin_type, skin_concern, active_ingredient, ingredients, spf, volume, fragrance_free, ph_level. Most products state their key active (e.g. niacinamide, retinol, hyaluronic acid) + target skin type/concern.
 - Haircare: seek hair_type, hair_concern, ingredients, volume, scent, sulfate_free, paraben_free, silicone_free. Most products state hair type/concern + a free-from claim.
