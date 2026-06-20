@@ -218,3 +218,34 @@ async def test_gpt_review_aggregate_flags_derived_and_nulls_count():
     assert result["review_count"] is None
     # And the guard chain treats it as not-authoritative:
     assert _safe_rating(result) is None
+
+
+# ============================================
+# A6 — literal "N/A" spec tokens must not leak into the variant tag
+# ============================================
+
+def test_variant_string_skips_na_tokens():
+    # All variant-hook specs are the literal "N/A" -> no "N/A · N/A" tag.
+    product = {"specs": {"storage": "N/A", "color": "N/A", "ram": "unknown"}}
+    variant = _compose_variant_string(product, "electronics")
+    assert variant == "", f"NA tokens leaked into variant: {variant!r}"
+
+
+def test_variant_string_skips_na_keeps_real():
+    # Real value survives; the "N/A"/"-" siblings are dropped.
+    product = {"specs": {"storage": "256GB", "color": "N/A", "ram": "-"}}
+    variant = _compose_variant_string(product, "electronics")
+    assert variant == "256GB"
+
+
+def test_variant_string_na_tokens_case_insensitive():
+    product = {"specs": {"storage": "n/a", "color": "None", "ram": "UNKNOWN"}}
+    variant = _compose_variant_string(product, "electronics")
+    assert variant == ""
+
+
+def test_variant_string_real_values_unaffected():
+    # Regression: genuine multi-segment variant still composes.
+    product = {"specs": {"storage": "512GB", "color": "Black", "ram": "12GB"}}
+    variant = _compose_variant_string(product, "electronics")
+    assert variant == "512GB · Black · 12GB"

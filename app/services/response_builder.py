@@ -279,6 +279,11 @@ def _compose_variant_string(product: Dict[str, Any], category: str) -> str:
         value = specs.get(key)
         if value in (None, "", []):
             continue
+        # A6 — a literal "no data" token ("N/A"/"unknown"/"-"/"none") must NOT
+        # leak into the variant tag (would render "N/A · N/A"). Skip any string
+        # value whose lowercased/stripped form is a known NA token.
+        if isinstance(value, str) and value.strip().lower() in _SPEC_NA_TOKENS:
+            continue
         # Tidy ml-style numerics.
         if key == "volume_ml":
             try:
