@@ -24,7 +24,6 @@ from app.services.extraction_service import (
     parse_product_query,
     canonicalize_category,
     classify_category_from_text,
-    resolve_category,
     classify_category_llm,
     extract_specs,
     extract_price,
