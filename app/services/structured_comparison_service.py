@@ -3432,7 +3432,16 @@ class StructuredComparisonService:
                     avg_float = round(float(avg), 1)
                     if 1.0 <= avg_float <= 5.0:
                         result["rating"] = avg_float
-                        result["review_count"] = result["reviews"].get("total_reviews")
+                        # A5 — this rating is a GPT ESTIMATE, not from a real
+                        # rating provider. Flag rating_derived=True AT THE SOURCE so
+                        # every downstream guard (_safe_rating, the overview/reviews
+                        # projections, scoring _dim_value/_dim_reviews) AND the SSE
+                        # intermediate reviews event treat it as not-authoritative.
+                        result["rating_derived"] = True
+                        # The "total_reviews" here is an LLM estimate promoted to a
+                        # count (the fabricated "2,187 reviews"). Null it — we never
+                        # present an estimated count as a real review count.
+                        result["review_count"] = None
                         result["rating_verified"] = False
                         result["rating_source"] = {
                             "name": "Aggregated from reviews", "url": None,
