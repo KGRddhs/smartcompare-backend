@@ -423,6 +423,103 @@ def test_explicit_path_name_detection_still_authoritative():
     assert cat == "fragrances"
 
 
+# ============================================
+# CLEANUP-1 — explicit/vision (parser_path=False) precedence cases ported from the
+# soon-to-be-deleted resolve_category's 12 unit tests, so deleting the prod-dead
+# resolve_category loses NO precedence coverage. (resolve_category returned a
+# needs_llm sentinel for the caller; _resolve_pair_category invokes
+# classify_category_llm itself, so the "escalation" cases mock it and assert the
+# returned value — same semantics, inlined.)
+# ============================================
+
+def _explicit_products(name0, name1):
+    # explicit/vision shape: per-product "category" is only the deterministic stub
+    # (== classify_category_from_text(name)); we set it to that to mirror prod.
+    from app.services.extraction_service import classify_category_from_text
+    return [
+        {"category": classify_category_from_text(name0), "search_query": name0, "name": name0, "brand": ""},
+        {"category": classify_category_from_text(name1), "search_query": name1, "name": name1, "brand": ""},
+    ]
+
+
+def test_explicit_detection_overrides_conflicting_chip_switched():
+    # Ported resolve_category #3: names say fragrances, chip says electronics ->
+    # detection wins, switched=True, original=the chip.
+    from app.services.structured_comparison_service import _resolve_pair_category
+    products = _explicit_products("Dior Sauvage perfume", "Creed Aventus cologne")
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, "electronics", parser_path=False)
+    )
+    assert cat == "fragrances"
+    assert switched is True
+    assert original == "electronics"
+
+
+def test_explicit_other_chip_never_clobbers_name_hit():
+    # Ported #4: chip="other" is not a real opinion -> name hit wins, switched=False.
+    from app.services.structured_comparison_service import _resolve_pair_category
+    products = _explicit_products("gaming laptop", "business laptop")
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, "other", parser_path=False)
+    )
+    assert cat == "electronics"
+    assert switched is False
+    assert original is None
+
+
+def test_explicit_unknown_chip_never_clobbers_name_hit():
+    # Ported #5: a bogus chip canonicalizes to "other" -> ignored, name hit wins.
+    from app.services.structured_comparison_service import _resolve_pair_category
+    products = _explicit_products("Dior Sauvage perfume", "Creed Aventus cologne")
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category(products, "totally-bogus-category", parser_path=False)
+    )
+    assert cat == "fragrances"
+    assert switched is False
+
+
+def test_explicit_blind_names_other_chip_still_escalates():
+    # Ported #7: blind names + chip="other" -> escalate to classify_category_llm.
+    from app.services.structured_comparison_service import _resolve_pair_category
+    products = _explicit_products("Tom Ford Soleil Neige 100ml", "Tom Ford Oud Voyager 100ml")
+
+    async def fake_llm(_names):
+        return "fragrances"
+
+    with patch("app.services.structured_comparison_service.classify_category_llm",
+               side_effect=fake_llm):
+        cat, switched, original = asyncio.run(
+            _resolve_pair_category(products, "other", parser_path=False)
+        )
+    assert cat == "fragrances"  # the escalation result is returned
+    assert switched is False
+
+
+def test_explicit_empty_names_with_chip_honors_chip():
+    # Ported #11: empty names + a real chip -> chip honored, no escalation.
+    from app.services.structured_comparison_service import _resolve_pair_category
+    cat, switched, original = asyncio.run(
+        _resolve_pair_category([], "fragrances", parser_path=False)
+    )
+    assert cat == "fragrances"
+    assert switched is False
+
+
+def test_explicit_empty_names_no_chip_escalates():
+    # Ported #12: empty names + no chip -> escalate to classify_category_llm.
+    from app.services.structured_comparison_service import _resolve_pair_category
+
+    async def fake_llm(_names):
+        return "other"
+
+    with patch("app.services.structured_comparison_service.classify_category_llm",
+               side_effect=fake_llm):
+        cat, switched, original = asyncio.run(
+            _resolve_pair_category([], None, parser_path=False)
+        )
+    assert cat == "other"
+
+
 def test_fragrance_dicts_score_with_fragrance_dims():
     from app.services.scoring_service import ScoringService, CATEGORY_DIMENSIONS
     products = [
