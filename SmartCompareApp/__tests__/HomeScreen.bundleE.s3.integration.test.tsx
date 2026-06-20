@@ -250,6 +250,25 @@ describe('HomeScreen S3 integration — initial render', () => {
   });
 });
 
+describe('catfix D1 — category nudge visibility', () => {
+  it('shows the nudge on first render (no category selected by default)', () => {
+    const props = makeProps();
+    const rendered = render(<HomeScreen {...props} />);
+    // Default selectedCategory is null → the invitation nudge is present.
+    expect(rendered.getByTestId('home-category-nudge')).toBeTruthy();
+  });
+
+  it('hides the nudge once a category chip is tapped', () => {
+    const props = makeProps();
+    const rendered = render(<HomeScreen {...props} />);
+    // Present before any pick…
+    expect(rendered.getByTestId('home-category-nudge')).toBeTruthy();
+    // …gone after tapping a chip (selectedCategory != null).
+    fireEvent.press(rendered.getByTestId('category-chip-electronics'));
+    expect(rendered.queryByTestId('home-category-nudge')).toBeNull();
+  });
+});
+
 describe('HomeScreen S3 integration — mode switching', () => {
   it('tapping Link mode flips inputMode and renders TwoInputShell', async () => {
     const props = makeProps();
