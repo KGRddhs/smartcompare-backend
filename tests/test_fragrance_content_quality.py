@@ -587,3 +587,81 @@ def test_specs_prompt_anti_asymmetry_is_category_agnostic():
     assert "thinner" not in SPECS_SYSTEM_STATIC_PREFIX.lower(), (
         "anti-asymmetry instruction leaked into the static cache prefix"
     )
+
+
+# ---------------------------------------------------------------------------
+# WS-F — Task F1: category_used populated on the partial/hard-cap path (F3).
+# Confirmed live (fresh nocache 2026-06-21): every partial fragrance response
+# carried `metadata.category_used = None` even though products[i]["category"]
+# (and top-level result["category_used"]) were correctly "fragrances" — because
+# build_comparison_response only writes category_used at the top level, never
+# into the metadata block, and the partial assembly passes metadata={"partial":
+# True} without it. The partial builder must surface the RESOLVED pair category
+# (already folded into _partial_build_ctx by _resolve_pair_category) onto
+# metadata.category_used so a partial fragrance response carries it.
+# ---------------------------------------------------------------------------
+def _partial_product(name):
+    """Minimal usable Phase-1 product stash (a landed price) for the partial
+    builder — enough that build_comparison_response assembles a normal body."""
+    return {
+        "brand": name.split()[0],
+        "name": name,
+        "full_name": name,
+        "category": "fragrances",
+        "price": {"amount": 80.0, "currency": "BHD", "source_method": "local_bhd"},
+        "specs": {},
+        "reviews": None,
+        "fact_check": {},
+    }
+
+
+def test_partial_response_carries_resolved_category_used():
+    """A hard-cap partial whose pair resolved to 'fragrances' must expose
+    metadata.category_used == 'fragrances' (not None). Drives the smallest seam
+    that sets the field — _build_partial_response reading the resolved ctx."""
+    svc = get_comparison_service()
+    # Simulate the post-resolution state: _resolve_pair_category folded the real
+    # category into the partial build ctx (see :2024-2029); product_data landed.
+    svc._partial_build_ctx = {
+        "query": "Versace Eros vs Dior Sauvage",
+        "region": "bahrain",
+        "from_cache": False,
+        "user_preferences": None,
+        "category_used": "fragrances",
+        "category_switched": False,
+        "original_category": None,
+    }
+    svc._partial_product_data = [
+        _partial_product("Versace Eros"),
+        _partial_product("Dior Sauvage"),
+    ]
+    svc._partial_product_names = ["Versace Eros", "Dior Sauvage"]
+
+    resp = svc._build_partial_response(elapsed_seconds=30.0)
+
+    assert resp["metadata"]["partial"] is True
+    assert resp["metadata"]["category_used"] == "fragrances", resp["metadata"]
+    # The top-level mirror is unchanged (regression guard).
+    assert resp["category_used"] == "fragrances"
+
+
+def test_partial_response_category_used_defaults_safe_when_unresolved():
+    """If the hard cap fires mid-resolution (ctx category still the seed/empty),
+    metadata.category_used must reflect whatever the ctx carries — never crash,
+    never inject a phantom. Empty ctx category -> empty string, not a KeyError."""
+    svc = get_comparison_service()
+    svc._partial_build_ctx = {
+        "query": "Some Pair",
+        "region": "bahrain",
+        "from_cache": False,
+        "user_preferences": None,
+        "category_used": "",  # mid-resolution: never resolved
+        "category_switched": False,
+        "original_category": None,
+    }
+    svc._partial_product_data = [_partial_product("A"), _partial_product("B")]
+    svc._partial_product_names = ["A", "B"]
+
+    resp = svc._build_partial_response(elapsed_seconds=30.0)
+    assert resp["metadata"]["partial"] is True
+    assert resp["metadata"]["category_used"] == ""

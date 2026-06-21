@@ -1768,7 +1768,16 @@ class StructuredComparisonService:
             gpt_calls=self.gpt_calls,
             serper_calls=self.serper_calls,
             elapsed_seconds=elapsed_seconds,
-            metadata={"partial": True},
+            # F1 (F3) — surface the RESOLVED pair category on metadata too. The
+            # builder writes category_used only at the top level, not into the
+            # metadata block, so partial fragrance responses were shipping
+            # `metadata.category_used = None` despite products[i]["category"] and
+            # top-level category_used being correctly resolved by
+            # _resolve_pair_category (folded into ctx at the resolution site).
+            # Mirror the same ctx value the positional kwarg above uses so the
+            # two never diverge; an unresolved (mid-resolution timeout) ctx
+            # carries "" — never None, never a phantom category.
+            metadata={"partial": True, "category_used": ctx.get("category_used", "")},
             # Phase 3.1 — cohort proof line on the partial path too. ctx carries
             # demographics_profile only if the await landed before the hard cap;
             # absent → None → key omitted (badge hides). Same chokepoint, same gate.
