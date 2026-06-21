@@ -558,7 +558,10 @@ class TestScoresSummary:
         summary = service.build_scores_summary(result, ["iPhone 15", "Galaxy S24"])
         assert "iPhone 15" in summary
         assert "Galaxy S24" in summary
-        assert "/100" in summary
+        # WS-A A3 re-baseline: summary is now QUALITATIVE for the GPT verdict —
+        # no raw scores/points leak in (was "/100" + "by N points").
+        assert "/100" not in summary
+        assert "overall" in summary  # qualitative rank word ("stronger/comparable/... overall")
         assert "Score winner" in summary
 
     def test_empty_result_returns_empty_string(self, service):

@@ -44,6 +44,14 @@ class Source:
     # the index DIRECTLY via algolia_service.fetch_algolia_price (free, $0, no
     # Serper/render, genuine BHD). Default False → every legacy row unchanged.
     is_algolia: bool = False
+    # WS-G (fragrance-content-quality P8, 2026-06-22) — CF-walled BH retailer that
+    # ONLY cracks with Scrape.do "super" (residential proxy + anti-bot). When True
+    # the row is EXCLUDED from all routing/discovery unless SCRAPEDO_SUPER is
+    # enabled — so with the flag OFF (the cost-neutral default) the registry is
+    # byte-identical to today (the row absent) and we never waste a CF-blocked
+    # datacenter render + trip the SHARED scrapedo breaker on a wall only
+    # residential proxies can pass. Default False → every legacy row unchanged.
+    requires_super: bool = False
 
 
 SOURCE_REGISTRY: List[Source] = [
@@ -118,6 +126,24 @@ SOURCE_REGISTRY: List[Source] = [
         ("supplements", "skincare", "makeup", "haircare"),
         3.0,
     ),  # Bahrain Pharmacy & General Store
+    # WS-G (fragrance-content-quality P8, 2026-06-22) — the two BH retailers that
+    # ACTUALLY carry Western-luxury fragrance/beauty but sit behind a Cloudflare
+    # interstitial that a plain datacenter render can't pass (render-wall doc:
+    # docs/investigations/2026-06-15-render-wall-bh-retailers.md). They are
+    # render-only AND requires_super: routed/discovered ONLY when SCRAPEDO_SUPER
+    # is enabled (residential proxy + anti-bot). With the flag OFF (the default)
+    # these rows are filtered out everywhere, so discovery is byte-identical to
+    # today and we never burn a CF-blocked render / trip the shared breaker. The
+    # gated A/B measurement (G4) flips SCRAPEDO_SUPER to see if super cracks them.
+    Source(
+        "sephora.bh", "bahrain", ("makeup", "skincare", "fragrances"), 3.0,
+        is_render_only=True, requires_super=True,
+    ),  # Sephora Bahrain — CF-walled, residential render only
+    Source(
+        "boutiqaat.com", "bahrain",
+        ("makeup", "skincare", "haircare", "fragrances"), 3.0,
+        is_render_only=True, requires_super=True,
+    ),  # Boutiqaat — CF-walled GCC beauty/fragrance, residential render only
     # F1.5 addendum (deeper verified-source discovery, live 2026-06-10) —
     # appliance/AC + fragrance + premium-grocery gap-fillers. Each is a real
     # BH e-commerce site with BHD prices + checkout + product pages.
@@ -302,6 +328,22 @@ def _usage_allows(source_usage_value: str, wanted: str) -> bool:
     return source_usage_value == wanted
 
 
+def _super_routing_enabled() -> bool:
+    """WS-G — whether requires_super registry rows are routable. Reads the SAME
+    SCRAPEDO_SUPER flag the Scrape.do request params read, via the single source
+    of truth in scrapedo_service (so the gate and the actual super-render request
+    can never disagree, and the existing reset_super_flags_cache() test hook
+    resets both). Lazy import keeps source_router import-time dependency-free;
+    fail-CLOSED (treat as OFF) on any import/read error so a broken flag never
+    accidentally routes a credit-spending CF-walled source."""
+    try:
+        from app.services.scrapedo_service import _super_enabled
+
+        return _super_enabled()
+    except Exception:  # noqa: BLE001 — fail-closed: flag OFF on any error
+        return False
+
+
 def get_sources_for_category(
     category: str, usage: Optional[str] = None
 ) -> List[Source]:
@@ -314,11 +356,21 @@ def get_sources_for_category(
     for that purpose are returned (a "both" source qualifies for either). The
     default `usage=None` preserves the pre-S2 behaviour (all sources for the
     category, regardless of usage).
+
+    WS-G — a `requires_super` source (CF-walled BH retailer that only cracks via
+    Scrape.do "super") is EXCLUDED unless SCRAPEDO_SUPER is enabled. With the
+    flag OFF (the cost-neutral default) the returned set is byte-identical to
+    today — the gated rows absent — so this routing chokepoint (and the
+    build_site_discovery_query / Serper discovery it feeds) never surfaces a
+    domain we'd waste a CF-blocked datacenter render on.
     """
+    super_enabled = _super_routing_enabled()
     result: List[Source] = []
     for tier in _TIER_ORDER:
         for s in SOURCE_REGISTRY:
             if s.tier != tier:
+                continue
+            if getattr(s, "requires_super", False) and not super_enabled:
                 continue
             if s.categories and category not in s.categories:
                 continue

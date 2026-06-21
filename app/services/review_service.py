@@ -314,9 +314,17 @@ def build_retailer_quotes_from_reviews(
 # Built from the REAL review sentiment the pipeline already has (zero extra API
 # calls). Ratings stay real-only elsewhere (this never fabricates a rating).
 
-# Strips a leading "Per <domain>: " attribution prefix the review model emits on
-# each highlight point (e.g. "Per fragrantica.com: ...").
-_PER_DOMAIN_PREFIX_RE = re.compile(r"^\s*per\s+[^\s:]+\.[a-z]{2,}[^:]*:\s*", re.I)
+# Strips a "Per <domain>: " attribution the review model emits — AND the same
+# fragment clean_review_citations injects when it rewrites an INTERIOR bare [N]
+# citation mid-sentence ("...opening Per fragrantica.com: that lasts..."). D3:
+# un-anchored (\b not ^) so it removes EVERY occurrence, not only a start prefix —
+# an interior one used to survive (then _BARE_DOMAIN_RE ate just the domain,
+# leaving a "Per :" / "Per bn.:" artifact in the praise).
+_PER_DOMAIN_PREFIX_RE = re.compile(r"\bper\s+[^\s:]+\.[a-z]{2,}[^:]*:\s*", re.I)
+# D3: a leftover "Per :" / "Per:" fragment (when a bare domain was scrubbed out of
+# an interior "Per <domain>:" before the un-anchored removal could catch it). The
+# trailing ":" is required so a genuine "per " usage with no colon survives.
+_PER_LEFTOVER_RE = re.compile(r"\bper\s*:\s*", re.I)
 # Any leftover domain token (foo.com / foo.bh / foo.co.uk) anywhere in the text.
 # Anchored to real TLDs (incl. GCC ccTLDs) so it strips bare retailer domains
 # (fragrantica.com, bn.boots.com) WITHOUT eating dot-joined product strings like
@@ -329,15 +337,18 @@ _BARE_DOMAIN_RE = re.compile(
 
 
 def _strip_attribution(text: str) -> str:
-    """Remove a "Per <domain>:" prefix, any [N]/[snippet_N] markers, and any
-    leftover bare domain tokens from a review clause. Returns a clean,
-    citation-free, domain-free fragment."""
+    """Remove EVERY "Per <domain>:" attribution (start-anchored OR interior — D3),
+    any [N]/[snippet_N] markers, and any leftover bare domain tokens from a review
+    clause. Returns a clean, citation-free, domain-free fragment."""
     if not isinstance(text, str):
         return ""
-    t = _PER_DOMAIN_PREFIX_RE.sub("", text)
+    t = _PER_DOMAIN_PREFIX_RE.sub("", text)     # all "Per <domain>:" (D3: un-anchored)
     t = _CITATION_MARKER_RE.sub("", t)          # [snippet_N] / [N]
     t = re.sub(r"\[\d+\]", "", t)               # any residual bare [N]
     t = _BARE_DOMAIN_RE.sub("", t)              # leftover domains
+    # D3: a partial domain (e.g. "bn" in "Per bn.boots.com:") can leave a
+    # "Per :" / "Per bn.:" husk after the bare-domain scrub — kill the leftover.
+    t = _PER_LEFTOVER_RE.sub("", t)
     t = re.sub(r"\s{2,}", " ", t).strip()
     # Drop dangling leading punctuation left by a stripped domain/marker.
     t = re.sub(r"^[\s,;:.\-–—]+", "", t)
@@ -345,7 +356,86 @@ def _strip_attribution(text: str) -> str:
 
 
 def _lower_first(s: str) -> str:
-    return s[0].lower() + s[1:] if s else s
+    """Lowercase the first character for mid-sentence weaving, but PRESERVE a
+    leading proper noun / brand / acronym (so "Creed Aventus" / "GPS-grade" are
+    not mangled to "creed" / "gPS"). Skip lowercasing when:
+      - the leading token is an all-caps acronym (s[0:2].isupper(), e.g. "GPS"), OR
+      - the lead is a multi-word Title-Case proper noun — first token Title-Case
+        AND the next word also capitalized (e.g. "Creed Aventus …", "Tom Ford …").
+    A plain capitalized common word ("Amazing scent") still lowercases."""
+    if not s:
+        return s
+    if len(s) >= 2 and s[0:2].isupper() and s[1].isalpha():  # all-caps acronym (GPS, EDP)
+        return s
+    tokens = s.split()
+    if len(tokens) >= 2 and tokens[0][:1].isupper():
+        # Strip leading punctuation from the second token before the cap check so
+        # "Tom (the …)"-style leads aren't misread; require a real capital letter.
+        nxt = tokens[1].lstrip("\"'([{")
+        if nxt[:1].isupper():
+            return s  # multi-word proper noun / brand — keep as-is
+    return s[0].lower() + s[1:]
+
+
+# Participial / relative leads ("known for ...", "described as ...") read
+# correctly only after a copula -> "Owners say it IS {clause}". D12 gate-fix:
+# dropped the bare "\w+ing" alternative -- it over-fired on -ing ADJECTIVES
+# ("amazing longevity", "outstanding sillage"), which are noun phrases.
+_PRAISE_PARTICIPIAL_LEAD_RE = re.compile(
+    r"^\s*(?:known\s+for|described\s+as|praised\s+for|noted\s+for|loved\s+for|"
+    r"said\s+to\b|reported\s+to\b|renowned\s+for|celebrated\s+for)",
+    re.I,
+)
+# Plain verb leads ("has ...", "lasts ...", "wears ...") read correctly straight
+# after the pronoun -> "Owners say it {clause}".
+_PRAISE_VERB_LEAD_RE = re.compile(
+    r"^\s*(?:has|have|had|is|are|was|lasts?|last|projects?|wears?|smells?|opens?|"
+    r"sits?|settles?|develops?|performs?|holds?|stays?|fills?|gives?|delivers?|"
+    r"feels?|comes?|leans?|reads?)\b",
+    re.I,
+)
+# D12 gate-fix: a clause that is a FULL SENTENCE with its own subject ("Creed
+# Aventus EDP is sharp ...", "the scent is warm ...", "it lasts all day") cannot
+# be glued onto "highlight"/"it" -> front it plainly with "Reviewers say {clause}".
+_PRAISE_FINITE_VERB = (
+    r"(?:is|are|was|were|has|have|had|smells?|lasts?|projects?|wears?|opens?|"
+    r"sits?|settles?|leans?|beats?|delivers?|gives?|performs?|holds?|stays?|"
+    r"feels?|develops?|reads?|comes?)"
+)
+# Explicit Title-Case subject -- CASE-SENSITIVE (no re.I) so a lowercased noun
+# phrase ("rich sillage ...") never matches; up to ~5 words before the verb so
+# "Tom Ford quality is ..." is caught. _lower_first preserves real proper-noun
+# leads, so a capital reaching here is a genuine subject.
+_PRAISE_TITLE_SUBJECT_RE = re.compile(
+    r"^[A-Z][\w'.\-]*(?:\s+[\w'.\-]+){0,5}\s+" + _PRAISE_FINITE_VERB + r"\b"
+)
+# Determiner / pronoun subject ("the scent is ...", "it lasts ...", "they project ...").
+_PRAISE_DET_SUBJECT_RE = re.compile(
+    r"^\s*(?:the|this|that|these|those|it|they)\s+(?:[\w'.\-]+\s+){0,4}"
+    + _PRAISE_FINITE_VERB + r"\b",
+    re.I,
+)
+
+
+def _frame_praise_clause(woven: str) -> str:
+    """Pick a glue that parses for the woven positive clause(s).
+
+    - full sentence w/ own subject ("Creed Aventus EDP is ...", "the scent is ...")
+      -> "Reviewers say {clause}"
+    - participial/relative lead ("known for ...", "described as ...")
+      -> "Owners say it is {clause}"
+    - plain verb lead ("has ...", "lasts ...") -> "Owners say it {clause}"
+    - noun-phrase lead ("rich sillage ...") -> "Owners consistently highlight {clause}"
+
+    Never glues "highlight" onto a verb/relative/subject lead (D1/D12)."""
+    w = woven.lstrip()
+    if _PRAISE_TITLE_SUBJECT_RE.match(w) or _PRAISE_DET_SUBJECT_RE.match(w):
+        return f"Reviewers say {woven}."
+    if _PRAISE_PARTICIPIAL_LEAD_RE.match(woven):
+        return f"Owners say it is {woven}."
+    if _PRAISE_VERB_LEAD_RE.match(woven):
+        return f"Owners say it {woven}."
+    return f"Owners consistently highlight {woven}."
 
 
 # --- #6 send-back: copy-policy scrub (single source of truth) ---------------
@@ -485,9 +575,11 @@ def build_review_praise(reviews: Optional[Dict[str, Any]]) -> Optional[str]:
 
     if positive_clauses:
         # Weave into a synthesizing lead so the line is NON-verbatim and clearly
-        # an aggregate ("Owners consistently ..."), not a copied quote.
+        # an aggregate, not a copied quote. The glue is chosen by the FIRST
+        # clause's grammatical shape so a verb/relative lead reads correctly
+        # ("Owners say it lasts all day" — never "…highlight lasts all day"; D1).
         woven = " and ".join(_lower_first(c) for c in positive_clauses)
-        praise = f"Owners consistently highlight {woven}."
+        praise = _frame_praise_clause(woven)
         praise = re.sub(r"\s{2,}", " ", praise).replace(" .", ".").strip()
         # Final safety net — never return a line that still trips the fence.
         if _has_banned_vocab(praise):

@@ -197,6 +197,22 @@ CATEGORY_SPEC_SCHEMAS = {
 }
 
 
+# SA-1 (fragrance-scoped) — the fragrance SUBTYPE prompt
+# (PRODUCT_TYPE_SCHEMAS["fragrances.*"] in product_type_router) asks GPT for
+# subtype-named keys (`longevity_hrs`, `volume_ml`) that have a clear canonical
+# home in CATEGORY_SPEC_SCHEMAS["fragrances"]. extract_specs filters to the
+# canonical keys, so without reconciliation these subtype values silently drop
+# to "N/A". Map each subtype key onto its canonical equivalent BEFORE the filter.
+# Scope: fragrances only. NO new schema fields are added here. `projection_m` is
+# intentionally OMITTED — the canonical fragrance schema has no metric-projection
+# field (`sillage` is a distinct, descriptive field), so it has no clean home and
+# is deferred to a later enrichment wave.
+FRAGRANCE_SUBTYPE_SPEC_ALIASES: Dict[str, str] = {
+    "longevity_hrs": "longevity",
+    "volume_ml": "volume",
+}
+
+
 # Bundle C § 2f Step 1 — split critical schema fields into two layers:
 #   - NON_NEGOTIABLE: A.4.7 Tier 2 + A.4.8 Tier 3 fallbacks chase these
 #     hard. If still missing after 3-tier fallback, the dependent dim is
@@ -472,7 +488,7 @@ CATEGORY-SPECIFIC GUIDANCE (seek these fields for BOTH products; include a field
 - Haircare: seek hair_type, hair_concern, ingredients, volume, scent, sulfate_free, paraben_free, silicone_free. Most products state hair type/concern + a free-from claim.
 - Grocery: seek count, size, ingredients, nutrition_calories, nutrition_protein, nutrition_fat, nutrition_carbs, origin, allergens. Packaged foods list net weight/size + nutrition per serving + allergens.
 - Other: seek the schema fields that apply (dimensions, weight, material, color, features, warranty, origin). Include only what the data supports.
-For makeup/skincare/haircare/grocery especially, do NOT leave a field null just because the FIRST product's snippets were richer — check this product's own snippets AND your training data for the SAME fields, so both products reach comparable depth where the data genuinely exists."""
+For ALL categories, seek the SAME fields for BOTH products so neither renders thinner than the other — do NOT leave a field null just because the FIRST product's snippets were richer; check this product's own snippets AND your training data for the SAME fields, so both products reach comparable depth where the data genuinely exists."""
 
     if drug_context:
         system_prompt += f"\n\nBAHRAIN DRUG DATABASE MATCHES:\n{drug_context}"
@@ -612,7 +628,7 @@ Return ONLY valid JSON:
 {
     "winner_index": 0 or 1,
     "winner_declaration": "winning product name",
-    "winner_reason": "ONE sentence, under 20 words, with a specific number or fact",
+    "winner_reason": "ONE sentence, under 20 words, with a concrete product fact or capability (NEVER an internal score or point margin)",
     "key_tradeoff": "ONE sentence naming the other product's strongest advantage",
     "value_context": {
         "product_0": "ONE sentence on Product 1's price-to-quality relationship for the GCC market",
@@ -622,10 +638,10 @@ Return ONLY valid JSON:
         "product_0": "one sentence describing who should buy Product 1",
         "product_1": "one sentence describing who should buy Product 2"
     },
-    "product_0_pros": ["specific pro with number/fact"],
-    "product_0_cons": ["specific con with number/fact"],
-    "product_1_pros": ["specific pro with number/fact"],
-    "product_1_cons": ["specific con with number/fact"],
+    "product_0_pros": ["specific product attribute or capability"],
+    "product_0_cons": ["specific product attribute or capability"],
+    "product_1_pros": ["specific product attribute or capability"],
+    "product_1_cons": ["specific product attribute or capability"],
     "specs_comparison": {
         "product_0_advantages": ["advantage with specific number"],
         "product_1_advantages": ["advantage with specific number"],
@@ -642,7 +658,7 @@ Return ONLY valid JSON:
 
 RULES:
 - 4-6 pros, 2-4 cons per product -- INCLUDE a specific number, percentage, or measurable fact when available; otherwise use a concrete qualitative attribute (e.g. "OLED display", "Cruelty-free certified", "Hypoallergenic formula"). NEVER return empty pros[] or cons[] arrays — every product has SOME observable strengths and weaknesses, and the user is comparing precisely BECAUSE they want to see them. If two products feel close to identical, surface what makes each one distinctive in PRACTICAL use, even small differences.
-- winner_reason MUST be under 20 words and cite the single most important numeric advantage
+- winner_reason MUST be under 20 words and name the single most important advantage in plain words -- a capability or spec, never a number
 - key_tradeoff: ONE sentence naming the losing product's single strongest advantage
 - value_context: per-product dict with keys product_0 and product_1. Each value is ONE sentence about THAT product's price-to-quality relationship for the GCC market. The two sentences MUST be distinct -- never reuse the same string for both products. If cross-tier, frame each as "different products for different needs" but still describe each product specifically.
 - best_for: one sentence per product describing the ideal buyer profile. For the RUNNER-UP (the product that did NOT win), best_for MUST name a CONCRETE buyer who should genuinely pick it over the winner and WHY (e.g. "Someone who wears fragrance to the office and needs all-day longevity over projection") -- a real reason-to-choose-the-other, not a generic restatement of the product. The runner-up almost always wins for SOME buyer; name that buyer specifically.
@@ -650,8 +666,10 @@ RULES:
 - For luxury/designer products, consider brand prestige and craftsmanship in value assessment
 - ANTI-PATTERN -- spec-sheet edge at price parity: when performance is near parity, do NOT let a marginal spec-sheet edge decide the winner. Prefer the lower Bahrain price on value-per-dinar UNLESS a durability, service-network, or update-guarantee gap licenses the premium. This cuts BOTH ways: a cheaper product is not automatically better value, and a pricier product is not automatically more capable -- weigh whether the gap is actually worth the extra dinars for THIS buyer.
 - LIKE-FOR-LIKE -- compare the two products on a COMPARABLE BASIS: the same storage capacity, volume, unit count, or net weight. Do NOT call one product "cheaper" or "better value" when its price is for a different size, storage tier, or pack count than the other (e.g. a 128GB phone vs a 256GB phone, a 50ml bottle vs a 100ml bottle, a 60-count bottle vs a 120-count bottle). When the two bases differ, SAY SO plainly and frame the price difference as "for a different size/capacity" rather than implying a like-for-like saving.
+- PENDING PRICE -- when a product's price is unavailable/null, do NOT make ANY price, value, cheaper, affordable, or premium claim about it -- discuss it on non-price merits only.
 - LOCALIZATION -- grade as a Bahrain buyer, not a global spec sheet: weigh what a buyer in Bahrain actually experiences (local availability, after-sales service, Gulf climate suitability), not just the raw datasheet. You MAY note regional reality qualitatively (e.g. "widely available in Bahrain", "a GCC crowd-pleaser") -- but keep such claims qualitative ONLY: NO store counts, NO branch names, NO unsourced numbers or statistics about local presence.
-- personalized_insights: Generate ONLY when personalization context is provided. If no personalization context, omit this field entirely."""
+- personalized_insights: Generate ONLY when personalization context is provided. If no personalization context, omit this field entirely.
+- NEVER mention internal scores, point margins, "/100" values, "overall score", or any "N-point"/"score of N" phrasing in winner_reason, key_tradeoff, winner_declaration, pros, or cons. Those are internal-only."""
 
 
 # Backward-compatible aliases for tests that import old names
@@ -1047,6 +1065,26 @@ async def extract_specs(
             schema_key = "other"
         allowed_fields = set(CATEGORY_SPEC_SCHEMAS[schema_key])
         meta_keys = {"brand", "model", "variant", "category"}
+
+        # SA-1 (fragrance-scoped) — reconcile subtype-named keys onto their
+        # canonical homes BEFORE the filter, so the fragrance subtype prompt's
+        # `longevity_hrs`/`volume_ml` values are not silently dropped. Canonical
+        # value (if GPT also emitted one) stays authoritative; the alias only
+        # fills a canonical key that is absent/empty.
+        if schema_key == "fragrances":
+            for alias_key, canonical_key in FRAGRANCE_SUBTYPE_SPEC_ALIASES.items():
+                alias_val = raw.get(alias_key)
+                if alias_val is None or (isinstance(alias_val, str) and not alias_val.strip()):
+                    continue
+                canon_val = raw.get(canonical_key)
+                canon_empty = (
+                    canon_val is None
+                    or canon_val == ""
+                    or canon_val == "null"
+                    or (isinstance(canon_val, str) and (not canon_val.strip() or "or null" in canon_val.lower()))
+                )
+                if canon_empty:
+                    raw[canonical_key] = alias_val
 
         cleaned = {}
         for key in list(meta_keys) + CATEGORY_SPEC_SCHEMAS[schema_key]:
@@ -1713,6 +1751,46 @@ def _scrub_youtube_signal_if_off(product: Optional[Dict]) -> Optional[Dict]:
     return product
 
 
+def _verdict_safe_product(product: Optional[Dict]) -> Optional[Dict]:
+    """WS-C C1 — copy-on-write projection that hides a NON-showable price's raw
+    amount from the GPT verdict payload (the `json.dumps(product)` below).
+
+    Confirmed live leak (PP-1): `generate_comparison` runs BEFORE
+    `make_pending_price`, so GPT saw a pended product's `{amount:80.0,...}`
+    and wrote "premium price point" into a con rendered beside a "Pricing
+    lands…" card. The single predicate `is_price_showable` (price_service)
+    decides showability (estimated / sample / wrong-cheap / wrong-SKU → not
+    showable); when not showable we swap in the `make_pending_price` shape
+    (amount=None) so the dumped payload cannot expose any amount.
+
+    Returns the SAME object when the price is showable / absent (no copy);
+    returns a shallow copy with a replaced `price` otherwise — the original
+    product dict is never mutated. Composes into the verdict `_scrub_*` chain
+    so all three `generate_comparison` call sites (sync / stream / self-critique
+    regen) inherit it.
+    """
+    if not isinstance(product, dict):
+        return product
+    price = product.get("price")
+    # No price object → nothing to hide (the verdict already sees no amount).
+    if not isinstance(price, dict):
+        return product
+    # Local import: price_service imports extraction_service at module top, so a
+    # top-level import here would be circular (matches the line ~784 pattern).
+    from app.services.price_service import is_price_showable, make_pending_price
+    name = product.get("full_name") or product.get("name") or ""
+    if is_price_showable(name, price):
+        return product
+    # Not showable → swap in the pending shape (amount=None), preserving the
+    # known currency/size so the FE keeps its bottle-size context.
+    currency = price.get("currency") or "BHD"
+    reason = price.get("reason") or "pending_genuine"
+    size = price.get("size") if isinstance(price.get("size"), str) else None
+    safe = dict(product)
+    safe["price"] = make_pending_price(currency=currency, reason=reason, size=size)
+    return safe
+
+
 async def generate_comparison(
     product1: Dict,
     product2: Dict,
@@ -1759,7 +1837,7 @@ async def generate_comparison(
 {scores_summary}
 
 ## Verdict Requirements
-1. WINNER REASON: State the winner with the score margin in under 20 words. Cite the single most important numeric advantage.
+1. WINNER REASON: State the winner in under 20 words. Name the most important advantage in plain words -- a capability or spec, never an internal score or point margin.
 2. KEY TRADEOFF: Name the other product's strongest advantage -- what the user gives up by choosing the winner.
 3. VALUE CONTEXT: Explain the value proposition. If cross-tier, acknowledge that each serves a different market segment -- do NOT penalize luxury for being expensive.
 4. BEST FOR: One sentence per product describing the ideal buyer.
@@ -1790,8 +1868,12 @@ If this is a cross-tier comparison, frame it as "different products for differen
         # youtube_review_signal (S3 L2) is stripped from the json.dumps payload
         # when its flag is OFF — the labeled blocks below are the ONLY sanctioned
         # path for those signals to reach the verdict.
-        _p1 = _scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product1))
-        _p2 = _scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product2))
+        # WS-C C1: the verdict-safe price projection wraps the rollback scrubs so
+        # a NON-showable (estimated/sample/wrong-cheap) price's raw amount never
+        # reaches the json.dumps payload below — GPT cannot then write a price
+        # claim about a product whose card renders "Pricing lands…".
+        _p1 = _verdict_safe_product(_scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product1)))
+        _p2 = _verdict_safe_product(_scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product2)))
         user_msg = f"""<USER_INPUT>
 PRODUCT 1:
 {json.dumps(_p1, indent=2)}
