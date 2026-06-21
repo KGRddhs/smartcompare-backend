@@ -718,3 +718,110 @@ def test_review_praise_live_p3_shape_grammatical_end_to_end():
     assert out, "praise should be non-empty for a positive highlight"
     assert "highlight Creed" not in out and "highlight creed" not in out, out
     assert ("Reviewers say" in out) or out.startswith("Owners say it"), out
+
+
+# WS-G — Task G1: Scrape.do super (residential/anti-bot) + geoCode, gated OFF by default
+from unittest.mock import patch as _patch, AsyncMock as _AsyncMock, MagicMock as _MagicMock
+import app.services.scrapedo_service as _scrapedo_service
+
+
+def _mock_scrapedo_client(mock_client_cls):
+    """Wire an httpx.AsyncClient context-manager mock that returns a 200 HTML
+    response with no cost header. Returns the inner client mock so the caller can
+    inspect client.get.call_args."""
+    mock_resp = _MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.text = "<html><body>" + "x" * 1000 + "</body></html>"
+    mock_resp.headers = {}
+    mock_client = _AsyncMock()
+    mock_client.get.return_value = mock_resp
+    mock_client_cls.return_value.__aenter__ = _AsyncMock(return_value=mock_client)
+    mock_client_cls.return_value.__aexit__ = _AsyncMock(return_value=False)
+    return mock_client
+
+
+def _scrapedo_get_params(mock_client):
+    call = mock_client.get.call_args
+    return call.kwargs.get("params") or call[1].get("params")
+
+
+def _reset_scrapedo_super_cache():
+    """The super/geoCode flags are cached at process init like the diag flag;
+    reset so each test reads the patched env."""
+    _scrapedo_service.reset_super_flags_cache()
+
+
+@pytest.mark.asyncio
+async def test_scrapedo_super_off_by_default_byte_identical_params():
+    """COST-NEUTRAL invariant: with SCRAPEDO_SUPER unset (default OFF) the GET
+    params must be EXACTLY {token,url,render:"true"} — no super, no geoCode —
+    byte-identical to today's prod request."""
+    with _patch.dict("os.environ", {"SCRAPEDO_API_TOKEN": "test-token"}, clear=True):
+        _reset_scrapedo_super_cache()
+        with _patch("app.services.scrapedo_service.httpx.AsyncClient") as cls:
+            client = _mock_scrapedo_client(cls)
+            await _scrapedo_service.render_page_with_status("https://sephora.bh/p/x")
+            params = _scrapedo_get_params(client)
+            assert params == {
+                "token": "test-token",
+                "url": "https://sephora.bh/p/x",
+                "render": "true",
+            }, params
+            assert "super" not in params
+            assert "geoCode" not in params
+    _reset_scrapedo_super_cache()
+
+
+@pytest.mark.asyncio
+async def test_scrapedo_super_on_adds_super_and_geocode():
+    """With SCRAPEDO_SUPER=true the params gain super="true" + geoCode (default bh)."""
+    with _patch.dict(
+        "os.environ",
+        {"SCRAPEDO_API_TOKEN": "test-token", "SCRAPEDO_SUPER": "true"},
+        clear=True,
+    ):
+        _reset_scrapedo_super_cache()
+        with _patch("app.services.scrapedo_service.httpx.AsyncClient") as cls:
+            client = _mock_scrapedo_client(cls)
+            await _scrapedo_service.render_page_with_status("https://sephora.bh/p/x")
+            params = _scrapedo_get_params(client)
+            assert params.get("super") == "true", params
+            assert params.get("geoCode") == "bh", params
+            assert params["render"] == "true"
+            assert params["token"] == "test-token"
+    _reset_scrapedo_super_cache()
+
+
+@pytest.mark.asyncio
+async def test_scrapedo_super_on_render_page_also_gated():
+    """render_page (the no-status sibling) honors the same flag."""
+    with _patch.dict(
+        "os.environ",
+        {"SCRAPEDO_API_TOKEN": "test-token", "SCRAPEDO_SUPER": "true", "SCRAPEDO_GEOCODE": "ae"},
+        clear=True,
+    ):
+        _reset_scrapedo_super_cache()
+        with _patch("app.services.scrapedo_service.httpx.AsyncClient") as cls:
+            client = _mock_scrapedo_client(cls)
+            await _scrapedo_service.render_page("https://sephora.bh/p/x")
+            params = _scrapedo_get_params(client)
+            assert params.get("super") == "true", params
+            assert params.get("geoCode") == "ae", params  # geoCode overridable
+    _reset_scrapedo_super_cache()
+
+
+@pytest.mark.asyncio
+async def test_scrapedo_render_page_off_by_default_byte_identical():
+    """render_page (no-status) is ALSO byte-identical when the flag is OFF."""
+    with _patch.dict("os.environ", {"SCRAPEDO_API_TOKEN": "test-token"}, clear=True):
+        _reset_scrapedo_super_cache()
+        with _patch("app.services.scrapedo_service.httpx.AsyncClient") as cls:
+            client = _mock_scrapedo_client(cls)
+            await _scrapedo_service.render_page("https://sephora.bh/p/x")
+            params = _scrapedo_get_params(client)
+            assert params == {
+                "token": "test-token",
+                "url": "https://sephora.bh/p/x",
+                "render": "true",
+            }, params
+    _reset_scrapedo_super_cache()

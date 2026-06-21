@@ -35,6 +35,40 @@ def _diag_enabled() -> bool:
     return _PRICE_PIPELINE_DIAG_FLAG
 
 
+# WS-G (fragrance-content-quality P8) — Scrape.do "super" (residential proxy +
+# anti-bot) + geoCode capability, gated OFF by DEFAULT for a cost-neutral,
+# behavior-neutral deploy. With SCRAPEDO_SUPER off (the default) the request
+# params are byte-identical to today's prod ({token,url,render:"true"}); only when
+# Ahmed flips SCRAPEDO_SUPER=true on Railway (for a separate, credit-spending
+# measurement) do we add super=true + geoCode. super=true bills ~10-25 credits/req
+# vs ~5 (A7 meters it against the 900/mo budget). Cached at process init like
+# _PRICE_PIPELINE_DIAG_FLAG; tests reset via reset_super_flags_cache().
+_SUPER_FLAGS = None
+
+
+def _super_params() -> dict:
+    """Return the extra GET params for a Scrape.do request: {"super":"true",
+    "geoCode":<code>} when SCRAPEDO_SUPER is enabled, else {} (the cost-neutral
+    default). Read once and cached."""
+    global _SUPER_FLAGS
+    if _SUPER_FLAGS is None:
+        if os.environ.get("SCRAPEDO_SUPER", "false").lower() == "true":
+            _SUPER_FLAGS = {
+                "super": "true",
+                "geoCode": os.environ.get("SCRAPEDO_GEOCODE", "bh"),
+            }
+        else:
+            _SUPER_FLAGS = {}
+    return _SUPER_FLAGS
+
+
+def reset_super_flags_cache() -> None:
+    """Test hook — clear the cached super/geoCode flags so a subsequent call
+    re-reads the (patched) environment."""
+    global _SUPER_FLAGS
+    _SUPER_FLAGS = None
+
+
 def _log_invocation(url: str) -> None:
     """Read-only diagnostic — surface credit + breaker state at call site
     for the §1c price-pipeline regression investigation. Never raises."""
@@ -79,6 +113,7 @@ async def render_page(url: str) -> Optional[str]:
                     "token": token,
                     "url": url,
                     "render": "true",
+                    **_super_params(),  # WS-G: {} when OFF (default) -> byte-identical
                 },
             )
 
@@ -134,6 +169,7 @@ async def render_page_with_status(url: str) -> tuple[Optional[str], int, int]:
                     "token": token,
                     "url": url,
                     "render": "true",
+                    **_super_params(),  # WS-G: {} when OFF (default) -> byte-identical
                 },
             )
 
