@@ -825,3 +825,82 @@ async def test_scrapedo_render_page_off_by_default_byte_identical():
                 "render": "true",
             }, params
     _reset_scrapedo_super_cache()
+
+
+# WS-G — Task G2: register sephora.bh + boutiqaat.com as render-only Bahrain
+# sources, GATED on SCRAPEDO_SUPER. With the flag OFF (the cost-neutral default)
+# the discovery routing for fragrances/makeup/skincare must be BYTE-IDENTICAL to
+# today — the two new domains ABSENT (we never burn CF-walled datacenter renders
+# + trip the shared breaker on walls only residential proxies can crack). Only
+# when Ahmed flips SCRAPEDO_SUPER=true do they surface, as render-only sources.
+from app.services.source_router import (  # noqa: E402
+    get_sources_for_category,
+    build_site_discovery_query,
+    is_render_only_domain,
+)
+
+_G2_SUPER_DOMAINS = ("sephora.bh", "boutiqaat.com")
+
+
+def _routed_domains(category, tier="bahrain"):
+    """The domains routed for `category` at `tier` (the discovery seam that
+    build_site_discovery_query consumes)."""
+    return [s.domain for s in get_sources_for_category(category, usage="price") if s.tier == tier]
+
+
+def test_g2_super_sources_absent_when_flag_off_byte_identical():
+    """COST-NEUTRAL: with SCRAPEDO_SUPER OFF (default), neither sephora.bh nor
+    boutiqaat.com is routed for fragrances/makeup/skincare — byte-identical to
+    today's discovery."""
+    with _patch.dict("os.environ", {}, clear=True):  # SCRAPEDO_SUPER unset -> OFF
+        _reset_scrapedo_super_cache()
+        for cat in ("fragrances", "makeup", "skincare"):
+            routed = _routed_domains(cat)
+            for d in _G2_SUPER_DOMAINS:
+                assert d not in routed, (cat, d, routed)
+            # The Serper discovery query string must not mention them either.
+            q = build_site_discovery_query("Dior Sauvage", cat, tier="bahrain")
+            for d in _G2_SUPER_DOMAINS:
+                assert d not in q, (cat, d, q)
+    _reset_scrapedo_super_cache()
+
+
+def test_g2_super_sources_routed_render_only_when_flag_on():
+    """With SCRAPEDO_SUPER=true, both sephora.bh and boutiqaat.com ARE routed for
+    fragrances (Bahrain tier) AND are flagged render-only (residential-proxy
+    render tier, never the wasted curl)."""
+    with _patch.dict("os.environ", {"SCRAPEDO_SUPER": "true"}, clear=True):
+        _reset_scrapedo_super_cache()
+        routed = _routed_domains("fragrances")
+        for d in _G2_SUPER_DOMAINS:
+            assert d in routed, (d, routed)
+            assert is_render_only_domain(d), d
+    _reset_scrapedo_super_cache()
+
+
+def test_g2_off_state_equals_on_state_minus_super_sources():
+    """The OFF routing is EXACTLY the ON routing with the two gated domains
+    removed — proves the gate adds nothing else and removes nothing else
+    (behavior-neutral when OFF)."""
+    with _patch.dict("os.environ", {"SCRAPEDO_SUPER": "true"}, clear=True):
+        _reset_scrapedo_super_cache()
+        on = _routed_domains("fragrances")
+    with _patch.dict("os.environ", {}, clear=True):
+        _reset_scrapedo_super_cache()
+        off = _routed_domains("fragrances")
+    assert off == [d for d in on if d not in _G2_SUPER_DOMAINS], (off, on)
+    _reset_scrapedo_super_cache()
+
+
+def test_g2_boutiqaat_makeup_haircare_categories_when_on():
+    """boutiqaat.com carries makeup/skincare/haircare/fragrances; sephora.bh
+    carries makeup/skincare/fragrances (no haircare). Verify category scoping
+    when the flag is ON."""
+    with _patch.dict("os.environ", {"SCRAPEDO_SUPER": "true"}, clear=True):
+        _reset_scrapedo_super_cache()
+        assert "boutiqaat.com" in _routed_domains("haircare")
+        assert "sephora.bh" not in _routed_domains("haircare")  # sephora: no haircare
+        # Electronics: neither is a beauty/fragrance source -> absent even when ON.
+        assert "boutiqaat.com" not in _routed_domains("electronics")
+        assert "sephora.bh" not in _routed_domains("electronics")
+    _reset_scrapedo_super_cache()

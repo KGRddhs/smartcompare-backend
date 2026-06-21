@@ -290,6 +290,12 @@ _RENDER_ONLY_DOMAINS = {
     # (gray-import), not a BH SPA, but carries the flag so the cascade skips a wasted
     # plain-curl on it. L1 #2 apple-fix; dispatcher-confirmed at the coverage merge.
     "noon.com",
+    # WS-G (fragrance-content-quality P8, 2026-06-22): the two CF-walled BH
+    # beauty/fragrance retailers. is_render_only (no static curl price) AND
+    # requires_super (routed ONLY when SCRAPEDO_SUPER is on) — see the gating
+    # test in test_fragrance_content_quality.py. They are in the registry list
+    # but filtered out of routing/discovery with the flag OFF (cost-neutral).
+    "sephora.bh", "boutiqaat.com",
 }
 
 
@@ -302,9 +308,10 @@ _RENDER_ONLY_DOMAINS = {
 # are xfail-strict now and flip green TOGETHER when the consolidated branch lands.
 
 def test_render_only_field_marks_the_six_render_domains():
-    """The is_render_only flag exists on Source and exactly the 6 render domains
+    """The is_render_only flag exists on Source and exactly the render domains
     carry it: 5 BH SPAs (alosra/nasserpharmacy/bn.boots/bolo/megamart) + noon.com
-    (Akamai-walled GCC marketplace, S3 coverage flip)."""
+    (Akamai-walled GCC marketplace, S3 coverage flip) + 2 WS-G CF-walled BH
+    beauty/fragrance sources (sephora.bh/boutiqaat.com, requires_super)."""
     marked = {s.domain for s in SOURCE_REGISTRY if getattr(s, "is_render_only", False)}
     assert marked == _RENDER_ONLY_DOMAINS, (
         f"is_render_only domain set drifted: expected {_RENDER_ONLY_DOMAINS}, got {marked}"

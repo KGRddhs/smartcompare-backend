@@ -54,11 +54,16 @@ def test_registry_price_source_count():
     S3-reopen PDP-curl Decision-F ADDED bahrain.microless.com (curl-scrapeable
     MacBook PDP → 439.062 BHD JSON-LD), 34→35. S3-coverage #1 ADDED
     en-bh.6thstreet.com (Algolia-backed BH storefront, is_algolia, genuine BHD),
-    35→36. Guard the floor so a future accidental mass-deletion of price rows is
-    caught.
+    35→36. S3.1 (56dbca3) ADDED sonyworld.bh (official Sony Shopify, genuine BHD)
+    — the 36 pin was never bumped for it, so the true pre-WS-G baseline is 37.
+    WS-G (fragrance-content-quality P8, 2026-06-22) ADDED 2 CF-walled BH
+    beauty/fragrance render sources sephora.bh + boutiqaat.com (is_render_only +
+    requires_super — present in the registry list but routed/discovered ONLY when
+    SCRAPEDO_SUPER is on; default usage='price'), 37→39. Guard the floor so a
+    future accidental mass-deletion of price rows is caught.
     """
     price_rows = [s for s in SOURCE_REGISTRY if s.usage in ("price", "both")]
-    assert len(price_rows) == 36
+    assert len(price_rows) == 39
 
 
 # ---------------------------------------------------------------------------

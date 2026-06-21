@@ -62,6 +62,17 @@ def _super_params() -> dict:
     return _SUPER_FLAGS
 
 
+def _super_enabled() -> bool:
+    """SINGLE source of truth for the SCRAPEDO_SUPER gate (residential proxy +
+    anti-bot render). True only when SCRAPEDO_SUPER=true. Shares the cached
+    _SUPER_FLAGS state with _super_params() (and the reset_super_flags_cache()
+    test hook), so the Scrape.do request params and any flag-gated routing read
+    the SAME flag the SAME way. WS-G G2 reads this from source_router to gate the
+    residential-only BH render sources (sephora.bh/boutiqaat) so the deploy is
+    behavior-neutral with the flag OFF (default)."""
+    return bool(_super_params())
+
+
 def reset_super_flags_cache() -> None:
     """Test hook — clear the cached super/geoCode flags so a subsequent call
     re-reads the (patched) environment."""
