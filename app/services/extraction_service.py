@@ -612,7 +612,7 @@ Return ONLY valid JSON:
 {
     "winner_index": 0 or 1,
     "winner_declaration": "winning product name",
-    "winner_reason": "ONE sentence, under 20 words, with a specific number or fact",
+    "winner_reason": "ONE sentence, under 20 words, with a concrete product fact or capability (NEVER an internal score or point margin)",
     "key_tradeoff": "ONE sentence naming the other product's strongest advantage",
     "value_context": {
         "product_0": "ONE sentence on Product 1's price-to-quality relationship for the GCC market",
@@ -622,10 +622,10 @@ Return ONLY valid JSON:
         "product_0": "one sentence describing who should buy Product 1",
         "product_1": "one sentence describing who should buy Product 2"
     },
-    "product_0_pros": ["specific pro with number/fact"],
-    "product_0_cons": ["specific con with number/fact"],
-    "product_1_pros": ["specific pro with number/fact"],
-    "product_1_cons": ["specific con with number/fact"],
+    "product_0_pros": ["specific product attribute or capability"],
+    "product_0_cons": ["specific product attribute or capability"],
+    "product_1_pros": ["specific product attribute or capability"],
+    "product_1_cons": ["specific product attribute or capability"],
     "specs_comparison": {
         "product_0_advantages": ["advantage with specific number"],
         "product_1_advantages": ["advantage with specific number"],
@@ -642,7 +642,7 @@ Return ONLY valid JSON:
 
 RULES:
 - 4-6 pros, 2-4 cons per product -- INCLUDE a specific number, percentage, or measurable fact when available; otherwise use a concrete qualitative attribute (e.g. "OLED display", "Cruelty-free certified", "Hypoallergenic formula"). NEVER return empty pros[] or cons[] arrays — every product has SOME observable strengths and weaknesses, and the user is comparing precisely BECAUSE they want to see them. If two products feel close to identical, surface what makes each one distinctive in PRACTICAL use, even small differences.
-- winner_reason MUST be under 20 words and cite the single most important numeric advantage
+- winner_reason MUST be under 20 words and name the single most important advantage in plain words -- a capability or spec, never a number
 - key_tradeoff: ONE sentence naming the losing product's single strongest advantage
 - value_context: per-product dict with keys product_0 and product_1. Each value is ONE sentence about THAT product's price-to-quality relationship for the GCC market. The two sentences MUST be distinct -- never reuse the same string for both products. If cross-tier, frame each as "different products for different needs" but still describe each product specifically.
 - best_for: one sentence per product describing the ideal buyer profile. For the RUNNER-UP (the product that did NOT win), best_for MUST name a CONCRETE buyer who should genuinely pick it over the winner and WHY (e.g. "Someone who wears fragrance to the office and needs all-day longevity over projection") -- a real reason-to-choose-the-other, not a generic restatement of the product. The runner-up almost always wins for SOME buyer; name that buyer specifically.
@@ -651,7 +651,8 @@ RULES:
 - ANTI-PATTERN -- spec-sheet edge at price parity: when performance is near parity, do NOT let a marginal spec-sheet edge decide the winner. Prefer the lower Bahrain price on value-per-dinar UNLESS a durability, service-network, or update-guarantee gap licenses the premium. This cuts BOTH ways: a cheaper product is not automatically better value, and a pricier product is not automatically more capable -- weigh whether the gap is actually worth the extra dinars for THIS buyer.
 - LIKE-FOR-LIKE -- compare the two products on a COMPARABLE BASIS: the same storage capacity, volume, unit count, or net weight. Do NOT call one product "cheaper" or "better value" when its price is for a different size, storage tier, or pack count than the other (e.g. a 128GB phone vs a 256GB phone, a 50ml bottle vs a 100ml bottle, a 60-count bottle vs a 120-count bottle). When the two bases differ, SAY SO plainly and frame the price difference as "for a different size/capacity" rather than implying a like-for-like saving.
 - LOCALIZATION -- grade as a Bahrain buyer, not a global spec sheet: weigh what a buyer in Bahrain actually experiences (local availability, after-sales service, Gulf climate suitability), not just the raw datasheet. You MAY note regional reality qualitatively (e.g. "widely available in Bahrain", "a GCC crowd-pleaser") -- but keep such claims qualitative ONLY: NO store counts, NO branch names, NO unsourced numbers or statistics about local presence.
-- personalized_insights: Generate ONLY when personalization context is provided. If no personalization context, omit this field entirely."""
+- personalized_insights: Generate ONLY when personalization context is provided. If no personalization context, omit this field entirely.
+- NEVER mention internal scores, point margins, "/100" values, "overall score", or any "N-point"/"score of N" phrasing in winner_reason, key_tradeoff, winner_declaration, pros, or cons. Those are internal-only."""
 
 
 # Backward-compatible aliases for tests that import old names
@@ -1759,7 +1760,7 @@ async def generate_comparison(
 {scores_summary}
 
 ## Verdict Requirements
-1. WINNER REASON: State the winner with the score margin in under 20 words. Cite the single most important numeric advantage.
+1. WINNER REASON: State the winner in under 20 words. Name the most important advantage in plain words -- a capability or spec, never an internal score or point margin.
 2. KEY TRADEOFF: Name the other product's strongest advantage -- what the user gives up by choosing the winner.
 3. VALUE CONTEXT: Explain the value proposition. If cross-tier, acknowledge that each serves a different market segment -- do NOT penalize luxury for being expensive.
 4. BEST FOR: One sentence per product describing the ideal buyer.
