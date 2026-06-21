@@ -15,6 +15,7 @@ from app.services.scoring_service import (
     compute_confidence,
     count_missing_dim_cells,
 )
+from app.services.text_sanitize import has_score_internals, strip_score_internals
 
 logger = logging.getLogger(__name__)
 
@@ -1210,6 +1211,43 @@ def build_comparison_response(
     except Exception:  # noqa: BLE001 — price-pending must never crash the response
         logger.warning("price-pending normalization skipped", exc_info=True)
 
+    # Task A5 — fail-closed score-internals scrub at the SINGLE chokepoint.
+    # Drop any pro/con whose text leaks an internal scoring artifact
+    # ("Strong presentation score of 100.", "+18pt longevity", etc.). Mutating
+    # the canonical pros_cons lists in place covers ALL downstream consumers
+    # at once: overview.products[i].pros/cons (built below), the per-product
+    # pros_cons block (_build_pros_cons_block reads the same dict), and the
+    # legacy products[i] alias (flat pros/cons projected from pros_cons further
+    # down). The winner-text scrub (reason/key_tradeoff/declaration/name) is
+    # applied at the overview.winner emit + recommendation below.
+    for pd_item in product_data:
+        _pc = pd_item.get("pros_cons")
+        if isinstance(_pc, dict):
+            _pros = _pc.get("pros")
+            if isinstance(_pros, list):
+                _pc["pros"] = [p for p in _pros if not has_score_internals(p)]
+            _cons = _pc.get("cons")
+            if isinstance(_cons, list):
+                _pc["cons"] = [c for c in _cons if not has_score_internals(c)]
+
+    # Verdict text scrub — strip any score-leaking sentence from the winner
+    # narrative and supply a qualitative fallback when scrubbing empties it.
+    # This one source field (`winner_reason`) fans out to overview.winner.reason
+    # AND the top-level recommendation, so scrubbing it once covers both
+    # (plus Home/History/Share, which re-read this payload).
+    _winner_name = product_names[winner_index] if product_names else ""
+    _scrubbed_reason = strip_score_internals(comparison.get("winner_reason", "")) or (
+        f"{_winner_name} is the stronger overall pick." if _winner_name
+        else "The stronger overall pick."
+    )
+    _scrubbed_tradeoff = strip_score_internals(comparison.get("key_tradeoff", "")) or ""
+    _scrubbed_declaration = strip_score_internals(comparison.get("winner_declaration", "")) or ""
+    # overview.winner.name historically copies winner_declaration (falling back
+    # to the product name); scrub it and fall back to the bare product name.
+    _scrubbed_winner_name_field = (
+        strip_score_internals(comparison.get("winner_declaration", "")) or _winner_name
+    )
+
     # Detect price method mismatch
     price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
     unique_methods = set(m for m in price_methods if m)
@@ -1238,10 +1276,11 @@ def build_comparison_response(
         "overview": {
             "winner": {
                 "product_index": winner_index,
-                "name": comparison.get("winner_declaration", product_names[winner_index] if product_names else ""),
-                "declaration": comparison.get("winner_declaration", ""),
-                "reason": comparison.get("winner_reason", ""),
-                "key_tradeoff": comparison.get("key_tradeoff", ""),
+                # Task A5 — scrubbed verdict text (fail-closed; fallbacks above).
+                "name": _scrubbed_winner_name_field,
+                "declaration": _scrubbed_declaration,
+                "reason": _scrubbed_reason,
+                "key_tradeoff": _scrubbed_tradeoff,
                 "margin": win_margin,
             },
             "products": [
@@ -1504,7 +1543,9 @@ def build_comparison_response(
         pd["category_profile"] = _safe_category_profile(pd, category_used)
     result["products"] = product_data
     result["comparison"] = comparison
-    result["recommendation"] = comparison.get("winner_reason", "")
+    # Task A5 — top-level recommendation reads the SCRUBBED winner reason
+    # (same source field as overview.winner.reason), never the raw leak.
+    result["recommendation"] = _scrubbed_reason
     result["key_differences"] = []
     result["winner_index"] = winner_index
     result["category_used"] = category_used
