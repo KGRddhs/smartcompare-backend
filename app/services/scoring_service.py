@@ -2523,6 +2523,15 @@ def _dim_value(products: list[dict], is_cross_tier: bool = False) -> dict:
     # Non-numeric rating shapes (e.g. {} from upstream extraction) are missing data
     ra = ra if isinstance(ra, (int, float)) else None
     rb = rb if isinstance(rb, (int, float)) else None
+    # A5 — a derived/estimated rating (rating_derived=True, set by
+    # derive_rating_from_scores OR gpt_review_aggregate) must not feed the value
+    # ratio; treat it as missing so the value dim takes the "Limited value data"
+    # path instead of computing a value-per-star off a synthetic star count. Same
+    # guard _dim_reviews uses. `is True` keeps an explicit False real.
+    if a.get("rating_derived") is True:
+        ra = None
+    if b.get("rating_derived") is True:
+        rb = None
 
     # Honest-fallback: if any side lacks price or rating, the value ratio
     # is undefined. Return neutral display score with low confidence so

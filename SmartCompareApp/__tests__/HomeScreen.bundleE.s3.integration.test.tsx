@@ -95,12 +95,34 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 // not the child components.
 jest.mock('../src/components/CategorySelector', () => {
   const ReactRequired = require('react');
+  // catfix D1 — faithful-enough mock: renders a pressable chip per category
+  // (real testID contract `category-chip-<value>`) wired to onChange, so a
+  // test can tap a chip exactly as a user would and drive selectedCategory.
+  const CATS = [
+    'electronics',
+    'grocery',
+    'supplements',
+    'makeup',
+    'skincare',
+    'haircare',
+    'fragrances',
+    'fashion',
+    'other',
+  ];
   return {
     __esModule: true,
-    default: () =>
-      ReactRequired.createElement('View', {
-        testID: 'mock-category-selector',
-      }),
+    default: (props: any) =>
+      ReactRequired.createElement(
+        'View',
+        { testID: 'mock-category-selector' },
+        CATS.map((c) =>
+          ReactRequired.createElement('View', {
+            key: c,
+            testID: `category-chip-${c}`,
+            onPress: () => props.onChange && props.onChange(c),
+          }),
+        ),
+      ),
   };
 });
 
@@ -228,6 +250,25 @@ describe('HomeScreen S3 integration — initial render', () => {
   });
 });
 
+describe('catfix D1 — category nudge visibility', () => {
+  it('shows the nudge on first render (no category selected by default)', () => {
+    const props = makeProps();
+    const rendered = render(<HomeScreen {...props} />);
+    // Default selectedCategory is null → the invitation nudge is present.
+    expect(rendered.getByTestId('home-category-nudge')).toBeTruthy();
+  });
+
+  it('hides the nudge once a category chip is tapped', () => {
+    const props = makeProps();
+    const rendered = render(<HomeScreen {...props} />);
+    // Present before any pick…
+    expect(rendered.getByTestId('home-category-nudge')).toBeTruthy();
+    // …gone after tapping a chip (selectedCategory != null).
+    fireEvent.press(rendered.getByTestId('category-chip-electronics'));
+    expect(rendered.queryByTestId('home-category-nudge')).toBeNull();
+  });
+});
+
 describe('HomeScreen S3 integration — mode switching', () => {
   it('tapping Link mode flips inputMode and renders TwoInputShell', async () => {
     const props = makeProps();
@@ -326,9 +367,36 @@ describe('HomeScreen S3 integration — text compare flow via TwoInputShell', ()
     // TwoInputShell now owns its own Compare CTA — drive its onSubmit prop
     // directly to mirror a user tap inside the shell.
     shell.props.onSubmit('iPhone 15', 'Galaxy S24');
+    // catfix D1 — with NO category chip tapped, `selected_category` is
+    // OMITTED (the prior silent 'electronics' default is gone; the backend
+    // resolves the true category). The options arg is an empty object.
     expect(mockStreamComparison).toHaveBeenCalledWith(
       { product_a: 'iPhone 15', product_b: 'Galaxy S24' },
-      expect.objectContaining({ selected_category: 'electronics' }),
+      {},
+    );
+    expect(subscribeFn).not.toBeNull();
+  });
+
+  it('catfix D1 — selected_category IS sent once a category chip is tapped', async () => {
+    let subscribeFn: any = null;
+    mockStreamComparison.mockReturnValue({
+      subscribe: (handlers: any) => {
+        subscribeFn = handlers;
+      },
+      abort: jest.fn(),
+    });
+    const props = makeProps();
+    const rendered = render(<HomeScreen {...props} />);
+    // Tap a category chip first, then switch to type mode and submit.
+    fireEvent.press(rendered.getByTestId('category-chip-fragrances'));
+    fireEvent.press(rendered.getByTestId('home-mode-type'));
+    const shell = await waitFor(() =>
+      rendered.getByTestId('mock-two-input-shell'),
+    );
+    shell.props.onSubmit('Dior Sauvage', 'Creed Aventus');
+    expect(mockStreamComparison).toHaveBeenCalledWith(
+      { product_a: 'Dior Sauvage', product_b: 'Creed Aventus' },
+      { selected_category: 'fragrances' },
     );
     expect(subscribeFn).not.toBeNull();
   });

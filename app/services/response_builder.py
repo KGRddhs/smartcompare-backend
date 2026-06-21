@@ -279,6 +279,11 @@ def _compose_variant_string(product: Dict[str, Any], category: str) -> str:
         value = specs.get(key)
         if value in (None, "", []):
             continue
+        # A6 — a literal "no data" token ("N/A"/"unknown"/"-"/"none") must NOT
+        # leak into the variant tag (would render "N/A · N/A"). Skip any string
+        # value whose lowercased/stripped form is a known NA token.
+        if isinstance(value, str) and value.strip().lower() in _SPEC_NA_TOKENS:
+            continue
         # Tidy ml-style numerics.
         if key == "volume_ml":
             try:
@@ -514,6 +519,13 @@ def _safe_price_amount(p: Dict[str, Any]) -> Optional[float]:
 
 
 def _safe_rating(p: Dict[str, Any]) -> Optional[float]:
+    # A5 — a rating synthesized from scores (derive_rating_from_scores) or
+    # estimated by GPT (gpt_review_aggregate) is flagged rating_derived=True and
+    # must NEVER drive a verdict claim ("rates higher"/"stars higher"). This is
+    # the single chokepoint for BOTH _rating_candidate (verdict line1) and
+    # _format_line2 (line2), so one guard makes both honest.
+    if p.get("rating_derived") is True:
+        return None
     rating = p.get("rating")
     if isinstance(rating, dict):
         rating = rating.get("score") or rating.get("average")
@@ -1240,7 +1252,10 @@ def build_comparison_response(
                     # Empty string when no hooks fire (FE renders title alone).
                     "variant": _compose_variant_string(pd, category_used),
                     "price": pd.get("price"),
-                    "rating": pd.get("rating"),
+                    # A5 — never surface a derived/estimated rating as authoritative
+                    # (derive_rating_from_scores OR gpt_review_aggregate set
+                    # rating_derived=True). Real review_count is preserved.
+                    "rating": (None if pd.get("rating_derived") is True else pd.get("rating")),
                     "review_count": pd.get("review_count"),
                     "overall_score": scoring_result.get("scores", {}).get(f"product_{i}", {}).get("overall"),
                     "value_badge": pd.get("value_badge", "fair_price"),
@@ -1309,7 +1324,9 @@ def build_comparison_response(
                 {
                     "brand": pd.get("brand"),
                     "name": pd.get("name"),
-                    "rating": pd.get("rating"),
+                    # A5 — derived/estimated ratings (rating_derived=True) are
+                    # nulled here too; real review_count is kept.
+                    "rating": (None if pd.get("rating_derived") is True else pd.get("rating")),
                     "review_count": pd.get("review_count"),
                     "rating_source": pd.get("rating_source"),
                     # L2 per-race timeout sets pd['reviews']=None on TimeoutError;

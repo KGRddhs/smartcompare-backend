@@ -486,7 +486,13 @@ export function streamComparison(
         try {
           const baseParams: Record<string, any> = {
             region: 'bahrain',
-            selected_category: options?.selected_category,
+            // catfix CLEANUP-5 — omit selected_category when unset (match the
+            // gated SSE query-param path ~L405 + compareTextPair + the D1
+            // contract). Harmless before (axios drops undefined) but keeps the
+            // "no chip → no category hint" intent explicit at every send site.
+            ...(options?.selected_category && {
+              selected_category: options.selected_category,
+            }),
             ...(options?.nocache && { nocache: true }),
           };
           // Bundle E S3 hotfix — GET /text/compare now accepts dual-shape (q OR pair).

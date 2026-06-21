@@ -23,6 +23,8 @@ from urllib.parse import urlparse, quote_plus
 from app.services.extraction_service import (
     parse_product_query,
     canonicalize_category,
+    classify_category_from_text,
+    classify_category_llm,
     extract_specs,
     extract_price,
     extract_price_from_training_data,
@@ -102,6 +104,105 @@ def _phase1_completely_failed(pd: Dict[str, Any]) -> bool:
     product_0 as a fake winner.
     """
     return pd.get("specs") is None and pd.get("price") is None
+
+
+async def _resolve_pair_category(products, selected_category, parser_path=False):
+    """A3/A4 — resolve the AUTHORITATIVE pair category for the sync + stream
+    paths (single source of truth so both paths stay in lockstep).
+
+    The "effective detection" depends on the input PATH (FIX-1):
+
+    - ``parser_path=True`` (the q= path): ``products[i]["category"]`` is the LLM's
+      FULL-CONTEXT judgment from ``parse_product_query`` and is AUTHORITATIVE.
+      ``classify_category_from_text(names)`` is only a FALLBACK for when the LLM
+      said "other" — so a blunt category WORD inside a name (``is_supplement_query``
+      'iron'/'vitamin', or a 'skin'/'food' synonym) can NOT override the LLM
+      ("Tefal steam iron" stays electronics, not supplements).
+    - ``parser_path=False`` (explicit_pair / vision): the per-product ``category``
+      field is only the deterministic ``classify_category_from_text`` stub (no real
+      LLM judgment), so NAME detection drives; the stub is consulted only when the
+      names are blind (a no-op, since stub == det).
+
+    Then, regardless of path, the precedence ladder is:
+      1. effective detection wins, overriding a conflicting real chip (``switched=True``);
+      2. else a real chip is honored;
+      3. else (blind detection + no chip) escalate to the bounded A2b GPT-mini classifier.
+
+    Returns ``(category_used, category_switched, original_category)``.
+    """
+    product_names = [p.get("search_query") or p.get("name") for p in products]
+    combined = " ".join(n for n in product_names if n)
+    llm_cat = canonicalize_category(products[0].get("category")) if products else "other"
+    name_cat = classify_category_from_text(combined)
+    sel = canonicalize_category(selected_category) if selected_category else None
+
+    if parser_path:
+        # q= path: parse_product_query already classified with FULL context, so its
+        # category (including a deliberate "other") is the final word. We do NOT
+        # fall back to a blunt name keyword (that's the FIX-1 bug: "Lock and Lock
+        # food container" -> the LLM's "other", not grocery) and do NOT re-escalate
+        # to A2b (the LLM already decided). The chip can only re-flag a switch.
+        det = llm_cat
+        if det != "other":
+            category_used = det
+            category_switched = bool(sel and sel != "other" and sel != det)
+        elif sel and sel != "other":
+            # LLM abstained ("other") AND the user set a real chip -> honor the chip.
+            category_used = sel
+            category_switched = False
+        else:
+            category_used = "other"
+            category_switched = False
+        original_category = selected_category if category_switched else None
+        return category_used, category_switched, original_category
+
+    # explicit_pair / vision: the per-product field is only the deterministic
+    # classify stub, so NAME detection drives; the stub is consulted as a fallback
+    # when names are blind (a no-op since stub == name_cat), then A2b escalation.
+    det = name_cat if name_cat != "other" else llm_cat
+    if det != "other":
+        category_used = det
+        category_switched = bool(sel and sel != "other" and sel != det)
+    elif sel and sel != "other":
+        category_used = sel
+        category_switched = False
+    else:
+        category_used = await classify_category_llm(product_names)
+        category_switched = False
+    original_category = selected_category if category_switched else None
+    return category_used, category_switched, original_category
+
+
+def _apply_gpt_review_aggregate_fallback(result: Dict[str, Any]) -> None:
+    """A5/FIX-2 — last-resort rating fallback: when NO real rating provider
+    produced a rating but the reviews dict carries a GPT-extracted
+    ``average_rating``, promote it BUT flag it honestly.
+
+    Mutates ``result`` in place. The promoted rating is a GPT ESTIMATE, so we set
+    ``rating_derived=True`` AT THE SOURCE (every downstream guard — _safe_rating,
+    the overview/reviews projections, scoring _dim_value/_dim_reviews, AND the SSE
+    intermediate reviews event — then treats it as not-authoritative) and NULL the
+    ``review_count`` (the reviews dict's ``total_reviews`` is an LLM estimate, not a
+    real count). No-op unless rating is missing AND a valid 1.0–5.0 average exists.
+
+    Extracted from _fetch_product_data so the provenance contract is unit-testable
+    against the REAL code (not an inlined copy)."""
+    if result.get("rating") is None and result.get("reviews") and isinstance(result["reviews"], dict):
+        avg = result["reviews"].get("average_rating")
+        if avg is not None:
+            try:
+                avg_float = round(float(avg), 1)
+                if 1.0 <= avg_float <= 5.0:
+                    result["rating"] = avg_float
+                    result["rating_derived"] = True
+                    result["review_count"] = None
+                    result["rating_verified"] = False
+                    result["rating_source"] = {
+                        "name": "Aggregated from reviews", "url": None,
+                        "extract_method": "gpt_review_aggregate", "confidence": "low",
+                    }
+            except (ValueError, TypeError):
+                pass
 
 
 async def _cancel_profile_task(task) -> None:
@@ -829,12 +930,17 @@ async def _scrapedo_scraper(
     if not validate_scrape_url(url):
         return None
     try:
-        html, status = await scrapedo_service.render_page_with_status(url)
+        html, status, cost = await scrapedo_service.render_page_with_status(url)
     except Exception as e:  # noqa: BLE001
         logger.debug(f"[fan_out scrapedo] {url} raised: {e}")
         return None
-    if status == 200:
-        record_usage("scrapedo")
+    # A7 — meter the REAL credit cost Scrape.do billed (header-derived, fallback
+    # 5). cost>0 means a request reached the API and was charged (200 OR a billed
+    # non-200 like 400/404/410/429/503); cost==0 is a no-request path (token
+    # missing / timeout / generic exception). Record usage for every billed call,
+    # not just 200, so the budget meter reflects true spend.
+    if cost > 0:
+        record_usage("scrapedo", count=cost)
     if not html:
         if status in (429, 503) or status == 0:
             record_failure("scrapedo")
@@ -1804,11 +1910,25 @@ class StructuredComparisonService:
         # build context carries everything _build_partial_response needs that is
         # NOT a fetched stage (query/region/category/cache flag/prefs). Stages
         # are stashed below as they land.
+        #
+        # CLEANUP-4(b) — seed a best-effort category at init ($0, deterministic) so
+        # a hard-cap timeout that fires DURING category resolution (before the real
+        # `_partial_build_ctx.update` below) still renders a sensible category
+        # instead of a bare "other". The real resolved category overwrites this the
+        # moment resolution completes; this only matters on the narrow
+        # mid-resolution timeout window. Prefer a confident name/query hit, else the
+        # user's chip, else "other".
+        _seed_category = classify_category_from_text(query)
+        if _seed_category == "other" and selected_category:
+            _seed_category = canonicalize_category(selected_category)
         self._partial_build_ctx = {
             "query": query,
             "region": region,
             "from_cache": not nocache,
             "user_preferences": user_preferences,
+            "category_used": _seed_category,
+            "category_switched": False,
+            "original_category": None,
         }
         self._partial_product_data = None
         self._partial_scoring_result = None
@@ -1846,7 +1966,10 @@ class StructuredComparisonService:
                     brand = vp.get("brand", "Unknown")
                     vname = vp.get("name", "Unknown Product")
                     full = f"{brand} {vname}".strip()
-                    category = "supplements" if is_supplement_query(full) else "other"
+                    # A3/A4: deterministic per-name classify (supplements ride the
+                    # is_supplement_query branch inside classify_category_from_text);
+                    # the authoritative pair category is resolved + written back below.
+                    category = classify_category_from_text(full)
                     products.append({
                         "brand": brand, "name": vname,
                         "variant": vp.get("size_or_count"),
@@ -1861,7 +1984,9 @@ class StructuredComparisonService:
                 products = []
                 for raw in explicit_pair[:2]:
                     safe = sanitize_prompt_input(raw, max_length=80)
-                    category = "supplements" if is_supplement_query(safe) else "other"
+                    # A3/A4: deterministic per-name classify; the authoritative
+                    # pair category is resolved (+ A2b escalation) + written back below.
+                    category = classify_category_from_text(safe)
                     products.append({
                         "brand": "", "name": safe, "variant": None,
                         "category": category, "search_query": safe, "_explicit": True,
@@ -1882,17 +2007,16 @@ class StructuredComparisonService:
 
                 products = parsed["products"][:2]
 
-            # Determine category. KEYSTONE FIX: canonicalize the LLM-emitted
-            # category string ("Fragrances" -> "fragrances") so every downstream
-            # lookup (scoring dims, spec schema, priority personalization) keys
-            # correctly instead of silently falling back to "other".
-            detected_category = canonicalize_category(products[0].get("category"))
-            category_switched = False
-            original_category = None
-            if selected_category and canonicalize_category(selected_category) != detected_category:
-                category_switched = True
-                original_category = selected_category
-            category_used = detected_category
+            # A3 / FIX-1 — Determine the AUTHORITATIVE pair category. On the q=
+            # parser path the LLM-emitted products[i]["category"] is the
+            # full-context judgment and is authoritative (a blunt name keyword
+            # must not override it); on explicit_pair / vision the field is only
+            # the deterministic stub, so name detection drives. parser_path is
+            # True only when neither vision nor explicit_pair was supplied.
+            _parser_path = not (vision_products or explicit_pair)
+            category_used, category_switched, original_category = (
+                await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
+            )
 
             # WS1 (D1) — fold the resolved category context into the partial
             # build ctx so a hard-cap timeout after this point can still build
@@ -1903,6 +2027,14 @@ class StructuredComparisonService:
                     "category_switched": category_switched,
                     "original_category": original_category,
                 })
+
+            # A3 KEYSTONE WRITE-BACK — stamp the resolved category onto BOTH
+            # per-product dicts so _fetch_product_data -> result["category"]
+            # (scoring, spec-schema, category-aware source discovery) all key off
+            # the TRUE category, not the deterministic "other" stub. Must happen
+            # before the _fetch_product_data gather below.
+            for _p in products:
+                _p["category"] = category_used
 
             # I5.6 lever-2 — start the behavioral-profile + demographics fetch
             # CONCURRENTLY with the product-data gather. Both fetches depend ONLY
@@ -2024,7 +2156,7 @@ class StructuredComparisonService:
                 product_data[0], product_data[1], region,
                 parsed.get("comparison_type", "value") if not vision_products else "value",
                 user_preferences=user_preferences,
-                scores_summary=scores_summary, category=detected_category,
+                scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
             )
             if orchestrator_timings is not None:
@@ -2041,7 +2173,7 @@ class StructuredComparisonService:
                     product1=product_data[0], product2=product_data[1], region=region,
                     concern=parsed.get("comparison_type", "value") if not vision_products else "value",
                     user_preferences=user_preferences, scores_summary=scores_summary,
-                    category=detected_category, demographics_profile=demographics_profile,
+                    category=category_used, demographics_profile=demographics_profile,
                 ),
                 pain_workflow_context=scores_summary,
                 stage_timings=orchestrator_timings,
@@ -2062,7 +2194,7 @@ class StructuredComparisonService:
 
             # Trust validation
             from app.services.trust_validation_service import validate_verdict
-            verdict_validation = validate_verdict(comparison, scoring_result, detected_category, products=product_data)
+            verdict_validation = validate_verdict(comparison, scoring_result, category_used, products=product_data)
 
             # Extract pros/cons
             if include_pros_cons:
@@ -2300,7 +2432,10 @@ class StructuredComparisonService:
                     brand = vp.get("brand", "Unknown")
                     vname = vp.get("name", "Unknown Product")
                     full = f"{brand} {vname}".strip()
-                    category = "supplements" if is_supplement_query(full) else "other"
+                    # A3/A4: deterministic per-name classify (supplements ride the
+                    # is_supplement_query branch inside classify_category_from_text);
+                    # the authoritative pair category is resolved + written back below.
+                    category = classify_category_from_text(full)
                     products.append({
                         "brand": brand, "name": vname,
                         "variant": vp.get("size_or_count"),
@@ -2314,7 +2449,9 @@ class StructuredComparisonService:
                 products = []
                 for raw in explicit_pair[:2]:
                     safe = sanitize_prompt_input(raw, max_length=80)
-                    category = "supplements" if is_supplement_query(safe) else "other"
+                    # A3/A4: deterministic per-name classify; the authoritative
+                    # pair category is resolved (+ A2b escalation) + written back below.
+                    category = classify_category_from_text(safe)
                     products.append({
                         "brand": "", "name": safe, "variant": None,
                         "category": category, "search_query": safe, "_explicit": True,
@@ -2334,17 +2471,20 @@ class StructuredComparisonService:
 
                 products = parsed["products"][:2]
 
-            # Determine category. KEYSTONE FIX: canonicalize the LLM-emitted
-            # category string ("Fragrances" -> "fragrances") so every downstream
-            # lookup (scoring dims, spec schema, priority personalization) keys
-            # correctly instead of silently falling back to "other".
-            detected_category = canonicalize_category(products[0].get("category"))
-            category_switched = False
-            original_category = None
-            if selected_category and canonicalize_category(selected_category) != detected_category:
-                category_switched = True
-                original_category = selected_category
-            category_used = detected_category
+            # A4 / FIX-1 — Determine the AUTHORITATIVE pair category (mirror of the
+            # sync path via the shared _resolve_pair_category helper; the stream path
+            # has NO _partial_build_ctx so that block is intentionally omitted).
+            # parser_path mirrors the sync path: True only when neither vision nor
+            # explicit_pair was supplied, so the LLM-emitted category is authoritative
+            # on q=. The resolved category is then stamped onto BOTH per-product dicts
+            # so _fetch_product_data -> result["category"] (scoring, spec-schema,
+            # category-aware source discovery) keys off the TRUE category.
+            _parser_path = not (vision_products or explicit_pair)
+            category_used, category_switched, original_category = (
+                await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
+            )
+            for _p in products:
+                _p["category"] = category_used
 
             # Step 2: Fetch product data
             yield ("status", {"message": "Fetching specs and prices...", "progress": 20})
@@ -2475,7 +2615,14 @@ class StructuredComparisonService:
                 "products": [
                     {
                         "brand": pd.get("brand"), "name": pd.get("name"),
-                        "rating": pd.get("rating"), "review_count": pd.get("review_count"),
+                        # FIX-2 — apply the A5 NO-FAB guard here too: a derived /
+                        # estimated rating (rating_derived=True, set by
+                        # gpt_review_aggregate or derive_rating_from_scores) must NOT
+                        # surface as authoritative in the SSE intermediate event.
+                        # Mirrors the non-streaming response_builder projection. Real
+                        # review_count is preserved.
+                        "rating": (None if pd.get("rating_derived") is True else pd.get("rating")),
+                        "review_count": pd.get("review_count"),
                         "rating_verified": pd.get("rating_verified"),
                         "rating_source": pd.get("rating_source"),
                         # See response_builder.py:963 — same (X or {}).get fix.
@@ -2551,7 +2698,7 @@ class StructuredComparisonService:
                 product_data[0], product_data[1], region,
                 parsed.get("comparison_type", "value") if not vision_products else "value",
                 user_preferences=user_preferences,
-                scores_summary=scores_summary, category=detected_category,
+                scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
             )
             if orchestrator_timings is not None:
@@ -2567,14 +2714,14 @@ class StructuredComparisonService:
                     product1=product_data[0], product2=product_data[1], region=region,
                     concern=parsed.get("comparison_type", "value") if not vision_products else "value",
                     user_preferences=user_preferences, scores_summary=scores_summary,
-                    category=detected_category, demographics_profile=demographics_profile,
+                    category=category_used, demographics_profile=demographics_profile,
                 ),
                 pain_workflow_context=scores_summary,
                 stage_timings=orchestrator_timings,
             )
 
             from app.services.trust_validation_service import validate_verdict
-            verdict_validation = validate_verdict(comparison, scoring_result, detected_category, products=product_data)
+            verdict_validation = validate_verdict(comparison, scoring_result, category_used, products=product_data)
 
             if include_pros_cons:
                 # Bundle C v1 hot-fix (round 2) § 1a diagnostic — streaming path
@@ -3358,22 +3505,10 @@ class StructuredComparisonService:
         result["rating_verified"] = rating_data.get("rating_verified", False)
         result["rating_source"] = rating_data.get("rating_source")
 
-        # Fallback: use GPT-extracted average_rating
-        if result["rating"] is None and result.get("reviews") and isinstance(result["reviews"], dict):
-            avg = result["reviews"].get("average_rating")
-            if avg is not None:
-                try:
-                    avg_float = round(float(avg), 1)
-                    if 1.0 <= avg_float <= 5.0:
-                        result["rating"] = avg_float
-                        result["review_count"] = result["reviews"].get("total_reviews")
-                        result["rating_verified"] = False
-                        result["rating_source"] = {
-                            "name": "Aggregated from reviews", "url": None,
-                            "extract_method": "gpt_review_aggregate", "confidence": "low",
-                        }
-                except (ValueError, TypeError):
-                    pass
+        # Fallback: use GPT-extracted average_rating (flagged rating_derived +
+        # count nulled at source). Extracted to a module helper so the provenance
+        # contract is unit-testable against the real code.
+        _apply_gpt_review_aggregate_fallback(result)
 
         # Inject verified rating into reviews
         if result.get("reviews") and isinstance(result["reviews"], dict) and rating_data.get("rating"):

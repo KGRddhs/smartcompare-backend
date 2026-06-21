@@ -55,13 +55,19 @@ def test_supplements_split():
 
 
 def test_fragrances_split():
+    # B1 invariant: NON_NEGOTIABLE stays byte-stable {concentration, longevity}.
+    # scent_family is added to PREFERRED only (rides the existing batched
+    # _smart_fallback_extract — NOT the per-field Serper+GPT NON_NEGOTIABLE
+    # fan-out), so it must NOT appear in the non-negotiable set.
     assert set(CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE["fragrances"]) == {
         "concentration", "longevity",
     }
+    assert "scent_family" not in CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE["fragrances"]
     # Spec lists `notes_top/heart/base` as one entry — we split into three
-    # discrete schema fields so the Tier 2 fallback can target each.
+    # discrete schema fields so the Tier 2 fallback can target each. B1 adds
+    # scent_family (the single most defining fragrance trait after concentration).
     assert set(CRITICAL_SCHEMA_FIELDS_PREFERRED["fragrances"]) == {
-        "sillage", "notes_top", "notes_heart", "notes_base", "season",
+        "scent_family", "sillage", "notes_top", "notes_heart", "notes_base", "season",
     }
 
 

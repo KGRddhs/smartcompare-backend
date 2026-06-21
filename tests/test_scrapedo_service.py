@@ -132,44 +132,86 @@ class TestRenderPageWithStatus:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.text = SAMPLE_HTML
+        mock_resp.headers = {}  # no cost header -> fallback 5
 
         with patch("app.services.scrapedo_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_resp
             _make_mock_client(mock_client_cls, mock_client)
 
-            html, status = await render_page_with_status("https://example.com")
+            html, status, cost = await render_page_with_status("https://example.com")
             assert html == SAMPLE_HTML
             assert status == 200
+            assert cost == 5  # A7: 200 w/ html, no header -> fallback 5 credits
+
+    @pytest.mark.asyncio
+    async def test_returns_html_and_200_with_cost_header(self, mock_env_token):
+        # A7: a real Scrape.do-Request-Cost header is metered verbatim.
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = SAMPLE_HTML
+        mock_resp.headers = {"Scrape.do-Request-Cost": "25"}
+
+        with patch("app.services.scrapedo_service.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_resp
+            _make_mock_client(mock_client_cls, mock_client)
+
+            html, status, cost = await render_page_with_status("https://example.com")
+            assert html == SAMPLE_HTML
+            assert status == 200
+            assert cost == 25
+
+    @pytest.mark.asyncio
+    async def test_cost_header_unparseable_falls_back_to_5(self, mock_env_token):
+        # A7: a garbage cost header must not raise — fall back to 5.
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = SAMPLE_HTML
+        mock_resp.headers = {"Scrape.do-Request-Cost": "not-a-number"}
+
+        with patch("app.services.scrapedo_service.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_resp
+            _make_mock_client(mock_client_cls, mock_client)
+
+            html, status, cost = await render_page_with_status("https://example.com")
+            assert html == SAMPLE_HTML
+            assert status == 200
+            assert cost == 5
 
     @pytest.mark.asyncio
     async def test_returns_none_and_200_on_no_content(self, mock_env_token):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.text = "<html></html>"
+        mock_resp.headers = {"Scrape.do-Request-Cost": "5"}
 
         with patch("app.services.scrapedo_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_resp
             _make_mock_client(mock_client_cls, mock_client)
 
-            html, status = await render_page_with_status("https://example.com")
+            html, status, cost = await render_page_with_status("https://example.com")
             assert html is None
             assert status == 200
+            assert cost == 5  # billed even with no usable content
 
     @pytest.mark.asyncio
     async def test_returns_none_and_429(self, mock_env_token):
         mock_resp = MagicMock()
         mock_resp.status_code = 429
+        mock_resp.headers = {}
 
         with patch("app.services.scrapedo_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_resp
             _make_mock_client(mock_client_cls, mock_client)
 
-            html, status = await render_page_with_status("https://example.com")
+            html, status, cost = await render_page_with_status("https://example.com")
             assert html is None
             assert status == 429
+            assert cost == 5  # non-200 with a resp is still billed (fallback 5)
 
     @pytest.mark.asyncio
     async def test_returns_none_and_0_on_timeout(self, mock_env_token):
@@ -178,9 +220,10 @@ class TestRenderPageWithStatus:
             mock_client.get.side_effect = httpx.TimeoutException("timeout")
             _make_mock_client(mock_client_cls, mock_client)
 
-            html, status = await render_page_with_status("https://example.com")
+            html, status, cost = await render_page_with_status("https://example.com")
             assert html is None
             assert status == 0
+            assert cost == 0  # no request reached the API -> 0 credits billed
 
     @pytest.mark.asyncio
     async def test_returns_none_and_0_on_connection_error(self, mock_env_token):
@@ -189,16 +232,18 @@ class TestRenderPageWithStatus:
             mock_client.get.side_effect = httpx.ConnectError("refused")
             _make_mock_client(mock_client_cls, mock_client)
 
-            html, status = await render_page_with_status("https://example.com")
+            html, status, cost = await render_page_with_status("https://example.com")
             assert html is None
             assert status == 0
+            assert cost == 0
 
     @pytest.mark.asyncio
     async def test_returns_none_and_0_without_token(self):
         with patch.dict("os.environ", {}, clear=True):
-            html, status = await render_page_with_status("https://example.com")
+            html, status, cost = await render_page_with_status("https://example.com")
             assert html is None
             assert status == 0
+            assert cost == 0  # token missing -> no request -> 0 credits
 
 
 class TestScrapedoEdgeCases:
@@ -265,29 +310,33 @@ class TestScrapedoEdgeCases:
     async def test_render_page_with_status_http_403(self, mock_env_token):
         mock_resp = MagicMock()
         mock_resp.status_code = 403
+        mock_resp.headers = {}
 
         with patch("app.services.scrapedo_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_resp
             _make_mock_client(mock_client_cls, mock_client)
 
-            html, status = await render_page_with_status("https://example.com")
+            html, status, cost = await render_page_with_status("https://example.com")
             assert html is None
             assert status == 403
+            assert cost == 5  # billed non-200 -> fallback 5
 
     @pytest.mark.asyncio
     async def test_render_page_with_status_503(self, mock_env_token):
         mock_resp = MagicMock()
         mock_resp.status_code = 503
+        mock_resp.headers = {}
 
         with patch("app.services.scrapedo_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_resp
             _make_mock_client(mock_client_cls, mock_client)
 
-            html, status = await render_page_with_status("https://example.com")
+            html, status, cost = await render_page_with_status("https://example.com")
             assert html is None
             assert status == 503
+            assert cost == 5
 
     @pytest.mark.asyncio
     async def test_render_page_generic_exception(self, mock_env_token):
@@ -306,6 +355,7 @@ class TestScrapedoEdgeCases:
             mock_client.get.side_effect = RuntimeError("unexpected")
             _make_mock_client(mock_client_cls, mock_client)
 
-            html, status = await render_page_with_status("https://example.com")
+            html, status, cost = await render_page_with_status("https://example.com")
             assert html is None
             assert status == 0
+            assert cost == 0  # no resp -> no credits billed

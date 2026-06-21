@@ -7,6 +7,7 @@ load_dotenv(override=True)  # Load .env FIRST before anything else
 import os
 import re
 import json
+import asyncio
 import hashlib
 import logging
 from typing import Optional, List, Dict, Any
@@ -231,7 +232,11 @@ CRITICAL_SCHEMA_FIELDS_PREFERRED: Dict[str, List[str]] = {
     "supplements": ["count", "serving_size"],
     # Spec § 2f lists `notes_top/heart/base` as one item — we split into
     # the three discrete schema fields so Tier 1 fallback can target each.
-    "fragrances":  ["sillage", "notes_top", "notes_heart", "notes_base", "season"],
+    # B1 (catfix): scent_family added to PREFERRED only — it rides the existing
+    # batched _smart_fallback_extract (one shared call when any field is blank),
+    # NOT the per-field Serper+GPT NON_NEGOTIABLE fan-out (~0 Serper delta). It
+    # must stay OUT of NON_NEGOTIABLE["fragrances"] = {concentration, longevity}.
+    "fragrances":  ["scent_family", "sillage", "notes_top", "notes_heart", "notes_base", "season"],
     "fashion":     ["origin", "style", "closure_type", "care_instructions"],
     # active_ingredient moved to non-negotiable (S2 I3.6) — removed here.
     "skincare":    ["skin_type", "spf"],
@@ -461,7 +466,7 @@ CATEGORY-SPECIFIC GUIDANCE (seek these fields for BOTH products; include a field
 - Electronics: include all tech specs (display, processor, ram, storage, battery, camera)
 - Fashion: focus on material, style, craftsmanship, origin, design_details. Skip irrelevant fields.
 - Supplements: include count, dosage, form, certifications. Skip tech fields.
-- Fragrances: include scent notes, longevity, sillage, concentration. Skip tech fields.
+- Fragrances: include scent_family (the olfactive family — floral / woody / oriental / fresh / etc.), scent notes (top/heart/base), longevity, sillage, concentration. Skip tech fields. Set scent_family to null when the scent family is genuinely unknown or unsure — never guess or invent one.
 - Makeup: seek shade_range, finish, coverage, skin_type, spf, volume, cruelty_free, vegan, waterproof. Foundations/concealers usually list finish + coverage + shade range; many state vegan/cruelty-free and SPF on the label.
 - Skincare: seek skin_type, skin_concern, active_ingredient, ingredients, spf, volume, fragrance_free, ph_level. Most products state their key active (e.g. niacinamide, retinol, hyaluronic acid) + target skin type/concern.
 - Haircare: seek hair_type, hair_concern, ingredients, volume, scent, sulfate_free, paraben_free, silicone_free. Most products state hair type/concern + a free-from claim.
@@ -758,6 +763,93 @@ def canonicalize_category(raw: Any) -> str:
     if normalized.endswith("s") and normalized[:-1] in _CANONICAL_CATEGORIES:
         return normalized[:-1]
     return "other"
+
+
+def classify_category_from_text(text: str) -> str:
+    """Cheap deterministic product-type -> canonical category. $0, no LLM.
+
+    Recognizes generic category WORDS only (perfume / cologne / edp / laptop /
+    vitamin ...), NOT brand/model strings. A bare brand/model with no category
+    word ("iPhone 15 Pro", "Tom Ford Soleil Neige") returns "other" — the caller
+    honors a user chip or escalates to the A2b GPT-mini classifier. We do NOT
+    widen the synonym map with brand names (brittle, unbounded).
+
+    Pure + deterministic. Returns "other" for None / non-str / empty / unmatched.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return "other"
+    # Function-local import avoids a circular import: price_service imports
+    # extraction_service at module load (price_service.py:16).
+    from app.services.price_service import is_supplement_query
+    if is_supplement_query(text):
+        return "supplements"
+    low = text.lower()
+    # Longest synonym first so multi-char tokens win over substrings.
+    for token in sorted(_CATEGORY_SYNONYMS, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(token)}\b", low):
+            return _CATEGORY_SYNONYMS[token]
+    return "other"
+
+
+# CLEANUP-1: the former `resolve_category` precedence helper was removed as
+# prod-dead. The live pair-category resolver is `_resolve_pair_category` in
+# structured_comparison_service (path-aware: parser vs explicit/vision). The A2b
+# escalation below (`classify_category_llm`) is still live — that resolver calls
+# it on the fully-blind branch.
+
+
+# System prompt for the A2b bounded classify-only escalation. Deliberately tiny
+# (cheap, ~1-token answer) and constrained to the 9 canonical keys so the result
+# round-trips cleanly through canonicalize_category.
+_CLASSIFY_CATEGORY_LLM_PROMPT = (
+    "You are a product-category classifier. Given one or two product names, reply "
+    "with EXACTLY ONE word — the single best matching category from this list:\n"
+    "electronics, grocery, supplements, makeup, skincare, haircare, fragrances, "
+    "fashion, other\n"
+    "Reply with only that one lowercase word and nothing else. If unsure, reply "
+    "other."
+)
+
+# CLEANUP-4(a) — latency hygiene cap on the blind-path classify call so a hung
+# OpenAI request can't drag the comparison wall. Env-tunable; tests patch it tiny.
+_CLASSIFY_LLM_TIMEOUT = float(os.getenv("CLASSIFY_LLM_TIMEOUT", "4.0"))
+
+
+async def classify_category_llm(texts: list) -> str:
+    """Bounded gpt-4o-mini classify-only escalation (A2b).
+
+    Fires ONLY on the fully-blind branch of ``_resolve_pair_category`` (no name
+    hit, no LLM/parser category, no usable chip). This is a NEW classify-only call
+    — it is NOT ``parse_product_query`` (the explicit_pair path asserts that stays
+    unused). Capped by ``_CLASSIFY_LLM_TIMEOUT`` so a hung request degrades
+    gracefully. Returns one canonical category key; any error/timeout/unknown ->
+    ``"other"``.
+    """
+    try:
+        names = [t for t in (texts or []) if isinstance(t, str) and t.strip()]
+        if not names:
+            return "other"
+        user_content = sanitize_prompt_input(" | ".join(names), max_length=300)
+        client = get_client()
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": _CLASSIFY_CATEGORY_LLM_PROMPT},
+                    {"role": "user", "content": f"<PRODUCTS>{user_content}</PRODUCTS>"},
+                ],
+                max_tokens=10,
+                temperature=0.0,
+            ),
+            timeout=_CLASSIFY_LLM_TIMEOUT,
+        )
+        raw = (response.choices[0].message.content or "").strip()
+        return canonicalize_category(raw)
+    except Exception as e:
+        # asyncio.TimeoutError is an Exception subclass (TimeoutError since 3.11),
+        # so a cap breach is caught here and degrades to "other".
+        logger.warning(f"classify_category_llm failed, defaulting to 'other': {e}")
+        return "other"
 
 
 # ============================================

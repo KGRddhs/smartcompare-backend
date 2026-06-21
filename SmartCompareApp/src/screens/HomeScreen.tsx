@@ -102,7 +102,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const recentSearchesRef = useRef<string[]>([]);
 
   const [inputMode, setInputMode] = useState<InputMode>('scan');
-  const [selectedCategory, setSelectedCategory] = useState<string>('electronics');
+  // catfix D1 — start with NO category preselected. The prior silent
+  // 'electronics' default forced an electronics hint onto every compare
+  // (a fragrance pair shipped `selected_category: 'electronics'`); the
+  // backend now treats null as "no opinion" and resolves the true
+  // category itself. `selected_category` is sent ONLY when the user taps
+  // a chip (conditional spread at the two compare sites below).
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const abortRef = useRef<(() => void) | null>(null);
 
   const { used, total, canCompare, increment } = useComparisonCounter();
@@ -300,7 +306,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
     const { subscribe, abort } = streamComparison(
       { product_a: productA, product_b: productB },
-      { selected_category: selectedCategory }
+      // catfix D1 — omit the key entirely when no chip is selected so the
+      // backend resolves the true category instead of honoring a default.
+      { ...(selectedCategory ? { selected_category: selectedCategory } : {}) }
     );
     abortRef.current = abort;
 
@@ -401,7 +409,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         url1,
         url2,
         region: 'bahrain',
-        selected_category: selectedCategory,
+        // catfix D1 — omit when no chip is selected (see stream path above).
+        ...(selectedCategory ? { selected_category: selectedCategory } : {}),
       });
       if (response.data.success) {
         await increment();
@@ -693,6 +702,18 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         />
       )}
 
+      {/* catfix D1 — gentle, non-blocking invitation shown only when no
+          category chip is selected. Compare still works without a pick
+          (the backend resolves the true category); tapping a chip both
+          dismisses this and sends `selected_category`. */}
+      {canCompare && selectedCategory == null && (
+        <Text style={styles.categoryNudge} testID="home-category-nudge">
+          {t('home.categories.nudge', {
+            defaultValue: 'Pick a category for the most accurate compare',
+          })}
+        </Text>
+      )}
+
       {/* Outer scroll wraps CompareCard + 4 editorial sections per JSX:695. */}
       <ScrollView
         testID="home-main-scroll"
@@ -932,6 +953,15 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
+  },
+  // catfix D1 — subtle invitation under the unselected category strip.
+  // Caption weight + secondary color so it reads as a hint, never a
+  // blocker. Sits between the strip and the CompareCard.
+  categoryNudge: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xs,
   },
   // S3 — outer scroll hosts CompareCard + editorial sections.
   mainScroll: {

@@ -199,6 +199,24 @@ class TestSpecPromptBuilding:
         assert "notes_top" in prompt
         assert "longevity" in prompt
 
+    def test_fragrances_prompt_has_scent_family_and_honesty_clause(self):
+        """B1: the DYNAMIC fragrance guidance line names scent_family AND carries a
+        null-when-unknown honesty clause (so the LLM nulls an unknown scent profile
+        rather than inventing one). The clause must be in the dynamic section, not
+        the static cache prefix — assert it appears AFTER 'CATEGORY-SPECIFIC GUIDANCE'."""
+        from app.services.extraction_service import _build_specs_prompt
+        result = _build_specs_prompt("Chanel", "No. 5", "", "fragrances", "test context")
+        prompt = result["system"] if isinstance(result, dict) else result
+        guidance_idx = prompt.find("CATEGORY-SPECIFIC GUIDANCE")
+        assert guidance_idx > 0
+        frag_line_idx = prompt.find("Fragrances:", guidance_idx)
+        assert frag_line_idx > guidance_idx, "fragrance guidance line missing"
+        # scent_family named on the guidance line itself.
+        assert "scent_family" in prompt[frag_line_idx:frag_line_idx + 300]
+        # Honesty clause present (null-when-unknown, never-invent vocabulary).
+        lowered = prompt[frag_line_idx:frag_line_idx + 300].lower()
+        assert "null" in lowered and ("unknown" in lowered or "unsure" in lowered)
+
     def test_unknown_category_falls_back_to_other(self):
         """Unknown category should fall back to 'other' schema."""
         from app.services.extraction_service import _build_specs_prompt

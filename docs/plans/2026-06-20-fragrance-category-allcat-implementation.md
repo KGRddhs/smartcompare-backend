@@ -354,6 +354,15 @@ Test `tests/test_rating_provenance.py`. Skip values whose lowercased form ∈ `_
   no-regression list.**
 - **Pin:** timeout → `(None,0,0)`; 200 header `"25"` → `(html,200,25)`; 200 header missing → `(html,200,5)`.
 
+> **⚠️ SHIPPED NOTE — A7 intentionally CHANGED Scrape.do burn semantics (CLEANUP-4c).** Pre-A7 the
+> meter recorded a FLAT 1 credit and only on HTTP 200. Post-A7 the meter records the REAL credit cost
+> from the `Scrape.do-Request-Cost` header (a `render=true` request is ~5, fallback 5) AND it now records
+> usage on **billed non-200 responses too** (400/404/410/429/503 — Scrape.do charges for these). Net: the
+> `budget:scrapedo:*` counter rises FASTER and more accurately than before. This is deliberate (the old
+> meter under-counted spend and ignored billed failures); the monthly Scrape.do cap (900/mo) is now hit on
+> true spend. Transient 429/503/0 still also `record_failure` for the circuit breaker. If a future audit
+> sees the Scrape.do counter climbing faster than the old baseline, this is why — not a regression.
+
 ---
 
 # Workstream B — `be-render`

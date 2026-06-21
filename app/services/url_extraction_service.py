@@ -15,6 +15,8 @@ from urllib.parse import urlparse, parse_qs
 from bs4 import BeautifulSoup
 from openai import AsyncOpenAI
 
+from app.services.extraction_service import canonicalize_category
+
 logger = logging.getLogger(__name__)
 
 # Lazy OpenAI client
@@ -316,7 +318,7 @@ Extract and return ONLY valid JSON:
     "full_title": "complete product title",
     "price": numeric_price_or_null,
     "currency": "currency code (AED, SAR, BHD, USD, etc.)",
-    "category": "electronics|grocery|beauty|fashion|home|sports|automotive|other",
+    "category": "electronics|grocery|supplements|makeup|skincare|haircare|fragrances|fashion|other",
     "variant": "size/storage/color if specified or null",
     "specs": {{
         "key": "value for important specifications"
@@ -460,7 +462,11 @@ def normalize_product_data(raw: Dict, retailer: Dict, url: str) -> Dict[str, Any
         "name": name,
         "full_name": title,
         "variant": raw.get("variant"),
-        "category": raw.get("category", "other"),
+        # CLEANUP-2(b): canonicalize the LLM-returned category to one of the 9
+        # canonical keys so the URL path keys scoring dims / spec schema / fairness
+        # correctly (a stale "beauty"/"home" etc. -> "other"). The prompt now offers
+        # canonical keys; this is the defensive normalization.
+        "category": canonicalize_category(raw.get("category")),
         "price": {
             "amount": raw.get("price"),
             "currency": raw.get("currency") or retailer.get("currency", "USD"),
@@ -523,10 +529,25 @@ async def compare_from_urls(url1: str, url2: str, region: str = "bahrain") -> Di
             "error": "Could not extract both products",
             "details": errors
         }
-    
-    # Generate comparison
-    comparison = await generate_comparison(products[0], products[1], region)
-    
+
+    # CLEANUP-2(c): resolve the pair category and write it back onto BOTH products
+    # before the verdict, so URL-mode fragrance/supplement compares get the correct
+    # category (dims + spec framing). extract_from_url's per-product category is the
+    # LLM's full-context judgment (the parser-path analog), so it is AUTHORITATIVE:
+    # reuse the shared _resolve_pair_category with parser_path=True. No user chip on
+    # the URL path. Falls back gracefully to "other" if resolution can't decide.
+    from app.services.structured_comparison_service import _resolve_pair_category
+    category_used, _switched, _orig = await _resolve_pair_category(
+        products, None, parser_path=True
+    )
+    for _p in products:
+        _p["category"] = category_used
+
+    # Generate comparison (now told the resolved category instead of the default)
+    comparison = await generate_comparison(
+        products[0], products[1], region, category=category_used
+    )
+
     return {
         "success": True,
         "products": products,
@@ -534,5 +555,6 @@ async def compare_from_urls(url1: str, url2: str, region: str = "bahrain") -> Di
         "winner_index": comparison.get("winner_index", 0),
         "recommendation": comparison.get("recommendation", ""),
         "key_differences": comparison.get("key_differences", []),
+        "category_used": category_used,
         "source_urls": [url1, url2]
     }
