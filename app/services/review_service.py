@@ -365,7 +365,7 @@ def _lower_first(s: str) -> str:
     A plain capitalized common word ("Amazing scent") still lowercases."""
     if not s:
         return s
-    if s[0:2].isupper():  # leading all-caps acronym (GPS, EDP, …)
+    if len(s) >= 2 and s[0:2].isupper() and s[1].isalpha():  # all-caps acronym (GPS, EDP)
         return s
     tokens = s.split()
     if len(tokens) >= 2 and tokens[0][:1].isupper():
@@ -377,19 +377,42 @@ def _lower_first(s: str) -> str:
     return s[0].lower() + s[1:]
 
 
-# Participial / relative leads ("known for …", "described as …", a gerund) read
-# correctly only after a copula → "Owners say it IS {clause}".
+# Participial / relative leads ("known for ...", "described as ...") read
+# correctly only after a copula -> "Owners say it IS {clause}". D12 gate-fix:
+# dropped the bare "\w+ing" alternative -- it over-fired on -ing ADJECTIVES
+# ("amazing longevity", "outstanding sillage"), which are noun phrases.
 _PRAISE_PARTICIPIAL_LEAD_RE = re.compile(
     r"^\s*(?:known\s+for|described\s+as|praised\s+for|noted\s+for|loved\s+for|"
-    r"said\s+to\b|reported\s+to\b|renowned\s+for|celebrated\s+for|\w+ing\b)",
+    r"said\s+to\b|reported\s+to\b|renowned\s+for|celebrated\s+for)",
     re.I,
 )
-# Plain verb leads ("has …", "lasts …", "wears …") read correctly straight after
-# the pronoun → "Owners say it {clause}".
+# Plain verb leads ("has ...", "lasts ...", "wears ...") read correctly straight
+# after the pronoun -> "Owners say it {clause}".
 _PRAISE_VERB_LEAD_RE = re.compile(
     r"^\s*(?:has|have|had|is|are|was|lasts?|last|projects?|wears?|smells?|opens?|"
     r"sits?|settles?|develops?|performs?|holds?|stays?|fills?|gives?|delivers?|"
     r"feels?|comes?|leans?|reads?)\b",
+    re.I,
+)
+# D12 gate-fix: a clause that is a FULL SENTENCE with its own subject ("Creed
+# Aventus EDP is sharp ...", "the scent is warm ...", "it lasts all day") cannot
+# be glued onto "highlight"/"it" -> front it plainly with "Reviewers say {clause}".
+_PRAISE_FINITE_VERB = (
+    r"(?:is|are|was|were|has|have|had|smells?|lasts?|projects?|wears?|opens?|"
+    r"sits?|settles?|leans?|beats?|delivers?|gives?|performs?|holds?|stays?|"
+    r"feels?|develops?|reads?|comes?)"
+)
+# Explicit Title-Case subject -- CASE-SENSITIVE (no re.I) so a lowercased noun
+# phrase ("rich sillage ...") never matches; up to ~5 words before the verb so
+# "Tom Ford quality is ..." is caught. _lower_first preserves real proper-noun
+# leads, so a capital reaching here is a genuine subject.
+_PRAISE_TITLE_SUBJECT_RE = re.compile(
+    r"^[A-Z][\w'.\-]*(?:\s+[\w'.\-]+){0,5}\s+" + _PRAISE_FINITE_VERB + r"\b"
+)
+# Determiner / pronoun subject ("the scent is ...", "it lasts ...", "they project ...").
+_PRAISE_DET_SUBJECT_RE = re.compile(
+    r"^\s*(?:the|this|that|these|those|it|they)\s+(?:[\w'.\-]+\s+){0,4}"
+    + _PRAISE_FINITE_VERB + r"\b",
     re.I,
 )
 
@@ -397,13 +420,17 @@ _PRAISE_VERB_LEAD_RE = re.compile(
 def _frame_praise_clause(woven: str) -> str:
     """Pick a glue that parses for the woven positive clause(s).
 
-    - participial/relative/gerund lead ("known for …", "described as …", "-ing")
-      → "Owners say it is {clause}"
-    - plain verb lead ("has …", "lasts …", "wears …")
-      → "Owners say it {clause}"
-    - noun-phrase lead ("rich sillage …") → "Owners consistently highlight {clause}"
+    - full sentence w/ own subject ("Creed Aventus EDP is ...", "the scent is ...")
+      -> "Reviewers say {clause}"
+    - participial/relative lead ("known for ...", "described as ...")
+      -> "Owners say it is {clause}"
+    - plain verb lead ("has ...", "lasts ...") -> "Owners say it {clause}"
+    - noun-phrase lead ("rich sillage ...") -> "Owners consistently highlight {clause}"
 
-    Never glues "highlight" directly onto a verb/relative lead (D1)."""
+    Never glues "highlight" onto a verb/relative/subject lead (D1/D12)."""
+    w = woven.lstrip()
+    if _PRAISE_TITLE_SUBJECT_RE.match(w) or _PRAISE_DET_SUBJECT_RE.match(w):
+        return f"Reviewers say {woven}."
     if _PRAISE_PARTICIPIAL_LEAD_RE.match(woven):
         return f"Owners say it is {woven}."
     if _PRAISE_VERB_LEAD_RE.match(woven):

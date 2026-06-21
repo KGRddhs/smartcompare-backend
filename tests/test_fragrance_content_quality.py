@@ -665,3 +665,56 @@ def test_partial_response_category_used_defaults_safe_when_unresolved():
     resp = svc._build_partial_response(elapsed_seconds=30.0)
     assert resp["metadata"]["partial"] is True
     assert resp["metadata"]["category_used"] == ""
+
+
+# ---------------------------------------------------------------------------
+# WS-D review-gate fix (D12 follow-up) — the adversarial review found the form-
+# aware lead (a) missed the EXACT live p3 shape (an explicit-SUBJECT clause
+# "Creed Aventus EDP is sharp ...") and (b) introduced an -ing-adjective
+# over-match ("amazing longevity" -> "Owners say it is amazing longevity"). Pin both.
+# ---------------------------------------------------------------------------
+from app.services.review_service import _frame_praise_clause as _frame, _lower_first as _lf
+
+
+def test_frame_subject_led_clause_uses_reviewers_say():
+    # The live p3 string, post _lower_first (which preserves the "Creed" proper noun).
+    out = _frame(_lf("Creed Aventus EDP is sharp, fruity and long-lasting"))
+    assert out.startswith("Reviewers say Creed Aventus EDP is"), out
+    assert "highlight Creed" not in out and "highlight creed" not in out
+    assert "Creed" in out  # proper noun preserved (not "creed")
+
+
+def test_frame_determiner_subject_uses_reviewers_say():
+    assert _frame("the scent is warm and inviting").startswith("Reviewers say the scent is")
+    assert _frame("it lasts all day on skin").startswith("Reviewers say it lasts")
+
+
+def test_frame_ing_adjective_stays_noun_phrase():
+    # -ing ADJECTIVES are noun phrases, not participles — no copula frame.
+    out = _frame("amazing longevity all day")
+    assert out == "Owners consistently highlight amazing longevity all day.", out
+    assert "say it is amazing" not in out
+
+
+def test_frame_verb_participial_noun_leads_preserved():
+    assert _frame("has a sweet, citrusy opening").startswith("Owners say it has")
+    assert _frame("known for its luxurious scent").startswith("Owners say it is known for")
+    assert _frame("rich sillage with strong projection").startswith(
+        "Owners consistently highlight rich sillage"
+    )
+
+
+def test_lower_first_acronym_guard_tightened():
+    assert _lf("GPS-grade sealing").startswith("GPS")
+    assert _lf("EDP lasts long").startswith("EDP")
+    assert _lf("Amazing scent") == "amazing scent"  # plain capitalized word still lowercases
+
+
+def test_review_praise_live_p3_shape_grammatical_end_to_end():
+    from app.services.review_service import build_review_praise
+    out = build_review_praise(
+        _reviews_with_highlights(["Creed Aventus EDP is sharp, fruity and long-lasting"])
+    ) or ""
+    assert out, "praise should be non-empty for a positive highlight"
+    assert "highlight Creed" not in out and "highlight creed" not in out, out
+    assert ("Reviewers say" in out) or out.startswith("Owners say it"), out
