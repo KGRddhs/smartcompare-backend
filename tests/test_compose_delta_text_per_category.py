@@ -9,10 +9,14 @@ unreachable in production — `build_dimensions_v2` strips per-category
 `value_*` keys via the (`value_`, `_value_`) filter because the core
 `_dim_value` builder already covers value semantics.
 
-This file's contract: every per-category dim key emits either a
-specific phrase (battery %, longevity hours, dosage IU) when spec
-hooks fire, OR a labelled fallback (`"+{margin}pt {label}"`) so the
-FE never sees an identical-bare "+28pt" caption.
+WS-B re-baseline (2026-06-21 — fragrance content quality): the raw score
+point-unit ("+Npt") leaked on EVERY fragrance dimension bar. The six
+fragrance dim keys (and the shared `longevity` key, which makeup also uses)
+now emit a QUALITATIVE caption — the bar magnitude carries the score signal.
+Those cells are exempted from the `+Npt`-marker invariants below (markers /
+digits / the banned word "better") and pinned by a dedicated qualitative
+contract instead. Every OTHER cell still emits a labelled `"+{margin}pt
+{label}"` fallback so the FE never sees an identical-bare "+28pt" caption.
 """
 from __future__ import annotations
 
@@ -22,6 +26,27 @@ from app.services.scoring_service import (
     CATEGORY_DIMENSIONS,
     _compose_delta_text,
 )
+
+# WS-B: dim keys whose empty-spec caption is qualitative (no point-unit / digit).
+# `longevity` is shared by fragrances + makeup; both render "Longer-lasting".
+_QUALITATIVE_DIMS = {
+    "character",
+    "longevity",
+    "projection",
+    "versatility",
+    "wear_value",
+    "presentation",
+}
+
+# Expected empty-spec qualitative phrase per WS-B Task B1.
+_QUALITATIVE_PHRASE = {
+    "character": "More distinctive",
+    "longevity": "Longer-lasting",
+    "projection": "Stronger projection",
+    "versatility": "More versatile",
+    "wear_value": "Better everyday value",
+    "presentation": "Better presented",
+}
 
 
 def _expand_cells():
@@ -37,6 +62,10 @@ def _expand_cells():
 
 
 _NON_VALUE_CELLS = list(_expand_cells())
+# Cells whose empty-spec caption stays on the "+Npt {label}" marker contract.
+_MARKER_CELLS = [(c, d) for (c, d) in _NON_VALUE_CELLS if d not in _QUALITATIVE_DIMS]
+# Cells re-baselined to the WS-B qualitative contract.
+_QUALITATIVE_CELLS = [(c, d) for (c, d) in _NON_VALUE_CELLS if d in _QUALITATIVE_DIMS]
 _EMPTY_PRODUCTS = [{"specs": {}}, {"specs": {}}]
 
 
@@ -61,12 +90,14 @@ def test_delta_text_not_bare_stub(category, dim_key):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("category,dim_key", _NON_VALUE_CELLS)
+@pytest.mark.parametrize("category,dim_key", _MARKER_CELLS)
 def test_delta_text_contains_quantitative_marker(category, dim_key):
-    """Every cell must carry a quantitative marker — either the `pt`
+    """Every MARKER cell must carry a quantitative marker — either the `pt`
     score-margin suffix OR a unit like `h` / `IU` / `mg` / `%` when a
     spec hook fires. Bare descriptive strings without a number are
-    forbidden per pain-workflow priors (quantify, don't editorialize)."""
+    forbidden per pain-workflow priors (quantify, don't editorialize).
+    WS-B: the qualitative fragrance/longevity cells are exempt (their
+    contract is pinned by test_delta_text_qualitative_dims_* below)."""
     result = _compose_delta_text(dim_key, _EMPTY_PRODUCTS, 60, 88)
     has_marker = any(
         token in result.lower()
@@ -117,11 +148,13 @@ _BANNED_EVALUATIVE = (
 )
 
 
-@pytest.mark.parametrize("category,dim_key", _NON_VALUE_CELLS)
+@pytest.mark.parametrize("category,dim_key", _MARKER_CELLS)
 def test_delta_text_no_banned_evaluative_words(category, dim_key):
     """Pain-workflow priors — quantify, don't editorialize. Words on the
     banned list (great/best/recommend/etc.) leak subjective judgement
-    into a factual delta caption."""
+    into a factual delta caption. WS-B: the qualitative fragrance cells
+    are intentionally comparative ("Better presented" / "Better everyday
+    value") — exempt; their copy is pinned by the qualitative contract."""
     import re
 
     result = _compose_delta_text(dim_key, _EMPTY_PRODUCTS, 60, 88)
@@ -146,8 +179,9 @@ def test_delta_text_no_banned_evaluative_words(category, dim_key):
 _SEMANTIC_LABELS = {
     ("electronics", "performance"): "performance",
     ("electronics", "ecosystem"): "ecosystem",
-    ("fragrances", "longevity"): "longevity",
-    ("fragrances", "wear_value"): "value per wear",
+    # WS-B re-baseline: fragrance longevity/wear_value captions are now qualitative.
+    ("fragrances", "longevity"): "longer-lasting",
+    ("fragrances", "wear_value"): "everyday value",
     ("supplements", "efficacy"): "efficacy signal",
     ("supplements", "safety"): "safety profile",
     ("grocery", "nutrition"): "nutrition",
@@ -175,13 +209,41 @@ def test_delta_text_semantic_label_token(key, expected_token):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("category,dim_key", _NON_VALUE_CELLS)
+@pytest.mark.parametrize("category,dim_key", _MARKER_CELLS)
 def test_delta_text_includes_score_margin(category, dim_key):
-    """Default-fallback cells should include the score margin number
+    """Default-fallback MARKER cells should include the score margin number
     (e.g. `+28pt`). Specific-branch cells may swap it for a unit (e.g.
-    `10h vs 6h`, `5000 IU vs 1000 IU`) — those are still acceptable."""
+    `10h vs 6h`, `5000 IU vs 1000 IU`) — those are still acceptable.
+    WS-B: the qualitative fragrance/longevity cells carry NO digit by
+    design (the bar magnitude is the signal) — exempt."""
     result = _compose_delta_text(dim_key, _EMPTY_PRODUCTS, 60, 88)
     has_number = any(c.isdigit() for c in result)
     assert has_number, (
         f"{category}.{dim_key} delta_text {result!r} has no numeric component"
+    )
+
+
+# ---------------------------------------------------------------------------
+# WS-B qualitative contract — the re-baselined fragrance/longevity cells
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("category,dim_key", _QUALITATIVE_CELLS)
+def test_delta_text_qualitative_dims_no_point_unit(category, dim_key):
+    """The score point-unit ("+Npt" / "N points") must NEVER appear on a
+    qualitative fragrance/longevity caption — that was the live leak."""
+    import re
+
+    result = _compose_delta_text(dim_key, _EMPTY_PRODUCTS, 60, 88)
+    assert not re.search(r"\d+\s*pts?\b|\bpoints?\b", result, re.IGNORECASE), (
+        f"{category}.{dim_key} delta_text {result!r} leaks a score point-unit"
+    )
+
+
+@pytest.mark.parametrize("category,dim_key", _QUALITATIVE_CELLS)
+def test_delta_text_qualitative_dims_expected_phrase(category, dim_key):
+    """Empty-spec qualitative cells emit the WS-B phrase verbatim."""
+    result = _compose_delta_text(dim_key, _EMPTY_PRODUCTS, 60, 88)
+    assert result == _QUALITATIVE_PHRASE[dim_key], (
+        f"{category}.{dim_key} delta_text {result!r} != {_QUALITATIVE_PHRASE[dim_key]!r}"
     )

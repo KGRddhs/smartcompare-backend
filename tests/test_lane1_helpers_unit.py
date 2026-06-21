@@ -81,14 +81,32 @@ def test_compose_delta_text_returns_empty_on_none_score():
     assert _compose_delta_text("performance", [], 80, None) == ""
 
 
-def test_compose_delta_text_returns_empty_on_missing_score_sentinel():
-    """MISSING_SCORE (=50) is the universal sentinel for 'no signal' in
-    the scoring service. The delta_text builder treats it as missing
-    data so the FE doesn't render a misleading margin."""
+def test_compose_delta_text_treats_missing_sentinel_as_real_middling_score():
+    """S3 L3 v2 (gate finding B) re-baseline: a value-equal MISSING_SCORE (50.0)
+    is an honest middling score, NOT 'no signal' — only a genuinely-absent value
+    (None) blanks the caption (see _compose_delta_text:2826-2828). The dimension
+    builder upstream decides emptiness via the real `missing_data` shape; the
+    composer itself must compute the margin off 50.0 like any other number."""
     from app.services.scoring_service import _compose_delta_text, MISSING_SCORE
 
-    assert _compose_delta_text("performance", [{"specs": {}}, {"specs": {}}], MISSING_SCORE, 80) == ""
-    assert _compose_delta_text("performance", [{"specs": {}}, {"specs": {}}], 80, MISSING_SCORE) == ""
+    out_a = _compose_delta_text("performance", [{"specs": {}}, {"specs": {}}], MISSING_SCORE, 80)
+    out_b = _compose_delta_text("performance", [{"specs": {}}, {"specs": {}}], 80, MISSING_SCORE)
+    assert out_a == "+30pt performance"
+    assert out_b == "+30pt performance"
+
+
+def test_compose_delta_text_fragrance_dims_never_emit_point_unit():
+    """WS-B (Task B1) re-baseline: fragrance dim captions are qualitative —
+    the bar magnitude carries the score signal. None may match a `+Npt` form."""
+    import re
+
+    from app.services.scoring_service import _compose_delta_text
+
+    point_re = re.compile(r"\d+\s*pts?\b|\bpoints?\b", re.IGNORECASE)
+    empty = [{"specs": {}}, {"specs": {}}]
+    for dim in ("character", "longevity", "projection", "versatility", "wear_value", "presentation"):
+        out = _compose_delta_text(dim, empty, 60, 88)
+        assert not point_re.search(out), (dim, out)
 
 
 def test_compose_delta_text_comparable_on_tiny_margin():

@@ -159,3 +159,55 @@ def test_response_builder_scrubs_score_leaks():
     assert not has_score_internals(comp["winner_reason"]), comp["winner_reason"]
     assert not has_score_internals(comp["winner_declaration"]), comp["winner_declaration"]
     assert not has_score_internals(comp["key_tradeoff"]), comp["key_tradeoff"]
+
+
+# WS-B — Task B1: _compose_delta_text never emits a "+Npt" / "point" unit for
+# fragrance dims. The bar magnitude carries the signal; the caption is qualitative.
+from app.services.scoring_service import _compose_delta_text
+
+
+def _has_point_unit(text: str) -> bool:
+    """True if the caption leaks a score point-unit. Guards against the bare
+    'pt' / 'point' tokens without false-positiving on letters embedded in
+    real words (none of the qualitative phrases contain 'pt' or 'point')."""
+    import re
+
+    return bool(re.search(r"\bpts?\b|\bpoints?\b|\d\s*pt", text, re.I))
+
+
+@pytest.mark.parametrize(
+    "dim_key",
+    ["character", "versatility", "presentation", "longevity", "projection", "wear_value"],
+)
+def test_compose_delta_text_no_point_unit_for_fragrance_dims(dim_key):
+    """Empty-spec path (the one that previously fell to '+{margin}pt {label}')
+    must now return a qualitative phrase or '' — never a point-unit."""
+    empty = [{"specs": {}}, {"specs": {}}]
+    out = _compose_delta_text(dim_key, empty, 60, 88)  # 28-pt margin previously
+    assert "pt" not in out.lower(), (dim_key, out)
+    assert "point" not in out.lower(), (dim_key, out)
+    assert not _has_point_unit(out), (dim_key, out)
+
+
+def test_compose_delta_text_longevity_real_spec_phrase_survives():
+    """The legitimate longevity spec-fact branch ('{a}h vs {b}h') must remain."""
+    products = [
+        {"specs": {"longevity": "6 hours"}},
+        {"specs": {"longevity": "10 hours"}},
+    ]
+    out = _compose_delta_text("longevity", products, 60, 88)
+    assert "10h vs 6h" == out, out
+    assert "pt" not in out.lower() and "point" not in out.lower(), out
+
+
+def test_compose_delta_text_projection_reads_sillage_field():
+    """SA-4: the projection branch must read the REAL schema field 'sillage'
+    (there is no 'projection' spec field) and phrase it qualitatively."""
+    products = [
+        {"specs": {"sillage": "Heavy"}},
+        {"specs": {"sillage": "Moderate"}},
+    ]
+    out = _compose_delta_text("projection", products, 88, 60)
+    assert "Heavy" in out and "Moderate" in out, out
+    assert "projection" in out.lower(), out
+    assert "pt" not in out.lower() and "point" not in out.lower(), out

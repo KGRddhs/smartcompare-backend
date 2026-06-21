@@ -2874,6 +2874,10 @@ def _compose_delta_text(
         return f"+{margin:.0f}pt longevity outlook"
 
     # --- Fragrances -----------------------------------------------------
+    # WS-B (Task B1): captions are qualitative — the bar magnitude carries
+    # the score signal. NEVER emit "+{margin}pt" for a fragrance dim (the
+    # raw score point-unit leaked on every fragrance bar). Legitimate
+    # spec-fact branches (real hours / real sillage descriptors) stay.
     if dim_key == "longevity":
         la = p0_specs.get("longevity") or p0_specs.get("longevity_hours")
         lb = p1_specs.get("longevity") or p1_specs.get("longevity_hours")
@@ -2882,20 +2886,24 @@ def _compose_delta_text(
             hb = _extract_hours(lb)
             if ha and hb:
                 return f"{int(max(ha, hb))}h vs {int(min(ha, hb))}h"
-        return f"+{margin:.0f}pt longevity"
+        return "Longer-lasting"
     if dim_key == "projection":
-        pa, pb = p0_specs.get("projection"), p1_specs.get("projection")
-        if pa and pb:
-            return f"{pa} vs {pb}"
-        return f"+{margin:.0f}pt projection"
+        # SA-4: the real fragrance schema field is `sillage` (there is no
+        # `projection` spec key) — reading the wrong key always fell through
+        # to "+Npt projection". Read sillage; phrase qualitatively.
+        sa = p0_specs.get("sillage") or p0_specs.get("projection")
+        sb = p1_specs.get("sillage") or p1_specs.get("projection")
+        if sa and sb:
+            return f"{sa} vs {sb} projection"
+        return "Stronger projection"
     if dim_key == "character":
-        return f"+{margin:.0f}pt distinctiveness"
+        return "More distinctive"
     if dim_key == "versatility":
-        return f"+{margin:.0f}pt versatility"
+        return "More versatile"
     if dim_key == "presentation":
-        return f"+{margin:.0f}pt presentation"
+        return "Better presented"
     if dim_key == "wear_value":
-        return f"+{margin:.0f}pt value per wear"
+        return "Better everyday value"
 
     # --- Supplements ----------------------------------------------------
     if dim_key == "dosage":
