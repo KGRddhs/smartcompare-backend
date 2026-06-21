@@ -265,3 +265,58 @@ def test_comparison_system_forbids_price_claims_when_pending():
     low = COMPARISON_SYSTEM.lower()
     assert "do not make any price" in low
     assert "unavailable" in low and "non-price" in low
+
+
+# WS-C — Task C3: fail-closed price-adjective drop. A product whose price is
+# pending (unavailable=True) must NOT carry any pro/con asserting a price
+# adjective (premium price / affordable / cheaper / great value / ...) — those
+# render beside a "Pricing lands in a future update" card and read as a
+# contradiction. Defense-in-depth beside C1 (which hides the amount from GPT)
+# and C2 (which tells GPT not to invent one). A SHOWABLE product's price
+# adjectives are left untouched.
+def test_response_builder_drops_price_adjective_for_pending_product():
+    p_show = _a5_product(
+        "Versace Eros",
+        pros=["Great value for the longevity you get.", "Warm, long-lasting drydown."],
+        cons=["Sweeter than some prefer."],
+    )
+    p_pend = _a5_product(
+        "Dior Sauvage",
+        pros=["Fresh, versatile opening."],
+        cons=["Premium price point.", "Common in crowds."],
+    )
+    # Force product[1] pending — already-pending prices are preserved by the
+    # response_builder normalization (its own `unavailable is True` skip), so
+    # this deterministically reaches the C3 drop without relying on the
+    # is_price_showable heuristics.
+    p_pend["price"] = {
+        "amount": None,
+        "currency": "BHD",
+        "unavailable": True,
+        "reason": "pending_genuine",
+    }
+    p_pend["best_price"] = None
+    p_pend["retailer"] = None
+
+    resp = build_comparison_response(
+        query="Versace Eros vs Dior Sauvage",
+        product_data=[p_show, p_pend],
+        scoring_result=_a5_scoring(),
+        comparison={"winner_index": 0, "winner_reason": "Eros is the stronger pick."},
+        region="bahrain",
+        api_calls=0, elapsed_seconds=0.0, total_cost=0.0, gpt_calls=0,
+        serper_calls=0, from_cache=False, verdict_validation={},
+    )
+
+    # The pended product's price-adjective con is dropped; the clean con survives.
+    pend = resp["overview"]["products"][1]
+    assert "Premium price point." not in pend["cons"], pend["cons"]
+    assert "Common in crowds." in pend["cons"], pend["cons"]
+    # The block mirror + legacy alias are scrubbed too (same canonical list).
+    assert "Premium price point." not in pend["pros_cons"]["cons"]
+    legacy_pend = resp["products"][1]
+    assert "Premium price point." not in (legacy_pend.get("cons") or [])
+
+    # The SHOWABLE product keeps its price-adjective pro untouched.
+    show = resp["overview"]["products"][0]
+    assert "Great value for the longevity you get." in show["pros"], show["pros"]

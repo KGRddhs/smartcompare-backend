@@ -170,6 +170,14 @@ def test_overview_product_has_pros_cons_block():
 
 def test_overview_pros_cons_populated_from_product_data():
     products = _make_products("electronics")
+    # C3 re-baseline: _make_products gives Alpha a price with no source_method,
+    # which the response_builder price-pending normalization treats as pending
+    # (unavailable). Task C3 then fail-closed-drops the lone price-adjective con
+    # ("Pricey") for a pending product. This test verifies pros/cons POPULATE
+    # from product_data, not the pending-price drop — so give Alpha a showable
+    # price (genuine local_bhd) so "Pricey" legitimately survives and the
+    # populate assertions hold.
+    products[0]["price"] = {"amount": 100, "currency": "BHD", "source_method": "local_bhd"}
     resp = build_comparison_response(
         products=products,
         comparison={"winner_index": 0},

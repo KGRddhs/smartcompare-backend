@@ -324,6 +324,25 @@ _SPEC_NA_TOKENS = {"n/a", "na", "none", "unknown", "-", ""}
 import re as _re_specs
 
 
+# Task C3 — price-adjective phrases that must NOT appear in a pro/con when the
+# product's price is pending (unavailable). They would render beside a "Pricing
+# lands in a future update" card and read as a contradiction. Defense-in-depth
+# beside the verdict-safe price projection (C1) and the prompt clause (C2).
+_PRICE_ADJECTIVE_RE = _re_specs.compile(
+    r"premium\s+price|affordabl|cheap(?:er|est)?\b|expensiv|"
+    r"great\s+value|over[\s-]?priced|value\s+for\s+money|good\s+value|"
+    r"well\s+priced|budget[\s-]?friendly|pric(?:e|ey|ier|y)\b",
+    _re_specs.I,
+)
+
+
+def _leaks_price_adjective(text) -> bool:
+    """True if a pro/con string asserts a price adjective (premium price,
+    affordable, cheaper, great value, ...). Used to fail-closed drop such
+    strings for a product whose price is pending."""
+    return bool(text) and isinstance(text, str) and bool(_PRICE_ADJECTIVE_RE.search(text))
+
+
 def _extract_numeric(value) -> float | None:
     """Pull the first numeric out of a spec value like '3349 mAh' / '6 GB' /
     '6.1 inches' / 171. Returns None when no number was found."""
@@ -1229,6 +1248,30 @@ def build_comparison_response(
             _cons = _pc.get("cons")
             if isinstance(_cons, list):
                 _pc["cons"] = [c for c in _cons if not has_score_internals(c)]
+
+    # Task C3 — fail-closed price-adjective drop (defense-in-depth beside C1/C2).
+    # The price-pending normalization above runs FIRST, so a non-showable price
+    # now carries price.unavailable=True (whether newly pended here or already
+    # pended upstream with reason=size_mismatch and skipped). For such a product
+    # ONLY, drop any pro/con asserting a price adjective ("premium price",
+    # "affordable", "cheaper", "great value", ...) — that text would render
+    # beside a "Pricing lands in a future update" card and read as a
+    # contradiction. Mutating the canonical pros_cons lists in place covers
+    # overview.products[i] + the _build_pros_cons_block mirror + the legacy
+    # products[i] flat alias at once (same chokepoint as the A5 scrub). Showable
+    # prices keep their price adjectives untouched.
+    for pd_item in product_data:
+        _price = pd_item.get("price")
+        if not (isinstance(_price, dict) and _price.get("unavailable") is True):
+            continue
+        _pc = pd_item.get("pros_cons")
+        if isinstance(_pc, dict):
+            _pros = _pc.get("pros")
+            if isinstance(_pros, list):
+                _pc["pros"] = [p for p in _pros if not _leaks_price_adjective(p)]
+            _cons = _pc.get("cons")
+            if isinstance(_cons, list):
+                _pc["cons"] = [c for c in _cons if not _leaks_price_adjective(c)]
 
     # Verdict text scrub — strip any score-leaking sentence from the winner
     # narrative and supply a qualitative fallback when scrubbing empties it.
