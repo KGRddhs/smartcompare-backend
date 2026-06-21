@@ -488,7 +488,7 @@ CATEGORY-SPECIFIC GUIDANCE (seek these fields for BOTH products; include a field
 - Haircare: seek hair_type, hair_concern, ingredients, volume, scent, sulfate_free, paraben_free, silicone_free. Most products state hair type/concern + a free-from claim.
 - Grocery: seek count, size, ingredients, nutrition_calories, nutrition_protein, nutrition_fat, nutrition_carbs, origin, allergens. Packaged foods list net weight/size + nutrition per serving + allergens.
 - Other: seek the schema fields that apply (dimensions, weight, material, color, features, warranty, origin). Include only what the data supports.
-For makeup/skincare/haircare/grocery especially, do NOT leave a field null just because the FIRST product's snippets were richer — check this product's own snippets AND your training data for the SAME fields, so both products reach comparable depth where the data genuinely exists."""
+For ALL categories, seek the SAME fields for BOTH products so neither renders thinner than the other — do NOT leave a field null just because the FIRST product's snippets were richer; check this product's own snippets AND your training data for the SAME fields, so both products reach comparable depth where the data genuinely exists."""
 
     if drug_context:
         system_prompt += f"\n\nBAHRAIN DRUG DATABASE MATCHES:\n{drug_context}"

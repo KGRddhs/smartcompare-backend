@@ -548,3 +548,42 @@ async def test_extract_specs_alias_is_fragrance_scoped():
     # No fragrance `longevity`/`volume` keys injected into an electronics result.
     assert "longevity" not in cleaned, cleaned
     assert "volume" not in cleaned, cleaned
+
+
+# ---------------------------------------------------------------------------
+# WS-E — Task E2: anti-asymmetry spec instruction covers ALL categories (SA-2).
+# The "reach comparable depth for both products" instruction in _build_specs_prompt
+# previously hard-listed only makeup/skincare/haircare/grocery, so fragrances (and
+# the other categories) were excluded — a 2nd-product fragrance could render thinner
+# than the 1st with no instruction telling GPT to seek symmetry. Rewrite it
+# category-agnostic. Stays in the DYNAMIC prompt section (OpenAI cache prefix
+# unaffected). Static prompt audit — collection-safe, no network.
+# ---------------------------------------------------------------------------
+def test_specs_prompt_anti_asymmetry_is_category_agnostic():
+    from app.services.extraction_service import _build_specs_prompt
+
+    prompt = _build_specs_prompt(
+        brand="Creed", name="Aventus", variant="EDP",
+        category="fragrances", search_context="some context",
+    )
+    system = prompt["system"]
+    low = system.lower()
+
+    # The old form hard-listed ONLY these 4 categories — it must be gone.
+    assert "for makeup/skincare/haircare/grocery especially" not in low, system
+    # The new agnostic phrasing must be present (every category, both products).
+    assert "all categories" in low, system
+    # Fragrances must no longer be excluded from the anti-asymmetry guidance:
+    # the instruction now applies to BOTH products regardless of category.
+    assert "both products" in low, system
+    # The intent — neither side rendering thinner — is stated.
+    assert "thinner" in low, system
+
+    # The dynamic-section invariant: the anti-asymmetry instruction must live in
+    # the per-category section that interpolates the live CATEGORY, not in the
+    # static cache prefix (preserves OpenAI prompt-cache). The category string is
+    # only interpolated into the dynamic block.
+    from app.services.extraction_service import SPECS_SYSTEM_STATIC_PREFIX
+    assert "thinner" not in SPECS_SYSTEM_STATIC_PREFIX.lower(), (
+        "anti-asymmetry instruction leaked into the static cache prefix"
+    )
