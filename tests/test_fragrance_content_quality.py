@@ -30,3 +30,23 @@ def test_base_prompt_forbids_numeric_score_cite():
     assert "specific number or fact" not in low      # :615 schema
     assert "numeric advantage" not in low            # :645 rule
     assert "internal score" in low                   # the new negative rule is present
+
+
+# WS-A — Task A3: build_scores_summary feeds GPT qualitative relatives, no raw numbers
+from app.services.scoring_service import get_scoring_service
+
+
+def test_scores_summary_has_no_raw_numbers():
+    sr = {
+        "scores": {
+            "product_0": {"overall": 87, "breakdown": {"longevity_score": 80}},
+            "product_1": {"overall": 76, "breakdown": {"longevity_score": 70}},
+        },
+        "winner_index": 0,
+        "win_margin": 11,
+        "dimension_winners": {},
+    }
+    out = get_scoring_service().build_scores_summary(sr, ["A", "B"])
+    assert "/100" not in out
+    assert "11 points" not in out and "by 11" not in out
+    assert not any(ch.isdigit() for ch in out)

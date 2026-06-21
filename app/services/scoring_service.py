@@ -2246,7 +2246,7 @@ class ScoringService:
         if not scoring_result or "scores" not in scoring_result:
             return ""
 
-        lines = ["Product scores (deterministic, 0-100 scale):"]
+        lines = ["Product scores (deterministic, qualitative summary):"]
         scores = scoring_result["scores"]
 
         # Detect category from breakdown keys
@@ -2259,6 +2259,13 @@ class ScoringService:
 
         dims = CATEGORY_DIMENSIONS.get(category, CATEGORY_DIMENSIONS["other"])
 
+        # Qualitative relatives only — NEVER emit raw scores/points to the GPT verdict.
+        # The verdict must reason on facts, not internal numbers (score-leak backstop).
+        top_overall = max(
+            (scores[f"product_{i}"]["overall"] for i in range(len(product_names))
+             if f"product_{i}" in scores),
+            default=0,
+        )
         for i, name in enumerate(product_names):
             key = f"product_{i}"
             if key not in scores:
@@ -2267,17 +2274,40 @@ class ScoringService:
             overall = ps["overall"]
             breakdown = ps["breakdown"]
             tier = scoring_result.get("price_tiers", {}).get(name, "unknown")
-            lines.append(f"  {name}: {overall}/100 overall (price tier: {tier})")
+            # Rank word: the highest-overall product is the stronger one; others are
+            # "comparable" (close) or "slightly behind" (further back).
+            if overall >= top_overall:
+                rank_word = "stronger overall"
+            elif top_overall - overall <= 5:
+                rank_word = "comparable overall"
+            else:
+                rank_word = "slightly behind overall"
+            lines.append(f"  {name}: {rank_word} (price tier: {tier})")
             dim_strs = []
             for dim in dims:
                 display = DIMENSION_DISPLAY_NAMES.get(dim, dim.replace("_score", ""))
-                dim_strs.append(f"{display}={breakdown.get(dim, 50)}")
-            lines.append(f"    Breakdown: {', '.join(dim_strs)}")
+                mine = breakdown.get(dim, 50)
+                # Compare against the best of the OTHER products on this dimension.
+                others = [
+                    scores[f"product_{j}"]["breakdown"].get(dim, 50)
+                    for j in range(len(product_names))
+                    if j != i and f"product_{j}" in scores
+                ]
+                best_other = max(others) if others else mine
+                if mine > best_other:
+                    word = "stronger"
+                elif mine < best_other:
+                    word = "weaker"
+                else:
+                    word = "comparable"
+                dim_strs.append(f"{display}: {word}")
+            lines.append(f"    Per dimension: {', '.join(dim_strs)}")
 
         winner_idx = scoring_result.get("winner_index", 0)
         margin = scoring_result.get("win_margin", 0)
         if len(product_names) >= 2:
-            lines.append(f"  Score winner: {product_names[winner_idx]} by {margin} points")
+            lead_word = "clear lead" if margin >= 8 else "narrow lead"
+            lines.append(f"  Score winner: {product_names[winner_idx]} ({lead_word})")
 
         dim_winners = scoring_result.get("dimension_winners", {})
         if dim_winners:
