@@ -345,7 +345,59 @@ def _strip_attribution(text: str) -> str:
 
 
 def _lower_first(s: str) -> str:
-    return s[0].lower() + s[1:] if s else s
+    """Lowercase the first character for mid-sentence weaving, but PRESERVE a
+    leading proper noun / brand / acronym (so "Creed Aventus" / "GPS-grade" are
+    not mangled to "creed" / "gPS"). Skip lowercasing when:
+      - the leading token is an all-caps acronym (s[0:2].isupper(), e.g. "GPS"), OR
+      - the lead is a multi-word Title-Case proper noun — first token Title-Case
+        AND the next word also capitalized (e.g. "Creed Aventus …", "Tom Ford …").
+    A plain capitalized common word ("Amazing scent") still lowercases."""
+    if not s:
+        return s
+    if s[0:2].isupper():  # leading all-caps acronym (GPS, EDP, …)
+        return s
+    tokens = s.split()
+    if len(tokens) >= 2 and tokens[0][:1].isupper():
+        # Strip leading punctuation from the second token before the cap check so
+        # "Tom (the …)"-style leads aren't misread; require a real capital letter.
+        nxt = tokens[1].lstrip("\"'([{")
+        if nxt[:1].isupper():
+            return s  # multi-word proper noun / brand — keep as-is
+    return s[0].lower() + s[1:]
+
+
+# Participial / relative leads ("known for …", "described as …", a gerund) read
+# correctly only after a copula → "Owners say it IS {clause}".
+_PRAISE_PARTICIPIAL_LEAD_RE = re.compile(
+    r"^\s*(?:known\s+for|described\s+as|praised\s+for|noted\s+for|loved\s+for|"
+    r"said\s+to\b|reported\s+to\b|renowned\s+for|celebrated\s+for|\w+ing\b)",
+    re.I,
+)
+# Plain verb leads ("has …", "lasts …", "wears …") read correctly straight after
+# the pronoun → "Owners say it {clause}".
+_PRAISE_VERB_LEAD_RE = re.compile(
+    r"^\s*(?:has|have|had|is|are|was|lasts?|last|projects?|wears?|smells?|opens?|"
+    r"sits?|settles?|develops?|performs?|holds?|stays?|fills?|gives?|delivers?|"
+    r"feels?|comes?|leans?|reads?)\b",
+    re.I,
+)
+
+
+def _frame_praise_clause(woven: str) -> str:
+    """Pick a glue that parses for the woven positive clause(s).
+
+    - participial/relative/gerund lead ("known for …", "described as …", "-ing")
+      → "Owners say it is {clause}"
+    - plain verb lead ("has …", "lasts …", "wears …")
+      → "Owners say it {clause}"
+    - noun-phrase lead ("rich sillage …") → "Owners consistently highlight {clause}"
+
+    Never glues "highlight" directly onto a verb/relative lead (D1)."""
+    if _PRAISE_PARTICIPIAL_LEAD_RE.match(woven):
+        return f"Owners say it is {woven}."
+    if _PRAISE_VERB_LEAD_RE.match(woven):
+        return f"Owners say it {woven}."
+    return f"Owners consistently highlight {woven}."
 
 
 # --- #6 send-back: copy-policy scrub (single source of truth) ---------------
@@ -485,9 +537,11 @@ def build_review_praise(reviews: Optional[Dict[str, Any]]) -> Optional[str]:
 
     if positive_clauses:
         # Weave into a synthesizing lead so the line is NON-verbatim and clearly
-        # an aggregate ("Owners consistently ..."), not a copied quote.
+        # an aggregate, not a copied quote. The glue is chosen by the FIRST
+        # clause's grammatical shape so a verb/relative lead reads correctly
+        # ("Owners say it lasts all day" — never "…highlight lasts all day"; D1).
         woven = " and ".join(_lower_first(c) for c in positive_clauses)
-        praise = f"Owners consistently highlight {woven}."
+        praise = _frame_praise_clause(woven)
         praise = re.sub(r"\s{2,}", " ", praise).replace(" .", ".").strip()
         # Final safety net — never return a line that still trips the fence.
         if _has_banned_vocab(praise):

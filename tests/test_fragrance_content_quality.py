@@ -320,3 +320,55 @@ def test_response_builder_drops_price_adjective_for_pending_product():
     # The SHOWABLE product keeps its price-adjective pro untouched.
     show = resp["overview"]["products"][0]
     assert "Great value for the longevity you get." in show["pros"], show["pros"]
+
+
+# ---------------------------------------------------------------------------
+# WS-D — grammatical, non-mangled review-praise prose
+# build_review_praise's REAL signature is build_review_praise(reviews) where
+# reviews = {"review_summary": {"overall_sentiment": ..., "highlights": [...]}}.
+# ---------------------------------------------------------------------------
+def _reviews_with_highlights(points):
+    """Wrap positive highlight strings in the dict shape build_review_praise reads."""
+    return {
+        "review_summary": {
+            "overall_sentiment": "positive",
+            "highlights": [{"sentiment": "positive", "point": p} for p in points],
+        }
+    }
+
+
+@pytest.mark.parametrize("lead", [
+    "has a sweet, citrusy opening",
+    "Known for its luxurious scent",
+    "lasts all day",
+])
+def test_review_praise_grammar_on_hard_leads(lead):
+    """D1: a verb/relative/participial lead must NOT be glued straight after
+    'highlight' ('Owners consistently highlight has a...' is ungrammatical)."""
+    from app.services.review_service import build_review_praise
+    out = build_review_praise(_reviews_with_highlights([lead])) or ""
+    assert out, "expected a praise line"
+    low = out.lower()
+    assert "highlight has" not in low, out
+    assert "highlight known for" not in low, out
+    assert "highlight lasts" not in low, out
+    # The clause's words must still be present (reframed, not dropped).
+    first_word = lead.split()[0].lower()
+    assert first_word in low, out
+
+
+def test_review_praise_keeps_noun_phrase_highlight_glue():
+    """D1: a plain noun-phrase lead still reads with the 'highlight' glue."""
+    from app.services.review_service import build_review_praise
+    out = build_review_praise(_reviews_with_highlights(["rich sillage that fills a room"])) or ""
+    assert out, "expected a praise line"
+    assert out.lower().startswith("owners consistently highlight"), out
+
+
+def test_lower_first_preserves_proper_nouns_and_acronyms():
+    """D2: _lower_first must not corrupt brands ('Creed') or acronyms ('GPS')."""
+    from app.services.review_service import _lower_first
+    assert _lower_first("Creed Aventus is bold").startswith("Creed"), "brand lowercased"
+    assert _lower_first("GPS-grade sealing").startswith("GPS"), "acronym lowercased"
+    # A plain capitalized common-word lead still lowercases (sentence-merge case).
+    assert _lower_first("Amazing scent") == "amazing scent"
