@@ -372,3 +372,69 @@ def test_lower_first_preserves_proper_nouns_and_acronyms():
     assert _lower_first("GPS-grade sealing").startswith("GPS"), "acronym lowercased"
     # A plain capitalized common-word lead still lowercases (sentence-merge case).
     assert _lower_first("Amazing scent") == "amazing scent"
+
+
+# WS-D — Task D3: kill the interior "Per <domain>:" / "Per :" artifact in praise.
+# clean_review_citations runs BEFORE praise and rewrites an INTERIOR bare [N] into
+# "Per <domain>: " mid-sentence; _strip_attribution only stripped a start-anchored
+# prefix, so an interior "Per <domain>:" (and the leftover "Per :" once the bare
+# domain is scrubbed) survived into the built praise. Reproduce through the REAL
+# two-step pipeline (clean_review_citations -> build_review_praise).
+def test_review_praise_no_interior_per_domain_artifact():
+    """D3: an interior citation that clean_review_citations turns into a
+    'Per <domain>:' fragment must NOT leak into the built praise."""
+    from app.services.review_service import (
+        clean_review_citations,
+        build_review_praise,
+    )
+    reviews = {
+        "review_summary": {
+            "overall_sentiment": "positive",
+            "consensus": "",  # force praise to come from the highlight, not fallback
+            "highlights": [
+                # Noun-phrase lead (keeps the 'highlight {clause}' frame) with an
+                # INTERIOR [2] marker -> clean_review_citations injects
+                # "Per fragrantica.com: " mid-sentence.
+                {
+                    "sentiment": "positive",
+                    "point": "Rich amber drydown [2] with strong sillage all evening",
+                },
+            ],
+        }
+    }
+    search_results = [
+        {"link": "https://www.example.com/a"},
+        {"link": "https://fragrantica.com/x"},  # index 2 -> fragrantica.com
+    ]
+    cleaned = clean_review_citations(reviews, search_results)
+    # Precondition: the interior artifact really was injected.
+    assert "Per fragrantica.com:" in cleaned["review_summary"]["highlights"][0]["point"]
+
+    praise = build_review_praise(cleaned) or ""
+    assert praise, "expected a praise line built from the positive highlight"
+    low = praise.lower()
+    assert "per " not in low, praise          # no "Per <domain>:" / "Per :" lead-in
+    assert "per:" not in low, praise          # no collapsed "Per:" fragment
+    assert "fragrantica" not in low, praise   # domain token fully gone
+    # The real praise words survive (clause reframed, not dropped).
+    assert "amber" in low and "sillage" in low, praise
+
+
+def test_strip_attribution_removes_interior_per_domain():
+    """D3 (unit): _strip_attribution strips an interior 'Per <domain>:' and any
+    leftover 'Per :' fragment, not only a start-anchored prefix."""
+    from app.services.review_service import _strip_attribution
+    # Interior occurrence (multi-dot domain too).
+    out = _strip_attribution("A sweet opening Per bn.boots.com: that lasts all day")
+    assert "per " not in out.lower() and "boots" not in out.lower(), out
+    assert "sweet opening" in out and "lasts all day" in out, out
+    # Already-fragmented leftover (domain previously eaten).
+    out2 = _strip_attribution("Rich amber drydown Per : with strong sillage")
+    assert "per" not in out2.lower(), out2
+    assert "amber drydown" in out2 and "strong sillage" in out2, out2
+    # Start-anchored prefix still stripped (preserve current good behavior).
+    out3 = _strip_attribution("Per fragrantica.com: deep and long-lasting")
+    assert out3 == "deep and long-lasting", out3
+    # False-positive guard: a real "per" usage with no domain TLD survives.
+    out4 = _strip_attribution("lasts per the bottle description all day")
+    assert out4 == "lasts per the bottle description all day", out4

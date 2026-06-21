@@ -314,9 +314,17 @@ def build_retailer_quotes_from_reviews(
 # Built from the REAL review sentiment the pipeline already has (zero extra API
 # calls). Ratings stay real-only elsewhere (this never fabricates a rating).
 
-# Strips a leading "Per <domain>: " attribution prefix the review model emits on
-# each highlight point (e.g. "Per fragrantica.com: ...").
-_PER_DOMAIN_PREFIX_RE = re.compile(r"^\s*per\s+[^\s:]+\.[a-z]{2,}[^:]*:\s*", re.I)
+# Strips a "Per <domain>: " attribution the review model emits — AND the same
+# fragment clean_review_citations injects when it rewrites an INTERIOR bare [N]
+# citation mid-sentence ("...opening Per fragrantica.com: that lasts..."). D3:
+# un-anchored (\b not ^) so it removes EVERY occurrence, not only a start prefix —
+# an interior one used to survive (then _BARE_DOMAIN_RE ate just the domain,
+# leaving a "Per :" / "Per bn.:" artifact in the praise).
+_PER_DOMAIN_PREFIX_RE = re.compile(r"\bper\s+[^\s:]+\.[a-z]{2,}[^:]*:\s*", re.I)
+# D3: a leftover "Per :" / "Per:" fragment (when a bare domain was scrubbed out of
+# an interior "Per <domain>:" before the un-anchored removal could catch it). The
+# trailing ":" is required so a genuine "per " usage with no colon survives.
+_PER_LEFTOVER_RE = re.compile(r"\bper\s*:\s*", re.I)
 # Any leftover domain token (foo.com / foo.bh / foo.co.uk) anywhere in the text.
 # Anchored to real TLDs (incl. GCC ccTLDs) so it strips bare retailer domains
 # (fragrantica.com, bn.boots.com) WITHOUT eating dot-joined product strings like
@@ -329,15 +337,18 @@ _BARE_DOMAIN_RE = re.compile(
 
 
 def _strip_attribution(text: str) -> str:
-    """Remove a "Per <domain>:" prefix, any [N]/[snippet_N] markers, and any
-    leftover bare domain tokens from a review clause. Returns a clean,
-    citation-free, domain-free fragment."""
+    """Remove EVERY "Per <domain>:" attribution (start-anchored OR interior — D3),
+    any [N]/[snippet_N] markers, and any leftover bare domain tokens from a review
+    clause. Returns a clean, citation-free, domain-free fragment."""
     if not isinstance(text, str):
         return ""
-    t = _PER_DOMAIN_PREFIX_RE.sub("", text)
+    t = _PER_DOMAIN_PREFIX_RE.sub("", text)     # all "Per <domain>:" (D3: un-anchored)
     t = _CITATION_MARKER_RE.sub("", t)          # [snippet_N] / [N]
     t = re.sub(r"\[\d+\]", "", t)               # any residual bare [N]
     t = _BARE_DOMAIN_RE.sub("", t)              # leftover domains
+    # D3: a partial domain (e.g. "bn" in "Per bn.boots.com:") can leave a
+    # "Per :" / "Per bn.:" husk after the bare-domain scrub — kill the leftover.
+    t = _PER_LEFTOVER_RE.sub("", t)
     t = re.sub(r"\s{2,}", " ", t).strip()
     # Drop dangling leading punctuation left by a stripped domain/marker.
     t = re.sub(r"^[\s,;:.\-–—]+", "", t)
