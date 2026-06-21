@@ -4826,12 +4826,14 @@ class StructuredComparisonService:
             out["winner_declaration"] = winner_name
         if not out.get("winner_reason"):
             if isinstance(w_overall, (int, float)) and isinstance(l_overall, (int, float)):
+                # margin retained for logging only — NEVER surfaced in user-facing
+                # text (the deterministic partial verdict is the dominant verdict
+                # users see for fragrances; the score leak shipped here once).
                 margin = round(abs(w_overall - l_overall), 1)
-                out["winner_reason"] = (
-                    f"{winner_name} leads on the overall score by {margin} points."
-                    if margin > 0 else
-                    f"{winner_name} edges ahead on the overall picture."
+                logger.debug(
+                    f"[PARTIAL_VERDICT] {winner_name} qualitative win (margin={margin})"
                 )
+                out["winner_reason"] = f"{winner_name} edges ahead on the overall picture."
             elif winner_name:
                 out["winner_reason"] = f"{winner_name} leads on the overall picture."
         # key_tradeoff from the loser's strongest dim (F4.2 tradeoff result).

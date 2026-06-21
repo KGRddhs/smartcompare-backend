@@ -50,3 +50,20 @@ def test_scores_summary_has_no_raw_numbers():
     assert "/100" not in out
     assert "11 points" not in out and "by 11" not in out
     assert not any(ch.isdigit() for ch in out)
+
+
+# WS-A — Task A4: deterministic partial verdict is qualitative (no score margin)
+from app.services.structured_comparison_service import get_comparison_service
+
+
+def test_deterministic_partial_verdict_no_score_margin():
+    out = get_comparison_service()._deterministic_partial_verdict(
+        {},
+        {"scores": {"product_0": {"overall": 80}, "product_1": {"overall": 70}}, "winner_index": 0},
+        ["Eros", "Sauvage"],
+        [],
+    )
+    r = out["winner_reason"].lower()
+    assert "points" not in r
+    assert "overall score" not in r
+    assert "Eros" in out["winner_reason"]
