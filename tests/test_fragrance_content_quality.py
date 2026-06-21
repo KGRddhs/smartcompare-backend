@@ -211,3 +211,47 @@ def test_compose_delta_text_projection_reads_sillage_field():
     assert "Heavy" in out and "Moderate" in out, out
     assert "projection" in out.lower(), out
     assert "pt" not in out.lower() and "point" not in out.lower(), out
+
+
+# WS-C — Task C1: verdict-safe price projection. The dict handed to the GPT
+# verdict (json.dumps'd) must NEVER carry a pending product's raw amount, and
+# the projection must be a COPY (the original product dict stays intact).
+from app.services.extraction_service import _verdict_safe_product
+
+
+def test_verdict_safe_product_strips_pending_amount_without_mutating():
+    """An `estimated` price is NOT showable → the verdict copy must have
+    amount=None (so json.dumps can't leak it), while the ORIGINAL dict keeps
+    its 80.0 amount (copy, not in-place mutation)."""
+    p = {
+        "name": "Oud Wood",
+        "full_name": "Tom Ford Oud Wood",
+        "price": {"amount": 80.0, "currency": "BHD", "source_method": "estimated"},
+    }
+    out = _verdict_safe_product(p)
+    # The verdict-facing copy hides the amount.
+    assert out["price"].get("amount") is None, out["price"]
+    assert out["price"].get("unavailable") is True, out["price"]
+    # The ORIGINAL is untouched (copy-on-write, not mutation).
+    assert p["price"]["amount"] == 80.0
+    # It is a distinct object (defensive: not the same price dict reference).
+    assert out["price"] is not p["price"]
+
+
+def test_verdict_safe_product_preserves_showable_price():
+    """A genuine `local_bhd` price IS showable → amount preserved unchanged."""
+    p = {
+        "name": "Sauvage",
+        "full_name": "Dior Sauvage 100ml",
+        "price": {
+            "amount": 32.5,
+            "currency": "BHD",
+            "source_method": "local_bhd",
+            "retailer": "noon",
+        },
+    }
+    out = _verdict_safe_product(p)
+    assert out["price"].get("amount") == 32.5
+    assert out["price"].get("source_method") == "local_bhd"
+    # Original intact regardless.
+    assert p["price"]["amount"] == 32.5

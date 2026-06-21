@@ -1714,6 +1714,46 @@ def _scrub_youtube_signal_if_off(product: Optional[Dict]) -> Optional[Dict]:
     return product
 
 
+def _verdict_safe_product(product: Optional[Dict]) -> Optional[Dict]:
+    """WS-C C1 — copy-on-write projection that hides a NON-showable price's raw
+    amount from the GPT verdict payload (the `json.dumps(product)` below).
+
+    Confirmed live leak (PP-1): `generate_comparison` runs BEFORE
+    `make_pending_price`, so GPT saw a pended product's `{amount:80.0,...}`
+    and wrote "premium price point" into a con rendered beside a "Pricing
+    lands…" card. The single predicate `is_price_showable` (price_service)
+    decides showability (estimated / sample / wrong-cheap / wrong-SKU → not
+    showable); when not showable we swap in the `make_pending_price` shape
+    (amount=None) so the dumped payload cannot expose any amount.
+
+    Returns the SAME object when the price is showable / absent (no copy);
+    returns a shallow copy with a replaced `price` otherwise — the original
+    product dict is never mutated. Composes into the verdict `_scrub_*` chain
+    so all three `generate_comparison` call sites (sync / stream / self-critique
+    regen) inherit it.
+    """
+    if not isinstance(product, dict):
+        return product
+    price = product.get("price")
+    # No price object → nothing to hide (the verdict already sees no amount).
+    if not isinstance(price, dict):
+        return product
+    # Local import: price_service imports extraction_service at module top, so a
+    # top-level import here would be circular (matches the line ~784 pattern).
+    from app.services.price_service import is_price_showable, make_pending_price
+    name = product.get("full_name") or product.get("name") or ""
+    if is_price_showable(name, price):
+        return product
+    # Not showable → swap in the pending shape (amount=None), preserving the
+    # known currency/size so the FE keeps its bottle-size context.
+    currency = price.get("currency") or "BHD"
+    reason = price.get("reason") or "pending_genuine"
+    size = price.get("size") if isinstance(price.get("size"), str) else None
+    safe = dict(product)
+    safe["price"] = make_pending_price(currency=currency, reason=reason, size=size)
+    return safe
+
+
 async def generate_comparison(
     product1: Dict,
     product2: Dict,
@@ -1791,8 +1831,12 @@ If this is a cross-tier comparison, frame it as "different products for differen
         # youtube_review_signal (S3 L2) is stripped from the json.dumps payload
         # when its flag is OFF — the labeled blocks below are the ONLY sanctioned
         # path for those signals to reach the verdict.
-        _p1 = _scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product1))
-        _p2 = _scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product2))
+        # WS-C C1: the verdict-safe price projection wraps the rollback scrubs so
+        # a NON-showable (estimated/sample/wrong-cheap) price's raw amount never
+        # reaches the json.dumps payload below — GPT cannot then write a price
+        # claim about a product whose card renders "Pricing lands…".
+        _p1 = _verdict_safe_product(_scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product1)))
+        _p2 = _verdict_safe_product(_scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product2)))
         user_msg = f"""<USER_INPUT>
 PRODUCT 1:
 {json.dumps(_p1, indent=2)}
