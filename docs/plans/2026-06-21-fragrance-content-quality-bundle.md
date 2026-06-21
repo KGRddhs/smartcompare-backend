@@ -73,10 +73,54 @@ Before any code: run ~5-8 fragrance pairs through prod `?nocache=true` (designer
 - **Budget:** Step-0 audit ~5-8 Serper compares; otherwise mostly $0 unit/scoring tests. The structural BH-source gap (F2 tail) + measuring genuine-share need PAID Serper + the warmer — keep separate.
 - **Eval caveat (still true):** `eval_runner` is a PROD-HTTP harness (post-deploy); smoke20 can't see the q= category class (unit-pin instead); the smoke20 baseline is `54b603e8`.
 
-### Ready-to-paste kickoff (next session)
+---
+
+## PART 3 — PRE-PROVIDER-CHANGE work items (Ahmed-specified, FACT-CHECKED vs 698006a 2026-06-21)
+
+> Ahmed's directive: these are implemented **BEFORE any scraping-provider change** (Scrape.do geo/trace + a possible Zyte bakeoff). Each item below was verified against the real code — anchors + verdicts are confirmed, not assumed. **Design principle (Ahmed):** the Results shell should *render the data contract*, NOT rescue weak/contradictory data after the fact. The items split into a BACKEND honesty/quality wave (P1–P6, do first) and a DESIGN/contract wave (P7–P9).
+
+### 🔑 Root-cause finding: the score-leak has THREE sources, not one
+The "10.7-point higher overall score" / "score of 100" leak (F1) originates in THREE places — fixing only the prompt leaves it shipping:
+1. **Prompt instruction** — `extraction_service.py:1762` (inline "## Verdict Requirements" block in `generate_comparison`, appended after `build_verdict_prompt` — NOT a constant literally named `COMPARISON_SYSTEM`): *"State the winner with the score margin in under 20 words. Cite the single most important numeric advantage."*
+2. **Raw `scores_summary`** — `scoring_service.build_scores_summary` (`scoring_service.py:2244`) emits `"{name}: {overall}/100 overall"`, `Breakdown: {dim}={score}`, `"Score winner: {name} by {margin} points"`; injected into the prompt at `extraction_service.py:1759`. (Its `dimension_winners` block is ALREADY qualitative names — keep that.)
+3. **⚠️ Deterministic code fallback (proposal missed this)** — `structured_comparison_service.py:4831`: `f"{winner_name} leads on the overall score by {margin} points."` fires in CODE when GPT returns no `winner_reason`. Pure Python, no prompt involved → survives any prompt-only fix.
+
+### P1 — Ban raw internals in ALL user-visible text (HIGH) — VERIFIED, gap is real
+Forbidden in `recommendation`/`winner_reason`/`key_tradeoff`/pros/cons/any reveal: `overall score`, `score of`, `/100`, `N-point higher`, `+Npt`, bare `\d+(\.\d+)? points`. Verified: there is currently **NO post-generation scrub** catching these in verdict/pros text (extensive scrub infra exists for prices/copy-policy/Sentry, none for verdict numerics; the Bundle-C "A.10.x verdict forbidden-words audit" is prompt-side only). Fix = a shared `_strip_score_internals(text)` applied to the GPT verdict text AND the deterministic fallback (#3 above) AND pros/cons (see P5). Pin with tests on all three sources.
+
+### P2 — Remove "state the score margin" from the verdict prompt — VERIFIED anchor
+Edit `extraction_service.py:1762`: drop "with the score margin" + "Cite the single most important numeric advantage"; replace with qualitative framing ("name the single most important advantage in plain words — a dimension or capability, never a number").
+
+### P3 — Replace raw `scores_summary` with a PRIVATE qualitative summary — VERIFIED anchor
+Rewrite `scoring_service.build_scores_summary` (`scoring_service.py:2244-2295`) to emit: winner NAME, leading-dimension NAMES (the existing `dimension_winners` is already name-based — keep), a confidence band (high/med/low, NOT a number), cross-tier note — and **NO** `overall/100`, NO `Breakdown: dim=NN`, NO `by N points`. The GPT verdict must reason from facts + qualitative leaders, not the raw scoreboard. (Keep it as the internal prompt context — just strip the numbers.)
+
+### P4 — Verdict-safe product projection before GPT (pending prices have NO amount) — VERIFIED structurally
+The verdict prompt does `json.dumps(_p1/_p2)` of the FULL product dict (`extraction_service.py:1795-1799`), and `make_pending_price` runs in the `response_builder` PROJECTION which is DOWNSTREAM of `generate_comparison` → GPT currently sees the raw amount even when the card later pends it (= the "premium price point" while pended, F2). Fix = build a verdict-safe copy of each product before the dump: if a price is pending/unavailable, drop `amount` (and any price-derived field) so GPT cannot reference it. **PIN FIRST** with a test asserting the dict handed to `generate_comparison` has no amount on a pending price (the catfix "capture test" pattern).
+
+### P5 — Sanitize GPT pros/cons after generation, FAIL CLOSED — VERIFIED gap
+No pros/cons numeric/price-leak scrub exists today. Add a post-generation pass: drop any pro/con containing a banned score pattern (P1) OR a price for a product whose price is pending. Fail CLOSED (drop the offending item, don't ship it). Belt-and-suspenders to the prompt-side fixes.
+
+### P6 — Fix review-praise grammar — VERIFIED construction is live; reproduction UNCONFIRMED (stale screenshot)
+`review_service.build_review_praise:490` does `f"Owners consistently highlight {woven}."` with `_lower_first` applied → if a highlight point is "Known for its luxurious scent" you get "Owners consistently highlight known for its luxurious scent." The CONSTRUCTION is real in current code; but the ATROCIOUS screenshot was STALE, so whether it currently reproduces is UNCONFIRMED → Step 0 must re-check on a fresh pull. Fix (defensive regardless): when a clause begins with a relative/participial lead ("known for", "described as", "praised for", "noted for", "loved for"), either reshape the frame ("Owners note it is known for…") or pick a different lead — never glue "highlight" + "known for". Add unit tests with those leading forms.
+
+### P7 — Fragrance specs UI contract (DESIGN/FE) — no one-sided rows unless labeled; no score-point deltas
+No spec row should show a value for one product and "—" for the other UNLESS explicitly labeled "confirmed only for X" (honest asymmetry, not silent). And remove score-point deltas (`+Npt`) from the fragrance spec/dimension captions. The `+Npt` text comes from the delta-text builder (`scoring_service.py` ~2909, the "+28pt …" fallback) — ⚠️ this is the same area as the documented stale-flaky `test_compose_delta_text_returns_empty_on_missing_score_sentinel`; tread carefully + re-baseline that test. (Note P7 overlaps F4/G1 — asymmetric "—" specs are partly the subtype spec-drop.)
+
+### P8 — Scrape.do geo + provider trace (observability FIRST), Zyte as an A/B bakeoff CANDIDATE (not default)
+VERIFIED: Zyte is NOT in the codebase (a genuine new provider). Correct sequencing: add a per-request provider TRACE (which provider rendered, geo, cost, outcome) + a geo param to `scrapedo_service` so we can MEASURE provider performance per-domain BEFORE swapping anything. Keep Zyte behind a flag as an A/B candidate to bake off against Scrape.do on the CF-walled BH luxury retailers (the documented structural render-wall: sephora.bh/bolo.bh/boutiqaat) — do NOT make it the default. This is additive instrumentation, not a provider swap.
+
+### P9 — Shared category-driven Results shell that RENDERS THE CONTRACT (DESIGN, claude.ai/design)
+Ahmed's direction: ONE shared Results shell with category-specific modules/contracts; for fragrances = scent profile, notes, concentration, longevity/projection EVIDENCE, CONFIRMED price status, REAL review sentiment. The shell renders the data contract and does not paper over weak/contradictory data (if a field is unconfirmed, the contract says so — it does not invent or rescue). Aligns with the existing category-driven Results shell + the `design-sync` infra (`design-sync.config.json`, `.design-sync/`, `ui_kits/mobile/ResultsScreen.jsx`, per-category source = `CATEGORY_DIMENSIONS`/`CATEGORY_SPEC_SCHEMAS`/`CATEGORY_FAIRNESS`). Use `superpowers:brainstorming` + claude.ai/design; this is a design-phase item that the P1–P6 honesty contract feeds into.
+
+### Sequencing
+P1–P6 (backend honesty/quality, all $0 unit/scoring + Step-0 fresh pulls) ship FIRST and are the precondition for trusting any provider-change measurement. P7 (FE contract) pairs with the P9 design pass. P8 (provider trace) is additive and can land alongside. The Zyte bakeoff + the structural-BH-source genuine-share work need PAID Serper + the warmer — separate, after the honesty wave.
+
+---
+
+## Ready-to-paste kickoff (next session)
 ```
 Read docs/plans/2026-06-21-fragrance-content-quality-bundle.md (full catfix-session findings + this bundle's scope) and memory/project_catfix_shipped.md. catfix shipped (main 698006a); this bundle fixes the fragrance CONTENT quality found via a fresh nocache pull (NOT the stale screenshots).
 STEP 0 FIRST: run ~6 fragrance pairs through prod ?nocache=true, inspect the FULL content (price/verdict/pros-cons/reviews/specs), and pin the confirmed bugs as failing tests — do not trust screenshots.
-Then fix, TDD: F1 strip raw scores from verdict/pros text (no-internals; the A.10.x audit has a gap); F2 propagate price-pending into the verdict/pros prompt + decide the asymmetric-pend UX; F3 confirm/fix metadata.category_used on q=. F4 (G1 subtype spec-drop) + F5 (URL scoring) are larger/deferred — scope separately.
-Verify EVERY change with a FRESH nocache pull inspecting actual content (the twice-burned lesson), not HTTP-200 or a screenshot. Ship: free-unit gate green + smoke20 vs 54b603e8 (winner-flat expected) + a fresh-pull content confirm + EAS preview.
+PRE-PROVIDER-CHANGE honesty wave FIRST (PART 3, P1–P6, fact-checked vs 698006a — all $0). 🔑 the score-leak has THREE sources, fix ALL: prompt instruction extraction_service.py:1762, raw scores_summary scoring_service.py:2244 (→ injected :1759), AND the deterministic fallback structured_comparison_service.py:4831. P1 add a shared score-internals scrub (no post-gen scrub exists today) applied to verdict text + that fallback + pros/cons; P2 strip "state the score margin" from :1762; P3 rewrite build_scores_summary to qualitative (winner+leading-dim NAMES+confidence band, no numbers); P4 verdict-safe product projection BEFORE GPT (the verdict json.dumps the full dict at :1797 BEFORE make_pending_price runs → pending prices must drop amount; PIN with a capture test); P5 sanitize pros/cons after generation FAIL CLOSED; P6 fix review-praise grammar (review_service.py:490 breaks on "known for"/"described as" leads — construction live, Step 0 confirm reproduction). THEN P7 (FE spec contract: no one-sided rows unless labeled + no +Npt deltas — touches the stale-flaky test_compose_delta_text), P8 (Scrape.do geo+provider-trace observability; Zyte=A/B candidate NOT default, not yet in codebase), P9 (claude.ai/design shared Results shell that RENDERS THE CONTRACT). DEFERRED/larger: F3 (category_used=None on q=, likely partial artifact), F4 (G1 subtype spec-drop), F5 (URL scoring).
+Verify EVERY change with a FRESH nocache pull inspecting actual content (the twice-burned lesson), not HTTP-200 or a screenshot. Ship: free-unit gate green + smoke20 vs 54b603e8 (winner-flat expected) + a fresh-pull content confirm + EAS preview. Budget: P1–P6 are $0; Zyte bakeoff + genuine-share need paid Serper + the warmer (separate).
 ```
