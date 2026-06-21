@@ -438,3 +438,113 @@ def test_strip_attribution_removes_interior_per_domain():
     # False-positive guard: a real "per" usage with no domain TLD survives.
     out4 = _strip_attribution("lasts per the bottle description all day")
     assert out4 == "lasts per the bottle description all day", out4
+
+
+# ---------------------------------------------------------------------------
+# WS-E — Task E1: fragrance subtype spec keys survive extract_specs (SA-1).
+# The fragrance subtype prompt (PRODUCT_TYPE_SCHEMAS["fragrances.*"]) asks GPT
+# for `longevity_hrs` / `volume_ml`, but extract_specs filters to the canonical
+# CATEGORY_SPEC_SCHEMAS["fragrances"] keys (`longevity` / `volume`), so the
+# subtype-named values were silently dropped to "N/A". Alias them through the
+# filter onto their canonical homes. Scope = fragrances only (no new schema
+# fields; projection_m DEFERRED — canonical schema has no metric-projection
+# home, sillage is a descriptive field).
+# ---------------------------------------------------------------------------
+import json as _json
+from unittest.mock import patch as _patch, AsyncMock as _AsyncMock, MagicMock as _MagicMock
+
+
+def _mock_specs_client(content_dict):
+    """Build a get_client() mock whose chat.completions.create returns the
+    given JSON spec dict (the extract_specs GPT-output contract)."""
+    resp = _MagicMock()
+    resp.choices = [_MagicMock()]
+    resp.choices[0].message.content = _json.dumps(content_dict)
+    resp.usage = _MagicMock(prompt_tokens=10, completion_tokens=10)
+    client = _AsyncMock()
+    client.chat.completions.create = _AsyncMock(return_value=resp)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_extract_specs_aliases_fragrance_subtype_keys():
+    """A fragrance GPT response carrying subtype-named keys (longevity_hrs,
+    volume_ml) must reconcile onto the canonical longevity/volume rather than
+    being filtered out to 'N/A'."""
+    from app.services import extraction_service
+
+    gpt_out = {
+        "brand": "Creed",
+        "model": "Aventus",
+        "variant": "EDP",
+        "category": "fragrances",
+        "scent_family": "Fruity Chypre",
+        # Subtype-named keys (what the fragrances.* prompt asks for) — NO canonical
+        # `longevity`/`volume` present, so without the alias these drop to N/A.
+        "longevity_hrs": "8",
+        "volume_ml": "100",
+    }
+    with _patch(
+        "app.services.extraction_service.get_client",
+        return_value=_mock_specs_client(gpt_out),
+    ):
+        cleaned, _usage = await extraction_service.extract_specs(
+            brand="Creed", name="Aventus", variant="EDP",
+            category="fragrances", search_context="some context",
+        )
+
+    assert cleaned["longevity"] == "8", cleaned
+    assert cleaned["volume"] == "100", cleaned
+    assert cleaned["scent_family"] == "Fruity Chypre", cleaned
+
+
+@pytest.mark.asyncio
+async def test_extract_specs_canonical_key_wins_over_subtype_alias():
+    """If GPT emits BOTH the canonical key and its subtype alias, the canonical
+    value is authoritative — the alias must not clobber it."""
+    from app.services import extraction_service
+
+    gpt_out = {
+        "brand": "Dior", "model": "Sauvage", "variant": "EDT",
+        "category": "fragrances",
+        "longevity": "10 hours",   # canonical present
+        "longevity_hrs": "6",      # stale alias must NOT override
+        "volume": "60 ml",
+    }
+    with _patch(
+        "app.services.extraction_service.get_client",
+        return_value=_mock_specs_client(gpt_out),
+    ):
+        cleaned, _usage = await extraction_service.extract_specs(
+            brand="Dior", name="Sauvage", variant="EDT",
+            category="fragrances", search_context="ctx",
+        )
+
+    assert cleaned["longevity"] == "10 hours", cleaned
+    assert cleaned["volume"] == "60 ml", cleaned
+
+
+@pytest.mark.asyncio
+async def test_extract_specs_alias_is_fragrance_scoped():
+    """The subtype-key alias is fragrance-scoped — a non-fragrance category
+    with an unrelated `_hrs` key is unaffected (no cross-category leakage)."""
+    from app.services import extraction_service
+
+    gpt_out = {
+        "brand": "Apple", "model": "iPhone 15", "variant": "",
+        "category": "electronics",
+        "display": "6.1 inch OLED",
+        "battery_hrs": "20",  # an electronics key; NOT a fragrance alias target
+    }
+    with _patch(
+        "app.services.extraction_service.get_client",
+        return_value=_mock_specs_client(gpt_out),
+    ):
+        cleaned, _usage = await extraction_service.extract_specs(
+            brand="Apple", name="iPhone 15", variant="",
+            category="electronics", search_context="ctx",
+        )
+
+    # No fragrance `longevity`/`volume` keys injected into an electronics result.
+    assert "longevity" not in cleaned, cleaned
+    assert "volume" not in cleaned, cleaned

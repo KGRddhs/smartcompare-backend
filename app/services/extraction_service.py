@@ -197,6 +197,22 @@ CATEGORY_SPEC_SCHEMAS = {
 }
 
 
+# SA-1 (fragrance-scoped) — the fragrance SUBTYPE prompt
+# (PRODUCT_TYPE_SCHEMAS["fragrances.*"] in product_type_router) asks GPT for
+# subtype-named keys (`longevity_hrs`, `volume_ml`) that have a clear canonical
+# home in CATEGORY_SPEC_SCHEMAS["fragrances"]. extract_specs filters to the
+# canonical keys, so without reconciliation these subtype values silently drop
+# to "N/A". Map each subtype key onto its canonical equivalent BEFORE the filter.
+# Scope: fragrances only. NO new schema fields are added here. `projection_m` is
+# intentionally OMITTED — the canonical fragrance schema has no metric-projection
+# field (`sillage` is a distinct, descriptive field), so it has no clean home and
+# is deferred to a later enrichment wave.
+FRAGRANCE_SUBTYPE_SPEC_ALIASES: Dict[str, str] = {
+    "longevity_hrs": "longevity",
+    "volume_ml": "volume",
+}
+
+
 # Bundle C § 2f Step 1 — split critical schema fields into two layers:
 #   - NON_NEGOTIABLE: A.4.7 Tier 2 + A.4.8 Tier 3 fallbacks chase these
 #     hard. If still missing after 3-tier fallback, the dependent dim is
@@ -1049,6 +1065,26 @@ async def extract_specs(
             schema_key = "other"
         allowed_fields = set(CATEGORY_SPEC_SCHEMAS[schema_key])
         meta_keys = {"brand", "model", "variant", "category"}
+
+        # SA-1 (fragrance-scoped) — reconcile subtype-named keys onto their
+        # canonical homes BEFORE the filter, so the fragrance subtype prompt's
+        # `longevity_hrs`/`volume_ml` values are not silently dropped. Canonical
+        # value (if GPT also emitted one) stays authoritative; the alias only
+        # fills a canonical key that is absent/empty.
+        if schema_key == "fragrances":
+            for alias_key, canonical_key in FRAGRANCE_SUBTYPE_SPEC_ALIASES.items():
+                alias_val = raw.get(alias_key)
+                if alias_val is None or (isinstance(alias_val, str) and not alias_val.strip()):
+                    continue
+                canon_val = raw.get(canonical_key)
+                canon_empty = (
+                    canon_val is None
+                    or canon_val == ""
+                    or canon_val == "null"
+                    or (isinstance(canon_val, str) and (not canon_val.strip() or "or null" in canon_val.lower()))
+                )
+                if canon_empty:
+                    raw[canonical_key] = alias_val
 
         cleaned = {}
         for key in list(meta_keys) + CATEGORY_SPEC_SCHEMAS[schema_key]:
