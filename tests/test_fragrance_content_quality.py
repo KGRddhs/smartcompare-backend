@@ -255,3 +255,13 @@ def test_verdict_safe_product_preserves_showable_price():
     assert out["price"].get("source_method") == "local_bhd"
     # Original intact regardless.
     assert p["price"]["amount"] == 32.5
+
+
+# WS-C — Task C2: COMPARISON_SYSTEM must forbid price/value claims about a
+# product whose price is unavailable/null (the verdict-safe projection from C1
+# hides the amount; this clause keeps GPT from inventing a price/value claim
+# anyway). Static prompt audit — collection-safe, no network.
+def test_comparison_system_forbids_price_claims_when_pending():
+    low = COMPARISON_SYSTEM.lower()
+    assert "do not make any price" in low
+    assert "unavailable" in low and "non-price" in low
