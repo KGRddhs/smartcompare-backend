@@ -903,4 +903,190 @@ def test_g2_boutiqaat_makeup_haircare_categories_when_on():
         # Electronics: neither is a beauty/fragrance source -> absent even when ON.
         assert "boutiqaat.com" not in _routed_domains("electronics")
         assert "sephora.bh" not in _routed_domains("electronics")
+
+
+# WS-G — Task G3: per-attempt provider TRACE (backend-observability ONLY; metadata,
+# NOT a user surface; ALWAYS-ON, $0). Each Scrape.do / Firecrawl render attempt
+# appends a strictly-additive record {provider,url,retailer_domain,status,cost,
+# outcome,html_kb,detected_cf,elapsed_ms} into a request-scoped collector that is
+# attached under the EXISTING metadata.source_trace.races["price"]["attempts"].
+# Mock the provider calls — NO real Scrape.do/Firecrawl.
+import app.services.structured_comparison_service as _scs  # noqa: E402
+
+
+_CF_BLOCK_HTML = (
+    "<html><head><title>Just a moment...</title></head><body>"
+    "Checking your browser before accessing. Cloudflare Ray ID: "
+    "Please enable JavaScript and cookies to continue. "
+    "You have been blocked." + ("x" * 700) + "</body></html>"
+)
+
+
+def _provider_attempts_seam():
+    """Bind a fresh request-scoped provider-attempt collector on a comparison
+    service instance the way compare_from_text(_streaming) does at init, and
+    return (svc, the bound list)."""
+    svc = get_comparison_service()
+    svc._init_provider_attempts()  # mirrors the _source_trace init seam
+    return svc, svc._provider_attempts
+
+
+@pytest.mark.asyncio
+async def test_scrapedo_attempt_records_cf_block(monkeypatch):
+    """A Scrape.do attempt that returns a Cloudflare interstitial (HTML body but
+    no usable price) is recorded as a provider attempt with detected_cf=True and
+    a cf_block outcome — the signal that distinguishes 'CF wall' from 'genuine
+    miss'."""
+    svc, attempts = _provider_attempts_seam()
+    # render_page_with_status -> (html, status, cost); CF interstitial = 200 w/ html
+    # but extract_price returns nothing -> no_price, yet the CF marker is present.
+    monkeypatch.setattr(
+        _scs.scrapedo_service, "render_page_with_status",
+        _AsyncMock(return_value=(_CF_BLOCK_HTML, 200, 10)),
+    )
+    monkeypatch.setattr(_scs, "is_circuit_closed", lambda _p: True)
+    monkeypatch.setattr(_scs, "has_budget", lambda _p: True)
+    monkeypatch.setattr(_scs, "record_usage", lambda *a, **k: None)
+    monkeypatch.setattr(_scs, "record_success", lambda *a, **k: None)
+    monkeypatch.setattr(_scs, "record_failure", lambda *a, **k: None)
+    monkeypatch.setattr(_scs.scrapedo_service, "is_available", lambda: True)
+    monkeypatch.setattr(_scs, "validate_scrape_url", lambda _u: True)
+    monkeypatch.setattr(_scs, "extract_price_from_html", lambda *a, **k: None)
+
+    await _scs._scrapedo_scraper(
+        "https://sephora.bh/p/oud-wood", "Tom Ford Oud Wood", "BHD", "sephora.bh"
+    )
+
+    assert len(attempts) == 1, attempts
+    rec = attempts[0]
+    assert rec["provider"] == "scrapedo"
+    assert rec["retailer_domain"] == "sephora.bh"
+    assert rec["url"] == "https://sephora.bh/p/oud-wood"
+    assert rec["status"] == 200
+    assert rec["cost"] == 10
+    assert rec["detected_cf"] is True
+    assert rec["outcome"] == "cf_block"
+    assert rec["html_kb"] >= 0
+    assert isinstance(rec["elapsed_ms"], int)
+
+
+@pytest.mark.asyncio
+async def test_scrapedo_attempt_records_403_block(monkeypatch):
+    """A hard 403 (no HTML at all) records status=403, outcome=cf_block (a 403 from
+    a render proxy is an anti-bot block), detected_cf False (no body to scan)."""
+    svc, attempts = _provider_attempts_seam()
+    monkeypatch.setattr(
+        _scs.scrapedo_service, "render_page_with_status",
+        _AsyncMock(return_value=(None, 403, 5)),
+    )
+    monkeypatch.setattr(_scs, "is_circuit_closed", lambda _p: True)
+    monkeypatch.setattr(_scs, "has_budget", lambda _p: True)
+    monkeypatch.setattr(_scs, "record_usage", lambda *a, **k: None)
+    monkeypatch.setattr(_scs, "record_failure", lambda *a, **k: None)
+    monkeypatch.setattr(_scs.scrapedo_service, "is_available", lambda: True)
+    monkeypatch.setattr(_scs, "validate_scrape_url", lambda _u: True)
+
+    await _scs._scrapedo_scraper(
+        "https://boutiqaat.com/p/x", "Dior Sauvage", "BHD", "boutiqaat.com"
+    )
+    assert len(attempts) == 1, attempts
+    rec = attempts[0]
+    assert rec["provider"] == "scrapedo"
+    assert rec["status"] == 403
+    assert rec["outcome"] == "cf_block"
+    assert rec["detected_cf"] is False
+    assert rec["cost"] == 5
+
+
+@pytest.mark.asyncio
+async def test_scrapedo_attempt_records_html_success(monkeypatch):
+    """A clean HTML render that yields a price records outcome=html, detected_cf
+    False, html_kb>0."""
+    svc, attempts = _provider_attempts_seam()
+    good_html = "<html><body>" + ("y" * 4000) + "</body></html>"
+    monkeypatch.setattr(
+        _scs.scrapedo_service, "render_page_with_status",
+        _AsyncMock(return_value=(good_html, 200, 10)),
+    )
+    monkeypatch.setattr(_scs, "is_circuit_closed", lambda _p: True)
+    monkeypatch.setattr(_scs, "has_budget", lambda _p: True)
+    monkeypatch.setattr(_scs, "record_usage", lambda *a, **k: None)
+    monkeypatch.setattr(_scs, "record_success", lambda *a, **k: None)
+    monkeypatch.setattr(_scs.scrapedo_service, "is_available", lambda: True)
+    monkeypatch.setattr(_scs, "validate_scrape_url", lambda _u: True)
+    monkeypatch.setattr(
+        _scs, "extract_price_from_html",
+        lambda *a, **k: {"amount": 75.0, "currency": "BHD", "title": "Oud Wood"},
+    )
+    # content-safety must pass the candidate
+    monkeypatch.setattr(
+        _scs, "get_content_safety_service",
+        lambda: _MagicMock(is_text_safe=lambda *_a, **_k: True),
+        raising=False,
+    )
+
+    out = await _scs._scrapedo_scraper(
+        "https://sephora.bh/p/oud-wood", "Tom Ford Oud Wood", "BHD", "sephora.bh"
+    )
+    assert out and out.get("value") == 75.0  # return value UNCHANGED (strictly additive)
+    assert len(attempts) == 1, attempts
+    rec = attempts[0]
+    assert rec["outcome"] == "html"
+    assert rec["detected_cf"] is False
+    assert rec["html_kb"] > 0
+    assert rec["status"] == 200
+
+
+@pytest.mark.asyncio
+async def test_provider_attempts_attach_under_source_trace_races_price():
+    """The collected attempts surface under the EXISTING
+    metadata.source_trace.races["price"]["attempts"] (no new top-level key)."""
+    svc = get_comparison_service()
+    svc._init_provider_attempts()
+    svc._provider_attempts.append({
+        "provider": "scrapedo", "url": "https://sephora.bh/p/x",
+        "retailer_domain": "sephora.bh", "status": 200, "cost": 10,
+        "outcome": "cf_block", "html_kb": 12, "detected_cf": True, "elapsed_ms": 4200,
+    })
+    # Seed a minimal source_trace as the orchestrator would have.
+    svc._source_trace = {"products": [{"name": "A", "races": {"price": {"sources_tried": ["price"]}}}]}
+
+    trace = svc._attach_provider_attempts(svc._source_trace)
+    races = trace["races"]
+    assert "attempts" in races["price"], races["price"]
+    assert races["price"]["attempts"][0]["detected_cf"] is True
+    assert races["price"]["attempts"][0]["provider"] == "scrapedo"
+
+
+def test_provider_attempts_no_attempts_leaves_trace_clean():
+    """With zero attempts (the common path — no render fired), the trace is
+    returned UNTOUCHED: no top-level races key is synthesized (strictly additive,
+    no empty-noise)."""
+    svc = get_comparison_service()
+    svc._init_provider_attempts()
+    base = {"products": [{"name": "A", "races": {"price": {"sources_tried": ["price"]}}}]}
+    out = svc._attach_provider_attempts(base)
+    assert "races" not in out  # nothing synthesized at the top level
+    assert out == base  # byte-identical passthrough when there are no attempts
+
+
+@pytest.mark.asyncio
+async def test_provider_attempts_collector_unbound_is_noop(monkeypatch):
+    """If a scraper runs with NO request-scoped collector bound (e.g. a direct
+    unit call outside a compare run), recording is a silent no-op — byte-identical
+    to today's behavior (strictly additive guarantee)."""
+    _scs._reset_provider_attempts_context()  # clear any bound collector
+    monkeypatch.setattr(
+        _scs.scrapedo_service, "render_page_with_status",
+        _AsyncMock(return_value=(None, 403, 5)),
+    )
+    monkeypatch.setattr(_scs, "is_circuit_closed", lambda _p: True)
+    monkeypatch.setattr(_scs, "has_budget", lambda _p: True)
+    monkeypatch.setattr(_scs, "record_usage", lambda *a, **k: None)
+    monkeypatch.setattr(_scs, "record_failure", lambda *a, **k: None)
+    monkeypatch.setattr(_scs.scrapedo_service, "is_available", lambda: True)
+    monkeypatch.setattr(_scs, "validate_scrape_url", lambda _u: True)
+    # Must not raise even though no collector is bound.
+    out = await _scs._scrapedo_scraper("https://x.bh/p", "X", "BHD", "x.bh")
+    assert out is None
     _reset_scrapedo_super_cache()

@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import logging
 import httpx
+import contextvars
 from functools import partial
 from typing import Optional, List, Dict, Any, Tuple, Callable, Awaitable
 from datetime import datetime, timedelta
@@ -57,6 +58,83 @@ from app.services.api_budget_service import (
     is_circuit_closed,
 )
 from app.services import firecrawl_service, scrapedo_service
+
+
+# WS-G G3 — per-attempt provider TRACE (backend observability ONLY; metadata,
+# NOT a user surface; ALWAYS-ON, $0). The render scrapers
+# (`_firecrawl_scraper`/`_scrapedo_scraper`) are MODULE-LEVEL coroutines with no
+# `self`, so the request-scoped collector reaches them via a ContextVar bound at
+# compare_from_text(_streaming) init. The service ALSO holds the same list on
+# `self._provider_attempts` (the canonical store attached into source_trace at
+# build time). The seam is strictly additive: when no collector is bound (a
+# scraper called outside a compare run, e.g. a direct unit test) recording is a
+# silent no-op — byte-identical to today's behavior.
+_PROVIDER_ATTEMPTS_CTX: "contextvars.ContextVar[Optional[List[Dict[str, Any]]]]" = \
+    contextvars.ContextVar("provider_attempts", default=None)
+
+# Cheap substring markers of a Cloudflare / anti-bot interstitial. A render that
+# returns a body containing any of these is a wall, not a genuine "no price on
+# the page" miss — the whole point of G3 is to tell those two apart per domain.
+_CF_INTERSTITIAL_MARKERS = (
+    "just a moment...",
+    "checking your browser",
+    "cloudflare",
+    "cf-ray",
+    "cf_chl",
+    "you have been blocked",
+    "enable javascript and cookies",
+    "attention required",
+    "captcha",
+    "px-captcha",
+    "access denied",
+)
+
+
+def _detect_cf_interstitial(html: Optional[str]) -> bool:
+    """True iff `html` looks like a Cloudflare/anti-bot interstitial (cheap
+    case-insensitive substring scan). Empty/None HTML -> False (no body to scan;
+    the status code carries that signal instead)."""
+    if not html or not isinstance(html, str):
+        return False
+    low = html.lower()
+    return any(m in low for m in _CF_INTERSTITIAL_MARKERS)
+
+
+def _record_provider_attempt(
+    *,
+    provider: str,
+    url: str,
+    retailer_domain: str,
+    status: int,
+    cost: int,
+    outcome: str,
+    html_kb: int,
+    detected_cf: bool,
+    elapsed_ms: int,
+) -> None:
+    """Append one strictly-additive provider-attempt record to the request-scoped
+    collector bound on the ContextVar. No-op when nothing is bound (never raises;
+    never changes a scraper's return value)."""
+    bucket = _PROVIDER_ATTEMPTS_CTX.get()
+    if bucket is None:
+        return
+    bucket.append({
+        "provider": provider,
+        "url": url,
+        "retailer_domain": retailer_domain,
+        "status": status,
+        "cost": cost,
+        "outcome": outcome,
+        "html_kb": html_kb,
+        "detected_cf": detected_cf,
+        "elapsed_ms": elapsed_ms,
+    })
+
+
+def _reset_provider_attempts_context() -> None:
+    """Clear any bound provider-attempt collector (used by tests + a defensive
+    reset; production binds a fresh list per request via `_init_provider_attempts`)."""
+    _PROVIDER_ATTEMPTS_CTX.set(None)
 
 
 # Bundle C § 2e A.4.5 — comparison_quality detector. Returns one of
@@ -883,25 +961,59 @@ async def _firecrawl_scraper(
 ) -> Optional[Dict[str, Any]]:
     """Firecrawl wrapper that checks budget + circuit breaker before firing,
     records usage/failure, and returns the fan_out candidate shape."""
-    if not (firecrawl_service.is_available()
-            and is_circuit_closed("firecrawl")
-            and has_budget("firecrawl")):
+    if not firecrawl_service.is_available():
         return None
+    if not (is_circuit_closed("firecrawl") and has_budget("firecrawl")):
+        # WS-G G3 — the shared breaker / spent budget starved a render we wanted
+        # to fire. Record it ($0, no provider call) so G4 can see breaker
+        # contagion. Strictly additive: return value unchanged (None).
+        _record_provider_attempt(
+            provider="firecrawl", url=url, retailer_domain=retailer_domain,
+            status=0, cost=0, outcome="breaker_open", html_kb=0,
+            detected_cf=False, elapsed_ms=0,
+        )
+        return None
+    _t0 = time.perf_counter()
     try:
         html, status = await firecrawl_service.scrape_page_with_status(url)
     except Exception as e:  # noqa: BLE001
         logger.debug(f"[fan_out firecrawl] {url} raised: {e}")
+        _record_provider_attempt(
+            provider="firecrawl", url=url, retailer_domain=retailer_domain,
+            status=0, cost=0, outcome="timeout", html_kb=0, detected_cf=False,
+            elapsed_ms=int((time.perf_counter() - _t0) * 1000),
+        )
         return None
+    _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+    _html_kb = (len(html) // 1024) if html else 0
+    _detected_cf = _detect_cf_interstitial(html)
     if status == 200:
         record_usage("firecrawl")
     if not html:
         if status in (429, 503) or status == 0:
             record_failure("firecrawl")
+        _record_provider_attempt(
+            provider="firecrawl", url=url, retailer_domain=retailer_domain,
+            status=status, cost=0,
+            outcome=("timeout" if status == 0 else "cf_block" if status in (403, 429, 503) else "empty"),
+            html_kb=0, detected_cf=False, elapsed_ms=_elapsed_ms,
+        )
         return None
     record_success("firecrawl")
     price = extract_price_from_html(html, full_name, currency, retailer_domain, url)
     if not price or not price.get("amount"):
+        _record_provider_attempt(
+            provider="firecrawl", url=url, retailer_domain=retailer_domain,
+            status=status, cost=0,
+            outcome=("cf_block" if _detected_cf else "no_price"),
+            html_kb=_html_kb, detected_cf=_detected_cf, elapsed_ms=_elapsed_ms,
+        )
         return None
+    _record_provider_attempt(
+        provider="firecrawl", url=url, retailer_domain=retailer_domain,
+        status=status, cost=0, outcome="html", html_kb=_html_kb,
+        detected_cf=_detected_cf, elapsed_ms=_elapsed_ms,
+    )
     price["source_method"] = "firecrawl"
     price["retailer"] = retailer_domain
     # L2 content safety — Firecrawl Tier 1.5a entry point (Bundle B,
@@ -923,17 +1035,32 @@ async def _scrapedo_scraper(
     url: str, full_name: str, currency: str, retailer_domain: str
 ) -> Optional[Dict[str, Any]]:
     """Scrape.do wrapper — residential proxy fallback for SPA pages."""
-    if not (scrapedo_service.is_available()
-            and is_circuit_closed("scrapedo")
-            and has_budget("scrapedo")):
+    if not scrapedo_service.is_available():
+        return None
+    if not (is_circuit_closed("scrapedo") and has_budget("scrapedo")):
+        # WS-G G3 — breaker/budget starved a render we wanted to fire ($0).
+        _record_provider_attempt(
+            provider="scrapedo", url=url, retailer_domain=retailer_domain,
+            status=0, cost=0, outcome="breaker_open", html_kb=0,
+            detected_cf=False, elapsed_ms=0,
+        )
         return None
     if not validate_scrape_url(url):
         return None
+    _t0 = time.perf_counter()
     try:
         html, status, cost = await scrapedo_service.render_page_with_status(url)
     except Exception as e:  # noqa: BLE001
         logger.debug(f"[fan_out scrapedo] {url} raised: {e}")
+        _record_provider_attempt(
+            provider="scrapedo", url=url, retailer_domain=retailer_domain,
+            status=0, cost=0, outcome="timeout", html_kb=0, detected_cf=False,
+            elapsed_ms=int((time.perf_counter() - _t0) * 1000),
+        )
         return None
+    _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+    _html_kb = (len(html) // 1024) if html else 0
+    _detected_cf = _detect_cf_interstitial(html)
     # A7 — meter the REAL credit cost Scrape.do billed (header-derived, fallback
     # 5). cost>0 means a request reached the API and was charged (200 OR a billed
     # non-200 like 400/404/410/429/503); cost==0 is a no-request path (token
@@ -944,11 +1071,28 @@ async def _scrapedo_scraper(
     if not html:
         if status in (429, 503) or status == 0:
             record_failure("scrapedo")
+        _record_provider_attempt(
+            provider="scrapedo", url=url, retailer_domain=retailer_domain,
+            status=status, cost=cost,
+            outcome=("timeout" if status == 0 else "cf_block" if status in (403, 429, 503) else "empty"),
+            html_kb=0, detected_cf=False, elapsed_ms=_elapsed_ms,
+        )
         return None
     record_success("scrapedo")
     price = extract_price_from_html(html, full_name, currency, retailer_domain, url)
     if not price or not price.get("amount"):
+        _record_provider_attempt(
+            provider="scrapedo", url=url, retailer_domain=retailer_domain,
+            status=status, cost=cost,
+            outcome=("cf_block" if _detected_cf else "no_price"),
+            html_kb=_html_kb, detected_cf=_detected_cf, elapsed_ms=_elapsed_ms,
+        )
         return None
+    _record_provider_attempt(
+        provider="scrapedo", url=url, retailer_domain=retailer_domain,
+        status=status, cost=cost, outcome="html", html_kb=_html_kb,
+        detected_cf=_detected_cf, elapsed_ms=_elapsed_ms,
+    )
     price["source_method"] = "scrapedo_rendered"
     price["retailer"] = retailer_domain
     # L2 content safety — Scrape.do Tier 1.5d entry point (Bundle B,
@@ -1629,6 +1773,40 @@ class StructuredComparisonService:
     def _extract_price_from_html(self, html: str, product_name: str, currency: str, domain: str, url: str) -> Optional[Dict[str, Any]]:
         return extract_price_from_html(html, product_name, currency, domain, url)
 
+    # ------------------------------------------------------------------
+    # WS-G G3 — per-attempt provider trace (backend observability ONLY).
+    # ------------------------------------------------------------------
+    def _init_provider_attempts(self) -> None:
+        """Bind a fresh request-scoped provider-attempt collector. Mirrors the
+        `self._source_trace = {}` init at the top of compare_from_text(_streaming):
+        the canonical list lives on `self._provider_attempts` AND is published on
+        the module ContextVar so the module-level render scrapers (no `self`) append
+        into the SAME list. Always-on, $0, metadata-only."""
+        self._provider_attempts: List[Dict[str, Any]] = []
+        _PROVIDER_ATTEMPTS_CTX.set(self._provider_attempts)
+
+    def _attach_provider_attempts(self, source_trace: Dict[str, Any]) -> Dict[str, Any]:
+        """Attach the collected provider attempts under the EXISTING
+        source_trace at `races["price"]["attempts"]` (no new top-level key). The
+        per-product `_source_trace` shape carries per-product races; the
+        request-level provider attempts attach onto a single price race so a
+        reader finds them where they look for price observability. Strictly
+        additive — does nothing when no attempts were recorded; never raises; the
+        FE renders neither source_trace nor attempts."""
+        try:
+            attempts = getattr(self, "_provider_attempts", None)
+            if not attempts or not isinstance(source_trace, dict):
+                return source_trace
+            races = source_trace.setdefault("races", {})
+            if not isinstance(races, dict):
+                return source_trace
+            price_race = races.setdefault("price", {})
+            if isinstance(price_race, dict):
+                price_race["attempts"] = attempts
+        except Exception as e:  # noqa: BLE001 — observability must never break a response
+            logger.warning("[G3] attach_provider_attempts failed: %s", e)
+        return source_trace
+
     def _extract_rating_from_shopping(self, product_name: str, shopping_items: List[Dict]) -> Dict[str, Any]:
         return extract_rating_from_shopping(product_name, shopping_items)
 
@@ -1914,6 +2092,10 @@ class StructuredComparisonService:
         self._tier15_routes = {}
         self._parked_price = {}  # Fix A — per-request parked-price stash reset
         self._price_candidates = {}  # per-request retained price candidates (re-selection)
+        # WS-G G3 — bind a fresh per-request provider-attempt collector (mirrors
+        # the _source_trace reset above; published on the module ContextVar so the
+        # module-level render scrapers append into it). Always-on, $0.
+        self._init_provider_attempts()
 
         # WS1 (D1) — reset the best-available partial stash for this run. The
         # build context carries everything _build_partial_response needs that is
@@ -2259,8 +2441,17 @@ class StructuredComparisonService:
             # any per-product records. Absent when the orchestrator never ran
             # Phase 1 (e.g. early-return on content-safety block).
             _metadata_override: Dict[str, Any] = {}
-            if getattr(self, "_source_trace", None):
-                _metadata_override["source_trace"] = self._source_trace
+            # WS-G G3 — attach the per-request provider attempts under the
+            # EXISTING source_trace at races["price"]["attempts"] (strictly
+            # additive; no-op when no render fired). Emit source_trace when it
+            # carries per-product records OR provider attempts exist (a
+            # render-only failure run still has CF-wall-vs-miss observability).
+            _src_trace = getattr(self, "_source_trace", None)
+            _prov_attempts = getattr(self, "_provider_attempts", None)
+            if _src_trace or _prov_attempts:
+                _metadata_override["source_trace"] = self._attach_provider_attempts(
+                    _src_trace if isinstance(_src_trace, dict) else {}
+                )
             # I3.2 — thread the self-critique outcome (internal key) so the
             # post-save path can persist it once the comparison_id exists.
             # Present only when the flag is ON and a critique actually ran.
@@ -2407,6 +2598,9 @@ class StructuredComparisonService:
         self._tier15_routes = {}
         self._parked_price = {}  # Fix A — per-request parked-price stash reset
         self._price_candidates = {}  # per-request retained price candidates (re-selection)
+        # WS-G G3 — bind a fresh per-request provider-attempt collector (mirror of
+        # the sync path; published on the module ContextVar). Always-on, $0.
+        self._init_provider_attempts()
 
         # L1 content safety pre-filter (spec sec 5.2). Same gate as sync path —
         # blocked queries terminate the stream with an error event before any
@@ -2796,8 +2990,17 @@ class StructuredComparisonService:
             # L2.9 — source_trace pass-through for streaming path. Same
             # contract as the non-streaming compare_from_text_impl call site.
             _metadata_override: Dict[str, Any] = {}
-            if getattr(self, "_source_trace", None):
-                _metadata_override["source_trace"] = self._source_trace
+            # WS-G G3 — attach the per-request provider attempts under the
+            # EXISTING source_trace at races["price"]["attempts"] (strictly
+            # additive; no-op when no render fired). Emit source_trace when it
+            # carries per-product records OR provider attempts exist (a
+            # render-only failure run still has CF-wall-vs-miss observability).
+            _src_trace = getattr(self, "_source_trace", None)
+            _prov_attempts = getattr(self, "_provider_attempts", None)
+            if _src_trace or _prov_attempts:
+                _metadata_override["source_trace"] = self._attach_provider_attempts(
+                    _src_trace if isinstance(_src_trace, dict) else {}
+                )
             # I3.2 — thread the self-critique outcome (internal key) so the
             # post-save path can persist it once the comparison_id exists.
             # Present only when the flag is ON and a critique actually ran.
