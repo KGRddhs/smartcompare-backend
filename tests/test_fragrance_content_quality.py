@@ -151,3 +151,11 @@ def test_response_builder_scrubs_score_leaks():
     legacy0 = resp["products"][0]
     assert not any(has_score_internals(s) for s in (legacy0.get("pros") or []))
     assert "Strong presentation score of 100." not in (legacy0.get("pros") or [])
+
+    # WS-A review-gate fix — the BC `comparison` alias also ships in the payload;
+    # scrub its winner_reason/winner_declaration/key_tradeoff (without the fix it
+    # carried the raw leak even though the FE renders overview/recommendation).
+    comp = resp["comparison"]
+    assert not has_score_internals(comp["winner_reason"]), comp["winner_reason"]
+    assert not has_score_internals(comp["winner_declaration"]), comp["winner_declaration"]
+    assert not has_score_internals(comp["key_tradeoff"]), comp["key_tradeoff"]

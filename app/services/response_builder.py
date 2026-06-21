@@ -1542,6 +1542,15 @@ def build_comparison_response(
         # category is missing, so BOTH products key the SAME schema (symmetry).
         pd["category_profile"] = _safe_category_profile(pd, category_used)
     result["products"] = product_data
+    # WS-A review-gate fix — the BC `comparison` alias ships in the payload and
+    # carried the raw winner_reason/key_tradeoff/winner_declaration (a real leak
+    # even though the FE renders the scrubbed overview/recommendation). Scrub the
+    # alias too, fail-closed, reusing the locals computed above.
+    comparison["winner_reason"] = _scrubbed_reason
+    if "key_tradeoff" in comparison:
+        comparison["key_tradeoff"] = _scrubbed_tradeoff
+    if "winner_declaration" in comparison:
+        comparison["winner_declaration"] = _scrubbed_declaration
     result["comparison"] = comparison
     # Task A5 — top-level recommendation reads the SCRUBBED winner reason
     # (same source field as overview.winner.reason), never the raw leak.

@@ -31,7 +31,11 @@ class TestDeterministicPartialVerdict:
         )
         assert out["winner_declaration"] == "Ombre Leather"
         assert out["winner_index"] == 0
-        assert "11.5" in out["winner_reason"]
+        # WS-A: the deterministic partial verdict is now QUALITATIVE — it names the
+        # winner and must NOT leak the raw score margin (was: assert "11.5" in ...,
+        # which pinned the exact score-internals leak this bundle removes).
+        assert "Ombre Leather" in out["winner_reason"]
+        assert "11.5" not in out["winner_reason"]
         assert "Tobacco Vanille" in out["key_tradeoff"]
         assert "longevity" in out["key_tradeoff"]
 
