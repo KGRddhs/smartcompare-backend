@@ -111,3 +111,52 @@ def test_floor_false_on_missing_amount():
 def test_watch_not_floored():
     """A Galaxy Watch is an accessory class → never floored even at a low price."""
     assert is_implausible_high_value_price("Samsung Galaxy Watch 6", 90.0) is False
+
+
+# --- WS-1 dispatcher gate-fix: brand-present non-S/Note flagships keep the floor ---
+
+@pytest.mark.parametrize("query", [
+    "Samsung Galaxy A54",
+    "Samsung Galaxy M14",
+    "OnePlus 12",
+    "OnePlus 11",
+    "OnePlus Nord 3",
+    "Huawei P60 Pro",
+    "Huawei Mate 60",
+    "Xiaomi 11",
+])
+def test_brand_present_flagships_are_high_value(query):
+    """Regression guard: the prior _PHONE_MODEL_RE only covered Galaxy S/Note/Z +
+    Xiaomi, so these brand-present flagships lost flagship-floor protection
+    (OLD True -> NEW False, a silent no-wrong-scrapes leak). Restored."""
+    assert is_high_value_query(query) is True
+    # An 11.9-BHD hit for a genuine flagship is an accessory/wrong-product leak.
+    assert is_implausible_high_value_price(query, 11.9) is True
+
+
+# --- WS-1 dispatcher gate-fix: an accessory OF a high-value device is never floored ---
+
+@pytest.mark.parametrize("query", [
+    "iPhone 15 case",            # device-token path, accessory-excluded
+    "OnePlus 12 case",           # brand+model path, accessory-excluded
+    "Samsung Galaxy A54 cover",
+    "Galaxy S24 screen protector",
+    "iPad sleeve",
+    "Samsung 45W adapter",
+])
+def test_accessory_of_high_value_device_not_floored(query):
+    """is_accessory() runs FIRST in is_high_value_query, so broadening
+    _PHONE_MODEL_RE to OnePlus/Huawei/Galaxy-A cannot re-floor their accessories
+    (the over-match the EL-2 split exists to prevent)."""
+    assert is_high_value_query(query) is False
+    assert is_implausible_high_value_price(query, 8.0) is False
+
+
+@pytest.mark.parametrize("text", [
+    "Samsung Galaxy A54",
+    "OnePlus 12",
+    "Huawei P60 Pro",
+    "Huawei Mate 60",
+])
+def test_phone_model_regex_matches_broadened_flagships(text):
+    assert _PHONE_MODEL_RE.search(text.lower()) is not None

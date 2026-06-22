@@ -364,14 +364,23 @@ HIGH_VALUE_KEYWORDS = HIGH_VALUE_DEVICE_TOKENS | HIGH_VALUE_BRANDS
 
 # Flagship phone-model regex (G4): confirms a high-value device from a bare brand
 # even when no device noun is present ("Samsung Galaxy S24" has no noun). Matches
-# Galaxy S/Note/Z + Xiaomi flagship numeral families. MUST NOT match accessory
-# model contexts (Mi Band 8 / Galaxy Watch 6 / Buds / Fit) — those are gated out
-# by requiring a flagship line token, not a bare numeral after "galaxy".
+# the common flagship/numeral PHONE lines across Samsung Galaxy (S/Note/A/M/Z),
+# OnePlus, Huawei (P/Mate/Nova), Pixel and Xiaomi. MUST NOT match accessory model
+# contexts (Mi Band 8 / Galaxy Watch 6 / Buds / Fit): those carry no flagship line
+# token after the brand, and accessory-WORDED queries ("OnePlus 12 case") are
+# dropped earlier by the is_accessory() guard in is_high_value_query.
+# WS-1 fix (dispatcher gate): the prior regex only covered Galaxy S/Note/Z +
+# Xiaomi, so brand-present non-S/Note flagships ("OnePlus 12", "Galaxy A54",
+# "Huawei P60") lost flagship-floor protection (True->False vs the old flat set) —
+# a silent no-wrong-scrapes regression. Broadened below.
 _PHONE_MODEL_RE = re.compile(
     r"(?<![a-z0-9])(?:"
-    r"galaxy\s+(?:s|note|z\s*(?:fold|flip))\s*\d"  # Galaxy S24 / Note 20 / Z Fold 5
-    r"|(?:s|note)\s*\d{2}\s*(?:ultra|plus|\+|fe)?"  # bare "S24 Ultra" / "Note 20"
-    r"|xiaomi\s+\d{2}"                              # Xiaomi 14
+    r"galaxy\s+(?:s|note|a|m|z\s*(?:fold|flip))\s*\d"  # Galaxy S24/Note20/A54/M14/Z Fold5
+    r"|(?:s|note)\s*\d{2}\s*(?:ultra|plus|\+|fe)?"      # bare "S24 Ultra" / "Note 20"
+    r"|oneplus\s+(?:nord\s+)?\d{1,2}"                   # OnePlus 12 / OnePlus Nord 3
+    r"|huawei\s+(?:p|mate|nova)\s*\d{1,2}"              # Huawei P60 / Mate 60 / Nova 12
+    r"|pixel\s+\d"                                       # Google Pixel 9
+    r"|xiaomi\s+\d{1,2}"                                 # Xiaomi 14 / Xiaomi 11
     r")",
     re.IGNORECASE,
 )
@@ -459,13 +468,28 @@ SUPPLEMENT_UNAMBIGUOUS = {
     "vitamin", "supplement", "supplements", "softgel", "softgels",
     "probiotic", "probiotics", "fish oil", "biotin", "melatonin",
     "turmeric", "creatine", "multivitamin", "folic", "coq10", "glucosamine",
+    # WS-1 dispatcher gate-fix — unambiguous supplement product words that the
+    # whole-token rewrite would otherwise drop (Thorne Magnesium class: a true
+    # supplement from a brand not in the set + an ambiguous nutrient + no
+    # dose/form was returning False). These are supplement-only forms/herbs/
+    # sports-nutrition words (NOT a blanket "powder" — that would catch "iron
+    # oxide powder" / "zinc oxide" pigments; closed via specific tokens instead).
+    "ashwagandha", "theanine", "bcaa", "glutamine", "spirulina",
+    "whey", "whey protein", "protein powder", "collagen peptides",
+    "pre-workout", "pre workout",
     # Supplement / sports-nutrition BRANDS — closing-token corroboration so a
     # brand-led ambiguous query ("Optimum Nutrition Whey Protein",
-    # "Nordic Naturals Omega-3") resolves True even with no dose/form.
-    # (test_error_paths:104 pins "Nordic Naturals Omega-3" -> True.)
+    # "Nordic Naturals Omega-3", "Thorne Magnesium") resolves True even with no
+    # dose/form. (test_error_paths:104 pins "Nordic Naturals Omega-3" -> True.)
+    # Curated supplement-ONLY brands (no ambiguous houses like Himalaya/Swisse
+    # that also sell skincare — those would misroute a face wash).
     "nature made", "now foods", "solgar", "garden of life", "kirkland",
     "nordic naturals", "centrum", "optimum nutrition", "dymatize",
-    "myprotein", "muscletech",
+    "myprotein", "muscletech", "thorne", "doctor's best", "sports research",
+    "california gold nutrition", "healthaid", "vitabiotics", "natrol",
+    "jarrow", "jarrow formulas", "nature's bounty", "applied nutrition",
+    "emergen-c", "one a day", "nature's way", "life extension",
+    "blackmores", "puritan's pride",
 }
 SUPPLEMENT_AMBIGUOUS = {
     "iron", "collagen", "protein", "zinc", "calcium", "omega", "omega-3",
@@ -639,7 +663,14 @@ def is_high_value_query(product_name: str) -> bool:
       co-occurring device noun OR a confirmed flagship phone model
       (_PHONE_MODEL_RE) — so "Samsung 25W charger" / "Galaxy Watch" are NOT
       high-value and their genuine cheap prices are not floored away.
+    - An ACCESSORY of a high-value device ("iPhone 15 case", "OnePlus 12 cover",
+      "Samsung 25W charger") is itself a genuine cheap product whose low price
+      must NOT be floored — excluded FIRST so neither the device-token nor the
+      bare-brand+model path floors it (this is what lets _PHONE_MODEL_RE be
+      broadened to OnePlus/Huawei/Galaxy-A without re-flooring their accessories).
     """
+    if is_accessory(product_name):
+        return False
     name_lower = product_name.lower()
     if any(_contains_token(name_lower, tok) for tok in HIGH_VALUE_DEVICE_TOKENS):
         return True

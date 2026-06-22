@@ -117,3 +117,43 @@ def test_high_value_electronics_not_supplements(query):
 def test_real_supplement_still_routes_with_no_electronics_token():
     """The short-circuit decoupling pin: a genuine supplement is unaffected."""
     assert is_supplement_query("NOW Foods Omega-3 1000mg softgels") is True
+
+
+# --- WS-1 dispatcher gate-fix: Thorne-Magnesium class (brand/herb-closed) ---
+# The whole-token rewrite dropped true supplements whose brand was not in the set
+# and whose nutrient token is ambiguous with no dose/form (OLD substring True ->
+# NEW False). Closed by curated supplement-only brands + unambiguous herb/sports
+# tokens (NOT a blanket "powder"/weight-dose that would catch pigments/cookware).
+
+@pytest.mark.parametrize("query", [
+    "Thorne Magnesium",                       # supp brand closes "magnesium"
+    "HealthAid Magnesium",                    # supp brand
+    "Vitabiotics Wellman",                    # supp brand, no nutrient token at all
+    "California Gold Nutrition CollagenUP",   # supp brand
+    "Doctor's Best Magnesium Glycinate",      # supp brand closes "magnesium"
+    "Sports Research Collagen Peptides",      # supp brand + "collagen peptides"
+    "Jarrow Formulas Theanine",               # supp brand + "theanine"
+    "Himalaya Ashwagandha",                   # "ashwagandha" unambiguous herb (no brand needed)
+    "Applied Nutrition BCAA",                 # supp brand + "bcaa"
+    "One A Day Men's",                        # supp brand
+    "Emergen-C Immune Support",               # supp brand
+    "Nature's Bounty Fish Oil",               # supp brand + "fish oil"
+    "Whey protein isolate 2kg",               # "whey" unambiguous (no dose-unit match needed)
+    "Collagen Peptides Powder",               # "collagen peptides" unambiguous
+])
+def test_thorne_class_brand_and_herb_closed_supplements(query):
+    assert is_supplement_query(query) is True
+
+
+@pytest.mark.parametrize("query", [
+    "iron oxide powder",        # pigment — "iron" ambiguous, no supp brand/token/dose/form
+    "zinc oxide sunscreen",     # skincare — "zinc" ambiguous, no corroboration
+    "cast iron skillet 2kg",    # cookware — kg is NOT a supplement dose unit
+    "mineral water",
+    "mineral makeup",
+    "collagen serum",           # skincare — "collagen" alone is ambiguous (not "collagen peptides")
+])
+def test_new_supplement_tokens_no_false_positives(query):
+    """The added brands/tokens must NOT misroute non-supplements (no blanket
+    'powder' form / weight dose that would catch oxide pigments / cookware)."""
+    assert is_supplement_query(query) is False
