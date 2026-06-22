@@ -17,6 +17,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
 import { colors, spacing, typography } from '../../theme';
+import { SCORE_INTERNALS_RE } from './_deltaText';
 
 // Single source of truth for banned vocabulary — mirrors
 // app/models/scoring_v2.py::BANNED_DELTA_WORDS.
@@ -45,8 +46,15 @@ export interface FactualVerdictProps {
 }
 
 export function FactualVerdict({ line1, line2, testID = 'factual-verdict' }: FactualVerdictProps) {
+  // Defense-in-depth (frag-content-quality A6): a future regression that leaks
+  // raw internal scores/point-margins into the factual verdict also trips the
+  // contract-violation guard (fail-closed) — never render "N points" / "/100"
+  // / "overall score" / "score of N".
   const violation =
-    BANNED_PATTERN.test(line1) || BANNED_PATTERN.test(line2);
+    BANNED_PATTERN.test(line1) ||
+    BANNED_PATTERN.test(line2) ||
+    SCORE_INTERNALS_RE.test(line1) ||
+    SCORE_INTERNALS_RE.test(line2);
 
   if (violation) {
     return <View testID={`${testID}-contract-violation`} style={styles.violation} />;

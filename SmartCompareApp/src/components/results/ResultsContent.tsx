@@ -66,6 +66,7 @@ import { RevealBurst } from '../hero/RevealBurst';
 // W1 walk-fix 2026-06-18 — CategoryProfile now lives INSIDE the "Dig deeper"
 // accordion (ResultsAccordion), not as a standalone block here.
 import { ResultsAccordion } from './ResultsAccordion';
+import { SCORE_INTERNALS_RE } from './_deltaText';
 import { anyEstimated } from '../../services/sourceMethod';
 import { ProductImage } from '../primitives/ProductImage';
 
@@ -312,6 +313,13 @@ export function ResultsContent({
               line2={scoring_v2.factual_verdict.line2 ?? ''}
               testID="results-content-factual-verdict"
             />
+          ) : typeof verdictBody === 'string' &&
+            SCORE_INTERNALS_RE.test(verdictBody) ? (
+            // A6 defense-in-depth: drop a verdict body that leaks raw score
+            // internals ("N-point", "/100", "overall score", "score of N")
+            // rather than show the leak. Backend (WS-A) is canonical; this
+            // fails a future regression loud-but-clean.
+            null
           ) : (
             <Text style={styles.verdictBody}>{verdictBody}</Text>
           )}

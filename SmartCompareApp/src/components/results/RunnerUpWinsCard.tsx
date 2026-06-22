@@ -29,7 +29,7 @@ import { useTranslation } from 'react-i18next';
 
 import { colors, spacing } from '../../theme';
 import type { Product, Dimension } from '../../types';
-import { safeDelta } from './_deltaText';
+import { safeDelta, SCORE_INTERNALS_RE } from './_deltaText';
 
 export interface RunnerUpWinsCardProps {
   products: Product[];
@@ -80,8 +80,14 @@ export function RunnerUpWinsCard({
   const runnerUpIndex = winnerIndex === 0 ? 1 : 0;
   const runnerUp = products[runnerUpIndex];
   const winningDims = runnerUpWinningDims(dimensions, winnerIndex);
+  // A6 defense-in-depth: drop the key_tradeoff prose when it leaks raw score
+  // internals ("N-point", "/100", "overall score", "score of N") — render
+  // nothing rather than the leak. Backend (WS-A) is canonical; this fails a
+  // future regression loud-but-clean (the card self-hides if nothing remains).
   const prose =
-    typeof keyTradeoff === 'string' && keyTradeoff.trim().length > 0
+    typeof keyTradeoff === 'string' &&
+    keyTradeoff.trim().length > 0 &&
+    !SCORE_INTERNALS_RE.test(keyTradeoff)
       ? keyTradeoff.trim()
       : null;
 
