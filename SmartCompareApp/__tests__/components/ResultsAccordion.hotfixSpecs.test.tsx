@@ -129,7 +129,11 @@ describe('ResultsAccordion — real backend shape (Bundle E S3 hotfix)', () => {
     expect(queryByText('N/A')).toBeNull();
   });
 
-  it('renders the em-dash placeholder when one product has an object value at a shared key', () => {
+  it('drops the row (no silent one-sided dash) when one product has an object value at a shared key', () => {
+    // Task E3 (frag-content-quality WS-E / P7 / FE-3): an object value coerces
+    // to the em-dash "—" (missing) on one product; with a real string on the
+    // other the row is one-sided → DROPPED to keep the table symmetric
+    // (re-baselined from the prior silent value·LABEL·"—" behavior).
     const oneObjOneStr: any = [
       { ...realSpecsProducts[0], specs: { ...realSpecsProducts[0].specs, ram: { nested: 'bad' } } },
       realSpecsProducts[1],
@@ -142,9 +146,9 @@ describe('ResultsAccordion — real backend shape (Bundle E S3 hotfix)', () => {
       <ResultsAccordion products={minimal as any} specsProducts={oneObjOneStr} />
     );
     fireEvent.press(getByTestId('results-specs-toggle'));
-    // 'ram' key still surfaces (from the other product's string value)
-    expect(queryByText('ram')).toBeTruthy();
-    // but the object-valued cell renders the em-dash, not "[object Object]"
+    // The one-sided 'ram' row is dropped (symmetric-contract).
+    expect(queryByText('ram')).toBeNull();
+    // and the object stringification never escapes either way.
     expect(queryByText('[object Object]')).toBeNull();
   });
 
