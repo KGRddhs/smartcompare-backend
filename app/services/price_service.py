@@ -328,12 +328,53 @@ ACCESSORY_KEYWORDS = {
     "screen guard", "guard",
 }
 
-# High-value electronics keywords
-HIGH_VALUE_KEYWORDS = {
-    "iphone", "galaxy", "pixel", "samsung", "oneplus", "huawei", "xiaomi",
-    "macbook", "ipad", "laptop", "playstation", "xbox", "nintendo",
-    "rtx", "nvidia", "geforce", "radeon", "amd", "gpu",
+# High-value electronics keywords (EL-2 split, G4)
+# ------------------------------------------------
+# The flagship floor (is_implausible_high_value_price) must protect a genuine
+# phone/laptop/console/GPU from an accessory-priced wrong-scrape, WITHOUT
+# flooring a genuine cheap accessory of the same brand. So the old flat set is
+# split by self-identifying-ness:
+#
+#   HIGH_VALUE_DEVICE_TOKENS — name a device on their own (iphone, macbook,
+#     rtx, playstation) → ALWAYS high-value.
+#   HIGH_VALUE_BRANDS — bare brands (samsung, galaxy, xiaomi) → high-value ONLY
+#     with a co-occurring device noun OR a confirmed flagship phone model
+#     (_PHONE_MODEL_RE). "Samsung 25W charger" must NOT be high-value.
+#   HIGH_VALUE_DEVICE_NOUNS — the device-class nouns that, with a bare brand,
+#     confirm a device. EXCLUDES watch/buds/band/fit (accessory classes the
+#     floor must NOT catch).
+HIGH_VALUE_DEVICE_TOKENS = {
+    "iphone", "pixel", "macbook", "ipad", "laptop",
+    "playstation", "xbox", "nintendo",
+    "rtx", "geforce", "radeon", "gpu",
 }
+HIGH_VALUE_BRANDS = {
+    "samsung", "galaxy", "xiaomi", "huawei", "oneplus", "nvidia", "amd",
+}
+HIGH_VALUE_DEVICE_NOUNS = {
+    "phone", "smartphone", "laptop", "notebook", "ultrabook", "tablet",
+    "console", "tv", "television", "graphics card", "gpu", "monitor",
+    # EXCLUDED on purpose: watch, buds, band, fit (accessory classes).
+}
+# BC alias — `HIGH_VALUE_KEYWORDS` is imported by structured_comparison_service
+# (scs:718) and re-exported (scs:1551, used as self.HIGH_VALUE_KEYWORDS in
+# tests). Keep it a derived union so no import breaks. NOTE: membership in this
+# raw set is NOT the high-value predicate anymore — use is_high_value_query().
+HIGH_VALUE_KEYWORDS = HIGH_VALUE_DEVICE_TOKENS | HIGH_VALUE_BRANDS
+
+# Flagship phone-model regex (G4): confirms a high-value device from a bare brand
+# even when no device noun is present ("Samsung Galaxy S24" has no noun). Matches
+# Galaxy S/Note/Z + Xiaomi flagship numeral families. MUST NOT match accessory
+# model contexts (Mi Band 8 / Galaxy Watch 6 / Buds / Fit) — those are gated out
+# by requiring a flagship line token, not a bare numeral after "galaxy".
+_PHONE_MODEL_RE = re.compile(
+    r"(?<![a-z0-9])(?:"
+    r"galaxy\s+(?:s|note|z\s*(?:fold|flip))\s*\d"  # Galaxy S24 / Note 20 / Z Fold 5
+    r"|(?:s|note)\s*\d{2}\s*(?:ultra|plus|\+|fe)?"  # bare "S24 Ultra" / "Note 20"
+    r"|xiaomi\s+\d{2}"                              # Xiaomi 14
+    r")",
+    re.IGNORECASE,
+)
 
 # Counterfeit/replica keywords
 COUNTERFEIT_KEYWORDS = {
@@ -400,15 +441,53 @@ GCC_LUXURY_RETAILERS = {
     "theluxurycloset.com", "boutique1.com",
 }
 
-# Supplement keywords
-SUPPLEMENT_KEYWORDS = {
-    "vitamin", "supplement", "softgel", "capsule", "mineral",
-    "omega", "probiotic", "protein", "magnesium", "zinc", "calcium",
-    "fish oil", "collagen", "biotin", "melatonin", "turmeric", "creatine",
-    "multivitamin", "iron", "folic", "coq10", "glucosamine",
-    "d3", "d-3",
+# Supplement keywords (G2 split — whole-token + corroboration)
+# ------------------------------------------------------------
+# Old behavior was naive substring matching: "iron" matched "environment",
+# "Tefal steam iron", "cast iron skillet"; "protein" matched "protein bar";
+# "collagen" matched "collagen serum" (skincare). The detector now matches on
+# WHOLE TOKENS (lookaround boundary) and splits tokens into:
+#
+#   SUPPLEMENT_UNAMBIGUOUS — tokens/brands that are supplement-only on their own
+#     (vitamin, softgel, probiotic, biotin, ... + the supp/sports BRANDS).
+#   SUPPLEMENT_AMBIGUOUS — tokens that ALSO name non-supplement products (iron,
+#     collagen, protein, zinc, calcium, omega, d3, magnesium, ...). These count
+#     ONLY with a co-occurring dose (SUPPLEMENT_DOSE_RE) OR form token OR a
+#     supp-brand.
+SUPPLEMENT_UNAMBIGUOUS = {
+    # Supplement-only product words / nutrients.
+    "vitamin", "supplement", "supplements", "softgel", "softgels",
+    "probiotic", "probiotics", "fish oil", "biotin", "melatonin",
+    "turmeric", "creatine", "multivitamin", "folic", "coq10", "glucosamine",
+    # Supplement / sports-nutrition BRANDS — closing-token corroboration so a
+    # brand-led ambiguous query ("Optimum Nutrition Whey Protein",
+    # "Nordic Naturals Omega-3") resolves True even with no dose/form.
+    # (test_error_paths:104 pins "Nordic Naturals Omega-3" -> True.)
     "nature made", "now foods", "solgar", "garden of life", "kirkland",
+    "nordic naturals", "centrum", "optimum nutrition", "dymatize",
+    "myprotein", "muscletech",
 }
+SUPPLEMENT_AMBIGUOUS = {
+    "iron", "collagen", "protein", "zinc", "calcium", "omega", "omega-3",
+    "magnesium", "mineral", "d3", "d-3", "b12", "b-12", "potassium", "whey",
+}
+# Dose pattern — a numeric quantity in supplement units. Reuses the canonical
+# (\d+(?:[.,]\d+)?)\s*(IU|mg|mcg|g) reference; whole-unit boundary via lookahead.
+SUPPLEMENT_DOSE_RE = re.compile(
+    r"(?<![a-z0-9])\d+(?:[.,]\d+)?\s*(?:iu|mg|mcg|g)(?![a-z])",
+    re.IGNORECASE,
+)
+# Dosage-form tokens — a supplement is sold in these forms.
+SUPPLEMENT_FORM_TOKENS = {
+    "softgel", "softgels", "capsule", "capsules", "tablet", "tablets",
+    "gummy", "gummies", "caplet", "caplets", "count", "ct",
+}
+
+# BC alias — kept a derived union so structured_comparison_service's
+# `from .price_service import SUPPLEMENT_KEYWORDS` (scs:724) + the re-export at
+# scs:1557 do not break. Membership is NOT the predicate — use
+# is_supplement_query().
+SUPPLEMENT_KEYWORDS = SUPPLEMENT_UNAMBIGUOUS | SUPPLEMENT_AMBIGUOUS | SUPPLEMENT_FORM_TOKENS
 
 # Manufacturer brands (AIB partners)
 MANUFACTURER_BRAND_WORDS = {"nvidia", "amd", "intel"}
@@ -541,10 +620,36 @@ def is_accessory(title: str) -> bool:
     return False
 
 
+def _contains_token(name_lower: str, token: str) -> bool:
+    """Whole-token (lookaround word-boundary) containment. Unlike `\\b`, the
+    lookaround treats digits as part of the token so `d3`/`d-3`/`omega-3` match
+    cleanly and `iron` does NOT match inside `environment`. Multi-word tokens
+    ("now foods", "graphics card") are matched as a phrase."""
+    pattern = r"(?<![a-z0-9])" + re.escape(token) + r"(?![a-z0-9])"
+    return re.search(pattern, name_lower) is not None
+
+
 def is_high_value_query(product_name: str) -> bool:
-    """Check if the query is for a high-value product (phone, laptop, console)."""
+    """True iff `product_name` names a high-value product (phone/laptop/console/
+    GPU). EL-2 split (G4):
+
+    - A self-identifying DEVICE TOKEN (iphone, macbook, rtx, playstation, ...)
+      is high-value on its own.
+    - A bare BRAND (samsung, galaxy, xiaomi, ...) is high-value ONLY with a
+      co-occurring device noun OR a confirmed flagship phone model
+      (_PHONE_MODEL_RE) — so "Samsung 25W charger" / "Galaxy Watch" are NOT
+      high-value and their genuine cheap prices are not floored away.
+    """
     name_lower = product_name.lower()
-    return any(kw in name_lower for kw in HIGH_VALUE_KEYWORDS)
+    if any(_contains_token(name_lower, tok) for tok in HIGH_VALUE_DEVICE_TOKENS):
+        return True
+    if any(_contains_token(name_lower, brand) for brand in HIGH_VALUE_BRANDS):
+        has_device_noun = any(
+            _contains_token(name_lower, noun) for noun in HIGH_VALUE_DEVICE_NOUNS
+        )
+        if has_device_noun or _PHONE_MODEL_RE.search(name_lower):
+            return True
+    return False
 
 
 # Wrong-scrape guard (Ahmed's hard line: "no wrong scrapes"). A genuine BH scrape
@@ -577,11 +682,45 @@ def is_luxury_brand(product_name: str) -> bool:
 
 
 def is_supplement_query(product_name: str) -> bool:
-    """Check if the query is for a supplement/vitamin product."""
-    name_lower = product_name.lower()
-    if any(kw in name_lower for kw in HIGH_VALUE_KEYWORDS):
+    """True iff `product_name` is (almost certainly) a supplement/vitamin (G2).
+
+    Whole-token matching (lookaround boundary, NOT `\\b`) so `d3`/`d-3`/`omega-3`
+    match while `iron` does NOT match inside `environment`:
+
+    - An UNAMBIGUOUS token or a supp/sports BRAND stands alone → True.
+    - An AMBIGUOUS token (iron/collagen/protein/zinc/calcium/omega/d3/...) counts
+      ONLY with a co-occurring dose (SUPPLEMENT_DOSE_RE) OR form token OR a
+      supp-brand — so "Tefal steam iron", "collagen serum", "protein bar",
+      "cast iron skillet", "calcium antacid" are NOT supplements.
+
+    The high-value short-circuit is repointed to is_high_value_query() (the
+    function, NOT the raw narrowed set) so the floor and this guard never
+    disagree on what's high-value (Q1 silent-inconsistency gate). It is
+    technically redundant under whole-token matching (a real device name has no
+    supplement token), but kept defensively + repointed to satisfy the gate.
+    """
+    if not product_name:
         return False
-    return any(kw in name_lower for kw in SUPPLEMENT_KEYWORDS)
+    if is_high_value_query(product_name):
+        return False
+    name_lower = product_name.lower()
+
+    # Unambiguous tokens / supp-brands stand alone.
+    if any(_contains_token(name_lower, tok) for tok in SUPPLEMENT_UNAMBIGUOUS):
+        return True
+
+    # Ambiguous tokens need corroboration: dose OR form OR a supp-brand.
+    has_ambiguous = any(
+        _contains_token(name_lower, tok) for tok in SUPPLEMENT_AMBIGUOUS
+    )
+    if not has_ambiguous:
+        return False
+    has_dose = SUPPLEMENT_DOSE_RE.search(name_lower) is not None
+    has_form = any(
+        _contains_token(name_lower, tok) for tok in SUPPLEMENT_FORM_TOKENS
+    )
+    # (supp-brand corroboration already returns True above via UNAMBIGUOUS.)
+    return has_dose or has_form
 
 
 # ============================================
@@ -635,9 +774,12 @@ def is_fragrance_query(product_name: str) -> bool:
     guards stay mutually exclusive."""
     if not product_name:
         return False
-    name_lower = product_name.lower()
-    if any(kw in name_lower for kw in HIGH_VALUE_KEYWORDS):
+    # Mandatory coupled repoint (Q1 gate): use the is_high_value_query() function,
+    # NOT the raw narrowed HIGH_VALUE_KEYWORDS set, so the fragrance guard and the
+    # flagship floor agree on what's high-value after the EL-2 split.
+    if is_high_value_query(product_name):
         return False
+    name_lower = product_name.lower()
     if any(brand in name_lower for brand in FRAGRANCE_BRAND_KEYWORDS):
         return True
     return any(kw in name_lower for kw in FRAGRANCE_PRODUCT_KEYWORDS)
