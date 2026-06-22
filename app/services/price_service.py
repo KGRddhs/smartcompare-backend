@@ -2898,6 +2898,39 @@ def get_official_domain(product_name: str) -> Optional[str]:
 # Shopping price extraction
 # ============================================
 
+def shopping_listing_matches(product_name: str, title: str) -> bool:
+    """True iff a Serper Shopping listing `title` is a genuine SKU match for
+    `product_name` — the counterfeit / accessory / wrong-variant / wrong-product
+    relevance gate that ``extract_price_from_shopping`` applies inline (see its
+    chain ~:2967-2988) BEFORE accepting a listing's price.
+
+    Factored out for CDE-3's candidate-retention seed (_seed_shortcircuit_
+    candidates in structured_comparison_service): the seed retains the WHOLE
+    shopping list for size re-selection, and ``is_price_showable`` checks price
+    plausibility (floor/sample/source) but NOT SKU match — so without this gate a
+    wrong-variant alternate ("iPhone 15 Pro Max 256GB" under an "iPhone 15" query)
+    at a plausible price could be re-selected as the product's price (wrong-SKU
+    attribution). Price-plausibility (the high-value min_price floor) stays the
+    caller's concern (is_price_showable downstream). Keep in sync with the inline
+    chain above."""
+    if not title:
+        return False
+    if is_counterfeit_listing(title):
+        return False
+    if is_accessory(title):
+        return False
+    if is_high_value_query(product_name) and not strict_title_match(product_name, title):
+        return False
+    if not numbers_match(product_name, title):
+        return False
+    if variant_mismatch(product_name, title):
+        return False
+    p_words = normalize_words(product_name)
+    t_words = normalize_words(title)
+    match_score = (len(p_words & t_words) / len(p_words)) if p_words else 0
+    return match_score >= 0.4
+
+
 def extract_price_from_shopping(
     product_name: str,
     shopping_items: List[Dict],

@@ -671,6 +671,7 @@ from app.services.price_service import (
     is_implausible_high_value_price,
     is_implausible_low_fragrance_price,
     is_price_showable,
+    shopping_listing_matches,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
     is_price_plausible,
@@ -5358,6 +5359,14 @@ class StructuredComparisonService:
                             if rate > 0:
                                 amount = amount / rate
                     title = item.get("title", "") or ""
+                    # CDE-3 accuracy gate (WS-3 reviewer fix) — retain ONLY listings
+                    # that are a genuine SKU match for the product. is_price_showable
+                    # (below) checks PRICE plausibility, NOT SKU match, so without
+                    # this a wrong-variant ("iPhone 15 Pro Max" under "iPhone 15") /
+                    # accessory alternate could enter the re-selection pool and be
+                    # re-selected to a target size as a wrong-SKU price.
+                    if not shopping_listing_matches(full_name, title):
+                        continue
                     retailer = item.get("source", "") or ""
                     sizes = extract_sizes_ml(title)
                     size = (sorted(sizes)[0] + "ml") if sizes else None

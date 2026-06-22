@@ -125,6 +125,26 @@ class TestCDE3SeedsFullSet:
         assert pd[1]["price"]["amount"] == 118.0          # re-selected to 100ml
         assert pd[1]["price"].get("unavailable") is not True
 
+    def test_cde3_tier1_seed_rejects_wrong_variant_alternate(self):
+        """WS-3 reviewer gate-fix: the tier1_shopping seed applies the SKU-match
+        gate (shopping_listing_matches), so a wrong model-line variant
+        ("iPhone 15 Pro Max" under an "iPhone 15" query) is NOT retained in the
+        re-selection pool. is_price_showable checks price plausibility, NOT SKU
+        match, so without the gate the Pro Max alternate (at a plausible price)
+        could be re-selected as the iPhone 15's price = wrong-SKU attribution."""
+        svc = StructuredComparisonService()
+        full_name = "Apple iPhone 15"
+        svc._shopping_items_cache[full_name] = [
+            _shopping_item("Apple iPhone 15 128GB", "BHD 320.0", source="sharafdg.com"),
+            _shopping_item("Apple iPhone 15 Pro Max 256GB", "BHD 480.0", source="sharafdg.com"),
+        ]
+        svc._seed_shortcircuit_candidates(
+            full_name, kind="tier1_shopping", currency="BHD",
+        )
+        titles = [c.get("title") or "" for c in (svc._price_candidates.get(full_name) or [])]
+        assert any("iPhone 15 128GB" in t for t in titles), titles      # correct base variant retained
+        assert not any("Pro Max" in t for t in titles), titles          # wrong variant rejected
+
     def test_cde3_single_candidate_still_pends_honestly(self):
         """A holds only a 100ml short-circuit price, target 50ml, no 50ml candidate
         -> still pends (G1: no fabrication). Documents the residual."""
