@@ -34,6 +34,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { colors, spacing, typography } from '../../theme';
 import { DimensionBar } from '../primitives/DimensionBar';
 import type { Dimension } from '../../types';
+import { safeDelta } from './_deltaText';
 
 interface DimensionBarsProps {
   dimensions: Dimension[];
@@ -278,9 +279,14 @@ function DimensionRow({ dimension, winnerIndex, productAName, productBName, test
   const heroDeltaColor = isCrossTier
     ? colors.text.primary
     : (aWins ? colors.accent : colors.text.primary);
+  // Defense-in-depth (WS-B Task B3): never surface raw "+Npt" point-math in
+  // the delta caption — swap a point-math delta for the clean dim label via the
+  // shared guard. Applied ONLY when delta_text is non-empty so an absent delta
+  // keeps the original behavior (no synthetic label caption appears).
+  const guardedDelta = delta_text ? safeDelta(delta_text, label) : '';
   const heroDeltaText = isCrossTier
     ? t('results.value.different_tier')
-    : delta_text;
+    : guardedDelta;
 
   // § 4d — per-row caption on the value row ONLY, surfacing tier
   // mismatches without a banner. Silent on in_range/in_range.
@@ -323,8 +329,8 @@ function DimensionRow({ dimension, winnerIndex, productAName, productBName, test
         rightTestID={`${testID}-fill-b`}
         gapTestID={`${testID}-bar-gap`}
       />
-      {!isHeroDeltaRow && delta_text ? (
-        <Text style={styles.delta}>{delta_text}</Text>
+      {!isHeroDeltaRow && guardedDelta ? (
+        <Text style={styles.delta}>{guardedDelta}</Text>
       ) : null}
       {key === 'value' && valueMatchCaptionKey && (
         <Text

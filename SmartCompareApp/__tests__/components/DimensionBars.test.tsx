@@ -203,10 +203,14 @@ describe('DimensionBars — walk-fix (limited-data suppression + single legend)'
   });
 
   it('a long dimension label is single-line (no horizontal overflow)', () => {
-    const { getByText } = render(
+    const { getAllByText } = render(
       <DimensionBars dimensions={WALK_DIMS} winnerIndex={0} testID="bars" />,
     );
-    expect(getByText('Character').props.numberOfLines).toBe(1);
+    // "Character" now appears twice: in the label row AND in the delta
+    // caption (the WS-B Task B3 guard swapped the raw "+18pt distinctiveness"
+    // for the clean dim label). The label-row instance must be single-line.
+    const labelInstances = getAllByText('Character');
+    expect(labelInstances.some((n) => n.props.numberOfLines === 1)).toBe(true);
   });
 });
 

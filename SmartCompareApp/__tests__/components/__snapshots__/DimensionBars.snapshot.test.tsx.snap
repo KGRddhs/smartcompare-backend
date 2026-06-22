@@ -915,7 +915,7 @@ exports[`snapshot — 6 dims collapsed (hero state) 1`] = `
         }
       }
     >
-      4pt
+      Performance
     </Text>
     <View
       pointerEvents="none"
@@ -1593,7 +1593,7 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         }
       }
     >
-      4pt
+      Performance
     </Text>
     <View
       pointerEvents="none"
@@ -1747,7 +1747,7 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         }
       }
     >
-      4pt
+      Build
     </Text>
     <View
       pointerEvents="none"
@@ -1901,7 +1901,7 @@ exports[`snapshot — 6 dims expanded (all rows visible) 1`] = `
         }
       }
     >
-      3pt
+      Longevity
     </Text>
     <View
       pointerEvents="none"
