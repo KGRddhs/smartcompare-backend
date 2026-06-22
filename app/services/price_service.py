@@ -3913,7 +3913,12 @@ async def fetch_iherb_price(
         loop = asyncio.get_event_loop()
         resp = await loop.run_in_executor(
             None,
-            lambda: curl_requests.get(search_url, impersonate="chrome", timeout=15, allow_redirects=True)
+            # WS-2 (genuine-bh bundle): inner curl timeout shrunk 15→4s. The
+            # supplement branch wraps fetch_iherb_price in a 4s asyncio.wait_for,
+            # but a wait_for cannot hard-cancel the run_in_executor thread — so the
+            # inner curl timeout MUST be ≤ the outer bound or the executor thread
+            # leaks past the cancel and burns into the 15s Phase-1 price cap.
+            lambda: curl_requests.get(search_url, impersonate="chrome", timeout=4, allow_redirects=True)
         )
         logger.info(f"[PRICE] iHerb response: status={resp.status_code}, length={len(resp.text)}")
         if resp.status_code != 200:

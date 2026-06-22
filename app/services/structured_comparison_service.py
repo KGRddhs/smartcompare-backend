@@ -670,6 +670,8 @@ from app.services.price_service import (
     is_high_value_query,
     is_implausible_high_value_price,
     is_implausible_low_fragrance_price,
+    is_price_showable,
+    make_pending_price,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
     is_price_plausible,
@@ -3825,6 +3827,62 @@ class StructuredComparisonService:
         specs["_cached"] = False
         return specs
 
+    @staticmethod
+    def _match_bh_organic_retailer(
+        bh_organic: List[Dict[str, Any]],
+        brand: str,
+        name: str,
+        full_name: str,
+        known_supplement_retailers: set,
+    ) -> Optional[Dict[str, str]]:
+        """WS-2 CDE-2 — deterministic retailer attribution for a retailer-less
+        supplement Tier-2 GPT price.
+
+        Returns {"retailer", "url"} ONLY when a bh_organic item DETERMINISTICALLY
+        ties to this product: its link domain is a known BH pharmacy / supplement
+        retailer AND its title/snippet brand+name-token-matches the product. NO
+        match → None (the price keeps its honest gpt_organic_extract label and
+        pends). NEVER guesses a retailer.
+        """
+        if not bh_organic:
+            return None
+        # Tokens the matched snippet must contain (lowercased) — brand + the
+        # significant name words. Drop short/noise tokens.
+        def _tokens(text: str) -> set:
+            return {
+                w for w in re.findall(r"[a-z0-9]+", (text or "").lower())
+                if len(w) >= 3
+            }
+
+        product_tokens = _tokens(f"{brand} {name}")
+        if not product_tokens:
+            return None
+        brand_tokens = _tokens(brand)
+        for item in bh_organic:
+            link = item.get("link", "") or ""
+            domain = urlparse(link).netloc.replace("www.", "")
+            if not domain:
+                continue
+            # Domain must be a known BH pharmacy or supplement retailer.
+            retailer_name = None
+            if domain in PHARMACY_DOMAINS:
+                retailer_name = PHARMACY_DOMAINS[domain]
+            elif domain in known_supplement_retailers:
+                retailer_name = domain.split(".")[0].capitalize()
+            if not retailer_name:
+                continue
+            # Title/snippet must token-match the product: the brand AND at least
+            # one significant non-brand name token must both appear.
+            text_tokens = _tokens(
+                f"{item.get('title', '')} {item.get('snippet', '')}"
+            )
+            brand_hit = bool(brand_tokens & text_tokens) if brand_tokens else True
+            name_only = product_tokens - brand_tokens
+            name_hit = bool(name_only & text_tokens) if name_only else False
+            if brand_hit and name_hit:
+                return {"retailer": retailer_name, "url": link}
+        return None
+
     def _price_fallback_on_miss(self, key: str, full_name: str):
         """S3-genuine prod-hardening (Fix A) — when a Phase-1 race for `key`
         timed out / errored, surface a graceful fallback instead of bare None.
@@ -3843,6 +3901,17 @@ class StructuredComparisonService:
                     full_name, parked.get("source_method"),
                 )
                 return parked
+            # WS-2 G1 (genuine-bh bundle) — NO trustworthy parked price for this
+            # price-key miss. Return the structured price-pending object, NEVER a
+            # bare None: the FE renders pending as a graceful "pricing lands in an
+            # upcoming update" line, whereas a raw None degrades to "N/A" (the G1
+            # "no missing data" violation). Covers BOTH the supplement and
+            # non-supplement timeout/error paths — the single chokepoint.
+            logger.info(
+                "[PRICE] race miss for %s with nothing parked → pending_genuine "
+                "(never None)", full_name,
+            )
+            return make_pending_price(currency="BHD", reason="pending_genuine")
         return None
 
     async def _get_price(
@@ -3907,7 +3976,16 @@ class StructuredComparisonService:
         else:
             full_name = f"{brand} {name} {variant or ''}".strip()
 
-        is_supplement = (category == "supplements") or is_supplement_query(full_name)
+        # WS-2 F1 (genuine-bh bundle) — ROUTING half of the supplement-misroute
+        # fix. Trust a CONCRETE non-supplement LLM/catfix category; only consult
+        # the name-keyword detector when the category is unresolved ("other"/None).
+        # The OLD `(category=="supplements") or is_supplement_query(full_name)`
+        # let any name containing a supplement substring (e.g. an electronics
+        # "Iron …" power bank) wrongly route into the iHerb/pharmacy branch.
+        is_supplement = (
+            (category == "supplements")
+            or (category in ("other", None) and is_supplement_query(full_name))
+        )
 
         # WS2 (genuine-bh-latency bundle) — per-sub-stage price timing, gated on
         # DEBUG_STAGE_TIMINGS so it's a true no-op in prod. Attributes the
@@ -4648,7 +4726,45 @@ class StructuredComparisonService:
             iherb_query = re.sub(r'\s+', ' ', iherb_query)
             iherb_cc = region_info["code"]
 
-            iherb_price = await fetch_iherb_price(iherb_query, brand, full_name, iherb_cc, currency)
+            # WS-2 (genuine-bh bundle) — reject-reason tracing, flag-gated
+            # no-op in prod (reuses the DEBUG_STAGE_TIMINGS pattern). One
+            # [SUPPL_REJECT] INFO per drop point so a dropped genuine price is
+            # diagnosable without burning a real eval run.
+            _suppl_debug = _debug_timings_enabled()
+
+            def _suppl_reject(stage: str, reason: str) -> None:
+                if _suppl_debug:
+                    logger.info(
+                        "[SUPPL_REJECT] stage=%s reason=%s name=%s",
+                        stage, reason, full_name[:60],
+                    )
+
+            def _maybe_park_supplement(price_obj: Dict[str, Any]) -> None:
+                """G3 trustworthy park — stash a supplement-stage price on self so
+                an outer wait_for cancel still yields it via _price_fallback_on_miss.
+                GATED by is_price_showable so a retailer-less gpt_organic_extract /
+                sample / accessory leak is NEVER parked."""
+                try:
+                    if is_price_showable(full_name, price_obj):
+                        self._parked_price[full_name] = dict(price_obj)
+                    else:
+                        _suppl_reject("park", "not_showable")
+                except Exception:
+                    pass
+
+            # --- Stage 1: iHerb direct (bounded ~4s) ---
+            # The inner curl runs in run_in_executor (can't hard-cancel); the
+            # inner curl timeout was shrunk to ~4s in price_service so the
+            # executor thread can't leak past this outer wait_for.
+            iherb_price = None
+            try:
+                iherb_price = await asyncio.wait_for(
+                    fetch_iherb_price(iherb_query, brand, full_name, iherb_cc, currency),
+                    timeout=4.0,
+                )
+            except asyncio.TimeoutError:
+                _suppl_reject("iherb", "wait_for_timeout")
+                iherb_price = None
             if iherb_price:
                 iherb_price["_cached"] = False
                 if iherb_price.get("iherb_rating"):
@@ -4659,6 +4775,7 @@ class StructuredComparisonService:
                         "link": iherb_price["url"],
                         "title": full_name,
                     }]
+                _maybe_park_supplement(iherb_price)
                 set_cached(cache_key, iherb_price, price_cache_ttl(iherb_price))
                 return iherb_price
 
@@ -4670,23 +4787,53 @@ class StructuredComparisonService:
             iherb_organic = iherb_results.get("organic", [])
             bh_organic = bh_pharmacy_results.get("organic", [])
 
-            pharmacy_price = await fetch_pharmacy_price(bh_organic, brand, full_name, currency, track_serper_cost_fn=self._track_serper_cost)
+            # --- Stage 2: BH pharmacy JSON-LD (bounded ~5s) ---
+            # Guards the 2×3×10≈60s worst case of the inner _try_pharmacy_urls
+            # loop at price_service.py.
+            pharmacy_price = None
+            try:
+                pharmacy_price = await asyncio.wait_for(
+                    fetch_pharmacy_price(
+                        bh_organic, brand, full_name, currency,
+                        track_serper_cost_fn=self._track_serper_cost,
+                    ),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                _suppl_reject("pharmacy", "wait_for_timeout")
+                pharmacy_price = None
             if pharmacy_price:
                 pharmacy_price["_cached"] = False
+                _maybe_park_supplement(pharmacy_price)
                 set_cached(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
                 return pharmacy_price
 
+            # --- Stage 3: page-scrape known supplement/pharmacy PDPs (bounded ~3s) ---
+            known_supplement_retailers = {"iherb.com", "bn.boots.com", "bolo.bh", "amazon.com", "noon.com"}
             if ENABLE_PAGE_SCRAPE:
-                known_supplement_retailers = {"iherb.com", "bn.boots.com", "bolo.bh", "amazon.com", "noon.com"}
-                for item in (iherb_organic + bh_organic)[:5]:
-                    link = item.get("link", "")
-                    link_domain = urlparse(link).netloc.replace("www.", "")
-                    if link_domain in known_supplement_retailers or link_domain in PHARMACY_DOMAINS:
-                        page_price = await fetch_page_price(link, full_name, currency)
-                        if page_price and page_price.get("amount"):
-                            page_price["_cached"] = False
-                            set_cached(cache_key, page_price, price_cache_ttl(page_price))
-                            return page_price
+                async def _page_scrape_supplement_stage():
+                    for item in (iherb_organic + bh_organic)[:5]:
+                        link = item.get("link", "")
+                        link_domain = urlparse(link).netloc.replace("www.", "")
+                        if link_domain in known_supplement_retailers or link_domain in PHARMACY_DOMAINS:
+                            pp = await fetch_page_price(link, full_name, currency)
+                            if pp and pp.get("amount"):
+                                return pp
+                    return None
+
+                page_price = None
+                try:
+                    page_price = await asyncio.wait_for(
+                        _page_scrape_supplement_stage(), timeout=3.0,
+                    )
+                except asyncio.TimeoutError:
+                    _suppl_reject("page_scrape", "wait_for_timeout")
+                    page_price = None
+                if page_price and page_price.get("amount"):
+                    page_price["_cached"] = False
+                    _maybe_park_supplement(page_price)
+                    set_cached(cache_key, page_price, price_cache_ttl(page_price))
+                    return page_price
 
             combined_organic = iherb_organic + bh_organic
             if combined_organic:
@@ -4705,6 +4852,35 @@ class StructuredComparisonService:
         sanitize_gpt_price(price)
         _convert_gpt_price_currency(price, currency)
         if price and price.get("amount"):
+            # WS-2 CDE-2 (genuine-bh bundle) — DETERMINISTIC retailer attribution.
+            # When the Tier-2 GPT extract has an amount but NO retailer AND the
+            # iHerb organic results are empty (so the iHerb-fallback below won't
+            # fire), try to attribute a retailer ONLY from a bh_organic item that
+            # DETERMINISTICALLY ties to this product: the item's link domain must
+            # be a known BH pharmacy / supplement retailer AND its title/snippet
+            # must token-match the product (brand + name). NO match → leave the
+            # honest gpt_organic_extract (it pends). NEVER guess a retailer.
+            if (
+                is_supplement
+                and price.get("amount")
+                and not price.get("retailer")
+                and not iherb_organic
+            ):
+                _matched = self._match_bh_organic_retailer(
+                    bh_organic, brand, name, full_name,
+                    known_supplement_retailers,
+                )
+                if _matched:
+                    price["retailer"] = _matched["retailer"]
+                    price["url"] = _matched["url"]
+                    price["source_method"] = "local_bhd"
+                    if _suppl_debug:
+                        logger.info(
+                            "[SUPPL_REJECT] stage=cde2 reason=attributed name=%s "
+                            "retailer=%s", full_name[:60], _matched["retailer"],
+                        )
+                else:
+                    _suppl_reject("cde2", "no_deterministic_match")
             # PHANTOM-PRICE FIX (team-lead gate-review 2026-06-14): a Tier-2
             # GPT-organic extract WITHOUT a retailer is a GUESS from search
             # snippets, NOT a cited genuine-BH retailer price — it must NOT be
@@ -4774,6 +4950,11 @@ class StructuredComparisonService:
             if price and price.get("amount"):
                 if price.get("retailer") and not price.get("url"):
                     price["url"] = build_retailer_url(price["retailer"], full_name)
+                # WS-2 G3 trustworthy park — only a showable (genuine, real-retailer,
+                # non-sample) Tier-2 price is stashed; a retailer-less
+                # gpt_organic_extract fails is_price_showable and is NEVER parked.
+                if is_supplement:
+                    _maybe_park_supplement(price)
                 set_cached(cache_key, price, price_cache_ttl(price))
                 self._save_price_to_db(cache_key, brand, name, variant, region, price)
                 price["_cached"] = False
