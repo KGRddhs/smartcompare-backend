@@ -15,7 +15,7 @@ from app.services.scoring_service import (
     compute_confidence,
     count_missing_dim_cells,
 )
-from app.services.text_sanitize import has_score_internals, strip_score_internals
+from app.services.text_sanitize import has_score_internals, strip_score_internals, scrub_review_summary
 
 logger = logging.getLogger(__name__)
 
@@ -1210,6 +1210,20 @@ def build_comparison_response(
             _name = pd_item.get("full_name") or pd_item.get("name") or ""
             _price = pd_item.get("price")
             if not isinstance(_price, dict):
+                # SIB-5/G1 — a raw None / non-dict price (supplements returned
+                # NO price, a `_price_fallback_on_miss` terminal that surfaced a
+                # bare None, or any non-dict slot) must render the calm pending
+                # line, NOT the FE "N/A" branch (ResultsContent.tsx:128). This is
+                # the response_builder backstop to WS-2's deliberate upstream None
+                # (kept None so the INSUFFICIENT_DATA fake-winner guard works);
+                # by the time we reach here the comparison is PROCEEDING, so
+                # pending this None is correct.
+                pd_item["price"] = make_pending_price(
+                    currency="BHD", reason="pending_genuine",
+                )
+                pd_item["best_price"] = None
+                if "retailer" in pd_item:
+                    pd_item["retailer"] = None
                 continue
             # An upstream pass (e.g. Task C2 size-basis reconciliation in the
             # orchestrator) may already have marked this price pending with its
@@ -1248,6 +1262,44 @@ def build_comparison_response(
             _cons = _pc.get("cons")
             if isinstance(_cons, list):
                 _pc["cons"] = [c for c in _cons if not has_score_internals(c)]
+
+    # SIB-4 (WS-5 / G5) — widen the fail-closed score-internals scrub to EVERY
+    # user-visible GPT text field. The A5 scrub above only covers pros/cons +
+    # (below) the winner text. These four `comparison` keys ALSO carry free GPT
+    # text a user sees, and each surfaces on BOTH a dedicated slot (overview /
+    # specs / personalization) AND the `result["comparison"]` BC alias. Mutating
+    # the SOURCE `comparison` keys IN PLACE here — BEFORE the value_context
+    # closure read (below) and the `result = {...}` assembly — is the single
+    # chokepoint: every downstream read (the `_value_context_for` closure, the
+    # `best_for` / `spec_advantages` emits, `personalized_insights` at both the
+    # dedicated slot and the top-level alias, AND `result["comparison"]`) then
+    # ships clean in one pass. STRIP one-sentence fields (value_context /
+    # best_for / insight) — "" if fully leaked, the FE tolerates a blank. DROP
+    # whole list elements for advantages/similar (pros/cons semantics: an
+    # advantage that is purely a number is meaningless once the number is
+    # removed). pros/cons are .pop()'d off `comparison` upstream → already safe.
+    _vc = comparison.get("value_context")
+    if isinstance(_vc, dict):
+        for _k, _v in list(_vc.items()):
+            if isinstance(_v, str):
+                _vc[_k] = strip_score_internals(_v)
+    elif isinstance(_vc, str):
+        comparison["value_context"] = strip_score_internals(_vc)
+    _bf = comparison.get("best_for")
+    if isinstance(_bf, dict):
+        for _k, _v in list(_bf.items()):
+            if isinstance(_v, str):
+                _bf[_k] = strip_score_internals(_v)
+    _sc = comparison.get("specs_comparison")
+    if isinstance(_sc, dict):
+        for _k, _v in list(_sc.items()):
+            if isinstance(_v, list):
+                _sc[_k] = [s for s in _v if not has_score_internals(s)]
+    _pi = comparison.get("personalized_insights")
+    if isinstance(_pi, list):
+        for _item in _pi:
+            if isinstance(_item, dict) and isinstance(_item.get("insight"), str):
+                _item["insight"] = strip_score_internals(_item["insight"])
 
     # Task C3 — fail-closed price-adjective drop (defense-in-depth beside C1/C2).
     # The price-pending normalization above runs FIRST, so a non-showable price
@@ -1416,13 +1468,20 @@ def build_comparison_response(
                     # the key is PRESENT with None value, then .get('review_summary')
                     # raises AttributeError. (X or {}).get(...) coalesces None→{}.
                     # Regression: PYTHON-FASTAPI-J event ecaa64acab224c599c9aba3bb92dfc89.
-                    "review_summary": (pd.get("reviews") or {}).get("review_summary", {
-                        "overall_sentiment": "mixed",
-                        "consensus": "",
-                        "highlights": [],
-                        "review_volume": "minimal",
-                        "agreement_level": "moderate",
-                    }),
+                    # WS-5 follow-up — scrub any internal-score leak from the
+                    # review_summary free GPT text (consensus + highlights[].point);
+                    # REVIEWS_EXTRACTION_SYSTEM has no score-forbid rule and the
+                    # payload is persisted/re-served even though the FE no longer
+                    # renders it (Contract 2 → review_praise).
+                    "review_summary": scrub_review_summary(
+                        (pd.get("reviews") or {}).get("review_summary", {
+                            "overall_sentiment": "mixed",
+                            "consensus": "",
+                            "highlights": [],
+                            "review_volume": "minimal",
+                            "agreement_level": "moderate",
+                        })
+                    ),
                     # ITEM 1 — up to 3 per-source review quotes the FE Reviews
                     # accordion renders as compact AMAZON ★★★★★ "quote" lines.
                     # Built in _fetch_product_data from REAL organic snippets
