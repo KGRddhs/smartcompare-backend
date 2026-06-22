@@ -4,7 +4,9 @@ stages + trustworthy park + CDE-2 deterministic retailer attribution + the G1
 
 Six contracts (plan §WS-2 lines 131-137):
   1. category gate trusts a concrete non-supplement LLM/catfix category;
-  2. a price-key race miss returns the PENDING shape (never bare None) — G1;
+  2. a price-key race miss returns bare None (NOT a pending dict) so the
+     INSUFFICIENT_DATA fake-winner guard (_phase1_completely_failed) still fires;
+     the G1 pending RENDER is a response_builder concern (WS-5 SIB-5);
   3. an iHerb hit is PARKED (gated by is_price_showable) and survives a forced
      cancel via _price_fallback_on_miss;
   4. a retailer-less gpt_organic_extract PENDS — not parked, not shown — G3;
@@ -153,36 +155,44 @@ class TestCategoryGateTrustsConcreteCategory:
 # 2. G1 — a price-key race miss returns PENDING, never bare None
 # ---------------------------------------------------------------------------
 
-class TestTimeoutReturnsPendingNotNone:
-    def test_price_fallback_on_miss_returns_pending_shape(self, service):
-        """`_price_fallback_on_miss('price', name)` with NOTHING parked must
-        return the pending shape {amount:None, unavailable:True,
-        reason:'pending_genuine'} — NOT bare None (G1 chokepoint)."""
+class TestTimeoutTerminalPreservesGuard:
+    """WS-2 gate-fix (reviewer-2 ISSUE 1): _price_fallback_on_miss for a price-key
+    miss with nothing parked must return bare None, NOT a make_pending_price dict.
+    A truthy pending dict defeats _phase1_completely_failed (the INSUFFICIENT_DATA
+    fake-winner guard, which treats {amount:None} as 'proceed to scoring'). The G1
+    'no raw N/A' render is response_builder's job (WS-5 SIB-5)."""
+
+    def test_price_fallback_on_miss_returns_none_preserving_guard(self, service):
+        """Nothing parked → bare None (so the price-key stays falsy for the
+        INSUFFICIENT_DATA guard)."""
         service._parked_price = {}
-        result = service._price_fallback_on_miss("price", "NOW Foods Vitamin D3")
-        assert isinstance(result, dict)
-        assert result["amount"] is None
-        assert result["unavailable"] is True
-        assert result["reason"] == "pending_genuine"
-        assert result["currency"] == "BHD"
+        assert service._price_fallback_on_miss("price", "NOW Foods Vitamin D3") is None
+
+    def test_insufficient_data_guard_still_fires(self, service):
+        """The terminal keeps _phase1_completely_failed working: both specs+price
+        None → True (INSUFFICIENT_DATA fires, no fake winner); specs present +
+        price None → False (comparison proceeds, price pended at render)."""
+        from app.services.structured_comparison_service import _phase1_completely_failed
+        assert _phase1_completely_failed({"specs": None, "price": None}) is True
+        assert _phase1_completely_failed({"specs": {"display": "x"}, "price": None}) is False
 
     def test_price_fallback_on_miss_non_price_key_still_none(self, service):
         """For specs/reviews/image the terminal must STAY bare None (those degrade
-        to missing-data unchanged — the pending shape is price-only)."""
+        to missing-data unchanged)."""
         service._parked_price = {}
         assert service._price_fallback_on_miss("specs", "NOW Foods Vitamin D3") is None
         assert service._price_fallback_on_miss("reviews", "NOW Foods Vitamin D3") is None
         assert service._price_fallback_on_miss("image_url", "NOW Foods Vitamin D3") is None
 
-    def test_supplement_timeout_returns_pending_not_none(self, service):
-        """Integration: patch _PHASE1_TIMEOUTS['price'] low so the supplement
-        _get_price race times out → the Phase-1 handler surfaces the pending
-        shape, never None."""
+    def test_supplement_timeout_terminal_is_none_not_fake_winner(self, service):
+        """Integration: a supplement _get_price race timeout with nothing parked
+        surfaces None via _price_fallback_on_miss (NOT a truthy pending dict), so
+        when specs ALSO fail the INSUFFICIENT_DATA guard fires — no fake product_0
+        winner. The user-facing pending render is response_builder's job (WS-5)."""
         async def _slow_iherb(*a, **k):
             await asyncio.sleep(5.0)  # well past the patched cap
             return None
 
-        # Drive the full _fetch_product_data race so the timeout handler fires.
         mod = "app.services.structured_comparison_service"
         with patch(f"{mod}._PRICE_RACE_TIMEOUT", 0.05), \
              patch(f"{mod}.fetch_iherb_price", new=_slow_iherb), \
@@ -193,9 +203,6 @@ class TestTimeoutReturnsPendingNotNone:
                    new_callable=AsyncMock, return_value=None), \
              patch(f"{mod}.get_negative_cache", return_value=None), \
              patch(f"{mod}.should_escalate", return_value=False):
-            # Call _get_price wrapped in the same wait_for the Phase-1 race uses,
-            # then route the TimeoutError through _price_fallback_on_miss exactly
-            # as the handler does.
             service._parked_price = {}
             full_name = "NOW Foods Vitamin D3"
             try:
@@ -204,13 +211,10 @@ class TestTimeoutReturnsPendingNotNone:
                                        "NOW Foods Vitamin D3", category="supplements"),
                     timeout=0.05,
                 ))
-                settled = None  # pragma: no cover — should time out
+                settled = "did-not-time-out"  # pragma: no cover — should time out
             except asyncio.TimeoutError:
                 settled = service._price_fallback_on_miss("price", full_name)
-            assert isinstance(settled, dict)
-            assert settled["amount"] is None
-            assert settled["unavailable"] is True
-            assert settled["reason"] == "pending_genuine"
+            assert settled is None
 
 
 # ---------------------------------------------------------------------------

@@ -671,7 +671,6 @@ from app.services.price_service import (
     is_implausible_high_value_price,
     is_implausible_low_fragrance_price,
     is_price_showable,
-    make_pending_price,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
     is_price_plausible,
@@ -3901,17 +3900,18 @@ class StructuredComparisonService:
                     full_name, parked.get("source_method"),
                 )
                 return parked
-            # WS-2 G1 (genuine-bh bundle) — NO trustworthy parked price for this
-            # price-key miss. Return the structured price-pending object, NEVER a
-            # bare None: the FE renders pending as a graceful "pricing lands in an
-            # upcoming update" line, whereas a raw None degrades to "N/A" (the G1
-            # "no missing data" violation). Covers BOTH the supplement and
-            # non-supplement timeout/error paths — the single chokepoint.
-            logger.info(
-                "[PRICE] race miss for %s with nothing parked → pending_genuine "
-                "(never None)", full_name,
-            )
-            return make_pending_price(currency="BHD", reason="pending_genuine")
+            # WS-2 gate-fix (genuine-bh bundle) — DELIBERATELY return None here, NOT
+            # a make_pending_price() dict. _phase1_completely_failed (the
+            # INSUFFICIENT_DATA fake-winner guard) is `specs is None and price is
+            # None` and treats a {amount:None} pending DICT as "poor-quality data,
+            # proceed to scoring" — so returning a pending dict would defeat the
+            # guard and let the all-MISSING_SCORE tie-break elect a fake product_0
+            # winner when BOTH specs AND price genuinely timed out. The G1 "no raw
+            # None/N/A" requirement is satisfied at the RENDER boundary instead:
+            # the supplement branch's own {amount:None,...} terminal is already a
+            # dict (response_builder pends it), and response_builder SIB-5 (WS-5)
+            # normalizes any surviving bare None to the pending shape. Keep the
+            # guard input honest = None.
         return None
 
     async def _get_price(
