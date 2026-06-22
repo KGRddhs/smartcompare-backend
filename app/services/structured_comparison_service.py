@@ -679,6 +679,7 @@ from app.services.price_service import (
     extract_domain,
     parse_price_string,
     detect_currency,
+    extract_sizes_ml,
     normalize_words,
     numbers_match,
     strict_title_match,
@@ -1310,7 +1311,15 @@ def _harvest_candidate_urls(
     # --- Bahrain registry tier (NEW, harvested FIRST) ---
     bh = results_by_tier.get("bahrain")
     if bh and bh.get("organic"):
-        for item in bh["organic"][:4]:
+        # DM-3 (WS-3) — DOMAIN DIVERSITY, not result count. build_site_discovery_query
+        # queries up to 8 distinct BH registry domains (limit=8); the top-4 organic
+        # results are often 1-2 dominant domains, so a genuine registry PDP from one
+        # of the OTHER queried domains lands at position 5-8 and was silently
+        # dropped. Read 8 so those domains' PDPs are in-window. The gate below
+        # (validate_scrape_url + review-only + variant_mismatch + weight>=1.5)
+        # still rejects noise at the new positions. Bahrain-only scope — the
+        # official [:2] / authorized / gcc windows are unchanged.
+        for item in bh["organic"][:8]:
             _try_bh_candidate(item.get("link", ""), item.get("title", ""))
             # S3 electronics-authority (prong b, piece 1) — ALSO harvest PDP
             # SITELINKS. The genuine sharafdg base PDP often ranks only as a
@@ -3976,6 +3985,15 @@ class StructuredComparisonService:
         else:
             full_name = f"{brand} {name} {variant or ''}".strip()
 
+        # CDE-4 (WS-3) — closure-local flag set True whenever an accuracy guard
+        # (is_implausible_high_value_price / is_implausible_low_fragrance_price)
+        # DROPS a real candidate this request. The Tier-3 estimate that follows is
+        # then a TRANSIENT guard reject, NOT a structural genuine-BH dead-end — so
+        # its negative-cache TTL is capped to 24h (not the 30d sentinel) so a
+        # later-correct PDP isn't suppressed for 30 days. _finalize_fan_winner (a
+        # nested closure) flips it via `nonlocal`.
+        _guard_rejected_this_request = False
+
         # WS-2 F1 (genuine-bh bundle) — ROUTING half of the supplement-misroute
         # fix. Trust a CONCRETE non-supplement LLM/catfix category; only consult
         # the name-keyword detector when the category is unresolved ("other"/None).
@@ -4174,6 +4192,7 @@ class StructuredComparisonService:
                 # promotes it. No estimate is fetched here just to veto.
                 if not is_price_plausible(_convert_to_bhd(price["amount"], currency), category) or is_implausible_high_value_price(full_name, _convert_to_bhd(price["amount"], currency)):
                     price = None
+                    _guard_rejected_this_request = True  # CDE-4
             elif price.get("retailer_score", 0) < 1.0 and is_implausible_low_fragrance_price(
                 full_name, _convert_to_bhd(price["amount"], currency), price.get("title")
             ):
@@ -4184,6 +4203,7 @@ class StructuredComparisonService:
                 # genuine full-bottle scrape or an honest converted/estimated
                 # figure, never serves the sample as the real price.
                 price = None
+                _guard_rejected_this_request = True  # CDE-4
             if price and price.get("amount"):
                 price.pop("retailer_score", None)
                 # Approach A — PARK a CONVERTED_USD Tier-1 price; defer to the
@@ -4200,6 +4220,13 @@ class StructuredComparisonService:
                     # Genuine Tier-1 short-circuit — the speculative discovery
                     # prefetch is not needed; cancel it (no orphan Serper calls).
                     _cancel_prefetched_discovery()
+                    # CDE-3 — seed the FULL viable Tier-1 candidate set (every
+                    # showable shopping item) so the pair-level fairness reconcile
+                    # can re-select this product to the common comparable unit
+                    # without a new fetch. A winner-only seed would be a no-op.
+                    self._seed_shortcircuit_candidates(
+                        full_name, kind="tier1_shopping", currency=currency,
+                    )
                     set_cached(cache_key, price, price_cache_ttl(price))
                     self._save_price_to_db(cache_key, brand, name, variant, region, price)
                     price["_cached"] = False
@@ -4328,6 +4355,14 @@ class StructuredComparisonService:
                         # Official-Shopify short-circuit — cancel the speculative
                         # discovery prefetch (no orphan Serper calls; L5.3).
                         _cancel_prefetched_discovery()
+                        # CDE-3 — seed ALL parsed Shopify alternates (not just
+                        # shop_best) so the pair fairness reconcile can re-select
+                        # this product to the common comparable unit (a 50ml +
+                        # 100ml both in the /products.json catalog) without a fetch.
+                        self._seed_shortcircuit_candidates(
+                            full_name, kind="price_dicts", currency=currency,
+                            price_dicts=shop_results,
+                        )
                         set_cached(cache_key, shop_best, price_cache_ttl(shop_best))
                         self._save_price_to_db(
                             cache_key, brand, name, variant, region, shop_best
@@ -4412,6 +4447,13 @@ class StructuredComparisonService:
                     record_tier15_hit(category, win_domain or None)
                     # Algolia genuine short-circuit — cancel speculative prefetch.
                     _cancel_prefetched_discovery()
+                    # CDE-3 — seed ALL parsed Algolia alternates (not just
+                    # algolia_best) so the pair fairness reconcile can re-select
+                    # this product to the common comparable unit without a fetch.
+                    self._seed_shortcircuit_candidates(
+                        full_name, kind="price_dicts", currency=currency,
+                        price_dicts=algolia_results,
+                    )
                     set_cached(cache_key, algolia_best, price_cache_ttl(algolia_best))
                     self._save_price_to_db(
                         cache_key, brand, name, variant, region, algolia_best
@@ -4550,6 +4592,7 @@ class StructuredComparisonService:
                 def _finalize_fan_winner(fan_result):
                     """Stamp + route-record + cache a fan_out winner; returns the
                     winning_price dict or None. Shared by the curl + render waves."""
+                    nonlocal _guard_rejected_this_request  # CDE-4
                     best = fan_result.get("best")
                     if not (best and best.get("raw_data") and best["raw_data"].get("amount")):
                         return None
@@ -4566,6 +4609,7 @@ class StructuredComparisonService:
                             "high-value (accessory/wrong-product?) — falling through",
                             winning_price.get("amount") or 0.0, full_name,
                         )
+                        _guard_rejected_this_request = True  # CDE-4
                         return None
                     # #17 B1 — fragrance size-plausibility. A genuine-BH scrape can
                     # land on a sample/decant PDP (a designer fragrance priced far
@@ -4579,6 +4623,7 @@ class StructuredComparisonService:
                             "low fragrance (sample/decant/wrong-SKU?) — falling through",
                             winning_price.get("amount") or 0.0, full_name,
                         )
+                        _guard_rejected_this_request = True  # CDE-4
                         return None
                     win_domain = str(winning_price.get("retailer") or "").replace("www.", "").lower()
                     for _link, _label, _route, _weight in harvested:
@@ -4938,15 +4983,26 @@ class StructuredComparisonService:
                     _ref_bhd and _ref_bhd > 0
                     and not (0.4 <= _bhd_amt / _ref_bhd <= 2.5)
                 )
+                # CDE-4 — track whether an ACCURACY guard (not a plain wrong-SKU /
+                # implausibility-band reject) dropped this real organic-extract
+                # price. Only the two named guards mark the estimate as a transient
+                # guard reject (cap negcache to 24h); a structural plausibility miss
+                # stays a 30d dead-end.
+                _t2_hv_reject = is_implausible_high_value_price(full_name, _bhd_amt)
+                _t2_lowfrag_reject = is_implausible_low_fragrance_price(
+                    full_name, _bhd_amt, price.get("title")
+                )
                 if (
                     _wrong_sku
                     or not is_price_plausible(_bhd_amt, category)
-                    or is_implausible_high_value_price(full_name, _bhd_amt)
+                    or _t2_hv_reject
                     # #17 B1 — reject a designer-fragrance organic-extract price
                     # implausibly low for its detected/expected size (sample/decant).
-                    or is_implausible_low_fragrance_price(full_name, _bhd_amt, price.get("title"))
+                    or _t2_lowfrag_reject
                 ):
                     price = None
+                    if _t2_hv_reject or _t2_lowfrag_reject:
+                        _guard_rejected_this_request = True  # CDE-4
             if price and price.get("amount"):
                 if price.get("retailer") and not price.get("url"):
                     price["url"] = build_retailer_url(price["retailer"], full_name)
@@ -5030,7 +5086,13 @@ class StructuredComparisonService:
             # cascade is a structural dead-end. Record it so we don't re-run the
             # full discovery+scrape next time (just serve this estimate from the
             # negative cache).
-            self._record_negative_price_cache(cache_key, price)
+            # CDE-4 — but if a real candidate was DROPPED by an accuracy guard this
+            # request (a wrong-cheap accessory / sample leak), this estimate is a
+            # TRANSIENT guard reject, not structural: cap the negcache to 24h so a
+            # later-correct PDP isn't suppressed 30d.
+            self._record_negative_price_cache(
+                cache_key, price, guard_rejected=_guard_rejected_this_request
+            )
             price["_cached"] = False
             return price
 
@@ -5239,7 +5301,109 @@ class StructuredComparisonService:
                 out["key_tradeoff"] = f"{loser_name} stays competitive on {dim_label}."
         return out
 
-    def _record_negative_price_cache(self, cache_key: str, price: Dict) -> None:
+    def _seed_shortcircuit_candidates(
+        self,
+        full_name: str,
+        *,
+        kind: str,
+        currency: str = "BHD",
+        price_dicts: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        """CDE-3 (WS-3) — seed self._price_candidates from a NON-cache short-circuit
+        path with the FULL viable candidate set the path observed, NOT just the
+        single winner it returned.
+
+        A winner-only seed is a NO-OP (Open Question Q2): a single short-circuit
+        price has ONE size, so the pair-level reconcile either passes it through at
+        tolerance (seed unused) or needs a DIFFERENT candidate at the common target
+        (the winner == cur, so no help). To actually let reconcile_pair_fairness
+        re-select a product to the pair's common comparable unit WITHOUT a new
+        network call, the WHOLE set the path saw must be retained:
+          - Tier-1 Serper Shopping → every showable item in
+            self._shopping_items_cache[full_name].
+          - Shopify / Algolia → ALL parsed alternates (the caller passes
+            price_dicts), not only shop_best/algolia_best.
+
+        Each observed price is normalized to the fan_out candidate shape that
+        reselect_to_target_value / _candidate_value read (`value`, `size`,
+        `source_method`, `retailer`, `title`, `variant_rank`, `raw_data`=the price
+        dict so the genuine source_method survives the is_price_showable gate).
+        Every candidate is GATED by is_price_showable (G3 — no sample / estimated /
+        retailer-less GPT output enters the re-selection pool). Fail-open: any
+        error here must never block a price (mirrors the fan_out seed at the curl/
+        render waves). NO new network — pure stash of already-observed data.
+
+        Cache hits are intentionally NOT seeded (documented residual): a cache hit
+        observed no live candidate set.
+        """
+        try:
+            observed: List[Dict[str, Any]] = []
+            if kind == "tier1_shopping":
+                items = self._shopping_items_cache.get(full_name) or []
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    price_str = item.get("price")
+                    if not price_str:
+                        continue
+                    amount = parse_price_string(price_str)
+                    if amount is None or amount <= 0:
+                        continue
+                    detected = detect_currency(price_str)
+                    item_converted = bool(detected and detected != currency)
+                    if detected and detected != currency:
+                        amount = _convert_to_bhd(amount, detected)
+                        if currency != "BHD":
+                            rate = _convert_to_bhd(1.0, currency)
+                            if rate > 0:
+                                amount = amount / rate
+                    title = item.get("title", "") or ""
+                    retailer = item.get("source", "") or ""
+                    sizes = extract_sizes_ml(title)
+                    size = (sorted(sizes)[0] + "ml") if sizes else None
+                    observed.append({
+                        "amount": round(amount, 2),
+                        "currency": currency,
+                        # honest label: gl=string-converted -> converted_usd, else
+                        # native local_bhd (matches extract_price_from_shopping).
+                        "source_method": "converted_usd" if item_converted else "local_bhd",
+                        "retailer": retailer,
+                        "url": item.get("link") or build_retailer_url(retailer, full_name),
+                        "title": title,
+                        "size": size,
+                    })
+            elif kind == "price_dicts":
+                for p in (price_dicts or []):
+                    if not isinstance(p, dict) or not p.get("amount"):
+                        continue
+                    observed.append(dict(p))
+            else:  # unknown kind — nothing to seed
+                return
+
+            seeded: List[Dict[str, Any]] = []
+            for price in observed:
+                # G3 — only a showable (genuine/converted, real retailer, non-
+                # sample, passes the is_implausible_* accuracy guards) price enters
+                # the re-selection pool.
+                if not is_price_showable(full_name, price):
+                    continue
+                seeded.append({
+                    "value": price.get("amount"),
+                    "size": price.get("size"),
+                    "source_method": price.get("source_method") or "",
+                    "retailer": price.get("retailer"),
+                    "title": price.get("title"),
+                    "variant_rank": float(price.get("variant_rank", 0) or 0),
+                    "raw_data": price,
+                })
+            if seeded:
+                self._price_candidates.setdefault(full_name, []).extend(seeded)
+        except Exception:  # noqa: BLE001 — retention must never block a price
+            pass
+
+    def _record_negative_price_cache(
+        self, cache_key: str, price: Dict, guard_rejected: bool = False,
+    ) -> None:
         """Task 1.3 — record a structural genuine-BH dead-end so the next call
         skips the expensive Tier-1.5 scrape cascade.
 
@@ -5249,12 +5413,24 @@ class StructuredComparisonService:
         genuine price or a validation rejection). Stores the resolved non-genuine
         result so the sentinel hit can serve it directly. Fail-open: a Redis
         error is swallowed (the sentinel is an optimization, not correctness).
+
+        CDE-4 (WS-3) — `guard_rejected`: when a REAL candidate was DROPPED this
+        request by an accuracy guard (is_implausible_high_value_price /
+        is_implausible_low_fragrance_price — a wrong-cheap accessory / sample
+        leak), the estimate that follows is NOT a structural dead-end; it's a
+        transient guard reject. 30d-sentineling it would suppress a later-correct
+        PDP for 30 days. So the TTL is capped to 24h (PRICE_CACHE_TTL) — the cascade
+        re-runs on the next request after the short burst, and G1 is preserved
+        (no fabrication, just a re-run). The converted_usd path is untouched
+        (should_negative_cache returns False for converted_usd — SF-1 exempt — so
+        this flag never affects it).
         """
         try:
             if not should_negative_cache(price):
                 return
+            ttl = PRICE_CACHE_TTL if guard_rejected else NEGATIVE_PRICE_CACHE_TTL
             set_negative_cache(
-                negative_cache_key(cache_key), price, NEGATIVE_PRICE_CACHE_TTL
+                negative_cache_key(cache_key), price, ttl
             )
         except Exception as e:  # noqa: BLE001 — never let the optimization break a resolution
             logger.debug(f"negative-cache write skipped: {e}")
