@@ -66,22 +66,27 @@ describe('ResultsAccordion — edge cases (idle-policy coverage)', () => {
     expect(getByText('false')).toBeTruthy();
   });
 
-  it('unions asymmetric key sets — A has display, B has dimensions', () => {
+  it('drops fully one-sided rows — A-only display + B-only dimensions both dropped', () => {
+    // Task E3 (frag-content-quality WS-E / P7 / FE-3): re-baselined from the
+    // prior "union + em-dash" behavior. When exactly one product has a value
+    // (display on A only, dimensions on B only) the row is one-sided and is
+    // DROPPED to keep the spec table symmetric (matches CategoryProfile). No
+    // silent value·LABEL·"—" rows survive.
     const asym: any = [
       { name: 'iPhone 15', specs: { display: '6.1" OLED' } },
       { name: 'Galaxy S24', specs: { dimensions: '147x71x7.6 mm' } },
     ];
-    const { getByTestId, getByText, getAllByText } = render(
+    const { getByTestId, queryByText, queryAllByText } = render(
       <ResultsAccordion products={asym} specsProducts={asym} />
     );
     fireEvent.press(getByTestId('results-specs-toggle'));
-    // Both keys surface
-    expect(getByText('display')).toBeTruthy();
-    expect(getByText('dimensions')).toBeTruthy();
-    expect(getByText('6.1" OLED')).toBeTruthy();
-    expect(getByText('147x71x7.6 mm')).toBeTruthy();
-    // The cell where the OTHER product has no value renders em-dash
-    expect(getAllByText('—').length).toBeGreaterThanOrEqual(2);
+    // Both rows are one-sided → both dropped; neither key nor value surfaces.
+    expect(queryByText('display')).toBeNull();
+    expect(queryByText('dimensions')).toBeNull();
+    expect(queryByText('6.1" OLED')).toBeNull();
+    expect(queryByText('147x71x7.6 mm')).toBeNull();
+    // No silent one-sided em-dash rows remain.
+    expect(queryAllByText('—').length).toBe(0);
   });
 
   it('treats `0` (numeric zero) as a real value, NOT em-dash', () => {
@@ -102,21 +107,27 @@ describe('ResultsAccordion — edge cases (idle-policy coverage)', () => {
     expect(queryAllByText('—').length).toBe(0);
   });
 
-  it('treats empty-string spec values as N/A → em-dash', () => {
-    // Empty string is in the NA_VALUES set ("") — it should never
-    // surface as a blank cell.
+  it('drops the row when an empty-string value (→ N/A) makes it one-sided', () => {
+    // Empty string is in the NA_VALUES set ("") → coerces to the em-dash
+    // "missing" form. Task E3: with a real value on the OTHER product the
+    // `color` row is one-sided → DROPPED (re-baselined from the prior
+    // "blank cell → em-dash" behavior). A both-present row (`size`) stays.
     const withEmpty: any = [
       { name: 'A', specs: { color: '', size: 'large' } },
       { name: 'B', specs: { color: 'black', size: 'large' } },
     ];
-    const { getByTestId, getByText, getAllByText } = render(
+    const { getByTestId, getAllByText, queryByText } = render(
       <ResultsAccordion products={withEmpty} specsProducts={withEmpty} />
     );
     fireEvent.press(getByTestId('results-specs-toggle'));
-    expect(getByText('color')).toBeTruthy();
-    expect(getByText('black')).toBeTruthy();
-    // The empty-string cell for product A renders em-dash
-    expect(getAllByText('—').length).toBeGreaterThanOrEqual(1);
+    // The one-sided color row is dropped — neither the key nor its lone value.
+    expect(queryByText('color')).toBeNull();
+    expect(queryByText('black')).toBeNull();
+    // No silent one-sided em-dash cell remains.
+    expect(queryByText('—')).toBeNull();
+    // The both-present `size` row still renders (large on both).
+    expect(queryByText('size')).toBeTruthy();
+    expect(getAllByText('large').length).toBe(2);
   });
 
   it('expanded specs body snapshot — pins full row content + ordering', () => {

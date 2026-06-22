@@ -66,6 +66,7 @@ import { RevealBurst } from '../hero/RevealBurst';
 // W1 walk-fix 2026-06-18 — CategoryProfile now lives INSIDE the "Dig deeper"
 // accordion (ResultsAccordion), not as a standalone block here.
 import { ResultsAccordion } from './ResultsAccordion';
+import { SCORE_INTERNALS_RE } from './_deltaText';
 import { anyEstimated } from '../../services/sourceMethod';
 import { ProductImage } from '../primitives/ProductImage';
 
@@ -133,6 +134,12 @@ export function ResultsContent({
   // pill) so we never show a price delta that doesn't exist, and we strip
   // the price clause from the headline below.
   const pricePending = products.some((p) => p.price?.unavailable === true);
+
+  // WS-F Task F2 (FE-8) — fragrance compares routinely hit the 30s
+  // STREAM_HARD_CAP and return `metadata.partial === true` (a best-available
+  // assembly, NOT an error). Surface the existing calm `results.partial.note`
+  // one-liner so a partial compare reads as "still settling," never broken.
+  const isPartial = (result as any)?.metadata?.partial === true;
 
   // Per JSX, verdict body uses recommendation. For new format, overview.winner.reason.
   const isNewFormat = !!(result as any)?.overview?.winner;
@@ -298,6 +305,18 @@ export function ResultsContent({
           testID="results-content-why"
         >
           <Text style={styles.eyebrow}>{t('results.whyWePicked')}</Text>
+          {/* WS-F Task F2 (FE-8) — partial-result affordance. When the compare
+              hit the hard-cap (`metadata.partial === true`) show the existing
+              calm one-liner here, just under the verdict eyebrow, so it reads
+              as "still settling" rather than broken. Copy-policy clean. */}
+          {isPartial ? (
+            <Text
+              testID="results-content-partial-note"
+              style={styles.partialNote}
+            >
+              {t('results.partial.note')}
+            </Text>
+          ) : null}
           {/* Faithful-results Phase 2.2 (FE BUG #4): the runner-up caption was
               previously gated INTO the else-branch of `factual_verdict.line1`,
               so whenever the backend emitted a factual verdict (≈ always) the
@@ -312,6 +331,13 @@ export function ResultsContent({
               line2={scoring_v2.factual_verdict.line2 ?? ''}
               testID="results-content-factual-verdict"
             />
+          ) : typeof verdictBody === 'string' &&
+            SCORE_INTERNALS_RE.test(verdictBody) ? (
+            // A6 defense-in-depth: drop a verdict body that leaks raw score
+            // internals ("N-point", "/100", "overall score", "score of N")
+            // rather than show the leak. Backend (WS-A) is canonical; this
+            // fails a future regression loud-but-clean.
+            null
           ) : (
             <Text style={styles.verdictBody}>{verdictBody}</Text>
           )}
@@ -670,6 +696,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text.primary,
     lineHeight: 18 * 1.45,
+  },
+  // WS-F Task F2 (FE-8) — calm partial-result one-liner under the verdict
+  // eyebrow. Secondary tone so it reads as a soft "still settling" note, not
+  // an alarm.
+  partialNote: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    lineHeight: 13 * 1.4,
+    marginBottom: 8,
   },
   // Task #24 — the inline runner-up caption styles (verdictCaption /
   // verdictRunnerUpEyebrow) moved into RunnerUpWinsCard.tsx.

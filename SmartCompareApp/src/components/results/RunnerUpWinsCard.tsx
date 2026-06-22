@@ -29,6 +29,7 @@ import { useTranslation } from 'react-i18next';
 
 import { colors, spacing } from '../../theme';
 import type { Product, Dimension } from '../../types';
+import { safeDelta, SCORE_INTERNALS_RE } from './_deltaText';
 
 export interface RunnerUpWinsCardProps {
   products: Product[];
@@ -39,9 +40,6 @@ export interface RunnerUpWinsCardProps {
   keyTradeoff?: string | null;
   testID?: string;
 }
-
-// Raw point-math the card must NOT surface ("+18pt", "18 pt", "-5pts").
-const POINT_MATH_RE = /\d+\s*pts?\b/i;
 
 /**
  * Dimensions the runner-up leads — score[runnerUp] strictly greater than
@@ -64,11 +62,10 @@ export function runnerUpWinningDims(
 }
 
 /** The label/phrase for a winning dim row: qualitative delta_text when it is
- *  NOT raw point-math, otherwise the clean dim label. Never the "+Npt" form. */
+ *  NOT raw point-math, otherwise the clean dim label. Never the "+Npt" form.
+ *  Delegates to the shared `safeDelta` guard (single source of truth). */
 function dimRowText(d: Dimension): string {
-  const delta = (d.delta_text ?? '').trim();
-  if (delta.length > 0 && !POINT_MATH_RE.test(delta)) return delta;
-  return d.label;
+  return safeDelta(d.delta_text, d.label);
 }
 
 export function RunnerUpWinsCard({
@@ -83,8 +80,14 @@ export function RunnerUpWinsCard({
   const runnerUpIndex = winnerIndex === 0 ? 1 : 0;
   const runnerUp = products[runnerUpIndex];
   const winningDims = runnerUpWinningDims(dimensions, winnerIndex);
+  // A6 defense-in-depth: drop the key_tradeoff prose when it leaks raw score
+  // internals ("N-point", "/100", "overall score", "score of N") — render
+  // nothing rather than the leak. Backend (WS-A) is canonical; this fails a
+  // future regression loud-but-clean (the card self-hides if nothing remains).
   const prose =
-    typeof keyTradeoff === 'string' && keyTradeoff.trim().length > 0
+    typeof keyTradeoff === 'string' &&
+    keyTradeoff.trim().length > 0 &&
+    !SCORE_INTERNALS_RE.test(keyTradeoff)
       ? keyTradeoff.trim()
       : null;
 

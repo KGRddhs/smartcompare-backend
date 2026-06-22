@@ -30,7 +30,9 @@
  *      like, e.g. "Compared at the same 100 ml") — omitted for fashion/other,
  *      which have no single comparable unit.
  *   3. "Why this fits you" — FactualVerdict (line1 factual deltas, NO
- *      evaluative words; line2 runner-up conditional, italic) + PersonalizationChip
+ *      evaluative words; line2 runner-up conditional, italic) + PersonalizationChip.
+ *      A calm "still settling" note shows here when the compare came back
+ *      PARTIAL (a hard-cap best-available assembly, not an error).
  *   4. "Where the runner-up wins" — runner-up name + tradeoff + winning dims
  *      (NEUTRAL gray — emerald is reserved for the winner)
  *   5. Dimension bars — ONE compact "A · B" legend, then per-category dims
@@ -43,13 +45,37 @@
  * Hard invariants the design agent MUST preserve:
  *   - Ratings are NEVER AI-generated — stars render ONLY with a real rating.
  *   - Reviews are PARAPHRASED praise — no verbatim quotes / source domains / [N].
- *   - FactualVerdict line1 carries NO evaluative words (best/better/beats/…).
+ *   - NO SCORE INTERNALS anywhere in the prose — the verdict (line1/line2),
+ *     the runner-up tradeoff, and every dimension delta caption are QUALITATIVE.
+ *     Never "X-point higher overall score", "score of N", "/100", "overall
+ *     score", "+Npt", or any raw point/score number. The FE enforces this with
+ *     two guards (SmartCompareApp/src/components/results/_deltaText.ts):
+ *       · FactualVerdict drops a line that trips SCORE_INTERNALS_RE
+ *         (/ N point(s) | score of N | N/100 | overall score /i) OR a banned
+ *         evaluative word (best/better/beats/winner/great/pick/…).
+ *       · DimensionBars + RunnerUpWinsCard run delta captions through
+ *         `safeDelta`, which swaps any raw "+Npt" for the clean dim LABEL.
+ *     Factual deltas — "27 BHD more", "0.2★ higher rating", "longer wear" — are
+ *     the intended verdict content and are NOT score internals.
  *   - The runner-up block stays gray; emerald = winner signal only.
  *   - Like-for-like: never compare across different storage/size/count.
+ *   - Specs drop a SILENT one-sided row — a row where one product has a value
+ *     and the other is the "—" em-dash never renders (frag-content-quality E3,
+ *     mirroring ResultsAccordion). Rows where BOTH have values render; rows
+ *     where BOTH are "—" survive (the low-confidence structural-fallback table).
+ *   - Price-pending: a product with no genuine/showable price renders the calm
+ *     "Pricing lands in an upcoming update." line (ProductCard, price={null}) —
+ *     never a number, never the word "estimated". When EITHER product's price is
+ *     pending the app also suppresses the price/value dimension rows + the Price
+ *     confidence pill (no delta that doesn't exist).
  */
 
 const T_res = window.qarenTokens || {};
 const C_res = T_res.colors || {};
+
+// The em-dash placeholder a Specs cell shows for a value a product lacks
+// (matches ResultsAccordion's NA → "—"). Used by the E3 one-sided-row drop.
+const EM_DASH = '—';
 
 // ════════════════════════════════════════════════════════════════════════
 // Per-category content — realistic GCC-market sample data. Field ORDER and
@@ -102,6 +128,10 @@ const CATEGORIES = {
       { label: 'Battery', left: '3,349 mAh', right: '4,000 mAh', win: 'right' },
       { label: 'Rear camera', left: '48 MP', right: '50 MP', win: 'right' },
       { label: 'Weight', left: '171 g', right: '167 g', win: 'right' },
+      // E3 demonstration — a SILENT one-sided row (only the left product reports
+      // it). The DetailsAccordion specs filter DROPS this row (it never renders),
+      // so the table stays symmetric. Remove the right "—" and it would appear.
+      { label: 'Water resistance', left: 'IP68', right: EM_DASH, win: null },
     ] },
   },
 
@@ -328,6 +358,11 @@ const CATEGORIES = {
   fragrances: {
     label: 'Fragrances',
     winner: 0,
+    // Fragrance compares routinely hit the 30s STREAM_HARD_CAP and return a
+    // best-available PARTIAL assembly (metadata.partial === true) — NOT an
+    // error. The shell surfaces the calm `results.partial.note` one-liner under
+    // the verdict eyebrow so it reads as "still settling." (WS-F / FE-8.)
+    partial: true,
     products: [
       { name: 'Black Orchid', brand: 'Tom Ford', variant: '100 ml · EDP', price: '89 BHD', imageColor: '#2B2230' },
       { name: 'Black Opium', brand: 'Yves Saint Laurent', variant: '100 ml · EDP', price: '62 BHD', imageColor: '#14110F' },
@@ -680,7 +715,11 @@ function SpecRow({ label, left, right, win }) {
 function DetailsAccordion({ data }) {
   const [open, setOpen] = React.useState(null);
   const toggle = (k) => setOpen((curr) => (curr === k ? null : k));
-  const specRowCount = data.specs.rows.length;
+  // Count only the rows that actually render (E3 drops silent one-sided rows),
+  // so the "N dimensions" sub matches the visible table.
+  const specRowCount = data.specs.rows.filter(
+    (r) => [r.left, r.right].filter((v) => v === EM_DASH).length !== 1,
+  ).length;
   const sections = [
     {
       key: 'profile', label: 'At a glance', sub: 'Key details, both products',
@@ -703,7 +742,18 @@ function DetailsAccordion({ data }) {
       body: (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <SpecsHeader left={data.specs.a} right={data.specs.b} />
-          {data.specs.rows.map((r, i) => <SpecRow key={i} {...r} />)}
+          {/* Task E3 (frag-content-quality) — NO silent one-sided rows. A row
+              where EXACTLY one product has a value and the other is the "—"
+              em-dash (missing) is DROPPED, matching CategoryProfile's symmetric
+              contract + ResultsAccordion's `.filter(missing !== 1)`. Rows where
+              BOTH have values render; rows where BOTH are "—" survive (the
+              low-confidence structural-fallback table). */}
+          {data.specs.rows
+            .filter((r) => {
+              const missing = [r.left, r.right].filter((v) => v === EM_DASH).length;
+              return missing !== 1;
+            })
+            .map((r, i) => <SpecRow key={i} {...r} />)}
         </div>
       ),
     },
@@ -795,6 +845,15 @@ function QarenResultsScreen({ category = 'electronics' } = {}) {
             words; line2 runner-up conditional italic) + PersonalizationChip. */}
         <section style={{ marginBottom: 24 }}>
           <h3 style={{ margin: '0 0 8px', font: '600 11px/1.4 var(--qaren-font-en, system-ui)', letterSpacing: '1.1px', textTransform: 'uppercase', color: C_res.text.secondary }}>Why this fits you</h3>
+          {/* Partial-result affordance (WS-F / FE-8): when the compare hit the
+              hard-cap (metadata.partial === true) show the calm one-liner just
+              under the eyebrow so it reads as "still settling," never broken.
+              Copy is the exact `results.partial.note` from en.json. */}
+          {data.partial ? (
+            <div style={{ font: '400 13px/1.4 var(--qaren-font-en, system-ui)', color: C_res.text.secondary, marginBottom: 8 }}>
+              Prices are still settling — tap to refresh in a moment.
+            </div>
+          ) : null}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ font: '500 15px/1.5 var(--qaren-font-en, system-ui)', color: C_res.text.primary }}>{data.verdict.line1}</div>
             {data.verdict.line2 ? <div style={{ font: '400 14px/1.5 var(--qaren-font-en, system-ui)', color: C_res.text.secondary, fontStyle: 'italic' }}>{data.verdict.line2}</div> : null}

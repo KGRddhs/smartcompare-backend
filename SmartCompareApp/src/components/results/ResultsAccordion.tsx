@@ -515,7 +515,8 @@ export function ResultsAccordion({
                         {(specsSrc[1] as any)?.name ?? ''}
                       </Text>
                     </View>
-                    {allSpecKeys.map((key) => {
+                    {allSpecKeys
+                      .map((key) => {
                         const values = specsSrc.map((p: any) => {
                           const raw = p.specs?.[key];
                           if (raw == null || typeof raw === 'object')
@@ -525,6 +526,21 @@ export function ResultsAccordion({
                             return '—';
                           return str;
                         });
+                        return { key, values };
+                      })
+                      // Task E3 (frag-content-quality WS-E / P7 / FE-3) — no
+                      // silent one-sided rows. When EXACTLY one product has a
+                      // value and the other is the em-dash "—" (missing), DROP
+                      // the row — matching CategoryProfile's symmetric
+                      // contract. Rows where BOTH have values stay; rows where
+                      // BOTH are "—" survive (the structural-fallback path that
+                      // surfaces an otherwise-empty low-confidence table —
+                      // unchanged).
+                      .filter(({ values }) => {
+                        const missing = values.filter((v) => v === '—').length;
+                        return missing !== 1;
+                      })
+                      .map(({ key, values }) => {
                         // Lane A-L3 Task L3.2 — emerald winner cell.
                         // winner === 0 → p0 wins (cell idx 0 paints emerald).
                         // winner === 1 → p1 wins (cell idx 1 paints emerald).
