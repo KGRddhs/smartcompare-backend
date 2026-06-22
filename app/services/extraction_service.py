@@ -643,15 +643,15 @@ Return ONLY valid JSON:
     "product_1_pros": ["specific product attribute or capability"],
     "product_1_cons": ["specific product attribute or capability"],
     "specs_comparison": {
-        "product_0_advantages": ["advantage with specific number"],
-        "product_1_advantages": ["advantage with specific number"],
+        "product_0_advantages": ["advantage citing a concrete product spec or measurement (e.g. '48MP camera', '5000mAh battery') -- NEVER an internal score or point value"],
+        "product_1_advantages": ["advantage citing a concrete product spec or measurement -- NEVER an internal score or point value"],
         "similar": ["shared feature"]
     },
     "personalized_insights": [
         {
             "focus_area": "user priority area",
             "product_index": 0 or 1,
-            "insight": "1-2 sentence insight with specific number (max 200 chars)"
+            "insight": "1-2 sentence insight citing a concrete product fact or spec figure (max 200 chars) -- NEVER an internal score, point margin, or '/100' value"
         }
     ]
 }
@@ -669,7 +669,7 @@ RULES:
 - PENDING PRICE -- when a product's price is unavailable/null, do NOT make ANY price, value, cheaper, affordable, or premium claim about it -- discuss it on non-price merits only.
 - LOCALIZATION -- grade as a Bahrain buyer, not a global spec sheet: weigh what a buyer in Bahrain actually experiences (local availability, after-sales service, Gulf climate suitability), not just the raw datasheet. You MAY note regional reality qualitatively (e.g. "widely available in Bahrain", "a GCC crowd-pleaser") -- but keep such claims qualitative ONLY: NO store counts, NO branch names, NO unsourced numbers or statistics about local presence.
 - personalized_insights: Generate ONLY when personalization context is provided. If no personalization context, omit this field entirely.
-- NEVER mention internal scores, point margins, "/100" values, "overall score", or any "N-point"/"score of N" phrasing in winner_reason, key_tradeoff, winner_declaration, pros, or cons. Those are internal-only."""
+- NEVER mention internal scores, point margins, "/100" values, "overall score", or any "N-point"/"score of N" phrasing in ANY field -- this includes winner_reason, key_tradeoff, winner_declaration, pros, cons, value_context, best_for, specs_comparison (product_0_advantages/product_1_advantages/similar), and personalized_insights. Those internal scores are NEVER shown to the user; cite a concrete product spec or capability instead."""
 
 
 # Backward-compatible aliases for tests that import old names

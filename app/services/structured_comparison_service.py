@@ -2813,13 +2813,44 @@ class StructuredComparisonService:
 
             # Yield prices
             scoring_service = get_scoring_service()
+            # SIB-1 (WS-5 / G5) — the SSE `prices` event must use the SAME
+            # pending projection as the final `complete` response
+            # (build_comparison_response's price-pending normalization), so an
+            # estimated/sample/wrong-cheap price the final card pends is never
+            # briefly flashed mid-stream, and a raw None / non-dict pends too
+            # (SIB-5 parity). Project onto a COPY per product — do NOT mutate
+            # product_data, because the final `complete` re-projects from the raw
+            # dict (mutating here would double-pend / lose the real source). The
+            # FE StreamingProductCard gates on price.amount != null, so a pending
+            # shape (amount:None + unavailable:True) keeps the slot hidden during
+            # streaming, then `complete` renders the calm pending line. Mirrors
+            # the FIX-2 NO-FAB rating guard on the reviews event below.
+            from app.services.price_service import make_pending_price
             prices_payload = {}
             for i, pd in enumerate(product_data):
                 key = f"product_{i}"
+                _name = pd.get("full_name") or pd.get("name") or ""
+                _price = pd.get("price")
+                _best = pd.get("best_price")
+                _retailer = pd.get("retailer")
+                if not isinstance(_price, dict):
+                    # Raw None / non-dict → pending (SIB-5 parity).
+                    _price = make_pending_price(currency="BHD", reason="pending_genuine")
+                    _best = None
+                    _retailer = None
+                elif _price.get("unavailable") is not True and not is_price_showable(_name, _price):
+                    # Non-showable resolved price → pending (don't clobber an
+                    # already-pending upstream reason like size_mismatch).
+                    _price = make_pending_price(
+                        currency=_price.get("currency") or "BHD",
+                        reason="pending_genuine", size=_price.get("size"),
+                    )
+                    _best = None
+                    _retailer = None
                 prices_payload[key] = {
                     "brand": pd.get("brand"), "name": pd.get("name"),
-                    "price": pd.get("price"), "best_price": pd.get("best_price"),
-                    "currency": pd.get("currency"), "retailer": pd.get("retailer"),
+                    "price": _price, "best_price": _best,
+                    "currency": pd.get("currency"), "retailer": _retailer,
                 }
             yield ("prices", prices_payload)
 
