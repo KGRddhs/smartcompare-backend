@@ -27,3 +27,32 @@ def strip_score_internals(text) -> str:
         return text or ""
     kept = [s for s in _SENT_SPLIT.split(text.strip()) if s and not has_score_internals(s)]
     return " ".join(kept).strip()
+
+
+def scrub_review_summary(rs):
+    """WS-5 follow-up (dispatcher gate-fix) — fail-closed backstop for a
+    review_summary's free GPT text (`consensus` + `highlights[].point`).
+    REVIEWS_EXTRACTION_SYSTEM has no score-forbid rule, and while the FE does not
+    render review_summary today (Contract 2 → synthesized review_praise), the
+    payload is PERSISTED and re-served (Home/History/Share) — so a leaked internal
+    score would survive in the stored body. Strips any score-leaking sentence from
+    `consensus`; strips `highlights[].point` and DROPS a highlight whose point
+    fully leaks. Returns a cleaned shallow copy; a non-dict passes through."""
+    if not isinstance(rs, dict):
+        return rs
+    out = dict(rs)
+    consensus = out.get("consensus")
+    if isinstance(consensus, str):
+        out["consensus"] = strip_score_internals(consensus)
+    highlights = out.get("highlights")
+    if isinstance(highlights, list):
+        cleaned = []
+        for h in highlights:
+            if isinstance(h, dict) and isinstance(h.get("point"), str):
+                stripped = strip_score_internals(h["point"])
+                if not stripped:
+                    continue  # the whole point was a score artifact — drop it
+                h = {**h, "point": stripped}
+            cleaned.append(h)
+        out["highlights"] = cleaned
+    return out

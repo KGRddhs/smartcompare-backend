@@ -2856,6 +2856,9 @@ class StructuredComparisonService:
 
             # Yield reviews
             yield ("status", {"message": "Analyzing reviews...", "progress": 50})
+            # WS-5 follow-up — SSE parity: scrub internal-score leaks from the
+            # review_summary free GPT text (mirrors the non-streaming projection).
+            from app.services.text_sanitize import scrub_review_summary
             yield ("reviews", {
                 "products": [
                     {
@@ -2872,10 +2875,10 @@ class StructuredComparisonService:
                         "rating_source": pd.get("rating_source"),
                         # See response_builder.py:963 — same (X or {}).get fix.
                         # Regression: PYTHON-FASTAPI-J event ecaa64acab224c599c9aba3bb92dfc89.
-                        "review_summary": (pd.get("reviews") or {}).get("review_summary", {
+                        "review_summary": scrub_review_summary((pd.get("reviews") or {}).get("review_summary", {
                             "overall_sentiment": "mixed", "consensus": "",
                             "highlights": [], "review_volume": "minimal", "agreement_level": "moderate",
-                        }),
+                        })),
                         # ITEM 1 — streaming parity with the non-streaming reviews
                         # section (response_builder.py): per-source retailer_quotes
                         # built in _fetch_product_data from REAL organic snippets.

@@ -363,3 +363,45 @@ def test_comparison_prompt_forbids_scores_in_all_fields():
     assert "internal score" in low
     # No bare "with specific number" invitation survives un-qualified.
     assert "with specific number" not in low
+
+
+# ===========================================================================
+# WS-5 follow-up (dispatcher gate-fix) — review_summary payload-leak backstop
+# ===========================================================================
+def test_scrub_review_summary_strips_consensus_and_leaking_highlight():
+    from app.services.text_sanitize import scrub_review_summary
+    rs = {
+        "overall_sentiment": "positive",
+        "consensus": "Reviewers praise the battery. It wins by a score of 100.",
+        "highlights": [
+            {"point": "Great low-light camera."},
+            {"point": "Beats the rival by 12 points overall."},   # fully leaks -> dropped
+            {"point": "Excellent build quality. Leads on the overall score."},  # partial -> stripped
+        ],
+        "review_volume": "high",
+    }
+    out = scrub_review_summary(rs)
+    assert "score of 100" not in out["consensus"]
+    assert "battery" in out["consensus"]
+    points = [h["point"] for h in out["highlights"]]
+    assert any("low-light camera" in p for p in points)
+    assert any("build quality" in p for p in points)           # clean sentence survived the strip
+    assert not any("points" in p.lower() for p in points)      # the 12-points highlight dropped
+    assert not any("overall score" in p.lower() for p in points)
+    assert out["overall_sentiment"] == "positive"              # structural keys untouched
+
+
+def test_scrub_review_summary_clean_untouched():
+    from app.services.text_sanitize import scrub_review_summary
+    rs = {"consensus": "Reviewers love the 5000mAh battery.",
+          "highlights": [{"point": "48MP camera shines."}]}
+    out = scrub_review_summary(rs)
+    assert out["consensus"] == "Reviewers love the 5000mAh battery."
+    assert out["highlights"][0]["point"] == "48MP camera shines."
+
+
+def test_scrub_review_summary_non_dict_passthrough():
+    from app.services.text_sanitize import scrub_review_summary
+    assert scrub_review_summary(None) is None
+    assert scrub_review_summary("x") == "x"
+    assert scrub_review_summary([1, 2]) == [1, 2]

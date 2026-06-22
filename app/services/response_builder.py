@@ -15,7 +15,7 @@ from app.services.scoring_service import (
     compute_confidence,
     count_missing_dim_cells,
 )
-from app.services.text_sanitize import has_score_internals, strip_score_internals
+from app.services.text_sanitize import has_score_internals, strip_score_internals, scrub_review_summary
 
 logger = logging.getLogger(__name__)
 
@@ -1468,13 +1468,20 @@ def build_comparison_response(
                     # the key is PRESENT with None value, then .get('review_summary')
                     # raises AttributeError. (X or {}).get(...) coalesces None→{}.
                     # Regression: PYTHON-FASTAPI-J event ecaa64acab224c599c9aba3bb92dfc89.
-                    "review_summary": (pd.get("reviews") or {}).get("review_summary", {
-                        "overall_sentiment": "mixed",
-                        "consensus": "",
-                        "highlights": [],
-                        "review_volume": "minimal",
-                        "agreement_level": "moderate",
-                    }),
+                    # WS-5 follow-up — scrub any internal-score leak from the
+                    # review_summary free GPT text (consensus + highlights[].point);
+                    # REVIEWS_EXTRACTION_SYSTEM has no score-forbid rule and the
+                    # payload is persisted/re-served even though the FE no longer
+                    # renders it (Contract 2 → review_praise).
+                    "review_summary": scrub_review_summary(
+                        (pd.get("reviews") or {}).get("review_summary", {
+                            "overall_sentiment": "mixed",
+                            "consensus": "",
+                            "highlights": [],
+                            "review_volume": "minimal",
+                            "agreement_level": "moderate",
+                        })
+                    ),
                     # ITEM 1 — up to 3 per-source review quotes the FE Reviews
                     # accordion renders as compact AMAZON ★★★★★ "quote" lines.
                     # Built in _fetch_product_data from REAL organic snippets
