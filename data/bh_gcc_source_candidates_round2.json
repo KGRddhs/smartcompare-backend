@@ -1,0 +1,3610 @@
+[
+  {
+    "domain": "bahrain-pets.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Root domain Shopify (pet supplies)",
+    "sample_pdp_url": "https://bahrain-pets.com/products.json",
+    "sample_price_string": "2.800 BHD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 1
+  },
+  {
+    "domain": "bahrain.naseem.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Naseem Perfume BH subdomain, BHD",
+    "sample_pdp_url": "https://bahrain.naseem.com/products.json",
+    "sample_price_string": "4.000 BHD (Musk Safi 6ml)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 2
+  },
+  {
+    "domain": "beautybykat.store",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "skincare",
+      "makeup"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Bahrain beauty Shopify, BHD",
+    "sample_pdp_url": "https://beautybykat.store/products.json",
+    "sample_price_string": "7.000 BHD (Cellmazing Eye Cream)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 3
+  },
+  {
+    "domain": "bh.taifalemarat.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "BH Shopify subdomain",
+    "sample_pdp_url": "https://bh.taifalemarat.com/products/oud-nights",
+    "sample_price_string": "60.660 BHD (Oud Nights)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 4
+  },
+  {
+    "domain": "bh.yallatoys.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "toys",
+      "baby",
+      "kids",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Native BHD Shopify storefront",
+    "sample_pdp_url": "https://bh.yallatoys.com/products.json",
+    "sample_price_string": "27.000 BHD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 5
+  },
+  {
+    "domain": "bookmartme.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Root domain Shopify (bookstore)",
+    "sample_pdp_url": "https://bookmartme.com/products.json",
+    "sample_price_string": "3.500 BHD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 6
+  },
+  {
+    "domain": "emsquarebh.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Root domain Shopify, BHD",
+    "sample_pdp_url": "https://emsquarebh.com/products.json",
+    "sample_price_string": "6.500 BHD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 7
+  },
+  {
+    "domain": "gamerspoint.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Native .bh Shopify, BHD",
+    "sample_pdp_url": "https://gamerspoint.bh/products.json",
+    "sample_price_string": "115.000 BHD (Redragon Monitor 24in)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 8
+  },
+  {
+    "domain": "ibsouq.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other",
+      "grocery"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Root domain Shopify locale en-BH",
+    "sample_pdp_url": "https://ibsouq.com/products.json",
+    "sample_price_string": "1.500 BHD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 9
+  },
+  {
+    "domain": "livewell.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "grocery",
+      "supplements",
+      "baby"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Native BH Shopify (livewell.myshopify), BHD",
+    "sample_pdp_url": "https://livewell.bh/products.json",
+    "sample_price_string": "0.880 BHD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 10
+  },
+  {
+    "domain": "manamamedical.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "supplements",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Root domain Shopify (medical supplies)",
+    "sample_pdp_url": "https://manamamedical.com/products.json",
+    "sample_price_string": "2.000 BHD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 11
+  },
+  {
+    "domain": "mastermuscles.net",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "supplements",
+      "sports-nutrition"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Native BHD Shopify (sports nutrition)",
+    "sample_pdp_url": "https://mastermuscles.net/products.json",
+    "sample_price_string": "27.500 BHD (BEEF-XP 1.8KG)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 12
+  },
+  {
+    "domain": "perfumistaaloud.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Bahrain locale /en-bh, BHD active",
+    "sample_pdp_url": "https://perfumistaaloud.com/products.json",
+    "sample_price_string": "25.000 BHD (Beyond Patchouli 75ml)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 13
+  },
+  {
+    "domain": "shop.optica.net",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "eyewear",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Native BHD Shopify (eyewear)",
+    "sample_pdp_url": "https://shop.optica.net/products.json",
+    "sample_price_string": "30.800 BHD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 14
+  },
+  {
+    "domain": "shopalmoayyed.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics",
+      "grocery"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Y.K. Almoayyed BH Shopify (Shopify.currency.active=BHD)",
+    "sample_pdp_url": "https://www.shopalmoayyed.com/products.json",
+    "sample_price_string": "200.000 BHD (Washing Machine)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 15
+  },
+  {
+    "domain": "smartnutr.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "supplements",
+      "sports-nutrition",
+      "grocery"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Native BH Shopify (supplements)",
+    "sample_pdp_url": "https://smartnutr.com/products.json",
+    "sample_price_string": "42.800 BHD (combo)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 16
+  },
+  {
+    "domain": "sokostore.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "skincare",
+      "makeup",
+      "haircare",
+      "supplements"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "GCC K-beauty Shopify; active currency BHD, COD BH",
+    "sample_pdp_url": "https://sokostore.com/products.json",
+    "sample_price_string": "11.000 BHD (Dr.Althea 345 Relief Cream)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 17
+  },
+  {
+    "domain": "wawanbahrain.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "supplements",
+      "sports-nutrition"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "medium",
+    "serves_bh_via": "Native BH Shopify (Wawan Protein); products.json flapped this run",
+    "sample_pdp_url": "https://www.wawanbahrain.com/products/wawan-nutrition-iso",
+    "sample_price_string": "24 BHD (Wawan Nutrition ISO)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 18
+  },
+  {
+    "domain": "arafaphones.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Root domain WooCommerce, BHD",
+    "sample_pdp_url": "https://arafaphones.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 148990 minor_unit 3 = 148.990 BHD",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 19
+  },
+  {
+    "domain": "asasiat.online",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "grocery",
+      "makeup",
+      "other"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "BH WooCommerce (en + /ar)",
+    "sample_pdp_url": "https://asasiat.online/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 1150 minor_unit 3 = 1.150 BHD",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 20
+  },
+  {
+    "domain": "bh-en.smellsoreal.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "BH locale subdomain WooCommerce",
+    "sample_pdp_url": "https://bh-en.smellsoreal.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 2400 = 24.00 BHD",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 21
+  },
+  {
+    "domain": "iworld.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Native .bh Apple reseller WooCommerce",
+    "sample_pdp_url": "https://iworld.bh/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 1276990 minor_unit 3 = 1276.990 BHD",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 22
+  },
+  {
+    "domain": "miniso-bh.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other",
+      "makeup",
+      "toys"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Miniso BH WooCommerce (curl_cffi; WebFetch 403)",
+    "sample_pdp_url": "https://miniso-bh.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 9000 minor_unit 3 = 9.000 BHD",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 23
+  },
+  {
+    "domain": "organature.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "grocery",
+      "skincare",
+      "other"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Native BH WooCommerce (organic)",
+    "sample_pdp_url": "https://organature.bh/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 6000 minor_unit 3 = 6.000 BHD",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 24
+  },
+  {
+    "domain": "petshomebh.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other",
+      "grocery"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Pets Home BH WooCommerce",
+    "sample_pdp_url": "https://petshomebh.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 12587 minor_unit 3 = 12.587 BHD",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 25
+  },
+  {
+    "domain": "shop.almajarahgold.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "jewelry"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Al Majarah Jewellers WooCommerce (WOOCS BHD)",
+    "sample_pdp_url": "https://shop.almajarahgold.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 31600 minor_unit 3 = 316.00 BHD",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 26
+  },
+  {
+    "domain": "theperfumesclub.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Root domain WooCommerce, native BHD",
+    "sample_pdp_url": "https://theperfumesclub.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "8.000 BHD (sale)",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 27
+  },
+  {
+    "domain": "papita.co",
+    "country": "UAE",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "papita /ae/ serves GENUINE BHD via WooCommerce Store API (currency_code BHD)",
+    "sample_pdp_url": "https://www.papita.co/ae/product/infinix-hot-70-8gb-ram-256gb-4g-night-pulse/",
+    "sample_price_string": "BHD 118",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 28
+  },
+  {
+    "domain": "irepair-bh.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "mobile-accessories",
+      "electronics"
+    ],
+    "platform": "Wix",
+    "mechanism": "json_api",
+    "confidence": "medium",
+    "serves_bh_via": "BH phone-accessories Wix; warmupData JSON BHD",
+    "sample_pdp_url": "https://www.irepair-bh.com/product-page/be-good",
+    "sample_price_string": "8.900 BHD",
+    "integration_adapter": "fetch_next_data_price-style / Wix warmupData extractor (mechanism=json_api)",
+    "priority_rank": 29
+  },
+  {
+    "domain": "nexcelbahrain.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "medium",
+    "serves_bh_via": "Nexcel BH WooCommerce (some quote-on-request)",
+    "sample_pdp_url": "https://nexcelbahrain.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "currency_code BHD minor_unit 2",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 30
+  },
+  {
+    "domain": "talabat.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "grocery",
+      "pharmacy",
+      "baby",
+      "other"
+    ],
+    "platform": "Next.js (q-commerce)",
+    "mechanism": "json_api",
+    "confidence": "medium",
+    "serves_bh_via": "Talabat BH /bahrain; __NEXT_DATA__ embeds item prices + currency BD",
+    "sample_pdp_url": "https://www.talabat.com/bahrain/groceries",
+    "sample_price_string": "1.428 BD",
+    "integration_adapter": "fetch_next_data_price-style (__NEXT_DATA__ extractor, mechanism=json_api)",
+    "priority_rank": 31
+  },
+  {
+    "domain": "advancedpcbahrain.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "BH PC/gaming WooCommerce; Store API 406 -> server-rendered HTML",
+    "sample_pdp_url": "https://www.advancedpcbahrain.com/product/adata-su650-512gb-sata-ssd/",
+    "sample_price_string": "BD 32.900",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 32
+  },
+  {
+    "domain": "aignerme.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fashion",
+      "other"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "AIGNER ME /en_bh locale Magento",
+    "sample_pdp_url": "https://aignerme.com/en_bh/aigner-rhea-large-bangle-agj-251094-gbg-l",
+    "sample_price_string": "BHD 53.00",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 33
+  },
+  {
+    "domain": "alkhabeershop.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Salla custom domain renders BHD JSON-LD",
+    "sample_pdp_url": "https://alkhabeershop.com/p1498913242",
+    "sample_price_string": "29.355 BHD",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 34
+  },
+  {
+    "domain": "ashrafsbahrain.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics",
+      "appliances",
+      "fragrances",
+      "grocery",
+      "other"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Native BHD Magento (DigitalsetGo); JSON-LD + microdata",
+    "sample_pdp_url": "https://www.ashrafsbahrain.com/casio-g-shock-gm-b2100bd-1adr-analog-digital-men-s-watch.html",
+    "sample_price_string": "280.000 BHD",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 35
+  },
+  {
+    "domain": "bh.adilstore.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "grocery"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Al-Adil Trading BH Magento (microdata)",
+    "sample_pdp_url": "https://bh.adilstore.com/777-lemon-rice-paste-300gm.html",
+    "sample_price_string": "BHD0.950",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 36
+  },
+  {
+    "domain": "bh.oudelite.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Oud Elite BH subdomain (Salla), JSON-LD BHD",
+    "sample_pdp_url": "https://bh.oudelite.com/en/-/p1866281610",
+    "sample_price_string": "price 11.501 priceCurrency BHD",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 37
+  },
+  {
+    "domain": "bjcstore.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "watches",
+      "jewelry",
+      "fashion",
+      "other"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "BJC flagship; curl 403 (CF) -> browser-UA HTML + JSON-LD BHD (curl_cffi)",
+    "sample_pdp_url": "https://bjcstore.com/product/tag-heuer-formula-1-solargraph/",
+    "sample_price_string": "BHD 891.000",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 38
+  },
+  {
+    "domain": "eitara.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "skincare",
+      "makeup"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Salla serves BHD JSON-LD",
+    "sample_pdp_url": "https://eitara.com/ar/-/p2037143976",
+    "sample_price_string": "2.503 BHD",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 39
+  },
+  {
+    "domain": "en-bahrain.levelshoes.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fashion"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Level Shoes BH subdomain; JSON-LD BHD",
+    "sample_pdp_url": "https://en-bahrain.levelshoes.com/nike-air-force-1-07-sneakers-sftnpu.html",
+    "sample_price_string": "65.1 BHD",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 40
+  },
+  {
+    "domain": "gccgamers.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Next.js",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "GCC Gamers /bh/ locale; BHD in static HTML (VERIFIED)",
+    "sample_pdp_url": "https://gccgamers.com/bh/product/gcc-gamers-gaming_pc_elite",
+    "sample_price_string": "645.013 BHD",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 41
+  },
+  {
+    "domain": "geekay.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Geekay Games /bahrain_en store-view; JSON-LD BHD",
+    "sample_pdp_url": "https://www.geekay.com/bahrain_en/playstation-5-pro-console",
+    "sample_price_string": "BHD 32.90",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 42
+  },
+  {
+    "domain": "hanan-store55.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Salla custom domain renders BHD JSON-LD",
+    "sample_pdp_url": "https://hanan-store55.com/p1637057283",
+    "sample_price_string": "33.334 BHD",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 43
+  },
+  {
+    "domain": "homeboxstores.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other"
+    ],
+    "platform": "Next.js (Landmark)",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Home Box /bh/en; JSON-LD priceCurrency BHD",
+    "sample_pdp_url": "https://www.homeboxstores.com/bh/en/Furniture/Chairs/HOMEBOX-Denver-High-Back-Office-Chair/p/166927958",
+    "sample_price_string": "BHD 50.0",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 44
+  },
+  {
+    "domain": "homecentre.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other"
+    ],
+    "platform": "Next.js (Landmark)",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Home Centre /bh/en; JSON-LD priceCurrency BHD",
+    "sample_pdp_url": "https://www.homecentre.com/bh/en/buy-aileen-portable-desk-fan/p/167853232",
+    "sample_price_string": "BHD 3.90",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 45
+  },
+  {
+    "domain": "homesrus.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Homes R Us BH furniture Magento microdata",
+    "sample_pdp_url": "https://www.homesrus.bh/en/furniture/",
+    "sample_price_string": "BHD 1,131.620",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 46
+  },
+  {
+    "domain": "istationery.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "stationery",
+      "other"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "BH stationery Magento (microdata)",
+    "sample_pdp_url": "https://www.istationery.com/art-supplies.html",
+    "sample_price_string": "BHD 1.100",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 47
+  },
+  {
+    "domain": "jarir.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics",
+      "books",
+      "stationery",
+      "other"
+    ],
+    "platform": "custom (server-rendered)",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Jarir /bh-en BH store-view; BHD in HTML (price often plain-text)",
+    "sample_pdp_url": "https://www.jarir.com/bh-en/apple-iphone-17-pro-max-smartphones-666853.html",
+    "sample_price_string": "549.99 BHD",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 48
+  },
+  {
+    "domain": "jawaherbh.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "jewelry",
+      "fashion",
+      "other"
+    ],
+    "platform": "OpenCart",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "BH jewellery OpenCart (route=product/product), BHD",
+    "sample_pdp_url": "https://jawaherbh.com/index.php?route=product/product&product_id=4154",
+    "sample_price_string": "BHD165.00",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 49
+  },
+  {
+    "domain": "lilyorganicsbh.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "grocery",
+      "supplements",
+      "other"
+    ],
+    "platform": "OpenCart",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Native BH OpenCart (organic/tea)",
+    "sample_pdp_url": "https://lilyorganicsbh.com/index.php?route=product/product&product_id=2058",
+    "sample_price_string": "BHD 2.200",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 50
+  },
+  {
+    "domain": "mamasandpapas.com.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "baby",
+      "kids",
+      "other"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "M&P Bahrain Magento; JSON-LD priceCurrency BHD",
+    "sample_pdp_url": "https://en.mamasandpapas.com.bh/flip-xt3-skyline-grey-pushchair-214823333.html",
+    "sample_price_string": "BHD 149.500",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 51
+  },
+  {
+    "domain": "midasfurniture.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Midas furniture /bhr_en store-view; JSON-LD BHD",
+    "sample_pdp_url": "https://midasfurniture.com/bhr_en/amora-wooden-dining-table-167831-midas.html",
+    "sample_price_string": "423.50 BHD",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 52
+  },
+  {
+    "domain": "petarabia.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other"
+    ],
+    "platform": "Odoo",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Pet Arabia BH Odoo (oe_currency_value), BHD",
+    "sample_pdp_url": "https://www.petarabia.com/shop/4779051635559-natures-protection-salmon-oil-300ml-57135",
+    "sample_price_string": "BHD 14.000",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 53
+  },
+  {
+    "domain": "store.gadgetzone.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Lightspeed eCom",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "GadgetZone BH Lightspeed, BHD HTML",
+    "sample_pdp_url": "https://store.gadgetzone.bh/pitaka-magez-ultra-slim-magsafe-case-for-68191222.html",
+    "sample_price_string": "BD 27.50",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 54
+  },
+  {
+    "domain": "winbid.online",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "grocery",
+      "other"
+    ],
+    "platform": "custom (Laravel)",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "BH south-asian grocery Laravel; BHD HTML text",
+    "sample_pdp_url": "https://winbid.online/product/barfi-1kg",
+    "sample_price_string": "5.000 BHD",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 55
+  },
+  {
+    "domain": "reefperfumes.com",
+    "country": "KSA",
+    "currency": "BHD",
+    "categories": [
+      "fragrances",
+      "haircare"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Salla geo-localizes to genuine BHD JSON-LD under BH context (VERIFIED); default SAR",
+    "sample_pdp_url": "https://reefperfumes.com/en/reef-33/p1243364177",
+    "sample_price_string": "16.258 BHD (BH-geo)",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 56
+  },
+  {
+    "domain": "advanti.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "custom",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "ADVANTI BH PC/gaming, BHD in raw HTML (no JSON-LD)",
+    "sample_pdp_url": "https://advanti.com/asus-rog-strix-rtx-4090-90yv0id1-m0na00.html",
+    "sample_price_string": "BHD 999.000",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 57
+  },
+  {
+    "domain": "almajed4oud.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "Al Majed for Oud BH locale /en-bh; intermittent 500/403 (curl_cffi)",
+    "sample_pdp_url": "https://almajed4oud.com/en-bh/jawharat-al-oud-100-ml-02739",
+    "sample_price_string": "BHD 28.25",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 58
+  },
+  {
+    "domain": "d4donline.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics",
+      "other"
+    ],
+    "platform": "custom",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "BH offers-aggregator; BHD HTML text (flyer snapshots)",
+    "sample_pdp_url": "https://d4donline.com/en/bahrain/bahrain/products/17/computer-laptop",
+    "sample_price_string": "BHD 124.990",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 59
+  },
+  {
+    "domain": "leenaz.net",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fashion"
+    ],
+    "platform": "OpenCart",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "Leenaz Design BH OpenCart, BHD",
+    "sample_pdp_url": "https://www.leenaz.net/index.php?route=product/product&product_id=",
+    "sample_price_string": "BHD 120.000",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 60
+  },
+  {
+    "domain": "shop.stc.com.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "OpenCart",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "stc BH device shop OpenCart, BHD",
+    "sample_pdp_url": "https://shop.stc.com.bh/index.php?route=product/product&product_id=5313",
+    "sample_price_string": "47.979 BD/mo (rendered BHD)",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 61
+  },
+  {
+    "domain": "extra.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "SAP Hybris",
+    "mechanism": "render_required",
+    "confidence": "high",
+    "serves_bh_via": "eXtra /en-bh; BHD confirmed, price JS-rendered (OCC API option)",
+    "sample_pdp_url": "https://www.extra.com/en-bh/iphone-16-iphone-16-plus/c/8302",
+    "sample_price_string": "BHD 309.990",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 62
+  },
+  {
+    "domain": "bfab.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fashion"
+    ],
+    "platform": "Next.js",
+    "mechanism": "render_required",
+    "confidence": "medium",
+    "serves_bh_via": "bfab /bh_en; BHD but root price client-side (PDP HTML has it)",
+    "sample_pdp_url": "https://bfab.com/bh_en/girls-gingham-dress",
+    "sample_price_string": "BHD 25",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 63
+  },
+  {
+    "domain": "matalanme.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fashion"
+    ],
+    "platform": "Next.js",
+    "mechanism": "render_required",
+    "confidence": "medium",
+    "serves_bh_via": "Matalan /bh_en; BHD confirmed, price client-side",
+    "sample_pdp_url": "https://www.matalanme.com/bh_en/sarong",
+    "sample_price_string": "BHD (client-side)",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 64
+  },
+  {
+    "domain": "gazzaz.com.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances",
+      "makeup",
+      "skincare",
+      "haircare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Gazzaz KSA Shopify; products.json SAR",
+    "sample_pdp_url": "https://www.gazzaz.com.sa/products.json",
+    "sample_price_string": "39.00 SAR (variant)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 65
+  },
+  {
+    "domain": "ksa.swissarabian.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Swiss Arabian KSA subdomain Shopify SAR",
+    "sample_pdp_url": "https://ksa.swissarabian.com/products.json",
+    "sample_price_string": "189.00 SAR (Shaghaf Oud 75ml)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 66
+  },
+  {
+    "domain": "sa.ajmal.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Ajmal KSA subdomain Shopify SAR",
+    "sample_pdp_url": "https://sa.ajmal.com/products.json",
+    "sample_price_string": "175.00 SAR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 67
+  },
+  {
+    "domain": "sa.ghawali.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Ghawali KSA Shopify SAR",
+    "sample_pdp_url": "https://sa.ghawali.com/products.json",
+    "sample_price_string": "599 SAR (75ml)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 68
+  },
+  {
+    "domain": "sa.mubkhar.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Mubkhar KSA Shopify SAR",
+    "sample_pdp_url": "https://sa.mubkhar.com/products/nordic-frost-eau-de-parfum-150-ml",
+    "sample_price_string": "333.00 SAR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 69
+  },
+  {
+    "domain": "saudi.naseem.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Naseem KSA Shopify SAR",
+    "sample_pdp_url": "https://saudi.naseem.com/products.json",
+    "sample_price_string": "150.00 SAR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 70
+  },
+  {
+    "domain": "watsons.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "makeup",
+      "skincare",
+      "haircare",
+      "supplements",
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Watsons KSA Shopify; products.json price_currency SAR (VERIFIED)",
+    "sample_pdp_url": "https://www.watsons.sa/products/gosh-eyedentity-eyeshadow-palette",
+    "sample_price_string": "70.00 SAR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 71
+  },
+  {
+    "domain": "alqamarshop.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Kuwait electronics Shopify KWD",
+    "sample_pdp_url": "https://alqamarshop.com/products/12v-4a-48w-ac-adapter-charger-hp-led-lcd-monitor",
+    "sample_price_string": "4.750 KWD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 72
+  },
+  {
+    "domain": "alsultanpharmacy.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "supplements",
+      "pharmacy",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Al Sultan Kuwait pharmacy Shopify KWD",
+    "sample_pdp_url": "https://www.alsultanpharmacy.com/products/panthophil-moisturizer-for-skin-care-lotion-200ml",
+    "sample_price_string": "4.680 KWD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 73
+  },
+  {
+    "domain": "blink.com.kw",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "electronics",
+      "gaming"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Blink Kuwait Shopify KWD; products.json",
+    "sample_pdp_url": "https://www.blink.com.kw/products/msi-geforce-rtx-5060-ti-ventus-2x-oc-plus-16gb",
+    "sample_price_string": "219.000 KD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 74
+  },
+  {
+    "domain": "decathlon.com.kw",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "sports",
+      "fashion",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Decathlon Kuwait Shopify KWD",
+    "sample_pdp_url": "https://decathlon.com.kw/products/self-powered-e-connected-kinomap-cross-trainer-el540",
+    "sample_price_string": "255.000 KD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 75
+  },
+  {
+    "domain": "future.com.kw",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "electronics",
+      "fragrances",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Future Kuwait Shopify KWD",
+    "sample_pdp_url": "https://www.future.com.kw/products/whoop-peak-5-0-health-fitness-activity-tracker",
+    "sample_price_string": "79.000 KWD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 76
+  },
+  {
+    "domain": "kaif.co",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "grocery",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Kuwait Shopify KWD (coffee/appliances)",
+    "sample_pdp_url": "https://kaif.co/products/hibrew-g3-plus-professional-electric-coffee-grinder",
+    "sample_price_string": "55.000 KWD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 77
+  },
+  {
+    "domain": "kuwaitcavarat.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "mobile-accessories",
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Kuwait mobile-accessories Shopify KWD",
+    "sample_pdp_url": "https://kuwaitcavarat.com/products/playx-sundi-wireless-controller-ps4-blue",
+    "sample_price_string": "6.900 KD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 78
+  },
+  {
+    "domain": "level-up.gg",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "electronics",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Kuwait gaming Shopify KWD",
+    "sample_pdp_url": "https://level-up.gg/products/vinyl-soda-heroes-dc-martian-manhunter",
+    "sample_price_string": "8.500 KWD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 79
+  },
+  {
+    "domain": "mamasfirst.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "baby",
+      "kids",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Kuwait baby Shopify KWD",
+    "sample_pdp_url": "https://mamasfirst.com/collections/best-selling-products/baby-diapers",
+    "sample_price_string": "2.700 KWD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 80
+  },
+  {
+    "domain": "numberc.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "makeup",
+      "skincare",
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Kuwait beauty Shopify KWD",
+    "sample_pdp_url": "https://www.numberc.com/products/hourglass-ambient-soft-glow-foundation-for-her",
+    "sample_price_string": "12.100 KWD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 81
+  },
+  {
+    "domain": "pharmacypluskw.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "supplements",
+      "pharmacy"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Kuwait pharmacy Shopify KWD",
+    "sample_pdp_url": "https://www.pharmacypluskw.com/products/priorin-n-capsules-90",
+    "sample_price_string": "7.63 KWD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 82
+  },
+  {
+    "domain": "pharmazone.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "supplements",
+      "pharmacy"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Kuwait pharmacy Shopify KWD",
+    "sample_pdp_url": "https://pharmazone.com/collections/vitamins",
+    "sample_price_string": "25.000 KWD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 83
+  },
+  {
+    "domain": "alhajisoman.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fragrances",
+      "makeup",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Al Hajis Oman Shopify OMR (distinct from alhajisbahrain)",
+    "sample_pdp_url": "https://alhajisoman.com/products.json",
+    "sample_price_string": "10.000 OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 84
+  },
+  {
+    "domain": "avicenonline.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "supplements",
+      "skincare",
+      "haircare",
+      "grocery"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Avicen Pharmacy Oman Shopify OMR",
+    "sample_pdp_url": "https://www.avicenonline.com/products/brufen-600-mg-ibuprofen-granules-20-sachets",
+    "sample_price_string": "OMR 3.600",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 85
+  },
+  {
+    "domain": "capitalstoreoman.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fragrances",
+      "makeup",
+      "skincare",
+      "haircare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Capital Store Oman Shopify OMR",
+    "sample_pdp_url": "https://capitalstoreoman.com/products.json",
+    "sample_price_string": "13.950 OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 86
+  },
+  {
+    "domain": "ghawyoman.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "haircare",
+      "skincare",
+      "makeup"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Ghawy Oman Shopify OMR",
+    "sample_pdp_url": "https://www.ghawyoman.com/products/milk_shake-energizing-blend-trio",
+    "sample_price_string": "32 OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 87
+  },
+  {
+    "domain": "glowupom.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "makeup",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Glow Up Oman Shopify OMR",
+    "sample_pdp_url": "https://glowupom.com/products.json",
+    "sample_price_string": "9.800 OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 88
+  },
+  {
+    "domain": "omanluxury.store",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Oman Luxury Shopify OMR",
+    "sample_pdp_url": "https://omanluxury.store/en/products/hommage-1744",
+    "sample_price_string": "75.000 OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 89
+  },
+  {
+    "domain": "allaboutskindoha.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "skincare",
+      "makeup",
+      "haircare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "All About Skin Doha Shopify QAR",
+    "sample_pdp_url": "https://allaboutskindoha.com/products.json",
+    "sample_price_string": "105.00 QAR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 90
+  },
+  {
+    "domain": "carencurepharmacy.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "supplements",
+      "pharmacy",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Care n Cure Qatar Shopify QAR",
+    "sample_pdp_url": "https://www.carencurepharmacy.com/collections/supplements",
+    "sample_price_string": "QAR 60.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 91
+  },
+  {
+    "domain": "digitalzone.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Digital Zone Qatar Shopify QAR",
+    "sample_pdp_url": "https://digitalzone.qa/products.json",
+    "sample_price_string": "QAR 54.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 92
+  },
+  {
+    "domain": "mhalaty.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "makeup",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Mhalaty Qatar Shopify QAR",
+    "sample_pdp_url": "https://mhalaty.com/products.json",
+    "sample_price_string": "QAR 130.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 93
+  },
+  {
+    "domain": "mhgboutique.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "MHG Boutique qat. Shopify QAR (multi-GCC, ships BH)",
+    "sample_pdp_url": "https://qat.mhgboutique.com/products/shay-oud-parfum-75ml",
+    "sample_price_string": "290.00 QAR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 94
+  },
+  {
+    "domain": "oqba.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Oqba Qatar Shopify QAR",
+    "sample_pdp_url": "https://oqba.qa/products/discovery-set-for-women",
+    "sample_price_string": "32.00 QAR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 95
+  },
+  {
+    "domain": "parfum.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Parfum Qatar Shopify QAR",
+    "sample_pdp_url": "https://parfum.qa/products.json",
+    "sample_price_string": "QAR 60.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 96
+  },
+  {
+    "domain": "parigallery.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances",
+      "makeup",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Paris Gallery Qatar Shopify QAR",
+    "sample_pdp_url": "https://parigallery.com/collections/perfumes",
+    "sample_price_string": "QAR 1,635.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 97
+  },
+  {
+    "domain": "rptech.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "RP Tech Qatar Shopify QAR",
+    "sample_pdp_url": "https://rptech.qa/collections/apple-mobiles",
+    "sample_price_string": "QAR 4,399.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 98
+  },
+  {
+    "domain": "souqscent.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Souq Scent Qatar Shopify QAR",
+    "sample_pdp_url": "https://souqscent.com/products.json",
+    "sample_price_string": "QAR 125.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 99
+  },
+  {
+    "domain": "sunlife.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "supplements",
+      "pharmacy",
+      "sports-nutrition"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Sunlife Qatar Shopify QAR (pin presentment QAR)",
+    "sample_pdp_url": "https://sunlife.qa/products.json",
+    "sample_price_string": "QAR 47.70",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 100
+  },
+  {
+    "domain": "tuzzut.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances",
+      "electronics",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Tuzzut Qatar Shopify QAR",
+    "sample_pdp_url": "https://tuzzut.com/products/sceptre-malachite-maison-alhambra-100ml",
+    "sample_price_string": "QAR 139.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 101
+  },
+  {
+    "domain": "vitaminqatar.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "supplements",
+      "pharmacy"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Vitamin Pharmacy Qatar Shopify QAR",
+    "sample_pdp_url": "https://vitaminqatar.com/products.json",
+    "sample_price_string": "QAR 79.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 102
+  },
+  {
+    "domain": "wellcareonline.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "supplements",
+      "pharmacy",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Wellcare Qatar pharmacy Shopify QAR",
+    "sample_pdp_url": "https://www.wellcareonline.com/products.json",
+    "sample_price_string": "70.00 QAR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 103
+  },
+  {
+    "domain": "xstore.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Xstore Qatar Shopify QAR",
+    "sample_pdp_url": "https://xstore.qa/products.json",
+    "sample_price_string": "QAR 549.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 104
+  },
+  {
+    "domain": "adasat.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "eyewear",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE contact-lens/sunglasses Shopify AED",
+    "sample_pdp_url": "https://adasat.com/collections/new-arrivals/products/la-gente-madrid-zafir-clear",
+    "sample_price_string": "400.00 AED",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 105
+  },
+  {
+    "domain": "armaf.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Armaf UAE Shopify AED",
+    "sample_pdp_url": "https://www.armaf.ae/collections/new-arrivals-2/products/odyssey-soda-pop",
+    "sample_price_string": "AED 140.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 106
+  },
+  {
+    "domain": "atelierdeglow.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE K-skincare Shopify AED",
+    "sample_pdp_url": "https://atelierdeglow.ae/products.json",
+    "sample_price_string": "AED 105.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 107
+  },
+  {
+    "domain": "beautiquefragrances.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE niche fragrance Shopify AED",
+    "sample_pdp_url": "https://beautiquefragrances.com/products.json",
+    "sample_price_string": "AED 882.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 108
+  },
+  {
+    "domain": "coralperfumes.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE Shopify AED",
+    "sample_pdp_url": "https://www.coralperfumes.com/products/dark-night-for-men-edp-100ml",
+    "sample_price_string": "AED 49.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 109
+  },
+  {
+    "domain": "cozmada.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "haircare",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE haircare Shopify AED",
+    "sample_pdp_url": "https://www.cozmada.com/collections/hair-care",
+    "sample_price_string": "AED 200.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 110
+  },
+  {
+    "domain": "crescitebeauty.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE K-beauty Shopify AED",
+    "sample_pdp_url": "https://crescitebeauty.com/collections/korean-beauty",
+    "sample_price_string": "88.04 AED",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 111
+  },
+  {
+    "domain": "dubaioptical.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "eyewear",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE eyewear Shopify AED",
+    "sample_pdp_url": "https://dubaioptical.com/products/ray-ban-rb4441d-893843",
+    "sample_price_string": "Dhs. 462.40",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 112
+  },
+  {
+    "domain": "ecityuae.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE Shopify AED (VERIFIED products.json)",
+    "sample_pdp_url": "https://ecityuae.ae/products/apple-iphone-17-pro-max-256gb-storage-silver-uae-version",
+    "sample_price_string": "AED 5,099.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 113
+  },
+  {
+    "domain": "eideal.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "haircare",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE haircare/skincare Shopify AED (Olaplex/Davines)",
+    "sample_pdp_url": "https://eideal.com/products.json",
+    "sample_price_string": "AED 138.60",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 114
+  },
+  {
+    "domain": "ghawali.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Ghawali UAE ae. subdomain Shopify AED",
+    "sample_pdp_url": "https://ae.ghawali.com/products/9pm-in-saudi-parfum",
+    "sample_price_string": "AED 745.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 115
+  },
+  {
+    "domain": "houseofperfumes.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE Shopify AED",
+    "sample_pdp_url": "https://houseofperfumes.com/products.json",
+    "sample_price_string": "150.00 AED",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 116
+  },
+  {
+    "domain": "jnknutrition.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "supplements",
+      "sports-nutrition"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE sports-nutrition Shopify AED",
+    "sample_pdp_url": "https://www.jnknutrition.com/collections/whey-protein/products/proscience-nutra-100-whey-anabolic-whey-protein-isolate",
+    "sample_price_string": "AED 160.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 117
+  },
+  {
+    "domain": "k-city.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare",
+      "makeup"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Dubai K-beauty Shopify AED",
+    "sample_pdp_url": "https://k-city.com/products.json",
+    "sample_price_string": "AED 95.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 118
+  },
+  {
+    "domain": "khadlaj-perfumes.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Khadlaj UAE Shopify AED",
+    "sample_pdp_url": "https://khadlaj-perfumes.com/products/pure-musk-edp-spray",
+    "sample_price_string": "65.00 AED",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 119
+  },
+  {
+    "domain": "lamisebeauty.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare",
+      "makeup"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE K-beauty Shopify AED",
+    "sample_pdp_url": "https://www.lamisebeauty.com/products.json",
+    "sample_price_string": "AED 73.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 120
+  },
+  {
+    "domain": "larovie.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE Shopify AED",
+    "sample_pdp_url": "https://larovie.ae/products/centellian24-madeca-cream",
+    "sample_price_string": "AED 95.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 121
+  },
+  {
+    "domain": "mamlakataloud.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE Shopify AED",
+    "sample_pdp_url": "https://mamlakataloud.ae/products.json",
+    "sample_price_string": "Dhs. 140.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 122
+  },
+  {
+    "domain": "med7online.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "supplements",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "Dubai pharmacy Shopify AED",
+    "sample_pdp_url": "https://www.med7online.com/products.json",
+    "sample_price_string": "77.00 AED",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 123
+  },
+  {
+    "domain": "medicinaonline.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "supplements",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE pharmacy Shopify AED",
+    "sample_pdp_url": "https://medicinaonline.ae/products/bepanthene-cream-30gm",
+    "sample_price_string": "AED 35.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 124
+  },
+  {
+    "domain": "mestore.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare",
+      "haircare",
+      "makeup",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE beauty Shopify (Markets) AED",
+    "sample_pdp_url": "https://www.mestore.ae/products/garnier-ultra-dolce-shampoo-latte-di-mandorla-300-ml",
+    "sample_price_string": "AED 23.10",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 125
+  },
+  {
+    "domain": "miraebeautyhub.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare",
+      "haircare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE K-beauty Shopify AED",
+    "sample_pdp_url": "https://miraebeautyhub.com/products.json",
+    "sample_price_string": "AED 99.99",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 126
+  },
+  {
+    "domain": "myeasypharmacy.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "supplements",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE pharmacy Shopify AED",
+    "sample_pdp_url": "https://www.myeasypharmacy.ae/collections/vitamins-minerals",
+    "sample_price_string": "159.00 AED",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 127
+  },
+  {
+    "domain": "myperfumes.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE Shopify AED",
+    "sample_pdp_url": "https://myperfumes.ae/products/arabiyat-prestige-marwa-edp-unisex",
+    "sample_price_string": "Dhs. 175.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 128
+  },
+  {
+    "domain": "nutristore.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "supplements",
+      "sports-nutrition"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE sports-nutrition Shopify AED",
+    "sample_pdp_url": "https://www.nutristore.ae/products.json",
+    "sample_price_string": "AED 200.00 (ISO-XP 1kg)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 129
+  },
+  {
+    "domain": "organicandreal.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "grocery"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE organic-grocery Shopify AED",
+    "sample_pdp_url": "https://organicandreal.com/products.json",
+    "sample_price_string": "AED 169.99",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 130
+  },
+  {
+    "domain": "parfum.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE Shopify AED (ships KSA)",
+    "sample_pdp_url": "https://parfum.ae/products.json",
+    "sample_price_string": "AED 350.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 131
+  },
+  {
+    "domain": "refab.me",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE refurbished-phone Shopify AED",
+    "sample_pdp_url": "https://www.refab.me/collections/android-mobile-phones-uae",
+    "sample_price_string": "AED 2000.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 132
+  },
+  {
+    "domain": "revent.store",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE refurbished Shopify AED (uae.revent.store)",
+    "sample_pdp_url": "https://uae.revent.store/products/apple-iphone-15-pro-refurbished",
+    "sample_price_string": "From 2,180 AED",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 133
+  },
+  {
+    "domain": "samawa.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE Shopify AED",
+    "sample_pdp_url": "https://samawa.ae/collections/oud-perfume",
+    "sample_price_string": "AED 222.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 134
+  },
+  {
+    "domain": "scentlibraryofficial.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE niche fragrance/bakhoor Shopify AED",
+    "sample_pdp_url": "https://www.scentlibraryofficial.com/products.json",
+    "sample_price_string": "AED 950.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 135
+  },
+  {
+    "domain": "usbs-uae.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE Shopify AED (phones/laptops)",
+    "sample_pdp_url": "https://usbs-uae.com/products/apple-iphone-12",
+    "sample_price_string": "From AED 900.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 136
+  },
+  {
+    "domain": "watches.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fashion",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "The Watch House (Al-Futtaim) Shopify AED",
+    "sample_pdp_url": "https://watches.ae/collections/top-trending-picks/products/80120-3nm-buidn",
+    "sample_price_string": "AED 5,080",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 137
+  },
+  {
+    "domain": "yusufbhaifragrances.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "high",
+    "serves_bh_via": "UAE Shopify AED",
+    "sample_pdp_url": "https://yusufbhaifragrances.com/products/dior-sauvage",
+    "sample_price_string": "From AED 50.00",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 138
+  },
+  {
+    "domain": "sa.getkuwa.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "supplements"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "confidence": "medium",
+    "serves_bh_via": "Kuwa KSA subdomain Shopify SAR",
+    "sample_pdp_url": "https://sa.getkuwa.com/products.json",
+    "sample_price_string": "138.00 SAR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "priority_rank": 139
+  },
+  {
+    "domain": "vperfumes.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Next.js",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "V Perfumes /sa-en; SAR in __NEXT_DATA__",
+    "sample_pdp_url": "https://www.vperfumes.com/sa-en/product/gucci-intense-oud-edp-for-unisex-90ml",
+    "sample_price_string": "SAR 773.00",
+    "integration_adapter": "fetch_next_data_price-style (__NEXT_DATA__ extractor, mechanism=json_api)",
+    "priority_rank": 140
+  },
+  {
+    "domain": "mbayoman.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "mbay Oman WooCommerce Store API OMR",
+    "sample_pdp_url": "https://www.mbayoman.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 41000 minor_unit 3 = 41.000 OMR",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 141
+  },
+  {
+    "domain": "mobpcom.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "MOBPC Oman WooCommerce Store API OMR (read minor_unit per response)",
+    "sample_pdp_url": "https://mobpcom.com/product/steelseries-arctis-nova-7-wireless-gen-2/",
+    "sample_price_string": "price 999 minor_unit 1 = 99.9 OMR",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 142
+  },
+  {
+    "domain": "mushtariyat.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "makeup",
+      "skincare",
+      "fragrances",
+      "haircare"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Mushtariyat Oman WooCommerce Store API OMR",
+    "sample_pdp_url": "https://mushtariyat.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 440 minor_unit 2 = OMR 4.40",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 143
+  },
+  {
+    "domain": "qimia.om",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "supplements",
+      "sports-nutrition"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Qimia Oman supplement WooCommerce Store API OMR",
+    "sample_pdp_url": "https://qimia.om/product/rc-king-whey-5lb/",
+    "sample_price_string": "17.90 OMR",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 144
+  },
+  {
+    "domain": "timezoneoman.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fashion",
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Timezone Oman watches WooCommerce Store API OMR",
+    "sample_pdp_url": "https://www.timezoneoman.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 19625 minor_unit 2 = 196.25 OMR",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 145
+  },
+  {
+    "domain": "ispotaba.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "iSpot Aba Qatar WooCommerce Store API QAR",
+    "sample_pdp_url": "https://www.ispotaba.com/product/iphone-17-pro-max-256gb-deep-blue-jap/",
+    "sample_price_string": "QAR 4,899",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 146
+  },
+  {
+    "domain": "perfumeqatar.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Perfume Qatar WooCommerce QAR (Store API)",
+    "sample_pdp_url": "https://perfumeqatar.com/product/chrome-for-men-edt-100ml-by-azzaro/",
+    "sample_price_string": "169.00 QAR",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 147
+  },
+  {
+    "domain": "qatarperfumeshop.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "Qatar Perfume Shop WooCommerce QAR",
+    "sample_pdp_url": "https://qatarperfumeshop.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "320.00 QAR",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 148
+  },
+  {
+    "domain": "babystore.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "other",
+      "grocery"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "UAE baby WooCommerce AED",
+    "sample_pdp_url": "https://babystore.ae/product/mondo-aquamals-water-cannon-cdu12-woc/",
+    "sample_price_string": "price 18500 = AED 185.00",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 149
+  },
+  {
+    "domain": "head2toes.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "haircare",
+      "makeup",
+      "skincare"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "UAE WooCommerce AED (Olaplex/Kerastase)",
+    "sample_pdp_url": "https://head2toes.ae/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 4000 = AED 40.00",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 150
+  },
+  {
+    "domain": "kbeautybliss.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "UAE K-beauty WooCommerce AED",
+    "sample_pdp_url": "https://kbeautybliss.com/product/skin-1004-madagascar-centella-asiatica-100-ampoule-100ml/",
+    "sample_price_string": "AED 113",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 151
+  },
+  {
+    "domain": "ouddubai.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "UAE WooCommerce AED (Store API minor units)",
+    "sample_pdp_url": "https://ouddubai.ae/product/al-eimaan-pour-femme/",
+    "sample_price_string": "price 12600 = AED 126.00",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 152
+  },
+  {
+    "domain": "oudera.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "UAE WooCommerce AED (Store API)",
+    "sample_pdp_url": "https://oudera.ae/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "AED 190.00",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 153
+  },
+  {
+    "domain": "perfumebays.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "UAE niche-fragrance WooCommerce AED",
+    "sample_pdp_url": "https://perfumebays.com/product/brazilian-acai-extrait-de-parfum-30ml/",
+    "sample_price_string": "price 57750 = AED 577.50",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 154
+  },
+  {
+    "domain": "theskincarehub.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "confidence": "high",
+    "serves_bh_via": "UAE WooCommerce AED",
+    "sample_pdp_url": "https://theskincarehub.com/wp-json/wc/store/products?per_page=100",
+    "sample_price_string": "price 11000 = AED 110.00",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, woo_store)",
+    "priority_rank": 155
+  },
+  {
+    "domain": "mithaly.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "supplements",
+      "sports-nutrition"
+    ],
+    "platform": "Salla",
+    "mechanism": "sitemap_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Alwazn Almithaly KSA Salla; sitemap + JSON-LD SAR",
+    "sample_pdp_url": "https://mithaly.sa/en/body-builder-100-whey-protein",
+    "sample_price_string": "SAR252.00",
+    "integration_adapter": "cron_index_sitemaps + fetch_page_price (mechanism=sitemap)",
+    "priority_rank": 156
+  },
+  {
+    "domain": "proteinvitamin.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "supplements",
+      "sports-nutrition"
+    ],
+    "platform": "Salla",
+    "mechanism": "sitemap_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "KSA Salla supplements; PDP JSON-LD lazy this run",
+    "sample_pdp_url": "https://proteinvitamin.sa/en/bodybuilder-whey-protein-10lbs/p573402891",
+    "sample_price_string": "369 SAR (search)",
+    "integration_adapter": "cron_index_sitemaps + fetch_page_price (mechanism=sitemap)",
+    "priority_rank": 157
+  },
+  {
+    "domain": "4me-ksa.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "skincare",
+      "supplements",
+      "makeup"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "4ME KSA /en; Salla JSON-LD SAR",
+    "sample_pdp_url": "https://4me-ksa.com/-/p815926812",
+    "sample_price_string": "399 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 158
+  },
+  {
+    "domain": "almanea.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "electronics",
+      "other"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Almanea KSA Magento; JSON-LD/data-price SAR",
+    "sample_pdp_url": "https://www.almanea.sa/en/product/haam-front-load-washing-machine-11kg-p-120300102111002",
+    "sample_price_string": "1,849 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 159
+  },
+  {
+    "domain": "alsaifgallery.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "other",
+      "electronics"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Alsaif Gallery KSA Magento SAR (renders $ but SAR)",
+    "sample_pdp_url": "https://alsaifgallery.com/SA_en/p-11995/6285360282691.html",
+    "sample_price_string": "349 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 160
+  },
+  {
+    "domain": "becarestore.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "electronics",
+      "supplements"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Salla SAR JSON-LD",
+    "sample_pdp_url": "https://becarestore.com/en/p2117443204",
+    "sample_price_string": "55 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 161
+  },
+  {
+    "domain": "en-sa.rituals.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances",
+      "skincare",
+      "haircare"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Rituals KSA Magento; data-price-amount SAR",
+    "sample_pdp_url": "https://en-sa.rituals.com/products/perfumes/women/8719134187984-travel-ocean-infini-15ml.html",
+    "sample_price_string": "SAR 100.00",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 162
+  },
+  {
+    "domain": "en-saudi.ounass.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fashion",
+      "fragrances",
+      "makeup"
+    ],
+    "platform": "custom (Al Tayer)",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Ounass KSA locale; SAR server-rendered",
+    "sample_pdp_url": "https://en-saudi.ounass.com/shop-loewe-draped-dress-219397905_13.html",
+    "sample_price_string": "18,350 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 163
+  },
+  {
+    "domain": "faces.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances",
+      "makeup",
+      "skincare",
+      "haircare",
+      "supplements"
+    ],
+    "platform": "SFCC/Demandware",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Faces KSA SFCC; SAR server-rendered (VERIFIED)",
+    "sample_pdp_url": "https://www.faces.sa/en/p/armani-power-of-you-eau-de-parfum-pm001717604552.html",
+    "sample_price_string": "647 SAR (90ml)",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 164
+  },
+  {
+    "domain": "firstcry.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "other"
+    ],
+    "platform": "custom",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "FirstCry KSA; SAR plain-text in cards",
+    "sample_pdp_url": "https://www.firstcry.sa/en/lego/5/0/354",
+    "sample_price_string": "SAR 1,398.62",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 165
+  },
+  {
+    "domain": "kanbkam.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "custom",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "GCC price AGGREGATOR (/sa/en SAR, /ae/en AED); server-rendered HTML",
+    "sample_pdp_url": "https://www.kanbkam.com/sa/en/mobile-phone/l",
+    "sample_price_string": "325.00 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 166
+  },
+  {
+    "domain": "laverne.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Salla perfume SAR JSON-LD",
+    "sample_pdp_url": "https://laverne.com/ar/oOKrVB",
+    "sample_price_string": "149 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 167
+  },
+  {
+    "domain": "narscosmetics.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "makeup",
+      "skincare"
+    ],
+    "platform": "SFCC/Demandware",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "NARS KSA official SFCC; SAR server-rendered",
+    "sample_pdp_url": "https://www.narscosmetics.sa/en/radiant-creamy-concealer/nars-base-radiant-creamy-concealer.html",
+    "sample_price_string": "190 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 168
+  },
+  {
+    "domain": "outletpharmacyonline.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "supplements",
+      "grocery"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Salla pharmacy SAR JSON-LD",
+    "sample_pdp_url": "https://outletpharmacyonline.sa/en/arkopha-azinc-optimal-60cap/p1508578182",
+    "sample_price_string": "33 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 169
+  },
+  {
+    "domain": "sa.abdulsamadalqurashi.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "ASAQ KSA /en; Salla JSON-LD SAR (VERIFIED)",
+    "sample_pdp_url": "https://sa.abdulsamadalqurashi.com/en/al-qurashi-blend-perfume-90ml/p495814384",
+    "sample_price_string": "495 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 170
+  },
+  {
+    "domain": "sa.oudelite.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Oud Elite KSA /en; Salla JSON-LD SAR",
+    "sample_pdp_url": "https://sa.oudelite.com/en/-/p582872998",
+    "sample_price_string": "145 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 171
+  },
+  {
+    "domain": "saudi.jazp.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances",
+      "electronics",
+      "fashion",
+      "other"
+    ],
+    "platform": "Next.js",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Jazp KSA Next.js; SAR in static HTML",
+    "sample_pdp_url": "https://saudi.jazp.com/sa-en/Hugo-Boss-100ml-Boss-Bottled-Infinite-Fragrance/p/136105",
+    "sample_price_string": "SAR 294",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 172
+  },
+  {
+    "domain": "saudi.microless.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "custom",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Microless KSA locale; SAR in static HTML",
+    "sample_pdp_url": "https://saudi.microless.com/product/asus-x-hifiman-rog-kithara-90yh0470-bhua00/",
+    "sample_price_string": "SAR 1,174.19",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 173
+  },
+  {
+    "domain": "store.rasasi.com.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Rasasi KSA .com.sa (Salla); SAR JSON-LD",
+    "sample_pdp_url": "https://store.rasasi.com.sa/en/-/p666775809",
+    "sample_price_string": "253 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 174
+  },
+  {
+    "domain": "vanilla.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Salla perfume SAR JSON-LD",
+    "sample_pdp_url": "https://vanilla.sa/en/Dior-Homme-Intense-perfume/p1925357018",
+    "sample_price_string": "435.10 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 175
+  },
+  {
+    "domain": "almutawaph.com.kw",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "supplements",
+      "pharmacy"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Al Mutawa Kuwait pharmacy Magento; KWD HTML",
+    "sample_pdp_url": "https://www.almutawaph.com.kw/vitamins-supplements/vitamins-1/chymed-forte-30-tabs.html",
+    "sample_price_string": "KD 15.000",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 176
+  },
+  {
+    "domain": "azadea.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "sports",
+      "fashion",
+      "other"
+    ],
+    "platform": "SFCC/Demandware",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Azadea /kw/en SFCC; KWD server-rendered",
+    "sample_pdp_url": "https://www.azadea.com/kw/en/sports",
+    "sample_price_string": "173.00 KWD",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 177
+  },
+  {
+    "domain": "bloomingdales.com.kw",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "makeup",
+      "fragrances",
+      "fashion"
+    ],
+    "platform": "SFCC/Demandware",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Bloomingdale's Kuwait SFCC; KWD server-rendered",
+    "sample_pdp_url": "https://en.bloomingdales.com.kw/beauty-makeup/",
+    "sample_price_string": "KWD 16.500",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 178
+  },
+  {
+    "domain": "damasjewellery.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "jewelry"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Damas /kw-en Magento; KWD server-rendered",
+    "sample_pdp_url": "https://www.damasjewellery.com/kw-en/jewellery/",
+    "sample_price_string": "1,511 KWD",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 179
+  },
+  {
+    "domain": "kw.oudelite.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Oud Elite Kuwait Salla; JSON-LD KWD",
+    "sample_pdp_url": "https://kw.oudelite.com/en/e0301010101-man-desert",
+    "sample_price_string": "7 KWD",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 180
+  },
+  {
+    "domain": "kwt.nazih.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "haircare",
+      "skincare",
+      "fragrances"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Nazih Kuwait Magento (Hyva); KWD server-rendered",
+    "sample_pdp_url": "https://kwt.nazih.com",
+    "sample_price_string": "KWD 17.395",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 181
+  },
+  {
+    "domain": "mamasandpapas.com.kw",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "baby",
+      "kids",
+      "fashion"
+    ],
+    "platform": "SFCC/Demandware",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "M&P Kuwait SFCC; KWD server-rendered",
+    "sample_pdp_url": "https://en.mamasandpapas.com.kw/2pc-set-stripe-dungaree-219125492.html",
+    "sample_price_string": "KWD 13.250",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 182
+  },
+  {
+    "domain": "taw9eel.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "supplements",
+      "pharmacy",
+      "grocery"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Taw9eel Kuwait marketplace Magento; KWD HTML",
+    "sample_pdp_url": "https://www.taw9eel.com/en/pharmacy-1/vitamins-supplements-1/vitabiotics-wellwoman-tricologic-60-tablets.html",
+    "sample_price_string": "KD22.5",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 183
+  },
+  {
+    "domain": "om.oudelite.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Oud Elite Oman Salla; JSON-LD OMR",
+    "sample_pdp_url": "https://om.oudelite.com/en/-/p1866281610",
+    "sample_price_string": "11.498 OMR",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 184
+  },
+  {
+    "domain": "jazp.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics",
+      "fragrances",
+      "other"
+    ],
+    "platform": "Magento / custom",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Jazp multi-country (qatar./oman.); QAR/OMR HTML",
+    "sample_pdp_url": "https://qatar.jazp.com/qa-en/product/electric-air-blower-48w-red-in-qatar",
+    "sample_price_string": "QAR 99",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 185
+  },
+  {
+    "domain": "mamlakatoud.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "custom",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Mamlakat Oud Qatar; QAR in static HTML",
+    "sample_pdp_url": "https://mamlakatoud.com/",
+    "sample_price_string": "130,00 QAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 186
+  },
+  {
+    "domain": "qatar.jazp.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics",
+      "other"
+    ],
+    "platform": "custom",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Jazp Qatar /qa-en; QAR in static HTML",
+    "sample_pdp_url": "https://qatar.jazp.com/qa-en/apple",
+    "sample_price_string": "QAR 119",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 187
+  },
+  {
+    "domain": "qatar.microless.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "custom",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Microless Qatar locale; QAR in static HTML",
+    "sample_pdp_url": "https://qatar.microless.com/mobile-phones/apple/b/l/",
+    "sample_price_string": "QAR 3,176.32",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 188
+  },
+  {
+    "domain": "binsina.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "supplements",
+      "skincare",
+      "other"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "BinSina UAE pharmacy Magento AED",
+    "sample_pdp_url": "https://www.binsina.ae/en/buy-hi-dee-vitamin-d3-50000iu-capsules-pack-of-8s.html",
+    "sample_price_string": "AED 20.00",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 189
+  },
+  {
+    "domain": "chspharmacy.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "supplements"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "CHS UAE pharmacy Magento AED",
+    "sample_pdp_url": "https://chspharmacy.ae/nature-s-bounty-easy-iron-28-mg-capsule-90-s.html",
+    "sample_price_string": "AED 60.90",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 190
+  },
+  {
+    "domain": "gomyz.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare",
+      "makeup",
+      "haircare"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "gomyz /uae-en Magento AED",
+    "sample_pdp_url": "https://gomyz.com/uae-en/skincare/cleansers-scrubs/washes/benefit-the-porefessional-good-cleanup-foaming-cleanser-147ml.html",
+    "sample_price_string": "AED 163.00",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 191
+  },
+  {
+    "domain": "jumbo.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Jumbo UAE Magento; AED server-rendered",
+    "sample_pdp_url": "https://www.jumbo.ae/sony-xp700-x-series-portable-wireless-speaker.html",
+    "sample_price_string": "AED 1,499.00",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 192
+  },
+  {
+    "domain": "nazih.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "haircare",
+      "makeup",
+      "fragrances"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Nazih UAE pro-haircare Magento AED",
+    "sample_pdp_url": "https://nazih.ae/zero-frizz-argan-oil-hair-care-serum-148-ml.html",
+    "sample_price_string": "AED 37.05",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 193
+  },
+  {
+    "domain": "rivolishop.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fashion",
+      "other"
+    ],
+    "platform": "SFCC/Demandware",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Rivoli /en-ae SFCC; AED server-rendered",
+    "sample_pdp_url": "https://www.rivolishop.com/en-ae/product/00Longines-Hydroconquest-L37824769",
+    "sample_price_string": "AED 6,150",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 194
+  },
+  {
+    "domain": "unioncoop.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "grocery"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "high",
+    "serves_bh_via": "Union Coop UAE grocery Magento; data-price-amount AED",
+    "sample_pdp_url": "https://www.unioncoop.ae/starbucks-doubleshot-espresso-coffee-can-200ml-578803.html",
+    "sample_price_string": "AED 12.50",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 195
+  },
+  {
+    "domain": "alrehabstore.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "Al Rehab /en (Salla); SAR JSON-LD",
+    "sample_pdp_url": "https://alrehabstore.com/en/oud-bahraini-100-ml/p1068529267",
+    "sample_price_string": "95 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl) - Salla JSON-LD extractor",
+    "priority_rank": 196
+  },
+  {
+    "domain": "whites.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances",
+      "makeup",
+      "skincare",
+      "haircare"
+    ],
+    "platform": "Akinon",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "Whites KSA Akinon; SAR in template HTML (no JSON-LD)",
+    "sample_pdp_url": "https://www.whites.sa/en-sa/guerlain-l-instant-magic-unisex-eau-de-parfum-75ml/",
+    "sample_price_string": "414.00 SAR",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 197
+  },
+  {
+    "domain": "salams.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances",
+      "fashion",
+      "electronics"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "Salam Stores Qatar Magento; QAR microdata",
+    "sample_pdp_url": "https://salams.com/beauty/men-perfume",
+    "sample_price_string": "QAR (Magento)",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 198
+  },
+  {
+    "domain": "atelierperfumery.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "custom (ASP.NET)",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "UAE custom; AED plain-text (no JSON-LD)",
+    "sample_pdp_url": "https://www.atelierperfumery.com/essential-parfums-ambre-latte-edp-100ml",
+    "sample_price_string": "480 AED",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 199
+  },
+  {
+    "domain": "nrtcfresh.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "grocery"
+    ],
+    "platform": "custom (Laravel)",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "UAE fresh-produce Laravel; AED HTML text",
+    "sample_pdp_url": "https://nrtcfresh.com/categories/fruits/1782",
+    "sample_price_string": "AED 6.50",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 200
+  },
+  {
+    "domain": "touchofoud.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "custom",
+    "mechanism": "curl_jsonld",
+    "confidence": "medium",
+    "serves_bh_via": "UAE custom; AED plain-text HTML (regex)",
+    "sample_pdp_url": "https://www.touchofoud.com/rajwan-2",
+    "sample_price_string": "368 AED",
+    "integration_adapter": "fetch_page_price (mechanism=curl)",
+    "priority_rank": 201
+  },
+  {
+    "domain": "nahdionline.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "supplements",
+      "skincare"
+    ],
+    "platform": "Next.js (Algolia)",
+    "mechanism": "algolia",
+    "confidence": "medium",
+    "serves_bh_via": "Nahdi KSA; price client-side via Algolia (prod_en_products, price.SAR.default)",
+    "sample_pdp_url": "https://www.nahdionline.com/en-sa/pharmaton-multivitamins-30-capsules/pdp/100007429",
+    "sample_price_string": "29.00 SAR",
+    "integration_adapter": "algolia_service.fetch_algolia_price (is_algolia=True)",
+    "priority_rank": 202
+  },
+  {
+    "domain": "deraahstore.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances",
+      "makeup",
+      "skincare"
+    ],
+    "platform": "SFCC/Demandware",
+    "mechanism": "render_required",
+    "confidence": "high",
+    "serves_bh_via": "Deraah KSA SFCC; category price client-side",
+    "sample_pdp_url": "https://www.deraahstore.com/en_sa/perfumes/men-perfumes/link-m/10111011011100-1356.html",
+    "sample_price_string": "174 SAR",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 203
+  },
+  {
+    "domain": "xcite.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Next.js (Magento)",
+    "mechanism": "render_required",
+    "confidence": "high",
+    "serves_bh_via": "Xcite Kuwait Next.js; price client-side (probe __NEXT_DATA__/API)",
+    "sample_pdp_url": "https://www.xcite.com/apple-iphone-16-6-1-inch-128gb-black/p",
+    "sample_price_string": "219.900 KD",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 204
+  },
+  {
+    "domain": "eros.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Magento",
+    "mechanism": "render_required",
+    "confidence": "high",
+    "serves_bh_via": "Eros UAE Magento; PDP price plain-text no microdata",
+    "sample_pdp_url": "https://www.eros.ae/galaxy-s26-ultra-5g-12-256-black-11656258.html",
+    "sample_price_string": "AED 3999.00",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 205
+  },
+  {
+    "domain": "lookfantastic.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "skincare",
+      "haircare",
+      "makeup",
+      "fragrances"
+    ],
+    "platform": "SFCC/THG",
+    "mechanism": "render_required",
+    "confidence": "high",
+    "serves_bh_via": "Lookfantastic UAE THG; price gated by hydration",
+    "sample_pdp_url": "https://www.lookfantastic.ae/p/elizabeth-arden-ceramide-skin-renewing-cleanser-125ml/17682642/",
+    "sample_price_string": "110 AED",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 206
+  },
+  {
+    "domain": "store.aerosmart.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "custom (Laravel)",
+    "mechanism": "render_required",
+    "confidence": "high",
+    "serves_bh_via": "UAE DJI reseller Laravel; AED plain-text HTML",
+    "sample_pdp_url": "https://store.aerosmart.ae/product/dji-avata-360-drone-dji-rc-2",
+    "sample_price_string": "AED2,669.00",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 207
+  },
+  {
+    "domain": "goldapple.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "skincare",
+      "makeup",
+      "haircare",
+      "fragrances"
+    ],
+    "platform": "Next.js",
+    "mechanism": "render_required",
+    "confidence": "medium",
+    "serves_bh_via": "Gold Apple KSA Next.js; price plain-text, no JSON-LD/state",
+    "sample_pdp_url": "https://goldapple.sa/19000328633-marine-care-retinol",
+    "sample_price_string": "148.00 SAR",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 208
+  },
+  {
+    "domain": "om.ahmedalmaghribi.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Next.js",
+    "mechanism": "render_required",
+    "confidence": "medium",
+    "serves_bh_via": "Ahmed Al Maghribi Oman Next.js; SSR price (PDP JSON-LD to confirm)",
+    "sample_pdp_url": "https://om.ahmedalmaghribi.com/en/product-category/perfumes",
+    "sample_price_string": "13.500 OMR",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 209
+  },
+  {
+    "domain": "oman.citizenshop.me",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fashion",
+      "electronics"
+    ],
+    "platform": "custom",
+    "mechanism": "render_required",
+    "confidence": "medium",
+    "serves_bh_via": "Citizen Oman custom; OMR plain-text, no JSON-LD/products.json",
+    "sample_pdp_url": "https://oman.citizenshop.me/",
+    "sample_price_string": "OMR 340.98",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 210
+  },
+  {
+    "domain": "oman.jazp.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "custom",
+    "mechanism": "render_required",
+    "confidence": "medium",
+    "serves_bh_via": "Jazp Oman /om-en; OMR plain-text in HTML (regex)",
+    "sample_pdp_url": "https://oman.jazp.com/om-en/mobiles-tablets/c/2",
+    "sample_price_string": "314 OMR",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 211
+  },
+  {
+    "domain": "swarovski.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "jewelry",
+      "watches",
+      "other"
+    ],
+    "platform": "SFCC/Demandware",
+    "mechanism": "render_required",
+    "confidence": "medium",
+    "serves_bh_via": "Swarovski Qatar SFCC; PDP price likely render",
+    "sample_pdp_url": "https://www.swarovski.qa/",
+    "sample_price_string": "380 QAR",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 212
+  },
+  {
+    "domain": "hyperpc.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Next.js",
+    "mechanism": "render_required",
+    "confidence": "medium",
+    "serves_bh_via": "UAE gaming-PC configurator Next.js; client-side ranges",
+    "sample_pdp_url": "https://hyperpc.ae/gaming-pc/play",
+    "sample_price_string": "from AED 7,880",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 213
+  },
+  {
+    "domain": "letoile.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "makeup",
+      "skincare",
+      "fragrances"
+    ],
+    "platform": "Next.js",
+    "mechanism": "render_required",
+    "confidence": "medium",
+    "serves_bh_via": "L'Etoile UAE Next.js; price plain-text client-side",
+    "sample_pdp_url": "https://letoile.ae/p/5-1-30-sxt000001",
+    "sample_price_string": "147 AED",
+    "integration_adapter": "render tier Firecrawl/Scrape.do (is_render_only=True) - DEFER",
+    "priority_rank": 214
+  }
+]

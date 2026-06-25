@@ -1,0 +1,1441 @@
+[
+  {
+    "domain": "sporter.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "supplements",
+      "sports-nutrition",
+      "other"
+    ],
+    "platform": "Magento + Next.js SSR",
+    "mechanism": "sitemap_jsonld",
+    "api_endpoint": "BH product sitemap https://www.sporter.com/sitemap/sitemap_bh_en_products.xml (1594 PDPs); price via JSON-LD AggregateOffer on every /en-bh/{slug}/ PDP (also _next/data/{buildId}/en-bh/{slug}.json)",
+    "integration_adapter": "sitemap index (cron_index_sitemaps) + fetch_page_price (mechanism=sitemap, en-bh JSON-LD)",
+    "sample_price_string": "56.39 BHD (Dymatize ISO 100) [VERIFIED LIVE 2026-06-25]",
+    "sample_pdp_url": "https://www.sporter.com/en-bh/dymatize-iso-100/",
+    "confidence": "high",
+    "priority_rank": 1
+  },
+  {
+    "domain": "drnutrition.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "supplements",
+      "sports-nutrition",
+      "other"
+    ],
+    "platform": "Custom Next.js storefront",
+    "mechanism": "sitemap_jsonld",
+    "api_endpoint": "BH sitemap https://drnutrition.com/sitemap-en-bh.xml (6133 PDPs); price via JSON-LD Offer on every /en-bh/{slug} PDP",
+    "integration_adapter": "sitemap index (cron_index_sitemaps) + fetch_page_price (mechanism=sitemap)",
+    "sample_price_string": "12.44 BHD (BSN NO-Xplode) [VERIFIED LIVE 2026-06-25]",
+    "sample_pdp_url": "https://drnutrition.com/en-bh/bsn-no-xplode",
+    "confidence": "high",
+    "priority_rank": 2
+  },
+  {
+    "domain": "gcc.luluhypermarket.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics",
+      "grocery",
+      "supplements",
+      "skincare",
+      "haircare",
+      "makeup",
+      "fashion",
+      "other"
+    ],
+    "platform": "SAP Commerce Cloud",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "Product JSON-LD on /en-bh/<slug>/p/<id>/ (offers.price, priceCurrency='bhd'); same host /en-ae /en-sa /en-qa for rest of GCC",
+    "integration_adapter": "fetch_page_price (mechanism=page_scrape_jsonld — ALREADY a code method; was missing from catalogue)",
+    "sample_price_string": "3.250 bhd (iends Foldable Laptop Stand)",
+    "sample_pdp_url": "https://gcc.luluhypermarket.com/en-bh/iends-foldable-laptop-stand-ls4563/p/2025225/",
+    "confidence": "high",
+    "priority_rank": 3
+  },
+  {
+    "domain": "bh.iherb.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "supplements",
+      "skincare",
+      "haircare"
+    ],
+    "platform": "Custom (iHerb)",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "JSON-LD Offer on /pr/{slug}/{id} PDP; native BHD on the bh. host (vs current generic-iHerb USD-display scrape)",
+    "integration_adapter": "fetch_page_price (mechanism=curl, JSON-LD; native-BHD iHerb subdomain)",
+    "sample_price_string": "2.11 BHD (California Gold Gold C 60 caps) [VERIFIED LIVE 2026-06-25]",
+    "sample_pdp_url": "https://bh.iherb.com/pr/california-gold-nutrition-gold-c-usp-grade-vitamin-c-1-000-mg-60-veggie-capsules/61864",
+    "confidence": "high",
+    "priority_rank": 4
+  },
+  {
+    "domain": "virginmegastore.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics",
+      "other",
+      "fashion"
+    ],
+    "platform": "SAP Hybris (Spartacus)",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "JSON-LD on every /p/{code} PDP (Offer.priceSpecification.{price,priceCurrency}; availability InStock/OutOfStock honest — filter OOS empties)",
+    "integration_adapter": "fetch_page_price (mechanism=curl, Hybris JSON-LD)",
+    "sample_price_string": "107.9 BHD (Apple AirPods Pro 3) [VERIFIED LIVE 2026-06-25]",
+    "sample_pdp_url": "https://www.virginmegastore.bh/en/electronics-accessories/headphones-audio/headphones-earbuds/true-wireless-earbuds/apple-airpods-pro-3/p/1113883",
+    "confidence": "high",
+    "priority_rank": 5
+  },
+  {
+    "domain": "en-bh.rituals.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "skincare",
+      "fragrances",
+      "haircare"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "JSON-LD on every /products/.../{ean}-{slug}.html PDP; data-price-amount in DOM",
+    "integration_adapter": "fetch_page_price (mechanism=curl, Magento JSON-LD)",
+    "sample_price_string": "1.25 BHD (Rituals Sport Shower Foam)",
+    "sample_pdp_url": "https://en-bh.rituals.com/products/body/shower-bath/shower-foam/8719134161106-ritualssportshowerfoam.html",
+    "confidence": "high",
+    "priority_rank": 6,
+    "parent_root": "rituals.com (en-sa.rituals.com SAR known in R1)"
+  },
+  {
+    "domain": "revolutionbeauty.me",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "makeup",
+      "skincare"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "Product JSON-LD on /en-bh/<slug>-<id>.html (offers.price, priceCurrency BHD)",
+    "integration_adapter": "fetch_page_price (mechanism=curl, Magento JSON-LD)",
+    "sample_price_string": "2.10 BHD (Matte Base Foundation)",
+    "sample_pdp_url": "https://www.revolutionbeauty.me/en-bh/matte-base-foundation-21156.html",
+    "confidence": "high",
+    "priority_rank": 7
+  },
+  {
+    "domain": "ikea.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other"
+    ],
+    "platform": "IKEA global platform",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "Inline price JSON + priceCurrency BHD in /bh/en/p/{slug}-{code}/ PDP HTML",
+    "integration_adapter": "fetch_page_price (mechanism=curl, /bh/en locale)",
+    "sample_price_string": "27.9 BHD (BILLY bookcase white)",
+    "sample_pdp_url": "https://www.ikea.com/bh/en/p/billy-bookcase-white-00263850/",
+    "confidence": "medium",
+    "priority_rank": 8
+  },
+  {
+    "domain": "beautyandblends.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://www.beautyandblends.com/products.json?limit={n}; Shopify.currency active BHD (genuine-BHD oud/fragrance = hard category)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "sample_price_string": "13.500 BHD (OUD EXTREME)",
+    "sample_pdp_url": "https://www.beautyandblends.com/products/oud-extreme",
+    "confidence": "high",
+    "priority_rank": 9
+  },
+  {
+    "domain": "bitware.store",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "electronics",
+      "components",
+      "maker",
+      "gadgets"
+    ],
+    "platform": "WordPress/WooCommerce",
+    "mechanism": "json_api",
+    "api_endpoint": "WooCommerce Store API GET https://www.bitware.store/wp-json/wc/store/v1/products (prices.price minor units, currency_code BHD, currency_minor_unit 2)",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api)",
+    "sample_price_string": "8.00 BHD (ESP32-S3 Dev Board; price=800 minor=2) [VERIFIED LIVE 2026-06-25]",
+    "sample_pdp_url": "https://www.bitware.store/product/esp32-s3-dual-type-c-development-board-core-board",
+    "confidence": "high",
+    "priority_rank": 10
+  },
+  {
+    "domain": "bathandbodyworks.com.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fragrances",
+      "skincare",
+      "haircare",
+      "other"
+    ],
+    "platform": "Adobe Commerce / Magento (Alshaya peachpuma headless)",
+    "mechanism": "json_api",
+    "api_endpoint": "POST https://www.bathandbodyworks.com.bh/graphql productSearch; headers from https://www.bathandbodyworks.com.bh/configs.json (commerce-store-view-code bhr_en + x-api-key + environment-id, all public). price at productView...final.amount.{value,currency}",
+    "integration_adapter": "NEW: fetch_alshaya_graphql_price (Adobe Commerce Catalog Service productSearch)",
+    "sample_price_string": "6.25 BHD (Gingham 3-Wick Candle)",
+    "sample_pdp_url": "https://www.bathandbodyworks.com.bh/en/ (price via GraphQL by phrase/sku)",
+    "confidence": "high",
+    "priority_rank": 11,
+    "note": "Alshaya peachpuma config family; configs.json HTTP 200 with bhr_en store-view CONFIRMED LIVE 2026-06-25"
+  },
+  {
+    "domain": "footlocker.com.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fashion",
+      "other"
+    ],
+    "platform": "Adobe Commerce / Magento (Alshaya peachpuma headless)",
+    "mechanism": "json_api",
+    "api_endpoint": "POST https://www.footlocker.com.bh/graphql productSearch; headers from https://www.footlocker.com.bh/configs.json (commerce-store-view-code bhr_en + x-api-key + environment-id, all public). price at productView...final.amount.{value,currency}",
+    "integration_adapter": "NEW: fetch_alshaya_graphql_price (Adobe Commerce Catalog Service productSearch)",
+    "sample_price_string": "65 BHD (Nike P-6000)",
+    "sample_pdp_url": "https://www.footlocker.com.bh/en/ (price via GraphQL by phrase/sku)",
+    "confidence": "high",
+    "priority_rank": 12,
+    "note": "Same Alshaya peachpuma GraphQL pattern (per-brand configs.json)"
+  },
+  {
+    "domain": "americaneagle.com.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fashion",
+      "other"
+    ],
+    "platform": "Adobe Commerce / Magento (Alshaya peachpuma headless)",
+    "mechanism": "json_api",
+    "api_endpoint": "POST https://www.americaneagle.com.bh/graphql productSearch; headers from https://www.americaneagle.com.bh/configs.json (commerce-store-view-code bhr_en + x-api-key + environment-id, all public). price at productView...final.amount.{value,currency}",
+    "integration_adapter": "NEW: fetch_alshaya_graphql_price (Adobe Commerce Catalog Service productSearch)",
+    "sample_price_string": "19.8 BHD (AE Carpenter Jean)",
+    "sample_pdp_url": "https://www.americaneagle.com.bh/en/ (price via GraphQL by phrase/sku)",
+    "confidence": "high",
+    "priority_rank": 13,
+    "note": "Same Alshaya peachpuma GraphQL pattern (per-brand configs.json)"
+  },
+  {
+    "domain": "muji.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other",
+      "skincare"
+    ],
+    "platform": "Adobe Commerce / Magento (Alshaya peachpuma headless)",
+    "mechanism": "json_api",
+    "api_endpoint": "POST https://www.muji.bh/graphql productSearch; headers from https://www.muji.bh/configs.json (commerce-store-view-code bhr_en + x-api-key + environment-id, all public). price at productView...final.amount.{value,currency}",
+    "integration_adapter": "NEW: fetch_alshaya_graphql_price (Adobe Commerce Catalog Service productSearch)",
+    "sample_price_string": "2.25 BHD (Notebook)",
+    "sample_pdp_url": "https://www.muji.bh/en/ (price via GraphQL by phrase/sku)",
+    "confidence": "high",
+    "priority_rank": 14,
+    "note": "Same Alshaya peachpuma GraphQL pattern (per-brand configs.json)"
+  },
+  {
+    "domain": "newbalance.com.bh",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "fashion",
+      "other"
+    ],
+    "platform": "Adobe Commerce / Magento (Alshaya peachpuma headless)",
+    "mechanism": "json_api",
+    "api_endpoint": "POST https://www.newbalance.com.bh/graphql productSearch; headers from https://www.newbalance.com.bh/configs.json (commerce-store-view-code bhr_en + x-api-key + environment-id, all public). price at productView...final.amount.{value,currency}",
+    "integration_adapter": "NEW: fetch_alshaya_graphql_price (Adobe Commerce Catalog Service productSearch)",
+    "sample_price_string": "10 BHD (Flower Shoe T-Shirt)",
+    "sample_pdp_url": "https://www.newbalance.com.bh/en/ (price via GraphQL by phrase/sku)",
+    "confidence": "high",
+    "priority_rank": 15,
+    "note": "Same Alshaya peachpuma GraphQL pattern (per-brand configs.json)"
+  },
+  {
+    "domain": "howayte.com",
+    "country": "BH",
+    "currency": "BHD",
+    "categories": [
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://howayte.com/products.json?limit=250; Shopify.currency active BHD (3-decimal)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True)",
+    "sample_price_string": "22.000 BHD (Pokemon TCG Mega Moonlit EX Tin)",
+    "sample_pdp_url": "https://howayte.com/products.json?limit=2",
+    "confidence": "high",
+    "priority_rank": 16
+  },
+  {
+    "domain": "al-dawaa.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "supplements",
+      "skincare",
+      "haircare",
+      "makeup",
+      "grocery",
+      "pharmacy",
+      "other"
+    ],
+    "platform": "SAP Hybris (OCC v2), baseSite=aldawaa",
+    "mechanism": "json_api",
+    "api_endpoint": "https://stgprevapi.al-dawaa.com/occ/v2/aldawaa/products/{code}?fields=FULL (no auth; price.{currencyIso:SAR,value,formattedValue}); product codes from https://www.al-dawaa.com/sitemap/en/Product-en-SAR.xml. NOTE www.al-dawaa.com/occ/... returns SPA shell — use the stgprevapi host.",
+    "integration_adapter": "NEW: fetch_occ_rest_price (Hybris OCC v2 client; convert SAR->BHD)",
+    "sample_price_string": "78.94 SAR (Eva Gold Collagen Serum); 1805.5 SAR (Chicco crib) [VERIFIED LIVE 2026-06-25]",
+    "sample_pdp_url": "https://www.al-dawaa.com/en/p/234419/chicco-baby-bed-next-2-me-co-sleeping-crib-stone-1-pc",
+    "confidence": "high",
+    "priority_rank": 17
+  },
+  {
+    "domain": "perfumya.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 2008161730 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "440 SAR (Dior J'adore EDP 100ml) [VERIFIED LIVE 2026-06-25]",
+    "sample_pdp_url": "https://perfumya.com/p1445009140",
+    "confidence": "high",
+    "priority_rank": 18
+  },
+  {
+    "domain": "novaliaperfume.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 2004824714 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "699 SAR (Novalia Signature Aura Box)",
+    "sample_pdp_url": "https://novaliaperfume.com/p607016008",
+    "confidence": "high",
+    "priority_rank": 19
+  },
+  {
+    "domain": "taudsa.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 2020571763 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "85 SAR (Musk Lajab)",
+    "sample_pdp_url": "https://taudsa.com/p1957905980",
+    "confidence": "high",
+    "priority_rank": 20
+  },
+  {
+    "domain": "epure-sa.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 1371342487 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "279 SAR (Epure perfume bundle)",
+    "sample_pdp_url": "https://epure-sa.com/p37242387",
+    "confidence": "high",
+    "priority_rank": 21
+  },
+  {
+    "domain": "oudbun.store",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances",
+      "grocery"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 1553684229 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "36 SAR (Yemeni Haraz coffee/oud)",
+    "sample_pdp_url": "https://oudbun.store/p1503528314",
+    "confidence": "high",
+    "priority_rank": 22
+  },
+  {
+    "domain": "3saf.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 935113581 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "250 SAR (special wedding offer)",
+    "sample_pdp_url": "https://3saf.com/ar/special-wedding-offer/p1715267935",
+    "confidence": "high",
+    "priority_rank": 23
+  },
+  {
+    "domain": "bohperfume.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 584168430 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "100 SAR (Zumurud)",
+    "sample_pdp_url": "https://bohperfume.com/p214397394",
+    "confidence": "high",
+    "priority_rank": 24
+  },
+  {
+    "domain": "invite-sa.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 1692155146 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "65.22 SAR (Shaghaf, reg 86.09)",
+    "sample_pdp_url": "https://invite-sa.com/ar/p1783924236",
+    "confidence": "high",
+    "priority_rank": 25
+  },
+  {
+    "domain": "psupps.net",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "supplements"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 711969789 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "89 SAR (NXT Nutrition Ashwagandha) [VERIFIED LIVE 2026-06-25]",
+    "sample_pdp_url": "https://psupps.net/p963508353",
+    "confidence": "high",
+    "priority_rank": 26
+  },
+  {
+    "domain": "suppsplanet.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "supplements"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 793501212 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "275 SAR (Whey Basic 5lb)",
+    "sample_pdp_url": "https://suppsplanet.com/ar/oZNjgQY",
+    "confidence": "high",
+    "priority_rank": 27
+  },
+  {
+    "domain": "cosmetics.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "makeup",
+      "skincare",
+      "haircare"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 1099831979 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "79 SAR (Anola hair-removal device)",
+    "sample_pdp_url": "https://cosmetics.sa/ar/p761922863",
+    "confidence": "high",
+    "priority_rank": 28
+  },
+  {
+    "domain": "salla.sa/odred",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 1026062900 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "50 SAR (Rose Wood perfume)",
+    "sample_pdp_url": "https://salla.sa/odred/p1861457749",
+    "confidence": "high",
+    "priority_rank": 29
+  },
+  {
+    "domain": "salla.sa/batla-perfume",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 570788475 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "190 SAR (Sheikha Veil, reg 290)",
+    "sample_pdp_url": "https://salla.sa/batla-perfume/sheikha-veil/p139479853",
+    "confidence": "high",
+    "priority_rank": 30
+  },
+  {
+    "domain": "salla.sa/pe_colors",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 1554023495 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "89 SAR (Oudos Luxe)",
+    "sample_pdp_url": "https://salla.sa/pe_colors/p1546876212",
+    "confidence": "high",
+    "priority_rank": 31
+  },
+  {
+    "domain": "salla.sa/supplementscastle",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "supplements"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 283318128 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "60 SAR (Himalaya Ashwagandha 120ct)",
+    "sample_pdp_url": "https://salla.sa/supplementscastle.com/p1206449680",
+    "confidence": "high",
+    "priority_rank": 32
+  },
+  {
+    "domain": "salla.sa/fuelupstore",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "supplements"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GET https://api.salla.dev/store/v1/products  header Store-Identifier: 1099827764 (public, no token; cursor ?page=N&per_page=M; emits store currency)",
+    "integration_adapter": "NEW: fetch_salla_api_price (Store-Identifier header client; ONE adapter for the whole ~4141-store KSA Salla vein; convert SAR->BHD)",
+    "sample_price_string": "90 SAR (NXT Magnesium 60ct)",
+    "sample_pdp_url": "https://fuelupstore.com/ar/p677057655",
+    "confidence": "high",
+    "priority_rank": 33
+  },
+  {
+    "domain": "salla.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances",
+      "supplements",
+      "makeup",
+      "skincare",
+      "haircare"
+    ],
+    "platform": "Salla",
+    "mechanism": "json_api",
+    "api_endpoint": "GENERIC VEIN: every Salla store exposes GET https://api.salla.dev/store/v1/products header Store-Identifier:<store_id> (store_id from HTML \"store\":{\"id\":NNN}). ~4141 live KSA Salla stores; BHD natively for BH-configured stores (reefperfumes 18 BHD R1), else SAR.",
+    "integration_adapter": "NEW: fetch_salla_api_price (single adapter for the entire platform)",
+    "sample_price_string": "410.25 SAR (La Reem Oud, list 547)",
+    "sample_pdp_url": "https://salla.sa/la-reem-de-fragrance/lareem-oud/p2123462033",
+    "confidence": "high",
+    "priority_rank": 34,
+    "note": "BULK-DISCOVERY vein descriptor; StoreLeads + site:salla.sa enumerate ~4141 KSA stores"
+  },
+  {
+    "domain": "banafaforoud.com",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Salla (twilight theme)",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "Root is the Salla SSR store (114KB); PDP /<lang>/-/p<id>; JSON-LD priceCurrency=SAR (/bh/en/ is a thin landing). Also crackable via api.salla.dev once store_id read.",
+    "integration_adapter": "fetch_page_price (mechanism=curl, Salla JSON-LD) OR fetch_salla_api_price",
+    "sample_price_string": "125.01 SAR (oud/perfume)",
+    "sample_pdp_url": "https://banafaforoud.com/ar/-/p1964126244",
+    "confidence": "medium",
+    "priority_rank": 35
+  },
+  {
+    "domain": "nike.sa",
+    "country": "KSA",
+    "currency": "SAR",
+    "categories": [
+      "fashion",
+      "sports",
+      "other"
+    ],
+    "platform": "SFCC/Demandware",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "SFCC server-renders ld+json Product/Offer + visible SAR price into the PDP .html (/en/<slug>/<STYLECODE>.html)",
+    "integration_adapter": "fetch_page_price (mechanism=curl, SFCC JSON-LD, official_brand)",
+    "sample_price_string": "649.00 SAR (England 2026 Stadium Home shirt)",
+    "sample_pdp_url": "https://www.nike.sa/en/england-2026-stadium-home-mens-nike-dri-fit-football-replica-shirt/NKIB5290-100.html",
+    "confidence": "high",
+    "priority_rank": 36
+  },
+  {
+    "domain": "uae.sharafdg.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "electronics",
+      "mobiles",
+      "computing",
+      "watches",
+      "baby",
+      "home"
+    ],
+    "platform": "WordPress/WooCommerce + Algolia",
+    "mechanism": "algolia",
+    "api_endpoint": "POST https://9KHJLG93J1-dsn.algolia.net/1/indexes/products_index/query (X-Algolia-Application-Id: 9KHJLG93J1, X-Algolia-API-Key: e81d5b30a712bb28f0f1d2a52fc92dd0; body {query,hitsPerPage}); hits[].{post_title,price(sale,AED),regular_price,main_sku,permalink,promotion_offer_json}",
+    "integration_adapter": "NEW: fetch_algolia_price (Algolia search client; convert AED->BHD)",
+    "sample_price_string": "AED 2335 (iPhone 15 128GB Blue; reg 3399) [VERIFIED LIVE 2026-06-25]",
+    "sample_pdp_url": "https://uae.sharafdg.com/product/apple-iphone-15-128gb-blue-with-facetime-middle-east-version/",
+    "confidence": "high",
+    "priority_rank": 37,
+    "parent_root": "sharafdg.com (bahrain.sharafdg.com BHD known in R1)"
+  },
+  {
+    "domain": "basharacare.com",
+    "country": "UAE",
+    "currency": "BHD",
+    "categories": [
+      "skincare",
+      "makeup",
+      "haircare"
+    ],
+    "platform": "Magento PWA",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "Root redirects to /en_bh with BHD active; listing JS-rendered, PDP JSON-LD likely carries BHD price",
+    "integration_adapter": "fetch_page_price (mechanism=curl, /en_bh JSON-LD)",
+    "sample_price_string": "22.7 BHD (Bioderma) — /en_bh BHD confirmed [HTTP 200 LIVE 2026-06-25]; PDP price-extract NEEDS confirm",
+    "sample_pdp_url": "https://www.basharacare.com/en_bh/skin-care",
+    "confidence": "medium",
+    "priority_rank": 38,
+    "note": "redirects to en_bh BHD; serves_bh_via=local_bhd despite UAE base. PDP-level extraction unconfirmed."
+  },
+  {
+    "domain": "vitaminshop.ae",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "supplements"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://www.vitaminshop.ae/products.json (base AED)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert AED->BHD)",
+    "sample_price_string": "136.50 AED (Nature's Bounty Immune)",
+    "sample_pdp_url": "https://www.vitaminshop.ae/products/natures-bounty-immune-24",
+    "confidence": "high",
+    "priority_rank": 39
+  },
+  {
+    "domain": "fitaminat.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "supplements",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://fitaminat.com/products.json (base AED)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert AED->BHD)",
+    "sample_price_string": "58.36 AED (Bioglan Collagen)",
+    "sample_pdp_url": "https://fitaminat.com/products/bioglan-collagen-powder-5000mg-151gm-offer",
+    "confidence": "high",
+    "priority_rank": 40
+  },
+  {
+    "domain": "shopkees.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "electronics",
+      "laptops",
+      "mobiles",
+      "printers",
+      "accessories",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://www.shopkees.com/products.json?limit={n} (also /products/{handle}.json); base AED (Shopify Markets at checkout; /bahrain-en is a market selector not a path)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert AED->BHD)",
+    "sample_price_string": "710.00 AED (Brother MFC-J2340DW)",
+    "sample_pdp_url": "https://www.shopkees.com/products/brother-mfc-j2340dw.json",
+    "confidence": "high",
+    "priority_rank": 41
+  },
+  {
+    "domain": "soukare.com",
+    "country": "UAE",
+    "currency": "AED",
+    "categories": [
+      "supplements",
+      "skincare"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "PDP itemprop price (UAE base AED)",
+    "integration_adapter": "fetch_page_price (mechanism=curl, Magento microdata; convert AED->BHD)",
+    "sample_price_string": "6.60 AED (Vitabiotics Wellwoman)",
+    "sample_pdp_url": "https://soukare.com/en-sa/vitabiotics-wellwoman-original",
+    "confidence": "medium",
+    "priority_rank": 42
+  },
+  {
+    "domain": "kuwait.ounass.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "fashion",
+      "fragrances",
+      "makeup",
+      "skincare"
+    ],
+    "platform": "Next.js + Algolia (Al Tayer)",
+    "mechanism": "sitemap_jsonld",
+    "api_endpoint": "Listing pages carry JSON-LD ItemList of Products with offers {price, priceCurrency:KWD} (e.g. /women/bags)",
+    "integration_adapter": "fetch_page_price (mechanism=curl, listing JSON-LD; convert KWD->BHD)",
+    "sample_price_string": "955 KWD (Small Le 5 A 7 Supple Bag)",
+    "sample_pdp_url": "https://kuwait.ounass.com/women/bags",
+    "confidence": "high",
+    "priority_rank": 43,
+    "parent_root": "ounass.com (bahrain.ounass.com BHD known in R1)"
+  },
+  {
+    "domain": "en-kw.sssports.com",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "fashion",
+      "other"
+    ],
+    "platform": "Salesforce Commerce Cloud (Demandware)",
+    "mechanism": "sitemap_jsonld",
+    "api_endpoint": "PDP JSON-LD Offer {priceCurrency:KWD, price}; product sitemaps https://en-kw.sssports.com/sitemap_index.xml -> sitemap_{N}-product.xml (/{slug}/{SKU}.html)",
+    "integration_adapter": "sitemap index (cron_index_sitemaps) + fetch_page_price (SFCC JSON-LD; convert KWD->BHD)",
+    "sample_price_string": "8.000 KWD (Mueller Pro Heel Cups)",
+    "sample_pdp_url": "https://en-kw.sssports.com/mueller-pro-heel-cups/MU971.html",
+    "confidence": "high",
+    "priority_rank": 44
+  },
+  {
+    "domain": "healthland.com.kw",
+    "country": "KW",
+    "currency": "KWD",
+    "categories": [
+      "supplements"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://healthland.com.kw/products.json?limit={n} (also /en/collections/{c}/products.json); Shopify.currency active KWD",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert KWD->BHD)",
+    "sample_price_string": "39.950 KWD (Optimum Nutrition Gold Standard Whey)",
+    "sample_pdp_url": "https://healthland.com.kw/en/collections/protein-powders",
+    "confidence": "high",
+    "priority_rank": 45
+  },
+  {
+    "domain": "en-qa.6thstreet.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fashion",
+      "makeup",
+      "skincare"
+    ],
+    "platform": "Magento (headless)",
+    "mechanism": "sitemap_jsonld",
+    "api_endpoint": "Listing/PDP JSON-LD priceCurrency:QAR (same Magento family as known en-bh.6thstreet.com / en-kw sibling); PDP /{slug}/{code}.html",
+    "integration_adapter": "fetch_page_price (mechanism=curl/algolia, same family; convert QAR->BHD)",
+    "sample_price_string": "priceCurrency QAR confirmed [HTTP 200 LIVE 2026-06-25]; per-PDP amount client-rendered (sibling en-kw gave 19.95 KWD inline)",
+    "sample_pdp_url": "https://en-qa.6thstreet.com/adidas.html",
+    "confidence": "medium",
+    "priority_rank": 46,
+    "parent_root": "6thstreet.com (en-bh.6thstreet.com BHD known in R1)"
+  },
+  {
+    "domain": "virginmegastore.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "SAP Hybris",
+    "mechanism": "json_api",
+    "api_endpoint": "OCC v2 https://occ.virginmegastore.com/occ/v2/virginQa/products/{code}",
+    "integration_adapter": "NEW: fetch_occ_rest_price (Hybris OCC v2; convert QAR->BHD)",
+    "sample_price_string": "QAR 399",
+    "sample_pdp_url": "https://virginmegastore.qa/en/p/830170",
+    "confidence": "high",
+    "priority_rank": 47
+  },
+  {
+    "domain": "beautyboothqa.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "skincare"
+    ],
+    "platform": "Next.js",
+    "mechanism": "json_api",
+    "api_endpoint": "REST https://admin.beautybooth.qa/api/v3/products/{slug}",
+    "integration_adapter": "NEW: fetch_rest_json_price (Next.js admin REST; convert QAR->BHD)",
+    "sample_price_string": "QAR 106 (CeraVe)",
+    "sample_pdp_url": "https://beautyboothqa.com/brands/cerave",
+    "confidence": "high",
+    "priority_rank": 48
+  },
+  {
+    "domain": "musclepumpqa.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "supplements"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "api_endpoint": "WooCommerce Store API https://musclepumpqa.com/wp-json/wc/store/products",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, convert QAR->BHD)",
+    "sample_price_string": "QAR 25.00",
+    "sample_pdp_url": "https://musclepumpqa.com/product/endurance-water-bottle/",
+    "confidence": "high",
+    "priority_rank": 49
+  },
+  {
+    "domain": "alaneesqatar.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "PDP JSON-LD (QAR)",
+    "integration_adapter": "fetch_page_price (mechanism=curl, Woo JSON-LD; convert QAR->BHD)",
+    "sample_price_string": "QAR 3299 (Asus TUF Gaming F15)",
+    "sample_pdp_url": "https://alaneesqatar.qa/product/asus-tuf-gaming-f15/",
+    "confidence": "high",
+    "priority_rank": 50
+  },
+  {
+    "domain": "ansargallery.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics",
+      "fragrances",
+      "makeup"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "PDP JSON-LD/microdata (QAR; Cloudflare-fronted, curl_cffi passes)",
+    "integration_adapter": "fetch_page_price (mechanism=curl, Magento; convert QAR->BHD)",
+    "sample_price_string": "QAR 319.75 (Kouros YSL perfume)",
+    "sample_pdp_url": "https://ansargallery.com/en/perfume-kouros-ysl-3365440003866.html",
+    "confidence": "high",
+    "priority_rank": 51
+  },
+  {
+    "domain": "nazih.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "makeup",
+      "fragrances"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "PDP JSON-LD (QAR)",
+    "integration_adapter": "fetch_page_price (mechanism=curl, Magento; convert QAR->BHD)",
+    "sample_price_string": "QAR 10 (Diva car freshener)",
+    "sample_pdp_url": "https://nazih.qa/diva-car-freshener-musky-scent-8ml.html",
+    "confidence": "high",
+    "priority_rank": 52
+  },
+  {
+    "domain": "leperfumeqa.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://leperfumeqa.com/products.json (base QAR)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert QAR->BHD)",
+    "sample_price_string": "QAR 135.00 (Perry Ellis 360)",
+    "sample_pdp_url": "https://leperfumeqa.com/",
+    "confidence": "high",
+    "priority_rank": 53
+  },
+  {
+    "domain": "store974.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://store974.com/products.json (base QAR)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert QAR->BHD)",
+    "sample_price_string": "QAR 899.00 (Gravastar Mercury V60 Pro)",
+    "sample_pdp_url": "https://store974.com/",
+    "confidence": "high",
+    "priority_rank": 54
+  },
+  {
+    "domain": "pcbuilderqatar.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://pcbuilderqatar.com/products.json (base QAR)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert QAR->BHD)",
+    "sample_price_string": "QAR 4649.00 (High Gaming PC)",
+    "sample_pdp_url": "https://pcbuilderqatar.com/",
+    "confidence": "high",
+    "priority_rank": 55
+  },
+  {
+    "domain": "princesscosmeticsqa.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "makeup",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://princesscosmeticsqa.com/products.json (base QAR)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert QAR->BHD)",
+    "sample_price_string": "QAR 35.00 (Luxe Organix)",
+    "sample_pdp_url": "https://princesscosmeticsqa.com/",
+    "confidence": "high",
+    "priority_rank": 56
+  },
+  {
+    "domain": "addoony.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "makeup",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://addoony.com/products.json (base QAR)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert QAR->BHD)",
+    "sample_price_string": "QAR 160.00 (Lensme Drama)",
+    "sample_pdp_url": "https://addoony.com/",
+    "confidence": "high",
+    "priority_rank": 57
+  },
+  {
+    "domain": "fyzara.com",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "makeup",
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://fyzara.com/products.json (base QAR)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert QAR->BHD)",
+    "sample_price_string": "QAR 100.00 (Arabiyat Sugar Vanilla)",
+    "sample_pdp_url": "https://fyzara.com/",
+    "confidence": "high",
+    "priority_rank": 58
+  },
+  {
+    "domain": "qsales.qa",
+    "country": "QA",
+    "currency": "QAR",
+    "categories": [
+      "electronics",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://qsales.qa/products.json (base QAR)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert QAR->BHD)",
+    "sample_price_string": "QAR 49.00 (Smart Bluetooth Scale)",
+    "sample_pdp_url": "https://qsales.qa/",
+    "confidence": "high",
+    "priority_rank": 59
+  },
+  {
+    "domain": "oman.sharafdg.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "Algolia",
+    "mechanism": "algolia",
+    "api_endpoint": "POST https://1495769233-dsn.algolia.net/1/indexes/oman_products/query (X-Algolia-API-Key e81d5b30a712bb28f0f1d2a52fc92dd0). NOTE: Algolia index price fields may read 0.000 (per-store-context server-side) — fall back to PDP if so.",
+    "integration_adapter": "NEW: fetch_algolia_price (convert OMR->BHD)",
+    "sample_price_string": "435.000 OMR (Samsung Galaxy S26 Ultra 256GB)",
+    "sample_pdp_url": "https://oman.sharafdg.com/product/samsung-galaxy-s26-ultra-5g-256gb/",
+    "confidence": "high",
+    "priority_rank": 60,
+    "parent_root": "sharafdg.com (bahrain.sharafdg.com BHD known in R1)"
+  },
+  {
+    "domain": "futureit.om",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "electronics",
+      "mobiles",
+      "laptops",
+      "gaming",
+      "accessories",
+      "other"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "api_endpoint": "WooCommerce Store API https://futureit.om/wp-json/wc/store/products?per_page=20 (prices.price minor units, currency_code OMR, minor_unit 3)",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, convert OMR->BHD)",
+    "sample_price_string": "12.500 OMR (KINGS PRO Android TV Box; price=12500 minor=3) [VERIFIED LIVE 2026-06-25]",
+    "sample_pdp_url": "https://futureit.om/product/kings-pro-android-tv-box/",
+    "confidence": "high",
+    "priority_rank": 61
+  },
+  {
+    "domain": "oudworlds.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "api_endpoint": "WooCommerce Store API https://oudworlds.com/wp-json/wc/store/products?per_page=20 (currency_code OMR minor_unit 3)",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, convert OMR->BHD)",
+    "sample_price_string": "15.000 OMR (Oud World Family Offer)",
+    "sample_pdp_url": "https://oudworlds.com/product/oud-world-family-offer-luxury-fragrance/",
+    "confidence": "high",
+    "priority_rank": 62
+  },
+  {
+    "domain": "gamingpcoman.shop",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "electronics"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "api_endpoint": "WooCommerce Store API https://gamingpcoman.shop/wp-json/wc/store/products?per_page=100&page=N (currency_code OMR minor_unit 3)",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, convert OMR->BHD)",
+    "sample_price_string": "189.000 OMR (PNY GeForce RTX 5060 Ti 8GB)",
+    "sample_pdp_url": "https://gamingpcoman.shop/wp-json/wc/store/products?per_page=1",
+    "confidence": "high",
+    "priority_rank": 63
+  },
+  {
+    "domain": "thefaceshop.om",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "skincare",
+      "beauty"
+    ],
+    "platform": "WooCommerce",
+    "mechanism": "json_api",
+    "api_endpoint": "WooCommerce Store API https://thefaceshop.om/wp-json/wc/store/products (currency_code OMR; minor_unit configured 2 — verify decimals per product)",
+    "integration_adapter": "fetch_woocommerce_store_api_price (mechanism=json_api, convert OMR->BHD; minor-unit guard)",
+    "sample_price_string": "3.99 OMR (Rice & Ceramide toner 150ml)",
+    "sample_pdp_url": "https://thefaceshop.om/",
+    "confidence": "high",
+    "priority_rank": 64
+  },
+  {
+    "domain": "starlink.om",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "electronics",
+      "mobiles"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://starlink.om/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "11.900 OMR (Apple MagSafe Charger)",
+    "sample_pdp_url": "https://starlink.om/products/apple-magsafe-charger",
+    "confidence": "high",
+    "priority_rank": 65
+  },
+  {
+    "domain": "elitegames.om",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "gaming",
+      "toys",
+      "electronics"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://elitegames.om/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "24.000 OMR (Lego Batman)",
+    "sample_pdp_url": "https://elitegames.om/products/lego-batman-legacy-of-the-dark-knight",
+    "confidence": "high",
+    "priority_rank": 66
+  },
+  {
+    "domain": "mls.om",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "grocery",
+      "food"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://mls.om/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "2.590 OMR (AUS Angus Beef Burger)",
+    "sample_pdp_url": "https://mls.om/products/aus-angus-beef-burger-125gm-x-2-patties-unseasoned",
+    "confidence": "high",
+    "priority_rank": 67
+  },
+  {
+    "domain": "maryamspet.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "other",
+      "grocery"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://maryamspet.com/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "2.520 OMR (Wanpy Chicken Jerky 100g)",
+    "sample_pdp_url": "https://maryamspet.com/products/wanpy-soft-chicken-jerky-strips-100g",
+    "confidence": "high",
+    "priority_rank": 68
+  },
+  {
+    "domain": "oulfah.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://oulfah.com/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "14.000 OMR (Shaker the Adventurer book series; ships BH)",
+    "sample_pdp_url": "https://oulfah.com/products.json",
+    "confidence": "high",
+    "priority_rank": 69
+  },
+  {
+    "domain": "darbeauty.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "skincare",
+      "makeup"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://darbeauty.com/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "11.900 OMR (EqqualBerry Serum Kit; ships BH)",
+    "sample_pdp_url": "https://darbeauty.com/products/eqqualberry-serum-minis-discovery-kit",
+    "confidence": "high",
+    "priority_rank": 70
+  },
+  {
+    "domain": "glamorous-beauty.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "skincare",
+      "makeup"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://glamorous-beauty.com/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "8.000 OMR (Dr.Melaxin Eye Patch; K-beauty)",
+    "sample_pdp_url": "https://glamorous-beauty.com/products/dr-melaxin-cemenrete-calcium-volume-eye-patch",
+    "confidence": "high",
+    "priority_rank": 71
+  },
+  {
+    "domain": "mummy-and-me.store",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "baby",
+      "skincare"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://mummy-and-me.store/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "7.000 OMR (Mustela Travel Kit)",
+    "sample_pdp_url": "https://mummy-and-me.store/products/mustela-travel-kit",
+    "confidence": "high",
+    "priority_rank": 72
+  },
+  {
+    "domain": "thebubblewrap.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "baby",
+      "other"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://thebubblewrap.com/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "261.800 OMR (Spectra UV-LED Sterilizer; ships BH)",
+    "sample_pdp_url": "https://thebubblewrap.com/products/white-uv-led-sterilizer",
+    "confidence": "high",
+    "priority_rank": 73
+  },
+  {
+    "domain": "bronzeom.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "makeup"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://bronzeom.com/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "11.500 OMR (Huda Beauty Faux Filler; ships BH)",
+    "sample_pdp_url": "https://bronzeom.com/products/foc-huda-beauty",
+    "confidence": "high",
+    "priority_rank": 74
+  },
+  {
+    "domain": "musclehouse.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "supplements",
+      "sports-nutrition"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://musclehouse.com/products.json?limit=250; meta.json confirms country OM / currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "8.800 OMR (Challenger Glutamine; ships BH)",
+    "sample_pdp_url": "https://musclehouse.com/products/2-challenger-nutrition-glutamine-unflavoured-5000mg-60-servings",
+    "confidence": "high",
+    "priority_rank": 75
+  },
+  {
+    "domain": "bawwaba.om",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "electronics",
+      "mobiles",
+      "fragrances",
+      "beauty"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "Magento REST auth-gated, but PDP HTML curl-fetchable with JSON-LD/inline price + currencyCode OMR",
+    "integration_adapter": "fetch_page_price (mechanism=curl, Magento JSON-LD; convert OMR->BHD)",
+    "sample_price_string": "169.9 OMR (Honor 600 8GB 256GB)",
+    "sample_pdp_url": "https://bawwaba.om/honor-600-8gb-256gb-5g-black.html",
+    "confidence": "high",
+    "priority_rank": 76
+  },
+  {
+    "domain": "oman.ahmarket.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "makeup",
+      "grocery",
+      "other"
+    ],
+    "platform": "Magento",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "Category/PDP HTML curl-fetchable; currencyCode OMR + JSON-LD/displayed OMR price",
+    "integration_adapter": "fetch_page_price (mechanism=curl, Magento; convert OMR->BHD)",
+    "sample_price_string": "OMR 6.000 (Just Gold Make Up Kit)",
+    "sample_pdp_url": "https://oman.ahmarket.com/en/jg-makeup-kit-various-shades-oman-0397580299307.html",
+    "confidence": "high",
+    "priority_rank": 77,
+    "parent_root": "ahmarket.com (bahrain.ahmarket.com BHD known in R2)"
+  },
+  {
+    "domain": "markeetex.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "grocery",
+      "food",
+      "other"
+    ],
+    "platform": "Shopify (architechpro proxy)",
+    "mechanism": "curl_jsonld",
+    "api_endpoint": "products.json proxy-walled; each PDP HTML carries inline Shopify product {price:<minor>} + Shopify.currency active OMR",
+    "integration_adapter": "fetch_page_price (mechanism=curl, inline Shopify object; convert OMR->BHD)",
+    "sample_price_string": "0.429 OMR (Flax Seeds 250g; inline price 429)",
+    "sample_pdp_url": "https://markeetex.com/products/flax-seeds-250-g",
+    "confidence": "medium",
+    "priority_rank": 78
+  },
+  {
+    "domain": "om.swissarabian.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://om.swissarabian.com/products.json?limit=250; meta.json country OM currency OMR (oman-swiss.myshopify.com)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "30.000 OMR (MUSK 07 EDP + Body Lotion Gift Set)",
+    "sample_pdp_url": "https://om.swissarabian.com/products/musk-07-edp-body-lotion-gift-set",
+    "confidence": "high",
+    "priority_rank": 79,
+    "parent_root": "swissarabian.com (USD) / ksa.swissarabian.com (SAR) known"
+  },
+  {
+    "domain": "oman.afnan.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://oman.afnan.com/products.json?limit=250&page=N; meta.json currency OMR (base-currency store, no per-product currency field)",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "15.000 OMR (Kiaana Vibes)",
+    "sample_pdp_url": "https://oman.afnan.com/products.json?limit=1",
+    "confidence": "high",
+    "priority_rank": 80,
+    "parent_root": "afnan.com / bh.afnan.com (BHD) known in R1"
+  },
+  {
+    "domain": "om.asgharali.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://om.asgharali.com/products.json?limit=250&page=N; meta.json currency OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "23.810 OMR (Wadi Set)",
+    "sample_pdp_url": "https://om.asgharali.com/products.json?limit=1",
+    "confidence": "high",
+    "priority_rank": 81,
+    "parent_root": "asgharali.com / bh.asgharali.com (BHD) known in R1"
+  },
+  {
+    "domain": "om.junaidperfumes.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "fragrances"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://om.junaidperfumes.com/products.json?limit=250&page=N; Shopify.currency active OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "25.500 OMR (Roah Al Teeb)",
+    "sample_pdp_url": "https://om.junaidperfumes.com/products.json?limit=1",
+    "confidence": "high",
+    "priority_rank": 82,
+    "parent_root": "junaidperfumes.com (BHD) known in R1"
+  },
+  {
+    "domain": "om.getkuwa.com",
+    "country": "OM",
+    "currency": "OMR",
+    "categories": [
+      "supplements"
+    ],
+    "platform": "Shopify",
+    "mechanism": "shopify_products_json",
+    "api_endpoint": "https://om.getkuwa.com/products.json?limit=250&page=N; Shopify.currency active OMR",
+    "integration_adapter": "fetch_shopify_price (is_shopify=True, convert OMR->BHD)",
+    "sample_price_string": "43.360 OMR (Sleep Breakthrough)",
+    "sample_pdp_url": "https://om.getkuwa.com/products.json?limit=1",
+    "confidence": "high",
+    "priority_rank": 83,
+    "parent_root": "getkuwa.com / bh.getkuwa.com (BHD) / sa.getkuwa.com known"
+  }
+]
