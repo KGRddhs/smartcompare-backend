@@ -4537,9 +4537,33 @@ class StructuredComparisonService:
                         observed.append(_r)
             if not observed:
                 return None
-            # Lowest valid BHD among the genuine adapter hits (a real BH shelf
+            # GENUINE-ONLY SHORT-CIRCUIT (BH/GCC source-build correctness fix).
+            # This consume SHORT-CIRCUITS the cascade (cancels the speculative
+            # discovery), so it must fire ONLY on a GENUINE BH price — never a
+            # converted one. The legacy adapters (nasser/bolo) only ever returned
+            # genuine BHD, so `min(observed)` was safe; the new BH/GCC adapters
+            # (woo/salla/occ/magento/unbxd/rest_json) can return a CONVERTED
+            # gcc->BHD price (source_method "converted_usd"). A converted adapter
+            # hit must NOT short-circuit over a genuine price the discovery/scrape
+            # cascade would still find (CLAUDE.md "MOST AUTHORITATIVE not lowest").
+            # So: short-circuit on the cheapest GENUINE adapter hit; if there is no
+            # genuine hit, SEED the converted observations as candidates (so the
+            # downstream selection can still prefer converted-over-estimate) but
+            # return None — the cascade continues looking for genuine.
+            genuine_observed = [
+                r for r in observed
+                if "converted" not in (r.get("source_method") or "")
+                and "estimate" not in (r.get("source_method") or "")
+            ]
+            if not genuine_observed:
+                self._seed_shortcircuit_candidates(
+                    full_name, kind="price_dicts", currency=currency,
+                    price_dicts=observed,
+                )
+                return None
+            # Lowest valid BHD among the GENUINE adapter hits (a real BH shelf
             # price — already is_price_showable-gated inside each adapter).
-            best = min(observed, key=lambda d: d["amount"])
+            best = min(genuine_observed, key=lambda d: d["amount"])
             win_domain = str(best.get("retailer") or "").replace("www.", "").lower()
             self._tier15_routes[full_name] = {
                 "route": "bh_adapter_direct",

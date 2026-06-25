@@ -65,8 +65,12 @@ class TestNewAdapterCascadeWiring:
         assert abs(price["amount"] - 21.5) < 0.01
         assert price["retailer"] == "ownperfumes.com"
 
-    async def test_salla_converted_hit_surfaces(self, monkeypatch):
-        # A converted (non-BHD) salla price still surfaces — stamped converted_usd.
+    async def test_converted_adapter_hit_does_NOT_short_circuit(self, monkeypatch):
+        # GENUINE-ONLY SHORT-CIRCUIT invariant: a CONVERTED (non-BHD) adapter hit
+        # must NOT short-circuit the cascade over a genuine price discovery/scrape
+        # would find (CLAUDE.md "MOST AUTHORITATIVE not lowest"). It is seeded as a
+        # candidate, but the cascade CONTINUES (discovery IS reached). (A genuine
+        # adapter hit DOES short-circuit — see test_woo_genuine_hit_short_circuits.)
         import app.services.structured_comparison_service as scs
         svc = scs.get_comparison_service()
 
@@ -77,22 +81,30 @@ class TestNewAdapterCascadeWiring:
             lambda c: [_live("perfumya.com", "salla_api")],
         )
 
-        async def fake_salla(domain, product_name, currency="BHD"):
+        async def fake_salla_converted(domain, product_name, currency="BHD"):
             return {
                 "amount": 18.0, "currency": "BHD", "original_currency": "SAR",
                 "retailer": "perfumya.com", "url": "https://perfumya.com/p/x",
                 "in_stock": True, "estimated": False,
                 "source_method": "converted_usd", "confidence": 0.85,
             }
-        monkeypatch.setattr(scs, "fetch_salla_api_price", fake_salla)
+        monkeypatch.setattr(scs, "fetch_salla_api_price", fake_salla_converted)
 
-        price = await svc._get_price(
+        reached = {"discovery": False}
+        async def marker_search(*a, **k):
+            reached["discovery"] = True
+            return {"organic": [], "shopping": []}
+        monkeypatch.setattr(scs, "search_web", marker_search)
+
+        await svc._get_price(
             brand="Creed", name="Aventus", variant=None, region="bahrain",
             search_query="Creed Aventus", nocache=True, category="fragrances",
         )
-        assert price is not None
-        assert price["source_method"] == "converted_usd"
-        assert price["retailer"] == "perfumya.com"
+        # Converted adapter hit did NOT short-circuit → the cascade continued.
+        assert reached["discovery"] is True, (
+            "a converted adapter hit must NOT short-circuit over the genuine "
+            "discovery/scrape cascade"
+        )
 
     async def test_new_adapter_miss_falls_through(self, monkeypatch):
         import app.services.structured_comparison_service as scs
