@@ -62,13 +62,20 @@ class Source:
     subdomain_patterns: Tuple[str, ...] = ()    # bh., bahrain., en-bh.
     currency: str = ""                          # expected currency, e.g. "BHD"
     discovery_query_templates: Tuple[str, ...] = ()  # site:{domain}{locale} "{product}" BHD
-    mechanism: str = ""                         # "" | curl | json_api | sitemap | algolia | shopify | render | provider
+    mechanism: str = ""                         # "" | curl | json_api | sitemap | algolia | shopify | render | provider | woo_store_json | salla_api | occ_rest | magento_graphql | unbxd | rest_json
     pdp_url_pattern: str = ""                   # e.g. /bh-en/p/{slug}/{product_id}
     sample_url: str = ""                        # one live-verified PDP (liveness anchor)
     status: str = ""                            # "" | live | provider-test-candidate | render-only
+    # BH/GCC source-build (2026-06-25) — fan-out cap ordering key. Each
+    # direct-fetch selector sorts (tier_order, priority_rank, registry_order) then
+    # top-K slices so a category with hundreds of catalog rows can't fan out
+    # hundreds of concurrent GETs and blow the 15s Phase-1 price cap. LOWER =
+    # fetched first. Frozen-default 100 → every existing literal row byte-unchanged
+    # (and outranked by a curated low-rank catalog row only when one exists).
+    priority_rank: int = 100
 
 
-SOURCE_REGISTRY: List[Source] = [
+_LITERAL_ROWS: List[Source] = [
     # === BAHRAIN PRIMARY (weight 3.0) ===
     # I5.3 (Bundle B S2, 2026-06-11) — dead-domain replacement, Decision F
     # (verify-or-delete, never fabricate). Liveness control-calibrated: the
@@ -300,6 +307,140 @@ SOURCE_REGISTRY: List[Source] = [
 ]
 
 
+# ===========================================================================
+# BH/GCC catalog-loaded rows (source-build 2026-06-25)
+# ===========================================================================
+# The 400-source BH/GCC discovery catalog is consolidated + normalized by
+# scripts/build_source_registry_data.py into ONE flat data file
+# (data/bh_gcc_sources.json), each row carrying the FINAL Source field values
+# (tier/weight/categories/mechanism/flags/currency/sample_url/priority_rank/
+# status). This loader is deliberately DUMB — it does no mechanism/category
+# mapping (the consolidation script owns that); it just constructs Source objects
+# for the rows the liveness gate has PROMOTED.
+#
+# ZERO-REGRESSION BY CONSTRUCTION: a row is admitted ONLY when its status is
+# "live" (a real PDP/API price was verified by scripts/verify_source_registry.py)
+# or "render-only" (loaded inert, is_render_only=True, for the future render
+# pass). The consolidation writes every row "provider-test-candidate" by default,
+# so BEFORE the liveness gate runs, this loader admits ZERO catalog rows and
+# SOURCE_REGISTRY is byte-identical to _LITERAL_ROWS — the whole change is a
+# prod no-op until rows are explicitly promoted. The existing selectors therefore
+# need NO status filter; the registry simply never contains an unverified row.
+#
+# Import-time-pure + fail-OPEN: pure stdlib (json + pathlib), NO network/DB, path
+# resolved relative to __file__ (NOT cwd — Windows cwd-persist trap), and ANY
+# failure (missing file, parse error, malformed row) returns [] / skips-with-log
+# rather than raising — a broken data file must NEVER brick every import of
+# source_router / price_service.
+import json as _json
+import logging as _logging
+from pathlib import Path as _Path
+
+_loader_logger = _logging.getLogger(__name__)
+
+_CATALOG_DATA_PATH = (
+    _Path(__file__).resolve().parent.parent.parent / "data" / "bh_gcc_sources.json"
+)
+# Only these statuses enter the registry (verify-or-omit; see module note). ONLY
+# "live" — a row promoted by the liveness gate after a real sample_url price
+# probe. "render-only"/"provider-test-candidate" rows stay in the data file
+# (provenance + a future Firecrawl/Scrape.do render pass) but are NOT admitted, so
+# before the gate runs SOURCE_REGISTRY == _LITERAL_ROWS exactly (a prod no-op) and
+# nothing enters Serper discovery / scoring until it is explicitly verified live.
+_ADMITTED_STATUSES = frozenset({"live"})
+_VALID_TIERS = frozenset({"bahrain", "gcc", "global"})
+
+
+def _row_to_source(row: dict) -> Optional[Source]:
+    """Construct a Source from one consolidated catalog row, or None if the row
+    is malformed / not admitted. Never raises."""
+    try:
+        if not isinstance(row, dict):
+            return None
+        status = str(row.get("status") or "")
+        if status not in _ADMITTED_STATUSES:
+            return None
+        domain = str(row.get("domain") or "").strip().lower()
+        if not domain:
+            return None
+        tier = str(row.get("tier") or "")
+        if tier not in _VALID_TIERS:
+            return None
+        cats = row.get("categories") or []
+        if not isinstance(cats, list):
+            return None
+        try:
+            weight = float(row.get("weight", 1.5))
+        except (TypeError, ValueError):
+            weight = 1.5
+        try:
+            prank = int(row.get("priority_rank", 100))
+        except (TypeError, ValueError):
+            prank = 100
+        return Source(
+            domain=domain,
+            tier=tier,
+            categories=tuple(str(c) for c in cats),
+            weight=weight,
+            is_shopify=bool(row.get("is_shopify", False)),
+            is_algolia=bool(row.get("is_algolia", False)),
+            is_render_only=bool(row.get("is_render_only", False)),
+            currency=str(row.get("currency") or ""),
+            mechanism=str(row.get("mechanism") or ""),
+            sample_url=str(row.get("sample_url") or ""),
+            status=status,
+            priority_rank=prank,
+        )
+    except Exception as exc:  # noqa: BLE001 — one bad row must never brick the load
+        _loader_logger.info("[source_router] skipped malformed catalog row: %s", exc)
+        return None
+
+
+def _load_catalog_rows() -> List[Source]:
+    """Load the liveness-promoted BH/GCC catalog rows from data/bh_gcc_sources.json.
+
+    Returns [] on a missing/unreadable/non-list file (fail-open) so the registry
+    degrades to the literal rows rather than failing every import. Dedup against
+    the literals is done HERE (skip any catalog domain already covered by a
+    literal apex) so an edit-in-place literal (sharafdg/extra/bn.boots/noon)
+    always wins over a duplicate catalog row."""
+    try:
+        if not _CATALOG_DATA_PATH.exists():
+            return []
+        raw = _CATALOG_DATA_PATH.read_text(encoding="utf-8")
+        data = _json.loads(raw)
+    except Exception as exc:  # noqa: BLE001 — fail-open: degrade to literals
+        _loader_logger.warning(
+            "[source_router] catalog load failed (%s) — registry = literals only", exc
+        )
+        return []
+    if not isinstance(data, list):
+        return []
+    literal_domains = {s.domain.replace("www.", "").lower() for s in _LITERAL_ROWS}
+    out: List[Source] = []
+    seen: set = set()
+    for row in data:
+        src = _row_to_source(row)
+        if src is None:
+            continue
+        d = src.domain.replace("www.", "").lower()
+        # Dedup: skip if a literal already covers this apex (or a parent of it),
+        # or if an earlier catalog row claimed the same domain.
+        if d in seen:
+            continue
+        if any(d == ld or d.endswith("." + ld) for ld in literal_domains):
+            continue
+        seen.add(d)
+        out.append(src)
+    return out
+
+
+# The runtime registry = the curated literals + the liveness-promoted catalog
+# rows. Assembled ONCE at import. (Before the liveness gate promotes any row this
+# equals _LITERAL_ROWS exactly — a prod no-op.)
+SOURCE_REGISTRY: List[Source] = _LITERAL_ROWS + _load_catalog_rows()
+
+
 _TIER_ORDER = ("bahrain", "gcc", "global")
 
 
@@ -492,6 +633,76 @@ def get_sitemap_sources_for_category(category: str) -> List[Source]:
         and s.tier == "bahrain"
         and (not s.categories or category in s.categories)
     ]
+
+
+# ===========================================================================
+# BH/GCC source-build (2026-06-25) — new direct-fetch mechanism selectors
+# ===========================================================================
+# The 6 NEW $0 adapters (woocommerce / salla / occ / magento-graphql / unbxd /
+# rest-json) get their own per-mechanism selectors. UNLIKE the bahrain-only
+# Shopify/Algolia/sitemap/jsonapi selectors (safe — every bahrain literal is
+# BHD), these span BOTH bahrain AND gcc tiers because the same adapter serves the
+# converted GCC tail too — the ADAPTER stamps genuine (BHD) vs converted_usd by
+# the response's ACTUAL currency, so a gcc row never mis-claims a genuine BH
+# price. Each selector applies the FAN-OUT CAP so a category with hundreds of
+# catalog rows can't fan out hundreds of concurrent GETs (see _fanout_cap).
+
+# Top-K direct-fetch sources per mechanism per category. Env-overridable so an ops
+# tune needs no code change. Mirrors the existing `[:limit]` discovery caps.
+def _fanout_k() -> int:
+    try:
+        import os
+        return max(1, int(os.getenv("BH_GCC_FANOUT_K", "6")))
+    except (TypeError, ValueError):
+        return 6
+
+
+def _direct_fetch_sources(category: str, mechanism: str) -> List[Source]:
+    """Bahrain+GCC-tier sources of `mechanism` for `category`, ordered
+    (tier: bahrain before gcc, then priority_rank asc, then registry order) and
+    TOP-K capped (_fanout_k). Returns [] never raises. The cap bounds the cascade
+    fan-out; the adapter still stamps genuine-vs-converted by actual currency."""
+    matched = [
+        (idx, s)
+        for idx, s in enumerate(SOURCE_REGISTRY)
+        if s.mechanism == mechanism
+        and s.tier in ("bahrain", "gcc")
+        and (not s.categories or category in s.categories)
+    ]
+    # bahrain (tier index 0) before gcc (1); then low priority_rank first; then
+    # stable registry order.
+    matched.sort(key=lambda t: (_TIER_ORDER.index(t[1].tier), t[1].priority_rank, t[0]))
+    return [s for _idx, s in matched[: _fanout_k()]]
+
+
+def get_woo_sources_for_category(category: str) -> List[Source]:
+    """WooCommerce Store API sources (fetch_woocommerce_store_api_price)."""
+    return _direct_fetch_sources(category, "woo_store_json")
+
+
+def get_salla_sources_for_category(category: str) -> List[Source]:
+    """Salla storefront API sources (fetch_salla_api_price)."""
+    return _direct_fetch_sources(category, "salla_api")
+
+
+def get_occ_sources_for_category(category: str) -> List[Source]:
+    """SAP-Hybris OCC v2 sources (fetch_occ_rest_price)."""
+    return _direct_fetch_sources(category, "occ_rest")
+
+
+def get_magento_gql_sources_for_category(category: str) -> List[Source]:
+    """Adobe-Commerce/Magento GraphQL sources (fetch_magento_graphql_price)."""
+    return _direct_fetch_sources(category, "magento_graphql")
+
+
+def get_unbxd_sources_for_category(category: str) -> List[Source]:
+    """Unbxd search-API sources (fetch_unbxd_price)."""
+    return _direct_fetch_sources(category, "unbxd")
+
+
+def get_restjson_sources_for_category(category: str) -> List[Source]:
+    """Custom REST-JSON sources — panda/ourshopee/beautybooth (fetch_rest_json_price)."""
+    return _direct_fetch_sources(category, "rest_json")
 
 
 def source_usage(url: str, category: str) -> str:

@@ -3984,7 +3984,16 @@ def _match_shopify_product(
                 "in_stock": bool(variant.get("available", True)),
                 "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
                 "estimated": False,
-                "source_method": "shopify_json",
+                # BH/GCC source-build (2026-06-25) — stamp by ACTUAL resolved
+                # currency. A native-BHD store is genuine ("shopify_json", 7d TTL,
+                # counts genuine-share). A NON-BHD store whose price we just
+                # _convert_to_bhd'd is a real-but-converted figure → "converted_usd"
+                # (the canonical converted sentinel: showable, 24h TTL, NOT genuine,
+                # NOT the genuine-share KPI). Previously stamped "shopify_json"
+                # unconditionally — a latent mis-stamp that, once GCC Shopify rows
+                # exist in the registry, would bank a converted AED/SAR price as a
+                # genuine BH price for a week and inflate the headline metric.
+                "source_method": ("converted_usd" if needs_conversion else "shopify_json"),
                 "concentration": extract_concentration(_signal_text),
                 "size": (sorted(_sizes)[0] + "ml") if _sizes else None,
                 "title": title,
@@ -5002,6 +5011,16 @@ _GENUINE_BH_SOURCE_METHODS = frozenset({
     # "scrapedo_rendered". A rendered genuine BH price is still genuine.
     "firecrawl", "firecrawl_brand_domain", "scrapedo_rendered",
     "official_brand",
+    # BH/GCC source-build (2026-06-25) — the 5 new $0 direct-fetch adapters stamp
+    # these ONLY for a genuine NATIVE-BHD price (a converted GCC→BHD price always
+    # stamps the literal "converted_usd", never one of these). None contains the
+    # substring "converted"/"estimate" so they pass the price_cache_ttl:159 /
+    # _is_genuine_bh_candidate:5029 substring guards → 7d TTL + showable +
+    # no-negcache + counted in the genuine-share KPI. Mirrored in eval_runner.py
+    # GENUINE_BH_SOURCE_METHODS (tests/test_eval_genuine_methods_parity.py pins
+    # the two sets equal).
+    "woo_store_api", "salla_api", "occ_rest_bhd",
+    "magento_graphql_bhd", "rest_json_bhd",
 })
 
 

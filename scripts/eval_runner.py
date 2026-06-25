@@ -407,6 +407,16 @@ GENUINE_BH_SOURCE_METHODS = frozenset({
     "scrapedo_rendered",
     "shopify_json",
     "official_brand",
+    # BH/GCC source-build (2026-06-25) — mirror of the backend's 5 new direct-fetch
+    # genuine methods. MUST stay equal to price_service._GENUINE_BH_SOURCE_METHODS
+    # (tests/test_eval_genuine_methods_parity.py) or a genuine method the engine
+    # stamps would count toward `priced` but no bucket, under-reporting the
+    # genuine-BH-share KPI.
+    "woo_store_api",
+    "salla_api",
+    "occ_rest_bhd",
+    "magento_graphql_bhd",
+    "rest_json_bhd",
 })
 
 # The one non-genuine, non-estimate bucket: a USD price converted to BHD. Real
