@@ -59,8 +59,11 @@ def test_registry_price_source_count():
     WS-G (fragrance-content-quality P8, 2026-06-22) ADDED 2 CF-walled BH
     beauty/fragrance render sources sephora.bh + boutiqaat.com (is_render_only +
     requires_super — present in the registry list but routed/discovered ONLY when
-    SCRAPEDO_SUPER is on; default usage='price'), 37→39. Guard the floor so a
-    future accidental mass-deletion of price rows is caught.
+    SCRAPEDO_SUPER is on; default usage='price'), 37→39. Wave-3c (2026-06-23)
+    PROMOTED boutiqaat.com off render-only/super to mechanism="sitemap" (live
+    re-verify cracked it to a $0 curl JSON-LD adapter) — it STAYS a price row
+    (usage='price'), so the count is unchanged at 39. Guard the floor so a future
+    accidental mass-deletion of price rows is caught.
     """
     price_rows = [s for s in SOURCE_REGISTRY if s.usage in ("price", "both")]
     assert len(price_rows) == 39

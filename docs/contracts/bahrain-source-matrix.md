@@ -50,11 +50,11 @@ the recorded structural gap.
 |---|---|---|---|---|---|---|---|
 | **electronics** | gcc.lulu, bahrain.sharafdg.com, extra.com, bahrain.microless.com | shopalmoayyed.com, sonyworld.bh | — | noon.com | — | converted_usd → estimated → pending | mid-tier accessories floored by EL-2 (G4 narrows the floor); official brand sites are global→converted |
 | **grocery** | gcc.lulu, talabat.com, bateel.bh | — | — | megamart.bh, alosraonline.com | — | converted_usd → estimated → pending | none structural — strongest curl coverage |
-| **supplements** | gcc.lulu, bahrainpharmacy.com *(+ iHerb `bh.iherb.com` curl, a SEPARATE branch)* | — | — | bn.boots.com, bolo.bh, nasserpharmacy.com | — | iHerb → pharmacy → converted → estimated → pending | thin (1 routed curl + lulu + the iHerb side-branch); F1 misroute + bounded-stage timeout (WS-1/WS-2 fixes); aldeerah curl source ABSENT (F8 — verify-or-omit, §5) |
-| **makeup** | gcc.lulu, bahrainpharmacy.com, bahrain.ounass.com | — | — | bn.boots.com, bolo.bh, nasserpharmacy.com | sephora.bh, boutiqaat.com | converted_usd → estimated → pending | Western drugstore→converted; CF-walled premium structural |
-| **skincare** | gcc.lulu, bahrainpharmacy.com | — | — | bn.boots.com, bolo.bh, nasserpharmacy.com | sephora.bh, boutiqaat.com | converted_usd → estimated → pending | only ONE category-specific curl source (bahrainpharmacy); most resolve converted |
-| **haircare** | gcc.lulu, bahrainpharmacy.com *(JSON-LD reach for haircare SKUs unproven)* | — | — | bn.boots.com, nasserpharmacy.com | boutiqaat.com | converted_usd → estimated → pending | thinnest beauty curl reach; premium→converted/render-only |
-| **fragrances** | gcc.lulu, jalilaperfumes.com, bahrain.ounass.com | bh.asgharali.com, en-bh.ajmal.com, alhajisbahrain.com | — | nasserpharmacy.com | sephora.bh, boutiqaat.com | converted_usd → estimated → pending | Western luxury (Tom Ford/Creed/Chanel)→converted/estimated; Eastern/local genuine via the Shopify stores |
+| **supplements** | gcc.lulu, bahrainpharmacy.com, bolo.bh, nasserpharmacy.com *(+ iHerb `bh.iherb.com` curl, a SEPARATE branch)* | — | — | bn.boots.com | — | iHerb → pharmacy → converted → estimated → pending | thinness eased post-recon (lulu + bahrainpharmacy + bolo curl + nasser JSON-API + the iHerb side-branch); F1 misroute + bounded-stage timeout (WS-1/WS-2 fixes); aldeerah curl source ABSENT (F8 — verify-or-omit, §5) |
+| **makeup** | gcc.lulu, bahrainpharmacy.com, bahrain.ounass.com, bolo.bh, nasserpharmacy.com, boutiqaat.com | — | — | bn.boots.com | sephora.me | converted_usd → estimated → pending | Western drugstore→converted; boutiqaat genuine via sitemap+curl JSON-LD (Wave-3c); CF-walled premium structural (sephora.me) |
+| **skincare** | gcc.lulu, bahrainpharmacy.com, bolo.bh, nasserpharmacy.com, boutiqaat.com | — | — | bn.boots.com | sephora.me | converted_usd → estimated → pending | bolo (curl) + nasser (JSON-API) + boutiqaat (sitemap+curl, Wave-3c) added category genuine reach; CF-walled premium structural (sephora.me) |
+| **haircare** | gcc.lulu, bahrainpharmacy.com *(JSON-LD reach for haircare SKUs unproven)*, nasserpharmacy.com, boutiqaat.com | — | — | bn.boots.com | — | converted_usd → estimated → pending | nasser JSON-API + boutiqaat (sitemap+curl, Wave-3c) added genuine reach; premium→converted |
+| **fragrances** | gcc.lulu, jalilaperfumes.com, bahrain.ounass.com, nasserpharmacy.com, boutiqaat.com | bh.asgharali.com, en-bh.ajmal.com, alhajisbahrain.com | — | — | sephora.me | converted_usd → estimated → pending | Western luxury (Tom Ford/Creed/Chanel)→converted/estimated; Eastern/local genuine via the Shopify stores + nasser JSON-API + boutiqaat (sitemap+curl, Wave-3c) |
 | **fashion** | gcc.lulu, bahrain.ounass.com | — | en-bh.6thstreet.com | — | — | converted_usd → estimated → pending | THIN (2 curl + 1 Algolia); namshi BH un-wired (F6/WS-G, §5) |
 | **other** | gcc.lulu (the ONLY source — all-category row) | — | — | — | — | converted_usd → estimated → pending | THINNEST — lulu-only (STRICT gap); mitigation is upstream category resolution (F1), not a dedicated `other` retailer |
 
@@ -66,6 +66,22 @@ the recorded structural gap.
 3. `jalilaperfumes.com` is a **plain-curl** fragrance row (no `is_shopify`).
 4. The Shopify fragrance stores (asgharali / ajmal / alhajis) are the cheapest
    genuine-BHD win for Eastern/local perfume — `/products.json`, $0, no render.
+5. **Source-intel recon (2026-06-23) — Wave-1 registry corrections:**
+   - `bolo.bh` moved from render-only(starved) → **(a) CURL-genuine**: it is a
+     Nuxt SSR storefront whose PDP carries a genuine BHD price in PLAIN-curl
+     static HTML (the prior `is_render_only` flag was STALE). Covers
+     **supplements + makeup + skincare**. Discovery is via its OWN products
+     sitemap (16 children, ~336k URLs / ~20MB) — **OFF-CLOCK ONLY**; the sitemap
+     must NEVER be fetched on the 15s request clock. `mechanism="sitemap"`.
+   - `nasserpharmacy.com` moved from render-only(starved) → **(a) JSON-API
+     genuine**: bare Apache (NO Cloudflare), genuine BHD served DIRECTLY by its
+     OWN JSON API (`newapi.nasserpharmacy.com /v1/filterSearchs`, no Serper, no
+     render). Covers **supplements + skincare + makeup + haircare + fragrances**.
+     `mechanism="json_api"`.
+   - `sephora.bh` → **`sephora.me` (`/bh-en`)**: the canonical BH Sephora is
+     `sephora.me`, NOT `sephora.bh` (which 301s + is unverified). It is
+     Akamai-walled (`403 AkamaiGHost` from a non-BH IP) → a **(e) provider-test
+     candidate** (`requires_super=True`), NOT a canonical curl/super-OFF row.
 
 ---
 
@@ -96,10 +112,13 @@ render-only) MUST add an entry **with a reason** — the test fails otherwise.
 | **other** | lulu-only (all-category row) — `other` is the catch-all fallback bucket, not a real shopping category; the mitigation is upstream category resolution (F1), not a category-specific BH source. No dedicated `other` retailer exists or is wanted. |
 
 The strict guard EXCLUDES lulu's all-category row to surface lulu-only reliance.
-Today only `other` is lulu-only. `haircare` / `skincare` / `supplements` each have
-exactly ONE category-specific curl source (bahrainpharmacy) — they PASS strict but
-are the thinnest covered categories (see (g) above); a future deletion of
-bahrainpharmacy would push all three into the strict gap set.
+Today only `other` is lulu-only. The **source-intel recon (2026-06-23)** eased
+the beauty/pharmacy thinness: `bolo.bh` (now a plain-curl genuine row) +
+`nasserpharmacy.com` (now a JSON-API genuine row) add category-specific genuine
+reach to `supplements` / `skincare` / `makeup` / `haircare` beyond
+bahrainpharmacy — so a deletion of bahrainpharmacy alone no longer strands them.
+`haircare` remains the thinnest beauty category (no bolo coverage); all PASS
+strict (see (g) above).
 
 **Invariant:** a lenient gap (no source at all) is necessarily also a strict gap
 (`test_lenient_gaps_are_subset_of_strict_gaps`).
@@ -160,19 +179,22 @@ To re-run the manual liveness gate (control-calibrated):
 
 ## 7. WS-H — `SCRAPEDO_SUPER` 5-point experiment protocol
 
-The CF-walled `requires_super` rows (`sephora.bh`, `boutiqaat.com`) are the only
-path to genuine BHD for Western-luxury makeup/skincare/fragrance. They are
-filtered out everywhere with `SCRAPEDO_SUPER` OFF. **Baseline to beat:** the G4
+The CF-walled `requires_super` row `sephora.me` is the remaining super-only path
+to genuine BHD for Western-luxury makeup/skincare/fragrance, filtered out
+everywhere with `SCRAPEDO_SUPER` OFF. (Wave-3c RE-VERIFIED boutiqaat.com OFF the
+requires_super set — its /en-bh PDPs serve genuine BHD in plain-curl JSON-LD, so
+it is now a `mechanism="sitemap"` $0 curl adapter, NOT a super row.) **Baseline to
+beat:** the G4
 measurement (genuine-bh latency+warmer bundle) found `super` NEVER fired across
 9 nocache pulls — the Tier-1.5d render wave was short-circuited by
 `converted_usd` / curl-JSON-LD every time, and the unindexed BH luxury SPAs have
 no Serper URL to render. Before claiming super is the genuine-data lever, the
 experiment MUST satisfy all five points:
 
-1. **Fixed small query set** targeting the `requires_super` rows specifically —
+1. **Fixed small query set** targeting the `requires_super` row specifically —
    a handful of Western-luxury makeup/skincare/fragrance pairs whose only BH
-   stockist is sephora.bh / boutiqaat.com (e.g. a Charlotte Tilbury / Dior
-   Sauvage / Sephora-exclusive pair). NOT a broad eval — a targeted probe.
+   stockist is sephora.me (e.g. a Charlotte Tilbury / Sephora-exclusive pair).
+   NOT a broad eval — a targeted probe.
 2. **Provider attempt-trace inspected** — read
    `metadata.source_trace…attempts` and confirm a `scrapedo_rendered` (super)
    attempt actually FIRED on a `requires_super` domain (it didn't in G4). If the

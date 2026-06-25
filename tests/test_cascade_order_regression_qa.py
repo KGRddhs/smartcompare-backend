@@ -284,18 +284,23 @@ def test_harvest_keeps_real_price_domain():
 from app.services.source_router import SOURCE_REGISTRY
 
 _RENDER_ONLY_DOMAINS = {
-    "alosraonline.com", "nasserpharmacy.com", "bn.boots.com", "bolo.bh", "megamart.bh",
+    # Source-intel recon 2026-06-23: bolo.bh + nasserpharmacy.com flipped OFF
+    # render-only (direct-readable: bolo Nuxt-SSR curl, nasser own JSON API).
+    "alosraonline.com", "bn.boots.com", "megamart.bh",
     # S3 coverage (2026-06-14): noon.com flipped is_render_only=True — Akamai-walled
     # marketplace (plain curl returns 0-byte), routed to the render-tier. GCC-tier
     # (gray-import), not a BH SPA, but carries the flag so the cascade skips a wasted
     # plain-curl on it. L1 #2 apple-fix; dispatcher-confirmed at the coverage merge.
     "noon.com",
-    # WS-G (fragrance-content-quality P8, 2026-06-22): the two CF-walled BH
-    # beauty/fragrance retailers. is_render_only (no static curl price) AND
-    # requires_super (routed ONLY when SCRAPEDO_SUPER is on) — see the gating
-    # test in test_fragrance_content_quality.py. They are in the registry list
-    # but filtered out of routing/discovery with the flag OFF (cost-neutral).
-    "sephora.bh", "boutiqaat.com",
+    # WS-G (fragrance-content-quality P8, 2026-06-22): the CF-walled BH
+    # beauty/fragrance retailer sephora.me. is_render_only (no static curl price)
+    # AND requires_super (routed ONLY when SCRAPEDO_SUPER is on) — see the gating
+    # test in test_fragrance_content_quality.py. In the registry list but filtered
+    # out of routing/discovery with the flag OFF (cost-neutral).
+    # Wave-3c (2026-06-23): boutiqaat.com REMOVED from this set — the live re-verify
+    # cracked it to a $0 curl sitemap adapter (genuine BHD JSON-LD), so it is now
+    # mechanism="sitemap" (NOT render-only/super); see test_source_descriptor_fields.
+    "sephora.me",  # sephora.me = canonical BH (was sephora.bh)
 }
 
 
@@ -309,9 +314,10 @@ _RENDER_ONLY_DOMAINS = {
 
 def test_render_only_field_marks_the_six_render_domains():
     """The is_render_only flag exists on Source and exactly the render domains
-    carry it: 5 BH SPAs (alosra/nasserpharmacy/bn.boots/bolo/megamart) + noon.com
-    (Akamai-walled GCC marketplace, S3 coverage flip) + 2 WS-G CF-walled BH
-    beauty/fragrance sources (sephora.bh/boutiqaat.com, requires_super)."""
+    carry it: alosra/bn.boots/megamart (BH SPAs) + noon.com (Akamai-walled GCC
+    marketplace, S3 coverage flip) + sephora.me (WS-G CF-walled BH beauty/fragrance,
+    requires_super). Wave-3c flipped bolo/nasser/boutiqaat OFF render-only (genuine
+    curl/API/sitemap adapters), so they are NOT in this set."""
     marked = {s.domain for s in SOURCE_REGISTRY if getattr(s, "is_render_only", False)}
     assert marked == _RENDER_ONLY_DOMAINS, (
         f"is_render_only domain set drifted: expected {_RENDER_ONLY_DOMAINS}, got {marked}"
@@ -334,7 +340,7 @@ def test_is_render_only_domain_helper_resolves_spa():
     curl source. Live on main since the S3 genuine-BH re-merge (3be92ce)."""
     from app.services.source_router import is_render_only_domain  # noqa: F401 — RED until merged
     # Bare domain + full-URL both resolve (L1 spec: accepts domain OR URL).
-    assert is_render_only_domain("nasserpharmacy.com") is True
+    assert is_render_only_domain("megamart.bh") is True
     assert is_render_only_domain("https://bn.boots.com/some-pdp") is True
     # Curl-tier domain → False (L1's exact example: sharafdg is curl, not render).
     assert is_render_only_domain("https://bahrain.sharafdg.com/p/x") is False
@@ -354,9 +360,9 @@ def test_curl_wave_skips_render_only_domain():
     """
     from app.services.structured_comparison_service import _build_escalation_scrapers
 
-    render_only_url = "https://nasserpharmacy.com/product/centrum-multivitamin"
+    render_only_url = "https://bn.boots.com/product/centrum-multivitamin"
     scrapers = _build_escalation_scrapers(
-        candidate_urls=[(render_only_url, "nasserpharmacy.com")],
+        candidate_urls=[(render_only_url, "bn.boots.com")],
         full_name="Centrum Multivitamin",
         currency="BHD",
         scraping_mode="hard",
@@ -403,9 +409,9 @@ def test_render_wave_includes_render_only_domain():
     wave='render' (2 scrapers) — it's the ONLY price path for a JS-SPA."""
     from app.services.structured_comparison_service import _build_escalation_scrapers
 
-    render_only_url = "https://nasserpharmacy.com/product/centrum-multivitamin"
+    render_only_url = "https://bn.boots.com/product/centrum-multivitamin"
     scrapers = _build_escalation_scrapers(
-        candidate_urls=[(render_only_url, "nasserpharmacy.com")],
+        candidate_urls=[(render_only_url, "bn.boots.com")],
         full_name="Centrum Multivitamin",
         currency="BHD",
         scraping_mode="hard",

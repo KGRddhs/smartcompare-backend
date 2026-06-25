@@ -57,7 +57,7 @@ class TestWaveParam:
         )
         assert len(sharafdg) == 0  # curl-tier → no render
         nasser = scs_mod._build_escalation_scrapers(
-            candidate_urls=[("https://www.nasserpharmacy.com/p/vitamin-d", "nasserpharmacy.com")],
+            candidate_urls=[("https://www.bn.boots.com/p/vitamin-d", "bn.boots.com")],
             full_name="Vitamin D", currency="BHD", scraping_mode="hard", wave="render",
         )
         assert len(nasser) == 2  # is_render_only → firecrawl + scrapedo
@@ -76,7 +76,7 @@ class TestWaveParam:
         )
         assert len(sharafdg) == 1  # curl only (Fix B: no render for curl-tier)
         nasser = scs_mod._build_escalation_scrapers(
-            candidate_urls=[("https://www.nasserpharmacy.com/p/x", "nasserpharmacy.com")],
+            candidate_urls=[("https://www.bn.boots.com/p/x", "bn.boots.com")],
             full_name="x", currency="BHD", scraping_mode="hard",
         )
         assert len(nasser) == 2  # curl skipped (is_render_only) + render
@@ -92,8 +92,8 @@ class TestRenderOnlySourceRouting:
         monkeypatch.setattr(
             scs_mod.firecrawl_service, "should_fan_out", lambda *a, **k: True
         )
-        # nasserpharmacy.com is an is_render_only registry source.
-        urls = [("https://www.nasserpharmacy.com/p/vitamin-d", "nasserpharmacy.com")]
+        # bn.boots.com is an is_render_only registry source.
+        urls = [("https://www.bn.boots.com/p/vitamin-d", "bn.boots.com")]
         curl_wave = scs_mod._build_escalation_scrapers(
             candidate_urls=urls, full_name="Vitamin D", currency="BHD",
             scraping_mode="hard", wave="curl",
@@ -106,7 +106,7 @@ class TestRenderOnlySourceRouting:
         monkeypatch.setattr(
             scs_mod.firecrawl_service, "should_fan_out", lambda *a, **k: True
         )
-        urls = [("https://www.nasserpharmacy.com/p/vitamin-d", "nasserpharmacy.com")]
+        urls = [("https://www.bn.boots.com/p/vitamin-d", "bn.boots.com")]
         render_wave = scs_mod._build_escalation_scrapers(
             candidate_urls=urls, full_name="Vitamin D", currency="BHD",
             scraping_mode="hard", wave="render",
@@ -169,7 +169,7 @@ class TestRenderWaveBhOnly:
         urls = [
             ("https://www.samsung.com/us/x", "samsung.com"),       # global → 0
             ("https://www.amazon.ae/dp/x", "amazon.ae"),            # gcc global → 0
-            ("https://www.nasserpharmacy.com/p/x", "nasserpharmacy.com"),  # BH render-only → 2
+            ("https://www.bn.boots.com/p/x", "bn.boots.com"),  # BH render-only → 2
         ]
         render = scs_mod._build_escalation_scrapers(
             candidate_urls=urls, full_name="x", currency="BHD",

@@ -34,12 +34,13 @@ class TestRenderWaveDomainCap:
         scs.firecrawl_service.should_fan_out = self._orig
 
     def test_render_wave_capped_to_two_domains(self):
-        """4 is_render_only BH SPA candidates → render wave attempts only 2."""
+        """3 is_render_only BH SPA candidates → render wave attempts only 2 (cap)."""
         from app.services.structured_comparison_service import _build_escalation_scrapers
-        # All 4 are is_render_only registry domains (bahrain-tier SPAs).
+        # All 3 are is_render_only registry domains (bahrain-tier SPAs). bolo +
+        # nasser flipped OFF render-only (source-intel recon 2026-06-23) — use the
+        # still-render-only SPAs.
         candidate_urls = [
-            ("https://bolo.bh/p/niacinamide", "bolo.bh"),
-            ("https://www.nasserpharmacy.com/bh-en/niacinamide", "nasserpharmacy.com"),
+            ("https://alosraonline.com/p/niacinamide", "alosraonline.com"),
             ("https://bn.boots.com/niacinamide", "bn.boots.com"),
             ("https://megamart.bh/niacinamide", "megamart.bh"),
         ]
@@ -55,11 +56,11 @@ class TestRenderWaveDomainCap:
 
     def test_render_cap_preserves_highest_weight_first(self):
         """The cap keeps the FIRST candidates (candidate_urls is pre-ordered
-        bahrain->gcc by source_weight) — bolo (first) is preserved."""
+        bahrain->gcc by source_weight) — alosra (first) is preserved."""
         from app.services.structured_comparison_service import _build_escalation_scrapers
         candidate_urls = [
-            ("https://bolo.bh/p/niacinamide", "bolo.bh"),            # high-weight, FIRST
-            ("https://www.nasserpharmacy.com/bh-en/x", "nasserpharmacy.com"),
+            ("https://alosraonline.com/p/niacinamide", "alosraonline.com"),  # FIRST
+            ("https://bn.boots.com/x", "bn.boots.com"),
             ("https://megamart.bh/x", "megamart.bh"),
         ]
         scrapers = _build_escalation_scrapers(
@@ -72,7 +73,7 @@ class TestRenderWaveDomainCap:
     def test_render_wave_under_cap_unchanged(self):
         """1 is_render_only candidate → 1 domain (2 scrapers), cap not triggered."""
         from app.services.structured_comparison_service import _build_escalation_scrapers
-        candidate_urls = [("https://bolo.bh/p/niacinamide", "bolo.bh")]
+        candidate_urls = [("https://bn.boots.com/p/niacinamide", "bn.boots.com")]
         scrapers = _build_escalation_scrapers(
             candidate_urls=candidate_urls, full_name="The Ordinary Niacinamide",
             currency="BHD", scraping_mode="hard", wave="render",

@@ -27,18 +27,21 @@ from app.services.source_router import SOURCE_REGISTRY, Source
 
 RENDER_ONLY_DOMAINS = {
     "alosraonline.com",
-    "nasserpharmacy.com",
     "bn.boots.com",
-    "bolo.bh",
     "megamart.bh",
 }
 
-# These curl-scrape fine — must stay curl-tier (is_render_only False).
+# Direct-readable (NOT render-only) — genuine BHD via plain curl / JSON-LD / JSON
+# API. Source-intel recon 2026-06-23 corrected bolo.bh (Nuxt SSR plain-curl BHD)
+# + nasserpharmacy.com (its own JSON API, NO Cloudflare) OFF the STALE render-only
+# flag — they were never actually render-walls.
 CURL_DIRECT_DOMAINS = {
     "gcc.luluhypermarket.com",
     "bahrain.sharafdg.com",
     "extra.com",
     "bahrainpharmacy.com",
+    "bolo.bh",
+    "nasserpharmacy.com",  # mechanism=json_api — non-render (curl-tier set)
 }
 
 

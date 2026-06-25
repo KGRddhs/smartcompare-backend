@@ -87,6 +87,17 @@ _CF_INTERSTITIAL_MARKERS = (
     "captcha",
     "px-captcha",
     "access denied",
+    # OU-3 (bh-source-intelligence Wave 5) — Akamai Bot-Manager fingerprints.
+    # sephora.me /bh-en serves "Server: AkamaiGHost" + a "Reference #..." access-
+    # denied body when a non-BH datacenter IP is blocked. Adding these lets
+    # _detect_cf_interstitial flag detected_cf=True in metadata.source_trace for
+    # an Akamai block (today a 403 Akamai page records cf_block only via the
+    # status branch, with detected_cf=False on the body axis). Harmless when
+    # SCRAPEDO_SUPER is OFF (the default) — the sephora.me requires_super row is
+    # filtered out of routing, so no Akamai render is attempted; this is purely
+    # observability for the gated super-render path.
+    "akamaighost",
+    "reference #",
 )
 
 
@@ -154,6 +165,67 @@ _EXPECTED_SPEC_FIELD_COUNT = {
 
 def _product_category(p):
     return (p.get("category_used") or p.get("category") or "").strip().lower()
+
+
+# WS-3d / Wave-3c — the per-domain sitemap-mechanism price fetcher. Each
+# mechanism="sitemap" registry row (bolo.bh, boutiqaat.com) has its OWN $0
+# discovery+parse adapter (own products-sitemap index READ + plain curl of the
+# PDP). The prefetch loop dispatches by `s.domain` so adding a sitemap source is
+# a one-line map entry — never a second hardcoded fetcher call. An unmapped
+# sitemap domain → None (graceful; the cascade continues to honest pending).
+# Built lazily inside the helper because the fetcher symbols are imported lower in
+# this module (the price-service import block) than this module-level definition.
+def _sitemap_price_fetchers() -> dict:
+    return {
+        "bolo.bh": fetch_bolo_price,
+        "boutiqaat.com": fetch_boutiqaat_price,
+    }
+
+
+def _sitemap_fetch_coro(domain: str, full_name: str, currency: str):
+    """Return the awaitable price-fetch for a sitemap-mechanism `domain` (its own
+    $0 adapter), or None when the domain has no registered adapter (graceful —
+    the row simply contributes nothing rather than crashing the gather)."""
+    fetcher = _sitemap_price_fetchers().get((domain or "").replace("www.", "").strip().lower())
+    return fetcher(full_name, currency) if fetcher else None
+
+
+# Codex HIGH-4 — PER-SOURCE adapter timeout. The bolo+boutiqaat (sitemap) and
+# nasser (json_api) speculative adapters are gathered together, but a SINGLE
+# outer `wait_for(gather(...), timeout=3.0)` discards a COMPLETED fast source
+# (e.g. bolo at 12.5 BHD) when a SLOW sibling (e.g. boutiqaat) overruns. Wrapping
+# each coro with its OWN timeout makes a slow source resolve to None instead of
+# collapsing the whole gather, so a fast source's valid result always survives.
+# Cold-BH-tolerant (review gate-fix): bolo/boutiqaat are bahrain-tier curl sources
+# (BH_REGISTRY_CURL_TIMEOUT=10s/hop) and nasser's inner GET is 8s — a 3.0s per-source
+# cap silently DISCARDED a genuine-but-cold BH price (the exact thing this branch
+# exists to surface). 10.0 covers a cold single hop AND bounds a pathological
+# redirect chain, while a FAST source still resolves early (the fast-survives
+# property is independent of the value). The coros start at PREFETCH KICKOFF (before
+# the ~6s serper overlap), so a 10s-from-kickoff cap lands well inside the 15s
+# Phase-1 price cap.
+_ADAPTER_TIMEOUT = 10.0
+
+
+async def _timeout_none(make_coro, timeout: float = _ADAPTER_TIMEOUT):
+    """Await an adapter coro with a per-source timeout; return None on
+    timeout/error so a slow adapter never discards a fast sibling's valid result.
+    Cancels the underlying coro on timeout (asyncio.wait_for semantics) — no
+    orphan GET.
+
+    Codex MEDIUM (re-review) — `make_coro` is a ZERO-ARG FACTORY, NOT an
+    already-created coroutine. The factory is invoked INSIDE this task body, so
+    the underlying adapter coroutine is not created until this `_timeout_none`
+    task actually starts running. When the prefetched gather is cancelled BEFORE
+    this task body runs (no-escalation / genuine-Tier-1 short-circuit →
+    `_cancel_prefetched_direct`), the factory is never called, so no orphan
+    coroutine object is ever created (no "coroutine was never awaited"
+    RuntimeWarning, no un-drained coroutine). With an EAGER coro the inner coro
+    existed before the task ran and leaked on a pre-run cancellation."""
+    try:
+        return await asyncio.wait_for(make_coro(), timeout)
+    except Exception:  # noqa: BLE001 — TimeoutError + any adapter error → drop
+        return None
 
 
 def _fire_and_forget(coro, label: str) -> None:
@@ -696,6 +768,9 @@ from app.services.price_service import (
     curl_fetch_html,
     fetch_page_price,
     fetch_shopify_price,
+    fetch_bolo_price,
+    fetch_boutiqaat_price,
+    fetch_nasser_price,
     fetch_iherb_price,
     fetch_pharmacy_price,
     fan_out_price_lookup,
@@ -790,7 +865,14 @@ from app.services.source_router import (
     is_render_only_domain,
     get_shopify_sources_for_category,
     get_algolia_sources_for_category,
+    get_sitemap_sources_for_category,
+    get_jsonapi_sources_for_category,
     registry_tier,
+)
+from app.services.sitemap_discovery_service import (
+    sitemap_discovery_is_cold,
+    sitemap_domains_now_built,
+    sitemap_unbuilt_domains,
 )
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -4004,14 +4086,39 @@ class StructuredComparisonService:
         if not price_nocache:
             neg = get_negative_cache(negative_cache_key(cache_key))
             if neg:
-                neg = dict(neg)
-                neg["_cached"] = True
-                neg["_cache_source"] = "negative"
-                logger.info(
-                    "[PRICE] negative-cache hit (structural genuine-BH gap) for "
-                    "%s %s — scrape cascade skipped", brand, name,
-                )
-                return neg
+                # Codex re-review HIGH-3 (read-side invalidation) — a sentinel
+                # written while a `mechanism="sitemap"` index was COLD carries the
+                # stamped cold domains (`_sitemap_cold_domains`). If ANY of those
+                # domains now has a BUILT index, the genuine PDP price is now
+                # reachable, so DO NOT serve the stale 30d estimate — fall through to
+                # the live cascade (which re-resolves to the genuine price + overwrites
+                # the cache). Otherwise serve the sentinel as before. This re-resolves
+                # the moment the cron warms the index even if the sentinel got the
+                # FULL 30d TTL (cron OFF at write → transient_discovery was False).
+                cold_domains = neg.get("_sitemap_cold_domains")
+                if cold_domains and sitemap_domains_now_built(cold_domains):
+                    logger.info(
+                        "[PRICE] negcache invalidated — sitemap index now built, "
+                        "re-resolving for %s %s", brand, name,
+                    )
+                else:
+                    neg = dict(neg)
+                    # Codex re-review #3 MEDIUM — the `_sitemap_cold_domains`
+                    # stamp is an INTERNAL read-side-invalidation marker; it must
+                    # never reach the API price object. response_builder exposes
+                    # the price dict RAW (`pd.get("price")`, :1388) and the
+                    # underscore-strip at :441 is SPECS-ONLY, so pop the marker
+                    # off the SERVED copy here (the COLD value Redis keeps is
+                    # untouched — we copied above). `_cached`/`_cache_source`
+                    # stay: they're the pre-existing cache-metadata convention.
+                    neg.pop("_sitemap_cold_domains", None)
+                    neg["_cached"] = True
+                    neg["_cache_source"] = "negative"
+                    logger.info(
+                        "[PRICE] negative-cache hit (structural genuine-BH gap) for "
+                        "%s %s — scrape cascade skipped", brand, name,
+                    )
+                    return neg
 
         region_info = GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])
         currency = region_info["currency"]
@@ -4142,8 +4249,24 @@ class StructuredComparisonService:
         _algolia_sources_pf = (
             get_algolia_sources_for_category(category) if not is_supplement else []
         )
+        # WS-3d (BH source-intelligence) — the bolo (sitemap) + nasser (json_api)
+        # genuine-BHD storefront adapters. UNLIKE the Shopify/Algolia prefetch
+        # above, these are DELIBERATELY NOT `not is_supplement`-gated: bolo and
+        # nasser both COVER supplements (bolo=supplements/makeup/skincare,
+        # nasser=supplements/skincare/makeup/haircare/fragrances), so a supplement
+        # compare MUST be able to reach them. The non-supplement escalation block
+        # consumes them via `_prefetched_direct["sitemap"/"jsonapi"]`; the
+        # supplement branch consumes the SAME futures in its explicit Stage-1.5
+        # (between iHerb and pharmacy). Both are $0 (own sitemap/API — no Serper,
+        # no render), so speculating them costs nothing on the rare miss query
+        # (the cancel below just drops a couple of free HTTP GETs).
+        _sitemap_sources_pf = get_sitemap_sources_for_category(category)
+        _jsonapi_sources_pf = get_jsonapi_sources_for_category(category)
         _prefetched_direct: Dict[str, Any] = {}
-        if ENABLE_PAGE_SCRAPE and (_shopify_sources_pf or _algolia_sources_pf):
+        if ENABLE_PAGE_SCRAPE and (
+            _shopify_sources_pf or _algolia_sources_pf
+            or _sitemap_sources_pf or _jsonapi_sources_pf
+        ):
             if _shopify_sources_pf:
                 _prefetched_direct["shopify"] = asyncio.ensure_future(
                     asyncio.gather(
@@ -4165,6 +4288,58 @@ class StructuredComparisonService:
                         return_exceptions=True,
                     )
                 )
+            if _sitemap_sources_pf:
+                # Each sitemap-mechanism source (bolo.bh, boutiqaat.com) resolves
+                # its PDP via the Wave-2 sitemap index (a Redis read — NO crawl on
+                # clock) then plain-curls the PDP for a genuine page_scrape_jsonld
+                # BHD price. Dispatch by s.domain to the per-domain $0 adapter so
+                # the source rows gate WHICH categories speculate WHICH storefront.
+                # Codex HIGH-4 — PER-SOURCE timeout so a slow source (boutiqaat)
+                # never discards a fast sibling's valid result (bolo). Each coro
+                # is wrapped individually; the outer consume awaits the gather
+                # WITHOUT a collapsing single wait_for.
+                # Codex MEDIUM (re-review) — pre-filter to sources that map to a
+                # real per-domain fetcher FIRST, then wrap each in a ZERO-ARG
+                # FACTORY so the adapter coro is created LAZILY inside the
+                # _timeout_none task body. If the gather is cancelled before a
+                # task runs, the factory is never invoked → no orphan coroutine.
+                _sm_domains = [
+                    s.domain
+                    for s in _sitemap_sources_pf
+                    if _sitemap_price_fetchers().get(
+                        (s.domain or "").replace("www.", "").strip().lower()
+                    )
+                ]
+                _sm_coros = [
+                    _timeout_none(
+                        lambda d=d: _sitemap_fetch_coro(d, full_name, currency),
+                        _ADAPTER_TIMEOUT,
+                    )
+                    for d in _sm_domains
+                ]
+                if _sm_coros:
+                    _prefetched_direct["sitemap"] = asyncio.ensure_future(
+                        asyncio.gather(*_sm_coros, return_exceptions=True)
+                    )
+            if _jsonapi_sources_pf:
+                # nasserpharmacy.com — a single authenticated GET to its own JSON
+                # search API → a genuine local_bhd BHD price. Per-source timeout
+                # (Codex HIGH-4) so a slow nasser GET never collapses the gather.
+                # Codex MEDIUM (re-review) — zero-arg FACTORY so the nasser coro
+                # is created lazily inside the _timeout_none task (no orphan on a
+                # pre-run gather cancel).
+                _prefetched_direct["jsonapi"] = asyncio.ensure_future(
+                    asyncio.gather(
+                        *(
+                            _timeout_none(
+                                lambda: fetch_nasser_price(full_name, currency),
+                                _ADAPTER_TIMEOUT,
+                            )
+                            for _ in _jsonapi_sources_pf
+                        ),
+                        return_exceptions=True,
+                    )
+                )
 
         def _cancel_prefetched_direct():
             """Cancel the speculative FREE direct fetches (genuine Tier-1 short-
@@ -4174,6 +4349,133 @@ class StructuredComparisonService:
                 if not _task.done():
                     _task.cancel()
             _prefetched_direct.clear()
+
+        async def _consume_adapter_prefetch() -> Optional[Dict[str, Any]]:
+            """WS-3d — consume the bolo (sitemap) + nasser (json_api) speculative
+            prefetches and return the best GENUINE BHD price dict, or None.
+
+            Shared by the non-supplement escalation block AND the supplement
+            Stage-1.5 (the same `_prefetched_direct` futures cover both, since the
+            adapter selectors are NOT `not is_supplement`-gated). On a hit:
+              - records the Tier-1.5 route + cancels the speculative discovery
+                (no orphan Serper) like the Shopify/Algolia short-circuit,
+              - seeds ALL observed adapter alternates into self._price_candidates
+                so reconcile_pair_fairness can re-select to the pair's common
+                comparable unit with ZERO new network,
+              - caches + persists the winner.
+            Returns the winner price dict (caller short-circuits) or None (the
+            cascade continues). Inline-fires the adapters if the prefetch was
+            skipped (ENABLE_PAGE_SCRAPE off / no sources at kickoff) so the path
+            still works without the speculation. $0 — no Serper, no render."""
+            if not (_sitemap_sources_pf or _jsonapi_sources_pf):
+                return None
+            observed: List[Dict[str, Any]] = []
+            # Codex HIGH-4 — generous OUTER bound (> per-source) purely as a
+            # safety net so a misbehaving coro can't hang forever. The real
+            # bounding is the PER-SOURCE `_timeout_none` wrap, so this outer bound
+            # never collapses a fast source: each per-source timeout fires first
+            # and yields its None, letting the gather complete with the fast hit.
+            _outer_bound = _ADAPTER_TIMEOUT + 2.0
+            # sitemap adapters (bolo + boutiqaat) — genuine page_scrape_jsonld.
+            try:
+                if "sitemap" in _prefetched_direct:
+                    _sm = await asyncio.wait_for(
+                        _prefetched_direct.pop("sitemap"), timeout=_outer_bound
+                    )
+                elif _sitemap_sources_pf and ENABLE_PAGE_SCRAPE:
+                    # Per-source timeout wrap (Codex HIGH-4) — slow source → None,
+                    # fast source survives. Codex MEDIUM (re-review) — pre-filter
+                    # to mapped domains then LAZY factory (no orphan on cancel).
+                    _sm_domains = [
+                        s.domain
+                        for s in _sitemap_sources_pf
+                        if _sitemap_price_fetchers().get(
+                            (s.domain or "").replace("www.", "").strip().lower()
+                        )
+                    ]
+                    _sm_coros = [
+                        _timeout_none(
+                            lambda d=d: _sitemap_fetch_coro(d, full_name, currency),
+                            _ADAPTER_TIMEOUT,
+                        )
+                        for d in _sm_domains
+                    ]
+                    _sm = await asyncio.wait_for(
+                        asyncio.gather(*_sm_coros, return_exceptions=True),
+                        timeout=_outer_bound,
+                    ) if _sm_coros else []
+                else:
+                    _sm = []
+            except asyncio.TimeoutError:
+                _sm = []
+            except Exception as _e:  # noqa: BLE001 — best-effort
+                logger.info(f"[PRICE] bolo adapter gather failed: {_e}")
+                _sm = []
+            # nasser (json_api) — genuine local_bhd.
+            try:
+                if "jsonapi" in _prefetched_direct:
+                    _ja = await asyncio.wait_for(
+                        _prefetched_direct.pop("jsonapi"), timeout=_outer_bound
+                    )
+                elif _jsonapi_sources_pf and ENABLE_PAGE_SCRAPE:
+                    # Per-source timeout wrap (Codex HIGH-4). Codex MEDIUM
+                    # (re-review) — LAZY factory (no orphan on cancel).
+                    _ja = await asyncio.wait_for(
+                        asyncio.gather(
+                            *(
+                                _timeout_none(
+                                    lambda: fetch_nasser_price(full_name, currency),
+                                    _ADAPTER_TIMEOUT,
+                                )
+                                for _ in _jsonapi_sources_pf
+                            ),
+                            return_exceptions=True,
+                        ),
+                        timeout=_outer_bound,
+                    )
+                else:
+                    _ja = []
+            except asyncio.TimeoutError:
+                _ja = []
+            except Exception as _e:  # noqa: BLE001 — best-effort
+                logger.info(f"[PRICE] nasser adapter gather failed: {_e}")
+                _ja = []
+            for _r in list(_sm) + list(_ja):
+                if isinstance(_r, dict) and _r.get("amount") and _r["amount"] > 0:
+                    observed.append(_r)
+            if not observed:
+                return None
+            # Lowest valid BHD among the genuine adapter hits (a real BH shelf
+            # price — already is_price_showable-gated inside each adapter).
+            best = min(observed, key=lambda d: d["amount"])
+            win_domain = str(best.get("retailer") or "").replace("www.", "").lower()
+            self._tier15_routes[full_name] = {
+                "route": "bh_adapter_direct",
+                "source_weight": score_source(
+                    best.get("url", "") or f"https://{win_domain}", category,
+                ),
+            }
+            record_tier15_attempt(category)
+            record_tier15_hit(category, win_domain or None)
+            # Genuine adapter short-circuit — cancel the speculative discovery
+            # (no orphan Serper) like the official-Shopify / Algolia hits.
+            _cancel_prefetched_discovery()
+            # CDE-3 — seed ALL observed adapter alternates so the pair fairness
+            # reconcile can re-select to the common comparable unit with no fetch.
+            self._seed_shortcircuit_candidates(
+                full_name, kind="price_dicts", currency=currency,
+                price_dicts=observed,
+            )
+            set_cached(cache_key, best, price_cache_ttl(best))
+            self._save_price_to_db(cache_key, brand, name, variant, region, best)
+            best["_cached"] = False
+            logger.info(
+                "[PRICE] BH adapter direct hit for %s: %.3f %s via %s "
+                "(%s, zero Serper/render, genuine BHD)",
+                full_name, best["amount"], currency, win_domain,
+                best.get("source_method"),
+            )
+            return best
 
         # --- Tier 1: Direct Serper Shopping extraction ---
         shopping_region = None  # T2 — gl region the shopping items came from
@@ -4500,6 +4802,17 @@ class StructuredComparisonService:
                         full_name, algolia_best["amount"], currency, win_domain,
                     )
                     return algolia_best
+
+            # --- WS-3d: BH storefront adapters (bolo sitemap + nasser json_api) ---
+            # Between the Shopify/Algolia direct-fetch (above) and the Serper site:
+            # discovery (below). bolo.bh (sitemap-discovered PDP → curl JSON-LD) and
+            # nasserpharmacy.com (own JSON search API) expose genuine BHD prices for
+            # the beauty/grocery categories with no Shopify/Algolia coverage — query
+            # them DIRECTLY (zero Serper, zero render). A genuine hit short-circuits
+            # (it beats the discovery/GPT tiers below), exactly like the Algolia hit.
+            _adapter_price = await _consume_adapter_prefetch()
+            if _adapter_price:
+                return _adapter_price
 
             # --- Discovery: all queries fire concurrently ---
             # B.0 (Lane F1): a Bahrain-first `site:` discovery query leads the
@@ -5125,8 +5438,19 @@ class StructuredComparisonService:
             # request (a wrong-cheap accessory / sample leak), this estimate is a
             # TRANSIENT guard reject, not structural: cap the negcache to 24h so a
             # later-correct PDP isn't suppressed 30d.
+            # Codex HIGH-3 — likewise, if a mechanism="sitemap" discovery index for
+            # this category is still COLD (cron OFF / not yet built / expired), the
+            # estimate is TRANSIENT: a later off-clock index build can resolve a
+            # genuine PDP price. Cap to 24h so the cold-index estimate isn't frozen
+            # for 30d after the index becomes available.
             self._record_negative_price_cache(
-                cache_key, price, guard_rejected=_guard_rejected_this_request
+                cache_key, price,
+                guard_rejected=_guard_rejected_this_request,
+                transient_discovery=sitemap_discovery_is_cold(category),
+                # Codex re-review HIGH-3 — stamp the RAW cold sitemap domains
+                # (NOT cron-gated) so a 30d-negcached estimate written while the
+                # cron was OFF gets read-side-invalidated the moment the index warms.
+                category=category,
             )
             price["_cached"] = False
             return price
@@ -5446,6 +5770,7 @@ class StructuredComparisonService:
 
     def _record_negative_price_cache(
         self, cache_key: str, price: Dict, guard_rejected: bool = False,
+        transient_discovery: bool = False, category: Optional[str] = None,
     ) -> None:
         """Task 1.3 — record a structural genuine-BH dead-end so the next call
         skips the expensive Tier-1.5 scrape cascade.
@@ -5467,13 +5792,49 @@ class StructuredComparisonService:
         (no fabrication, just a re-run). The converted_usd path is untouched
         (should_negative_cache returns False for converted_usd — SF-1 exempt — so
         this flag never affects it).
+
+        Codex HIGH-3 — `transient_discovery`: when a category's
+        ``mechanism="sitemap"`` discovery index is still COLD (cron OFF / not yet
+        built / TTL-expired), a Tier-3 estimate is likewise TRANSIENT — a later
+        off-clock index build can resolve the product's PDP to a genuine
+        ``page_scrape_jsonld`` price. 30d-sentineling it would freeze the estimate
+        for 30 days even after the index becomes available. So, exactly like
+        `guard_rejected`, the TTL is capped to 24h (PRICE_CACHE_TTL) — the cascade
+        re-resolves to genuine once the cron warms. Either flag triggers the cap.
+
+        Codex RE-REVIEW HIGH-3 (read-side invalidation) — `category`: the
+        `transient_discovery` TTL cap only fires when the cron is ON
+        (`sitemap_discovery_is_cold` is cron-gated). With the cron OFF at write time
+        (the ship default), the estimate gets the FULL 30d TTL — and once the cron is
+        later enabled and warms the index, that 30d sentinel keeps being served (the
+        negcache read short-circuits BEFORE the adapters), so the genuine price never
+        resolves for up to 30 days. To fix that WITHOUT 24h-thrashing the structural
+        tail while the cron is off, we STAMP the RAW cold sitemap domains onto a COPY
+        of the cached value (`sitemap_unbuilt_domains` — NOT cron-gated). The negcache
+        READ then invalidates the sentinel the moment any stamped domain's index
+        becomes built (`sitemap_domains_now_built`), re-resolving to genuine. The 30d
+        TTL is otherwise preserved (no scrape burn while the cron is off).
         """
         try:
             if not should_negative_cache(price):
                 return
-            ttl = PRICE_CACHE_TTL if guard_rejected else NEGATIVE_PRICE_CACHE_TTL
+            ttl = (
+                PRICE_CACHE_TTL
+                if (guard_rejected or transient_discovery)
+                else NEGATIVE_PRICE_CACHE_TTL
+            )
+            neg_value = price
+            if category:
+                # RAW cold sitemap domains (NOT cron-gated) — stamp them onto a COPY
+                # so the returned `price` dict the caller keeps using is untouched.
+                # The READ-side invalidation (sitemap_domains_now_built) re-resolves
+                # to a genuine price the moment any stamped domain's index warms.
+                cold = sitemap_unbuilt_domains(category)
+                if cold:
+                    neg_value = dict(price)
+                    neg_value["_sitemap_cold_domains"] = cold
             set_negative_cache(
-                negative_cache_key(cache_key), price, ttl
+                negative_cache_key(cache_key), neg_value, ttl
             )
         except Exception as e:  # noqa: BLE001 — never let the optimization break a resolution
             logger.debug(f"negative-cache write skipped: {e}")

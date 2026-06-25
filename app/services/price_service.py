@@ -9,7 +9,7 @@ import time
 import asyncio
 import logging
 from typing import Optional, List, Dict, Any, Tuple
-from urllib.parse import urlparse, quote_plus
+from urllib.parse import urlparse, quote_plus, urljoin
 
 import httpx
 
@@ -202,6 +202,14 @@ def should_negative_cache(price: Optional[Dict[str, Any]]) -> bool:
         return False
     # `converted_usd` is a live cited price, not a structural gap — see docstring.
     if sm == "converted_usd":
+        return False
+    # `sitemap_no_match` (Wave 2 source-intelligence) is a TRANSIENT discovery
+    # miss — either the off-clock sitemap index hasn't been built yet (flag OFF /
+    # first deploy) or the matcher found no PDP this run. It is NOT a structural
+    # product dead-end: a later index refresh (cron_index_sitemaps) can resolve
+    # the PDP and upgrade it to a genuine page_scrape_jsonld price, so it must NOT
+    # be 30d-negative-cached (exempt-like converted_usd / SF-1).
+    if sm == "sitemap_no_match":
         return False
     # Everything else (estimated, converted_fallback, pending, blank method) is a gap.
     return True
@@ -3634,6 +3642,90 @@ async def curl_fetch_html(url: str) -> Optional[str]:
         return None
 
 
+def _host_on_domain(u: str, domain: str) -> bool:
+    """True iff url ``u``'s host is the bare ``domain`` OR a subdomain of it.
+
+    Strips a leading ``www.`` from both sides; matches the bare domain exactly
+    OR ``*.`` + the bare domain. Used by curl_fetch_html_same_site to pin a
+    redirect chain to the source storefront (NO sitemap_discovery import —
+    avoids the circular). Empty/garbage host → False (fail-closed)."""
+    try:
+        host = (urlparse(u).hostname or "").strip().lower()
+    except Exception:  # noqa: BLE001 — malformed url is "off-domain", never a crash
+        return False
+    if not host:
+        return False
+    host = host[4:] if host.startswith("www.") else host
+    bare = (domain or "").strip().lower()
+    bare = bare[4:] if bare.startswith("www.") else bare
+    if not bare:
+        return False
+    return host == bare or host.endswith("." + bare)
+
+
+async def curl_fetch_html_same_site(
+    url: str,
+    domain: str,
+    max_redirects: int = 3,
+    max_bytes: int = 3_000_000,
+) -> Optional[str]:
+    """Redirect-validating same-site HTML fetch (Codex HIGH-5 SSRF fix).
+
+    ``curl_fetch_html`` follows redirects with ``allow_redirects=True`` — a
+    same-site PDP url can 30x-redirect to an arbitrary host / private IP /
+    ``*.railway.internal``. This variant validates EVERY hop: each url (the
+    initial AND every Location) must pass ``validate_external_url`` (blocks
+    private/loopback/link-local IPs + non-http(s)) AND ``_host_on_domain`` (stays
+    on the source storefront). Any off-domain / private / non-2xx-non-3xx hop, a
+    redirect-cap breach, or any exception → ``None``. NEVER raises.
+
+    On a 200, returns ``resp.text`` truncated to ``max_bytes`` (guards a huge
+    body). Body is capped, not rejected, so a legit large PDP still parses."""
+    from app.utils.url_validator import validate_external_url
+
+    # Validate the INITIAL url before any network call.
+    if not validate_external_url(url) or not _host_on_domain(url, domain):
+        logger.info("[PRICE] same-site fetch blocked initial url for %s", domain)
+        return None
+
+    try:
+        from curl_cffi import requests as curl_requests
+        timeout = _curl_timeout_for_url(url)
+        current = url
+        for _ in range(max_redirects + 1):
+            resp = await asyncio.to_thread(
+                lambda u=current: curl_requests.get(
+                    u, impersonate="chrome", timeout=timeout, allow_redirects=False,
+                )
+            )
+            status = resp.status_code
+            if 300 <= status < 400:
+                location = resp.headers.get("Location") or resp.headers.get("location")
+                if not location:
+                    return None
+                # Resolve a relative Location against the current url.
+                nxt = urljoin(current, location)
+                if not validate_external_url(nxt) or not _host_on_domain(nxt, domain):
+                    logger.info(
+                        "[PRICE] same-site fetch blocked redirect to off-domain/private host for %s",
+                        domain,
+                    )
+                    return None
+                current = nxt
+                continue
+            if status == 200:
+                text = resp.text or ""
+                return text[:max_bytes]
+            # Any other non-2xx/non-3xx status → honest miss.
+            return None
+        # Exceeded the redirect cap without a terminal 200.
+        logger.info("[PRICE] same-site fetch exceeded redirect cap for %s", domain)
+        return None
+    except Exception as e:  # noqa: BLE001 — fetch must never raise
+        logger.warning(f"[PRICE] curl_fetch_html_same_site failed for {url}: {e}")
+        return None
+
+
 async def fetch_page_price(
     url: str, product_name: str, currency: str = "BHD",
 ) -> Optional[Dict[str, Any]]:
@@ -3927,6 +4019,644 @@ async def fetch_shopify_price(
     if not get_content_safety_service().is_text_safe(_surface):
         logger.info("[content_safety] L2 dropped Shopify candidate for %s", domain)
         return None
+    return price
+
+
+# ============================================================================
+# bolo.bh direct-discovery (Wave 3a — BH Source-Intelligence, 2026-06-23)
+# ============================================================================
+# RECON-VERIFIED LIVE (2026-06-23): bolo.bh is a Nuxt SSR storefront whose PDPs
+# are PLAIN-CURL READABLE (no JS render). The genuine BHD price is in the PDP's
+# schema.org JSON-LD `@graph` → Product → offers (priceCurrency=BHD) AND mirrored
+# in a Nuxt `"price":N` token next to a `<sup class="currency">BHD</sup>`.
+#
+# THE BINDING TRAP (F3a): the ~790KB PDP HTML carries MULTIPLE "price" values
+# (the main product + a related-items carousel, e.g. 24.89 main vs 132/133
+# related). We MUST bind the MAIN product. Two live-verified facts make this
+# safe: (1) the FIRST `@graph` Product is the PDP's primary product (the URL
+# resolved to it); (2) the FIRST Nuxt `"price"` token is the main price (the
+# carousel prices come later in the HTML). So:
+#   1. Parse the `@graph` Product offers BHD price directly (the reliable main-
+#      product binding) — NOT the generic brand-gated extract_jsonld_price, which
+#      false-negatives on bolo (its brand-field/accessory guards reject a long
+#      marketing PDP name even when the offer IS the genuine main price — proven
+#      live on the e.l.f. serum: extract_jsonld_price→None, @graph offer=8.16 BHD).
+#   2. Fall back to the FIRST Nuxt `"price"` token only if JSON-LD has no offer.
+# Both stamp `page_scrape_jsonld` (an EXISTING genuine method — no new set entry).
+#
+# Discovery is via resolve_pdp_via_sitemap (Wave 2 — a Redis-cached slug index
+# built OFF-CLOCK by scripts/cron_index_sitemaps.py; the request path only READS
+# the index, never crawls). A no-resolve / no-price returns None (NOT a pending
+# dict — the cascade continues to an honest pending downstream).
+
+# Bind the main product: the FIRST Nuxt `"price":N` token (the carousel prices
+# trail it in the HTML). Tolerant of whitespace; integers and decimals.
+_BOLO_NUXT_PRICE_RE = re.compile(r'"price"\s*:\s*([0-9]+(?:\.[0-9]+)?)')
+# The genuine-currency guard for the Nuxt fallback: a <sup class="currency">BHD
+# </sup> must be present so we never stamp BHD on a non-BHD Nuxt number.
+_BOLO_BHD_SUP_RE = re.compile(
+    r'<sup[^>]*class="[^"]*currency[^"]*"[^>]*>\s*BHD\s*</sup>', re.I
+)
+
+
+def _bolo_jsonld_main_price(
+    html: str, product_name: str, currency: str,
+) -> Optional[Dict[str, Any]]:
+    """The bolo-specific JSON-LD main-product price: the FIRST `@graph` Product's
+    offers price in `currency`, validated against `product_name` (numbers +
+    variant + word-overlap) so a wrong PDP can't slip through. Returns a price
+    dict or None. Does NOT use the generic brand-gated extract_jsonld_price (it
+    false-negatives on bolo's long marketing names)."""
+    from bs4 import BeautifulSoup
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:  # noqa: BLE001 — a malformed page is a miss, never a crash
+        return None
+    target = (currency or "BHD").upper()
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or "")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        graph = data.get("@graph") if isinstance(data, dict) else None
+        nodes = graph if isinstance(graph, list) else (
+            [data] if isinstance(data, dict) else []
+        )
+        for node in nodes:
+            if not (isinstance(node, dict) and _is_product_type(node)):
+                continue
+            ld_name = node.get("name", "") or ""
+            # Validate the resolved PDP product against the query — a discovery
+            # mis-resolve must not attribute the wrong product's price.
+            # FAIL-CLOSED (source-intel review 2026-06-23, no-fab): a Product node
+            # with NO `name` is UNVALIDATABLE — skip it rather than blindly return
+            # its offer. _bolo_has_jsonld_product still sees the node (so the Nuxt
+            # fallback stays suppressed), and an all-nameless page returns None →
+            # honest miss, never a wrong-product price stamped genuine.
+            if not ld_name:
+                continue
+            if product_name:
+                if not numbers_match(product_name, ld_name):
+                    continue
+                if variant_mismatch(product_name, ld_name):
+                    continue
+                # Strict key-word bind (Codex HIGH-1, no-fab): EVERY >2-char
+                # non-brand query word must appear in the candidate name — the
+                # same guard _match_nasser_product uses. Without it a WRONG product
+                # slips through: query "Tom Ford Oud Wood 100ml" vs an "Oud
+                # Minerale ... 100ml" PDP — numbers_match passes VACUOUSLY ("100ml"
+                # yields NO \b\d{2,}\b token, so there is no number to compare), no
+                # variant qualifier differs, and the word-overlap is 4/5 == 0.8
+                # ({tom,ford,oud,100ml} shared, only "wood" missing) — FAR above the
+                # 0.4 floor, so raising that floor would NOT catch it. strict_title_
+                # match is the discriminating guard: "wood" is absent from "Oud
+                # Minerale" → every key word is NOT present → rejected.
+                # KNOWN RECALL TRADEOFF (review NIT, errs SAFE = drop never wrong):
+                # strict_title_match requires size/concentration tokens too, so a
+                # fragrance query "Dior Sauvage EDP 100ml" vs a PDP name spelled
+                # "Dior Sauvage Eau de Parfum" (size in a variant field) is dropped
+                # to honest-pending. Dormant today (bolo/boutiqaat inert until the
+                # sitemap cron); revisit with soft size/concentration tokens when the
+                # cron is activated + real fragrance recall is measured.
+                if not strict_title_match(product_name, ld_name):
+                    continue
+                # Word-overlap bind (the docstring's third guard, Wave-3 reviewer
+                # ISSUE 2): two products with no numbers/variant qualifiers
+                # ("Logitech Mouse" vs "Kensington Presenter") both pass
+                # numbers/variant VACUOUSLY — the token-overlap ratio is the real
+                # bind for that class, so a sitemap mis-resolve can't slip through.
+                # FAIL-CLOSED on an empty query token set (all-punctuation) — it
+                # must NOT vacuously pass (mirrors _match_nasser_product's posture).
+                _pw = normalize_words(product_name)
+                if not _pw or (len(_pw & normalize_words(ld_name)) / len(_pw)) < 0.4:
+                    continue
+            offers = node.get("offers")
+            if isinstance(offers, dict):
+                offers = [offers]
+            elif not isinstance(offers, list):
+                continue
+            for offer in offers:
+                if not isinstance(offer, dict):
+                    continue
+                if str(offer.get("priceCurrency") or "").upper() != target:
+                    continue
+                try:
+                    amount = float(offer.get("price") or offer.get("lowPrice") or 0)
+                except (ValueError, TypeError):
+                    continue
+                if amount <= 0:
+                    continue
+                availability = offer.get("availability", "") or ""
+                return {
+                    "amount": round(amount, 3),
+                    "currency": target,
+                    "in_stock": "OutOfStock" not in availability,
+                    "name": ld_name,
+                }
+            return None  # main Product found but no usable offer → no fallback need
+    return None
+
+
+def _bolo_nuxt_main_price(html: str, currency: str) -> Optional[Dict[str, Any]]:
+    """The bolo Nuxt fallback: the FIRST `"price":N` token (the main product —
+    the carousel prices trail it), gated by a `<sup class="currency">BHD</sup>`
+    so a non-BHD number is never BHD-stamped. Returns a price dict or None."""
+    target = (currency or "BHD").upper()
+    # Only honor the Nuxt number when the page shows a BHD currency marker.
+    if target == "BHD" and not _BOLO_BHD_SUP_RE.search(html or ""):
+        return None
+    m = _BOLO_NUXT_PRICE_RE.search(html or "")
+    if not m:
+        return None
+    try:
+        amount = float(m.group(1))
+    except (ValueError, TypeError):
+        return None
+    if amount <= 0:
+        return None
+    return {"amount": round(amount, 3), "currency": target, "in_stock": True, "name": ""}
+
+
+def _bolo_has_jsonld_product(html: str) -> bool:
+    """True iff the bolo PDP carries >=1 JSON-LD Product node. When True the
+    JSON-LD is AUTHORITATIVE (it validated the product against the query in
+    _bolo_jsonld_main_price); the unvalidated Nuxt-"price" fallback must NOT run,
+    else a sitemap-mis-resolved WRONG-product PDP (whose JSON-LD product mismatched
+    the query and was rejected) would get its price attributed (no-fab / wrong-SKU
+    leak — Wave-3 reviewer ISSUE 1). A page with NO JSON-LD product still allows
+    the Nuxt fallback (the sitemap slug-match is the only binding there)."""
+    from bs4 import BeautifulSoup
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:  # noqa: BLE001 — malformed page is "no product", never a crash
+        return False
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or "")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        graph = data.get("@graph") if isinstance(data, dict) else None
+        nodes = graph if isinstance(graph, list) else (
+            [data] if isinstance(data, dict) else []
+        )
+        if any(isinstance(n, dict) and _is_product_type(n) for n in nodes):
+            return True
+    return False
+
+
+async def fetch_bolo_price(
+    product_name: str, currency: str = "BHD",
+) -> Optional[Dict[str, Any]]:
+    """Direct-discovery genuine BHD price for bolo.bh (Wave 3a).
+
+    discover (sitemap index, Wave 2) → curl-fetch the PDP → parse the JSON-LD
+    main-product offer (then Nuxt-`"price"` fallback) → a genuine
+    ``source_method="page_scrape_jsonld"`` price dict, or ``None``.
+
+    A no-resolve / no-price returns ``None`` (NOT a pending dict — the cascade
+    continues to an honest pending downstream; the WS-2 _price_fallback_on_miss
+    revert lesson). Gated by ENABLE_PAGE_SCRAPE + L2 content-safety like the other
+    Tier-1.5 entry points; gated showable by is_price_showable (the sample/
+    implausible guards still bite). $0 — no Serper, no render."""
+    if not ENABLE_PAGE_SCRAPE:
+        return None
+    from app.services.sitemap_discovery_service import resolve_pdp_via_sitemap
+    pdp_url = resolve_pdp_via_sitemap("bolo.bh", product_name)
+    if not pdp_url:
+        return None  # cold/missing index or no match → honest miss, NOT pending
+    # Codex HIGH-5: fetch with a redirect-validating same-site fetcher — a
+    # sitemap-resolved bolo.bh url can 30x-redirect to an arbitrary host / private
+    # IP / *.railway.internal; pin every hop to bolo.bh.
+    html = await curl_fetch_html_same_site(pdp_url, "bolo.bh")
+    if not html:
+        return None
+
+    parsed = _bolo_jsonld_main_price(html, product_name, currency)
+    if not parsed:
+        # The Nuxt-"price" fallback has NO product-name validation. Only use it
+        # when the PDP has NO JSON-LD Product node — if a Product node exists but
+        # _bolo_jsonld_main_price returned None, the JSON-LD is authoritative (the
+        # product mismatched the query, or had no BHD offer), so Nuxt would
+        # attribute the WRONG product's price (Wave-3 reviewer ISSUE 1, no-fab).
+        if _bolo_has_jsonld_product(html):
+            return None
+        parsed = _bolo_nuxt_main_price(html, currency)
+    if not parsed or not parsed.get("amount"):
+        return None
+
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    listing_name = parsed.get("name") or ""
+    price: Dict[str, Any] = {
+        "amount": parsed["amount"],
+        "currency": parsed.get("currency", currency),
+        "retailer": "bolo.bh",
+        "url": pdp_url,
+        "in_stock": parsed.get("in_stock", True),
+        "confidence": 1.0,
+        "estimated": False,
+        "source_method": "page_scrape_jsonld",
+        "title": listing_name,
+    }
+    # frag-size-capture — carry the real listing size (ml/oz) for fragrance pair
+    # fairness; no-op for non-fragrance. Uses the PDP JSON-LD name / og:title /
+    # page <title> like extract_price_from_html does.
+    _stamp_listing_size(price, product_name, soup, jsonld_name=listing_name)
+
+    # The showable accuracy guards (sample/implausible-low/high) still bite — a
+    # bolo decant under the fragrance floor must PEND, not show.
+    if not is_price_showable(product_name, price):
+        return None
+
+    # L2 content safety — drop a candidate whose surface trips the blocklist.
+    from app.services.content_safety_service import get_content_safety_service
+    _surface = f"{listing_name} bolo.bh {product_name}"
+    if not get_content_safety_service().is_text_safe(_surface):
+        logger.info("[content_safety] L2 dropped bolo candidate for %s", product_name)
+        return None
+    logger.info(
+        "[PRICE] bolo.bh genuine: %s %s for '%s' (%s)",
+        price["currency"], price["amount"], product_name, pdp_url,
+    )
+    return price
+
+
+# ============================================================================
+# boutiqaat.com direct-discovery (Wave 3c — BH Source-Intelligence)
+# ============================================================================
+# RE-VERIFIED LIVE (2026-06-23, Wave-3c): boutiqaat.com /en-bh PDPs serve a
+# GENUINE native-BHD price in PLAIN-curl-readable JSON-LD — a flat `@type:Product`
+# node with `offers.price` + `offers.priceCurrency="BHD"` + availability. Proven
+# across 4 product types: fragrance (Ghuyoum Alqassar 100ml EDP → 50.430 BHD),
+# contact-lens conf SKU (10.460), bundle (Mother Day Box 4pcs → 43.050), and
+# single beauty (Luminizer/Moisturizer → 15.930; Hair Revival Kit → 38.130). The
+# old render-only/requires_super flag was the CONSERVATIVE pre-re-verify stance —
+# the Wave-3c live probe cracks it to a $0 curl adapter (NO Serper, NO render).
+#
+# PER-SKU DATA GAP (verify-or-omit): some boutiqaat SKUs (a few `bdl`/sold-out
+# items) server-render ONLY an Organization JSON-LD block (no Product offer). On
+# those the adapter returns None — an honest miss, NOT a fabricated price — and
+# the cascade continues to an honest pending. NOT rate-limiting: a known-good
+# PDP re-fetches its price cleanly back-to-back (verified live).
+#
+# Discovery uses the SAME Wave-2 sitemap channel as bolo (resolve_pdp_via_sitemap,
+# a request-path Redis index READ — NO crawl on the clock; the 47k-PDP urlset is
+# indexed off-clock by cron_index_sitemaps). The PDP JSON-LD is a FLAT Product
+# node, which the bolo helper _bolo_jsonld_main_price already handles (its
+# non-@graph `[data]` branch) — so it is reused verbatim (numbers_match +
+# variant_mismatch validation included). Stamps the EXISTING genuine
+# source_method="page_scrape_jsonld" (no new _GENUINE_BH_SOURCE_METHODS string →
+# parity test untouched).
+
+
+async def fetch_boutiqaat_price(
+    product_name: str, currency: str = "BHD",
+) -> Optional[Dict[str, Any]]:
+    """Direct-discovery genuine BHD price for boutiqaat.com (Wave 3c).
+
+    discover (sitemap index, Wave 2) → curl-fetch the PDP → parse the flat
+    JSON-LD `@type:Product` main-offer (the bolo helper handles the non-@graph
+    case) → a genuine ``source_method="page_scrape_jsonld"`` price dict, or
+    ``None``.
+
+    A no-resolve / no-Product-offer (a per-SKU data gap) returns ``None`` (NOT a
+    pending dict — the cascade continues to an honest pending downstream). Gated by
+    ENABLE_PAGE_SCRAPE + L2 content-safety like the other Tier-1.5 entry points;
+    gated showable by is_price_showable (the sample/implausible guards still bite).
+    $0 — no Serper, no render."""
+    if not ENABLE_PAGE_SCRAPE:
+        return None
+    from app.services.sitemap_discovery_service import resolve_pdp_via_sitemap
+    pdp_url = resolve_pdp_via_sitemap("boutiqaat.com", product_name)
+    if not pdp_url:
+        return None  # cold/missing index or no match → honest miss, NOT pending
+    # Codex HIGH-5: fetch with a redirect-validating same-site fetcher — a
+    # sitemap-resolved boutiqaat.com url can 30x-redirect to an arbitrary host /
+    # private IP / *.railway.internal; pin every hop to boutiqaat.com.
+    html = await curl_fetch_html_same_site(pdp_url, "boutiqaat.com")
+    if not html:
+        return None
+
+    # boutiqaat ships a FLAT @type:Product JSON-LD (no @graph). _bolo_jsonld_main_price
+    # handles that via its `[data]` branch + the same numbers/variant validation.
+    parsed = _bolo_jsonld_main_price(html, product_name, currency)
+    if not parsed or not parsed.get("amount"):
+        return None  # Organization-only / no offer (per-SKU gap) → honest None
+
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    listing_name = parsed.get("name") or ""
+    price: Dict[str, Any] = {
+        "amount": parsed["amount"],
+        "currency": parsed.get("currency", currency),
+        "retailer": "boutiqaat.com",
+        "url": pdp_url,
+        "in_stock": parsed.get("in_stock", True),
+        "confidence": 1.0,
+        "estimated": False,
+        "source_method": "page_scrape_jsonld",
+        "title": listing_name,
+    }
+    # frag-size-capture — carry the real listing size (ml/oz) for fragrance pair
+    # fairness; no-op for non-fragrance. Same as bolo / extract_price_from_html.
+    _stamp_listing_size(price, product_name, soup, jsonld_name=listing_name)
+
+    # The showable accuracy guards (sample/implausible-low/high) still bite — a
+    # boutiqaat decant under the fragrance floor must PEND, not show.
+    if not is_price_showable(product_name, price):
+        return None
+
+    # L2 content safety — drop a candidate whose surface trips the blocklist.
+    from app.services.content_safety_service import get_content_safety_service
+    _surface = f"{listing_name} boutiqaat.com {product_name}"
+    if not get_content_safety_service().is_text_safe(_surface):
+        logger.info("[content_safety] L2 dropped boutiqaat candidate for %s", product_name)
+        return None
+    logger.info(
+        "[PRICE] boutiqaat.com genuine: %s %s for '%s' (%s)",
+        price["currency"], price["amount"], product_name, pdp_url,
+    )
+    return price
+
+
+# ============================================================================
+# nasserpharmacy.com direct-discovery (Wave 3b — BH Source-Intelligence)
+# ============================================================================
+# RECON-VERIFIED LIVE (2026-06-23): nasserpharmacy.com exposes its OWN JSON
+# search API (newapi.nasserpharmacy.com /v1/filterSearchs) returning genuine
+# native-BHD prices in a SINGLE authenticated GET — NO second /newproduct call,
+# NO Serper, NO render. `page=1` is REQUIRED (422 without). `currency_code=BHD`
+# drives server-side FX. The price is in the SEARCH response directly.
+#
+# The price/special are 3-decimal BHD-fils strings; `special != "0"` is an active
+# offer (prefer the LOWER of price/special). Match the query to `products[].name`
+# via strict_title_match/numbers_match. Stamp `source_method="local_bhd"` (an
+# EXISTING genuine method, native BHD — no new set entry).
+#
+# F3b — the guest token is a static const cracked from the app bundle; it rotates
+# on a FE redeploy. A wrong/expired token → HTTP 401 (proven live — fails cleanly,
+# never silently). Token-missing / 401 / empty → None (verify-or-omit). The ONE
+# live-credential risk in the bundle; re-probe via scripts/verify_source_registry.
+
+_NASSER_SEARCH_URL = "https://newapi.nasserpharmacy.com/v1/filterSearchs"
+# Guest auth header. The `Nasser` header carries a base64-ish
+# {"token":...,"id":...} guest session cracked from the app bundle. On rotation
+# the live probe / verify_source_registry surfaces a 401 → re-scrape.
+#
+# MED-2 (Codex re-review): the token is REQUIRED via the NASSER_GUEST_TOKEN env
+# var (set on Railway) and defaults to "" — fail closed. A fresh process with no
+# env var gets an empty token; the `if not _NASSER_GUEST_HEADERS.get("Nasser")`
+# guard in fetch_nasser_price then short-circuits to None, so nasser is DORMANT
+# (no network, no credential) until the var is set. The prior in-source token is
+# BURNED (it lived in branch history) and MUST be re-scraped fresh and set on
+# Railway before the adapter can activate. No literal credential lives in source.
+_NASSER_GUEST_TOKEN = os.environ.get("NASSER_GUEST_TOKEN", "")
+_NASSER_GUEST_HEADERS = {
+    "Nasser": _NASSER_GUEST_TOKEN,
+    "MOBILEOS": "REACT",
+    "APPVERSION": "1",
+}
+
+# MED-2 kill switch — flip ENABLE_NASSER_ADAPTER=false in Railway to disable the
+# adapter entirely (e.g. token permanently dead, or to stop hammering a rotated
+# credential). Truthy DEFAULT True so prod is unchanged until explicitly disabled.
+ENABLE_NASSER_ADAPTER = os.environ.get("ENABLE_NASSER_ADAPTER", "true").lower() != "false"
+
+# MED-2 401 circuit breaker — on a rotated/expired token nasser returns 401. After
+# >=_NASSER_401_THRESHOLD consecutive 401s within the cooldown window the adapter
+# short-circuits to None (stops hammering the dead token). A 200 resets it. Backed
+# by a Redis counter with a short TTL; fail-OPEN (Redis down → proceed).
+_NASSER_401_KEY = "breaker:nasser:401"
+_NASSER_401_THRESHOLD = 3
+_NASSER_401_COOLDOWN_SECONDS = 600  # ~10min
+
+
+def _nasser_breaker_tripped() -> bool:
+    """True when the 401 circuit breaker is tripped (>=threshold consecutive 401s
+    within the cooldown window). Fail-OPEN: any Redis error / Redis-down → False
+    (proceed) so an infra blip never silently kills a working adapter."""
+    try:
+        from app.services.cache_service import _redis_get
+        raw = _redis_get(_NASSER_401_KEY)
+        return raw is not None and int(raw) >= _NASSER_401_THRESHOLD
+    except Exception:  # noqa: BLE001 — fail-open
+        return False
+
+
+def _nasser_breaker_record_401() -> None:
+    """Increment the consecutive-401 counter (with a cooldown TTL). Fail-OPEN."""
+    try:
+        from app.services.cache_service import _redis_incr, _redis_expire
+        count = _redis_incr(_NASSER_401_KEY)
+        # (Re)arm the cooldown window on every 401 so a fresh burst keeps it open.
+        if count:
+            _redis_expire(_NASSER_401_KEY, _NASSER_401_COOLDOWN_SECONDS)
+    except Exception:  # noqa: BLE001 — fail-open
+        pass
+
+
+def _nasser_breaker_reset() -> None:
+    """A 200 clears the consecutive-401 counter (token is alive again). Fail-OPEN."""
+    try:
+        from app.services.cache_service import redis_client
+        if redis_client:
+            redis_client.delete(_NASSER_401_KEY)
+    except Exception:  # noqa: BLE001 — fail-open
+        pass
+
+
+# MED-3 — out-of-stock markers (EN + AR) used to derive in_stock from stock_text
+# when no numeric stock_count is present. نفذ / غير متوفر = sold out / unavailable.
+_NASSER_OOS_MARKERS = (
+    "out of stock", "sold out", "unavailable", "نفذ", "غير متوفر",
+)
+
+
+def _derive_nasser_in_stock(prod: Dict[str, Any]) -> Optional[bool]:
+    """Derive in_stock from the REAL signal the nasser payload carries (MED-3 re-
+    review — no more fabrication in EITHER direction). Priority: numeric
+    ``stock_count`` (int/float > 0) → ``stock_text`` (False iff an out-of-stock
+    marker, else True) → ``None`` when there is NO stock signal at all (was an
+    optimistic hard-coded True; now we OMIT rather than claim availability we
+    can't verify)."""
+    stock_count = prod.get("stock_count")
+    # int OR float (review NIT: a float-encoded 0.0 must read as out-of-stock, not
+    # fall through to the no-signal default); exclude bool (a subclass of int).
+    if isinstance(stock_count, (int, float)) and not isinstance(stock_count, bool):
+        return stock_count > 0
+    # Some payloads ship stock_count as a numeric string — honor it too.
+    if isinstance(stock_count, str) and stock_count.strip().lstrip("-").isdigit():
+        try:
+            return int(stock_count) > 0
+        except (ValueError, TypeError):
+            pass
+    stock_text = prod.get("stock_text")
+    if isinstance(stock_text, str) and stock_text.strip():
+        low = stock_text.lower()
+        return not any(marker in low for marker in _NASSER_OOS_MARKERS)
+    return None  # MED-3 re-review: no stock signal → unknown, do NOT fabricate
+
+
+def _match_nasser_product(
+    payload: Optional[Dict[str, Any]], product_name: str, currency: str = "BHD",
+) -> Optional[Dict[str, Any]]:
+    """PURE matcher: the best query-matching product in a nasser ``filterSearchs``
+    JSON ``payload`` and its genuine BHD price dict, or ``None``.
+
+    Reuses the price_service title helpers (numbers_match + strict_title_match +
+    word-overlap) like the Shopify matcher. Prefers the LOWER of price/special
+    (special != "0" = active offer). Rounds to 3 decimals (BHD fils). Stamps
+    ``source_method="local_bhd"`` (genuine, native BHD)."""
+    if not isinstance(payload, dict):
+        return None
+    products = payload.get("products")
+    if not isinstance(products, list) or not products:
+        return None
+
+    p_words = normalize_words(product_name)
+    best: Optional[Dict[str, Any]] = None
+    best_score = -1.0
+    for prod in products:
+        if not isinstance(prod, dict):
+            continue
+        name = prod.get("name") or ""
+        if not name:
+            continue
+        # NOTE: NO is_accessory / is_counterfeit pre-filter here. Those guards are
+        # for NOISY Serper-shopping listings; on a direct pharmacy-API product the
+        # name is the resolved product and strict_title_match (all query words
+        # present) + numbers_match + variant_mismatch + the word-overlap gate are
+        # the real protection. is_accessory false-positives on benign skincare
+        # descriptors ("...For Normal To Oily SKIN" → 'skin' is an accessory
+        # keyword) — it must not reject a genuine pharmacy product.
+        if not numbers_match(product_name, name):
+            continue
+        if not strict_title_match(product_name, name):
+            continue
+        if variant_mismatch(product_name, name):
+            continue
+        t_words = normalize_words(name)
+        score = len(p_words & t_words) / len(p_words) if p_words else 0.0
+        if score < 0.4:
+            continue
+        # The server returns BHD natively; only honor a BHD symbol (no FX here).
+        if str(prod.get("price_symbol") or "").upper() not in ("BHD", currency.upper()):
+            continue
+        price_val = parse_price_string(str(prod.get("price") or ""))
+        special_raw = str(prod.get("special") or "0").strip()
+        special_val = parse_price_string(special_raw)
+        # special != "0" (and > 0) is an active offer — prefer the LOWER price.
+        amount = price_val
+        if special_val is not None and special_val > 0 and special_raw not in ("0", "0.000"):
+            if amount is None or special_val < amount:
+                amount = special_val
+        if amount is None or amount <= 0:
+            continue
+        decimals = prod.get("decimal_places")
+        ndp = decimals if isinstance(decimals, int) and 0 <= decimals <= 6 else 3
+        if score > best_score:
+            best_score = score
+            alias = prod.get("product_alias") or prod.get("url_alias") or ""
+            url = f"https://www.nasserpharmacy.com/bh-en/{alias}" if alias else ""
+            best = {
+                "amount": round(amount, ndp),
+                "currency": (currency or "BHD").upper(),
+                "retailer": "nasserpharmacy.com",
+                "url": url,
+                "confidence": round(min(0.7 + score * 0.3, 1.0), 2),
+                "estimated": False,
+                "source_method": "local_bhd",
+                "title": name,
+            }
+            # MED-3 re-review: stamp in_stock ONLY when the payload carries a real
+            # stock signal. None (no signal) → OMIT the key — never fabricate
+            # availability in EITHER direction. Downstream reads are .get-style
+            # (Optional[bool] schema), so a missing key is safe.
+            derived_in_stock = _derive_nasser_in_stock(prod)
+            if derived_in_stock is not None:
+                best["in_stock"] = derived_in_stock
+    return best
+
+
+async def fetch_nasser_price(
+    product_name: str, currency: str = "BHD",
+) -> Optional[Dict[str, Any]]:
+    """Direct-discovery genuine BHD price for nasserpharmacy.com (Wave 3b).
+
+    A SINGLE authenticated GET to /v1/filterSearchs (page=1 REQUIRED,
+    currency_code=BHD) → match the query → a genuine
+    ``source_method="local_bhd"`` price dict, or ``None``.
+
+    Token-missing / 401 / non-200 / empty / no-match → ``None`` (verify-or-omit;
+    NOT a pending dict). Gated by ENABLE_NASSER_ADAPTER (kill switch) +
+    ENABLE_PAGE_SCRAPE + L2 content-safety; a 401 circuit breaker short-circuits
+    after >=3 consecutive 401s (rotated token). Gated showable by
+    is_price_showable. $0 — no Serper, no render."""
+    if not ENABLE_NASSER_ADAPTER:
+        return None  # MED-2 kill switch
+    if not ENABLE_PAGE_SCRAPE:
+        return None
+    if not _NASSER_GUEST_HEADERS.get("Nasser"):
+        return None  # no token → cannot auth → honest None
+    if _nasser_breaker_tripped():
+        # MED-2 — token looks rotated (>=3 recent 401s); don't hammer it. Short-
+        # circuit WITHOUT a network call until the cooldown window lapses.
+        logger.info("[PRICE] nasser 401 breaker tripped — skipping '%s'", product_name)
+        return None
+    try:
+        from curl_cffi import requests as curl_requests
+        params = {
+            "search_term": product_name,
+            "page": 1,                 # REQUIRED — 422 without
+            "limit": 20,
+            "lang": 1,
+            "currency_code": currency or "BHD",  # drives server-side FX
+        }
+        resp = await asyncio.to_thread(
+            lambda: curl_requests.get(
+                _NASSER_SEARCH_URL,
+                params=params,
+                headers=_NASSER_GUEST_HEADERS,
+                impersonate="chrome",
+                timeout=8,
+                allow_redirects=True,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — a fetch error is a miss, never a crash
+        logger.warning("[PRICE] nasser fetch failed for %s: %s", product_name, exc)
+        return None
+    if resp.status_code == 401:
+        # MED-2 — token rotated (the one live-credential risk, F3b). Record the
+        # consecutive-401 for the circuit breaker so a sustained burst trips it.
+        _nasser_breaker_record_401()
+        logger.info("[PRICE] nasser HTTP 401 (token rotated?) for '%s'", product_name)
+        return None
+    if resp.status_code != 200:
+        # 422 = bad params; any other non-200 = a miss (NOT a 401, so don't count it).
+        logger.info("[PRICE] nasser HTTP %s for '%s'", resp.status_code, product_name)
+        return None
+    # A live 200 → the token works; clear any stale 401 streak.
+    _nasser_breaker_reset()
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001 — non-JSON body → miss
+        return None
+
+    price = _match_nasser_product(payload, product_name, currency)
+    if not price:
+        return None
+    if not is_price_showable(product_name, price):
+        return None
+
+    from app.services.content_safety_service import get_content_safety_service
+    _surface = f"{price.get('title', '')} nasserpharmacy.com {product_name}"
+    if not get_content_safety_service().is_text_safe(_surface):
+        logger.info("[content_safety] L2 dropped nasser candidate for %s", product_name)
+        return None
+    logger.info(
+        "[PRICE] nasser genuine: %s %s for '%s'",
+        price["currency"], price["amount"], product_name,
+    )
     return price
 
 

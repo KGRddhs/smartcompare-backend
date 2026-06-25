@@ -15,9 +15,10 @@ SCRAPEDO_API_URL = "https://api.scrape.do"
 # OFF-CLOCK warmer raises SCRAPEDO_TIMEOUT (e.g. 35) so the residential-proxy
 # render can finish a slow SPA inside its 35s FAN_OUT_BUDGET; live keeps the 15s
 # default (the request clock bounds it there). Read at import; the warmer sets
-# the env before importing the service. NOTE: a longer timeout does NOT defeat a
-# Cloudflare bot-wall (the WS3 capability trace found bolo.bh/boutiqaat/sephora.bh
-# return a CF "you have been blocked" interstitial regardless of budget).
+# the env before importing the service. NOTE: a longer timeout does NOT defeat an
+# anti-bot wall (the WS3 capability trace found CF "you have been blocked"
+# interstitials, and sephora.me /bh-en returns a 403 AkamaiGHost block, regardless
+# of budget; bolo/boutiqaat were since cracked to $0 curl/sitemap adapters).
 SCRAPEDO_TIMEOUT = int(os.getenv("SCRAPEDO_TIMEOUT", "15"))
 
 
@@ -68,7 +69,8 @@ def _super_enabled() -> bool:
     _SUPER_FLAGS state with _super_params() (and the reset_super_flags_cache()
     test hook), so the Scrape.do request params and any flag-gated routing read
     the SAME flag the SAME way. WS-G G2 reads this from source_router to gate the
-    residential-only BH render sources (sephora.bh/boutiqaat) so the deploy is
+    residential-only BH render source (sephora.me — the lone requires_super row;
+    boutiqaat was cracked to a $0 sitemap adapter in Wave-3c) so the deploy is
     behavior-neutral with the flag OFF (default)."""
     return bool(_super_params())
 

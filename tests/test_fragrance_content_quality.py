@@ -760,11 +760,11 @@ async def test_scrapedo_super_off_by_default_byte_identical_params():
         _reset_scrapedo_super_cache()
         with _patch("app.services.scrapedo_service.httpx.AsyncClient") as cls:
             client = _mock_scrapedo_client(cls)
-            await _scrapedo_service.render_page_with_status("https://sephora.bh/p/x")
+            await _scrapedo_service.render_page_with_status("https://sephora.me/p/x")
             params = _scrapedo_get_params(client)
             assert params == {
                 "token": "test-token",
-                "url": "https://sephora.bh/p/x",
+                "url": "https://sephora.me/p/x",
                 "render": "true",
             }, params
             assert "super" not in params
@@ -783,7 +783,7 @@ async def test_scrapedo_super_on_adds_super_and_geocode():
         _reset_scrapedo_super_cache()
         with _patch("app.services.scrapedo_service.httpx.AsyncClient") as cls:
             client = _mock_scrapedo_client(cls)
-            await _scrapedo_service.render_page_with_status("https://sephora.bh/p/x")
+            await _scrapedo_service.render_page_with_status("https://sephora.me/p/x")
             params = _scrapedo_get_params(client)
             assert params.get("super") == "true", params
             assert params.get("geoCode") == "bh", params
@@ -803,7 +803,7 @@ async def test_scrapedo_super_on_render_page_also_gated():
         _reset_scrapedo_super_cache()
         with _patch("app.services.scrapedo_service.httpx.AsyncClient") as cls:
             client = _mock_scrapedo_client(cls)
-            await _scrapedo_service.render_page("https://sephora.bh/p/x")
+            await _scrapedo_service.render_page("https://sephora.me/p/x")
             params = _scrapedo_get_params(client)
             assert params.get("super") == "true", params
             assert params.get("geoCode") == "ae", params  # geoCode overridable
@@ -817,17 +817,17 @@ async def test_scrapedo_render_page_off_by_default_byte_identical():
         _reset_scrapedo_super_cache()
         with _patch("app.services.scrapedo_service.httpx.AsyncClient") as cls:
             client = _mock_scrapedo_client(cls)
-            await _scrapedo_service.render_page("https://sephora.bh/p/x")
+            await _scrapedo_service.render_page("https://sephora.me/p/x")
             params = _scrapedo_get_params(client)
             assert params == {
                 "token": "test-token",
-                "url": "https://sephora.bh/p/x",
+                "url": "https://sephora.me/p/x",
                 "render": "true",
             }, params
     _reset_scrapedo_super_cache()
 
 
-# WS-G — Task G2: register sephora.bh + boutiqaat.com as render-only Bahrain
+# WS-G — Task G2: register sephora.me + boutiqaat.com as render-only Bahrain
 # sources, GATED on SCRAPEDO_SUPER. With the flag OFF (the cost-neutral default)
 # the discovery routing for fragrances/makeup/skincare must be BYTE-IDENTICAL to
 # today — the two new domains ABSENT (we never burn CF-walled datacenter renders
@@ -839,7 +839,11 @@ from app.services.source_router import (  # noqa: E402
     is_render_only_domain,
 )
 
-_G2_SUPER_DOMAINS = ("sephora.bh", "boutiqaat.com")
+# Wave-3c (2026-06-23): boutiqaat.com REMOVED from the super-gated set — the live
+# re-verify cracked it to a $0 curl sitemap adapter (genuine BHD JSON-LD), so it is
+# now mechanism="sitemap" + super-INDEPENDENT (routed with the flag OFF, like bolo).
+# sephora.me remains the lone CF-walled requires_super beauty source.
+_G2_SUPER_DOMAINS = ("sephora.me",)
 
 
 def _routed_domains(category, tier="bahrain"):
@@ -849,7 +853,7 @@ def _routed_domains(category, tier="bahrain"):
 
 
 def test_g2_super_sources_absent_when_flag_off_byte_identical():
-    """COST-NEUTRAL: with SCRAPEDO_SUPER OFF (default), neither sephora.bh nor
+    """COST-NEUTRAL: with SCRAPEDO_SUPER OFF (default), neither sephora.me nor
     boutiqaat.com is routed for fragrances/makeup/skincare — byte-identical to
     today's discovery."""
     with _patch.dict("os.environ", {}, clear=True):  # SCRAPEDO_SUPER unset -> OFF
@@ -866,7 +870,7 @@ def test_g2_super_sources_absent_when_flag_off_byte_identical():
 
 
 def test_g2_super_sources_routed_render_only_when_flag_on():
-    """With SCRAPEDO_SUPER=true, both sephora.bh and boutiqaat.com ARE routed for
+    """With SCRAPEDO_SUPER=true, both sephora.me and boutiqaat.com ARE routed for
     fragrances (Bahrain tier) AND are flagged render-only (residential-proxy
     render tier, never the wasted curl)."""
     with _patch.dict("os.environ", {"SCRAPEDO_SUPER": "true"}, clear=True):
@@ -892,17 +896,116 @@ def test_g2_off_state_equals_on_state_minus_super_sources():
     _reset_scrapedo_super_cache()
 
 
-def test_g2_boutiqaat_makeup_haircare_categories_when_on():
-    """boutiqaat.com carries makeup/skincare/haircare/fragrances; sephora.bh
-    carries makeup/skincare/fragrances (no haircare). Verify category scoping
-    when the flag is ON."""
+def test_g2_boutiqaat_routed_super_independent_after_reverify():
+    """Wave-3c — boutiqaat.com is now a mechanism="sitemap" source (genuine BHD
+    curl adapter), so it is routed for its beauty categories REGARDLESS of the
+    SCRAPEDO_SUPER flag (super-independent, like bolo). It carries makeup/skincare/
+    haircare/fragrances but NOT electronics. sephora.me stays super-gated and has
+    no haircare."""
+    from app.services.source_router import get_sitemap_sources_for_category
+    for flag in ({}, {"SCRAPEDO_SUPER": "true"}):
+        with _patch.dict("os.environ", flag, clear=True):
+            _reset_scrapedo_super_cache()
+            # Routed for haircare with the super flag in BOTH states.
+            assert "boutiqaat.com" in _routed_domains("haircare")
+            # And present in the sitemap channel (the $0 curl adapter path).
+            sm = [s.domain for s in get_sitemap_sources_for_category("haircare")]
+            assert "boutiqaat.com" in sm
+            # Electronics: not a beauty/fragrance source -> absent in either state.
+            assert "boutiqaat.com" not in _routed_domains("electronics")
+    _reset_scrapedo_super_cache()
+
+
+# Wave-4 (2026-06-23) — sephora.me regional-alias finalization. The Wave-1 row
+# swap (sephora.bh -> sephora.me) + Wave-3c boutiqaat-off-super left sephora.me as
+# the LONE requires_super row. This pins the alias across ALL THREE of its
+# categories (makeup/skincare/fragrances) in BOTH flag states — the existing G2
+# tests pin only `fragrances`. OFF-state must be byte-identical to today's
+# discovery (registry behaves as if the row is absent, exactly like the old
+# sephora.bh which was also a requires_super row filtered out under OFF).
+_SEPHORA_ME = "sephora.me"
+_SEPHORA_ME_CATEGORIES = ("makeup", "skincare", "fragrances")
+
+
+def test_wave4_sephora_me_off_state_absent_all_categories_byte_identical():
+    """OFF-state (SCRAPEDO_SUPER unset, the default): sephora.me is ABSENT from
+    get_sources_for_category for EVERY one of its registered categories — the
+    registry behaves as if the row is absent, byte-identical to the old
+    sephora.bh requires_super OFF-state. is_render_only_domain stays True
+    (super-INDEPENDENT — it keys on is_render_only, not requires_super)."""
+    with _patch.dict("os.environ", {}, clear=True):  # SCRAPEDO_SUPER unset -> OFF
+        _reset_scrapedo_super_cache()
+        for cat in _SEPHORA_ME_CATEGORIES:
+            routed = _routed_domains(cat)
+            assert _SEPHORA_ME not in routed, (cat, routed)
+            # No usage=None leak either (the un-filtered routing view).
+            all_routed = [
+                s.domain
+                for s in get_sources_for_category(cat)
+                if s.tier == "bahrain"
+            ]
+            assert _SEPHORA_ME not in all_routed, (cat, all_routed)
+        # render-only classification is super-independent (curl-wave skip).
+        assert is_render_only_domain(_SEPHORA_ME) is True
+    _reset_scrapedo_super_cache()
+
+
+def test_wave4_sephora_me_on_state_routed_render_only_all_categories():
+    """ON-state (SCRAPEDO_SUPER=true): sephora.me IS routed for EACH of its three
+    categories and is flagged render-only — the residential-proxy render tier,
+    never the wasted datacenter curl. Haircare is NOT one of its categories, so it
+    stays absent there in BOTH flag states (no category leak)."""
     with _patch.dict("os.environ", {"SCRAPEDO_SUPER": "true"}, clear=True):
         _reset_scrapedo_super_cache()
-        assert "boutiqaat.com" in _routed_domains("haircare")
-        assert "sephora.bh" not in _routed_domains("haircare")  # sephora: no haircare
-        # Electronics: neither is a beauty/fragrance source -> absent even when ON.
-        assert "boutiqaat.com" not in _routed_domains("electronics")
-        assert "sephora.bh" not in _routed_domains("electronics")
+        for cat in _SEPHORA_ME_CATEGORIES:
+            routed = _routed_domains(cat)
+            assert _SEPHORA_ME in routed, (cat, routed)
+            assert is_render_only_domain(_SEPHORA_ME), cat
+        # haircare leak guard: sephora.me has no haircare -> absent ON too.
+        assert _SEPHORA_ME not in _routed_domains("haircare")
+    with _patch.dict("os.environ", {}, clear=True):
+        _reset_scrapedo_super_cache()
+        assert _SEPHORA_ME not in _routed_domains("haircare")
+    _reset_scrapedo_super_cache()
+
+
+def test_wave4_sephora_me_off_equals_on_minus_super_each_category():
+    """The OFF routing for EACH sephora.me category is EXACTLY the ON routing with
+    sephora.me removed — proves the super gate adds/removes nothing else (the alias
+    is behavior-neutral when OFF, across all three categories not just fragrances).
+    """
+    for cat in _SEPHORA_ME_CATEGORIES:
+        with _patch.dict("os.environ", {"SCRAPEDO_SUPER": "true"}, clear=True):
+            _reset_scrapedo_super_cache()
+            on = _routed_domains(cat)
+        with _patch.dict("os.environ", {}, clear=True):
+            _reset_scrapedo_super_cache()
+            off = _routed_domains(cat)
+        assert off == [d for d in on if d != _SEPHORA_ME], (cat, off, on)
+    _reset_scrapedo_super_cache()
+
+
+def test_wave4_sephora_me_is_provider_test_candidate_no_price_adapter():
+    """The sephora.me registry row is a provider-test candidate, NOT a $0 price
+    path: mechanism="provider" + status="provider-test-candidate" + requires_super
+    True + a sample_url set, and it carries NONE of the $0-adapter flags
+    (is_shopify / is_algolia) nor a sitemap/json_api/curl mechanism. Akamai-walled
+    + empty BH sitemap = no $0 discovery; the render-capability test is out-of-band.
+    """
+    from app.services.source_router import SOURCE_REGISTRY
+
+    rows = [s for s in SOURCE_REGISTRY if s.domain == _SEPHORA_ME]
+    assert len(rows) == 1, rows
+    s = rows[0]
+    assert s.requires_super is True
+    assert s.is_render_only is True
+    assert s.mechanism == "provider"
+    assert s.status == "provider-test-candidate"
+    assert s.sample_url and s.sample_url.startswith("https://www.sephora.me/bh-en/")
+    # NO $0 price-adapter wiring (Akamai-walled, deferred to the provider test).
+    assert s.is_shopify is False
+    assert s.is_algolia is False
+    assert s.mechanism not in ("sitemap", "curl", "json_api")
 
 
 # WS-G — Task G3: per-attempt provider TRACE (backend-observability ONLY; metadata,
@@ -954,14 +1057,14 @@ async def test_scrapedo_attempt_records_cf_block(monkeypatch):
     monkeypatch.setattr(_scs, "extract_price_from_html", lambda *a, **k: None)
 
     await _scs._scrapedo_scraper(
-        "https://sephora.bh/p/oud-wood", "Tom Ford Oud Wood", "BHD", "sephora.bh"
+        "https://sephora.me/p/oud-wood", "Tom Ford Oud Wood", "BHD", "sephora.me"
     )
 
     assert len(attempts) == 1, attempts
     rec = attempts[0]
     assert rec["provider"] == "scrapedo"
-    assert rec["retailer_domain"] == "sephora.bh"
-    assert rec["url"] == "https://sephora.bh/p/oud-wood"
+    assert rec["retailer_domain"] == "sephora.me"
+    assert rec["url"] == "https://sephora.me/p/oud-wood"
     assert rec["status"] == 200
     assert rec["cost"] == 10
     assert rec["detected_cf"] is True
@@ -1026,7 +1129,7 @@ async def test_scrapedo_attempt_records_html_success(monkeypatch):
     )
 
     out = await _scs._scrapedo_scraper(
-        "https://sephora.bh/p/oud-wood", "Tom Ford Oud Wood", "BHD", "sephora.bh"
+        "https://sephora.me/p/oud-wood", "Tom Ford Oud Wood", "BHD", "sephora.me"
     )
     assert out and out.get("value") == 75.0  # return value UNCHANGED (strictly additive)
     assert len(attempts) == 1, attempts
@@ -1044,8 +1147,8 @@ async def test_provider_attempts_attach_under_source_trace_races_price():
     svc = get_comparison_service()
     svc._init_provider_attempts()
     svc._provider_attempts.append({
-        "provider": "scrapedo", "url": "https://sephora.bh/p/x",
-        "retailer_domain": "sephora.bh", "status": 200, "cost": 10,
+        "provider": "scrapedo", "url": "https://sephora.me/p/x",
+        "retailer_domain": "sephora.me", "status": 200, "cost": 10,
         "outcome": "cf_block", "html_kb": 12, "detected_cf": True, "elapsed_ms": 4200,
     })
     # Seed a minimal source_trace as the orchestrator would have.

@@ -55,3 +55,11 @@ data/surveys/*.csv
 # I4 shadow harness working artifacts: L2 dump, reconstructed verdict inputs,
 # per-arm result JSON. Regenerable from L2 via scripts/shadow_experiments.py.
 .shadow/
+
+# Session QA / recon / agent scratch. NEVER track — recon dumps can contain live
+# tokens (e.g. .qa-bh-sourcing/_f3_nasser_main.js carries a scraped guest token).
+# Whole-branch review #4 (bh-source-intelligence) flagged this as a latent
+# git-add-A leak vector; gitignoring fail-closes it.
+.qa-*/
+.agents/
+.codex/

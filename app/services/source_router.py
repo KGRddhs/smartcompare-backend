@@ -52,6 +52,20 @@ class Source:
     # datacenter render + trip the SHARED scrapedo breaker on a wall only
     # residential proxies can pass. Default False → every legacy row unchanged.
     requires_super: bool = False
+    # Source-intelligence — "regional storefront alias" descriptor (2026-06-23).
+    # Discovery + classification metadata so the cascade, the warmer, and the
+    # provider-test read ONE descriptor instead of scattered flags. ALL fields
+    # default empty/() so every existing positional/kwarg row is byte-unchanged.
+    # HARD RULE: tuple defaults MUST be bare () (frozen-dataclass-safe immutable),
+    # NEVER field(default_factory=list).
+    locale_paths: Tuple[str, ...] = ()          # /bh-en, /en-bh, /ar-bh, /bahrain, /bh
+    subdomain_patterns: Tuple[str, ...] = ()    # bh., bahrain., en-bh.
+    currency: str = ""                          # expected currency, e.g. "BHD"
+    discovery_query_templates: Tuple[str, ...] = ()  # site:{domain}{locale} "{product}" BHD
+    mechanism: str = ""                         # "" | curl | json_api | sitemap | algolia | shopify | render | provider
+    pdp_url_pattern: str = ""                   # e.g. /bh-en/p/{slug}/{product_id}
+    sample_url: str = ""                        # one live-verified PDP (liveness anchor)
+    status: str = ""                            # "" | live | provider-test-candidate | render-only
 
 
 SOURCE_REGISTRY: List[Source] = [
@@ -93,7 +107,13 @@ SOURCE_REGISTRY: List[Source] = [
     ),
     Source(
         "bolo.bh", "bahrain", ("supplements", "makeup", "skincare"), 3.0,
-        is_render_only=True,  # Vue SPA (not Google-indexed) → render-tier
+        # Source-intel recon 2026-06-23: Nuxt SSR — the PDP carries a genuine BHD
+        # price in PLAIN-curl static HTML (the old "render-only" flag was STALE).
+        # Discovery via its own products-sitemap (16 child) -> off-clock index.
+        mechanism="sitemap", currency="BHD", subdomain_patterns=("www.",),
+        pdp_url_pattern="/products/{internal_id}-{slug}",
+        sample_url="https://www.bolo.bh/products/UO0872Z3OMT-kensington-wireless-presenter-with-red-laser-pointer-k33272ww",
+        status="live",
     ),
     # S3-genuine gap-fill (2026-06-14, Decision-F): behbehani.com +
     # jumboelectronics.com DELETED — both are 200-but-NOT-a-store
@@ -118,7 +138,13 @@ SOURCE_REGISTRY: List[Source] = [
         "bahrain",
         ("supplements", "skincare", "makeup", "haircare", "fragrances"),
         3.0,
-        is_render_only=True,  # Nasser Pharmacy — JS-SPA → render-tier
+        # Source-intel recon 2026-06-23: bare Apache (NO Cloudflare); genuine BHD
+        # via its OWN JSON API (newapi.nasserpharmacy.com /v1/filterSearchs returns
+        # the price directly). NOT render-only (the old flag was STALE).
+        mechanism="json_api", currency="BHD", locale_paths=("/bh-en",),
+        pdp_url_pattern="/bh-en/{product_alias}",
+        sample_url="https://www.nasserpharmacy.com/bh-en/optifucin-1-5-g-ophthalmic-gel-tube-13589",
+        status="live",
     ),  # Nasser Pharmacy — Bahrain's largest chain, 10k+ health/beauty SKUs
     Source(
         "bahrainpharmacy.com",
@@ -136,14 +162,35 @@ SOURCE_REGISTRY: List[Source] = [
     # today and we never burn a CF-blocked render / trip the shared breaker. The
     # gated A/B measurement (G4) flips SCRAPEDO_SUPER to see if super cracks them.
     Source(
-        "sephora.bh", "bahrain", ("makeup", "skincare", "fragrances"), 3.0,
+        # Source-intel correction 2026-06-23: the CANONICAL BH Sephora is
+        # sephora.me + /bh-en (NOT sephora.bh, which 301s + is unverified). Ahmed's
+        # real PDP /bh-en/p/.../713779 returns 403 AkamaiGHost from a non-BH IP.
+        "sephora.me", "bahrain", ("makeup", "skincare", "fragrances"), 3.0,
         is_render_only=True, requires_super=True,
-    ),  # Sephora Bahrain — CF-walled, residential render only
+        locale_paths=("/bh-en",), currency="BHD", mechanism="provider",
+        pdp_url_pattern="/bh-en/p/{slug}/{product_id}",
+        discovery_query_templates=('site:sephora.me/bh-en "{product}" BHD',),
+        sample_url="https://www.sephora.me/bh-en/p/size-up-immediate-supersized-volume-mascara/713779",
+        status="provider-test-candidate",
+    ),  # Sephora Bahrain (sephora.me /bh-en) — Akamai-walled, provider-test candidate
     Source(
         "boutiqaat.com", "bahrain",
         ("makeup", "skincare", "haircare", "fragrances"), 3.0,
-        is_render_only=True, requires_super=True,
-    ),  # Boutiqaat — CF-walled GCC beauty/fragrance, residential render only
+        # Source-intel RE-VERIFIED LIVE 2026-06-23 (Wave-3c): the pre-re-verify
+        # render-only/requires_super stance was CONSERVATIVE — the /en-bh PDP
+        # actually serves a GENUINE native-BHD price in PLAIN-curl JSON-LD (a flat
+        # @type:Product offer, priceCurrency="BHD"), proven across 4 product types
+        # (fragrance 50.430 / lens 10.460 / bundle 43.050 / single 15.930). FLIPPED
+        # off render-only/super → mechanism="sitemap" (own 47k-PDP products-sitemap,
+        # off-clock indexed; $0 curl adapter fetch_boutiqaat_price — NO Serper, NO
+        # render). Per-SKU data gaps (some bdl/sold-out SKUs serve Organization-only
+        # JSON-LD) return an honest None (verify-or-omit), never a fabricated price.
+        mechanism="sitemap", currency="BHD",
+        locale_paths=("/en-bh",), subdomain_patterns=("www.",),
+        pdp_url_pattern="/en-bh/{gender}/{slug}/p/",
+        sample_url="https://www.boutiqaat.com/en-bh/women/ghuyoum-alqassar-100ml-edp-by-sulaiman-al-qassar-i-00000213650-1/p/",
+        status="live",
+    ),  # Boutiqaat — GCC beauty/fragrance, genuine BHD via sitemap+curl (Wave-3c)
     # F1.5 addendum (deeper verified-source discovery, live 2026-06-10) —
     # appliance/AC + fragrance + premium-grocery gap-fillers. Each is a real
     # BH e-commerce site with BHD prices + checkout + product pages.
@@ -179,8 +226,9 @@ SOURCE_REGISTRY: List[Source] = [
     # the beauty catalog is a SEPARATE Algolia index reachable only via a
     # headless browser (not harvestable, dropped). Positive gate proven:
     # "Nike Air Max SC"→genuine Nike BHD 32.000. Beauty (makeup/skincare/
-    # haircare) rides the render-tier rows (boutiqaat/sephora) + the Shopify
-    # fragrance stores (ajmal/alhajis/asgharali). Tier-2 (after Shopify, before curl).
+    # haircare) rides the boutiqaat sitemap+curl adapter (Wave-3c, genuine BHD) +
+    # nasser JSON-API + the Shopify fragrance stores (ajmal/alhajis/asgharali) +
+    # sephora render-tier. Tier-2 (after Shopify, before curl).
     Source(
         "en-bh.6thstreet.com", "bahrain", ("fashion",), 3.0,
         is_algolia=True,
@@ -411,6 +459,36 @@ def get_algolia_sources_for_category(category: str) -> List[Source]:
         s
         for s in SOURCE_REGISTRY
         if s.is_algolia
+        and s.tier == "bahrain"
+        and (not s.categories or category in s.categories)
+    ]
+
+
+def get_jsonapi_sources_for_category(category: str) -> List[Source]:
+    """Source-intelligence (2026-06-23) — Bahrain-tier JSON-API sources for
+    `category`, in registry order. The cascade hits the store's OWN JSON API
+    DIRECTLY (free, $0, no Serper/render, genuine BHD) — e.g. nasserpharmacy's
+    /v1/filterSearchs. Returns a (possibly empty) list — never raises.
+    """
+    return [
+        s
+        for s in SOURCE_REGISTRY
+        if s.mechanism == "json_api"
+        and s.tier == "bahrain"
+        and (not s.categories or category in s.categories)
+    ]
+
+
+def get_sitemap_sources_for_category(category: str) -> List[Source]:
+    """Source-intelligence (2026-06-23) — Bahrain-tier sitemap/curl sources for
+    `category`, in registry order. Discovery via the store's OWN sitemap (an
+    off-clock index) then a plain curl of the PDP for a genuine BHD price ($0, no
+    Serper/render). Returns a (possibly empty) list — never raises.
+    """
+    return [
+        s
+        for s in SOURCE_REGISTRY
+        if s.mechanism in ("sitemap", "curl")
         and s.tier == "bahrain"
         and (not s.categories or category in s.categories)
     ]
