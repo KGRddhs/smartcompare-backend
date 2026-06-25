@@ -867,8 +867,26 @@ from app.services.source_router import (
     get_algolia_sources_for_category,
     get_sitemap_sources_for_category,
     get_jsonapi_sources_for_category,
+    # BH/GCC source-build (2026-06-25) — the 6 new $0 direct-fetch selectors.
+    get_woo_sources_for_category,
+    get_salla_sources_for_category,
+    get_occ_sources_for_category,
+    get_magento_gql_sources_for_category,
+    get_unbxd_sources_for_category,
+    get_restjson_sources_for_category,
     registry_tier,
 )
+# BH/GCC source-build (2026-06-25) — the 6 new genuine/converted price adapters
+# (each: async fetch_*_price(domain, product_name, currency="BHD") → price dict |
+# None; strict no-fab + is_price_showable + L2 content-safety; never raises). They
+# live in their own modules (NOT price_service) and import FROM price_service, so
+# there is no import cycle with this orchestrator.
+from app.services.woocommerce_service import fetch_woocommerce_store_api_price
+from app.services.salla_service import fetch_salla_api_price
+from app.services.occ_service import fetch_occ_rest_price
+from app.services.magento_graphql_service import fetch_magento_graphql_price
+from app.services.unbxd_service import fetch_unbxd_price
+from app.services.rest_json_service import fetch_rest_json_price
 from app.services.sitemap_discovery_service import (
     sitemap_discovery_is_cold,
     sitemap_domains_now_built,
@@ -4262,10 +4280,31 @@ class StructuredComparisonService:
         # (the cancel below just drops a couple of free HTTP GETs).
         _sitemap_sources_pf = get_sitemap_sources_for_category(category)
         _jsonapi_sources_pf = get_jsonapi_sources_for_category(category)
+        # BH/GCC source-build (2026-06-25) — the 6 new $0 direct-fetch adapters.
+        # Like the sitemap/jsonapi prefetch above, these are NOT `not is_supplement`-
+        # gated (woo/salla/rest-json/etc. cover supplements too). They share a
+        # uniform (domain, product_name, currency) shape, so one data-driven spec
+        # list drives both the prefetch and the consume — no per-domain dispatch map
+        # (each adapter resolves its own per-store config by domain internally) and
+        # no six copy-pasted blocks. Empty until the Wave-D liveness gate promotes
+        # catalog rows (the selectors return [] today → this whole block is inert).
+        _new_adapter_specs = [
+            (k, srcs, fn)
+            for (k, srcs, fn) in (
+                ("woo", get_woo_sources_for_category(category), fetch_woocommerce_store_api_price),
+                ("salla", get_salla_sources_for_category(category), fetch_salla_api_price),
+                ("occ", get_occ_sources_for_category(category), fetch_occ_rest_price),
+                ("magento_gql", get_magento_gql_sources_for_category(category), fetch_magento_graphql_price),
+                ("unbxd", get_unbxd_sources_for_category(category), fetch_unbxd_price),
+                ("rest_json", get_restjson_sources_for_category(category), fetch_rest_json_price),
+            )
+            if srcs
+        ]
         _prefetched_direct: Dict[str, Any] = {}
         if ENABLE_PAGE_SCRAPE and (
             _shopify_sources_pf or _algolia_sources_pf
             or _sitemap_sources_pf or _jsonapi_sources_pf
+            or _new_adapter_specs
         ):
             if _shopify_sources_pf:
                 _prefetched_direct["shopify"] = asyncio.ensure_future(
@@ -4341,6 +4380,25 @@ class StructuredComparisonService:
                     )
                 )
 
+            # BH/GCC source-build — prefetch the 6 new $0 adapters (data-driven;
+            # same per-source `_timeout_none` lazy-factory wrap as nasser/sitemap so
+            # a slow source yields None without collapsing the gather, and no orphan
+            # coro survives a pre-run cancel). One future per mechanism keyed by its
+            # spec key; consumed in `_consume_adapter_prefetch` below.
+            for _na_key, _na_srcs, _na_fn in _new_adapter_specs:
+                _prefetched_direct[_na_key] = asyncio.ensure_future(
+                    asyncio.gather(
+                        *(
+                            _timeout_none(
+                                lambda s=s, fn=_na_fn: fn(s.domain, full_name, currency),
+                                _ADAPTER_TIMEOUT,
+                            )
+                            for s in _na_srcs
+                        ),
+                        return_exceptions=True,
+                    )
+                )
+
         def _cancel_prefetched_direct():
             """Cancel the speculative FREE direct fetches (genuine Tier-1 short-
             circuit / no-escalation) so no orphan HTTP GETs survive. No Serper
@@ -4367,7 +4425,7 @@ class StructuredComparisonService:
             cascade continues). Inline-fires the adapters if the prefetch was
             skipped (ENABLE_PAGE_SCRAPE off / no sources at kickoff) so the path
             still works without the speculation. $0 — no Serper, no render."""
-            if not (_sitemap_sources_pf or _jsonapi_sources_pf):
+            if not (_sitemap_sources_pf or _jsonapi_sources_pf or _new_adapter_specs):
                 return None
             observed: List[Dict[str, Any]] = []
             # Codex HIGH-4 — generous OUTER bound (> per-source) purely as a
@@ -4443,6 +4501,40 @@ class StructuredComparisonService:
             for _r in list(_sm) + list(_ja):
                 if isinstance(_r, dict) and _r.get("amount") and _r["amount"] > 0:
                     observed.append(_r)
+            # BH/GCC source-build — consume the 6 new $0 adapter prefetches (same
+            # per-source-timeout + outer-bound shape as nasser/sitemap; each adapter
+            # already stamped genuine-vs-converted by its response currency). Inline-
+            # fire if the prefetch was skipped (ENABLE_PAGE_SCRAPE off at kickoff).
+            for _na_key, _na_srcs, _na_fn in _new_adapter_specs:
+                try:
+                    if _na_key in _prefetched_direct:
+                        _na_res = await asyncio.wait_for(
+                            _prefetched_direct.pop(_na_key), timeout=_outer_bound
+                        )
+                    elif ENABLE_PAGE_SCRAPE and _na_srcs:
+                        _na_res = await asyncio.wait_for(
+                            asyncio.gather(
+                                *(
+                                    _timeout_none(
+                                        lambda s=s, fn=_na_fn: fn(s.domain, full_name, currency),
+                                        _ADAPTER_TIMEOUT,
+                                    )
+                                    for s in _na_srcs
+                                ),
+                                return_exceptions=True,
+                            ),
+                            timeout=_outer_bound,
+                        )
+                    else:
+                        _na_res = []
+                except asyncio.TimeoutError:
+                    _na_res = []
+                except Exception as _e:  # noqa: BLE001 — best-effort
+                    logger.info(f"[PRICE] {_na_key} adapter gather failed: {_e}")
+                    _na_res = []
+                for _r in list(_na_res):
+                    if isinstance(_r, dict) and _r.get("amount") and _r["amount"] > 0:
+                        observed.append(_r)
             if not observed:
                 return None
             # Lowest valid BHD among the genuine adapter hits (a real BH shelf
