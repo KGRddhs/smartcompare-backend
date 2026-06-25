@@ -37,6 +37,8 @@ from app.services.price_service import (
     normalize_words,
     is_counterfeit_listing,
     is_accessory,
+    is_price_showable,
+    _convert_to_bhd,
     ENABLE_PAGE_SCRAPE,
     PAGE_SCRAPE_TIMEOUT,
 )
@@ -55,6 +57,56 @@ ALGOLIA_STORES: Dict[str, Dict[str, str]] = {
         "index": "enterprise_magento_en_bh_products",
         "chunk_pattern": r"static/js/main\.[a-f0-9]+\.chunk\.js",
     },
+}
+
+# R3c — EXPLICIT-KEY catalog stores. These storefronts do NOT expose their appId
+# via the DSN-preconnect harvest (the chunk-scrape path above), so the public
+# search-only credentials are pinned here per store. All keys are PUBLIC
+# search-only Algolia keys (read-only `/1/indexes/{index}/query` route — never
+# write/settings/admin), exactly what the storefront browser ships.
+#
+# Per-store fields:
+#   app_id, api_key, index — the explicit Algolia config (skips harvest).
+#   currency               — pinned (the hit does NOT carry it); drives the
+#                            multi-shape parser nest key + genuine/converted.
+#   genuine                — True => native BHD => source_method=local_bhd;
+#                            False => GCC ccy => convert => converted_usd.
+#   host                   — for stores whose url field is RELATIVE (danube).
+#   extra_params           — Algolia request-body `params` string (danube needs
+#                            the tenant_id filter or it returns the wrong tenant).
+ALGOLIA_EXPLICIT_STORES: Dict[str, Dict[str, Any]] = {
+    "bahrain.sharafdg.com": {
+        "app_id": "9KHJLG93J1",
+        "api_key": "e81d5b30a712bb28f0f1d2a52fc92dd0",
+        "index": "bahrain_products",
+        "currency": "BHD",
+        "genuine": True,
+    },
+    "uae.sharafdg.com": {
+        "app_id": "9KHJLG93J1",
+        "api_key": "e81d5b30a712bb28f0f1d2a52fc92dd0",
+        "index": "products_index",
+        "currency": "AED",
+        "genuine": False,
+    },
+    "danube.sa": {
+        "app_id": "1D2IEWLQAD",
+        "api_key": "87ca3b6b2ce56f0bb76fc194a8d170e2",
+        "index": "spree_products",
+        "currency": "SAR",
+        "genuine": False,
+        "host": "https://danube.sa",
+        "extra_params": "filters=tenant_id%20%3D%201",
+    },
+    "nahdionline.com": {
+        "app_id": "H9X4IH7M99",
+        "api_key": "2bbce1340a1cab2ccebe0307b1310881",
+        "index": "prod_en_products",
+        "currency": "SAR",
+        "genuine": False,
+    },
+    # OMIT oman.sharafdg.com — price systematically 0.000 (parser returns None
+    # for every hit, but we don't even register it as a working store).
 }
 
 # Config cached 24h (app-id/key/index rotate rarely; a stale key just yields a
@@ -238,6 +290,52 @@ async def _algolia_query(
     return hits if isinstance(hits, list) else []
 
 
+async def _algolia_query_explicit(
+    store: Dict[str, Any], query: str
+) -> List[Dict[str, Any]]:
+    """POST ONE read-only search using a store's PINNED explicit config (no
+    harvest). `store` carries app_id/api_key/index and an optional
+    `extra_params` request-body `params` string (danube's tenant_id filter).
+    Returns the hits list (possibly empty). NEVER raises — graceful empty."""
+    try:
+        from curl_cffi import requests as curl_requests
+
+        app_id = store["app_id"]
+        api_key = store["api_key"]
+        index = store["index"]
+        url = f"https://{app_id}-dsn.algolia.net/1/indexes/{index}/query"
+        headers = {
+            "X-Algolia-API-Key": api_key,
+            "X-Algolia-Application-Id": app_id,
+            "Content-Type": "application/json",
+        }
+        payload: Dict[str, Any] = {"query": query, "hitsPerPage": _HITS_PER_PAGE}
+        if store.get("extra_params"):
+            payload["params"] = store["extra_params"]
+        body = json.dumps(payload)
+
+        resp = await asyncio.to_thread(
+            lambda: curl_requests.post(
+                url, headers=headers, data=body,
+                impersonate="chrome", timeout=_HTTP_TIMEOUT,
+            )
+        )
+        if resp.status_code != 200:
+            if resp.status_code >= 500 or resp.status_code == 429:
+                record_failure(_ALGOLIA_PROVIDER)
+            logger.info("[ALGOLIA] explicit query HTTP %s for index=%s",
+                        resp.status_code, index)
+            return []
+        record_success(_ALGOLIA_PROVIDER)
+        data = resp.json()
+        hits = data.get("hits")
+        return hits if isinstance(hits, list) else []
+    except Exception as e:  # noqa: BLE001 — best-effort; any failure → empty
+        logger.info("[ALGOLIA] explicit query error: %s", e)
+        record_failure(_ALGOLIA_PROVIDER)
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Price parsing + strict matching
 # ---------------------------------------------------------------------------
@@ -267,6 +365,132 @@ def _parse_algolia_price(hit: Dict[str, Any]) -> Optional[float]:
     if amount <= 0:
         return None
     return amount
+
+
+def _parse_algolia_price_multishape(
+    hit: Dict[str, Any], currency: str
+) -> Optional[float]:
+    """Extract a positive amount from a catalog-store hit, trying, in order:
+
+      1. NESTED  hit['price'][CUR]['default']  (nahdi: CUR='SAR')
+      2. FLAT    float(hit['price'])           (sharafdg / danube)
+      3. LIST    hit['price'][0][CUR]['default'] (6thStreet back-compat)
+
+    `currency` is the store's pinned currency (the hit does NOT carry it).
+    Returns None on any non-positive / unparseable amount (a 0.000 hit ->
+    None, which is what makes oman.sharafdg never ship)."""
+    if not isinstance(hit, dict):
+        return None
+    price = hit.get("price")
+    cur = (currency or "").upper()
+
+    # 1. nested dict keyed by currency
+    if isinstance(price, dict):
+        bucket = price.get(cur)
+        if isinstance(bucket, dict):
+            amount = bucket.get("default")
+            try:
+                amount = float(amount)
+            except (TypeError, ValueError):
+                return None
+            return amount if amount > 0 else None
+        return None
+
+    # 3. existing 6thStreet list shape: [{CUR: {default: N}}]
+    if isinstance(price, list):
+        if not price:
+            return None
+        first = price[0]
+        if not isinstance(first, dict):
+            return None
+        bucket = first.get(cur)
+        if not isinstance(bucket, dict):
+            return None
+        amount = bucket.get("default")
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            return None
+        return amount if amount > 0 else None
+
+    # 2. flat float / numeric string
+    if isinstance(price, bool):  # guard: bool is an int subclass
+        return None
+    try:
+        amount = float(price)
+    except (TypeError, ValueError):
+        return None
+    return amount if amount > 0 else None
+
+
+def _catalog_hit_fields(
+    hit: Dict[str, Any], store: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Per-store title / url / stock extraction for the explicit-key catalog
+    stores (their field names differ from the 6thStreet shape)."""
+    # title: sharafdg post_title, danube full_name_en, nahdi name, fallbacks.
+    title = (
+        hit.get("post_title")
+        or hit.get("full_name_en")
+        or hit.get("name")
+        or hit.get("title")
+        or ""
+    ).strip()
+
+    # url: sharafdg permalink, danube url_en (RELATIVE), nahdi url.
+    url = (hit.get("permalink") or hit.get("url_en") or hit.get("url") or "").strip()
+    host = store.get("host")
+    if url and url.startswith("/") and host:
+        url = f"{host}{url}"
+
+    # stock: sharafdg in_stock 1/0, danube in_stock bool, nahdi no clean field.
+    raw_stock = hit.get("in_stock")
+    if raw_stock is None:
+        in_stock = True  # nahdi has no clean stock field -> default True
+    elif isinstance(raw_stock, str):
+        in_stock = raw_stock.strip().lower() in ("1", "true", "yes", "in_stock")
+    else:
+        in_stock = bool(raw_stock)
+
+    return {"title": title, "url": url, "in_stock": in_stock}
+
+
+def _catalog_match_hit(
+    hits: List[Dict[str, Any]], product_name: str, store: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """STRICT title/brand best-match over catalog-store hits (per-store title
+    fields + the pinned currency for price presence). Reuses the same gates as
+    the 6thStreet path so a fuzzy cross-brand hit is REJECTED."""
+    if not hits:
+        return None
+    p_words = normalize_words(product_name)
+    currency = store.get("currency", "BHD")
+    best: Optional[Dict[str, Any]] = None
+    best_score = 0.0
+
+    for hit in hits:
+        if not isinstance(hit, dict):
+            continue
+        surface = _catalog_hit_fields(hit, store)["title"]
+        if not surface:
+            continue
+        if is_counterfeit_listing(surface) or is_accessory(surface):
+            continue
+        if not numbers_match(product_name, surface):
+            continue
+        if not strict_title_match(product_name, surface):
+            continue
+        t_words = normalize_words(surface)
+        score = (len(p_words & t_words) / len(p_words)) if p_words else 0.0
+        if score < 0.4:
+            continue
+        # Require a positive price (in the pinned currency) before considering.
+        if _parse_algolia_price_multishape(hit, currency) is None:
+            continue
+        if score > best_score:
+            best = hit
+            best_score = score
+    return best
 
 
 def _hit_title(hit: Dict[str, Any]) -> str:
@@ -341,6 +565,14 @@ async def fetch_algolia_price(
         logger.info("[ALGOLIA] circuit open — skipping %s", domain)
         return None
 
+    norm_domain = (domain or "").replace("www.", "").strip().lower()
+
+    # R3c — EXPLICIT-KEY catalog stores (sharafdg BH/UAE, danube, nahdi). These
+    # carry pinned config (no harvest) + a per-store currency + genuine flag, and
+    # the GCC ones convert -> converted_usd.
+    if norm_domain in ALGOLIA_EXPLICIT_STORES:
+        return await _fetch_explicit_store_price(norm_domain, product_name)
+
     cfg = await _harvest_config(domain)
     if not cfg:
         return None
@@ -388,5 +620,90 @@ async def fetch_algolia_price(
             return None
     except Exception:  # noqa: BLE001 — safety check best-effort; never block a clean price on its failure
         pass
+
+    return price
+
+
+def _content_safe(surface: str) -> bool:
+    """Shared L2 content-safety gate. True (allow) on any check failure —
+    best-effort, never block a clean price on the safety service erroring."""
+    try:
+        from app.services.content_safety_service import get_content_safety_service
+        svc = get_content_safety_service()
+        if svc and not svc.is_text_safe(surface):
+            return False
+    except Exception:  # noqa: BLE001
+        return True
+    return True
+
+
+async def _fetch_explicit_store_price(
+    domain: str, product_name: str
+) -> Optional[Dict[str, Any]]:
+    """R3c orchestrator for the EXPLICIT-KEY catalog stores. Queries with the
+    pinned config, strict-matches, then stamps EITHER a genuine ``local_bhd``
+    (native-BHD store) OR a converted ``converted_usd`` (GCC store → _convert_to_bhd).
+    NEVER raises."""
+    store = ALGOLIA_EXPLICIT_STORES.get(domain)
+    if not store:
+        return None
+
+    hits = await _algolia_query_explicit(store, product_name)
+    hit = _catalog_match_hit(hits, product_name, store)
+    if not hit:
+        return None
+
+    src_currency = store.get("currency", "BHD")
+    raw_amount = _parse_algolia_price_multishape(hit, src_currency)
+    if raw_amount is None:
+        return None
+
+    fields = _catalog_hit_fields(hit, store)
+    title = fields["title"]
+    url = fields["url"] or (f"https://{domain}/" if domain else "")
+
+    if store.get("genuine"):
+        # Native BHD — fils precision (round to 3, not 2).
+        amount_bhd = round(float(raw_amount), 3)
+        source_method = "local_bhd"
+        original_currency = None
+    else:
+        # GCC currency — convert. _convert_to_bhd returns the amount UNCHANGED
+        # for an unknown currency; guard with FALLBACK_RATES membership so we
+        # never label an unconvertible amount as BHD.
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        if (src_currency or "").upper() not in FALLBACK_RATES:
+            logger.info("[ALGOLIA] no rate for %s->BHD (%s) — dropping", src_currency, domain)
+            return None
+        converted = _convert_to_bhd(float(raw_amount), src_currency)
+        if converted is None or converted <= 0:
+            return None
+        amount_bhd = round(float(converted), 3)
+        source_method = "converted_usd"  # LITERAL — never a per-platform string
+        original_currency = (src_currency or "").upper()
+
+    price: Dict[str, Any] = {
+        "amount": amount_bhd,
+        "currency": "BHD",
+        "retailer": domain,
+        "url": url,
+        "in_stock": fields["in_stock"],
+        "estimated": False,
+        "source_method": source_method,
+        "title": title,
+        "confidence": 0.9 if store.get("genuine") else 0.85,
+    }
+    if original_currency:
+        price["original_currency"] = original_currency
+
+    # Plausibility guard (low-fragrance/high-value/accessory/sample leaks).
+    if not is_price_showable(product_name, price):
+        logger.info("[ALGOLIA] explicit candidate not showable: %s %s", domain, title)
+        return None
+
+    # L2 content safety.
+    if not _content_safe(f"{title} {domain} {product_name}"):
+        logger.info("[ALGOLIA] explicit candidate dropped by content safety: %s", domain)
+        return None
 
     return price
