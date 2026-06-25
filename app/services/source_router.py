@@ -396,14 +396,31 @@ def _row_to_source(row: dict) -> Optional[Source]:
         return None
 
 
+def _catalog_sources_enabled() -> bool:
+    """The BH/GCC catalog rows load ONLY when ENABLE_BH_GCC_CATALOG_SOURCES is on
+    (fail-CLOSED, default OFF — same posture as the price-warmer / sitemap-index
+    crons). So the build SHIPS DORMANT: even after the liveness gate promotes rows
+    to status="live" in the data file, SOURCE_REGISTRY == _LITERAL_ROWS until the
+    flag is flipped on Railway — then the verified genuine BH/GCC sources activate
+    (Ahmed's call, like the warmer). One env read, no import-time cost."""
+    import os
+    return os.getenv("ENABLE_BH_GCC_CATALOG_SOURCES", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _load_catalog_rows() -> List[Source]:
     """Load the liveness-promoted BH/GCC catalog rows from data/bh_gcc_sources.json.
 
-    Returns [] on a missing/unreadable/non-list file (fail-open) so the registry
-    degrades to the literal rows rather than failing every import. Dedup against
-    the literals is done HERE (skip any catalog domain already covered by a
-    literal apex) so an edit-in-place literal (sharafdg/extra/bn.boots/noon)
-    always wins over a duplicate catalog row."""
+    Returns [] when the activation flag is OFF (ships dormant) OR on a
+    missing/unreadable/non-list file (fail-open) so the registry degrades to the
+    literal rows rather than failing every import. Dedup against the literals is
+    done HERE (skip any catalog domain already covered by a literal apex) so an
+    edit-in-place literal (sharafdg/extra/bn.boots/noon) always wins over a
+    duplicate catalog row."""
+    # Flag OFF (the default) → ZERO catalog rows, registry == literals, prod no-op.
+    if not _catalog_sources_enabled():
+        return []
     try:
         if not _CATALOG_DATA_PATH.exists():
             return []

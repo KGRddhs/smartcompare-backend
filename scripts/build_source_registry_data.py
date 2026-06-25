@@ -210,6 +210,17 @@ def consolidate() -> List[dict]:
             if mf is None:
                 continue
             tier, weight = _tier_weight(row.get("currency", ""), row.get("country", "BH"))
+            # is_shopify is a BAHRAIN-only direct-fetch lever (get_shopify_sources_
+            # for_category filters tier=="bahrain"; the invariant "every is_shopify
+            # row is bahrain-tier" is pinned by test_source_router_shopify_l13). A
+            # GCC Shopify store is never shopify-direct-fetched, so demote it to a
+            # PLAIN discovery row (rides Serper site: + fetch_page_price) — keeps the
+            # invariant + still contributes the source.
+            if mf["is_shopify"] and tier != "bahrain":
+                mf = {
+                    "mechanism": "", "is_shopify": False, "is_algolia": False,
+                    "is_render_only": False, "genuine_method": "page_scrape_jsonld",
+                }
             try:
                 prank = int(row.get("priority_rank", 100))
             except (TypeError, ValueError):

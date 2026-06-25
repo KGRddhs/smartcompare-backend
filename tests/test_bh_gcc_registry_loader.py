@@ -49,9 +49,30 @@ def test_row_to_source_rejects_malformed():
     assert sr._row_to_source(_row(categories="fragrances")) is None  # str not list
 
 
-def test_registry_is_literals_when_no_live_rows(monkeypatch, tmp_path):
-    # Point the loader at a file where every row is provider-test-candidate.
+def test_flag_off_ships_dormant(monkeypatch, tmp_path):
+    # The activation flag default-OFF → ZERO catalog rows even if the file has
+    # live rows (the build ships dormant; registry == literals).
     import json
+    monkeypatch.delenv("ENABLE_BH_GCC_CATALOG_SOURCES", raising=False)
+    f = tmp_path / "bh_gcc_sources.json"
+    f.write_text(json.dumps([_row(status="live")]), encoding="utf-8")
+    monkeypatch.setattr(sr, "_CATALOG_DATA_PATH", f)
+    assert sr._load_catalog_rows() == []  # flag OFF → nothing loads
+
+
+def test_flag_on_admits_live(monkeypatch, tmp_path):
+    import json
+    monkeypatch.setenv("ENABLE_BH_GCC_CATALOG_SOURCES", "true")
+    f = tmp_path / "bh_gcc_sources.json"
+    f.write_text(json.dumps([_row(domain="flagged-bh.com", status="live")]), encoding="utf-8")
+    monkeypatch.setattr(sr, "_CATALOG_DATA_PATH", f)
+    assert {s.domain for s in sr._load_catalog_rows()} == {"flagged-bh.com"}
+
+
+def test_registry_is_literals_when_no_live_rows(monkeypatch, tmp_path):
+    # With the flag ON, a file where every row is unpromoted still admits ZERO.
+    import json
+    monkeypatch.setenv("ENABLE_BH_GCC_CATALOG_SOURCES", "true")
     data = [_row(status="provider-test-candidate"), _row(domain="x.com", status="render-only")]
     f = tmp_path / "bh_gcc_sources.json"
     f.write_text(json.dumps(data), encoding="utf-8")
@@ -61,6 +82,7 @@ def test_registry_is_literals_when_no_live_rows(monkeypatch, tmp_path):
 
 def test_loader_dedups_against_literals(monkeypatch, tmp_path):
     import json
+    monkeypatch.setenv("ENABLE_BH_GCC_CATALOG_SOURCES", "true")
     # nasserpharmacy.com is a literal — a live catalog dup must be skipped.
     data = [_row(domain="nasserpharmacy.com", status="live"),
             _row(domain="fresh-new-bh.com", status="live")]
@@ -74,6 +96,7 @@ def test_loader_dedups_against_literals(monkeypatch, tmp_path):
 
 def test_loader_failopen_on_missing_file(monkeypatch):
     from pathlib import Path
+    monkeypatch.setenv("ENABLE_BH_GCC_CATALOG_SOURCES", "true")
     monkeypatch.setattr(sr, "_CATALOG_DATA_PATH", Path("/no/such/file__.json"))
     assert sr._load_catalog_rows() == []  # never raises
 

@@ -12,8 +12,13 @@ from app.services.source_router import (
 
 _VALID_MECHANISMS = {
     "", "curl", "json_api", "sitemap", "algolia", "shopify", "render", "provider",
+    # BH/GCC source-build (2026-06-25) — the 6 new $0 direct-fetch mechanisms.
+    "woo_store_json", "salla_api", "occ_rest", "magento_graphql", "unbxd", "rest_json",
 }
-_DIRECT_MECHANISMS = {"curl", "json_api", "sitemap", "algolia", "shopify"}
+_DIRECT_MECHANISMS = {
+    "curl", "json_api", "sitemap", "algolia", "shopify",
+    "woo_store_json", "salla_api", "occ_rest", "magento_graphql", "unbxd", "rest_json",
+}
 _PROVIDER_MECHANISMS = {"render", "provider"}
 
 

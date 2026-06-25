@@ -15,7 +15,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bahrain-pets.com/products.json",
   "priority_rank": 1,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bh.jashanmal.com",
@@ -38,7 +38,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.jashanmal.com/products.json",
   "priority_rank": 1,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "klinq.com",
@@ -59,7 +59,7 @@
   "genuine_method": "magento_graphql_bhd",
   "sample_url": "https://klinq.com/en/dior-miss-dior-edp.html",
   "priority_rank": 1,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "sporter.com",
@@ -78,7 +78,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.sporter.com/en-bh/dymatize-iso-100/",
   "priority_rank": 1,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bahrain.naseem.com",
@@ -96,7 +96,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bahrain.naseem.com/products.json",
   "priority_rank": 2,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bh.mubkhar.com",
@@ -114,7 +114,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.mubkhar.com/products/swash-white-100-ml",
   "priority_rank": 2,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "drnutrition.com",
@@ -133,7 +133,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://drnutrition.com/en-bh/bsn-no-xplode",
   "priority_rank": 2,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "beautybykat.store",
@@ -152,7 +152,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://beautybykat.store/products.json",
   "priority_rank": 3,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "imachines.bh",
@@ -170,7 +170,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://imachines.bh/collections/iphone",
   "priority_rank": 3,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ourshopee.com",
@@ -191,7 +191,7 @@
   "genuine_method": "rest_json_bhd",
   "sample_url": "https://ourshopee.com/bahrain/dell-latitude-7420-laptop-14inch-intel-core-i7-11th-gen-16-g/PN1497/",
   "priority_rank": 3,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bh.taifalemarat.com",
@@ -209,7 +209,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.taifalemarat.com/products/oud-nights",
   "priority_rank": 4,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "namshi.com",
@@ -228,7 +228,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.namshi.com/bahrain-en/buy-nike-air-force-1-07-ess/ZA791821C629DD8B108E9Z/p/",
   "priority_rank": 4,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "bh.yallatoys.com",
@@ -246,7 +246,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.yallatoys.com/products.json",
   "priority_rank": 5,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "matgarbahrain.com",
@@ -266,7 +266,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://matgarbahrain.com/index.php?route=product/product&product_id=1262",
   "priority_rank": 5,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "virginmegastore.bh",
@@ -286,7 +286,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.virginmegastore.bh/en/electronics-accessories/headphones-audio/headphones-earbuds/true-wireless-earbuds/apple-airpods-pro-3/p/1113883",
   "priority_rank": 5,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bookmartme.com",
@@ -304,7 +304,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bookmartme.com/products.json",
   "priority_rank": 6,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "en-bh.rituals.com",
@@ -324,7 +324,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en-bh.rituals.com/products/body/shower-bath/shower-foam/8719134161106-ritualssportshowerfoam.html",
   "priority_rank": 6,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "emsquarebh.com",
@@ -343,7 +343,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://emsquarebh.com/products.json",
   "priority_rank": 7,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "junaidperfumes.com",
@@ -361,7 +361,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://www.junaidperfumes.com/en/products/oud-junaid-oil-3ml",
   "priority_rank": 7,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "revolutionbeauty.me",
@@ -398,7 +398,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.azhaperfumes.com/collections/classiq-collection",
   "priority_rank": 8,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "gamerspoint.bh",
@@ -416,7 +416,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://gamerspoint.bh/products.json",
   "priority_rank": 8,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ikea.com",
@@ -434,7 +434,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.ikea.com/bh/en/p/billy-bookcase-white-00263850/",
   "priority_rank": 8,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "beautyandblends.com",
@@ -452,7 +452,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://www.beautyandblends.com/products/oud-extreme",
   "priority_rank": 9,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bh.afnan.com",
@@ -470,7 +470,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.afnan.com/",
   "priority_rank": 9,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ibsouq.com",
@@ -489,7 +489,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://ibsouq.com/products.json",
   "priority_rank": 9,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bh.getkuwa.com",
@@ -509,7 +509,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.getkuwa.com/products.json",
   "priority_rank": 10,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bitware.store",
@@ -528,7 +528,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://www.bitware.store/product/esp32-s3-dual-type-c-development-board-core-board",
   "priority_rank": 10,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "livewell.bh",
@@ -548,7 +548,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://livewell.bh/products.json",
   "priority_rank": 10,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bathandbodyworks.com.bh",
@@ -569,7 +569,7 @@
   "genuine_method": "magento_graphql_bhd",
   "sample_url": "https://www.bathandbodyworks.com.bh/en/ (price via GraphQL by phrase/sku)",
   "priority_rank": 11,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "bh.redtagfashion.com",
@@ -587,7 +587,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://rtbahplus.myshopify.com/products.json",
   "priority_rank": 11,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "manamamedical.com",
@@ -606,7 +606,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://manamamedical.com/products.json",
   "priority_rank": 11,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "blankbeautybh.com",
@@ -626,7 +626,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://www.blankbeautybh.com/products.json?limit=3",
   "priority_rank": 12,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "footlocker.com.bh",
@@ -645,7 +645,7 @@
   "genuine_method": "magento_graphql_bhd",
   "sample_url": "https://www.footlocker.com.bh/en/ (price via GraphQL by phrase/sku)",
   "priority_rank": 12,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "mastermuscles.net",
@@ -663,7 +663,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://mastermuscles.net/products.json",
   "priority_rank": 12,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "americaneagle.com.bh",
@@ -682,7 +682,7 @@
   "genuine_method": "magento_graphql_bhd",
   "sample_url": "https://www.americaneagle.com.bh/en/ (price via GraphQL by phrase/sku)",
   "priority_rank": 13,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "bhplus.shop",
@@ -701,7 +701,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://www.bhplus.shop/products/futron-mens-watch",
   "priority_rank": 13,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "perfumistaaloud.com",
@@ -719,7 +719,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://perfumistaaloud.com/products.json",
   "priority_rank": 13,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "goldencollections.net",
@@ -739,7 +739,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://goldencollections.net/products.json",
   "priority_rank": 14,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "muji.bh",
@@ -758,7 +758,7 @@
   "genuine_method": "magento_graphql_bhd",
   "sample_url": "https://www.muji.bh/en/ (price via GraphQL by phrase/sku)",
   "priority_rank": 14,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "shop.optica.net",
@@ -777,7 +777,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://shop.optica.net/products.json",
   "priority_rank": 14,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "betocosmetics.com",
@@ -797,7 +797,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://betocosmetics.com/products.json",
   "priority_rank": 15,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "newbalance.com.bh",
@@ -816,7 +816,7 @@
   "genuine_method": "magento_graphql_bhd",
   "sample_url": "https://www.newbalance.com.bh/en/ (price via GraphQL by phrase/sku)",
   "priority_rank": 15,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "howayte.com",
@@ -834,7 +834,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://howayte.com/products.json?limit=2",
   "priority_rank": 16,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "smartnutr.com",
@@ -853,7 +853,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://smartnutr.com/products.json",
   "priority_rank": 16,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "valourapparel.com",
@@ -871,7 +871,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://valourapparel.com/products.json",
   "priority_rank": 16,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "hmmba.com",
@@ -890,7 +890,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://hmmba.com/products.json",
   "priority_rank": 17,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "sokostore.com",
@@ -911,7 +911,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://sokostore.com/products.json",
   "priority_rank": 17,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "trendbendersbh.com",
@@ -931,7 +931,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://trendbendersbh.com/products.json",
   "priority_rank": 18,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "wawanbahrain.com",
@@ -967,7 +967,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://www.alzainjewellery.com/products.json",
   "priority_rank": 19,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "arafaphones.com",
@@ -985,7 +985,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://arafaphones.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 19,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "asasiat.online",
@@ -1005,7 +1005,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://asasiat.online/wp-json/wc/store/products?per_page=100",
   "priority_rank": 20,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ownperfumes.com",
@@ -1041,7 +1041,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://bh-en.smellsoreal.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 21,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "fragrancebh.com",
@@ -1077,7 +1077,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://iworld.bh/wp-json/wc/store/products?per_page=100",
   "priority_rank": 22,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "purpleorchidbh.com",
@@ -1132,7 +1132,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://miniso-bh.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 23,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "organature.bh",
@@ -1152,7 +1152,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://organature.bh/wp-json/wc/store/products?per_page=100",
   "priority_rank": 24,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "dubizzle.com.bh",
@@ -1170,7 +1170,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.dubizzle.com.bh/en/mobile-phones-accessories/mobile-phones/",
   "priority_rank": 25,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "petshomebh.com",
@@ -1189,7 +1189,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://petshomebh.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 25,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "shop.almajarahgold.com",
@@ -1207,7 +1207,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://shop.almajarahgold.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 26,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "theperfumesclub.com",
@@ -1225,7 +1225,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://theperfumesclub.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 27,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ymhonlinepharmacy.com.bh",
@@ -1246,7 +1246,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ymhonlinepharmacy.com.bh/product/bioderma-cicabio-arnica/",
   "priority_rank": 27,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "healbahrain.com",
@@ -1267,7 +1267,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.healbahrain.com/cerave/cerave-hydrating-facial-cleanser-normal-dry-skin-8-oz",
   "priority_rank": 28,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "papita.co",
@@ -1285,7 +1285,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://www.papita.co/ae/product/infinix-hot-70-8gb-ram-256gb-4g-night-pulse/",
   "priority_rank": 28,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "aldeerahpharmacy.com",
@@ -1304,7 +1304,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.aldeerahpharmacy.com/shop/category/vitamins-395",
   "priority_rank": 29,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "irepair-bh.com",
@@ -1322,7 +1322,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.irepair-bh.com/product-page/be-good",
   "priority_rank": 29,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "comparebh.com",
@@ -1340,7 +1340,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://comparebh.com/product/apple-airpods-pro-3/",
   "priority_rank": 30,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "nexcelbahrain.com",
@@ -1376,7 +1376,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.labeb.com/en/pc/oneplus-9r-5g-dual-sim-ram-12gb-rom-256gb-chinese-version-383898",
   "priority_rank": 31,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "advancedpcbahrain.com",
@@ -1394,7 +1394,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.advancedpcbahrain.com/product/adata-su650-512gb-sata-ssd/",
   "priority_rank": 32,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mobile57.com",
@@ -1412,7 +1412,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.mobile57.com/bh/phones/samsung-galaxy-s25-ultra-14172",
   "priority_rank": 32,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "aignerme.com",
@@ -1449,7 +1449,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.opensooq.com/en/mobile-phones-tablets/mobile-phones",
   "priority_rank": 33,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "alkhabeershop.com",
@@ -1467,7 +1467,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://alkhabeershop.com/p1498913242",
   "priority_rank": 34,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "bh.arabianoud.com",
@@ -1485,7 +1485,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.arabianoud.com/en/0301020485-arabella-100-ml",
   "priority_rank": 34,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ashrafsbahrain.com",
@@ -1506,7 +1506,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.ashrafsbahrain.com/casio-g-shock-gm-b2100bd-1adr-analog-digital-men-s-watch.html",
   "priority_rank": 35,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "vogacloset.com",
@@ -1545,7 +1545,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.adilstore.com/777-lemon-rice-paste-300gm.html",
   "priority_rank": 36,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "aljazirasupermarkets.com",
@@ -1563,7 +1563,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://aljazirasupermarkets.com/al-jazira-chia-seed-bread-per-pc.html",
   "priority_rank": 37,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bh.oudelite.com",
@@ -1581,7 +1581,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.oudelite.com/en/-/p1866281610",
   "priority_rank": 37,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "basharacare.com",
@@ -1601,7 +1601,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.basharacare.com/en_bh/skin-care",
   "priority_rank": 38,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bjcstore.com",
@@ -1640,7 +1640,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://eitara.com/ar/-/p2037143976",
   "priority_rank": 39,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "en-bahrain.levelshoes.com",
@@ -1658,7 +1658,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en-bahrain.levelshoes.com/nike-air-force-1-07-sneakers-sftnpu.html",
   "priority_rank": 40,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "shop.alharamainperfumes.com",
@@ -1694,7 +1694,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://gccgamers.com/bh/product/gcc-gamers-gaming_pc_elite",
   "priority_rank": 41,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "geekay.com",
@@ -1712,7 +1712,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.geekay.com/bahrain_en/playstation-5-pro-console",
   "priority_rank": 42,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "hanan-store55.com",
@@ -1730,7 +1730,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://hanan-store55.com/p1637057283",
   "priority_rank": 43,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "godukkan.com",
@@ -1748,7 +1748,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.godukkan.com/bahrain_en/apple-iphone-15-pro-middle-east-version-256gb-natural-titanium",
   "priority_rank": 44,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "homeboxstores.com",
@@ -1766,7 +1766,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.homeboxstores.com/bh/en/Furniture/Chairs/HOMEBOX-Denver-High-Back-Office-Chair/p/166927958",
   "priority_rank": 44,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "homecentre.com",
@@ -1784,7 +1784,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.homecentre.com/bh/en/buy-aileen-portable-desk-fan/p/167853232",
   "priority_rank": 45,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ishopbahrain.com",
@@ -1802,7 +1802,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ishopbahrain.com/shop/mobiles/apple-iphone-17/",
   "priority_rank": 45,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bheshop.com",
@@ -1820,7 +1820,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.bheshop.com/en/Products/ProductDetails/1032",
   "priority_rank": 46,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "homesrus.bh",
@@ -1838,7 +1838,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.homesrus.bh/en/furniture/",
   "priority_rank": 46,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "gamesgravity.net",
@@ -1856,7 +1856,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://gamesgravity.net/product/playstation-5-slim-disc-edition/",
   "priority_rank": 47,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "istationery.com",
@@ -1874,7 +1874,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.istationery.com/art-supplies.html",
   "priority_rank": 47,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "jarir.com",
@@ -1893,7 +1893,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.jarir.com/bh-en/apple-iphone-17-pro-max-smartphones-666853.html",
   "priority_rank": 48,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "skinbeautybh.com",
@@ -1912,7 +1912,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://skinbeautybh.com/en_us/product/cerave-moisturising-cream-340g/",
   "priority_rank": 48,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "dukakeen.com",
@@ -1931,7 +1931,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.dukakeen.com/product/chamomile-mint-citrus-green-tea-100-tea-bags/",
   "priority_rank": 49,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "jawaherbh.com",
@@ -1950,7 +1950,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://jawaherbh.com/index.php?route=product/product&product_id=4154",
   "priority_rank": 49,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "lilyorganicsbh.com",
@@ -1970,7 +1970,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://lilyorganicsbh.com/index.php?route=product/product&product_id=2058",
   "priority_rank": 50,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "dyson.com.bh",
@@ -2006,7 +2006,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en.mamasandpapas.com.bh/flip-xt3-skyline-grey-pushchair-214823333.html",
   "priority_rank": 51,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "centrepointstores.com",
@@ -2024,7 +2024,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.centrepointstores.com/bh/en/c/men-clothing",
   "priority_rank": 52,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "midasfurniture.com",
@@ -2042,7 +2042,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://midasfurniture.com/bhr_en/amora-wooden-dining-table-167831-midas.html",
   "priority_rank": 52,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "petarabia.com",
@@ -2060,7 +2060,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.petarabia.com/shop/4779051635559-natures-protection-salmon-oil-300ml-57135",
   "priority_rank": 53,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "splashfashions.com",
@@ -2078,7 +2078,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.splashfashions.com/bh/en/c/women-clothing-dresses",
   "priority_rank": 53,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "maxfashion.com",
@@ -2096,7 +2096,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.maxfashion.com/bh/en/c/mxwomen-clothing",
   "priority_rank": 54,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "store.gadgetzone.bh",
@@ -2114,7 +2114,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://store.gadgetzone.bh/pitaka-magez-ultra-slim-magsafe-case-for-68191222.html",
   "priority_rank": 54,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "brandsforless.com",
@@ -2132,7 +2132,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.brandsforless.com/en-bh/women/clothing/",
   "priority_rank": 55,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "winbid.online",
@@ -2151,7 +2151,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://winbid.online/product/barfi-1kg",
   "priority_rank": 55,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bdutyfree.com",
@@ -2172,7 +2172,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bdutyfree.com/departure/apple-airpods-4-with-active-noise-cancellation-567013.html",
   "priority_rank": 56,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "reefperfumes.com",
@@ -2191,7 +2191,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://reefperfumes.com/en/reef-33/p1243364177",
   "priority_rank": 56,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "advanti.com",
@@ -2209,7 +2209,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://advanti.com/asus-rog-strix-rtx-4090-90yv0id1-m0na00.html",
   "priority_rank": 57,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "nespresso.com",
@@ -2228,7 +2228,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.nespresso.com/bh/en/coffee-machines/vertuo.html",
   "priority_rank": 57,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "almajed4oud.com",
@@ -2246,7 +2246,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://almajed4oud.com/en-bh/jawharat-al-oud-100-ml-02739",
   "priority_rank": 58,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "asteribeauty.com",
@@ -2264,7 +2264,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.asteribeauty.com/en-BH/makeup/shop/lips/lipgloss/maraya-lip-shine/1AST02LP024",
   "priority_rank": 58,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "buymode.shop",
@@ -2283,7 +2283,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://buymode.shop/bahrain-en",
   "priority_rank": 59,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "d4donline.com",
@@ -2302,7 +2302,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://d4donline.com/en/bahrain/bahrain/products/17/computer-laptop",
   "priority_rank": 59,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bahrain.ahmarket.com",
@@ -2322,7 +2322,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bahrain.ahmarket.com/en/beauty-care/cosmetics.html",
   "priority_rank": 60,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "leenaz.net",
@@ -2340,7 +2340,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.leenaz.net/index.php?route=product/product&product_id=",
   "priority_rank": 60,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "beautytribe.com",
@@ -2360,7 +2360,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://beautytribe.com/collections/kerastase",
   "priority_rank": 61,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "shop.stc.com.bh",
@@ -2378,7 +2378,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://shop.stc.com.bh/index.php?route=product/product&product_id=5313",
   "priority_rank": 61,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "rasasistore.com",
@@ -2396,7 +2396,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://rasasistore.com/products.json",
   "priority_rank": 62,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ardalzaafaranshop.com",
@@ -2414,7 +2414,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://ardalzaafaranshop.com/products.json",
   "priority_rank": 63,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bfab.com",
@@ -2468,7 +2468,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://swissarabian.com/products.json",
   "priority_rank": 64,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "olaplex.com",
@@ -2486,7 +2486,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://olaplex.com/products.json?limit=2",
   "priority_rank": 65,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "parisgallery.ae",
@@ -2504,7 +2504,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://parisgallery.ae/collections/designer-perfumes",
   "priority_rank": 66,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "albayanperfumes.com",
@@ -2522,7 +2522,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://albayanperfumes.com/en",
   "priority_rank": 67,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "kuludonline.com",
@@ -2541,7 +2541,7 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://kuludonline.com/collections/centrum",
   "priority_rank": 68,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "myaster.com",
@@ -2561,7 +2561,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.myaster.com/en/online-pharmacy/brand/olaplex/31939",
   "priority_rank": 69,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "niceonesa.com",
@@ -2601,7 +2601,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.lifepharmacy.com/product/solgar-vitamin-d3-1000iu-softgels-100-s",
   "priority_rank": 71,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "mumzworld.com",
@@ -2620,7 +2620,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.mumzworld.com/bh-en/now-omega-3-molecularly-distilled-1000-mg-100-softgels",
   "priority_rank": 72,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "caretobeauty.com",
@@ -2641,7 +2641,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.caretobeauty.com/bh/cerave/",
   "priority_rank": 73,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bh.cosmostore.org",
@@ -2662,7 +2662,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.cosmostore.org/catalog/product/the_ordinary_aha_30___bha_2_peeling_solution__282664/",
   "priority_rank": 74,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ounass.ae",
@@ -2683,7 +2683,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.ounass.ae/shop-tom-ford-beauty-noir-eau-de-parfum-100ml-for-men-205723212_242.html",
   "priority_rank": 75,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "faces.ae",
@@ -2704,7 +2704,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.faces.ae/en/brands/tom-ford",
   "priority_rank": 76,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "pricena.com",
@@ -2724,7 +2724,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://kw.pricena.com/en/product/apple-iphone-16-price-in-kuwait",
   "priority_rank": 78,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "goldenscent.com",
@@ -2745,7 +2745,7 @@
   "genuine_method": "local_bhd",
   "sample_url": "https://www.goldenscent.com/en/p/tom-ford-oud-wood-eau-de-parfum-for-men-and-women.html",
   "priority_rank": 79,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bahrain.desertcart.com",
@@ -2849,7 +2849,7 @@
   "genuine_method": "rest_json_bhd",
   "sample_url": "https://www.panda.sa/en (product via API id/sku)",
   "priority_rank": 6,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "danube.sa",
@@ -2867,7 +2867,7 @@
   "genuine_method": "local_bhd",
   "sample_url": "https://danube.sa/en/products/milka-daim-snax-145g",
   "priority_rank": 7,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "trikart.com",
@@ -2885,7 +2885,7 @@
   "genuine_method": "magento_graphql_bhd",
   "sample_url": "https://trikart.com/kwt_en/apple-iphone-15-256gb-blue.html",
   "priority_rank": 8,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "en-kwt.ajmal.com",
@@ -2903,7 +2903,7 @@
   "genuine_method": "magento_graphql_bhd",
   "sample_url": "https://en-kwt.ajmal.com/violet-musc-hair-mist-100-ml",
   "priority_rank": 9,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "wibi.com.kw",
@@ -2912,16 +2912,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://wibi.com.kw/products/lenovo-legion-9-rtx-5090",
   "priority_rank": 10,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "perfumeskuwait.com",
@@ -2939,7 +2939,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://www.perfumeskuwait.com/product/eternity-for-men-edt-100ml-by-calvin-klein",
   "priority_rank": 11,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "rend-bahrain.com",
@@ -2957,7 +2957,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://rend-bahrain.com/ar/%D8%B9%D8%A8%D9%82-158/p1544427235",
   "priority_rank": 12,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "daralamirat.com.sa",
@@ -2978,7 +2978,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://daralamirat.com.sa/ar/ultimate-body-care-radiance-summer-set",
   "priority_rank": 13,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "somman.com",
@@ -2997,7 +2997,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://salla.sa/www.somman.com/%D8%B9%D9%88%D8%AF-%D9%83%D9%8A%D9%86%D8%A7%D9%85",
   "priority_rank": 14,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "alaseel.com",
@@ -3015,7 +3015,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://alaseel.com/b-al-aseel-thobe-hooded-zipper/p2764",
   "priority_rank": 15,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "parfumdeal.salla.sa",
@@ -3033,7 +3033,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://salla.sa/parfumdeal/p1",
   "priority_rank": 16,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "al-dawaa.com",
@@ -3056,7 +3056,7 @@
   "genuine_method": "occ_rest_bhd",
   "sample_url": "https://www.al-dawaa.com/en/p/234419/chicco-baby-bed-next-2-me-co-sleeping-crib-stone-1-pc",
   "priority_rank": 17,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "rose-store-27.salla.sa",
@@ -3075,7 +3075,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://salla.sa/rose-store-27/p1",
   "priority_rank": 17,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "journey1.salla.sa",
@@ -3094,7 +3094,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://salla.sa/journey1/p1966264008",
   "priority_rank": 18,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "perfumya.com",
@@ -3112,7 +3112,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://perfumya.com/p1445009140",
   "priority_rank": 18,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "novaliaperfume.com",
@@ -3130,7 +3130,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://novaliaperfume.com/p607016008",
   "priority_rank": 19,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "taudsa.com",
@@ -3148,7 +3148,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://taudsa.com/p1957905980",
   "priority_rank": 20,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "epure-sa.com",
@@ -3166,7 +3166,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://epure-sa.com/p37242387",
   "priority_rank": 21,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "oudbun.store",
@@ -3185,7 +3185,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://oudbun.store/p1503528314",
   "priority_rank": 22,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "3saf.com",
@@ -3203,7 +3203,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://3saf.com/ar/special-wedding-offer/p1715267935",
   "priority_rank": 23,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bohperfume.com",
@@ -3221,7 +3221,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://bohperfume.com/p214397394",
   "priority_rank": 24,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "invite-sa.com",
@@ -3239,7 +3239,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://invite-sa.com/ar/p1783924236",
   "priority_rank": 25,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "psupps.net",
@@ -3257,7 +3257,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://psupps.net/p963508353",
   "priority_rank": 26,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "suppsplanet.com",
@@ -3275,7 +3275,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://suppsplanet.com/ar/oZNjgQY",
   "priority_rank": 27,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "cosmetics.sa",
@@ -3295,7 +3295,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://cosmetics.sa/ar/p761922863",
   "priority_rank": 28,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "salla.sa",
@@ -3313,7 +3313,7 @@
   "genuine_method": "salla_api",
   "sample_url": "https://salla.sa/odred/p1861457749",
   "priority_rank": 29,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "banafaforoud.com",
@@ -3331,7 +3331,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://banafaforoud.com/ar/-/p1964126244",
   "priority_rank": 35,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "nike.sa",
@@ -3351,7 +3351,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.nike.sa/en/england-2026-stadium-home-mens-nike-dri-fit-football-replica-shirt/NKIB5290-100.html",
   "priority_rank": 36,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "vitaminshop.ae",
@@ -3360,16 +3360,16 @@
   "categories": [
    "supplements"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.vitaminshop.ae/products/natures-bounty-immune-24",
   "priority_rank": 39,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "fitaminat.com",
@@ -3379,16 +3379,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://fitaminat.com/products/bioglan-collagen-powder-5000mg-151gm-offer",
   "priority_rank": 40,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "shopkees.com",
@@ -3398,16 +3398,16 @@
    "electronics",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.shopkees.com/products/brother-mfc-j2340dw.json",
   "priority_rank": 41,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "soukare.com",
@@ -3426,7 +3426,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://soukare.com/en-sa/vitabiotics-wellwoman-original",
   "priority_rank": 42,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "en-kw.sssports.com",
@@ -3445,7 +3445,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en-kw.sssports.com/mueller-pro-heel-cups/MU971.html",
   "priority_rank": 44,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "healthland.com.kw",
@@ -3454,16 +3454,16 @@
   "categories": [
    "supplements"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://healthland.com.kw/en/collections/protein-powders",
   "priority_rank": 45,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "en-qa.6thstreet.com",
@@ -3483,7 +3483,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en-qa.6thstreet.com/adidas.html",
   "priority_rank": 46,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "virginmegastore.qa",
@@ -3501,7 +3501,7 @@
   "genuine_method": "occ_rest_bhd",
   "sample_url": "https://virginmegastore.qa/en/p/830170",
   "priority_rank": 47,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "beautyboothqa.com",
@@ -3519,7 +3519,7 @@
   "genuine_method": "rest_json_bhd",
   "sample_url": "https://beautyboothqa.com/brands/cerave",
   "priority_rank": 48,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "musclepumpqa.com",
@@ -3537,7 +3537,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://musclepumpqa.com/product/endurance-water-bottle/",
   "priority_rank": 49,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "alaneesqatar.qa",
@@ -3575,7 +3575,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ansargallery.com/en/perfume-kouros-ysl-3365440003866.html",
   "priority_rank": 51,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "nazih.qa",
@@ -3594,7 +3594,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://nazih.qa/diva-car-freshener-musky-scent-8ml.html",
   "priority_rank": 52,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "leperfumeqa.com",
@@ -3603,16 +3603,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://leperfumeqa.com/",
   "priority_rank": 53,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "store974.com",
@@ -3621,16 +3621,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://store974.com/",
   "priority_rank": 54,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "pcbuilderqatar.com",
@@ -3639,16 +3639,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://pcbuilderqatar.com/",
   "priority_rank": 55,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "princesscosmeticsqa.com",
@@ -3658,16 +3658,16 @@
    "makeup",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://princesscosmeticsqa.com/",
   "priority_rank": 56,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "addoony.com",
@@ -3677,16 +3677,16 @@
    "makeup",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://addoony.com/",
   "priority_rank": 57,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "fyzara.com",
@@ -3696,16 +3696,16 @@
    "makeup",
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://fyzara.com/",
   "priority_rank": 58,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "qsales.qa",
@@ -3715,16 +3715,16 @@
    "electronics",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://qsales.qa/",
   "priority_rank": 59,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "futureit.om",
@@ -3743,7 +3743,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://futureit.om/product/kings-pro-android-tv-box/",
   "priority_rank": 61,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "oudworlds.com",
@@ -3761,7 +3761,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://oudworlds.com/product/oud-world-family-offer-luxury-fragrance/",
   "priority_rank": 62,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "gamingpcoman.shop",
@@ -3779,7 +3779,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://gamingpcoman.shop/wp-json/wc/store/products?per_page=1",
   "priority_rank": 63,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "thefaceshop.om",
@@ -3798,7 +3798,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://thefaceshop.om/",
   "priority_rank": 64,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "gazzaz.com.sa",
@@ -3810,16 +3810,16 @@
    "skincare",
    "haircare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "SAR",
   "country": "KSA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.gazzaz.com.sa/products.json",
   "priority_rank": 65,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "starlink.om",
@@ -3828,13 +3828,13 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://starlink.om/products/apple-magsafe-charger",
   "priority_rank": 65,
   "status": "provider-test-candidate"
@@ -3847,16 +3847,16 @@
    "electronics",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://elitegames.om/products/lego-batman-legacy-of-the-dark-knight",
   "priority_rank": 66,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ksa.swissarabian.com",
@@ -3865,16 +3865,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "SAR",
   "country": "KSA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ksa.swissarabian.com/products.json",
   "priority_rank": 66,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mls.om",
@@ -3883,16 +3883,16 @@
   "categories": [
    "grocery"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://mls.om/products/aus-angus-beef-burger-125gm-x-2-patties-unseasoned",
   "priority_rank": 67,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "sa.ajmal.com",
@@ -3901,16 +3901,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "SAR",
   "country": "KSA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.ajmal.com/products.json",
   "priority_rank": 67,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "maryamspet.com",
@@ -3920,16 +3920,16 @@
    "other",
    "grocery"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://maryamspet.com/products/wanpy-soft-chicken-jerky-strips-100g",
   "priority_rank": 68,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "sa.ghawali.com",
@@ -3938,16 +3938,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "SAR",
   "country": "KSA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.ghawali.com/products.json",
   "priority_rank": 68,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "oulfah.com",
@@ -3956,16 +3956,16 @@
   "categories": [
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://oulfah.com/products.json",
   "priority_rank": 69,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "sa.mubkhar.com",
@@ -3975,16 +3975,16 @@
    "fragrances",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "SAR",
   "country": "KSA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.mubkhar.com/products/nordic-frost-eau-de-parfum-150-ml",
   "priority_rank": 69,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "darbeauty.com",
@@ -3994,16 +3994,16 @@
    "skincare",
    "makeup"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://darbeauty.com/products/eqqualberry-serum-minis-discovery-kit",
   "priority_rank": 70,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "saudi.naseem.com",
@@ -4012,16 +4012,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "SAR",
   "country": "KSA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://saudi.naseem.com/products.json",
   "priority_rank": 70,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "glamorous-beauty.com",
@@ -4031,16 +4031,16 @@
    "skincare",
    "makeup"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://glamorous-beauty.com/products/dr-melaxin-cemenrete-calcium-volume-eye-patch",
   "priority_rank": 71,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "watsons.sa",
@@ -4053,16 +4053,16 @@
    "supplements",
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "SAR",
   "country": "KSA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.watsons.sa/products/gosh-eyedentity-eyeshadow-palette",
   "priority_rank": 71,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "alqamarshop.com",
@@ -4071,16 +4071,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://alqamarshop.com/products/12v-4a-48w-ac-adapter-charger-hp-led-lcd-monitor",
   "priority_rank": 72,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mummy-and-me.store",
@@ -4090,16 +4090,16 @@
    "other",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://mummy-and-me.store/products/mustela-travel-kit",
   "priority_rank": 72,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "alsultanpharmacy.com",
@@ -4109,16 +4109,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.alsultanpharmacy.com/products/panthophil-moisturizer-for-skin-care-lotion-200ml",
   "priority_rank": 73,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "thebubblewrap.com",
@@ -4127,16 +4127,16 @@
   "categories": [
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://thebubblewrap.com/products/white-uv-led-sterilizer",
   "priority_rank": 73,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "blink.com.kw",
@@ -4145,16 +4145,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.blink.com.kw/products/msi-geforce-rtx-5060-ti-ventus-2x-oc-plus-16gb",
   "priority_rank": 74,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "bronzeom.com",
@@ -4163,16 +4163,16 @@
   "categories": [
    "makeup"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bronzeom.com/products/foc-huda-beauty",
   "priority_rank": 74,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "decathlon.com.kw",
@@ -4183,16 +4183,16 @@
    "fashion",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://decathlon.com.kw/products/self-powered-e-connected-kinomap-cross-trainer-el540",
   "priority_rank": 75,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "musclehouse.com",
@@ -4201,16 +4201,16 @@
   "categories": [
    "supplements"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://musclehouse.com/products/2-challenger-nutrition-glutamine-unflavoured-5000mg-60-servings",
   "priority_rank": 75,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bawwaba.om",
@@ -4231,7 +4231,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bawwaba.om/honor-600-8gb-256gb-5g-black.html",
   "priority_rank": 76,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "future.com.kw",
@@ -4242,16 +4242,16 @@
    "fragrances",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.future.com.kw/products/whoop-peak-5-0-health-fitness-activity-tracker",
   "priority_rank": 76,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "kaif.co",
@@ -4261,16 +4261,16 @@
    "grocery",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://kaif.co/products/hibrew-g3-plus-professional-electric-coffee-grinder",
   "priority_rank": 77,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "oman.ahmarket.com",
@@ -4290,7 +4290,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://oman.ahmarket.com/en/jg-makeup-kit-various-shades-oman-0397580299307.html",
   "priority_rank": 77,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "kuwaitcavarat.com",
@@ -4299,16 +4299,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://kuwaitcavarat.com/products/playx-sundi-wireless-controller-ps4-blue",
   "priority_rank": 78,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "markeetex.com",
@@ -4327,7 +4327,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://markeetex.com/products/flax-seeds-250-g",
   "priority_rank": 78,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "level-up.gg",
@@ -4337,16 +4337,16 @@
    "electronics",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://level-up.gg/products/vinyl-soda-heroes-dc-martian-manhunter",
   "priority_rank": 79,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "om.swissarabian.com",
@@ -4355,16 +4355,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://om.swissarabian.com/products/musk-07-edp-body-lotion-gift-set",
   "priority_rank": 79,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mamasfirst.com",
@@ -4373,16 +4373,16 @@
   "categories": [
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://mamasfirst.com/collections/best-selling-products/baby-diapers",
   "priority_rank": 80,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "oman.afnan.com",
@@ -4391,16 +4391,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://oman.afnan.com/products.json?limit=1",
   "priority_rank": 80,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "numberc.com",
@@ -4411,16 +4411,16 @@
    "skincare",
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.numberc.com/products/hourglass-ambient-soft-glow-foundation-for-her",
   "priority_rank": 81,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "om.asgharali.com",
@@ -4429,16 +4429,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://om.asgharali.com/products.json?limit=1",
   "priority_rank": 81,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "om.junaidperfumes.com",
@@ -4447,16 +4447,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://om.junaidperfumes.com/products.json?limit=1",
   "priority_rank": 82,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "pharmacypluskw.com",
@@ -4466,16 +4466,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.pharmacypluskw.com/products/priorin-n-capsules-90",
   "priority_rank": 82,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "om.getkuwa.com",
@@ -4484,16 +4484,16 @@
   "categories": [
    "supplements"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://om.getkuwa.com/products.json?limit=1",
   "priority_rank": 83,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "pharmazone.com",
@@ -4503,16 +4503,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://pharmazone.com/collections/vitamins",
   "priority_rank": 83,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "alhajisoman.com",
@@ -4523,16 +4523,16 @@
    "makeup",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://alhajisoman.com/products.json",
   "priority_rank": 84,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "avicenonline.com",
@@ -4544,16 +4544,16 @@
    "haircare",
    "grocery"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.avicenonline.com/products/brufen-600-mg-ibuprofen-granules-20-sachets",
   "priority_rank": 85,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "capitalstoreoman.com",
@@ -4565,16 +4565,16 @@
    "skincare",
    "haircare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://capitalstoreoman.com/products.json",
   "priority_rank": 86,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ghawyoman.com",
@@ -4585,16 +4585,16 @@
    "skincare",
    "makeup"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.ghawyoman.com/products/milk_shake-energizing-blend-trio",
   "priority_rank": 87,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "glowupom.com",
@@ -4604,16 +4604,16 @@
    "makeup",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://glowupom.com/products.json",
   "priority_rank": 88,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "omanluxury.store",
@@ -4622,16 +4622,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "OMR",
   "country": "OM",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://omanluxury.store/en/products/hommage-1744",
   "priority_rank": 89,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "allaboutskindoha.com",
@@ -4642,16 +4642,16 @@
    "makeup",
    "haircare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://allaboutskindoha.com/products.json",
   "priority_rank": 90,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "carencurepharmacy.com",
@@ -4661,16 +4661,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.carencurepharmacy.com/collections/supplements",
   "priority_rank": 91,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "digitalzone.qa",
@@ -4679,16 +4679,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://digitalzone.qa/products.json",
   "priority_rank": 92,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mhalaty.com",
@@ -4698,16 +4698,16 @@
    "makeup",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://mhalaty.com/products.json",
   "priority_rank": 93,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mhgboutique.com",
@@ -4716,16 +4716,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://qat.mhgboutique.com/products/shay-oud-parfum-75ml",
   "priority_rank": 94,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "oqba.qa",
@@ -4734,16 +4734,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://oqba.qa/products/discovery-set-for-women",
   "priority_rank": 95,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "parfum.qa",
@@ -4752,16 +4752,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://parfum.qa/products.json",
   "priority_rank": 96,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "parigallery.com",
@@ -4772,16 +4772,16 @@
    "makeup",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://parigallery.com/collections/perfumes",
   "priority_rank": 97,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "rptech.qa",
@@ -4790,16 +4790,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://rptech.qa/collections/apple-mobiles",
   "priority_rank": 98,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "souqscent.com",
@@ -4808,16 +4808,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://souqscent.com/products.json",
   "priority_rank": 99,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "sunlife.qa",
@@ -4827,16 +4827,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sunlife.qa/products.json",
   "priority_rank": 100,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "tuzzut.com",
@@ -4847,16 +4847,16 @@
    "electronics",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://tuzzut.com/products/sceptre-malachite-maison-alhambra-100ml",
   "priority_rank": 101,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "vitaminqatar.com",
@@ -4866,16 +4866,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://vitaminqatar.com/products.json",
   "priority_rank": 102,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "wellcareonline.com",
@@ -4885,16 +4885,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.wellcareonline.com/products.json",
   "priority_rank": 103,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "xstore.qa",
@@ -4903,16 +4903,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "QAR",
   "country": "QA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://xstore.qa/products.json",
   "priority_rank": 104,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "adasat.com",
@@ -4922,16 +4922,16 @@
    "fashion",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://adasat.com/collections/new-arrivals/products/la-gente-madrid-zafir-clear",
   "priority_rank": 105,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "armaf.ae",
@@ -4940,16 +4940,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.armaf.ae/collections/new-arrivals-2/products/odyssey-soda-pop",
   "priority_rank": 106,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "atelierdeglow.ae",
@@ -4958,16 +4958,16 @@
   "categories": [
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://atelierdeglow.ae/products.json",
   "priority_rank": 107,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "beautiquefragrances.com",
@@ -4976,16 +4976,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://beautiquefragrances.com/products.json",
   "priority_rank": 108,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "coralperfumes.com",
@@ -4994,16 +4994,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.coralperfumes.com/products/dark-night-for-men-edp-100ml",
   "priority_rank": 109,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "cozmada.com",
@@ -5013,16 +5013,16 @@
    "haircare",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.cozmada.com/collections/hair-care",
   "priority_rank": 110,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "crescitebeauty.com",
@@ -5031,16 +5031,16 @@
   "categories": [
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://crescitebeauty.com/collections/korean-beauty",
   "priority_rank": 111,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "dubaioptical.com",
@@ -5050,16 +5050,16 @@
    "fashion",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://dubaioptical.com/products/ray-ban-rb4441d-893843",
   "priority_rank": 112,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "ecityuae.ae",
@@ -5068,16 +5068,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ecityuae.ae/products/apple-iphone-17-pro-max-256gb-storage-silver-uae-version",
   "priority_rank": 113,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "eideal.com",
@@ -5087,16 +5087,16 @@
    "haircare",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://eideal.com/products.json",
   "priority_rank": 114,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ghawali.com",
@@ -5105,16 +5105,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ae.ghawali.com/products/9pm-in-saudi-parfum",
   "priority_rank": 115,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "houseofperfumes.com",
@@ -5123,16 +5123,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://houseofperfumes.com/products.json",
   "priority_rank": 116,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "jnknutrition.com",
@@ -5141,16 +5141,16 @@
   "categories": [
    "supplements"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.jnknutrition.com/collections/whey-protein/products/proscience-nutra-100-whey-anabolic-whey-protein-isolate",
   "priority_rank": 117,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "k-city.com",
@@ -5160,16 +5160,16 @@
    "skincare",
    "makeup"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://k-city.com/products.json",
   "priority_rank": 118,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "khadlaj-perfumes.com",
@@ -5178,16 +5178,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://khadlaj-perfumes.com/products/pure-musk-edp-spray",
   "priority_rank": 119,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "lamisebeauty.com",
@@ -5197,16 +5197,16 @@
    "skincare",
    "makeup"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.lamisebeauty.com/products.json",
   "priority_rank": 120,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "larovie.ae",
@@ -5215,16 +5215,16 @@
   "categories": [
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://larovie.ae/products/centellian24-madeca-cream",
   "priority_rank": 121,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mamlakataloud.ae",
@@ -5233,16 +5233,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://mamlakataloud.ae/products.json",
   "priority_rank": 122,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "med7online.com",
@@ -5252,16 +5252,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.med7online.com/products.json",
   "priority_rank": 123,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "medicinaonline.ae",
@@ -5271,16 +5271,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://medicinaonline.ae/products/bepanthene-cream-30gm",
   "priority_rank": 124,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mestore.ae",
@@ -5292,16 +5292,16 @@
    "makeup",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.mestore.ae/products/garnier-ultra-dolce-shampoo-latte-di-mandorla-300-ml",
   "priority_rank": 125,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "miraebeautyhub.com",
@@ -5311,16 +5311,16 @@
    "skincare",
    "haircare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://miraebeautyhub.com/products.json",
   "priority_rank": 126,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "myeasypharmacy.ae",
@@ -5330,16 +5330,16 @@
    "supplements",
    "skincare"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.myeasypharmacy.ae/collections/vitamins-minerals",
   "priority_rank": 127,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "myperfumes.ae",
@@ -5348,16 +5348,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://myperfumes.ae/products/arabiyat-prestige-marwa-edp-unisex",
   "priority_rank": 128,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "nutristore.ae",
@@ -5366,16 +5366,16 @@
   "categories": [
    "supplements"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.nutristore.ae/products.json",
   "priority_rank": 129,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "organicandreal.com",
@@ -5384,16 +5384,16 @@
   "categories": [
    "grocery"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://organicandreal.com/products.json",
   "priority_rank": 130,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "parfum.ae",
@@ -5402,16 +5402,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://parfum.ae/products.json",
   "priority_rank": 131,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "refab.me",
@@ -5420,16 +5420,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.refab.me/collections/android-mobile-phones-uae",
   "priority_rank": 132,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "revent.store",
@@ -5438,16 +5438,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://uae.revent.store/products/apple-iphone-15-pro-refurbished",
   "priority_rank": 133,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "samawa.ae",
@@ -5456,16 +5456,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://samawa.ae/collections/oud-perfume",
   "priority_rank": 134,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "scentlibraryofficial.com",
@@ -5474,16 +5474,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.scentlibraryofficial.com/products.json",
   "priority_rank": 135,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "usbs-uae.com",
@@ -5492,16 +5492,16 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://usbs-uae.com/products/apple-iphone-12",
   "priority_rank": 136,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "watches.ae",
@@ -5511,16 +5511,16 @@
    "fashion",
    "other"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://watches.ae/collections/top-trending-picks/products/80120-3nm-buidn",
   "priority_rank": 137,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "yusufbhaifragrances.com",
@@ -5529,16 +5529,16 @@
   "categories": [
    "fragrances"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://yusufbhaifragrances.com/products/dior-sauvage",
   "priority_rank": 138,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "sa.getkuwa.com",
@@ -5547,16 +5547,16 @@
   "categories": [
    "supplements"
   ],
-  "mechanism": "shopify",
-  "is_shopify": true,
+  "mechanism": "",
+  "is_shopify": false,
   "is_algolia": false,
   "is_render_only": false,
   "currency": "SAR",
   "country": "KSA",
-  "genuine_method": "shopify_json",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.getkuwa.com/products.json",
   "priority_rank": 139,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "vperfumes.com",
@@ -5574,7 +5574,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.vperfumes.com/sa-en/product/gucci-intense-oud-edp-for-unisex-90ml",
   "priority_rank": 140,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mbayoman.com",
@@ -5592,7 +5592,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://www.mbayoman.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 141,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mobpcom.com",
@@ -5631,7 +5631,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://mushtariyat.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 143,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "qimia.om",
@@ -5668,7 +5668,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://www.timezoneoman.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 145,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ispotaba.com",
@@ -5686,7 +5686,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://www.ispotaba.com/product/iphone-17-pro-max-256gb-deep-blue-jap/",
   "priority_rank": 146,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "perfumeqatar.com",
@@ -5704,7 +5704,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://perfumeqatar.com/product/chrome-for-men-edt-100ml-by-azzaro/",
   "priority_rank": 147,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "qatarperfumeshop.com",
@@ -5722,7 +5722,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://qatarperfumeshop.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 148,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "babystore.ae",
@@ -5741,7 +5741,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://babystore.ae/product/mondo-aquamals-water-cannon-cdu12-woc/",
   "priority_rank": 149,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "head2toes.ae",
@@ -5761,7 +5761,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://head2toes.ae/wp-json/wc/store/products?per_page=100",
   "priority_rank": 150,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "kbeautybliss.com",
@@ -5779,7 +5779,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://kbeautybliss.com/product/skin-1004-madagascar-centella-asiatica-100-ampoule-100ml/",
   "priority_rank": 151,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "ouddubai.ae",
@@ -5797,7 +5797,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://ouddubai.ae/product/al-eimaan-pour-femme/",
   "priority_rank": 152,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "oudera.ae",
@@ -5851,7 +5851,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://theskincarehub.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 155,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mithaly.sa",
@@ -5869,7 +5869,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://mithaly.sa/en/body-builder-100-whey-protein",
   "priority_rank": 156,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "proteinvitamin.sa",
@@ -5887,7 +5887,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://proteinvitamin.sa/en/bodybuilder-whey-protein-10lbs/p573402891",
   "priority_rank": 157,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "4me-ksa.com",
@@ -5907,7 +5907,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://4me-ksa.com/-/p815926812",
   "priority_rank": 158,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "almanea.sa",
@@ -5926,7 +5926,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.almanea.sa/en/product/haam-front-load-washing-machine-11kg-p-120300102111002",
   "priority_rank": 159,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "alsaifgallery.com",
@@ -5945,7 +5945,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://alsaifgallery.com/SA_en/p-11995/6285360282691.html",
   "priority_rank": 160,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "becarestore.com",
@@ -5964,7 +5964,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://becarestore.com/en/p2117443204",
   "priority_rank": 161,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "en-sa.rituals.com",
@@ -5984,7 +5984,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en-sa.rituals.com/products/perfumes/women/8719134187984-travel-ocean-infini-15ml.html",
   "priority_rank": 162,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "faces.sa",
@@ -6006,7 +6006,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.faces.sa/en/p/armani-power-of-you-eau-de-parfum-pm001717604552.html",
   "priority_rank": 164,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "firstcry.sa",
@@ -6024,7 +6024,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.firstcry.sa/en/lego/5/0/354",
   "priority_rank": 165,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "kanbkam.com",
@@ -6042,7 +6042,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.kanbkam.com/sa/en/mobile-phone/l",
   "priority_rank": 166,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "laverne.com",
@@ -6060,7 +6060,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://laverne.com/ar/oOKrVB",
   "priority_rank": 167,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "narscosmetics.sa",
@@ -6079,7 +6079,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.narscosmetics.sa/en/radiant-creamy-concealer/nars-base-radiant-creamy-concealer.html",
   "priority_rank": 168,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "outletpharmacyonline.sa",
@@ -6098,7 +6098,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://outletpharmacyonline.sa/en/arkopha-azinc-optimal-60cap/p1508578182",
   "priority_rank": 169,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "sa.abdulsamadalqurashi.com",
@@ -6116,7 +6116,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.abdulsamadalqurashi.com/en/al-qurashi-blend-perfume-90ml/p495814384",
   "priority_rank": 170,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "sa.oudelite.com",
@@ -6134,7 +6134,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.oudelite.com/en/-/p582872998",
   "priority_rank": 171,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "saudi.jazp.com",
@@ -6155,7 +6155,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://saudi.jazp.com/sa-en/Hugo-Boss-100ml-Boss-Bottled-Infinite-Fragrance/p/136105",
   "priority_rank": 172,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "saudi.microless.com",
@@ -6173,7 +6173,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://saudi.microless.com/product/asus-x-hifiman-rog-kithara-90yh0470-bhua00/",
   "priority_rank": 173,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "store.rasasi.com.sa",
@@ -6191,7 +6191,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://store.rasasi.com.sa/en/-/p666775809",
   "priority_rank": 174,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "vanilla.sa",
@@ -6209,7 +6209,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://vanilla.sa/en/Dior-Homme-Intense-perfume/p1925357018",
   "priority_rank": 175,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "almutawaph.com.kw",
@@ -6248,7 +6248,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.azadea.com/kw/en/sports",
   "priority_rank": 177,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "bloomingdales.com.kw",
@@ -6268,7 +6268,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en.bloomingdales.com.kw/beauty-makeup/",
   "priority_rank": 178,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "damasjewellery.com",
@@ -6286,7 +6286,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.damasjewellery.com/kw-en/jewellery/",
   "priority_rank": 179,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "kw.oudelite.com",
@@ -6304,7 +6304,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://kw.oudelite.com/en/e0301010101-man-desert",
   "priority_rank": 180,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "kwt.nazih.com",
@@ -6324,7 +6324,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://kwt.nazih.com",
   "priority_rank": 181,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "mamasandpapas.com.kw",
@@ -6343,7 +6343,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en.mamasandpapas.com.kw/2pc-set-stripe-dungaree-219125492.html",
   "priority_rank": 182,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "taw9eel.com",
@@ -6363,7 +6363,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.taw9eel.com/en/pharmacy-1/vitamins-supplements-1/vitabiotics-wellwoman-tricologic-60-tablets.html",
   "priority_rank": 183,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "om.oudelite.com",
@@ -6381,7 +6381,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://om.oudelite.com/en/-/p1866281610",
   "priority_rank": 184,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "jazp.com",
@@ -6401,7 +6401,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://qatar.jazp.com/qa-en/product/electric-air-blower-48w-red-in-qatar",
   "priority_rank": 185,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "mamlakatoud.com",
@@ -6419,7 +6419,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://mamlakatoud.com/",
   "priority_rank": 186,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "qatar.jazp.com",
@@ -6438,7 +6438,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://qatar.jazp.com/qa-en/apple",
   "priority_rank": 187,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "qatar.microless.com",
@@ -6456,7 +6456,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://qatar.microless.com/mobile-phones/apple/b/l/",
   "priority_rank": 188,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "binsina.ae",
@@ -6476,7 +6476,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.binsina.ae/en/buy-hi-dee-vitamin-d3-50000iu-capsules-pack-of-8s.html",
   "priority_rank": 189,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "chspharmacy.ae",
@@ -6494,7 +6494,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://chspharmacy.ae/nature-s-bounty-easy-iron-28-mg-capsule-90-s.html",
   "priority_rank": 190,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "gomyz.com",
@@ -6514,7 +6514,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://gomyz.com/uae-en/skincare/cleansers-scrubs/washes/benefit-the-porefessional-good-cleanup-foaming-cleanser-147ml.html",
   "priority_rank": 191,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "jumbo.ae",
@@ -6532,7 +6532,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.jumbo.ae/sony-xp700-x-series-portable-wireless-speaker.html",
   "priority_rank": 192,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "nazih.ae",
@@ -6552,7 +6552,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://nazih.ae/zero-frizz-argan-oil-hair-care-serum-148-ml.html",
   "priority_rank": 193,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "rivolishop.com",
@@ -6571,7 +6571,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.rivolishop.com/en-ae/product/00Longines-Hydroconquest-L37824769",
   "priority_rank": 194,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "unioncoop.ae",
@@ -6589,7 +6589,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.unioncoop.ae/starbucks-doubleshot-espresso-coffee-can-200ml-578803.html",
   "priority_rank": 195,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "alrehabstore.com",
@@ -6607,7 +6607,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://alrehabstore.com/en/oud-bahraini-100-ml/p1068529267",
   "priority_rank": 196,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "whites.sa",
@@ -6628,7 +6628,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.whites.sa/en-sa/guerlain-l-instant-magic-unisex-eau-de-parfum-75ml/",
   "priority_rank": 197,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "salams.com",
@@ -6648,7 +6648,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://salams.com/beauty/men-perfume",
   "priority_rank": 198,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "atelierperfumery.com",
@@ -6666,7 +6666,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.atelierperfumery.com/essential-parfums-ambre-latte-edp-100ml",
   "priority_rank": 199,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "nrtcfresh.com",
@@ -6684,7 +6684,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://nrtcfresh.com/categories/fruits/1782",
   "priority_rank": 200,
-  "status": "provider-test-candidate"
+  "status": "dead"
  },
  {
   "domain": "touchofoud.com",
@@ -6702,7 +6702,7 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.touchofoud.com/rajwan-2",
   "priority_rank": 201,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "nahdionline.com",
@@ -6721,7 +6721,7 @@
   "genuine_method": "local_bhd",
   "sample_url": "https://www.nahdionline.com/en-sa/pharmaton-multivitamins-30-capsules/pdp/100007429",
   "priority_rank": 202,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "deraahstore.com",
