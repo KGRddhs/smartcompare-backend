@@ -1,0 +1,243 @@
+{
+   "addToCartDisabled" : false,
+   "aldawaaDescriptions" : [ {
+      "description" : "<p><span style=\"color: #002544;\"><strong>اسم المنتج</strong></span></p>\n <ul>\n <li><a href=\"https://www.al-dawaa.com/ar/brands/chicco/c/990474\">شيكو</a> سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة</li>\n </ul>\n <p><strong>&nbsp;</strong></p>\n <p><span style=\"color: #002544;\"><strong>العلامة التجارية</strong></span></p>\n <ul>\n <li>شيكو</li>\n </ul>\n <p>&nbsp;</p>\n <p><span style=\"color: #002544;\"><strong>القسم الرئيسي</strong></span></p>\n <ul>\n <li>العناية الطفل والأم</li>\n </ul>\n <p>&nbsp;</p>\n <p><span style=\"color: #002544;\"><strong>القسم الفرعي</strong></span></p>\n <ul>\n <li>احتياجات الأطفال</li>\n </ul>\n <p>&nbsp;</p>\n <p><span style=\"color: #002544;\"><strong>شكل المنتج</strong></span></p>\n <ul>\n <li>سرير للأطفال</li>\n </ul>",
+      "position" : 1,
+      "videoPriority" : false
+   } ],
+   "arMaxDarkcircles" : 0,
+   "arMaxSpots" : 0,
+   "arMaxTexture" : 0,
+   "arMaxWrinkles" : 0,
+   "arMinDarkcircles" : 0,
+   "arMinSpots" : 0,
+   "arMinTexture" : 0,
+   "arMinWrinkles" : 0,
+   "availableForPickup" : false,
+   "baseOptions" : [ ],
+   "bonded" : false,
+   "brand" : {
+      "cardComponents" : "",
+      "code" : "990474",
+      "invisibleOnMenu" : false,
+      "invisibleOnOffers" : false,
+      "name" : "شيكو",
+      "numberOfProducts" : 0,
+      "seoMetaDescription" : "تسوق منتجات شيكو للعناية بالرضع من الصيدلية الوطنية الدواء. جودة وموثوقية في منتجات الأطفال لجميع احتياجاتهم اليومية.",
+      "seoMetaName" : "شيكو",
+      "url" : "/brands/chicco/c/990474"
+   },
+   "bundleProduct" : false,
+   "categories" : [ {
+      "cardComponents" : "",
+      "code" : "100105",
+      "invisibleOnMenu" : false,
+      "invisibleOnOffers" : false,
+      "name" : "مستلزمات نوم الأطفال",
+      "numberOfProducts" : 0,
+      "seoMetaDescription" : "احصل على مستلزمات نوم الأطفال بجودة عالية من صيدليات الدواء. راحة وأمان لطفلكِ ليلاً ونهارًا. تسوق الآن بأفضل الأسعار!",
+      "seoMetaName" : "مستلزمات نوم الأطفال - راحة وأمان لطفلك - صيدليات الدواء",
+      "url" : "/mum-and-baby/from-the-first-step/sleeping-essentials/c/100105"
+   } ],
+   "classifications" : [ {
+      "code" : "AldawaaClassification",
+      "features" : [ {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.height",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "14"
+         } ],
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.width",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "6.800"
+         } ],
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.weight",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "23"
+         } ],
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.length",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "4.600"
+         } ],
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.features",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "مريح"
+         } ],
+         "name" : "مميزات خاصة",
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.volume",
+         "comparable" : true,
+         "featureValues" : [ ],
+         "name" : "الحجم",
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.product_function",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "سلامة الطفل"
+         } ],
+         "name" : "وظيفة المنتج",
+         "range" : false
+      } ],
+      "name" : "Aldawaa Classification"
+   } ],
+   "code" : "234419",
+   "configurable" : false,
+   "cura" : false,
+   "description" : "",
+   "disabledQitafPayment" : false,
+   "enableARSkinAnalysis" : false,
+   "enableDelivery" : false,
+   "enablePickUp" : false,
+   "enabledArbahiPointsToHaveLabel" : true,
+   "enabledArbahiPointsToPayLabel" : true,
+   "enabledQitafPointsToPayLabel" : true,
+   "excludedFromPromotion" : false,
+   "fraction" : false,
+   "fractionIncrement" : 0.0,
+   "hidePrice" : false,
+   "hidePriceLandingCategoryPage" : false,
+   "hidePricePDP" : false,
+   "hidePricePLP" : false,
+   "hidePriceSearch" : false,
+   "images" : [ {
+      "altText" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+      "format" : "superZoom",
+      "imageType" : "PRIMARY",
+      "url" : "/medias/شيكو-سرير-جانبي-للرضع-نيكست-تو-مي-بلون-ستون-1-قطعة_0_1200.webp?context=bWFzdGVyfGltYWdlc3w2NjY1MnxpbWFnZS93ZWJwfGFHVTFMMmc0TXk4NU16TTNOemsyTURBeE9ESXlMekl6TkRReE9WOHdYMkZ5WHpFeU1EQlhlREV5TURCSVgxZEZRbEF1ZDJWaWNBfDA3OTZiZjhkN2U2NTE0YmRmYjhlMzE1YzBmZjk0YWQwNzZiMWE0YTFkZDlhNTk5MTQ3YjY2MDk5MzRkYzdmZjM"
+   }, {
+      "altText" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+      "format" : "product",
+      "imageType" : "PRIMARY",
+      "url" : "/medias/شيكو-سرير-جانبي-للرضع-نيكست-تو-مي-بلون-ستون-1-قطعة_0_300.webp?context=bWFzdGVyfGltYWdlc3w0NTg0fGltYWdlL3dlYnB8YURKaUwyZ3pOaTg1TXpNM056azFPRGN3TnpVd0x6SXpORFF4T1Y4d1gyRnlYek13TUZkNE16QXdTRjlYUlVKUUxuZGxZbkF8Y2FjZTY3ODg2MmJmYzkyNWUwMDlhYjk2N2U0YjEzZmQ1NzZjODE0YjI0YWVmZWFlNGU3ZWIzNjY1MDhmNjgxMQ"
+   }, {
+      "altText" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+      "format" : "zoom",
+      "imageType" : "PRIMARY",
+      "url" : "/medias/شيكو-سرير-جانبي-للرضع-نيكست-تو-مي-بلون-ستون-1-قطعة_0_515.webp?context=bWFzdGVyfGltYWdlc3wxMjU3MnxpbWFnZS93ZWJwfGFESTVMMmd6T1M4NU16TTNOemsxT1RNMk1qZzJMekl6TkRReE9WOHdYMkZ5WHpVeE5WZDROVEUxU0Y5WFJVSlFMbmRsWW5BfGI3YzUyNTMxMTE5MTFiNzg3NDVkZWQzZDllZTk3NzM3NGUwMzJiMmE3MDRkODgyZDYxYzkxY2QwNGMyOTJiNzc"
+   }, {
+      "altText" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+      "format" : "cartIcon",
+      "imageType" : "PRIMARY",
+      "url" : "/medias/شيكو-سرير-جانبي-للرضع-نيكست-تو-مي-بلون-ستون-1-قطعة_0_65.webp?context=bWFzdGVyfGltYWdlc3w1NDJ8aW1hZ2Uvd2VicHxhRFU0TDJnek1pODVNek0zTnprMU56TTVOamM0THpJek5EUXhPVjh3WDJGeVh6WTFWM2cyTlVoZlYwVkNVQzUzWldKd3wxYzRmMzMyYmM1MWU2NTgxMmViNTMxYWY0NmNhNTU3ZjM4Nzg0YjFiZjRjODU3YjQxMjY0MjFiMzQ5YjI4ODYy"
+   }, {
+      "altText" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+      "format" : "thumbnail",
+      "imageType" : "PRIMARY",
+      "url" : "/medias/شيكو-سرير-جانبي-للرضع-نيكست-تو-مي-بلون-ستون-1-قطعة_0_96.webp?context=bWFzdGVyfGltYWdlc3w5NDZ8aW1hZ2Uvd2VicHxhRFpoTDJnek5TODVNek0zTnprMU9EQTFNakUwTHpJek5EUXhPVjh3WDJGeVh6azJWM2c1TmtoZlYwVkNVQzUzWldKd3w5NDMyZjVlMWJlOWJmNzhiN2YwZjU3NTYwYjYzMzczZTJiNDhjMDQxZDIzYTJkNjQ4Y2JjZDdlYWJjZTJlMjE4"
+   }, {
+      "altText" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+      "format" : "superZoom",
+      "galleryIndex" : 0,
+      "imageType" : "GALLERY",
+      "url" : "/medias/شيكو-سرير-جانبي-للرضع-نيكست-تو-مي-بلون-ستون-1-قطعة_0_1200.webp?context=bWFzdGVyfGltYWdlc3w2NjY1MnxpbWFnZS93ZWJwfGFHVTFMMmc0TXk4NU16TTNOemsyTURBeE9ESXlMekl6TkRReE9WOHdYMkZ5WHpFeU1EQlhlREV5TURCSVgxZEZRbEF1ZDJWaWNBfDA3OTZiZjhkN2U2NTE0YmRmYjhlMzE1YzBmZjk0YWQwNzZiMWE0YTFkZDlhNTk5MTQ3YjY2MDk5MzRkYzdmZjM"
+   }, {
+      "altText" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+      "format" : "product",
+      "galleryIndex" : 0,
+      "imageType" : "GALLERY",
+      "url" : "/medias/شيكو-سرير-جانبي-للرضع-نيكست-تو-مي-بلون-ستون-1-قطعة_0_300.webp?context=bWFzdGVyfGltYWdlc3w0NTg0fGltYWdlL3dlYnB8YURKaUwyZ3pOaTg1TXpNM056azFPRGN3TnpVd0x6SXpORFF4T1Y4d1gyRnlYek13TUZkNE16QXdTRjlYUlVKUUxuZGxZbkF8Y2FjZTY3ODg2MmJmYzkyNWUwMDlhYjk2N2U0YjEzZmQ1NzZjODE0YjI0YWVmZWFlNGU3ZWIzNjY1MDhmNjgxMQ"
+   }, {
+      "altText" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+      "format" : "zoom",
+      "galleryIndex" : 0,
+      "imageType" : "GALLERY",
+      "url" : "/medias/شيكو-سرير-جانبي-للرضع-نيكست-تو-مي-بلون-ستون-1-قطعة_0_515.webp?context=bWFzdGVyfGltYWdlc3wxMjU3MnxpbWFnZS93ZWJwfGFESTVMMmd6T1M4NU16TTNOemsxT1RNMk1qZzJMekl6TkRReE9WOHdYMkZ5WHpVeE5WZDROVEUxU0Y5WFJVSlFMbmRsWW5BfGI3YzUyNTMxMTE5MTFiNzg3NDVkZWQzZDllZTk3NzM3NGUwMzJiMmE3MDRkODgyZDYxYzkxY2QwNGMyOTJiNzc"
+   }, {
+      "altText" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+      "format" : "thumbnail",
+      "galleryIndex" : 0,
+      "imageType" : "GALLERY",
+      "url" : "/medias/شيكو-سرير-جانبي-للرضع-نيكست-تو-مي-بلون-ستون-1-قطعة_0_96.webp?context=bWFzdGVyfGltYWdlc3w5NDZ8aW1hZ2Uvd2VicHxhRFpoTDJnek5TODVNek0zTnprMU9EQTFNakUwTHpJek5EUXhPVjh3WDJGeVh6azJWM2c1TmtoZlYwVkNVQzUzWldKd3w5NDMyZjVlMWJlOWJmNzhiN2YwZjU3NTYwYjYzMzczZTJiNDhjMDQxZDIzYTJkNjQ4Y2JjZDdlYWJjZTJlMjE4"
+   } ],
+   "inWishlist" : false,
+   "instagramFeed" : false,
+   "isGiftCardProduct" : false,
+   "materialType" : {
+      "arbahiPointToHaveWeight" : 0.0,
+      "code" : "CSM"
+   },
+   "maxOrderQuantity" : 0,
+   "minOrderQuantity" : 0,
+   "msiStock" : true,
+   "multidimensional" : false,
+   "name" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+   "notified" : false,
+   "numberOfArbahiPointsToHave" : 448.0,
+   "numberOfArbahiPointsToPay" : 34888.0,
+   "numberOfQitafPointsToPay" : 15700.0,
+   "numberOfReviews" : 0,
+   "potentialPromotions" : [ ],
+   "prescription" : false,
+   "price" : {
+      "currencyIso" : "SAR",
+      "formattedValue" : "1,805.50 ",
+      "priceType" : "BUY",
+      "value" : 1805.5
+   },
+   "priceRange" : {
+   },
+   "productLabels" : [ ],
+   "productPaymentOptions" : [ {
+      "key" : "NEQATY",
+      "value" : true
+   }, {
+      "key" : "MOKAFAA",
+      "value" : false
+   }, {
+      "key" : "WALLET",
+      "value" : true
+   }, {
+      "key" : "QITAF",
+      "value" : true
+   }, {
+      "key" : "GIFT_CARD",
+      "value" : true
+   }, {
+      "key" : "ARBAHI",
+      "value" : true
+   } ],
+   "purchasable" : true,
+   "quickCommerceEnabled" : false,
+   "ratingMap" : [ ],
+   "refundAddToCartMsg" : "بعض عمليات الدفع الرقمية غير مُفعّلة لهذا المنتج المُضاف مُسبقًا إلى سلة التسوق. إضافة هذا المنتج ستؤدي إلى استرداد ثمنه. هل ترغب في المُتابعة؟",
+   "reviews" : [ ],
+   "searchKeywords" : "Chicco, Baby Bed Next 2 Me Co-Sleeping Crib Stone - 1 Pc شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+   "seoMetaDescription" : "استمتع براحة وسلامة سرير شيكو الجانبي للرضع نيكست تو مي بلون ستون، مصمم ليتيح لك النوم بالقرب من طفلك أثناء راحته.",
+   "seoMetaName" : "شيكو، سرير جانبي للرضع نيكست تو مي بلون ستون - 1 قطعة",
+   "shippingAndPaymentConfigData" : {
+      "delivery" : true,
+      "pickup" : true,
+      "priority" : 0
+   },
+   "showSpecialProductLabel" : false,
+   "special" : false,
+   "stock" : {
+      "isValueRounded" : false,
+      "stockLevel" : 1,
+      "stockLevelStatus" : "inStock"
+   },
+   "subscribeSave" : false,
+   "summary" : "",
+   "tamara" : true,
+   "tamaraPDPLabel" : "يجب أن يكون المبلغ بين  (125 ريال)و (7,000 ريال) لاستخدام خدمة تمارا للدفع",
+   "tryOutAR" : false,
+   "url" : "/Category/Mum-and-Baby/From-The-First-Step/Sleeping-Essentials/Chicco%2C-Baby-Bed-Next-2-Me-Co-Sleeping-Crib-Stone---1-Pc-/p/234419",
+   "urlProductName" : "chicco-baby-bed-next-2-me-co-sleeping-crib-stone-1-pc",
+   "visibility" : "DEFAULT",
+   "volumePrices" : [ ],
+   "wasleen" : false
+}

@@ -1,0 +1,308 @@
+{
+   "addToCartDisabled" : false,
+   "aldawaaDescriptions" : [ {
+      "description" : "<h4><span style=\"color: #002544;\"><strong>اسم المنتج</strong></span></h4>\n<ul>\n<li>فيتانيرف فيتامين ب المركب، فيتامين ب1 وب6 وب12 - 30 شريط فموي سريع الذوبان</li>\n</ul>\n<p>&nbsp;</p>\n\n<h4><span style=\"color: #002544;\"><strong>العلامة التجارية</strong></span></h4>\n<ul>\n<li>فيتانيرف</li>\n</ul>\n<p>&nbsp;</p>\n\n<h4><span style=\"color: #002544;\"><strong>القسم الرئيسي</strong></span></h4>\n<ul>\n<li>فيتامين ب المركب</li>\n</ul>\n<p>&nbsp;</p>\n\n<h4><span style=\"color: #002544;\"><strong>الوصف</strong></span></h4>\n<ul>\n<li>توليفة من فيتامينات ب المركبة في شكل شرائط فموية سريعة الذوبان تُستخدم تحت اللسان أو في الجيب الخدّي.</li>\n<li>تدعم وظائف الجهاز العصبي والتمثيل الغذائي للطاقة.</li>\n<li>تساعد على تقليل الإحساس بالإرهاق والتعب.</li>\n<li>توفر وسيلة سهلة ومريحة للاستخدام دون الحاجة إلى الماء.</li>\n<li>أعصاب أهدأ وطاقة أكثر — في ثوانٍ وبدون ماء.</li>\n</ul>\n<p>&nbsp;</p>\n\n<h4><span style=\"color: #002544;\"><strong>فوائد المنتج</strong></span></h4>\n<ul>\n<li>ذوبان فوري دون الحاجة إلى الماء، مما يجعله مثالياً أثناء العمل أو السفر.</li>\n<li>امتصاص فموي مباشر تحت اللسان أو بالجيب الخدّي مع تجاوز جزئي للمرور الكبدي الأول، مما قد يمنح بداية أسرع للإحساس بالفائدة مقارنة بالأشكال التقليدية.</li>\n<li>جرعة دقيقة في كل شريط لسهولة الالتزام بالاستخدام.</li>\n</ul>\n<p>&nbsp;</p>\n\n<h4><span style=\"color: #002544;\"><strong>تعليمات الاستخدام</strong></span></h4>\n<ul>\n<li>شريط واحد مرة يوميًا.</li>\n<li>يُترك ليذوب تمامًا تحت اللسان أو داخل الجيب الخدّي.</li>\n<li>لا تمضغ الشريط.</li>\n<li>لا تتجاوز الجرعة الموصى بها إلا بتوجيه مختص.</li>\n</ul>\n<p>&nbsp;</p>\n\n<h4><span style=\"color: #002544;\"><strong>معلومات اخرى</strong></span></h4>\n<ul>\n<li>مناسب لمن يحتاج دعماً يومياً للأعصاب والوظائف الذهنية والطاقة.</li>\n<li>مناسب لمن يواجه صعوبة في بلع الأقراص أو يفضل شكلاً سريعاً ومريحاً للاستخدام.</li>\n<li>لا يستخدم عند وجود حساسية لأي من المكونات.</li>\n<li>المكملات الغذائية لا تُغني عن النظام الغذائي المتوازن.</li>\n<li>الشكل: شرائط فموية سريعة الذوبان ODF.</li>\n<li>العبوة: 30 شريطًا.</li>\n<li>العلامة التجارية: فيتانيرف.</li>\n</ul>",
+      "position" : 1,
+      "videoPriority" : false
+   } ],
+   "arMaxDarkcircles" : 0,
+   "arMaxSpots" : 0,
+   "arMaxTexture" : 0,
+   "arMaxWrinkles" : 0,
+   "arMinDarkcircles" : 0,
+   "arMinSpots" : 0,
+   "arMinTexture" : 0,
+   "arMinWrinkles" : 0,
+   "availableForPickup" : false,
+   "baseOptions" : [ ],
+   "bonded" : false,
+   "brand" : {
+      "cardComponents" : "",
+      "code" : "993471",
+      "invisibleOnMenu" : false,
+      "invisibleOnOffers" : false,
+      "name" : "فيتانيرف",
+      "numberOfProducts" : 0,
+      "seoMetaDescription" : "فيتانيرف",
+      "seoMetaName" : "فيتانيرف",
+      "url" : "/brands/vitanerv/c/993471"
+   },
+   "bundleProduct" : false,
+   "categories" : [ {
+      "cardComponents" : "",
+      "code" : "800203",
+      "invisibleOnMenu" : false,
+      "invisibleOnOffers" : false,
+      "name" : "فيتامين ب",
+      "numberOfProducts" : 0,
+      "seoMetaDescription" : "دعم مثالي للطاقة وصحة الأعصاب مع مجموعة فيتامين ب. احصل على الفيتامينات التي يحتاجها جسمك يوميًا",
+      "seoMetaName" : "مجموعة فيتامين ب - تعزيز الطاقة وصحة الجهاز العصبي",
+      "url" : "/vitamins-and-healthy-nutrition/vitamins/vitamin-b/c/800203"
+   } ],
+   "classifications" : [ {
+      "code" : "AldawaaClassification",
+      "features" : [ {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.age_group",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "البالغين"
+         } ],
+         "name" : "المرحلة العمرية",
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.width",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "6.600"
+         } ],
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.weight",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "0"
+         } ],
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.length",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "2.700"
+         } ],
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.ingredients",
+         "comparable" : true,
+         "featureValues" : [ {
+            "value" : "فيتامين ب مركب"
+         } ],
+         "name" : "المكونات",
+         "range" : false
+      }, {
+         "code" : "AldawaaClassification/1.0/AldawaaClassification.volume",
+         "comparable" : true,
+         "featureValues" : [ ],
+         "name" : "الحجم",
+         "range" : false
+      } ],
+      "name" : "Aldawaa Classification"
+   } ],
+   "code" : "108063",
+   "configurable" : false,
+   "cura" : false,
+   "description" : "",
+   "disabledQitafPayment" : false,
+   "enableARSkinAnalysis" : false,
+   "enableDelivery" : false,
+   "enablePickUp" : false,
+   "enabledArbahiPointsToHaveLabel" : true,
+   "enabledArbahiPointsToPayLabel" : true,
+   "enabledQitafPointsToPayLabel" : true,
+   "excludedFromPromotion" : false,
+   "fraction" : false,
+   "fractionIncrement" : 0.0,
+   "hidePrice" : false,
+   "hidePriceLandingCategoryPage" : false,
+   "hidePricePDP" : false,
+   "hidePricePLP" : false,
+   "hidePriceSearch" : false,
+   "images" : [ {
+      "altText" : "108063_0_ar",
+      "format" : "superZoom",
+      "imageType" : "PRIMARY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_0_1200.webp?context=bWFzdGVyfGltYWdlc3wxMDAzMzB8aW1hZ2Uvd2VicHxhR1ptTDJneU55ODVOakF4TkRBNE16TTFPVEF5THpFd09EQTJNMTh3WDJGeVh6RXlNREJYZURFeU1EQklYMWRGUWxBdWQyVmljQXxkMTFkMjI1YjYwYWQ1ZmI3ZmY3NTEzMTViZDczN2FkYzM0Nzk1ZDk0OGExN2RlMzVkNjQ4M2M4OTg4MzUwZTY5"
+   }, {
+      "altText" : "108063_0_ar",
+      "format" : "product",
+      "imageType" : "PRIMARY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_0_300.webp?context=bWFzdGVyfGltYWdlc3wxNDAyNnxpbWFnZS93ZWJwfGFHSmxMMmd5WWk4NU5qQXhOREE0TWpBME9ETXdMekV3T0RBMk0xOHdYMkZ5WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfDM2NmRhYmIwNmNmN2QyMDBlOTdmZWYwOWIyMGZjNTE2YmQ4ODlhZjcwZjlmNzRlZDA5N2E1ZTJiZmE0OGM0NDA"
+   }, {
+      "altText" : "108063_0_ar",
+      "format" : "zoom",
+      "imageType" : "PRIMARY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_0_515.webp?context=bWFzdGVyfGltYWdlc3wzMjE5NHxpbWFnZS93ZWJwfGFHWmtMMmd5WVM4NU5qQXhOREE0TWpjd016WTJMekV3T0RBMk0xOHdYMkZ5WHpVeE5WZDROVEUxU0Y5WFJVSlFMbmRsWW5BfDRhYWZhYmRlYTMyZTY5MTdkNTA5M2MwZmNmZmUyZDM2ZjVkN2M1OTQxMWRjOTVhNTlmNmU5ZjI0NjQzYTgxZTc"
+   }, {
+      "altText" : "108063_0_ar",
+      "format" : "cartIcon",
+      "imageType" : "PRIMARY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_0_65.webp?context=bWFzdGVyfGltYWdlc3wxMjY0fGltYWdlL3dlYnB8YUdOa0wyZ3pNUzg1TmpBeE5EQTRNRGN6TnpVNEx6RXdPREEyTTE4d1gyRnlYelkxVjNnMk5VaGZWMFZDVUM1M1pXSnd8ZGJhZjVlZjNiNGU5NDE3ODExMTY2OGY3ZGQwN2FlYzIwYTgwNGNkMGQ5YTM2Mjc1MGYyNTc1MmYyY2Q0OWNjZA"
+   }, {
+      "altText" : "108063_0_ar",
+      "format" : "thumbnail",
+      "imageType" : "PRIMARY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_0_96.webp?context=bWFzdGVyfGltYWdlc3wyMjk4fGltYWdlL3dlYnB8YUdObUwyZ3laUzg1TmpBeE5EQTRNVE01TWprMEx6RXdPREEyTTE4d1gyRnlYemsyVjNnNU5raGZWMFZDVUM1M1pXSnd8MmRiYTMzMjFjOTk1NmNlYjUyNjQ1MTMwMTlkZmY3NjFhN2I2NzJmYWQyOTBjMjM4ZDlmMDZlNWQ5NzRhM2JjMQ"
+   }, {
+      "altText" : "108063_0_ar",
+      "format" : "superZoom",
+      "galleryIndex" : 0,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_0_1200.webp?context=bWFzdGVyfGltYWdlc3wxMDAzMzB8aW1hZ2Uvd2VicHxhR1ptTDJneU55ODVOakF4TkRBNE16TTFPVEF5THpFd09EQTJNMTh3WDJGeVh6RXlNREJYZURFeU1EQklYMWRGUWxBdWQyVmljQXxkMTFkMjI1YjYwYWQ1ZmI3ZmY3NTEzMTViZDczN2FkYzM0Nzk1ZDk0OGExN2RlMzVkNjQ4M2M4OTg4MzUwZTY5"
+   }, {
+      "altText" : "108063_0_ar",
+      "format" : "product",
+      "galleryIndex" : 0,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_0_300.webp?context=bWFzdGVyfGltYWdlc3wxNDAyNnxpbWFnZS93ZWJwfGFHSmxMMmd5WWk4NU5qQXhOREE0TWpBME9ETXdMekV3T0RBMk0xOHdYMkZ5WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfDM2NmRhYmIwNmNmN2QyMDBlOTdmZWYwOWIyMGZjNTE2YmQ4ODlhZjcwZjlmNzRlZDA5N2E1ZTJiZmE0OGM0NDA"
+   }, {
+      "altText" : "108063_0_ar",
+      "format" : "zoom",
+      "galleryIndex" : 0,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_0_515.webp?context=bWFzdGVyfGltYWdlc3wzMjE5NHxpbWFnZS93ZWJwfGFHWmtMMmd5WVM4NU5qQXhOREE0TWpjd016WTJMekV3T0RBMk0xOHdYMkZ5WHpVeE5WZDROVEUxU0Y5WFJVSlFMbmRsWW5BfDRhYWZhYmRlYTMyZTY5MTdkNTA5M2MwZmNmZmUyZDM2ZjVkN2M1OTQxMWRjOTVhNTlmNmU5ZjI0NjQzYTgxZTc"
+   }, {
+      "altText" : "108063_0_ar",
+      "format" : "thumbnail",
+      "galleryIndex" : 0,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_0_96.webp?context=bWFzdGVyfGltYWdlc3wyMjk4fGltYWdlL3dlYnB8YUdObUwyZ3laUzg1TmpBeE5EQTRNVE01TWprMEx6RXdPREEyTTE4d1gyRnlYemsyVjNnNU5raGZWMFZDVUM1M1pXSnd8MmRiYTMzMjFjOTk1NmNlYjUyNjQ1MTMwMTlkZmY3NjFhN2I2NzJmYWQyOTBjMjM4ZDlmMDZlNWQ5NzRhM2JjMQ"
+   }, {
+      "altText" : "108063_1_ar",
+      "format" : "superZoom",
+      "galleryIndex" : 1,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_1_1200.webp?context=bWFzdGVyfGltYWdlc3w5NDg5MHxpbWFnZS93ZWJwfGFHWTVMMmhoTVM4NU5qQXhOREExTlRnek16a3dMekV3T0RBMk0xOHhYMkZ5WHpFeU1EQlhlREV5TURCSVgxZEZRbEF1ZDJWaWNBfDZlYzdiODFlNjYwOGFlMWZmZGVlNzg0ZDg5MGFmYjUyOWYzOTVjZTY3ZDNjZmVkZmU1M2ZmMjkwNDA5MjYzNGQ"
+   }, {
+      "altText" : "108063_1_ar",
+      "format" : "product",
+      "galleryIndex" : 1,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_1_300.webp?context=bWFzdGVyfGltYWdlc3wxMjg4NnxpbWFnZS93ZWJwfGFETmhMMmc1WlM4NU5qQXhOREExTkRVeU16RTRMekV3T0RBMk0xOHhYMkZ5WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfGRhOTNmODkwYzIyZDhlOGY1ZDI0N2I0NTFlZmNlMGMxYzUxOTgwZTdhYzFkYzE2MjkwNTViMTlkNGRlMDdmNTU"
+   }, {
+      "altText" : "108063_1_ar",
+      "format" : "zoom",
+      "galleryIndex" : 1,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_1_515.webp?context=bWFzdGVyfGltYWdlc3wyODI1MHxpbWFnZS93ZWJwfGFETTNMMmhoTVM4NU5qQXhOREExTlRFM09EVTBMekV3T0RBMk0xOHhYMkZ5WHpVeE5WZDROVEUxU0Y5WFJVSlFMbmRsWW5BfDZhMGM3Zjc4NTMyMjMwMDQ4NzE2ZDE1ZTcxOTlkNWJjNDBiM2FmZDIyMjQ0ZmQ4NjIxNGU0OWJjNGRhNTgyNDE"
+   }, {
+      "altText" : "108063_1_ar",
+      "format" : "thumbnail",
+      "galleryIndex" : 1,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_1_96.webp?context=bWFzdGVyfGltYWdlc3wyMjY0fGltYWdlL3dlYnB8YURJNEwyZzVZaTg1TmpBeE5EQTFNemcyTnpneUx6RXdPREEyTTE4eFgyRnlYemsyVjNnNU5raGZWMFZDVUM1M1pXSnd8MDMxZDI3YjM3NDkwYzViNzBhMDhiNTI5ODcwYjUzOTM2NGNkZmU2OWU2N2JiMDc1OGM2YjRmOWFlZmZjY2Q5YQ"
+   }, {
+      "altText" : "108063_2_ar",
+      "format" : "superZoom",
+      "galleryIndex" : 2,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_2_1200.webp?context=bWFzdGVyfGltYWdlc3wxMDE1MDR8aW1hZ2Uvd2VicHxhREZsTDJobU5TODVOakF4TkRBMk5UQXdPRGswTHpFd09EQTJNMTh5WDJGeVh6RXlNREJYZURFeU1EQklYMWRGUWxBdWQyVmljQXxiYmEyYWQxYmY3M2NlNmQ4Njg1MzY3OGMzZDYxZGYwODMyMWY1OWNjMzdkNDBmNTc4MGYxMTdmNWMyMDJmYWI1"
+   }, {
+      "altText" : "108063_2_ar",
+      "format" : "product",
+      "galleryIndex" : 2,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_2_300.webp?context=bWFzdGVyfGltYWdlc3wxNDAxNnxpbWFnZS93ZWJwfGFEUXdMMmhtWWk4NU5qQXhOREEyTXpZNU9ESXlMekV3T0RBMk0xOHlYMkZ5WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfDkyMWE3YWQzZTMxMGIwMDU3MTU5OGI4YzAxZjJjZDIwNmFlNGZmZmZmYWU3MGJhZDliMGI1YjkxM2FjNjA5OTY"
+   }, {
+      "altText" : "108063_2_ar",
+      "format" : "zoom",
+      "galleryIndex" : 2,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_2_515.webp?context=bWFzdGVyfGltYWdlc3wyOTkxOHxpbWFnZS93ZWJwfGFESmxMMmhtT0M4NU5qQXhOREEyTkRNMU16VTRMekV3T0RBMk0xOHlYMkZ5WHpVeE5WZDROVEUxU0Y5WFJVSlFMbmRsWW5BfDdmOTE0YjFkOWU1YjVlODIwYjExOTMxMmZlZjBmZTVkZjdlM2YyMmE0ZGNiNGFmM2IxOTY5NTlhYjFlMTBmODI"
+   }, {
+      "altText" : "108063_2_ar",
+      "format" : "thumbnail",
+      "galleryIndex" : 2,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_2_96.webp?context=bWFzdGVyfGltYWdlc3wyNzAyfGltYWdlL3dlYnB8YUdWbEwyaG1ZaTg1TmpBeE5EQTJNekEwTWpnMkx6RXdPREEyTTE4eVgyRnlYemsyVjNnNU5raGZWMFZDVUM1M1pXSnd8NWQyYTVkZTVmOTVlZTlkYjZjMGVjMjZhYWM0ZWFmYzg4ZmU4MjhmMDYyYjNkMGQ1MDFlZTc0NGNlMDZkOTQwZg"
+   }, {
+      "altText" : "108063_3_ar",
+      "format" : "superZoom",
+      "galleryIndex" : 3,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_3_1200.webp?context=bWFzdGVyfGltYWdlc3w5MzkzMHxpbWFnZS93ZWJwfGFEazRMMmc0WlM4NU5qQXhOREEzTkRFNE16azRMekV3T0RBMk0xOHpYMkZ5WHpFeU1EQlhlREV5TURCSVgxZEZRbEF1ZDJWaWNBfGY2MGY2N2I3OTkyNzkzOGVhMzVhOGJmNDlhZWE5ODU0MDA4MmUyNGViOWI5ZmI5ODQ1OGFhY2M1YTgyNTYxNmU"
+   }, {
+      "altText" : "108063_3_ar",
+      "format" : "product",
+      "galleryIndex" : 3,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_3_300.webp?context=bWFzdGVyfGltYWdlc3wxMzA5OHxpbWFnZS93ZWJwfGFHRTNMMmc1TkM4NU5qQXhOREEzTWpnM016STJMekV3T0RBMk0xOHpYMkZ5WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfDM3ZWM4NmVjNDk2ODUzMzQxZDNmYzJjNTg4OTZhNWViMTFhYTcwNjY4NmVjM2RlOTJiMGFiMWI0MmZlYjM0NGQ"
+   }, {
+      "altText" : "108063_3_ar",
+      "format" : "zoom",
+      "galleryIndex" : 3,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_3_515.webp?context=bWFzdGVyfGltYWdlc3wyODE3OHxpbWFnZS93ZWJwfGFEazJMMmc1TVM4NU5qQXhOREEzTXpVeU9EWXlMekV3T0RBMk0xOHpYMkZ5WHpVeE5WZDROVEUxU0Y5WFJVSlFMbmRsWW5BfDUzMjRkZDkxMzc1MWMxMTIxNzc1Y2VkOTcyYmI0NGMzZTgyNTgzMDcyMGVjYjVjOTNjNTMyYWNhMzA0NDM0MTI"
+   }, {
+      "altText" : "108063_3_ar",
+      "format" : "thumbnail",
+      "galleryIndex" : 3,
+      "imageType" : "GALLERY",
+      "url" : "/medias/فيتانيرف-فيتامين-ب-المركب-فيتامين-ب1-ب6-و-ب12-30-فيلم-قابل-للذوبان_3_96.webp?context=bWFzdGVyfGltYWdlc3wyNjUwfGltYWdlL3dlYnB8YURVMUwyZzVOUzg1TmpBeE5EQTNNakl4Tnprd0x6RXdPREEyTTE4elgyRnlYemsyVjNnNU5raGZWMFZDVUM1M1pXSnd8Zjg4MTIwMzJjZTdkY2I0OWExN2FjNWZjNDg4NDNkMjlmY2IyNmU1NmQ4M2RmZTc5ODRjNGU2ODI4ZmMwODUzZQ"
+   } ],
+   "inWishlist" : false,
+   "instagramFeed" : false,
+   "isGiftCardProduct" : false,
+   "materialType" : {
+      "arbahiPointToHaveWeight" : 0.0,
+      "code" : "MDN"
+   },
+   "maxOrderQuantity" : 0,
+   "minOrderQuantity" : 0,
+   "msiStock" : true,
+   "multidimensional" : false,
+   "name" : "فيتانيرف، فيتامين ب المركب، فيتامين ب1، ب6 و ب12 - 30 فيلم قابل للذوبان",
+   "notified" : false,
+   "numberOfArbahiPointsToHave" : 14.0,
+   "numberOfArbahiPointsToPay" : 1099.0,
+   "numberOfQitafPointsToPay" : 495.0,
+   "numberOfReviews" : 0,
+   "potentialPromotions" : [ ],
+   "prescription" : false,
+   "price" : {
+      "currencyIso" : "SAR",
+      "formattedValue" : "56.93 ",
+      "priceType" : "BUY",
+      "value" : 56.93
+   },
+   "priceRange" : {
+   },
+   "productLabels" : [ ],
+   "productPaymentOptions" : [ {
+      "key" : "NEQATY",
+      "value" : true
+   }, {
+      "key" : "MOKAFAA",
+      "value" : false
+   }, {
+      "key" : "WALLET",
+      "value" : true
+   }, {
+      "key" : "QITAF",
+      "value" : true
+   }, {
+      "key" : "GIFT_CARD",
+      "value" : true
+   }, {
+      "key" : "ARBAHI",
+      "value" : true
+   } ],
+   "purchasable" : true,
+   "quickCommerceEnabled" : false,
+   "ratingMap" : [ ],
+   "refundAddToCartMsg" : "بعض عمليات الدفع الرقمية غير مُفعّلة لهذا المنتج المُضاف مُسبقًا إلى سلة التسوق. إضافة هذا المنتج ستؤدي إلى استرداد ثمنه. هل ترغب في المُتابعة؟",
+   "reviews" : [ ],
+   "searchKeywords" : "Vitanerv Vitamin B Complex, Vitamin B1 B6 B12, Energy supplements daily vitamin supplement, health support vitamins, energy boosting supplements فيتانيرف فيتامين ب المركب, فيتامين ب1 ب6 ب12, مكملات الطاقة مكمل فيتامين يومي, دعم الصحة الفيتامينية, مكملات تعزيز الطاقة",
+   "seoMetaDescription" : "احصل على دعم شامل مع فيتانيرف فيتامين ب المركب في شكل سهل الذوبان. مثالي لعملية التمثيل الغذائي للطاقة وصحة الأعصاب.",
+   "seoMetaName" : "أفلام فيتانيرف ب المركب - فيتامين ب الأساسي في شكل قابل للذوبان",
+   "shippingAndPaymentConfigData" : {
+      "delivery" : true,
+      "pickup" : true,
+      "priority" : 0
+   },
+   "showSpecialProductLabel" : false,
+   "special" : false,
+   "stock" : {
+      "isValueRounded" : false,
+      "stockLevel" : 215,
+      "stockLevelStatus" : "inStock"
+   },
+   "subscribeSave" : false,
+   "summary" : "",
+   "tamara" : true,
+   "tamaraPDPLabel" : "يجب أن يكون المبلغ بين  (125 ريال)و (7,000 ريال) لاستخدام خدمة تمارا للدفع",
+   "tryOutAR" : false,
+   "url" : "/Brands/Vitanerv/Vitanerv%2C-Vitamin-B-Complex%2C-Vitamin-B1%2C-B6-%26-B12---30-ODF/p/108063",
+   "urlProductName" : "vitanerv-vitamin-b-complex-vitamin-b1-b6-b12-30-odf",
+   "visibility" : "DEFAULT",
+   "volumePrices" : [ ],
+   "wasleen" : false
+}

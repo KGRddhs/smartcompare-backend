@@ -1,0 +1,907 @@
+{
+   "type" : "productCategorySearchPageWsDTO",
+   "breadcrumbs" : [ ],
+   "categoryBreadcrumbs" : [ ],
+   "currentQuery" : {
+      "query" : {
+         "value" : "panadol:relevance"
+      },
+      "url" : "/search?q=panadol%3Arelevance"
+   },
+   "facets" : [ {
+      "category" : true,
+      "code" : "category",
+      "multiSelect" : true,
+      "name" : "الفئة",
+      "priority" : 2147483647,
+      "topValues" : [ {
+         "code" : "1",
+         "count" : 10,
+         "name" : "الفئة",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:1"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A1"
+         },
+         "selected" : false
+      }, {
+         "code" : "80",
+         "count" : 5,
+         "name" : "الفيتامينات والأغذية الصحية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:80"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A80"
+         },
+         "selected" : false
+      }, {
+         "code" : "offers",
+         "count" : 5,
+         "name" : "العروض",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:offers"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3Aoffers"
+         },
+         "selected" : false
+      }, {
+         "code" : "50",
+         "count" : 4,
+         "name" : "العناية الشخصية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:50"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A50"
+         },
+         "selected" : false
+      }, {
+         "code" : "5003",
+         "count" : 4,
+         "name" : "العناية النسائية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:5003"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A5003"
+         },
+         "selected" : false
+      } ],
+      "values" : [ {
+         "code" : "80",
+         "count" : 5,
+         "name" : "الفيتامينات والأغذية الصحية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:80"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A80"
+         },
+         "selected" : false
+      }, {
+         "code" : "offers",
+         "count" : 5,
+         "name" : "العروض",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:offers"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3Aoffers"
+         },
+         "selected" : false
+      }, {
+         "code" : "50",
+         "count" : 4,
+         "name" : "العناية الشخصية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:50"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A50"
+         },
+         "selected" : false
+      }, {
+         "code" : "5003",
+         "count" : 4,
+         "name" : "العناية النسائية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:5003"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A5003"
+         },
+         "selected" : false
+      }, {
+         "code" : "500313",
+         "count" : 4,
+         "name" : "تخفيف آلام الدورة",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:500313"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A500313"
+         },
+         "selected" : false
+      }, {
+         "code" : "8001",
+         "count" : 3,
+         "name" : "تسوق وفقاً للحالة الصحية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:8001"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A8001"
+         },
+         "selected" : false
+      }, {
+         "code" : "10",
+         "count" : 2,
+         "name" : "العناية بالأم والطفل",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:10"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A10"
+         },
+         "selected" : false
+      }, {
+         "code" : "1006",
+         "count" : 2,
+         "name" : "صحة الطفل",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:1006"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A1006"
+         },
+         "selected" : false
+      }, {
+         "code" : "100602",
+         "count" : 2,
+         "name" : "فيتامينات الأطفال",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:100602"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A100602"
+         },
+         "selected" : false
+      }, {
+         "code" : "5501005",
+         "count" : 2,
+         "name" : "العودة للمدارس",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:5501005"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A5501005"
+         },
+         "selected" : false
+      }, {
+         "code" : "800103",
+         "count" : 2,
+         "name" : "القلب والدورة الدموية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:800103"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A800103"
+         },
+         "selected" : false
+      }, {
+         "code" : "8005",
+         "count" : 2,
+         "name" : "المكملات الغذائية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:8005"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A8005"
+         },
+         "selected" : false
+      }, {
+         "code" : "800501",
+         "count" : 2,
+         "name" : "زيت السمك والأوميجا",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:800501"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A800501"
+         },
+         "selected" : false
+      }, {
+         "code" : "8006",
+         "count" : 2,
+         "name" : "فيتامينات الأطفال",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:8006"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A8006"
+         },
+         "selected" : false
+      }, {
+         "code" : "800602",
+         "count" : 2,
+         "name" : "أوميجا 3",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:800602"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A800602"
+         },
+         "selected" : false
+      }, {
+         "code" : "800111",
+         "count" : 1,
+         "name" : "مساعد الاسترخاء والنوم",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:category:800111"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Acategory%3A800111"
+         },
+         "selected" : false
+      } ],
+      "visible" : true
+   }, {
+      "category" : true,
+      "code" : "brand",
+      "multiSelect" : true,
+      "name" : "العلامة التجارية",
+      "priority" : 2147483646,
+      "values" : [ {
+         "code" : "991996",
+         "count" : 9,
+         "name" : "بنادول",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:brand:991996"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Abrand%3A991996"
+         },
+         "selected" : false
+      }, {
+         "code" : "990104",
+         "count" : 4,
+         "name" : "انازول",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:brand:990104"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Abrand%3A990104"
+         },
+         "selected" : false
+      }, {
+         "code" : "992015",
+         "count" : 4,
+         "name" : "بارادوكس",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:brand:992015"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Abrand%3A992015"
+         },
+         "selected" : false
+      }, {
+         "code" : "992022",
+         "count" : 1,
+         "name" : "باتانول",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:brand:992022"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Abrand%3A992022"
+         },
+         "selected" : false
+      } ],
+      "visible" : true
+   }, {
+      "category" : false,
+      "code" : "age_group",
+      "multiSelect" : true,
+      "name" : "عمر",
+      "priority" : 2147483643,
+      "values" : [ {
+         "code" : "Adult|البالغين",
+         "count" : 2,
+         "name" : "البالغين",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:age_group:Adult%7C%D8%A7%D9%84%D8%A8%D8%A7%D9%84%D8%BA%D9%8A%D9%86"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aage_group%3AAdult%257C%25D8%25A7%25D9%2584%25D8%25A8%25D8%25A7%25D9%2584%25D8%25BA%25D9%258A%25D9%2586"
+         },
+         "selected" : false
+      } ],
+      "visible" : true
+   }, {
+      "category" : false,
+      "code" : "gender",
+      "multiSelect" : true,
+      "name" : "النوع",
+      "priority" : 2147483642,
+      "values" : [ {
+         "code" : "Unisex|للجنسين",
+         "count" : 2,
+         "name" : "للجنسين",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:gender:Unisex%7C%D9%84%D9%84%D8%AC%D9%86%D8%B3%D9%8A%D9%86"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Agender%3AUnisex%257C%25D9%2584%25D9%2584%25D8%25AC%25D9%2586%25D8%25B3%25D9%258A%25D9%2586"
+         },
+         "selected" : false
+      } ],
+      "visible" : true
+   }, {
+      "category" : false,
+      "code" : "product_form",
+      "multiSelect" : true,
+      "name" : "شكل المنتج",
+      "priority" : 2147483638,
+      "values" : [ {
+         "code" : "Tablets|أقراص",
+         "count" : 7,
+         "name" : "أقراص",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_form:Tablets%7C%D8%A3%D9%82%D8%B1%D8%A7%D8%B5"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_form%3ATablets%257C%25D8%25A3%25D9%2582%25D8%25B1%25D8%25A7%25D8%25B5"
+         },
+         "selected" : false
+      }, {
+         "code" : "Capsules|كبسولات",
+         "count" : 2,
+         "name" : "كبسولات",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_form:Capsules%7C%D9%83%D8%A8%D8%B3%D9%88%D9%84%D8%A7%D8%AA"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_form%3ACapsules%257C%25D9%2583%25D8%25A8%25D8%25B3%25D9%2588%25D9%2584%25D8%25A7%25D8%25AA"
+         },
+         "selected" : false
+      }, {
+         "code" : "Suspension|شراب معلق",
+         "count" : 1,
+         "name" : "شراب معلق",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_form:Suspension%7C%D8%B4%D8%B1%D8%A7%D8%A8+%D9%85%D8%B9%D9%84%D9%82"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_form%3ASuspension%257C%25D8%25B4%25D8%25B1%25D8%25A7%25D8%25A8%2B%25D9%2585%25D8%25B9%25D9%2584%25D9%2582"
+         },
+         "selected" : false
+      } ],
+      "visible" : true
+   }, {
+      "category" : false,
+      "code" : "product_function",
+      "multiSelect" : true,
+      "name" : "وظيفة المنتج",
+      "priority" : 2147483635,
+      "topValues" : [ {
+         "code" : "Antipyretic|خافض للحرارة",
+         "count" : 6,
+         "name" : "Antipyretic|خافض للحرارة",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Antipyretic%7C%D8%AE%D8%A7%D9%81%D8%B6+%D9%84%D9%84%D8%AD%D8%B1%D8%A7%D8%B1%D8%A9"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3AAntipyretic%257C%25D8%25AE%25D8%25A7%25D9%2581%25D8%25B6%2B%25D9%2584%25D9%2584%25D8%25AD%25D8%25B1%25D8%25A7%25D8%25B1%25D8%25A9"
+         },
+         "selected" : false
+      }, {
+         "code" : "Anti-Parasitic|مضاد للطفيليات",
+         "count" : 4,
+         "name" : "Anti-Parasitic|مضاد للطفيليات",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Anti-Parasitic%7C%D9%85%D8%B6%D8%A7%D8%AF+%D9%84%D9%84%D8%B7%D9%81%D9%8A%D9%84%D9%8A%D8%A7%D8%AA"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3AAnti-Parasitic%257C%25D9%2585%25D8%25B6%25D8%25A7%25D8%25AF%2B%25D9%2584%25D9%2584%25D8%25B7%25D9%2581%25D9%258A%25D9%2584%25D9%258A%25D8%25A7%25D8%25AA"
+         },
+         "selected" : false
+      }, {
+         "code" : "Cold - Flu|للبرد",
+         "count" : 2,
+         "name" : "Cold - Flu|للبرد",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Cold+-+Flu%7C%D9%84%D9%84%D8%A8%D8%B1%D8%AF"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3ACold%2B-%2BFlu%257C%25D9%2584%25D9%2584%25D8%25A8%25D8%25B1%25D8%25AF"
+         },
+         "selected" : false
+      }, {
+         "code" : "Dietary Supplement|مكمل غذائي",
+         "count" : 2,
+         "name" : "Dietary Supplement|مكمل غذائي",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Dietary+Supplement%7C%D9%85%D9%83%D9%85%D9%84+%D8%BA%D8%B0%D8%A7%D8%A6%D9%8A"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3ADietary%2BSupplement%257C%25D9%2585%25D9%2583%25D9%2585%25D9%2584%2B%25D8%25BA%25D8%25B0%25D8%25A7%25D8%25A6%25D9%258A"
+         },
+         "selected" : false
+      }, {
+         "code" : "Heart Health|صحة القلب",
+         "count" : 2,
+         "name" : "Heart Health|صحة القلب",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Heart+Health%7C%D8%B5%D8%AD%D8%A9+%D8%A7%D9%84%D9%82%D9%84%D8%A8"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3AHeart%2BHealth%257C%25D8%25B5%25D8%25AD%25D8%25A9%2B%25D8%25A7%25D9%2584%25D9%2582%25D9%2584%25D8%25A8"
+         },
+         "selected" : false
+      } ],
+      "values" : [ {
+         "code" : "Antipyretic|خافض للحرارة",
+         "count" : 6,
+         "name" : "خافض للحرارة",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Antipyretic%7C%D8%AE%D8%A7%D9%81%D8%B6+%D9%84%D9%84%D8%AD%D8%B1%D8%A7%D8%B1%D8%A9"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3AAntipyretic%257C%25D8%25AE%25D8%25A7%25D9%2581%25D8%25B6%2B%25D9%2584%25D9%2584%25D8%25AD%25D8%25B1%25D8%25A7%25D8%25B1%25D8%25A9"
+         },
+         "selected" : false
+      }, {
+         "code" : "Anti-Parasitic|مضاد للطفيليات",
+         "count" : 4,
+         "name" : "مضاد للطفيليات",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Anti-Parasitic%7C%D9%85%D8%B6%D8%A7%D8%AF+%D9%84%D9%84%D8%B7%D9%81%D9%8A%D9%84%D9%8A%D8%A7%D8%AA"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3AAnti-Parasitic%257C%25D9%2585%25D8%25B6%25D8%25A7%25D8%25AF%2B%25D9%2584%25D9%2584%25D8%25B7%25D9%2581%25D9%258A%25D9%2584%25D9%258A%25D8%25A7%25D8%25AA"
+         },
+         "selected" : false
+      }, {
+         "code" : "Cold - Flu|للبرد",
+         "count" : 2,
+         "name" : "للبرد",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Cold+-+Flu%7C%D9%84%D9%84%D8%A8%D8%B1%D8%AF"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3ACold%2B-%2BFlu%257C%25D9%2584%25D9%2584%25D8%25A8%25D8%25B1%25D8%25AF"
+         },
+         "selected" : false
+      }, {
+         "code" : "Dietary Supplement|مكمل غذائي",
+         "count" : 2,
+         "name" : "مكمل غذائي",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Dietary+Supplement%7C%D9%85%D9%83%D9%85%D9%84+%D8%BA%D8%B0%D8%A7%D8%A6%D9%8A"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3ADietary%2BSupplement%257C%25D9%2585%25D9%2583%25D9%2585%25D9%2584%2B%25D8%25BA%25D8%25B0%25D8%25A7%25D8%25A6%25D9%258A"
+         },
+         "selected" : false
+      }, {
+         "code" : "Heart Health|صحة القلب",
+         "count" : 2,
+         "name" : "صحة القلب",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Heart+Health%7C%D8%B5%D8%AD%D8%A9+%D8%A7%D9%84%D9%82%D9%84%D8%A8"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3AHeart%2BHealth%257C%25D8%25B5%25D8%25AD%25D8%25A9%2B%25D8%25A7%25D9%2584%25D9%2582%25D9%2584%25D8%25A8"
+         },
+         "selected" : false
+      }, {
+         "code" : "Anti-Allergy|للحساسية",
+         "count" : 1,
+         "name" : "للحساسية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Anti-Allergy%7C%D9%84%D9%84%D8%AD%D8%B3%D8%A7%D8%B3%D9%8A%D8%A9"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3AAnti-Allergy%257C%25D9%2584%25D9%2584%25D8%25AD%25D8%25B3%25D8%25A7%25D8%25B3%25D9%258A%25D8%25A9"
+         },
+         "selected" : false
+      }, {
+         "code" : "Sleep Aid|مساعدات على النوم",
+         "count" : 1,
+         "name" : "مساعدات على النوم",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:product_function:Sleep+Aid%7C%D9%85%D8%B3%D8%A7%D8%B9%D8%AF%D8%A7%D8%AA+%D8%B9%D9%84%D9%89+%D8%A7%D9%84%D9%86%D9%88%D9%85"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aproduct_function%3ASleep%2BAid%257C%25D9%2585%25D8%25B3%25D8%25A7%25D8%25B9%25D8%25AF%25D8%25A7%25D8%25AA%2B%25D8%25B9%25D9%2584%25D9%2589%2B%25D8%25A7%25D9%2584%25D9%2586%25D9%2588%25D9%2585"
+         },
+         "selected" : false
+      } ],
+      "visible" : true
+   }, {
+      "category" : false,
+      "code" : "ingredients",
+      "multiSelect" : true,
+      "name" : "مكونات",
+      "priority" : 2147483633,
+      "values" : [ {
+         "code" : "Paracetamol|الباراسيتامول",
+         "count" : 5,
+         "name" : "الباراسيتامول",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:ingredients:Paracetamol%7C%D8%A7%D9%84%D8%A8%D8%A7%D8%B1%D8%A7%D8%B3%D9%8A%D8%AA%D8%A7%D9%85%D9%88%D9%84"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aingredients%3AParacetamol%257C%25D8%25A7%25D9%2584%25D8%25A8%25D8%25A7%25D8%25B1%25D8%25A7%25D8%25B3%25D9%258A%25D8%25AA%25D8%25A7%25D9%2585%25D9%2588%25D9%2584"
+         },
+         "selected" : false
+      }, {
+         "code" : "Metronidazole|ميترونيدازول",
+         "count" : 4,
+         "name" : "ميترونيدازول",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:ingredients:Metronidazole%7C%D9%85%D9%8A%D8%AA%D8%B1%D9%88%D9%86%D9%8A%D8%AF%D8%A7%D8%B2%D9%88%D9%84"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aingredients%3AMetronidazole%257C%25D9%2585%25D9%258A%25D8%25AA%25D8%25B1%25D9%2588%25D9%2586%25D9%258A%25D8%25AF%25D8%25A7%25D8%25B2%25D9%2588%25D9%2584"
+         },
+         "selected" : false
+      }, {
+         "code" : "Omega-3 Fatty Acids|أحماض أوميغا 3 الدهنية",
+         "count" : 4,
+         "name" : "أحماض أوميغا 3 الدهنية",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:ingredients:Omega-3+Fatty+Acids%7C%D8%A3%D8%AD%D9%85%D8%A7%D8%B6+%D8%A3%D9%88%D9%85%D9%8A%D8%BA%D8%A7+3+%D8%A7%D9%84%D8%AF%D9%87%D9%86%D9%8A%D8%A9"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aingredients%3AOmega-3%2BFatty%2BAcids%257C%25D8%25A3%25D8%25AD%25D9%2585%25D8%25A7%25D8%25B6%2B%25D8%25A3%25D9%2588%25D9%2585%25D9%258A%25D8%25BA%25D8%25A7%2B3%2B%25D8%25A7%25D9%2584%25D8%25AF%25D9%2587%25D9%2586%25D9%258A%25D8%25A9"
+         },
+         "selected" : false
+      }, {
+         "code" : "Paracetamol ⁺ Pseudoephedrine|الباراسيتامول ⁺ السودوإيفيدرين",
+         "count" : 2,
+         "name" : "الباراسيتامول ⁺ السودوإيفيدرين",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:ingredients:Paracetamol+%E2%81%BA+Pseudoephedrine%7C%D8%A7%D9%84%D8%A8%D8%A7%D8%B1%D8%A7%D8%B3%D9%8A%D8%AA%D8%A7%D9%85%D9%88%D9%84+%E2%81%BA+%D8%A7%D9%84%D8%B3%D9%88%D8%AF%D9%88%D8%A5%D9%8A%D9%81%D9%8A%D8%AF%D8%B1%D9%8A%D9%86"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3Aingredients%3AParacetamol%2B%25E2%2581%25BA%2BPseudoephedrine%257C%25D8%25A7%25D9%2584%25D8%25A8%25D8%25A7%25D8%25B1%25D8%25A7%25D8%25B3%25D9%258A%25D8%25AA%25D8%25A7%25D9%2585%25D9%2588%25D9%2584%2B%25E2%2581%25BA%2B%25D8%25A7%25D9%2584%25D8%25B3%25D9%2588%25D8%25AF%25D9%2588%25D8%25A5%25D9%258A%25D9%2581%25D9%258A%25D8%25AF%25D8%25B1%25D9%258A%25D9%2586"
+         },
+         "selected" : false
+      } ],
+      "visible" : true
+   }, {
+      "category" : false,
+      "code" : "quickCommerceEnabled",
+      "multiSelect" : true,
+      "name" : "الدواء ناو",
+      "priority" : 2147483629,
+      "values" : [ {
+         "code" : "توصيل خلال 60 دقيقة",
+         "count" : 7,
+         "name" : "توصيل خلال 60 دقيقة",
+         "query" : {
+            "query" : {
+               "value" : "panadol:relevance:quickCommerceEnabled:%D8%AA%D9%88%D8%B5%D9%8A%D9%84+%D8%AE%D9%84%D8%A7%D9%84+60+%D8%AF%D9%82%D9%8A%D9%82%D8%A9"
+            },
+            "url" : "/search?q=panadol%3Arelevance%3AquickCommerceEnabled%3A%25D8%25AA%25D9%2588%25D8%25B5%25D9%258A%25D9%2584%2B%25D8%25AE%25D9%2584%25D8%25A7%25D9%2584%2B60%2B%25D8%25AF%25D9%2582%25D9%258A%25D9%2582%25D8%25A9"
+         },
+         "selected" : false
+      } ],
+      "visible" : true
+   } ],
+   "freeTextSearch" : "panadol",
+   "pagination" : {
+      "currentPage" : 0,
+      "pageSize" : 3,
+      "sort" : "relevance",
+      "totalPages" : 6,
+      "totalResults" : 18
+   },
+   "products" : [ {
+      "addToCartDisabled" : false,
+      "arMaxDarkcircles" : 0,
+      "arMaxSpots" : 0,
+      "arMaxTexture" : 0,
+      "arMaxWrinkles" : 0,
+      "arMinDarkcircles" : 0,
+      "arMinSpots" : 0,
+      "arMinTexture" : 0,
+      "arMinWrinkles" : 0,
+      "averageRating" : 5.0,
+      "bonded" : false,
+      "brand" : {
+         "code" : "991996",
+         "invisibleOnMenu" : false,
+         "invisibleOnOffers" : false,
+         "name" : "بنادول",
+         "numberOfProducts" : 0
+      },
+      "bundleProduct" : false,
+      "code" : "101692",
+      "configurable" : false,
+      "configuratorType" : "",
+      "cura" : false,
+      "disabledQitafPayment" : false,
+      "enableARSkinAnalysis" : false,
+      "enableDelivery" : false,
+      "enablePickUp" : false,
+      "enabledArbahiPointsToHaveLabel" : true,
+      "enabledArbahiPointsToPayLabel" : true,
+      "enabledQitafPointsToPayLabel" : true,
+      "excludedFromPromotion" : false,
+      "fraction" : false,
+      "fractionIncrement" : 0.0,
+      "hidePrice" : false,
+      "hidePriceLandingCategoryPage" : false,
+      "hidePricePDP" : false,
+      "hidePricePLP" : false,
+      "hidePriceSearch" : false,
+      "imageUrl" : [ {
+         "key" : "ar",
+         "value" : "/medias/بنادول-نايت-يساعد-على-تقليل-اعراض-الزكام-ويساعد-على-نوم-طويل-20-قرص_0_300.webp?context=bWFzdGVyfGltYWdlc3wzNDgwNHxpbWFnZS93ZWJwfGFESTJMMmc1WlM4NU5UUTROalkwTnpNek56STJMekV3TVRZNU1sOHdYMkZ5WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfDhmYTFmM2YzNTRkM2MxMzY3MTliNjQyNzczNGZlMzZlNjAyMGJjYTVhMjRmZmVlZjU0OGQ0MzgzZDY2MzJjYWY"
+      }, {
+         "key" : "en",
+         "value" : "/medias/Panadol-Night-Paracetamol-Analgesic-20-Caplets_0_300.webp?context=bWFzdGVyfGltYWdlc3wzNDgwNHxpbWFnZS93ZWJwfGFESmlMMmcwT0M4NU5UUTROalkxTVRreU5EYzRMekV3TVRZNU1sOHdYMlZ1WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfDFlYjE5OTM2Y2ZkZGVkOWRiYWFlNTg5NWRhZTBiYWFmZGFmYzFkMWZlMzQyNzIxMmExMDE2ZTVkN2YzZWY3Y2U"
+      } ],
+      "inWishlist" : false,
+      "instagramFeed" : false,
+      "isGiftCardProduct" : false,
+      "maxOrderQuantity" : 0,
+      "minOrderQuantity" : 0,
+      "msiStock" : true,
+      "multidimensional" : false,
+      "name" : "بنادول، نايت يساعد على تقليل أعراض الزكام ويساعد على نوم طويل - 20 قرص",
+      "notified" : false,
+      "numberOfArbahiPointsToHave" : 3.0,
+      "numberOfArbahiPointsToPay" : 257.0,
+      "numberOfQitafPointsToPay" : 116.0,
+      "prescription" : false,
+      "price" : {
+         "currencyIso" : "SAR",
+         "formattedValue" : "11.60 ",
+         "priceType" : "BUY",
+         "value" : 11.6
+      },
+      "priceRange" : {
+      },
+      "productLabels" : [ ],
+      "quickCommerceEnabled" : false,
+      "showSpecialProductLabel" : false,
+      "simulatedDiscountPrice" : {
+         "currencyIso" : "SAR",
+         "formattedValue" : "11.60 ",
+         "priceType" : "BUY",
+         "value" : 11.6
+      },
+      "special" : false,
+      "stock" : {
+         "isValueRounded" : false,
+         "stockLevelStatus" : "inStock"
+      },
+      "subscribeSave" : false,
+      "tamara" : false,
+      "tryOutAR" : false,
+      "url" : "/Category/Vitamins-%26-Healthy-Nutrition/Shop-By-Health-Concern/Sleep-Aid/Panadol%2C-Night-Paracetamol-Analgesic---20-Caplets/p/101692",
+      "urlProductName" : "panadol-night-paracetamol-analgesic-20-caplets",
+      "volumePricesFlag" : false,
+      "wasleen" : false
+   }, {
+      "addToCartDisabled" : false,
+      "arMaxDarkcircles" : 0,
+      "arMaxSpots" : 0,
+      "arMaxTexture" : 0,
+      "arMaxWrinkles" : 0,
+      "arMinDarkcircles" : 0,
+      "arMinSpots" : 0,
+      "arMinTexture" : 0,
+      "arMinWrinkles" : 0,
+      "averageRating" : 5.0,
+      "bonded" : false,
+      "brand" : {
+         "code" : "991996",
+         "invisibleOnMenu" : false,
+         "invisibleOnOffers" : false,
+         "name" : "بنادول",
+         "numberOfProducts" : 0
+      },
+      "bundleProduct" : false,
+      "code" : "102561",
+      "configurable" : false,
+      "configuratorType" : "",
+      "cura" : false,
+      "disabledQitafPayment" : false,
+      "enableARSkinAnalysis" : false,
+      "enableDelivery" : false,
+      "enablePickUp" : false,
+      "enabledArbahiPointsToHaveLabel" : true,
+      "enabledArbahiPointsToPayLabel" : true,
+      "enabledQitafPointsToPayLabel" : true,
+      "excludedFromPromotion" : false,
+      "fraction" : false,
+      "fractionIncrement" : 0.0,
+      "hidePrice" : false,
+      "hidePriceLandingCategoryPage" : false,
+      "hidePricePDP" : false,
+      "hidePricePLP" : false,
+      "hidePriceSearch" : false,
+      "imageUrl" : [ {
+         "key" : "ar",
+         "value" : "/medias/بنادول-اكستند-ممتد-المفعول-24-قرص_0_300.webp?context=bWFzdGVyfGltYWdlc3wzMzEyNnxpbWFnZS93ZWJwfGFHVXhMMmd6TXk4NU16Y3hOVFEzTXpNMk56TTBMekV3TWpVMk1WOHdYMkZ5WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfDI1OWMxNjU2NzkyNGY2OGQ4NWU3ODYxYzA1MTk2MTA2NDhkOGIyMzQ0ZWM3ZmIzZjRkYzQ2ZTgxMzIyZDU0OWQ"
+      }, {
+         "key" : "en",
+         "value" : "/medias/Panadol-Analgesic-Extend-24-Tablets_0_300.webp?context=bWFzdGVyfGltYWdlc3wzMzEyNnxpbWFnZS93ZWJwfGFEY3hMMmc0T1M4NU16Y3hOVFEyT1RFd056VXdMekV3TWpVMk1WOHdYMlZ1WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfDAzMGUxZmMwNmExMzdmNDE2MjJlNTliZTMzNTNkODU1N2I4M2VlYTIzNjhhY2E4NDA1MmU2YmFmYTIyMTA0Zjk"
+      } ],
+      "inWishlist" : false,
+      "instagramFeed" : false,
+      "isGiftCardProduct" : false,
+      "maxOrderQuantity" : 0,
+      "minOrderQuantity" : 0,
+      "msiStock" : true,
+      "multidimensional" : false,
+      "name" : "بنادول اكستند ممتد المفعول - 24 قرص",
+      "notified" : false,
+      "numberOfArbahiPointsToHave" : 4.0,
+      "numberOfArbahiPointsToPay" : 349.0,
+      "numberOfQitafPointsToPay" : 157.5,
+      "prescription" : false,
+      "price" : {
+         "currencyIso" : "SAR",
+         "formattedValue" : "15.75 ",
+         "priceType" : "BUY",
+         "value" : 15.75
+      },
+      "priceRange" : {
+      },
+      "productLabels" : [ ],
+      "quickCommerceEnabled" : false,
+      "showSpecialProductLabel" : false,
+      "simulatedDiscountPrice" : {
+         "currencyIso" : "SAR",
+         "formattedValue" : "15.75 ",
+         "priceType" : "BUY",
+         "value" : 15.75
+      },
+      "special" : false,
+      "stock" : {
+         "isValueRounded" : false,
+         "stockLevelStatus" : "inStock"
+      },
+      "subscribeSave" : false,
+      "tamara" : false,
+      "tryOutAR" : false,
+      "url" : "/Medicine-and-Treatment/Self-Medication/Pain-Relief/Panadol-Analgesic-Extend---24-Tablets/p/102561",
+      "urlProductName" : "panadol-analgesic-extend-24-tablets",
+      "volumePricesFlag" : false,
+      "wasleen" : false
+   }, {
+      "addToCartDisabled" : false,
+      "arMaxDarkcircles" : 0,
+      "arMaxSpots" : 0,
+      "arMaxTexture" : 0,
+      "arMaxWrinkles" : 0,
+      "arMinDarkcircles" : 0,
+      "arMinSpots" : 0,
+      "arMinTexture" : 0,
+      "arMinWrinkles" : 0,
+      "averageRating" : 4.8,
+      "bonded" : false,
+      "brand" : {
+         "code" : "991996",
+         "invisibleOnMenu" : false,
+         "invisibleOnOffers" : false,
+         "name" : "بنادول",
+         "numberOfProducts" : 0
+      },
+      "bundleProduct" : false,
+      "code" : "101690",
+      "configurable" : false,
+      "configuratorType" : "",
+      "cura" : false,
+      "disabledQitafPayment" : false,
+      "enableARSkinAnalysis" : false,
+      "enableDelivery" : false,
+      "enablePickUp" : false,
+      "enabledArbahiPointsToHaveLabel" : true,
+      "enabledArbahiPointsToPayLabel" : true,
+      "enabledQitafPointsToPayLabel" : true,
+      "excludedFromPromotion" : false,
+      "fraction" : false,
+      "fractionIncrement" : 0.0,
+      "hidePrice" : false,
+      "hidePriceLandingCategoryPage" : false,
+      "hidePricePDP" : false,
+      "hidePricePLP" : false,
+      "hidePriceSearch" : false,
+      "imageUrl" : [ {
+         "key" : "ar",
+         "value" : "/medias/بنادول-اكسترا-مسكن-وخافض-للحرارة-24-قرص_0_300.webp?context=bWFzdGVyfGltYWdlc3wxMTIxMnxpbWFnZS93ZWJwfGFEbGlMMmd5WlM4NU5UYzFNREU0T1RJeU1ERTBMekV3TVRZNU1GOHdYMkZ5WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfGNhYTMyNWMxMmZkMDhlN2IzMDEyNDIyMWViMDFjYmY3NDJkMDQ0ZmZiMjBiNTIxZTgyNWRjOThiZDE4Njk2ODk"
+      }, {
+         "key" : "en",
+         "value" : "/medias/Panadol-Extra-Analgesic-Antipyretic-24-Tablets_0_300.webp?context=bWFzdGVyfGltYWdlc3wxMTIxMnxpbWFnZS93ZWJwfGFEVmxMMmd5Tnk4NU5UYzFNREU1TXpnd056WTJMekV3TVRZNU1GOHdYMlZ1WHpNd01GZDRNekF3U0Y5WFJVSlFMbmRsWW5BfGY4NmJiZjVjNmY2MTY0NjcwOTNkNTY3ZWUxNjdlNjU4YmU0OTkwZmU5OWM3MzVhOWM3MmRmYjZmOTM2OWU0NzU"
+      } ],
+      "inWishlist" : false,
+      "instagramFeed" : false,
+      "isGiftCardProduct" : false,
+      "maxOrderQuantity" : 0,
+      "minOrderQuantity" : 0,
+      "msiStock" : true,
+      "multidimensional" : false,
+      "name" : "بنادول إكسترا، مسكن وخافض للحرارة - 24 قرص",
+      "notified" : false,
+      "numberOfArbahiPointsToHave" : 2.0,
+      "numberOfArbahiPointsToPay" : 177.0,
+      "numberOfQitafPointsToPay" : 80.0,
+      "prescription" : false,
+      "price" : {
+         "currencyIso" : "SAR",
+         "formattedValue" : "8.00 ",
+         "priceType" : "BUY",
+         "value" : 8.0
+      },
+      "priceRange" : {
+      },
+      "productLabels" : [ ],
+      "quickCommerceEnabled" : false,
+      "showSpecialProductLabel" : false,
+      "simulatedDiscountPrice" : {
+         "currencyIso" : "SAR",
+         "formattedValue" : "8.00 ",
+         "priceType" : "BUY",
+         "value" : 8.0
+      },
+      "special" : false,
+      "stock" : {
+         "isValueRounded" : false,
+         "stockLevelStatus" : "inStock"
+      },
+      "subscribeSave" : false,
+      "tamara" : false,
+      "tryOutAR" : false,
+      "url" : "/Medicine-and-Treatment/Self-Medication/Pain-Relief/Panadol-Extra%2C-Analgesic-%26-Antipyretic---24-Tablets/p/101690",
+      "urlProductName" : "panadol-extra-analgesic-antipyretic-24-tablets",
+      "volumePricesFlag" : false,
+      "wasleen" : false
+   } ],
+   "sorts" : [ {
+      "code" : "relevance",
+      "name" : "الترتيب حسب الموصى به",
+      "selected" : true
+   }, {
+      "code" : "newestDate",
+      "name" : "من الأحدث إلى الأقدم",
+      "selected" : false
+   }, {
+      "code" : "price-asc",
+      "name" : "السعر من الأدنى إلى الأعلى",
+      "selected" : false
+   }, {
+      "code" : "price-desc",
+      "name" : "السعر من الأعلى إلى الأقل",
+      "selected" : false
+   }, {
+      "code" : "topRated",
+      "name" : "الأعلى تقييماً",
+      "selected" : false
+   }, {
+      "code" : "bestSeller-desc",
+      "name" : "الأكثر مبيعاً",
+      "selected" : false
+   }, {
+      "code" : "promoPriority-desc",
+      "name" : "التصفية حسب العروض",
+      "selected" : false
+   } ],
+   "spellingSuggestion" : {
+      "query" : "paradox:relevance",
+      "suggestion" : "paradox"
+   },
+   "stats" : {
+      "all" : {
+         "max" : 188.0,
+         "min" : 5.8
+      }
+   }
+}
