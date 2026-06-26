@@ -4162,7 +4162,7 @@ class StructuredComparisonService:
             try:
                 from app.services.zyte_service import fetch_zyte_price, ZYTE_STORES
                 for _zdomain in ZYTE_STORES:
-                    _zp = await fetch_zyte_price(_zdomain, full_name, currency, category)
+                    _zp = await fetch_zyte_price(_zdomain, full_name, currency, category, brand=brand)
                     if _zp and _zp.get("amount", 0) > 0:
                         set_cached(cache_key, _zp, price_cache_ttl(_zp))
                         self._save_price_to_db(cache_key, brand, name, variant, region, _zp)
