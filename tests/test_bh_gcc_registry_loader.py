@@ -4,12 +4,37 @@ normalization, genuine-method set, and the new per-mechanism selectors.
 Pins the zero-regression-by-construction invariant (the loader admits ONLY
 liveness-promoted rows) + the consolidation maps + the fan-out cap.
 """
+import collections
 import importlib
+import json
 
 import pytest
 
 from app.services import source_router as sr
 from scripts import build_source_registry_data as build
+
+
+def test_live_data_file_routes_all_wired_mechanisms():
+    # Verification F2 — catch DEAD-WIRING against the REAL data file. Every adapter
+    # mechanism the cascade DISPATCHES must have >=1 live row, else the adapter is
+    # built-but-unreachable. The cascade-wiring tests monkeypatch SYNTHETIC rows, so
+    # they CANNOT catch this; this reads data/bh_gcc_sources.json directly.
+    rows = json.loads(sr._CATALOG_DATA_PATH.read_text(encoding="utf-8"))
+    by_mech = collections.Counter(
+        r.get("mechanism") for r in rows if r.get("status") == "live"
+    )
+    # The 5 LIVE-WIRED new mechanisms each route to >=1 live row.
+    for mech in ("woo_store_json", "salla_api", "occ_rest", "magento_graphql", "rest_json"):
+        assert by_mech.get(mech, 0) >= 1, f"{mech} adapter is DEAD-WIRED (0 live rows)"
+    # unbxd is intentionally NOT yet routed: extra.com (its only store) is a LITERAL,
+    # and wiring it as mechanism="unbxd" would activate the path in BOTH flag states
+    # (breaking the ships-dormant guarantee + introducing flag-OFF regressions). It
+    # is built + tested + F1-fixed + ready; extra.com already yields genuine BHD via
+    # discovery, so direct-wiring is a deferred $0 optimization. If this becomes >0,
+    # update the cascade test + the handoff (the deferred-wiring case changed).
+    assert by_mech.get("unbxd", 0) == 0, (
+        "unbxd now has live rows — wire-in is no longer the documented deferred case"
+    )
 
 
 # ---------------------------------------------------------------------------

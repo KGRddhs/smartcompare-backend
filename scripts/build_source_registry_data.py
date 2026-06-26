@@ -80,6 +80,10 @@ _CATEGORY_MAP: Dict[str, tuple] = {
 _BH_CURRENCY = {"BHD"}
 _GCC_COUNTRIES = {"KSA", "SA", "UAE", "AE", "KW", "QA", "OM"}
 _GCC_CURRENCIES = {"SAR", "AED", "KWD", "QAR", "OMR", "USD"}
+# Verification F6 — price AGGREGATORS (not single-retailer PDPs): a multi-currency
+# meta-search whose "price" is a cross-store min, not a genuine shelf price. Skip
+# them entirely (they would mis-rank + never yield a clean genuine BH price).
+_AGGREGATOR_DOMAINS = {"pricena.com", "kanbkam.com"}
 
 
 def _adapter_token(integration_adapter: str) -> str:
@@ -151,7 +155,15 @@ def _mechanism_and_flags(row: dict) -> Optional[dict]:
 def _tier_weight(currency: str, country: str) -> tuple:
     cur = (currency or "").upper().strip()
     ctry = (country or "").upper().strip()
-    if cur in _BH_CURRENCY or ctry == "BH" or ctry == "BAHRAIN":
+    # Verification F6 — BAHRAIN tier (3.0, authoritative) ONLY for a genuine BHD
+    # source: a BHD-currency store, OR a BH-country store whose currency is
+    # unknown/blank. A BH-country row carrying an EXPLICIT foreign currency
+    # (USD/AED/SAR/QAR — country merely defaulted to BH in R1) must NOT get the 3.0
+    # authoritativeness weight (it over-ranks a true BH source in cross-validation);
+    # it is a gcc/converted source.
+    if cur == "BHD":
+        return "bahrain", 3.0
+    if (ctry == "BH" or ctry == "BAHRAIN") and not cur:
         return "bahrain", 3.0
     if ctry in _GCC_COUNTRIES or cur in _GCC_CURRENCIES:
         return "gcc", 1.5
@@ -200,6 +212,9 @@ def consolidate() -> List[dict]:
         for row in rows:
             domain = _norm_domain(row.get("domain", ""))
             if not domain:
+                continue
+            # F6 — skip price aggregators (not retailer PDPs).
+            if domain in _AGGREGATOR_DOMAINS:
                 continue
             # Dedup against literals (suffix-aware) + across rounds (first wins).
             if any(domain == ld or domain.endswith("." + ld) for ld in literal_domains):

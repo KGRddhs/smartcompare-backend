@@ -5,9 +5,18 @@ The consolidation (scripts/build_source_registry_data.py) writes every catalog
 row "provider-test-candidate". A row only enters SOURCE_REGISTRY when its status
 is "live" (app/services/source_router._load_catalog_rows) — AND only when the
 ENABLE_BH_GCC_CATALOG_SOURCES flag is on. This gate is the ONLY thing that flips a
-row to "live": it probes each row's live `sample_url` (the URL the recon verified
-this session) and promotes it ONLY if the source still returns a usable price
-signal. Sources rot — re-run before any activation (verify-or-omit).
+row to "live": it probes each row's live `sample_url`.
+
+LIVENESS SIGNAL is mechanism-dependent (verification F4 — honest about what is
+checked): a SCRAPE-the-URL row (shopify/curl/sitemap) is promoted only when its
+sample_url returns a real price signal in the static response (the adapter scrapes
+exactly that URL). An API-BACKED row (woo/salla/occ/magento/algolia/rest_json)
+reads a SEPARATE endpoint, not the sample_url, so the gate confirms only that the
+storefront sample_url is REACHABLE (HTTP 200) — it does NOT price-confirm the API.
+For api-backed rows the runtime adapter's strict_title_match + is_price_showable
+(which returns None on any miss/wrong/empty) is the price-correctness guarantee, so
+a falsely-promoted parked storefront contributes nothing rather than a wrong price.
+Sources rot — re-run before any activation (verify-or-omit).
 
 Control-calibrated (the S2 safety rail): a known-live control must pass IN THIS
 ENVIRONMENT before any "dead" verdict is trusted, so a sandbox DNS/network block
@@ -93,11 +102,20 @@ async def _probe(url: str, mechanism: str = "") -> Tuple[str, str]:
     code = getattr(resp, "status_code", 0)
     if code in _INCONCLUSIVE:
         return "inconclusive", f"http={code} (bot-defense)"
+    _is_api = (mechanism or "") not in _SCRAPE_URL_MECHANISMS
     if code != 200:
+        # Verification F5 — for an API-backed row the sample_url is a deep PDP that
+        # can 404/410 when THAT one recon product is discontinued while the store +
+        # API are fine. Treat a non-200 on an api-backed PDP as INCONCLUSIVE (keep
+        # the prior status), never falsely-dead — a re-run with a live sample
+        # product re-confirms it. A scrape-mechanism non-200 IS dead (that URL is
+        # the price source).
+        if _is_api:
+            return "inconclusive", f"http={code} (api-backed PDP rotated; keep status)"
         return "dead", f"http={code}"
     # API-backed mechanism → a reachable storefront 200 is enough (the price comes
-    # from a separate, recon-verified endpoint).
-    if (mechanism or "") not in _SCRAPE_URL_MECHANISMS:
+    # from a separate, recon-verified endpoint; see the module docstring).
+    if _is_api:
         return "live", "http=200 (api-backed; storefront reachable)"
     if _has_price_signal(getattr(resp, "text", "") or ""):
         return "live", "http=200 +price"

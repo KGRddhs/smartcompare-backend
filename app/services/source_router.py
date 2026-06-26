@@ -319,9 +319,11 @@ _LITERAL_ROWS: List[Source] = [
 # for the rows the liveness gate has PROMOTED.
 #
 # ZERO-REGRESSION BY CONSTRUCTION: a row is admitted ONLY when its status is
-# "live" (a real PDP/API price was verified by scripts/verify_source_registry.py)
-# or "render-only" (loaded inert, is_render_only=True, for the future render
-# pass). The consolidation writes every row "provider-test-candidate" by default,
+# "live" (a real PDP/API price was verified by scripts/verify_bh_gcc_sources.py).
+# "render-only" and "provider-test-candidate" rows stay in the data file
+# (provenance + a future Firecrawl/Scrape.do render pass) but are NOT admitted
+# (see _ADMITTED_STATUSES below). The consolidation writes every row
+# "provider-test-candidate" by default,
 # so BEFORE the liveness gate runs, this loader admits ZERO catalog rows and
 # SOURCE_REGISTRY is byte-identical to _LITERAL_ROWS — the whole change is a
 # prod no-op until rows are explicitly promoted. The existing selectors therefore
@@ -348,7 +350,13 @@ _CATALOG_DATA_PATH = (
 # before the gate runs SOURCE_REGISTRY == _LITERAL_ROWS exactly (a prod no-op) and
 # nothing enters Serper discovery / scoring until it is explicitly verified live.
 _ADMITTED_STATUSES = frozenset({"live"})
-_VALID_TIERS = frozenset({"bahrain", "gcc", "global"})
+# Verification F7 (belt-and-suspenders) — a CATALOG row may only be bahrain/gcc.
+# tier="global" is reserved for the hand-curated literals (apple/samsung/amazon)
+# and must NEVER come from the catalog: _is_genuine_bh_candidate force-downgrades a
+# global-tier domain's genuine scrape to converted, so a global catalog row would
+# silently lose its genuine stamp. The consolidation provably never emits global;
+# this gate enforces it at load time regardless.
+_VALID_TIERS = frozenset({"bahrain", "gcc"})
 
 
 def _row_to_source(row: dict) -> Optional[Source]:

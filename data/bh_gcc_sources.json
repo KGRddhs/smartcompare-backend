@@ -2343,26 +2343,6 @@
   "status": "dead"
  },
  {
-  "domain": "beautytribe.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "haircare",
-   "makeup",
-   "skincare"
-  ],
-  "mechanism": "shopify",
-  "is_shopify": true,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "AED",
-  "country": "BH",
-  "genuine_method": "shopify_json",
-  "sample_url": "https://beautytribe.com/collections/kerastase",
-  "priority_rank": 61,
-  "status": "live"
- },
- {
   "domain": "shop.stc.com.bh",
   "tier": "bahrain",
   "weight": 3.0,
@@ -2378,42 +2358,6 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://shop.stc.com.bh/index.php?route=product/product&product_id=5313",
   "priority_rank": 61,
-  "status": "live"
- },
- {
-  "domain": "rasasistore.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "fragrances"
-  ],
-  "mechanism": "shopify",
-  "is_shopify": true,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "AED",
-  "country": "BH",
-  "genuine_method": "shopify_json",
-  "sample_url": "https://rasasistore.com/products.json",
-  "priority_rank": 62,
-  "status": "live"
- },
- {
-  "domain": "ardalzaafaranshop.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "fragrances"
-  ],
-  "mechanism": "shopify",
-  "is_shopify": true,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "AED",
-  "country": "BH",
-  "genuine_method": "shopify_json",
-  "sample_url": "https://ardalzaafaranshop.com/products.json",
-  "priority_rank": 63,
   "status": "live"
  },
  {
@@ -2453,157 +2397,6 @@
   "status": "render-only"
  },
  {
-  "domain": "swissarabian.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "fragrances"
-  ],
-  "mechanism": "shopify",
-  "is_shopify": true,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "USD",
-  "country": "BH",
-  "genuine_method": "shopify_json",
-  "sample_url": "https://swissarabian.com/products.json",
-  "priority_rank": 64,
-  "status": "live"
- },
- {
-  "domain": "olaplex.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "haircare"
-  ],
-  "mechanism": "shopify",
-  "is_shopify": true,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "USD",
-  "country": "BH",
-  "genuine_method": "shopify_json",
-  "sample_url": "https://olaplex.com/products.json?limit=2",
-  "priority_rank": 65,
-  "status": "live"
- },
- {
-  "domain": "parisgallery.ae",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "fragrances"
-  ],
-  "mechanism": "shopify",
-  "is_shopify": true,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "AED",
-  "country": "BH",
-  "genuine_method": "shopify_json",
-  "sample_url": "https://parisgallery.ae/collections/designer-perfumes",
-  "priority_rank": 66,
-  "status": "live"
- },
- {
-  "domain": "albayanperfumes.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "fragrances"
-  ],
-  "mechanism": "shopify",
-  "is_shopify": true,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "SAR",
-  "country": "BH",
-  "genuine_method": "shopify_json",
-  "sample_url": "https://albayanperfumes.com/en",
-  "priority_rank": 67,
-  "status": "live"
- },
- {
-  "domain": "kuludonline.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "supplements",
-   "skincare"
-  ],
-  "mechanism": "shopify",
-  "is_shopify": true,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "QAR",
-  "country": "BH",
-  "genuine_method": "shopify_json",
-  "sample_url": "https://kuludonline.com/collections/centrum",
-  "priority_rank": 68,
-  "status": "live"
- },
- {
-  "domain": "myaster.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "haircare",
-   "supplements",
-   "skincare"
-  ],
-  "mechanism": "",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "AED",
-  "country": "BH",
-  "genuine_method": "page_scrape_jsonld",
-  "sample_url": "https://www.myaster.com/en/online-pharmacy/brand/olaplex/31939",
-  "priority_rank": 69,
-  "status": "dead"
- },
- {
-  "domain": "niceonesa.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "makeup",
-   "skincare",
-   "fragrances",
-   "haircare"
-  ],
-  "mechanism": "",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "SAR",
-  "country": "BH",
-  "genuine_method": "page_scrape_jsonld",
-  "sample_url": "https://niceonesa.com/en/huda-beauty-fauxfilter-luminous-matte-liquid-foundation-n2241",
-  "priority_rank": 70,
-  "status": "provider-test-candidate"
- },
- {
-  "domain": "lifepharmacy.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "supplements",
-   "skincare"
-  ],
-  "mechanism": "",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "AED",
-  "country": "BH",
-  "genuine_method": "page_scrape_jsonld",
-  "sample_url": "https://www.lifepharmacy.com/product/solgar-vitamin-d3-1000iu-softgels-100-s",
-  "priority_rank": 71,
-  "status": "dead"
- },
- {
   "domain": "mumzworld.com",
   "tier": "bahrain",
   "weight": 3.0,
@@ -2620,110 +2413,6 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.mumzworld.com/bh-en/now-omega-3-molecularly-distilled-1000-mg-100-softgels",
   "priority_rank": 72,
-  "status": "live"
- },
- {
-  "domain": "caretobeauty.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "skincare",
-   "makeup",
-   "haircare",
-   "fragrances"
-  ],
-  "mechanism": "",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "USD",
-  "country": "BH",
-  "genuine_method": "page_scrape_jsonld",
-  "sample_url": "https://www.caretobeauty.com/bh/cerave/",
-  "priority_rank": 73,
-  "status": "live"
- },
- {
-  "domain": "bh.cosmostore.org",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "skincare",
-   "makeup",
-   "fragrances",
-   "haircare"
-  ],
-  "mechanism": "",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "USD",
-  "country": "BH",
-  "genuine_method": "page_scrape_jsonld",
-  "sample_url": "https://bh.cosmostore.org/catalog/product/the_ordinary_aha_30___bha_2_peeling_solution__282664/",
-  "priority_rank": 74,
-  "status": "live"
- },
- {
-  "domain": "ounass.ae",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "fragrances",
-   "makeup",
-   "skincare",
-   "fashion"
-  ],
-  "mechanism": "",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "AED",
-  "country": "BH",
-  "genuine_method": "page_scrape_jsonld",
-  "sample_url": "https://www.ounass.ae/shop-tom-ford-beauty-noir-eau-de-parfum-100ml-for-men-205723212_242.html",
-  "priority_rank": 75,
-  "status": "live"
- },
- {
-  "domain": "faces.ae",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "fragrances",
-   "makeup",
-   "skincare",
-   "haircare"
-  ],
-  "mechanism": "",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "AED",
-  "country": "BH",
-  "genuine_method": "page_scrape_jsonld",
-  "sample_url": "https://www.faces.ae/en/brands/tom-ford",
-  "priority_rank": 76,
-  "status": "live"
- },
- {
-  "domain": "pricena.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "electronics",
-   "fashion",
-   "other"
-  ],
-  "mechanism": "",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "AED/SAR/KWD/QAR",
-  "country": "BH",
-  "genuine_method": "page_scrape_jsonld",
-  "sample_url": "https://kw.pricena.com/en/product/apple-iphone-16-price-in-kuwait",
-  "priority_rank": 78,
   "status": "live"
  },
  {
@@ -2788,49 +2477,6 @@
   "genuine_method": "",
   "sample_url": "https://www.ubuy.com.bh/en/product/1C6ASW6YK-eternal-love-for-women-100-ml-eau-de-parfum-spray",
   "priority_rank": 83,
-  "status": "render-only"
- },
- {
-  "domain": "amazon.sa",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "electronics",
-   "makeup",
-   "skincare",
-   "grocery",
-   "fashion"
-  ],
-  "mechanism": "render",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": true,
-  "currency": "SAR",
-  "country": "BH",
-  "genuine_method": "",
-  "sample_url": "https://www.amazon.sa/dp/B08HHFL27C",
-  "priority_rank": 84,
-  "status": "render-only"
- },
- {
-  "domain": "carrefouruae.com",
-  "tier": "bahrain",
-  "weight": 3.0,
-  "categories": [
-   "grocery",
-   "electronics",
-   "makeup",
-   "other"
-  ],
-  "mechanism": "render",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": true,
-  "currency": "AED",
-  "country": "BH",
-  "genuine_method": "",
-  "sample_url": "https://www.carrefouruae.com/mafuae/en/all-categories",
-  "priority_rank": 85,
   "status": "render-only"
  },
  {
@@ -3727,6 +3373,26 @@
   "status": "live"
  },
  {
+  "domain": "beautytribe.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "haircare",
+   "makeup",
+   "skincare"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "AED",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://beautytribe.com/collections/kerastase",
+  "priority_rank": 61,
+  "status": "live"
+ },
+ {
   "domain": "futureit.om",
   "tier": "gcc",
   "weight": 1.5,
@@ -3764,6 +3430,42 @@
   "status": "live"
  },
  {
+  "domain": "rasasistore.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "fragrances"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "AED",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://rasasistore.com/products.json",
+  "priority_rank": 62,
+  "status": "live"
+ },
+ {
+  "domain": "ardalzaafaranshop.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "fragrances"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "AED",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://ardalzaafaranshop.com/products.json",
+  "priority_rank": 63,
+  "status": "live"
+ },
+ {
   "domain": "gamingpcoman.shop",
   "tier": "gcc",
   "weight": 1.5,
@@ -3779,6 +3481,24 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://gamingpcoman.shop/wp-json/wc/store/products?per_page=1",
   "priority_rank": 63,
+  "status": "live"
+ },
+ {
+  "domain": "swissarabian.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "fragrances"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "USD",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://swissarabian.com/products.json",
+  "priority_rank": 64,
   "status": "live"
  },
  {
@@ -3818,6 +3538,24 @@
   "country": "KSA",
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.gazzaz.com.sa/products.json",
+  "priority_rank": 65,
+  "status": "live"
+ },
+ {
+  "domain": "olaplex.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "haircare"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "USD",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://olaplex.com/products.json?limit=2",
   "priority_rank": 65,
   "status": "live"
  },
@@ -3877,6 +3615,42 @@
   "status": "live"
  },
  {
+  "domain": "parisgallery.ae",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "fragrances"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "AED",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://parisgallery.ae/collections/designer-perfumes",
+  "priority_rank": 66,
+  "status": "live"
+ },
+ {
+  "domain": "albayanperfumes.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "fragrances"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "SAR",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://albayanperfumes.com/en",
+  "priority_rank": 67,
+  "status": "live"
+ },
+ {
   "domain": "mls.om",
   "tier": "gcc",
   "weight": 1.5,
@@ -3910,6 +3684,25 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.ajmal.com/products.json",
   "priority_rank": 67,
+  "status": "live"
+ },
+ {
+  "domain": "kuludonline.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "supplements",
+   "skincare"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "QAR",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://kuludonline.com/collections/centrum",
+  "priority_rank": 68,
   "status": "live"
  },
  {
@@ -3948,6 +3741,26 @@
   "sample_url": "https://sa.ghawali.com/products.json",
   "priority_rank": 68,
   "status": "live"
+ },
+ {
+  "domain": "myaster.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "haircare",
+   "supplements",
+   "skincare"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "AED",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://www.myaster.com/en/online-pharmacy/brand/olaplex/31939",
+  "priority_rank": 69,
+  "status": "dead"
  },
  {
   "domain": "oulfah.com",
@@ -4006,6 +3819,27 @@
   "status": "live"
  },
  {
+  "domain": "niceonesa.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "makeup",
+   "skincare",
+   "fragrances",
+   "haircare"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "SAR",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://niceonesa.com/en/huda-beauty-fauxfilter-luminous-matte-liquid-foundation-n2241",
+  "priority_rank": 70,
+  "status": "provider-test-candidate"
+ },
+ {
   "domain": "saudi.naseem.com",
   "tier": "gcc",
   "weight": 1.5,
@@ -4041,6 +3875,25 @@
   "sample_url": "https://glamorous-beauty.com/products/dr-melaxin-cemenrete-calcium-volume-eye-patch",
   "priority_rank": 71,
   "status": "live"
+ },
+ {
+  "domain": "lifepharmacy.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "supplements",
+   "skincare"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "AED",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://www.lifepharmacy.com/product/solgar-vitamin-d3-1000iu-softgels-100-s",
+  "priority_rank": 71,
+  "status": "dead"
  },
  {
   "domain": "watsons.sa",
@@ -4121,6 +3974,27 @@
   "status": "live"
  },
  {
+  "domain": "caretobeauty.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "skincare",
+   "makeup",
+   "haircare",
+   "fragrances"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "USD",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://www.caretobeauty.com/bh/cerave/",
+  "priority_rank": 73,
+  "status": "live"
+ },
+ {
   "domain": "thebubblewrap.com",
   "tier": "gcc",
   "weight": 1.5,
@@ -4136,6 +4010,27 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://thebubblewrap.com/products/white-uv-led-sterilizer",
   "priority_rank": 73,
+  "status": "live"
+ },
+ {
+  "domain": "bh.cosmostore.org",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "skincare",
+   "makeup",
+   "fragrances",
+   "haircare"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "USD",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://bh.cosmostore.org/catalog/product/the_ordinary_aha_30___bha_2_peeling_solution__282664/",
+  "priority_rank": 74,
   "status": "live"
  },
  {
@@ -4213,6 +4108,27 @@
   "status": "live"
  },
  {
+  "domain": "ounass.ae",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "fragrances",
+   "makeup",
+   "skincare",
+   "fashion"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "AED",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://www.ounass.ae/shop-tom-ford-beauty-noir-eau-de-parfum-100ml-for-men-205723212_242.html",
+  "priority_rank": 75,
+  "status": "live"
+ },
+ {
   "domain": "bawwaba.om",
   "tier": "gcc",
   "weight": 1.5,
@@ -4230,6 +4146,27 @@
   "country": "OM",
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bawwaba.om/honor-600-8gb-256gb-5g-black.html",
+  "priority_rank": 76,
+  "status": "live"
+ },
+ {
+  "domain": "faces.ae",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "fragrances",
+   "makeup",
+   "skincare",
+   "haircare"
+  ],
+  "mechanism": "",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": false,
+  "currency": "AED",
+  "country": "BH",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://www.faces.ae/en/brands/tom-ford",
   "priority_rank": 76,
   "status": "live"
  },
@@ -4535,6 +4472,28 @@
   "status": "live"
  },
  {
+  "domain": "amazon.sa",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "electronics",
+   "makeup",
+   "skincare",
+   "grocery",
+   "fashion"
+  ],
+  "mechanism": "render",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": true,
+  "currency": "SAR",
+  "country": "BH",
+  "genuine_method": "",
+  "sample_url": "https://www.amazon.sa/dp/B08HHFL27C",
+  "priority_rank": 84,
+  "status": "render-only"
+ },
+ {
   "domain": "avicenonline.com",
   "tier": "gcc",
   "weight": 1.5,
@@ -4554,6 +4513,27 @@
   "sample_url": "https://www.avicenonline.com/products/brufen-600-mg-ibuprofen-granules-20-sachets",
   "priority_rank": 85,
   "status": "live"
+ },
+ {
+  "domain": "carrefouruae.com",
+  "tier": "gcc",
+  "weight": 1.5,
+  "categories": [
+   "grocery",
+   "electronics",
+   "makeup",
+   "other"
+  ],
+  "mechanism": "render",
+  "is_shopify": false,
+  "is_algolia": false,
+  "is_render_only": true,
+  "currency": "AED",
+  "country": "BH",
+  "genuine_method": "",
+  "sample_url": "https://www.carrefouruae.com/mafuae/en/all-categories",
+  "priority_rank": 85,
+  "status": "render-only"
  },
  {
   "domain": "capitalstoreoman.com",
@@ -6025,24 +6005,6 @@
   "sample_url": "https://www.firstcry.sa/en/lego/5/0/354",
   "priority_rank": 165,
   "status": "live"
- },
- {
-  "domain": "kanbkam.com",
-  "tier": "gcc",
-  "weight": 1.5,
-  "categories": [
-   "electronics"
-  ],
-  "mechanism": "",
-  "is_shopify": false,
-  "is_algolia": false,
-  "is_render_only": false,
-  "currency": "SAR",
-  "country": "KSA",
-  "genuine_method": "page_scrape_jsonld",
-  "sample_url": "https://www.kanbkam.com/sa/en/mobile-phone/l",
-  "priority_rank": 166,
-  "status": "dead"
  },
  {
   "domain": "laverne.com",

@@ -53,6 +53,24 @@ async def test_extra_bh_genuine_local_bhd():
 
 
 @pytest.mark.asyncio
+async def test_pro_query_rejects_pro_max_superset():
+    # Verification F1 (HIGH no-fab): a base-model "Pro" query MUST NOT ship the
+    # "Pro Max" price (559.99) — variant_mismatch rejects the superset variant. The
+    # correct "Pro" listing (489.99) is present in the same fixture and wins.
+    # (Before the fix both scored 1.0 word-overlap, strict_title_match passed on the
+    # superset, and the first-seen Pro Max shipped as a genuine local_bhd price.)
+    import app.services.unbxd_service as un
+    payload = _load("unbxd_extra_bh")
+    with patch("curl_cffi.requests.get", _mock_get(payload)):
+        out = await un.fetch_unbxd_price(
+            "extra.com", "Apple iPhone 17 Pro 256GB", "electronics")
+    assert out is not None, "the genuine Pro listing (489.99) should still match"
+    assert out["amount"] == pytest.approx(489.99), "must be Pro price, not Pro Max 559.99"
+    assert "max" not in (out.get("title") or "").lower()
+    assert out["source_method"] == "local_bhd"
+
+
+@pytest.mark.asyncio
 async def test_string_instock_false_parsed():
     import app.services.unbxd_service as un
     payload = _load("unbxd_extra_bh")

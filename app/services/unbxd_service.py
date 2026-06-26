@@ -25,6 +25,7 @@ from urllib.parse import quote_plus
 from app.services.price_service import (
     strict_title_match,
     numbers_match,
+    variant_mismatch,
     normalize_words,
     is_counterfeit_listing,
     is_accessory,
@@ -109,6 +110,15 @@ def _match_unbxd_product(
         if not numbers_match(product_name, surface):
             continue
         if not strict_title_match(product_name, surface):
+            continue
+        # Verification F1 (HIGH no-fab fix): reject a different model-line variant.
+        # Without this, a base-model query ("iPhone 17 Pro 256GB") matched the
+        # superset "iPhone 17 Pro MAX 256GB" (strict_title_match passes on a
+        # superset, numbers_match passes — both 256GB) and, on the 1.0-overlap tie,
+        # the first-seen Pro MAX (559.99) shipped as a GENUINE local_bhd price for a
+        # Pro query (+14% wrong). Every other adapter (woo/salla/occ/magento/shopify)
+        # applies this gate; unbxd omitted it.
+        if variant_mismatch(product_name, surface):
             continue
         t_words = normalize_words(surface)
         score = (len(p_words & t_words) / len(p_words)) if p_words else 0.0
