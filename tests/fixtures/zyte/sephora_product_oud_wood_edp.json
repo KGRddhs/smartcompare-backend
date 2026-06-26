@@ -1,0 +1,86 @@
+{
+ "url": "https://www.sephora.me/bh-en/p/oud-wood-eau-de-parfum/P1641048?productVariantId=352081",
+ "statusCode": 200,
+ "product": {
+  "name": "Oud Wood - Eau de Parfum",
+  "price": "77000.0",
+  "currency": "BHD",
+  "currencyRaw": "BHD",
+  "availability": "OutOfStock",
+  "sku": "P1641048",
+  "brand": {
+   "name": "Tom Ford"
+  },
+  "breadcrumbs": [
+   {
+    "name": "Home",
+    "url": "https://www.sephora.me/bh-en/"
+   },
+   {
+    "name": "Fragrance",
+    "url": "https://www.sephora.me/bh-en/shop/fragrance/C301"
+   },
+   {
+    "name": "Unisex Fragrances",
+    "url": "https://www.sephora.me/bh-en/shop/fragrance/unisex-fragrances/C322301"
+   }
+  ],
+  "mainImage": {
+   "url": "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/on/demandware.static/-/Sites-masterCatalog_Sephora/default/dw0b22df4f/images/hi-res/SKU/SKU_6403/352081_swatch.jpeg?sw=1320&sm=fit&q=85&fmt=webp"
+  },
+  "images": [
+   {
+    "url": "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/on/demandware.static/-/Sites-masterCatalog_Sephora/default/dw4b290edd/images/hi-res/alternates/PID_alternate2/PID_alternate2_1617/P1641048_2.jpg?sw=1320&sm=fit&q=85&fmt=webp"
+   },
+   {
+    "url": "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/on/demandware.static/-/Sites-masterCatalog_Sephora/default/dwfa14c911/images/hi-res/alternates/PID_alternate5/PID_alternate5_896/P1641048_5.jpg?sw=1320&sm=fit&q=85&fmt=webp"
+   },
+   {
+    "url": "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/on/demandware.static/-/Sites-masterCatalog_Sephora/default/dw56f09b35/images/hi-res/PID_principal/PID_principal_4997/P1641048_principal.jpeg?sw=1320&sm=fit&q=85&fmt=webp"
+   },
+   {
+    "url": "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/on/demandware.static/-/Sites-masterCatalog_Sephora/default/dwa20dd2c6/images/hi-res/alternates/PID_alternate1/PID_alternate1_1/P1641048_1.jpg?sw=1320&sm=fit&q=85&fmt=webp"
+   },
+   {
+    "url": "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/on/demandware.static/-/Sites-masterCatalog_Sephora/default/dw0b22df4f/images/hi-res/SKU/SKU_6403/352081_swatch.jpeg?sw=1320&sm=fit&q=85&fmt=webp"
+   }
+  ],
+  "description": "Oud Wood Eau de Parfum is the distinctive artisanal fragrance that features classic woods and the iconic Tom Ford oud.\n\nRare. Exotic. Distinctive.\nFragrance Family: Classic Woods.\n\nOne of the most rare, precious, and expensive ingredients in a perfumer’s arsenal, oud wood is often burned in incense- filled temples. Exotic rose wood and cardamom give way to a smoky blend of rare oud wood, sandalwood and vetiver. Tonka bean and amber add warmth and sensuality.\n\nTHE INSPIRATION:\nThis fragrance is inspired by incense-filled temples that engage the senses, the mind, body and spirit.\n\nTHE BOTTLE:\nThe sleek architectural look of a chess piece.\n\n“Oud Wood envelops you in rare oud, exotic spices and cardamom, then exposes its rich and dark blend of sensuality.” – TOM FORD",
+  "descriptionHtml": "<article>\n\n<p>Oud Wood Eau de Parfum is the distinctive artisanal fragrance that features classic woods and the iconic Tom Ford oud.</p>\n\n<p>Rare. Exotic. Distinctive.<br>\nFragrance Family: Classic Woods.</p>\n\n<p>One of the most rare, precious, and expensive ingredients in a perfumer’s arsenal, oud wood is often burned in incense- filled temples. Exotic rose wood and cardamom give way to a smoky blend of rare oud wood, sandalwood and vetiver. Tonka bean and amber add warmth and sensuality.</p>\n\n<p>THE INSPIRATION:<br>\nThis fragrance is inspired by incense-filled temples that engage the senses, the mind, body and spirit.</p>\n\n<p>THE BOTTLE:<br>\nThe sleek architectural look of a chess piece.</p>\n\n<p>“Oud Wood envelops you in rare oud, exotic spices and cardamom, then exposes its rich and dark blend of sensuality.” – TOM FORD</p>\n\n</article>",
+  "aggregateRating": {
+   "ratingValue": 4.5,
+   "bestRating": 5.0,
+   "reviewCount": 1747
+  },
+  "size": "30ml",
+  "additionalProperties": [
+   {
+    "name": "fragrance family",
+    "value": "Classic Woods."
+   }
+  ],
+  "url": "https://www.sephora.me/bh-en/p/oud-wood-eau-de-parfum/P1641048?productVariantId=352081",
+  "canonicalUrl": "https://www.sephora.me/bh-en/p/oud-wood-eau-de-parfum/P1641048",
+  "metadata": {
+   "probability": 0.9988014698028564,
+   "dateDownloaded": "2026-06-26T07:10:48Z"
+  },
+  "variants": [
+   {
+    "size": "30ml"
+   },
+   {
+    "size": "Eau de Parfum 50ml"
+   },
+   {
+    "size": "BHD 120.500"
+   },
+   {
+    "size": "Eau de Parfum 100ml"
+   },
+   {
+    "size": "BHD 164.000"
+   }
+  ]
+ }
+}

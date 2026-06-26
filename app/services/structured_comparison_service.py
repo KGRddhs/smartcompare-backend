@@ -4145,6 +4145,36 @@ class StructuredComparisonService:
         else:
             full_name = f"{brand} {name} {variant or ''}".strip()
 
+        # Zyte render-tier (2026-06-26) — OFF-CLOCK luxury-render path. Gated by
+        # ENABLE_ZYTE_RENDER (default OFF → NEVER fires on the live request path, so
+        # the slow Zyte browser render never touches the 15s price clock). The
+        # off-clock seed (scripts/seed_zyte_luxury.py) runs this with the flag ON +
+        # raised timeouts to render an Akamai-walled luxury store (sephora.me) for a
+        # genuine BHD price and WRITE it to the SHARED cache; live requests then
+        # serve that cached genuine price (cache-first at the top of this method).
+        # FRAGRANCE/BEAUTY-scoped (the Zyte fils-fix assumes < 1000 BHD). On a hit:
+        # cache + persist + return genuine. Reuses this method's parse + cache_key
+        # so the seeded key is byte-identical to what a live compare reads.
+        if (
+            os.getenv("ENABLE_ZYTE_RENDER", "").strip().lower() in ("true", "1", "yes", "on")
+            and category in ("fragrances", "makeup", "skincare", "haircare")
+        ):
+            try:
+                from app.services.zyte_service import fetch_zyte_price, ZYTE_STORES
+                for _zdomain in ZYTE_STORES:
+                    _zp = await fetch_zyte_price(_zdomain, full_name, currency, category)
+                    if _zp and _zp.get("amount", 0) > 0:
+                        set_cached(cache_key, _zp, price_cache_ttl(_zp))
+                        self._save_price_to_db(cache_key, brand, name, variant, region, _zp)
+                        _zp["_cached"] = False
+                        logger.info(
+                            "[PRICE] Zyte render-tier genuine for %s: %.3f BHD via %s",
+                            full_name, _zp["amount"], _zdomain,
+                        )
+                        return _zp
+            except Exception as _e:  # noqa: BLE001 — render-tier is best-effort, never fatal
+                logger.info("[PRICE] Zyte render-tier failed for %s: %s", full_name, _e)
+
         # CDE-4 (WS-3) — closure-local flag set True whenever an accuracy guard
         # (is_implausible_high_value_price / is_implausible_low_fragrance_price)
         # DROPS a real candidate this request. The Tier-3 estimate that follows is

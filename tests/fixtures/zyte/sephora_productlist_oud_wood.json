@@ -1,0 +1,65 @@
+{
+ "url": "https://www.sephora.me/bh-en/search?q=tom-ford-oud-wood",
+ "statusCode": 200,
+ "productList": {
+  "products": [
+   {
+    "url": "https://www.sephora.me/bh-en/p/oud-wood-eau-de-parfum/P1641048?productVariantId=352081",
+    "name": "Oud Wood - Eau de Parfum",
+    "price": "77000.0",
+    "currencyRaw": "BHD",
+    "currency": "BHD",
+    "mainImage": {
+     "url": "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/on/demandware.static/-/Sites-masterCatalog_Sephora/default/dw0b22df4f/images/hi-res/SKU/SKU_6403/352081_swatch.jpeg?q=85&fmt=webp&sw=1320"
+    },
+    "metadata": {
+     "probability": 0.9673489206030439
+    }
+   },
+   {
+    "url": "https://www.sephora.me/bh-en/p/oud-wood-all-over-body-spray/P2872015?productVariantId=319726",
+    "name": "Oud Wood - All Over Body Spray",
+    "price": "41000.0",
+    "currencyRaw": "BHD",
+    "currency": "BHD",
+    "mainImage": {
+     "url": "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/on/demandware.static/-/Sites-masterCatalog_Sephora/default/dw56760244/images/hi-res/SKU/SKU_4/319726_swatch.jpg?q=85&fmt=webp&sw=1320"
+    },
+    "metadata": {
+     "probability": 0.9366161793575998
+    }
+   },
+   {
+    "url": "https://www.sephora.me/bh-en/p/oud-wood-parfum/P1000203074?productVariantId=723442",
+    "name": "Oud Wood Parfum",
+    "price": "158000.0",
+    "currencyRaw": "BHD",
+    "currency": "BHD",
+    "mainImage": {
+     "url": "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/on/demandware.static/-/Sites-masterCatalog_Sephora/default/dw38d9376b/images/hi-res/SKU/SKU_5168/723442_swatch.jpg?q=85&fmt=webp&sw=1320"
+    },
+    "metadata": {
+     "probability": 0.9609816596851033
+    }
+   },
+   {
+    "url": "https://www.sephora.me/bh-en/p/oud-wood-eau-de-parfum-set/P1000209730?productVariantId=783052",
+    "name": "Oud Wood Eau de Parfum Set",
+    "price": "119000.0",
+    "currencyRaw": "BHD",
+    "currency": "BHD",
+    "mainImage": {
+     "url": "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/on/demandware.static/-/Sites-masterCatalog_Sephora/default/dw1e09dfbf/images/hi-res/SKU/SKU_6896/783052_swatch.jpeg?q=85&fmt=webp&sw=1320"
+    },
+    "metadata": {
+     "probability": 0.9638038510868512
+    }
+   }
+  ],
+  "url": "https://www.sephora.me/bh-en/search?q=tom-ford-oud-wood",
+  "metadata": {
+   "dateDownloaded": "2026-06-26T07:09:37Z"
+  },
+  "categoryName": "Results for: \"tom-ford-oud-wood\""
+ }
+}

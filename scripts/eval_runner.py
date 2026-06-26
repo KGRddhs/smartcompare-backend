@@ -417,6 +417,9 @@ GENUINE_BH_SOURCE_METHODS = frozenset({
     "occ_rest_bhd",
     "magento_graphql_bhd",
     "rest_json_bhd",
+    # Zyte render-tier (2026-06-26) — genuine native-BHD from an Akamai-walled
+    # luxury store via Zyte render (off-clock seed; cascade serves from cache).
+    "zyte_render_bhd",
 })
 
 # The one non-genuine, non-estimate bucket: a USD price converted to BHD. Real

@@ -5021,6 +5021,10 @@ _GENUINE_BH_SOURCE_METHODS = frozenset({
     # the two sets equal).
     "woo_store_api", "salla_api", "occ_rest_bhd",
     "magento_graphql_bhd", "rest_json_bhd",
+    # Zyte render-tier (2026-06-26) — a genuine NATIVE-BHD price rendered from an
+    # Akamai-walled luxury store (sephora.me) via Zyte + geolocation=BH. OFF-CLOCK
+    # only (seed/warmer); the live cascade serves it from cache. Genuine → 7d TTL.
+    "zyte_render_bhd",
 })
 
 
