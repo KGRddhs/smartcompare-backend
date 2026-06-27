@@ -863,10 +863,12 @@ from app.services.source_router import (
     is_non_pdp_listing_url,
     rewrite_to_bh_locale,
     is_render_only_domain,
+    get_sources_for_category,
     get_shopify_sources_for_category,
     get_algolia_sources_for_category,
     get_sitemap_sources_for_category,
     get_jsonapi_sources_for_category,
+    get_curl_pagescrape_sources_for_category,
     # BH/GCC source-build (2026-06-25) — the 6 new $0 direct-fetch selectors.
     get_woo_sources_for_category,
     get_salla_sources_for_category,
@@ -892,6 +894,46 @@ from app.services.sitemap_discovery_service import (
     sitemap_domains_now_built,
     sitemap_unbuilt_domains,
 )
+
+
+# Direct-adapter mechanisms that SHORT-CIRCUIT the price cascade BEFORE the Serper
+# `site:` discovery wave. A bahrain-tier source with one of these mechanisms (or the
+# is_shopify/is_algolia flags) is reached by a $0 direct fetch, not by discovery — so
+# its existence does NOT mean discovery will be wasted, but it also doesn't NEED the
+# discovery prefetch. A bahrain-tier price source with NONE of these is a plain
+# page-scrape source (e.g. gcc.luluhypermarket.com, talabat.com) reachable ONLY via
+# the Serper `site:` discovery cascade.
+_DIRECT_ADAPTER_MECHANISMS = frozenset({
+    "shopify", "algolia", "sitemap", "curl", "json_api",
+    "woo_store_json", "salla_api", "occ_rest", "magento_graphql",
+    "unbxd", "rest_json",
+})
+
+
+def _bahrain_discovery_only_sources(category: str) -> list:
+    """Genuine-BH starvation fix (2026-06-27) — bahrain-tier PRICE sources for
+    `category` that are reachable ONLY via the Serper `site:` discovery cascade
+    (plain page-scrape, e.g. gcc.luluhypermarket.com / talabat.com), i.e. NOT a
+    Shopify/Algolia/sitemap/jsonapi/woo/salla/occ/magento/unbxd/rest_json direct
+    adapter. These never short-circuit before discovery, so when one exists the
+    discovery prefetch is genuinely USED (never wasted) and must fire concurrently
+    with serper_shopping rather than be suppressed by an unrelated direct adapter's
+    presence. Returns a (possibly empty) list — never raises."""
+    try:
+        sources = get_sources_for_category(category, usage="price")
+    except Exception:  # noqa: BLE001 — registry read must never break the price race
+        return []
+    out = []
+    for s in sources:
+        if getattr(s, "tier", "") != "bahrain":
+            continue
+        if getattr(s, "is_shopify", False) or getattr(s, "is_algolia", False):
+            continue
+        if (getattr(s, "mechanism", "") or "") in _DIRECT_ADAPTER_MECHANISMS:
+            continue
+        out.append(s)
+    return out
+
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
@@ -4162,7 +4204,7 @@ class StructuredComparisonService:
             try:
                 from app.services.zyte_service import fetch_zyte_price, ZYTE_STORES
                 for _zdomain in ZYTE_STORES:
-                    _zp = await fetch_zyte_price(_zdomain, full_name, currency, category)
+                    _zp = await fetch_zyte_price(_zdomain, full_name, currency, category, brand=brand)
                     if _zp and _zp.get("amount", 0) > 0:
                         set_cached(cache_key, _zp, price_cache_ttl(_zp))
                         self._save_price_to_db(cache_key, brand, name, variant, region, _zp)
@@ -4231,18 +4273,49 @@ class StructuredComparisonService:
         # fire, the tasks are CANCELLED below (no orphans — L5.3). This changes
         # WHEN discovery is fetched, NEVER the selection (the same results feed
         # the same _harvest/fan_out/_select_best).
-        # S3 #34 BUDGET BOUND (team-lead gate, option b) — SKIP the speculative
-        # prefetch when this category has Shopify-json OR Algolia direct sources.
-        # Those sources SHORT-CIRCUIT before discovery (fragrances=alhajis Shopify,
-        # fashion=6thStreet Algolia), so the 4 prefetched Serper calls would be
-        # ALREADY SPENT (they finish in ~1-2s, inside shopping's 5.9s) before the
-        # cancel fires = wasted (~+30% Serper on those ~8/20 smoke20 queries).
-        # Electronics has NO Shopify/Algolia sources → prefetch still fires (the
-        # latency-critical category that needs it; iPhone verified <15s after).
+        # S3 #34 BUDGET BOUND (team-lead gate, option b) — the speculative discovery
+        # prefetch costs ~4 Serper calls, so it must only fire when it's actually
+        # USED (escalation reaches the discovery cascade), not wasted by an earlier
+        # short-circuit. The ORIGINAL gate skipped it whenever the category had ANY
+        # Shopify/Algolia direct source, on the assumption those always short-circuit
+        # before discovery. That assumption broke after the BH/GCC catalog build
+        # (2026-06-25): grocery's Shopify sources are NICHE health/organic stores
+        # (ibsouq/livewell/smartnutr/hmmba) that almost NEVER carry a mainstream item
+        # like Nutella, and electronics GAINED Shopify rows (shopalmoayyed/sonyworld)
+        # too — so a non-niche product never short-circuits on them, yet their mere
+        # existence DISABLED the genuine-BH Lulu discovery prefetch, forcing it to run
+        # SERIALLY after the ~6-12s shopping wait and time out under the 15s cap.
+        # FIX (genuine-BH starvation, 2026-06-27): fire the discovery prefetch when
+        # the category has bahrain-tier price sources reachable ONLY via the Serper
+        # `site:` discovery cascade — plain page-scrape sources (mechanism "", e.g.
+        # gcc.luluhypermarket.com / talabat) that are NOT a direct adapter, AS LONG AS
+        # the category has NO Algolia source. The distinction matters:
+        #   * Algolia (6thStreet/goldenscent) short-circuits on ANY genuine hit, so a
+        #     category with an Algolia source CAN waste the ~4 prefetch Serper calls
+        #     when Algolia carries the product — keep suppressing it there (preserves
+        #     the pinned budget invariant; the dominant short-circuit case).
+        #   * Shopify BH rows are almost all RESELLERS (asgharali, shopalmoayyed) +
+        #     niche stores (ibsouq/livewell) — a reseller hit is PARKED, not short-
+        #     circuited, so discovery runs anyway; and grocery's niche Shopify stores
+        #     almost never carry a mainstream item (Nutella), so they never short-
+        #     circuit either. Their mere existence must NOT disable the genuine-BH
+        #     Lulu discovery prefetch (the bug: grocery + electronics both have such
+        #     Shopify rows now, starving the Lulu curl under the 15s cap).
+        # So: fire when (no Shopify AND no Algolia) [original] OR (no Algolia AND has
+        # a discovery-only BH source). The discovery tasks are cancelled on any
+        # genuine short-circuit, so this only MOVES the calls earlier (concurrent
+        # with shopping) for the Shopify-reseller / discovery-only categories.
+        _has_discovery_only_bh_sources = bool(
+            _bahrain_discovery_only_sources(category)
+        )
+        _has_algolia = bool(get_algolia_sources_for_category(category))
         _pf_eligible = (
             not is_supplement and ENABLE_PAGE_SCRAPE
-            and not get_shopify_sources_for_category(category)
-            and not get_algolia_sources_for_category(category)
+            and not _has_algolia
+            and (
+                not get_shopify_sources_for_category(category)
+                or _has_discovery_only_bh_sources
+            )
         )
         _prefetched_discovery: List[Tuple[str, Any]] = []
         if _pf_eligible:
@@ -4301,13 +4374,18 @@ class StructuredComparisonService:
         # genuine-BHD storefront adapters. UNLIKE the Shopify/Algolia prefetch
         # above, these are DELIBERATELY NOT `not is_supplement`-gated: bolo and
         # nasser both COVER supplements (bolo=supplements/makeup/skincare,
-        # nasser=supplements/skincare/makeup/haircare/fragrances), so a supplement
-        # compare MUST be able to reach them. The non-supplement escalation block
-        # consumes them via `_prefetched_direct["sitemap"/"jsonapi"]`; the
-        # supplement branch consumes the SAME futures in its explicit Stage-1.5
-        # (between iHerb and pharmacy). Both are $0 (own sitemap/API — no Serper,
-        # no render), so speculating them costs nothing on the rare miss query
-        # (the cancel below just drops a couple of free HTTP GETs).
+        # nasser=supplements/skincare/makeup/haircare/fragrances), so the prefetch
+        # FIRES on a supplement compare too (zero waste — cancelled on a miss).
+        # CORRECTION (2026-06-27): the NON-supplement escalation block consumes
+        # them via `_consume_adapter_prefetch()` (`_prefetched_direct["sitemap"/
+        # "jsonapi"/...]`). The SUPPLEMENT branch does NOT call
+        # `_consume_adapter_prefetch` — it has its own Stage-1/2/3 (iHerb →
+        # pharmacy → page-scrape known retailers) and reaches bolo/nasser + the
+        # catalog curl/JSON-LD supplement sources via Stage-3 page-scrape +
+        # CDE-2 retailer attribution over the bahrain `known_supplement_retailers`
+        # set (registry-derived; see Stage-3). A pre-run cancel just drops the
+        # speculative $0 GETs. (The earlier note claiming a supplement Stage-1.5
+        # consume of these futures was stale — no such consume exists.)
         _sitemap_sources_pf = get_sitemap_sources_for_category(category)
         _jsonapi_sources_pf = get_jsonapi_sources_for_category(category)
         # BH/GCC source-build (2026-06-25) — the 6 new $0 direct-fetch adapters.
@@ -5349,6 +5427,29 @@ class StructuredComparisonService:
 
             # --- Stage 3: page-scrape known supplement/pharmacy PDPs (bounded ~3s) ---
             known_supplement_retailers = {"iherb.com", "bn.boots.com", "bolo.bh", "amazon.com", "noon.com"}
+            # Genuine-BH orphan-row fix (2026-06-27) — the supplement branch never
+            # runs the Serper `site:` discovery cascade, so the bahrain-tier curl/
+            # JSON-LD catalog supplement sources (sporter.com / drnutrition.com /
+            # matgarbahrain.com / healbahrain.com / ymhonlinepharmacy.com.bh /
+            # lilyorganicsbh.com / mumzworld.com — all status=live, currency=BHD,
+            # genuine page_scrape_jsonld, curl-200 verified live: sporter 56.39 /
+            # drnutrition 12.44 BHD) had NO consumer here. Admit them so (a) Stage-3
+            # page-scrape curls their PDP when bh_organic surfaces it (genuine BHD),
+            # and (b) the CDE-2 deterministic retailer attribution
+            # (_match_bh_organic_retailer) labels a Tier-2 GPT-organic price as a real
+            # local_bhd retailer instead of pending. Registry-derived (no hardcoded
+            # drift) + gated by ENABLE_BH_GCC_CATALOG_SOURCES (the selector returns []
+            # with the flag OFF → byte-identical to today). $0: no new Serper, no
+            # render — only curls/attributes links Serper already returned. No-fab
+            # preserved: attribution still requires a deterministic brand+name token
+            # match, and Stage-3 only scrapes a real curled price.
+            try:
+                for _cs in get_curl_pagescrape_sources_for_category("supplements"):
+                    _csd = (_cs.domain or "").replace("www.", "").strip().lower()
+                    if _csd:
+                        known_supplement_retailers.add(_csd)
+            except Exception:  # noqa: BLE001 — registry read must never break pricing
+                pass
             if ENABLE_PAGE_SCRAPE:
                 async def _page_scrape_supplement_stage():
                     for item in (iherb_organic + bh_organic)[:5]:

@@ -92,11 +92,20 @@ async def main() -> Dict[str, int]:
     if not os.getenv("ZYTE_API_KEY"):
         logger.warning("[seed_zyte] ZYTE_API_KEY not set — nothing to seed")
         return {"genuine": 0, "pending": 0}
+    import sys
+    # Clear the per-run Zyte account-dead kill-switch at the START of each seed run
+    # so a repeated IN-PROCESS invocation (a future cron/warmer) is not silently
+    # disabled by a terminal 4xx from a prior run after the account has recovered.
+    from app.services.zyte_service import reset_account_state
+    reset_account_state()
+    # CLI: explicit "Brand X vs Brand Y" pair args override the full gold-set
+    # (a TARGETED re-seed conserves a fragile Zyte trial).
+    pairs = sys.argv[1:] or LUXURY_PAIRS
     from app.services.structured_comparison_service import get_comparison_service
     svc = get_comparison_service()
-    logger.info("[seed_zyte] seeding %d luxury pairs into the price cache (off-clock Zyte)…", len(LUXURY_PAIRS))
+    logger.info("[seed_zyte] seeding %d luxury pairs into the price cache (off-clock Zyte)…", len(pairs))
     totals = {"genuine": 0, "pending": 0}
-    for pair in LUXURY_PAIRS:
+    for pair in pairs:
         t = await _seed_one(svc, pair)
         totals["genuine"] += t["genuine"]
         totals["pending"] += t["pending"]

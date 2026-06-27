@@ -2315,10 +2315,36 @@ def numbers_match(product_name: str, title: str) -> bool:
     return bool(product_numbers & title_numbers)
 
 
+def _collapse_concentration(text: str) -> str:
+    """Replace any spelled-out fragrance concentration phrase with its canonical
+    token (e.g. "eau de toilette" -> "edt", "eau de parfum" -> "edp") so the
+    word-presence matcher treats abbreviation variants as equal. Defined once and
+    reused by `strict_title_match`; `_CONCENTRATION_PATTERNS` is module-level and
+    fully bound by call time. No-op on text without a concentration phrase."""
+    if not text:
+        return text or ""
+    out = text
+    for pat, label in _CONCENTRATION_PATTERNS:
+        out = pat.sub(label, out)
+    return out
+
+
 def strict_title_match(product_name: str, title: str) -> bool:
-    """Key words from the product name must appear in the shopping title."""
+    """Key words from the product name must appear in the shopping title.
+
+    Concentration-aware: a designer-fragrance PDP often spells the concentration
+    differently than the query ("Eau de Toilette" vs "EDT"). Both sides are
+    normalized via the same `_CONCENTRATION_PATTERNS` map BEFORE the word-presence
+    loop, so abbreviation variants compare equal — e.g. the query
+    "Dior Sauvage Eau de Toilette 100ml" now matches the genuine alhajis PDP
+    "Dior Sauvage Edt M 100Ml" (both collapse to the "edt" token). No-fab is
+    preserved: a DIFFERENT concentration ("Eau de Parfum" vs "EDT") still fails,
+    because the labels differ.
+    """
     if is_counterfeit_listing(title):
         return False
+    product_name = _collapse_concentration(product_name)
+    title = _collapse_concentration(title)
     title_normalized = title.lower().replace("-", "")
     key_words = [
         w.replace("-", "") for w in product_name.lower().split()

@@ -455,6 +455,26 @@ def _catalog_hit_fields(
     return {"title": title, "url": url, "in_stock": in_stock}
 
 
+def _overlap_score(p_words: set, surface: str) -> float:
+    """Fraction of query words present in `surface`, CONCATENATION-tolerant.
+
+    The plain `len(p_words & t_words) / len(p_words)` floor wrongly drops a
+    genuine hit when the index collapses a multi-word model name into one token:
+    "Air Force 1" -> "AIRFORCE" makes only 1 of 4 query words match (0.25), even
+    though the hit already PASSES strict_title_match + numbers_match. Here a query
+    word counts as matched when it is a whole token OR a substring of the
+    concatenated, separator-free surface ("air"/"force" both ⊂ "airforce..."),
+    so the redundant overlap floor stops vetoing correct hits. No-fab is intact:
+    the stronger gates (strict_title_match, numbers_match, counterfeit/accessory)
+    still reject wrong models/brands before this score is ever consulted."""
+    if not p_words:
+        return 0.0
+    t_words = normalize_words(surface)
+    tnorm = "".join(t_words)
+    matched = sum(1 for w in p_words if w in t_words or (w and w in tnorm))
+    return matched / len(p_words)
+
+
 def _catalog_match_hit(
     hits: List[Dict[str, Any]], product_name: str, store: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
@@ -480,8 +500,7 @@ def _catalog_match_hit(
             continue
         if not strict_title_match(product_name, surface):
             continue
-        t_words = normalize_words(surface)
-        score = (len(p_words & t_words) / len(p_words)) if p_words else 0.0
+        score = _overlap_score(p_words, surface)
         if score < 0.4:
             continue
         # Require a positive price (in the pinned currency) before considering.
@@ -530,8 +549,7 @@ def _match_algolia_hit(
             continue
         if not strict_title_match(product_name, surface):
             continue
-        t_words = normalize_words(surface)
-        score = (len(p_words & t_words) / len(p_words)) if p_words else 0.0
+        score = _overlap_score(p_words, surface)
         if score < 0.4:
             continue
         # Require a genuine BHD price before considering the hit a candidate.
