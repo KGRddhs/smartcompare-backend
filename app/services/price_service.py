@@ -1001,6 +1001,7 @@ def _is_sample_or_decant_listing(product_name: str, title: Optional[str], amount
 
 def is_price_showable(
     product_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+    *, enforce_correctness: bool = False,
 ) -> bool:
     """True iff a resolved `price` object is GENUINE/CORRECT/showable to the user.
 
@@ -1043,8 +1044,14 @@ def is_price_showable(
         return False
     if _is_sample_or_decant_listing(product_name, title, amount):
         return False
-    # --- correctness backstop (CARDINAL RULE; rollback via ENABLE_EXACT_PRICE_GATE) ---
-    if exact_gate_enabled():
+    # --- correctness backstop (CARDINAL RULE) — OPT-IN via enforce_correctness ---
+    # Defense-in-depth at the RESPONSE CHOKEPOINT only (response_builder + streaming
+    # pass enforce_correctness=True). It is NOT applied to the legacy adapter /
+    # reselect plausibility calls: an adapter legitimately RETURNS an out-of-stock
+    # price flagged in_stock=False (the chokepoint then pends it), and the fairness
+    # reselect DELIBERATELY re-selects to a DIFFERENT size — so an always-on backstop
+    # here would wrongly pend both. Gated by ENABLE_EXACT_PRICE_GATE (rollback).
+    if enforce_correctness and exact_gate_enabled():
         if price.get("in_stock") is False:
             price["guard_rejected"] = "out_of_stock"
             return False
@@ -1250,7 +1257,20 @@ def reselect_to_target_size(
             price.setdefault("source_method", c.get("source_method") or "")
             if c.get("source_method"):
                 price["source_method"] = c.get("source_method")
-        # Use the CANONICAL showable predicate (genuine/converted source ∪ the
+        # CORRECTNESS — never re-select an explicitly OUT-OF-STOCK candidate (a
+        # costlier in-stock exact beats a cheap OOS; with no in-stock match the
+        # product pends). Checked here, NOT via the is_price_showable axis backstop:
+        # this re-selection DELIBERATELY targets a DIFFERENT SIZE for pair fairness,
+        # so the size axis must not run — only stock + the non-size axes below.
+        if c.get("in_stock") is False or price.get("in_stock") is False:
+            continue
+        # CORRECTNESS — concentration is NOT the reselection axis (size is), so a
+        # re-selection to the target ml must still keep the query's concentration:
+        # never swap an EDP query onto a cheaper EDT just because both are 100ml.
+        _c_title = c.get("title") or price.get("title") or ""
+        if _concentration_mismatch(product_name, _c_title):
+            continue
+        # Use the CANONICAL plausibility predicate (genuine/converted source ∪ the
         # is_implausible_* accuracy guards ∪ the sample/decant title check) — the
         # SAME gate the response chokepoint applies downstream. This guarantees a
         # re-selected price actually survives C1 (we never claim "show" for a
@@ -2732,9 +2752,13 @@ def exact_gate_enabled() -> bool:
 
 def _fold_identity(s: str) -> str:
     """Lowercase + NFKD diacritic-fold so an accented title matches a plain-ASCII
-    query and vice versa ("Acqua di Giò"→"acqua di gio", "Lancôme"→"lancome")."""
+    query and vice versa ("Acqua di Giò"→"acqua di gio", "Lancôme"→"lancome").
+    Trademark / registered / copyright marks are dropped FIRST — otherwise NFKD
+    expands ™ (U+2122) to the letters "TM" and glues it onto the word ("Shark™" →
+    "sharktm"), manufacturing a false identity token that breaks an exact match."""
     if not s:
         return ""
+    s = s.replace("™", "").replace("®", "").replace("©", "")
     return "".join(
         c for c in unicodedata.normalize("NFKD", s.lower())
         if not unicodedata.combining(c)
@@ -2778,7 +2802,10 @@ _COLOR_ALIAS_CATEGORIES = frozenset({"electronics", "fashion"})
 # in Mini) are NOT treated as qualifiers — there the identity-equality + axes carry it.
 _ELECTRONICS_QUALIFIERS = frozenset({
     "fe", "se", "lite", "neo", "pro", "max", "plus", "ultra", "mini", "air",
-    "promax", "5g",
+    "promax",
+    # NOTE: "5g" is deliberately NOT a qualifier — nearly all modern flagships are
+    # 5G and the query routinely omits it ("Galaxy S24" must match a genuine
+    # "Galaxy S24 ... 5G Smartphone" PDP). 5G is stripped as noise, not discriminated.
 })
 _CATEGORY_VARIANT_QUALIFIERS = {
     "electronics": _ELECTRONICS_QUALIFIERS,
@@ -3010,14 +3037,22 @@ def _candidate_authority(cand: Dict[str, Any], category: Optional[str]) -> float
 
 def select_best(
     candidates: List[Dict[str, Any]], query_name: str, category: Optional[str] = None,
+    *, drop_out_of_stock: bool = True,
 ) -> Optional[Dict[str, Any]]:
     """Pick the single best price among `candidates` by RETAILER AUTHORITY — NEVER
-    cheapest. Among candidates that are EXACT (is_exact_match) ∧ in-stock ∧ on a
-    valid PDP URL, rank by authority, then variant precision (closer to the stated
-    size/concentration), then amount as the LAST tiebreak only. Returns None when
-    no candidate is exact ∧ in-stock ∧ valid-URL (→ the caller pends).
+    cheapest. Among candidates that are identity-matched (_selection_match) ∧ on a
+    valid PDP URL, rank IN-STOCK first, then authority, then variant precision
+    (closer to the stated size/concentration), then amount as the LAST tiebreak.
 
-    Rollback: with the gate OFF this restores the legacy cheapest-pick (min amount)."""
+    `drop_out_of_stock` (default True — the Tier-2 cross-adapter consume's contract:
+    an out-of-stock genuine hit must NOT short-circuit the cascade, so it returns
+    None and the cascade keeps looking). Adapters / the JSON-LD extractor pass
+    False: there an explicitly out-of-stock candidate is RANKED LAST but still
+    RETURNED (flagged in_stock=False) when it is the only match, so the existing
+    "report OOS" behaviour is preserved and the response chokepoint pends it.
+
+    Returns None when no candidate qualifies. Rollback: with the gate OFF this
+    restores the legacy cheapest-pick (min amount)."""
     cands = [
         c for c in (candidates or [])
         if isinstance(c, dict)
@@ -3030,7 +3065,7 @@ def select_best(
         return min(cands, key=lambda c: c["amount"])
     eligible: List[Dict[str, Any]] = []
     for c in cands:
-        if c.get("in_stock") is False:
+        if drop_out_of_stock and c.get("in_stock") is False:
             continue
         url = c.get("url")
         if url and _is_listing_url(url):
@@ -3047,6 +3082,7 @@ def select_best(
         cr, sr = variant_precision_rank(query_name, title)
         return float(cr + sr)
     eligible.sort(key=lambda c: (
+        c.get("in_stock") is False,   # in-stock (False) sorts before OOS (True)
         -_candidate_authority(c, category),
         -_precision(c),
         c["amount"],
@@ -3671,8 +3707,13 @@ def extract_jsonld_price(
             # DESCRIPTIVE JSON-LD name (extra colour/packaging words). Applied only
             # when the full query is known (pre-S4 callers unaffected); a no-op when
             # the rollback flag is OFF.
+            # candidate_brand prefers the matched Product's JSON-LD brand FIELD
+            # (e.g. "Jessie and James") over the coarse first-word `brand` arg, so a
+            # brand-FIELD-only match (name "Orangey Dress") subtracts the full brand
+            # from both sides and the residual identity ({orangey,dress}) matches.
+            _cand_brand = str(ld_brand or brand)
             if query_name and not _selection_match(
-                query_name, product_name, _category, candidate_brand=brand,
+                query_name, product_name, _category, candidate_brand=_cand_brand,
             ):
                 continue
 
@@ -3700,14 +3741,14 @@ def extract_jsonld_price(
                 if price_val <= 0:
                     continue
 
-                # Availability policy — SKIP an explicitly out-of-stock / SoldOut /
-                # Discontinued / PreOrder / BackOrder offer (never a current shelf
-                # price). is_available_state tolerates the non-string shapes the old
-                # literal `"OutOfStock" not in availability` TypeError'd on (None /
-                # list / dict). None/unknown availability → treated as in stock.
+                # Availability policy — COLLECT the offer with its real stock flag.
+                # is_available_state tolerates the non-string shapes the old literal
+                # `"OutOfStock" not in availability` TypeError'd on (None/list/dict).
+                # An out-of-stock offer is NOT dropped here (so an only-OOS PDP still
+                # reports its price flagged in_stock=False, which the chokepoint
+                # pends) — select_best below RANKS in-stock first and only falls back
+                # to OOS when there is no in-stock alternative. None/unknown → in stock.
                 avail_state = is_available_state(offer.get("availability"))
-                if avail_state is False:
-                    continue
 
                 candidates.append({
                     "amount": price_val,
@@ -3718,21 +3759,22 @@ def extract_jsonld_price(
                     # here rather than in a shopping title — e.g. "...Eau de Parfum
                     # 100ml". Also the identity string select_best matches on.
                     "name": product_name,
-                    # Carry the query brand so select_best's _selection_match can
-                    # subtract it from BOTH sides — preserves the brand-FIELD-only
-                    # match (name "Orangey Dress" + ld brand "Jessie and James").
-                    "brand": brand,
+                    # Carry the matched product's brand so select_best's
+                    # _selection_match subtracts the FULL brand from both sides —
+                    # preserves the brand-FIELD-only match (name "Orangey Dress" + ld
+                    # brand "Jessie and James").
+                    "brand": _cand_brand,
                 })
 
     if not candidates:
         return None
-    # CORRECTNESS — pick by retailer authority / variant precision, NEVER cheapest.
-    # JSON-LD candidates carry no url (authority ties), so this resolves to the
-    # variant-precision then amount tiebreak among the EXACT in-stock offers. When
+    # CORRECTNESS — pick by variant precision, NEVER cheapest, RANKING in-stock
+    # first; an only-OOS PDP still returns its price flagged in_stock=False (the
+    # chokepoint pends it — preserves the existing OOS-detection behaviour). When
     # the query is unknown (pre-S4 callers) there is no identity to gate on → keep
     # the legacy cheapest pick.
     if query_name:
-        return select_best(candidates, query_name, _category)
+        return select_best(candidates, query_name, _category, drop_out_of_stock=False)
     return min(candidates, key=lambda c: c["amount"])
 
 

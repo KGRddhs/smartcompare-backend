@@ -1231,7 +1231,7 @@ def build_comparison_response(
             # already non-showable and correctly shaped.
             if _price.get("unavailable") is True:
                 continue
-            if not is_price_showable(_name, _price, pd_item.get("category")):
+            if not is_price_showable(_name, _price, pd_item.get("category"), enforce_correctness=True):
                 pd_item["price"] = make_pending_price(
                     currency=_price.get("currency") or "BHD",
                     reason="pending_genuine",

@@ -62,10 +62,15 @@ def test_jsonld_skips_cheaper_oos_offer_for_instock_one():
 
 
 def test_jsonld_only_oos_offer_returns_none():
-    # RED — the only offer for the exact product is OutOfStock → PEND (None).
+    # RED — the only offer for the exact product is OutOfStock. The extractor must
+    # NOT present it as a current in-stock price: either return None OR return it
+    # flagged in_stock=False (which the response chokepoint pends). What is
+    # forbidden is shipping it as if in stock.
     html = _ld_html(_product(QUERY, [_offer(25, "https://schema.org/OutOfStock")]))
     result = extract_jsonld_price(html, "Samsung", "BHD", query_name=QUERY)
-    assert result is None, "an only-OutOfStock product must pend (None), not ship the OOS price"
+    assert result is None or result.get("in_stock") is False, (
+        "an only-OutOfStock product must pend (None) or be flagged in_stock=False"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -80,10 +85,13 @@ def test_jsonld_only_oos_offer_returns_none():
     "https://schema.org/BackOrder",
 ])
 def test_jsonld_non_instock_availability_pends(availability):
-    # RED — a single offer in a non-purchasable/future state must not be shipped.
+    # RED — a single offer in a non-purchasable/future state must not be presented
+    # as a current in-stock price: None OR flagged in_stock=False (chokepoint pends).
     html = _ld_html(_product(QUERY, [_offer(50, availability)]))
     result = extract_jsonld_price(html, "Samsung", "BHD", query_name=QUERY)
-    assert result is None, f"{availability} is not a current in-stock price → must pend"
+    assert result is None or result.get("in_stock") is False, (
+        f"{availability} is not a current in-stock price → must pend / flag in_stock=False"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -129,7 +137,8 @@ def test_is_price_showable_pends_explicit_out_of_stock():
         "in_stock": False, "url": "https://x.com/product/galaxy-s24-256gb",
         "title": QUERY,
     }
-    assert is_price_showable(QUERY, price) is False
+    # The correctness backstop is opt-in (the response chokepoint passes it).
+    assert is_price_showable(QUERY, price, "electronics", enforce_correctness=True) is False
 
 
 def test_is_price_showable_allows_unknown_stock():
@@ -139,4 +148,4 @@ def test_is_price_showable_allows_unknown_stock():
         "amount": 50.0, "currency": "BHD", "source_method": "local_bhd",
         "url": "https://x.com/product/galaxy-s24-256gb", "title": QUERY,
     }
-    assert is_price_showable(QUERY, price) is True
+    assert is_price_showable(QUERY, price, "electronics", enforce_correctness=True) is True

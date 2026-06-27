@@ -163,6 +163,7 @@ def test_red_valid_url_gate_pends_listing_url_but_keeps_missing_url():
     # A genuine local_bhd exact match served behind a SEARCH/listing url must PEND.
     assert is_price_showable(
         "Samsung Galaxy S24 256GB", listing_url_price, category="electronics",
+        enforce_correctness=True,
     ) is False
 
     # A genuine local_bhd with NO url must NOT be pended for the missing url.
@@ -175,6 +176,7 @@ def test_red_valid_url_gate_pends_listing_url_but_keeps_missing_url():
     }
     assert is_price_showable(
         "Samsung Galaxy S24 256GB", no_url_price, category="electronics",
+        enforce_correctness=True,
     ) is True
 
 
@@ -198,6 +200,7 @@ def test_red_converted_usd_must_also_be_exact():
     }
     assert is_price_showable(
         "iPhone 15 256GB", wrong_variant, category="electronics",
+        enforce_correctness=True,
     ) is False
 
     exact_variant = {
@@ -210,4 +213,5 @@ def test_red_converted_usd_must_also_be_exact():
     }
     assert is_price_showable(
         "iPhone 15 256GB", exact_variant, category="electronics",
+        enforce_correctness=True,
     ) is True

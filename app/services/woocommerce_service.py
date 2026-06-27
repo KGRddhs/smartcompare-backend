@@ -202,8 +202,9 @@ def _match_woo_product(
         candidates.append(candidate)
 
     # CORRECTNESS — pick by retailer authority / variant precision, never cheapest;
-    # select_best also drops an explicitly out-of-stock candidate (in_stock False).
-    return select_best(candidates, product_name, _category)
+    # in-stock ranked first, an only-OOS match still RETURNED flagged (the response
+    # chokepoint pends it) so the adapter's "report OOS" contract is preserved.
+    return select_best(candidates, product_name, _category, drop_out_of_stock=False)
 
 
 def _do_get(url: str, params: Dict[str, Any], headers: Dict[str, str]):

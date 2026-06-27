@@ -2981,7 +2981,7 @@ class StructuredComparisonService:
                     _price = make_pending_price(currency="BHD", reason="pending_genuine")
                     _best = None
                     _retailer = None
-                elif _price.get("unavailable") is not True and not is_price_showable(_name, _price, pd.get("category")):
+                elif _price.get("unavailable") is not True and not is_price_showable(_name, _price, pd.get("category"), enforce_correctness=True):
                     # Non-showable resolved price → pending (don't clobber an
                     # already-pending upstream reason like size_mismatch).
                     _price = make_pending_price(
