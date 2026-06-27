@@ -825,6 +825,24 @@ def is_fragrance_query(product_name: str) -> bool:
     return any(kw in name_lower for kw in FRAGRANCE_PRODUCT_KEYWORDS)
 
 
+def _infer_category_from_query(query_name: str) -> Optional[str]:
+    """Best-effort category for the exact-identity gate when a caller (jsonld /
+    page-scrape extractor) only has the query string, not the resolved category.
+    Reuses the existing query detectors so the category axes (electronics
+    qualifiers + colour aliasing, fragrance concentration, supplement count) engage
+    on the right axis. Returns None for fashion/grocery/makeup/other (the gate then
+    relies on identity-equality + the universal concentration/size/count checks)."""
+    if not query_name:
+        return None
+    if is_supplement_query(query_name):
+        return "supplements"
+    if is_fragrance_query(query_name):
+        return "fragrances"
+    if is_high_value_query(query_name):
+        return "electronics"
+    return None
+
+
 def _effective_fragrance_size_ml(query_name: str, title: Optional[str]) -> float:
     """The size (ml) to floor against: the smallest size token found in the
     candidate `title` first (the listing's own size is the ground truth), else
@@ -2875,21 +2893,49 @@ def is_exact_match(
     return q_ident == t_ident
 
 
-def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
-    """Brand-TOLERANT exactness check for the response chokepoint (is_price_showable).
-    The primary per-extractor gate (is_exact_match) knows the brand and enforces
-    equality; this backstop runs without the brand, so it uses token-SUBSET
-    (candidate ⊆ query → a brand-omitted title is kept) PLUS the same explicit-axis
-    mismatch checks. Catches wrong-SKU leaks (extra distinctive token, wrong
-    concentration/size/storage/count, variant qualifier) on any path that bypassed
-    the primary gate, without false-pending genuine brand-omitted listings."""
-    if not candidate_title:
+def _selection_match(
+    query_name: str, candidate_title: str, category: Optional[str],
+    *, candidate_brand: str = "",
+) -> bool:
+    """The pragmatic SELECTION gate used by the extractors and select_best (real
+    retailer titles are DESCRIPTIVE — "Samsung Galaxy S24 256GB Dual SIM Phantom
+    Black" — so a pure-equality gate would over-reject genuine listings). A
+    candidate is acceptable iff:
+      - NO explicit axis mismatch (variant qualifier / concentration / ml-size /
+        GB-storage / count), AND
+      - the query's distinctive identity tokens are ALL present in the candidate
+        (query ⊆ candidate) — so a wrong/related product MISSING a query
+        discriminator (Nike Dunk Low → "Nike Air Force 1") is rejected, while a
+        descriptive longer title (extra colour/SIM/packaging words) is kept.
+    This catches every documented warm-cache leak (S24→FE, EDP→EDT, 256→128,
+    decant-size, related-product, count drift) without false pends. The strict
+    set-EQUALITY `is_exact_match` is reserved for clean brand-omitted sources
+    (sephora/Zyte) + the shared contract."""
+    if not exact_gate_enabled():
+        return True
+    if not query_name or not candidate_title:
         return True
     if _axis_mismatch(query_name, candidate_title, category):
         return False
-    q_ident = _identity_tokens_ps(query_name, "", category)
-    t_ident = _identity_tokens_ps(candidate_title, "", category)
-    return t_ident.issubset(q_ident)
+    q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
+    t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
+    return q_ident.issubset(t_ident)
+
+
+def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
+    """Brand-INDEPENDENT exactness check for the response chokepoint
+    (is_price_showable). The primary per-extractor/select_best gate (_selection_match,
+    which knows the brand) is the real enforcement; this backstop runs WITHOUT the
+    brand, so it relies ONLY on the explicit-axis mismatch checks (variant qualifier /
+    concentration / size / storage / count) — brand-independent and direction-free,
+    so it never false-pends a genuine brand-omitted (sephora) NOR a descriptive
+    (Dual SIM Phantom Black) listing. It catches the dominant wrong-axis leaks
+    (S24→FE, EDP→EDT, 256→128, decant-size, count drift) on any path that bypassed
+    the primary gate; the rarer same-token flanker is caught upstream where the
+    brand is known."""
+    if not candidate_title:
+        return True
+    return not _axis_mismatch(query_name, candidate_title, category)
 
 
 # --- Availability policy (schema.org-complete; never raises) ----------------
@@ -2991,7 +3037,7 @@ def select_best(
             continue
         title = c.get("title") or c.get("name") or ""
         brand = c.get("brand") or ""
-        if title and not is_exact_match(query_name, title, category, candidate_brand=brand):
+        if title and not _selection_match(query_name, title, category, candidate_brand=brand):
             continue
         eligible.append(c)
     if not eligible:
@@ -3339,6 +3385,7 @@ def extract_price_from_shopping(
     p_words = normalize_words(product_name)
     is_hv = is_high_value_query(product_name)
     is_lux = is_luxury_brand(product_name)
+    _category = _infer_category_from_query(product_name)
     min_price = 100.0 if is_hv else 0
 
     if is_lux:
@@ -3387,6 +3434,14 @@ def extract_price_from_shopping(
         # different SKU. Genuine-or-correct: don't attribute the wrong variant's
         # price.
         if variant_mismatch(product_name, title):
+            continue
+        # CORRECTNESS — identity + axis gate for ALL queries (gap #9: strict_title_match
+        # ran only for high-value; everything else fell through to the 0.4-overlap +
+        # cheapest tie-break, leaking wrong concentration/size/variant). _selection_match
+        # rejects an EXPLICIT axis mismatch (EDP↔EDT, 256↔128, 100ml↔30ml, FE) and a
+        # related product missing a query discriminator, while tolerating a descriptive
+        # listing title. No-op when the rollback flag is OFF.
+        if not _selection_match(product_name, title, _category):
             continue
 
         t_words = normalize_words(title)
@@ -3527,7 +3582,8 @@ def extract_jsonld_price(
         return None
 
     brand_lower = brand.lower()
-    best_price = None
+    _category = _infer_category_from_query(query_name)
+    candidates: List[Dict[str, Any]] = []
 
     for script in ld_scripts:
         try:
@@ -3608,6 +3664,18 @@ def extract_jsonld_price(
                 if overlap < 0.3:
                     continue
 
+            # CORRECTNESS — identity + axis gate (the warm-cache S24->S24 FE /
+            # EDP->EDT / 256->128 / related-product leaks). variant_mismatch above
+            # is a coarse qualifier check; _selection_match adds concentration / ml /
+            # storage / count axes + a query-tokens-present check, while tolerating a
+            # DESCRIPTIVE JSON-LD name (extra colour/packaging words). Applied only
+            # when the full query is known (pre-S4 callers unaffected); a no-op when
+            # the rollback flag is OFF.
+            if query_name and not _selection_match(
+                query_name, product_name, _category, candidate_brand=brand,
+            ):
+                continue
+
             offers = product.get("offers", {})
             if isinstance(offers, dict):
                 offers = [offers]
@@ -3632,23 +3700,40 @@ def extract_jsonld_price(
                 if price_val <= 0:
                     continue
 
-                availability = offer.get("availability", "")
-                in_stock = "OutOfStock" not in availability
+                # Availability policy — SKIP an explicitly out-of-stock / SoldOut /
+                # Discontinued / PreOrder / BackOrder offer (never a current shelf
+                # price). is_available_state tolerates the non-string shapes the old
+                # literal `"OutOfStock" not in availability` TypeError'd on (None /
+                # list / dict). None/unknown availability → treated as in stock.
+                avail_state = is_available_state(offer.get("availability"))
+                if avail_state is False:
+                    continue
 
-                if best_price is None or price_val < best_price["amount"]:
-                    best_price = {
-                        "amount": price_val,
-                        "currency": expected_currency,
-                        "in_stock": in_stock,
-                        # Size-capture (frag-size-capture): carry the matched
-                        # Product's NAME so the caller can parse a size (ml/oz)
-                        # the listing exposes here rather than in a shopping
-                        # title — e.g. "...Eau de Parfum 100ml". Harmless for
-                        # non-fragrance (no ml/oz token → no size set).
-                        "name": product_name,
-                    }
+                candidates.append({
+                    "amount": price_val,
+                    "currency": expected_currency,
+                    "in_stock": True if avail_state is None else avail_state,
+                    # Size-capture (frag-size-capture): carry the matched Product's
+                    # NAME so the caller can parse a size (ml/oz) the listing exposes
+                    # here rather than in a shopping title — e.g. "...Eau de Parfum
+                    # 100ml". Also the identity string select_best matches on.
+                    "name": product_name,
+                    # Carry the query brand so select_best's _selection_match can
+                    # subtract it from BOTH sides — preserves the brand-FIELD-only
+                    # match (name "Orangey Dress" + ld brand "Jessie and James").
+                    "brand": brand,
+                })
 
-    return best_price
+    if not candidates:
+        return None
+    # CORRECTNESS — pick by retailer authority / variant precision, NEVER cheapest.
+    # JSON-LD candidates carry no url (authority ties), so this resolves to the
+    # variant-precision then amount tiebreak among the EXACT in-stock offers. When
+    # the query is unknown (pre-S4 callers) there is no identity to gate on → keep
+    # the legacy cheapest pick.
+    if query_name:
+        return select_best(candidates, query_name, _category)
+    return min(candidates, key=lambda c: c["amount"])
 
 
 def _page_size_signals(soup, jsonld_name: str = "") -> List[str]:
@@ -3695,6 +3780,23 @@ def _stamp_listing_size(
     return result
 
 
+def _page_identity_ok(product_name: str, soup, category: Optional[str]) -> bool:
+    """CORRECTNESS — gate the OG / microdata / WooCommerce-span fallback paths,
+    which carry NO per-product structured identity and otherwise grab the FIRST
+    price on the page. Verify the PAGE identity (og:title / page <title>) actually
+    matches the query before any fallback price is attributed: True iff ANY page
+    signal _selection_match's the query. Returns True when the gate is OFF, there
+    is no query, or there are NO identity signals at all (title-less page —
+    preserve legacy, don't over-reject). False (→ caller pends) when signals exist
+    and NONE match the query — kills the multi-product / wrong-SKU first-price grab."""
+    if not exact_gate_enabled() or not product_name:
+        return True
+    signals = [s for s in _page_size_signals(soup) if s and s.strip()]
+    if not signals:
+        return True
+    return any(_selection_match(product_name, s, category) for s in signals)
+
+
 def extract_price_from_html(
     html: str, product_name: str, currency: str, domain: str, url: str
 ) -> Optional[Dict[str, Any]]:
@@ -3707,6 +3809,7 @@ def extract_price_from_html(
     100ml basis (frag-size-capture). Non-fragrance scrapes are unaffected."""
     from bs4 import BeautifulSoup
     brand = product_name.split()[0] if product_name else ""
+    _category = _infer_category_from_query(product_name)
     # Parse once up front — also needed by the size-capture (frag-size-capture)
     # for the JSON-LD branch, which builds its result before the OG path.
     soup = BeautifulSoup(html, 'html.parser')
@@ -3747,6 +3850,14 @@ def extract_price_from_html(
         # true sizes (fragrance-scoped; no-op otherwise).
         _stamp_listing_size(result, product_name, soup, price_data.get("name", ""))
         return result
+
+    # CORRECTNESS — the JSON-LD path gates identity per-Product; the OG / microdata
+    # / WooCommerce-span fallbacks below do NOT (they grab the first price on the
+    # page). Gate the whole fallback cascade ONCE on the page identity (og:title /
+    # page <title>): if the page is a DIFFERENT product than the query, pend (None)
+    # rather than mis-attribute a wrong-SKU / sibling first price.
+    if not _page_identity_ok(product_name, soup, _category):
+        return None
 
     # Priority 2: OpenGraph meta tags
     og_price = soup.find('meta', property='og:price:amount')

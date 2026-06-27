@@ -38,10 +38,13 @@ from curl_cffi import requests as curl_requests
 from app.services.price_service import (
     ENABLE_PAGE_SCRAPE,
     _convert_to_bhd,
+    _infer_category_from_query,
+    _selection_match,
     is_accessory,
     is_counterfeit_listing,
     is_price_showable,
     numbers_match,
+    select_best,
     strict_title_match,
     variant_mismatch,
 )
@@ -122,8 +125,8 @@ def _match_woo_product(
     if not isinstance(products, list):
         return None
 
-    best: Optional[Dict[str, Any]] = None
-    best_amount: Optional[float] = None
+    _category = _infer_category_from_query(product_name)
+    candidates: list = []
 
     for prod in products:
         if not isinstance(prod, dict):
@@ -144,6 +147,10 @@ def _match_woo_product(
         if variant_mismatch(product_name, title):
             continue
         if is_accessory(title) and not is_accessory(product_name):
+            continue
+        # CORRECTNESS — identity + axis gate (S24->FE / EDP->EDT / 256->128 /
+        # related-product leaks). No-op when the rollback flag is OFF.
+        if not _selection_match(product_name, title, _category):
             continue
 
         prices = prod.get("prices") or {}
@@ -174,10 +181,6 @@ def _match_woo_product(
             source_method = "converted_usd"
             original_currency = currency_code
 
-        # Keep the cheapest genuine/converted comparable hit.
-        if best_amount is not None and bhd_amount >= best_amount:
-            continue
-
         permalink = prod.get("permalink") or ""
         in_stock = prod.get("is_in_stock")
 
@@ -196,10 +199,11 @@ def _match_woo_product(
         if original_currency:
             candidate["original_currency"] = original_currency
 
-        best = candidate
-        best_amount = bhd_amount
+        candidates.append(candidate)
 
-    return best
+    # CORRECTNESS — pick by retailer authority / variant precision, never cheapest;
+    # select_best also drops an explicitly out-of-stock candidate (in_stock False).
+    return select_best(candidates, product_name, _category)
 
 
 def _do_get(url: str, params: Dict[str, Any], headers: Dict[str, str]):
