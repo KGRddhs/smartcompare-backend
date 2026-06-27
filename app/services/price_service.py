@@ -2836,9 +2836,11 @@ _CATEGORY_VARIANT_QUALIFIERS = {
 # supplement class nouns.
 GENERIC_CATEGORY_NOUNS = frozenset(HIGH_VALUE_DEVICE_NOUNS) | {
     "headphones", "headphone", "earphones", "earphone", "earbuds", "earbud",
-    "speaker", "soundbar", "protein", "whey", "supplement", "supplements",
+    "speaker", "soundbar", "protein", "supplement", "supplements",
     "vitamin", "vitamins", "vacuum", "cleaner", "sunglasses", "eyewear",
     "sneakers", "sneaker", "shoes", "shoe",
+    # DELIBERATELY EXCLUDED: "whey"/"casein"/"plant" — a protein TYPE is distinctive
+    # (whey powder != casein), so it must stay an identity token, not a generic noun.
 }
 
 
@@ -2941,19 +2943,46 @@ def _strength_mismatch(q: str, t: str) -> bool:
     return True
 
 
+def _weights_volumes(text: str) -> set:
+    """ALL (value, base) weight/volume tokens in `text` — base normalized to grams
+    (kg→g) or millilitres (L→ml). A SET (not min) so a SECONDARY figure (a 30g
+    per-serving, a 50g travel bonus) does not hide the headline net weight."""
+    out = set()
+    for num, unit in _WEIGHT_VOLUME_RE.findall(text or ""):
+        try:
+            v = float(num)
+        except (TypeError, ValueError):
+            continue
+        u = unit.lower()
+        if u == "kg":
+            out.add((v * 1000.0, "g"))
+        elif u == "g":
+            out.add((v, "g"))
+        elif u == "l":
+            out.add((v * 1000.0, "ml"))
+        elif u == "ml":
+            out.add((v, "ml"))
+    return out
+
+
 def _weight_or_volume_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH carry a SAME-BASE weight/volume (grams or ml) that DIFFERS
-    (CeraVe 50g vs 340g). Different bases (g vs ml) never mismatch. Complements
-    _size_ml_mismatch (which is ml/oz-only) with the grams axis for grocery/
-    skincare/haircare/makeup."""
-    qwv, twv = extract_weight_or_volume(q), extract_weight_or_volume(t)
-    if qwv is None or twv is None:
+    """True iff BOTH carry a SAME-BASE weight/volume (grams or ml) and they share NO
+    common value (CeraVe 50g vs 340g). SET-based (like _strength_mismatch) so a
+    genuine 908g listing that ALSO lists "30g per serving" still shares 908 and is
+    NOT a mismatch — the old min()-extractor manufactured a false 908-vs-30 inequality.
+    Different bases (g vs ml) never mismatch."""
+    qwv, twv = _weights_volumes(q), _weights_volumes(t)
+    if not qwv or not twv:
         return False
-    qv, qb = qwv
-    tv, tb = twv
-    if qb != tb:
-        return False  # different base (g vs ml) — not comparable, no mismatch
-    return qv != tv
+    q_bases = {b for _v, b in qwv}
+    t_bases = {b for _v, b in twv}
+    shared = q_bases & t_bases
+    if not shared:
+        return False  # only different bases present — not comparable
+    for b in shared:
+        if {v for v, bb in qwv if bb == b} & {v for v, bb in twv if bb == b}:
+            return False  # a common (value, base) exists → not a mismatch
+    return True
 
 
 def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
@@ -3029,12 +3058,24 @@ def _selection_match(
         return False
     q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
     t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
-    # query ⊆ candidate, BUT a MISSING token that is only a GENERIC category noun
-    # (smartphone/headphones/protein the terse listing omitted) must NOT reject —
-    # the brand+model already discriminate. A missing DISTINCTIVE token (a different
-    # model) still rejects.
-    missing = q_ident - t_ident
-    if missing and not missing.issubset(GENERIC_CATEGORY_NOUNS):
+    # A missing GENERIC category noun (smartphone/headphones/protein the terse listing
+    # omitted) must NOT reject — the brand+model discriminate. But the relaxation must
+    # not let a same-brand DIFFERENT product through:
+    q_distinct = q_ident - GENERIC_CATEGORY_NOUNS
+    t_distinct = t_ident - GENERIC_CATEGORY_NOUNS
+    # (1) the candidate must carry ALL of the query's DISTINCTIVE (non-generic) tokens
+    #     — a missing distinctive token = a different/related product (S24 vs S24 FE,
+    #     WH-1000XM5 vs WF-1000XM5).
+    if not q_distinct.issubset(t_distinct):
+        return False
+    # (2) a generic CLASS SWAP — query and candidate each name a generic class noun
+    #     but share NONE ("Sony Headphones" vs "Sony Speaker") — is a DIFFERENT product
+    #     even though a missing generic noun is otherwise tolerated. (A missing generic
+    #     with the candidate carrying NO generic, e.g. "Sony WH-1000XM5 Headphones" vs
+    #     the terse "Sony WH-1000XM5", is still accepted — t_generic is empty there.)
+    q_generic = q_ident & GENERIC_CATEGORY_NOUNS
+    t_generic = t_ident & GENERIC_CATEGORY_NOUNS
+    if q_generic and t_generic and not (q_generic & t_generic):
         return False
     return True
 

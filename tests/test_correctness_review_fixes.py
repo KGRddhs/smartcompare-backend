@@ -59,6 +59,48 @@ def test_distinctive_missing_token_still_rejected():  # GREEN — H3 must NOT ov
     assert _selection_match("Sony WH-1000XM5", "Sony WF-1000XM5", "electronics") is False
 
 
+# --- RE-H3: the generic-noun relaxation must NOT accept a same-brand DIFFERENT
+#     CLASS product when the query is brand+generic-only (re-review opposite-error). #
+def test_generic_only_query_rejects_different_class():  # RED (re-review H3)
+    # "Sony Headphones" vs "Sony Speaker": both class nouns generic, brand shared —
+    # but a headphone is NOT a speaker. Must reject (no distinctive token, classes differ).
+    assert _selection_match("Sony Headphones", "Sony Speaker", "electronics") is False
+
+
+def test_generic_only_query_rejects_different_form():  # RED (re-review H3)
+    # Whey PROTEIN POWDER query vs a PROTEIN BAR — different product form. Must reject.
+    assert _selection_match("Optimum Nutrition Whey Protein",
+                            "Optimum Nutrition Protein Bar", "supplements") is False
+
+
+def test_generic_only_query_accepts_specific_model():  # GREEN — must stay accepted
+    # A bare "Sony Headphones" query SHOULD match the specific Sony headphones model.
+    assert _selection_match("Sony Headphones", "Sony WH-CH520 Headphones", "electronics") is True
+
+
+# --- RE-axes: weight/volume must NOT false-pend on a SECONDARY gram figure
+#     (per-serving / travel size) — the min()-extractor opposite-error. ----------- #
+def test_weight_secondary_gram_axis_not_mismatch():  # RED (re-review axes) — the axis itself
+    from app.services.price_service import _weight_or_volume_mismatch
+    # 908g headline shared on both sides; the candidate's 30g-per-serving must NOT
+    # manufacture a false 908-vs-30 inequality (the old min()-extractor bug).
+    assert _weight_or_volume_mismatch(
+        "Optimum Nutrition Gold Standard Whey 908g",
+        "Optimum Nutrition Gold Standard 100% Whey 908g (30g per serving)") is False
+    assert _weight_or_volume_mismatch(
+        "CeraVe Moisturizing Cream 340g",
+        "CeraVe Moisturizing Cream 340g + 50g travel") is False
+    # control: a genuine DIFFERENT weight still mismatches.
+    assert _weight_or_volume_mismatch("CeraVe Cream 50g", "CeraVe Cream 340g") is True
+
+
+def test_weight_secondary_gram_not_pended():  # RED (re-review axes) — end-to-end (descriptive title)
+    # Descriptive listing → the SELECTION gate (subset-tolerant), not is_exact_match.
+    assert _selection_match("Optimum Nutrition Gold Standard Whey 908g",
+                            "Optimum Nutrition Gold Standard 100% Whey 908g (30g per serving)",
+                            "supplements") is True
+
+
 # --- M3: fashion colour aliasing works when category=='fashion' is passed --- #
 # NOTE: making _infer_category_from_query DETECT fashion (so this engages in prod)
 # is DEFERRED — a safe fashion detector is hard (brand overlap + grocery colour
