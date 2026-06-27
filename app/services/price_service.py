@@ -8,6 +8,7 @@ import json
 import time
 import asyncio
 import logging
+import unicodedata
 from typing import Optional, List, Dict, Any, Tuple
 from urllib.parse import urlparse, quote_plus, urljoin
 
@@ -980,21 +981,29 @@ def _is_sample_or_decant_listing(product_name: str, title: Optional[str], amount
     return False
 
 
-def is_price_showable(product_name: str, price: Optional[Dict[str, Any]]) -> bool:
-    """True iff a resolved `price` object is GENUINE/showable to the user.
+def is_price_showable(
+    product_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+) -> bool:
+    """True iff a resolved `price` object is GENUINE/CORRECT/showable to the user.
 
     NOT showable (→ Phase-4 price-pending line) when:
       - no price / no positive amount, OR
       - source_method is missing or not in the showable set (e.g. ``estimated``), OR
       - it fails an accuracy guard (low-fragrance sample floor / high-value
         accessory leak), OR
-      - it is a sample/decant/tester/vial listing.
+      - it is a sample/decant/tester/vial listing, OR
+      - (correctness backstop, gated by ENABLE_EXACT_PRICE_GATE) it is explicitly
+        OUT OF STOCK, served behind a non-PDP listing/search URL, or NOT the exact
+        requested product (wrong variant/concentration/size/storage/count).
 
     `converted_usd` and the genuine-BH methods (local_bhd / page_scrape* /
-    shopify_json / firecrawl* / scrapedo_rendered / official_brand) are showable.
-    This is the single predicate the response chokepoint uses for BOTH the sync
-    and streaming paths; it never weakens the existing is_implausible_* guards —
-    it composes them.
+    shopify_json / firecrawl* / scrapedo_rendered / official_brand) are showable —
+    but converted_usd, like every method, must ALSO be the exact product. This is
+    the single predicate the response chokepoint uses for BOTH the sync and
+    streaming paths; it never weakens the existing is_implausible_* guards — it
+    composes them. The fail-closed correctness backstop is defense-in-depth behind
+    the per-extractor is_exact_match gate; when a guard rejects, it stamps
+    ``price['guard_rejected']`` so the drop is MEASURED, never silent.
     """
     if not isinstance(price, dict):
         return False
@@ -1016,6 +1025,19 @@ def is_price_showable(product_name: str, price: Optional[Dict[str, Any]]) -> boo
         return False
     if _is_sample_or_decant_listing(product_name, title, amount):
         return False
+    # --- correctness backstop (CARDINAL RULE; rollback via ENABLE_EXACT_PRICE_GATE) ---
+    if exact_gate_enabled():
+        if price.get("in_stock") is False:
+            price["guard_rejected"] = "out_of_stock"
+            return False
+        url = price.get("url")
+        if url and _is_listing_url(url):
+            price["guard_rejected"] = "non_pdp_url"
+            return False
+        identity = title or price.get("name")
+        if identity and not _backstop_identity_ok(product_name, identity, category):
+            price["guard_rejected"] = "not_exact"
+            return False
     return True
 
 
@@ -2666,6 +2688,324 @@ def size_variant_token(text: Optional[str]) -> str:
         value, base = wv
         return f"{_fmt(value)}{base}"
     return ""
+
+
+# ============================================================================
+# GENUINE-PRICE CORRECTNESS — shared exact-identity gate + authority selector +
+# availability policy.  Spec: docs/plans/2026-06-27-genuine-price-correctness-IMPL-SPEC.md
+#
+# CARDINAL RULE: select a price ONLY when the candidate is the EXACT requested
+# product (model + concentration + size/storage + variant + count), in stock, on a
+# valid PDP URL. Provenance (a genuine source_method) is necessary, NOT sufficient.
+# The gate must also NOT over-reject legitimate alias wording (no false pends).
+#
+# ROLLBACK: this gate runs on EVERY request (high blast radius). The env flag
+# ENABLE_EXACT_PRICE_GATE (default ON) flips the whole new layer off → exact
+# b207bfa behaviour (is_exact_match→True, select_best→cheapest, no showable
+# backstop). Flip it in Railway to disable without a code revert.
+# ============================================================================
+
+def exact_gate_enabled() -> bool:
+    """True iff the exact-identity correctness gate is active (default ON)."""
+    return os.getenv("ENABLE_EXACT_PRICE_GATE", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+def _fold_identity(s: str) -> str:
+    """Lowercase + NFKD diacritic-fold so an accented title matches a plain-ASCII
+    query and vice versa ("Acqua di Giò"→"acqua di gio", "Lancôme"→"lancome")."""
+    if not s:
+        return ""
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", s.lower())
+        if not unicodedata.combining(c)
+    )
+
+
+# Every measurement token that is a SEPARATE comparison axis (size/storage/count/
+# strength) — stripped from the IDENTITY token set so it is compared on its own
+# axis, never as an identity word. Superset of _SIZE_STRIP_RE + oz/fl-oz + mg/IU.
+_IDENTITY_MEASURE_STRIP_RE = re.compile(
+    r"\b\d+(?:\.\d+)?\s*"
+    r"(?:tb|gb|ml|fl\s*oz|oz|l|kg|g|mg|iu|"
+    r"capsules?|caps|tablets?|tabs|softgels?|gummies|gummy|count|ct|pieces?|pcs|sachets?)\b",
+    re.I,
+)
+
+# Form / packaging words that are NOT product identity (defense-in-depth so a lone
+# "Spray" on a normal EDP bottle, or a "Set" suffix, doesn't break identity equality).
+_FORM_NOISE_TOKENS = frozenset({
+    "set", "spray", "mist", "deodorant", "candle", "refill", "miniature",
+    "lotion", "cream", "gel", "oil", "balm", "shower", "body", "hair", "travel",
+    "pack",
+})
+
+# Colour / edition / gender tokens that are an OPEN alias class — a non-identity
+# variant for the categories where colour is cosmetic (electronics/fashion). NOT
+# stripped for fragrances (a colour word can be the product NAME: "Black Opium",
+# "Light Blue") nor makeup/skincare (shade can matter).
+_COLOR_EDITION_TOKENS = frozenset({
+    "black", "white", "blue", "red", "green", "gold", "silver", "grey", "gray",
+    "rose", "pink", "purple", "violet", "yellow", "orange", "brown", "beige",
+    "navy", "teal", "titanium", "graphite", "midnight", "starlight", "space",
+    "cream", "ivory", "bronze", "copper", "champagne", "lavender", "mint",
+    "coral", "burgundy", "edition", "limited", "special",
+})
+_COLOR_ALIAS_CATEGORIES = frozenset({"electronics", "fashion"})
+
+# Model-line variant qualifiers that MUST match (set-equality, either direction).
+# Category-gated: applied ONLY to electronics so brand words that collide with a
+# qualifier in OTHER categories ("Max" in Max Factor, "Air" in Air Jordan, "Mini"
+# in Mini) are NOT treated as qualifiers — there the identity-equality + axes carry it.
+_ELECTRONICS_QUALIFIERS = frozenset({
+    "fe", "se", "lite", "neo", "pro", "max", "plus", "ultra", "mini", "air",
+    "promax", "5g",
+})
+_CATEGORY_VARIANT_QUALIFIERS = {
+    "electronics": _ELECTRONICS_QUALIFIERS,
+}
+
+
+def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = None) -> set:
+    """PRODUCT-IDENTITY token set of `text`: diacritic-folded words, minus the
+    brand words, the concentration PHRASE, every measurement token (size/storage/
+    count/strength — separate axes), the category's variant qualifiers (compared
+    separately), form-noise, and (for colour-alias categories) colour/edition
+    tokens. Sub-3-char noise is dropped EXCEPT a pure 2+-digit model number ("15",
+    "24") which stays as identity (the Zyte len>2 electronics gap). Two listings
+    are the SAME product iff their identity sets are EQUAL."""
+    folded = _fold_identity(text)
+    for pat, _label in _CONCENTRATION_PATTERNS:
+        folded = pat.sub(" ", folded)
+    folded = _IDENTITY_MEASURE_STRIP_RE.sub(" ", folded)
+    words = normalize_words(folded)
+    brand_words = normalize_words(_fold_identity(brand)) if brand else set()
+    cat = (category or "").lower()
+    quals = _CATEGORY_VARIANT_QUALIFIERS.get(cat, frozenset())
+    drop = set(brand_words) | _FORM_NOISE_TOKENS | quals
+    if cat in _COLOR_ALIAS_CATEGORIES:
+        drop = drop | _COLOR_EDITION_TOKENS
+    out = set()
+    for w in (words - drop):
+        if len(w) > 2 or (w.isdigit() and len(w) >= 2):
+            out.add(w)
+    return out
+
+
+def _quals_in(text: str, qualset: frozenset) -> set:
+    """The variant-qualifier tokens present in `text` (diacritic-folded), restricted
+    to `qualset`. Tokenizes on [a-z0-9]+ so "5g" is seen as one token."""
+    toks = set(re.findall(r"[a-z0-9]+", _fold_identity(text)))
+    return toks & qualset
+
+
+def _concentration_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry an explicit fragrance concentration and they DIFFER
+    (EDP vs EDT). A side that omits concentration does not trigger a mismatch."""
+    qc, tc = extract_concentration(q), extract_concentration(t)
+    return bool(qc and tc and qc != tc)
+
+
+def _size_ml_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry an ml/oz size and they DIFFER (100ml vs 30ml; oz snapped
+    to standard bottles first). A side with no size token does not mismatch."""
+    qs, ts = extract_size_ml_any(q), extract_size_ml_any(t)
+    if qs is None or ts is None:
+        return False
+    return qs != ts
+
+
+def _storage_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry a GB/TB storage size and they DIFFER (256 vs 128)."""
+    qg, tg = extract_storage_gb(q), extract_storage_gb(t)
+    if qg is None or tg is None:
+        return False
+    return qg != tg
+
+
+def _count_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry a unit count and they DIFFER (120 vs 240 softgels)."""
+    qc, tc = extract_count(q), extract_count(t)
+    if qc is None or tc is None:
+        return False
+    return qc != tc
+
+
+def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
+    """True iff query and candidate disagree on an EXPLICIT discriminating axis:
+    a variant qualifier (either direction), concentration, ml/oz size, GB/TB
+    storage, or unit count. Brand-independent — the shared core of both the strict
+    `is_exact_match` and the brand-tolerant backstop."""
+    quals = _CATEGORY_VARIANT_QUALIFIERS.get((category or "").lower(), frozenset())
+    if quals and _quals_in(query_name, quals) != _quals_in(candidate_title, quals):
+        return True
+    return (
+        _concentration_mismatch(query_name, candidate_title)
+        or _size_ml_mismatch(query_name, candidate_title)
+        or _storage_mismatch(query_name, candidate_title)
+        or _count_mismatch(query_name, candidate_title)
+    )
+
+
+def is_exact_match(
+    query_name: str, candidate_title: str, category: Optional[str],
+    *, candidate_brand: str = "",
+) -> bool:
+    """True iff `candidate_title` is the SAME product as `query_name` — set-EQUALITY
+    on identity tokens (after subtracting `candidate_brand` from BOTH sides so a
+    brand-omitted sephora-style title "Daisy - EDT" matches a "Marc Jacobs Daisy"
+    query) AND no explicit mismatch on any discriminating axis (variant qualifier /
+    concentration / size / storage / count).
+
+    This is the single shared gate every selection site calls. When the rollback
+    flag is OFF it returns True (no-op). It is intentionally STRICT (equality, not
+    `strict_title_match`'s subset) to reject S24→S24 FE / EDP→EDT / 256→128 /
+    100ml→30ml / flanker leaks, and intentionally BRAND-AWARE + alias-tolerant
+    (EDT≡"eau de toilette", oz≡ml, diacritics, colour/edition for electronics) to
+    avoid false pends."""
+    if not exact_gate_enabled():
+        return True
+    if not query_name or not candidate_title:
+        return True
+    if _axis_mismatch(query_name, candidate_title, category):
+        return False
+    q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
+    t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
+    return q_ident == t_ident
+
+
+def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
+    """Brand-TOLERANT exactness check for the response chokepoint (is_price_showable).
+    The primary per-extractor gate (is_exact_match) knows the brand and enforces
+    equality; this backstop runs without the brand, so it uses token-SUBSET
+    (candidate ⊆ query → a brand-omitted title is kept) PLUS the same explicit-axis
+    mismatch checks. Catches wrong-SKU leaks (extra distinctive token, wrong
+    concentration/size/storage/count, variant qualifier) on any path that bypassed
+    the primary gate, without false-pending genuine brand-omitted listings."""
+    if not candidate_title:
+        return True
+    if _axis_mismatch(query_name, candidate_title, category):
+        return False
+    q_ident = _identity_tokens_ps(query_name, "", category)
+    t_ident = _identity_tokens_ps(candidate_title, "", category)
+    return t_ident.issubset(q_ident)
+
+
+# --- Availability policy (schema.org-complete; never raises) ----------------
+_OOS_AVAIL_TOKENS = ("outofstock", "soldout", "discontinued")
+# PreOrder / BackOrder = buyable-but-FUTURE → not a CURRENT shelf price → pend.
+_FUTURE_AVAIL_TOKENS = ("preorder", "backorder")
+_INSTOCK_AVAIL_TOKENS = ("instock", "onlineonly", "limitedavailability", "instoreonly")
+
+
+def _availability_text(raw: Any) -> str:
+    """Flatten any schema.org availability shape (str, URL form, None, list, dict)
+    to a lowercased token blob — never raises (the literal-substring check upstream
+    TypeErrors on None/list/dict)."""
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw.lower()
+    if isinstance(raw, (list, tuple, set)):
+        return " ".join(_availability_text(x) for x in raw)
+    if isinstance(raw, dict):
+        return " ".join(_availability_text(v) for v in raw.values())
+    return str(raw).lower()
+
+
+def is_available_state(raw: Any) -> Optional[bool]:
+    """Tri-state availability: True (in stock), False (OOS/SoldOut/Discontinued/
+    PreOrder/BackOrder — not a current buyable shelf price), or None (unknown — no
+    signal; treated as showable so clean adapters that omit the field never
+    false-pend)."""
+    t = _availability_text(raw)
+    if not t:
+        return None
+    if any(tok in t for tok in _OOS_AVAIL_TOKENS):
+        return False
+    if any(tok in t for tok in _FUTURE_AVAIL_TOKENS):
+        return False
+    if any(tok in t for tok in _INSTOCK_AVAIL_TOKENS):
+        return True
+    return None
+
+
+def _is_listing_url(url: Optional[str]) -> bool:
+    """True iff `url` is a non-PDP listing/search/category surface (lazy import of
+    source_router.is_non_pdp_listing_url — same module-internal lazy pattern as
+    the SOURCE_REGISTRY use below). A missing url is NOT a listing url (benign)."""
+    if not url:
+        return False
+    try:
+        from app.services.source_router import is_non_pdp_listing_url
+        return is_non_pdp_listing_url(url)
+    except Exception:  # noqa: BLE001 — a URL-classifier failure must never pend a price
+        return False
+
+
+def _candidate_authority(cand: Dict[str, Any], category: Optional[str]) -> float:
+    """Retailer authority for select_best — registry weight (score_source, 0.5-3.0)
+    blended with the candidate's own retailer_score (0..1 → ×3 onto the same scale,
+    so a 1.0 official-domain hit reaches 3.0). Higher = more authoritative."""
+    score = 0.5
+    url = cand.get("url") or ""
+    if url:
+        try:
+            from app.services.source_router import score_source
+            score = score_source(url, category or "")
+        except Exception:  # noqa: BLE001
+            score = 0.5
+    rs = cand.get("retailer_score")
+    if isinstance(rs, (int, float)):
+        score = max(score, float(rs) * 3.0)
+    return score
+
+
+def select_best(
+    candidates: List[Dict[str, Any]], query_name: str, category: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Pick the single best price among `candidates` by RETAILER AUTHORITY — NEVER
+    cheapest. Among candidates that are EXACT (is_exact_match) ∧ in-stock ∧ on a
+    valid PDP URL, rank by authority, then variant precision (closer to the stated
+    size/concentration), then amount as the LAST tiebreak only. Returns None when
+    no candidate is exact ∧ in-stock ∧ valid-URL (→ the caller pends).
+
+    Rollback: with the gate OFF this restores the legacy cheapest-pick (min amount)."""
+    cands = [
+        c for c in (candidates or [])
+        if isinstance(c, dict)
+        and isinstance(c.get("amount"), (int, float))
+        and c.get("amount", 0) > 0
+    ]
+    if not cands:
+        return None
+    if not exact_gate_enabled():
+        return min(cands, key=lambda c: c["amount"])
+    eligible: List[Dict[str, Any]] = []
+    for c in cands:
+        if c.get("in_stock") is False:
+            continue
+        url = c.get("url")
+        if url and _is_listing_url(url):
+            continue
+        title = c.get("title") or c.get("name") or ""
+        brand = c.get("brand") or ""
+        if title and not is_exact_match(query_name, title, category, candidate_brand=brand):
+            continue
+        eligible.append(c)
+    if not eligible:
+        return None
+    def _precision(c: Dict[str, Any]) -> float:
+        title = c.get("title") or c.get("name") or ""
+        cr, sr = variant_precision_rank(query_name, title)
+        return float(cr + sr)
+    eligible.sort(key=lambda c: (
+        -_candidate_authority(c, category),
+        -_precision(c),
+        c["amount"],
+    ))
+    return eligible[0]
 
 
 def build_size_aware_price_cache_key(
