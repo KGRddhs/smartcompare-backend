@@ -743,6 +743,7 @@ from app.services.price_service import (
     is_implausible_high_value_price,
     is_implausible_low_fragrance_price,
     is_price_showable,
+    select_best,
     shopping_listing_matches,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
@@ -2980,7 +2981,7 @@ class StructuredComparisonService:
                     _price = make_pending_price(currency="BHD", reason="pending_genuine")
                     _best = None
                     _retailer = None
-                elif _price.get("unavailable") is not True and not is_price_showable(_name, _price):
+                elif _price.get("unavailable") is not True and not is_price_showable(_name, _price, pd.get("category")):
                     # Non-showable resolved price → pending (don't clobber an
                     # already-pending upstream reason like size_mismatch).
                     _price = make_pending_price(
@@ -4669,9 +4670,19 @@ class StructuredComparisonService:
                     price_dicts=observed,
                 )
                 return None
-            # Lowest valid BHD among the GENUINE adapter hits (a real BH shelf
-            # price — already is_price_showable-gated inside each adapter).
-            best = min(genuine_observed, key=lambda d: d["amount"])
+            # CORRECTNESS (Tier-2 cross-adapter) — pick the MOST AUTHORITATIVE genuine
+            # adapter hit that is EXACT ∧ in-stock ∧ valid-URL, NEVER the cheapest
+            # (the old min(amount) shipped a wrong-but-cheaper genuine SKU). select_best
+            # re-applies the identity+axis gate across adapters; if NO genuine hit is
+            # exact/in-stock/valid it returns None → don't short-circuit, seed the
+            # observations and let the cascade keep looking (like the no-genuine case).
+            best = select_best(genuine_observed, full_name, category)
+            if best is None:
+                self._seed_shortcircuit_candidates(
+                    full_name, kind="price_dicts", currency=currency,
+                    price_dicts=observed,
+                )
+                return None
             win_domain = str(best.get("retailer") or "").replace("www.", "").lower()
             self._tier15_routes[full_name] = {
                 "route": "bh_adapter_direct",
