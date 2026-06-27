@@ -458,6 +458,67 @@ def count_price_provenance(body: Dict[str, Any]) -> Dict[str, int]:
     }
 
 
+# ---------------------------------------------------------------------------
+# usable_exact_genuine KPI (genuine-price CORRECTNESS build — Wave D).
+#
+# Provenance (a genuine source_method) is necessary but NOT sufficient: the price
+# must ALSO be the EXACT requested product, in stock, on a valid PDP URL, and not
+# pended. Exactness (correct SKU/variant/size/concentration) is enforced UPSTREAM
+# by the response chokepoint's exact gate (a SHOWN price is exact by construction),
+# so this end-to-end metric measures the RATE at which a requested product yields a
+# usable, genuine, in-stock, valid-PDP price. Run against the NON-CIRCULAR truth set
+# data/usable_exact_genuine_truth.json — COLD (nocache=true) and WARMED (--read-cache)
+# SEPARATELY. Phase-2 gate: >= 0.85 for electronics/fashion/fragrances (WARMED).
+# ---------------------------------------------------------------------------
+
+def usable_exact_genuine_for_product(body: Dict[str, Any], product_idx: int) -> bool:
+    """True iff product idx's resolved price is USABLE-EXACT-GENUINE: non-pending,
+    genuine-BH source_method, in_stock not False, and a valid (non-listing) PDP URL.
+    A missing / pended / converted / estimated / out-of-stock / listing-URL price is
+    NOT usable (counts in the KPI denominator as requested-but-not-usable)."""
+    products = _products_overview(body)
+    if product_idx >= len(products):
+        return False
+    price = products[product_idx].get("price")
+    if not isinstance(price, dict):
+        return False
+    if price.get("unavailable") is True or price.get("amount") in (None, 0):
+        return False
+    method = price.get("source_method")
+    if not isinstance(method, str) or method not in GENUINE_BH_SOURCE_METHODS:
+        return False
+    if price.get("in_stock") is False:
+        return False
+    url = price.get("url")
+    if isinstance(url, str) and url.strip():
+        try:
+            from app.services.source_router import is_non_pdp_listing_url
+            if is_non_pdp_listing_url(url):
+                return False
+        except Exception:  # noqa: BLE001 — a URL-classifier failure must not crash the eval
+            pass
+    return True
+
+
+def count_usable_exact_genuine(body: Dict[str, Any]) -> tuple[int, int]:
+    """(usable, requested) across the pair. requested is always 2 — a missing or
+    pended cell is requested-but-not-usable (the KPI denominator includes pends)."""
+    usable = sum(1 for idx in (0, 1) if usable_exact_genuine_for_product(body, idx))
+    return usable, 2
+
+
+def count_guard_rejected(body: Dict[str, Any]) -> int:
+    """How many products PENDED due to the NEW correctness gate (price.guard_rejected
+    stamped out_of_stock / non_pdp_url / not_exact). The no-fab measurement (1J): the
+    gate's pends are COUNTED, never a silent coverage drop."""
+    n = 0
+    for p in _products_overview(body)[:2]:
+        price = p.get("price")
+        if isinstance(price, dict) and price.get("guard_rejected"):
+            n += 1
+    return n
+
+
 def extract_specs(body: Dict[str, Any], product_idx: int) -> Dict[str, Any]:
     """specs.products[i].specs dict (falls back to overview products)."""
     specs_products = _products_specs(body)

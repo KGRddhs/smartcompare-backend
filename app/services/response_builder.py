@@ -1232,11 +1232,20 @@ def build_comparison_response(
             if _price.get("unavailable") is True:
                 continue
             if not is_price_showable(_name, _price, pd_item.get("category"), enforce_correctness=True):
-                pd_item["price"] = make_pending_price(
+                _pend = make_pending_price(
                     currency=_price.get("currency") or "BHD",
                     reason="pending_genuine",
                     size=_price.get("size"),
                 )
+                # NO-FAB measurement (1J) — carry the correctness-gate rejection
+                # reason (out_of_stock / non_pdp_url / not_exact) on a NON-UX key so
+                # the KPI/eval can MEASURE the gate's blast radius (no silent drop).
+                # The FE keeps rendering the generic "pricing lands soon" line
+                # (reason=pending_genuine); it ignores guard_rejected.
+                _gr = _price.get("guard_rejected")
+                if _gr:
+                    _pend["guard_rejected"] = _gr
+                pd_item["price"] = _pend
                 # Keep best_price/currency/retailer mirrors honest.
                 pd_item["best_price"] = None
                 if "retailer" in pd_item:
