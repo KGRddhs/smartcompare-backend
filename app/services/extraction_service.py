@@ -2021,6 +2021,19 @@ def generate_cache_key(prefix: str, *args) -> str:
 
 
 def get_specs_cache_key(brand: str, name: str, variant: Optional[str]) -> str:
+    # CORRECTNESS — fold the identity axes (concentration / variant-qualifier /
+    # size-storage) into the specs key so EDP and EDT specs (and 128GB vs 256GB)
+    # do NOT collide, while ALIAS wording (EDT ≡ "eau de toilette") stays one key.
+    # Lazy import avoids the price_service <-> extraction_service circular at load.
+    try:
+        from app.services.price_service import _identity_cache_token, _strip_identity_axes
+        token = _identity_cache_token(f"{name} {variant or ''}")
+        if token:
+            base_name = _strip_identity_axes(name or "")
+            base_variant = _strip_identity_axes(variant or "") if variant else variant
+            return generate_cache_key("specs", brand, base_name, base_variant, token)
+    except Exception:  # noqa: BLE001 — a key-builder failure must never break the fetch
+        pass
     return generate_cache_key("specs", brand, name, variant)
 
 

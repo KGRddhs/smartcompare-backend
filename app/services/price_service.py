@@ -3090,6 +3090,48 @@ def select_best(
     return eligible[0]
 
 
+def _identity_cache_token(text: str) -> str:
+    """A stable composite cache token of ALL identity-discriminating axes —
+    concentration (EDP/EDT/…) + variant qualifier (FE/Pro/Max/…) + size/storage/
+    count/weight — so distinct VARIANTS of the same product never collide on one
+    cache key (EDP 100ml vs EDT 100ml; S24 vs S24 FE) while ALIAS wording maps to
+    the SAME token (EDT ≡ "eau de toilette" via the normalized label; oz snapped to
+    ml by size_variant_token). Empty when NO discriminating axis is present → the
+    caller keeps the legacy size-agnostic key (backward-compatible, no cache-warm
+    invalidation for plain products). The qualifier set is applied category-agnostically
+    here — it only ever ADDS a discriminator, so a brand word that happens to be a
+    qualifier (Max Factor) stays consistent across the request and the resolved match."""
+    parts: List[str] = []
+    conc = extract_concentration(text)
+    if conc:
+        parts.append(conc.lower().replace(" ", ""))
+    quals = _quals_in(text, _ELECTRONICS_QUALIFIERS)
+    if quals:
+        parts.append("".join(sorted(quals)))
+    size = size_variant_token(text)
+    if size:
+        parts.append(size)
+    return ".".join(parts)
+
+
+_QUALIFIER_WORD_RE = re.compile(
+    r"\b(" + "|".join(re.escape(q) for q in sorted(_ELECTRONICS_QUALIFIERS)) + r")\b",
+    re.I,
+)
+
+
+def _strip_identity_axes(text: str) -> str:
+    """Remove the size/storage/concentration/qualifier tokens from `text` so the
+    cache-key BASE is identity-axis-agnostic — the composite _identity_cache_token
+    carries them. Mirrors that token's axes so a discriminator living in `name` vs
+    `search_query` collapses to one base (the same product → one key)."""
+    out = _IDENTITY_MEASURE_STRIP_RE.sub(" ", text or "")
+    for pat, _label in _CONCENTRATION_PATTERNS:
+        out = pat.sub(" ", out)
+    out = _QUALIFIER_WORD_RE.sub(" ", out)
+    return re.sub(r"\s+", " ", out).strip()
+
+
 def build_size_aware_price_cache_key(
     brand: str, name: str, variant: Optional[str], region: str,
     identity_text: str = "",
@@ -3108,20 +3150,18 @@ def build_size_aware_price_cache_key(
     the base components, then re-appended once — so name="iPhone 15 256GB" and
     name="iPhone 15"+identity="… 256GB" collapse to one key.
     """
-    token = size_variant_token(f"{name} {variant or ''} {identity_text or ''}")
+    full_text = f"{name} {variant or ''} {identity_text or ''}"
+    token = _identity_cache_token(full_text)
     if not token:
         return get_price_cache_key(brand, name, variant, region)
-    # Strip ANY size/storage token out of name+variant so the base key is
-    # size-agnostic; the normalized token is the single size component. Without
-    # this, the same size living in `name` vs `search_query` would hash
-    # differently (name differs) — defeating cache hits.
-    base_name = _SIZE_STRIP_RE.sub(" ", name or "").strip()
-    base_name = re.sub(r"\s+", " ", base_name)
-    base_variant = _SIZE_STRIP_RE.sub(" ", variant or "").strip() if variant else variant
-    if base_variant:
-        base_variant = re.sub(r"\s+", " ", base_variant)
-    # Append the size token as an extra key component (generate_cache_key joins
-    # truthy args with "|" before hashing), keeping the "price:" prefix.
+    # Strip ANY size/storage/concentration/qualifier token out of name+variant so
+    # the base key is identity-axis-agnostic; the normalized composite token is the
+    # single discriminator. Without this, the same axis living in `name` vs
+    # `search_query` would hash differently (name differs) — defeating cache hits.
+    base_name = _strip_identity_axes(name or "")
+    base_variant = _strip_identity_axes(variant or "") if variant else variant
+    # Append the composite identity token as an extra key component (generate_cache_key
+    # joins truthy args with "|" before hashing), keeping the "price:" prefix.
     return generate_cache_key("price", brand, base_name, base_variant, region, token)
 
 
