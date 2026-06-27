@@ -206,6 +206,96 @@ async def test_prefetch_SKIPPED_when_algolia_sources_exist():
 
 
 # ===========================================================================
+# Genuine-BH starvation fix (2026-06-27) — the discovery prefetch must FIRE for
+# categories whose genuine-BH price comes from a discovery-only source (Lulu) even
+# when the category ALSO has (reseller / niche) Shopify sources, so the genuine
+# curl fan_out isn't starved under the 15s _PRICE_RACE_TIMEOUT cap.
+# ===========================================================================
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("category", ["grocery", "electronics"])
+async def test_prefetch_FIRES_for_shopify_category_with_lulu_discovery(category):
+    """Genuine-BH starvation regression: grocery + electronics both now have
+    bahrain-tier Shopify rows in the registry (niche health stores / reseller
+    storefronts) — but their GENUINE BHD price comes from gcc.luluhypermarket.com,
+    a discovery-only source (no direct adapter). The Shopify rows DON'T short-
+    circuit for a mainstream item, so the speculative discovery prefetch MUST fire
+    concurrently with serper_shopping (not be suppressed by the Shopify rows'
+    existence) or the Lulu curl fan_out is starved past the 15s cap.
+
+    Uses the REAL registry (no source patches) so it pins the actual gate against
+    a registry drift. ENABLE_BH_GCC_CATALOG_SOURCES is irrelevant here — Lulu +
+    the Shopify rows are present as literals in either flag state."""
+    import app.services.structured_comparison_service as scs
+    svc = scs.get_comparison_service()
+    ssc = "app.services.structured_comparison_service"
+
+    async def conv_shopping(*a, **k):
+        # Converted Tier-1 → parked, escalation fires → discovery consumed.
+        return {"shopping": [{"title": "x", "source": "y", "price": "1", "link": "z"}],
+                "organic": [], "shopping_region": "us_fallback"}
+
+    def fake_extract(name, items, cur, shopping_region=None):
+        return {"amount": 50.0, "currency": "BHD", "original_currency": "USD",
+                "retailer": "Foo", "source_method": "converted_usd", "retailer_score": 0.5}
+
+    search_calls = {"n": 0}
+    async def count_search(*a, **k):
+        search_calls["n"] += 1
+        return {"organic": []}
+
+    async def fake_fan(*a, **k):
+        return {"best": None, "alternates": [], "cancelled_count": 0, "elapsed_seconds": 0.1}
+
+    with patch(f"{ssc}.search_product_prices", new=AsyncMock(side_effect=conv_shopping)), \
+         patch(f"{ssc}.extract_price_from_shopping", side_effect=fake_extract), \
+         patch(f"{ssc}._should_escalate_price_scrape", return_value=True), \
+         patch(f"{ssc}.fan_out_price_lookup", new=AsyncMock(side_effect=fake_fan)), \
+         patch(f"{ssc}.search_web", new=AsyncMock(side_effect=count_search)), \
+         patch(f"{ssc}.get_cached", return_value=None), \
+         patch(f"{ssc}.set_cached", return_value=True), \
+         patch("app.services.product_data_service.get_cached_price", new=AsyncMock(return_value=None)), \
+         patch.object(svc, "_save_price_to_db"):
+        await svc._get_price(brand="Test", name="Item", variant=None,
+                             region="bahrain", search_query="Test Item",
+                             nocache=True, category=category)
+
+    assert search_calls["n"] >= 1, (
+        f"discovery prefetch did NOT fire for {category} — the genuine-BH Lulu curl "
+        f"is starved (gate wrongly suppressed by the category's Shopify rows)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_serper_gcc_shopping_calls_fire_concurrently():
+    """Genuine-BH starvation regression: serper_service.search_product_prices runs
+    the gl=bh primary and gl=us fallback CONCURRENTLY for a GCC country (reclaiming
+    the ~3s the old serial fallback stole from the genuine-BH curl fan_out). With
+    each shopping call taking 1s, the total must be ~1s (parallel), not ~2s (serial).
+    Selection still prefers gl=bh — here gl=bh is empty so gl=us wins."""
+    from app.services import serper_service
+
+    async def slow_shopping(product, gl="bh"):
+        await asyncio.sleep(1.0)
+        if gl == "us":
+            return {"shopping": [{"title": "x", "price": "$10"}]}
+        return {"shopping": []}  # gl=bh empty (the real-world BH case)
+
+    with patch.object(serper_service, "SERPER_API_KEY", "test-key"), \
+         patch.object(serper_service, "_do_serper_shopping", side_effect=slow_shopping):
+        t0 = time.monotonic()
+        result = await serper_service.search_product_prices("iPhone 16", country="bh")
+        elapsed = time.monotonic() - t0
+
+    assert result.get("shopping_region") == "us_fallback"
+    assert len(result["shopping"]) == 1
+    assert elapsed < 1.6, (
+        f"gl=bh + gl=us shopping calls ran SERIALLY ({elapsed:.2f}s) — must be "
+        f"concurrent (~1s); the serial fallback steals budget from the curl fan_out"
+    )
+
+
+# ===========================================================================
 # Invariant pins — these MUST still hold after the parallelization (team-lead's
 # 4 PRESERVE invariants). Parallelizing the FETCH must not change the SELECTION.
 # ===========================================================================

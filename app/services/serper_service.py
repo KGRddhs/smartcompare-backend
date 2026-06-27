@@ -2,6 +2,7 @@
 Serper Service - Web search via Serper API (Google Search)
 Enhanced for structured product data extraction
 """
+import asyncio
 import os
 import httpx
 import logging
@@ -240,19 +241,30 @@ async def search_product_prices(
             f"[SHOPPING_QUERY_CLEAN] before={original_product!r} after={product!r}"
         )
 
-    primary = await _do_serper_shopping(product, gl=country)
-    primary_shopping = primary.get("shopping", []) or []
-    if primary_shopping:
-        return {
-            "shopping": primary_shopping,
-            "organic": [],
-            "query": product,
-            "shopping_region": country,
-        }
-
-    # GCC fallback to gl=us — only when primary is empty AND country is GCC.
+    # genuine-BH starvation fix (2026-06-27) — for a GCC country, fire the gl=country
+    # primary AND the gl=us fallback CONCURRENTLY rather than sequentially. Google has
+    # NO Bahrain shopping feed, so the gl=bh primary returns 0 essentially every time
+    # and the gl=us fallback was ALWAYS reached — but it ran ~3s AFTER the dead gl=bh
+    # call, stealing budget the downstream 15s genuine-BH curl fan_out needs. Running
+    # them in parallel reclaims that ~3s. Selection is UNCHANGED: prefer gl=country
+    # items when present (genuine local feed), else the gl=us fallback (powers the
+    # USD->BHD conversion + parks the converted_fallback). Net Serper calls are the
+    # same as before for the empty-primary path (the dominant GCC case); only WHEN the
+    # second call fires changes (concurrent, not serial). Non-GCC countries keep the
+    # single-call, no-fallback behaviour byte-for-byte.
     if country in _GCC_COUNTRIES:
-        fallback = await _do_serper_shopping(product, gl="us")
+        primary, fallback = await asyncio.gather(
+            _do_serper_shopping(product, gl=country),
+            _do_serper_shopping(product, gl="us"),
+        )
+        primary_shopping = primary.get("shopping", []) or []
+        if primary_shopping:
+            return {
+                "shopping": primary_shopping,
+                "organic": [],
+                "query": product,
+                "shopping_region": country,
+            }
         fallback_shopping = fallback.get("shopping", []) or []
         if fallback_shopping:
             return {
@@ -269,6 +281,16 @@ async def search_product_prices(
             "shopping_region": "us_fallback",
         }
 
+    # Non-GCC primary — single call, no gl=us fallback.
+    primary = await _do_serper_shopping(product, gl=country)
+    primary_shopping = primary.get("shopping", []) or []
+    if primary_shopping:
+        return {
+            "shopping": primary_shopping,
+            "organic": [],
+            "query": product,
+            "shopping_region": country,
+        }
     # Non-GCC primary returned empty — no fallback, just echo the primary
     # region tag so callers know we tried.
     return {

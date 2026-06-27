@@ -105,8 +105,13 @@ class TestSearchProductPricesIntegration:
             "Apple iPhone 16 price", country="bh"
         )
 
-        # Cleaned query must hit Serper, not the dirty one.
-        assert observed_queries == [("Apple iPhone 16", "bh")]
+        # Cleaned query must hit Serper, not the dirty one. (As of the 2026-06-27
+        # genuine-BH starvation fix the gl=bh + gl=us calls fire CONCURRENTLY for a
+        # GCC country, so order is non-deterministic and gl=us may also fire — assert
+        # the cleaned product string reached EVERY Serper call and gl=bh was made.)
+        assert observed_queries, "no Serper shopping call fired"
+        assert all(p == "Apple iPhone 16" for p, _gl in observed_queries)
+        assert ("Apple iPhone 16", "bh") in observed_queries
         # Output query field also reflects cleaned form (helpful for
         # downstream cache keys).
         assert result["query"] == "Apple iPhone 16"
@@ -130,8 +135,11 @@ class TestSearchProductPricesIntegration:
             "iPhone 16 Pro Max", country="bh"
         )
 
-        # No mutation — Pro/Max preserved.
-        assert observed_queries == [("iPhone 16 Pro Max", "bh")]
+        # No mutation — Pro/Max preserved. (Concurrent gl=bh + gl=us as of the
+        # 2026-06-27 starvation fix: assert no mutation on every fired call.)
+        assert observed_queries, "no Serper shopping call fired"
+        assert all(p == "iPhone 16 Pro Max" for p, _gl in observed_queries)
+        assert ("iPhone 16 Pro Max", "bh") in observed_queries
 
     @pytest.mark.asyncio
     async def test_us_fallback_uses_cleaned_query(self, monkeypatch):
@@ -157,11 +165,13 @@ class TestSearchProductPricesIntegration:
             country="bh",
         )
 
-        # Both calls saw the cleaned string.
-        assert observed_queries == [
+        # Both calls saw the cleaned string. (Order is non-deterministic since the
+        # 2026-06-27 starvation fix fires gl=bh + gl=us concurrently — assert as a
+        # set, not an ordered list.)
+        assert set(observed_queries) == {
             ("Apple iPhone 16", "bh"),
             ("Apple iPhone 16", "us"),
-        ]
+        }
         assert result["shopping_region"] == "us_fallback"
         assert len(result["shopping"]) == 1
 

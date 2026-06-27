@@ -645,6 +645,36 @@ def get_jsonapi_sources_for_category(category: str) -> List[Source]:
     ]
 
 
+def get_curl_pagescrape_sources_for_category(category: str) -> List[Source]:
+    """Genuine-BH orphan-row fix (2026-06-27) — Bahrain-tier PLAIN curl /
+    JSON-LD sources for `category`, in registry order.
+
+    These are the catalog rows that map to NO direct per-domain adapter
+    (mechanism "" or "curl", genuine_method "page_scrape_jsonld" — e.g.
+    sporter.com / drnutrition.com / matgarbahrain.com / healbahrain.com).
+    The consolidation script (build_source_registry_data._mechanism_and_flags)
+    emits ~199 such live rows (47 bahrain-tier), but UNTIL THIS SELECTOR they
+    had no consumer except the limit-capped Serper `site:` discovery — the
+    supplement branch (which never runs that discovery) reached NONE of them.
+
+    A row qualifies on mechanism ("" or "curl"), bahrain tier, and category —
+    the same predicate `_bahrain_discovery_only_sources` uses, minus the
+    Shopify/Algolia exclusions (already excluded by the is_shopify/is_algolia
+    guards). The caller curls/attributes the source's apex domain. Returns a
+    (possibly empty) list — never raises. Bahrain-tier only (every bahrain
+    literal + catalog row is BHD, so a hit on these is genuine BHD).
+    """
+    return [
+        s
+        for s in SOURCE_REGISTRY
+        if (s.mechanism or "") in ("", "curl")
+        and s.tier == "bahrain"
+        and not s.is_shopify
+        and not s.is_algolia
+        and (not s.categories or category in s.categories)
+    ]
+
+
 def get_sitemap_sources_for_category(category: str) -> List[Source]:
     """Source-intelligence (2026-06-23) — Bahrain-tier sitemap/curl sources for
     `category`, in registry order. Discovery via the store's OWN sitemap (an

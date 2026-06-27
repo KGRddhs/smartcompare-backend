@@ -364,6 +364,96 @@ class TestCde2DeterministicAttribution:
 
 
 # ---------------------------------------------------------------------------
+# 5b. Genuine-BH orphan-row fix (2026-06-27) — the supplement branch admits the
+#     bahrain-tier curl/JSON-LD CATALOG supplement sources (sporter.com,
+#     drnutrition.com, …) into `known_supplement_retailers` when the catalog flag
+#     is ON, so a Tier-2 GPT-organic price tied to one of them via a matched
+#     bh_organic snippet is attributed local_bhd instead of pending. With the flag
+#     OFF (the default) those domains are NOT admitted → dormancy preserved.
+# ---------------------------------------------------------------------------
+
+class TestCatalogSupplementSourceAttribution:
+    def test_cde2_attributes_catalog_supplement_domain_when_flag_on(self, service):
+        """POSITIVE (flag ON): iHerb organic empty; bh_organic has an item whose
+        link domain is a CATALOG bahrain-tier supplement source (sporter.com — NOT
+        in the base known_supplement_retailers, NOT in PHARMACY_DOMAINS) whose
+        title token-matches the product; extract_price returns amount+retailer=None
+        → CDE-2 relabels it local_bhd attributed to Sporter. This is the exact
+        ON-Whey pending miss the orphan-row fix converts."""
+        from app.services.price_service import is_price_showable
+
+        full_name = "Optimum Nutrition Gold Standard Whey"
+        gpt_price = {"amount": 27.5, "currency": "BHD", "retailer": None}
+        service._parked_price = {}
+        bh_item = {
+            "title": "Optimum Nutrition Gold Standard 100% Whey 2lb",
+            "link": "https://www.sporter.com/en-bh/optimum-nutrition-gold-standard-whey/",
+            "snippet": "Buy Optimum Nutrition Gold Standard Whey in Bahrain",
+        }
+        seam = {
+            "fetch_iherb_price": AsyncMock(return_value=None),
+            "fetch_pharmacy_price": AsyncMock(return_value=None),
+            "fetch_page_price": AsyncMock(return_value=None),
+            "extract_price": AsyncMock(return_value=(dict(gpt_price), {"prompt_tokens": 0, "completion_tokens": 0})),
+            "search_web": _routed_search_web(iherb_organic=[], bh_organic=[bh_item]),
+        }
+        with patch.dict(os.environ, {"ENABLE_BH_GCC_CATALOG_SOURCES": "true"}):
+            # Reload the registry so the catalog rows (sporter.com) are present.
+            import importlib
+            import app.services.source_router as _sr
+            importlib.reload(_sr)
+            try:
+                result = _run_get_price_isolated(
+                    service, "Optimum Nutrition", "Gold Standard Whey", None,
+                    "bahrain", full_name, "supplements", seam_overrides=seam,
+                )
+            finally:
+                # Restore the default (flag-OFF) registry for sibling tests.
+                with patch.dict(os.environ, {"ENABLE_BH_GCC_CATALOG_SOURCES": ""}):
+                    importlib.reload(_sr)
+        assert result.get("source_method") == "local_bhd"
+        assert (result.get("retailer") or "").lower().startswith("sporter")
+        assert result.get("url") == bh_item["link"]
+        assert is_price_showable(full_name, result) is True
+        assert full_name in service._parked_price
+
+    def test_cde2_does_not_attribute_catalog_domain_when_flag_off(self, service):
+        """NEGATIVE / dormancy (flag OFF, the default): the SAME sporter.com
+        bh_organic item is NOT a known retailer (catalog rows not loaded) → CDE-2
+        cannot attribute, the price keeps its honest gpt_organic_extract label and
+        pends. Proves the fix is gated and introduces no flag-OFF behavior change."""
+        from app.services.price_service import is_price_showable
+
+        full_name = "Optimum Nutrition Gold Standard Whey"
+        gpt_price = {"amount": 27.5, "currency": "BHD", "retailer": None}
+        service._parked_price = {}
+        bh_item = {
+            "title": "Optimum Nutrition Gold Standard 100% Whey 2lb",
+            "link": "https://www.sporter.com/en-bh/optimum-nutrition-gold-standard-whey/",
+            "snippet": "Buy Optimum Nutrition Gold Standard Whey in Bahrain",
+        }
+        seam = {
+            "fetch_iherb_price": AsyncMock(return_value=None),
+            "fetch_pharmacy_price": AsyncMock(return_value=None),
+            "fetch_page_price": AsyncMock(return_value=None),
+            "extract_price": AsyncMock(return_value=(dict(gpt_price), {"prompt_tokens": 0, "completion_tokens": 0})),
+            "search_web": _routed_search_web(iherb_organic=[], bh_organic=[bh_item]),
+        }
+        with patch.dict(os.environ, {"ENABLE_BH_GCC_CATALOG_SOURCES": ""}):
+            import importlib
+            import app.services.source_router as _sr
+            importlib.reload(_sr)
+            result = _run_get_price_isolated(
+                service, "Optimum Nutrition", "Gold Standard Whey", None,
+                "bahrain", full_name, "supplements", seam_overrides=seam,
+            )
+        assert result.get("source_method") == "gpt_organic_extract"
+        assert not result.get("retailer")
+        assert is_price_showable(full_name, result) is False
+        assert full_name not in service._parked_price
+
+
+# ---------------------------------------------------------------------------
 # 6. Sub-stage wait_for bounds — a hung stage is bypassed, chain proceeds
 # ---------------------------------------------------------------------------
 

@@ -49,11 +49,23 @@ def _force_escalation(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_shopify_hit_short_circuits_before_serper(monkeypatch, clean_service):
-    """A confident Shopify /products.json hit returns the BHD price and the
-    Serper site: discovery (`search_web`) is NEVER called.
+    """A confident OFFICIAL Shopify /products.json hit returns the BHD price and
+    the Serper discovery RESULTS are never consumed (fan_out never runs).
 
     S3: short-circuit ONLY when the Shopify domain IS the official/authoritative
-    domain for the brand (here get_official_domain → shopalmoayyed.com)."""
+    domain for the brand (here get_official_domain → shopalmoayyed.com).
+
+    NOTE (2026-06-27 genuine-BH starvation fix): electronics now FIRES the
+    speculative discovery prefetch concurrently with serper_shopping (electronics
+    has discovery-only BH sources like gcc.luluhypermarket.com whose genuine price
+    the dominant electronics query — iPhone/Samsung/Sony, with no official BH
+    Shopify store — depends on). On the rare OFFICIAL-Shopify hit (Super General →
+    shopalmoayyed) those speculative `search_web` calls are CANCELLED via
+    `_cancel_prefetched_discovery()` before their results are used — so the budget
+    cost is bounded and the SELECTION is unchanged: the official Shopify price
+    still wins and the fan_out race never runs. The invariant this pins is now
+    "the discovery results are not CONSUMED" (fan_out not called), not "search_web
+    is never fired"."""
     from app.services import structured_comparison_service as scs_mod
 
     _force_escalation(monkeypatch)
@@ -71,7 +83,8 @@ async def test_shopify_hit_short_circuits_before_serper(monkeypatch, clean_servi
     fetch_mock = AsyncMock(return_value=shopify_price)
     monkeypatch.setattr(scs_mod, "fetch_shopify_price", fetch_mock)
 
-    # Tripwires: Serper discovery + fan_out must NOT run on an OFFICIAL hit.
+    # Tripwire: the fan_out race (which CONSUMES discovery results) must NOT run on
+    # an OFFICIAL Shopify hit — the short-circuit returns before it.
     search_web_mock = AsyncMock(return_value={"organic": []})
     fan_out_mock = AsyncMock(return_value={"best": None})
     monkeypatch.setattr(scs_mod, "search_web", search_web_mock)
@@ -88,7 +101,8 @@ async def test_shopify_hit_short_circuits_before_serper(monkeypatch, clean_servi
     assert result["currency"] == "BHD"
     assert result["source_method"] == "shopify_json"
     assert fetch_mock.await_count >= 1
-    search_web_mock.assert_not_called()
+    # SELECTION invariant: the discovery results are never consumed — the official
+    # Shopify hit short-circuits before the fan_out race.
     fan_out_mock.assert_not_called()
 
 

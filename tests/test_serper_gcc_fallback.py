@@ -80,17 +80,27 @@ async def test_gl_bh_empty_triggers_us_fallback(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_gl_bh_with_results_skips_fallback(monkeypatch):
-    """When primary gl=bh returns items, no fallback fires."""
+async def test_gl_bh_with_results_prefers_primary(monkeypatch):
+    """Genuine-BH starvation fix (2026-06-27): the gl=bh primary and gl=us
+    fallback now fire CONCURRENTLY for GCC countries (reclaiming the ~3s the old
+    serial fallback stole from the downstream genuine-BH curl fan_out). SELECTION
+    is unchanged — when gl=bh returns items they are PREFERRED (genuine local feed)
+    and the shopping_region stays 'bh'; the gl=us result is ignored. In production
+    gl=bh effectively never returns items (Google has no Bahrain shopping feed —
+    see module docstring), so the concurrent second call is a near-zero net cost."""
     monkeypatch.setattr(serper_service, "SERPER_API_KEY", "test-key")
     bh_full = _mock_response(200, {"shopping": [
         {"title": "iPhone 16 from BH merchant", "price": "BHD 200", "source": "noon.com"},
     ]})
-    ctx, calls = _patch_httpx_sequence([bh_full])
+    us_full = _mock_response(200, {"shopping": [
+        {"title": "iPhone 16 US", "price": "$529.00", "source": "Walmart"},
+    ]})
+    ctx, calls = _patch_httpx_sequence([bh_full, us_full])
     with ctx:
         result = await serper_service.search_product_prices("iPhone 16", country="bh")
-    assert calls["n"] == 1, "no fallback when primary has results"
+    # Both calls now fire concurrently (no serial skip), but gl=bh wins selection.
     assert len(result["shopping"]) == 1
+    assert result["shopping"][0]["title"] == "iPhone 16 from BH merchant"
     assert result.get("shopping_region") == "bh"
 
 

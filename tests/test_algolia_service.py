@@ -153,6 +153,65 @@ def test_match_picks_best_overlap_among_candidates():
     assert "Elixir" in matched["name"]  # better word overlap than plain Sauvage
 
 
+def test_strict_title_match_concentration_aware():
+    """Fix (A): strict_title_match collapses spelled-out fragrance concentrations
+    to their canonical token, so an EDT query matches an 'Edt' PDP even though
+    the words 'eau'/'toilette' are absent. The exact captured real alhajis case."""
+    from app.services.price_service import strict_title_match
+    q = "Dior Sauvage Eau de Toilette 100ml"
+    t = "Dior Sauvage Edt M 100Ml"
+    assert strict_title_match(q, t) is True
+    # No-fab: a DIFFERENT concentration (EDP) must still be rejected.
+    assert strict_title_match(q, "Dior Sauvage Eau de Parfum 100ml") is False
+    # Symmetric: abbreviated query vs spelled-out title also matches.
+    assert strict_title_match(
+        "Dior Sauvage EDP 100ml", "Dior Sauvage Eau de Parfum 100Ml"
+    ) is True
+
+
+def test_overlap_score_concatenation_tolerant():
+    """Concatenated multi-word model names must not fail the overlap floor.
+    The index collapses 'Air Force 1' -> 'AIRFORCE', so the plain set-overlap is
+    1/4=0.25 (< 0.4) — the NEW concatenation-tolerant score is 0.75."""
+    import app.services.algolia_service as alg
+    from app.services.price_service import normalize_words
+    p_words = normalize_words("Nike Air Force 1")
+    surface = "Nike AIRFORCE Color Block Lace-Up Sneakers"
+    assert alg._overlap_score(p_words, surface) >= 0.4
+    # Old computation would have dropped it:
+    assert (len(p_words & normalize_words(surface)) / len(p_words)) < 0.4
+
+
+def test_match_accepts_concatenated_air_force_one():
+    """The exact captured real 6thStreet Air Force 1 hit (32.0 BHD) is accepted
+    after the concatenation-tolerant overlap fix. It already passes
+    strict_title_match + numbers_match; only the redundant overlap floor dropped
+    it. No-fab held: Air Max / Winflo still fail strict_title_match."""
+    import app.services.algolia_service as alg
+    hits = [
+        {"name": "AIRFORCE Color Block Lace-Up Sneakers", "brand_name": "Nike",
+         "price": [{"BHD": {"default": 32.0, "default_formated": "BHD 32.000"}}],
+         "url": "https://en-bh.6thstreet.com/buy-nike-airforce.html",
+         "in_stock": True},
+    ]
+    matched = alg._match_algolia_hit(hits, "Nike Air Force 1")
+    assert matched is not None
+    assert alg._parse_algolia_price(matched) == 32.0
+
+
+def test_match_concatenation_tolerance_still_rejects_wrong_model():
+    """No-fab: the concatenation tolerance does NOT loosen wrong-model rejection.
+    'Nike Air Max 90' must not match a 'Nike Air Force 1' query (strict_title_match
+    drops it — 'force' absent — before overlap is ever consulted)."""
+    import app.services.algolia_service as alg
+    hits = [
+        {"name": "Air Max 90 Sneakers", "brand_name": "Nike",
+         "price": [{"BHD": {"default": 45.0}}], "url": "u", "in_stock": True},
+    ]
+    matched = alg._match_algolia_hit(hits, "Nike Air Force 1")
+    assert matched is None
+
+
 # ---------------------------------------------------------------------------
 # fetch_algolia_price — orchestrator (config harvest → query → match → price)
 # ---------------------------------------------------------------------------
