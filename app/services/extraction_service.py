@@ -2026,8 +2026,10 @@ def get_specs_cache_key(brand: str, name: str, variant: Optional[str]) -> str:
     # do NOT collide, while ALIAS wording (EDT ≡ "eau de toilette") stays one key.
     # Lazy import avoids the price_service <-> extraction_service circular at load.
     try:
-        from app.services.price_service import _identity_cache_token, _strip_identity_axes
-        token = _identity_cache_token(f"{name} {variant or ''}")
+        from app.services.price_service import (
+            _identity_cache_token, _strip_identity_axes, exact_gate_enabled,
+        )
+        token = _identity_cache_token(f"{name} {variant or ''}") if exact_gate_enabled() else ""
         if token:
             base_name = _strip_identity_axes(name or "")
             base_variant = _strip_identity_axes(variant or "") if variant else variant

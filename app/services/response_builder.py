@@ -1205,10 +1205,15 @@ def build_comparison_response(
     # _dim_value (built below via _build_scoring_v2) take their honest
     # missing-data path, so no cross-price delta is asserted on a pending price.
     try:
-        from app.services.price_service import is_price_showable, make_pending_price
+        from app.services.price_service import (
+            is_price_showable, make_pending_price, _infer_category_from_query,
+        )
         for pd_item in product_data:
             _name = pd_item.get("full_name") or pd_item.get("name") or ""
             _price = pd_item.get("price")
+            # Fall back to a query-inferred category when the product carries none,
+            # so the backstop's variant-qualifier axis (FE/Pro/Max) still engages.
+            _cat = pd_item.get("category") or _infer_category_from_query(_name)
             if not isinstance(_price, dict):
                 # SIB-5/G1 — a raw None / non-dict price (supplements returned
                 # NO price, a `_price_fallback_on_miss` terminal that surfaced a
@@ -1231,7 +1236,7 @@ def build_comparison_response(
             # already non-showable and correctly shaped.
             if _price.get("unavailable") is True:
                 continue
-            if not is_price_showable(_name, _price, pd_item.get("category"), enforce_correctness=True):
+            if not is_price_showable(_name, _price, _cat, enforce_correctness=True):
                 _pend = make_pending_price(
                     currency=_price.get("currency") or "BHD",
                     reason="pending_genuine",

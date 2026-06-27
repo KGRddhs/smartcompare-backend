@@ -1259,17 +1259,17 @@ def reselect_to_target_size(
                 price["source_method"] = c.get("source_method")
         # CORRECTNESS — never re-select an explicitly OUT-OF-STOCK candidate (a
         # costlier in-stock exact beats a cheap OOS; with no in-stock match the
-        # product pends). Checked here, NOT via the is_price_showable axis backstop:
+        # product pends), and never swap an EDP query onto a cheaper EDT just because
+        # both are 100ml. Checked here, NOT via the is_price_showable axis backstop:
         # this re-selection DELIBERATELY targets a DIFFERENT SIZE for pair fairness,
-        # so the size axis must not run — only stock + the non-size axes below.
-        if c.get("in_stock") is False or price.get("in_stock") is False:
-            continue
-        # CORRECTNESS — concentration is NOT the reselection axis (size is), so a
-        # re-selection to the target ml must still keep the query's concentration:
-        # never swap an EDP query onto a cheaper EDT just because both are 100ml.
-        _c_title = c.get("title") or price.get("title") or ""
-        if _concentration_mismatch(product_name, _c_title):
-            continue
+        # so the size axis must not run — only stock + concentration. Gated by
+        # exact_gate_enabled() so a rollback is byte-identical to b207bfa.
+        if exact_gate_enabled():
+            if c.get("in_stock") is False or price.get("in_stock") is False:
+                continue
+            _c_title = c.get("title") or price.get("title") or ""
+            if _concentration_mismatch(product_name, _c_title):
+                continue
         # Use the CANONICAL plausibility predicate (genuine/converted source ∪ the
         # is_implausible_* accuracy guards ∪ the sample/decant title check) — the
         # SAME gate the response chokepoint applies downstream. This guarantees a
@@ -2140,6 +2140,20 @@ def reselect_to_target_value(
             price.setdefault("source_method", c.get("source_method") or "")
             if c.get("source_method"):
                 price["source_method"] = c.get("source_method")
+        # CORRECTNESS (parity with reselect_to_target_size) — never re-select an
+        # OUT-OF-STOCK candidate, and never swap to a wrong model-line VARIANT
+        # (S24→S24 FE) just because the comparable-unit `target` matches. Gated by
+        # exact_gate_enabled() so a rollback restores legacy behaviour. NOTE: only the
+        # VARIANT-QUALIFIER axis is re-checked — the category's fairness unit (storage
+        # for electronics, count for supplements, weight for grocery) is the DELIBERATE
+        # re-selection target (val == target above), so its axis must NOT be enforced.
+        if exact_gate_enabled():
+            if c.get("in_stock") is False or price.get("in_stock") is False:
+                continue
+            _t = c.get("title") or price.get("title") or ""
+            _quals = _CATEGORY_VARIANT_QUALIFIERS.get((category or "").lower(), frozenset())
+            if _quals and _quals_in(product_name, _quals) != _quals_in(_t, _quals):
+                continue
         # The canonical showable predicate — genuine/converted ∪ the
         # is_implausible_* accuracy guards. A re-selected price must survive the
         # same downstream gate.
@@ -2812,6 +2826,22 @@ _CATEGORY_VARIANT_QUALIFIERS = {
 }
 
 
+# GENERIC category nouns — words that name a product CLASS, not a specific SKU
+# ("smartphone", "headphones", "protein"). A resolved query name often carries one
+# ("Sony WH-1000XM5 Headphones") that a terse genuine PDP/shopping title omits — a
+# MISSING generic noun must NOT reject the match (the brand+model already discriminate).
+# DELIBERATELY EXCLUDED: perfume/cologne/parfum (collide with the concentration axis —
+# "Perfume" parses as the Parfum concentration); watch/buds/band (accessory CLASSES
+# that DO discriminate). Built from HIGH_VALUE_DEVICE_NOUNS + audio/wearable/apparel/
+# supplement class nouns.
+GENERIC_CATEGORY_NOUNS = frozenset(HIGH_VALUE_DEVICE_NOUNS) | {
+    "headphones", "headphone", "earphones", "earphone", "earbuds", "earbud",
+    "speaker", "soundbar", "protein", "whey", "supplement", "supplements",
+    "vitamin", "vitamins", "vacuum", "cleaner", "sunglasses", "eyewear",
+    "sneakers", "sneaker", "shoes", "shoe",
+}
+
+
 def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = None) -> set:
     """PRODUCT-IDENTITY token set of `text`: diacritic-folded words, minus the
     brand words, the concentration PHRASE, every measurement token (size/storage/
@@ -2877,11 +2907,62 @@ def _count_mismatch(q: str, t: str) -> bool:
     return qc != tc
 
 
+# Supplement strength: capture (value, unit) so a wrong DOSE (5000 IU vs 1000 IU)
+# is a discriminating axis. Conservative cross-unit: only an explicit SAME-unit
+# different-value is a mismatch (mg vs g equivalence is NOT asserted → no false pend).
+_STRENGTH_RE = re.compile(r"(?<![a-z0-9])(\d+(?:[.,]\d+)?)\s*(iu|mg|mcg)(?![a-z])", re.IGNORECASE)
+
+
+def _doses(text: str) -> set:
+    out = set()
+    for val, unit in _STRENGTH_RE.findall(text or ""):
+        try:
+            out.add((float(val.replace(",", ".")), unit.lower()))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _strength_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry an explicit mg/IU/mcg dose with the SAME unit but a
+    DIFFERENT value (Vitamin D3 5000 IU vs 1000 IU). Cross-unit pairs (mg vs g) are
+    NOT a mismatch — avoids false-pending an mg↔g-equivalent listing."""
+    qd, td = _doses(q), _doses(t)
+    if not qd or not td:
+        return False
+    q_units = {u for _v, u in qd}
+    t_units = {u for _v, u in td}
+    shared = q_units & t_units
+    if not shared:
+        return False  # different units only — don't assert (in)equivalence
+    for u in shared:
+        if {v for v, uu in qd if uu == u} & {v for v, uu in td if uu == u}:
+            return False  # a common (value, unit) exists → not a mismatch
+    return True
+
+
+def _weight_or_volume_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry a SAME-BASE weight/volume (grams or ml) that DIFFERS
+    (CeraVe 50g vs 340g). Different bases (g vs ml) never mismatch. Complements
+    _size_ml_mismatch (which is ml/oz-only) with the grams axis for grocery/
+    skincare/haircare/makeup."""
+    qwv, twv = extract_weight_or_volume(q), extract_weight_or_volume(t)
+    if qwv is None or twv is None:
+        return False
+    qv, qb = qwv
+    tv, tb = twv
+    if qb != tb:
+        return False  # different base (g vs ml) — not comparable, no mismatch
+    return qv != tv
+
+
 def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
     """True iff query and candidate disagree on an EXPLICIT discriminating axis:
     a variant qualifier (either direction), concentration, ml/oz size, GB/TB
-    storage, or unit count. Brand-independent — the shared core of both the strict
-    `is_exact_match` and the brand-tolerant backstop."""
+    storage, unit count, supplement strength (mg/IU), or weight/volume (g/ml).
+    Brand-independent — the shared core of both the strict `is_exact_match` and the
+    brand-tolerant backstop. Each axis is a no-op unless BOTH sides carry it, so the
+    checks are category-agnostic (a fragrance has no storage, a phone no dose)."""
     quals = _CATEGORY_VARIANT_QUALIFIERS.get((category or "").lower(), frozenset())
     if quals and _quals_in(query_name, quals) != _quals_in(candidate_title, quals):
         return True
@@ -2890,6 +2971,8 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         or _size_ml_mismatch(query_name, candidate_title)
         or _storage_mismatch(query_name, candidate_title)
         or _count_mismatch(query_name, candidate_title)
+        or _strength_mismatch(query_name, candidate_title)
+        or _weight_or_volume_mismatch(query_name, candidate_title)
     )
 
 
@@ -2946,7 +3029,14 @@ def _selection_match(
         return False
     q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
     t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
-    return q_ident.issubset(t_ident)
+    # query ⊆ candidate, BUT a MISSING token that is only a GENERIC category noun
+    # (smartphone/headphones/protein the terse listing omitted) must NOT reject —
+    # the brand+model already discriminate. A missing DISTINCTIVE token (a different
+    # model) still rejects.
+    missing = q_ident - t_ident
+    if missing and not missing.issubset(GENERIC_CATEGORY_NOUNS):
+        return False
+    return True
 
 
 def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
@@ -2967,24 +3057,27 @@ def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optio
 
 # --- Availability policy (schema.org-complete; never raises) ----------------
 _OOS_AVAIL_TOKENS = ("outofstock", "soldout", "discontinued")
-# PreOrder / BackOrder = buyable-but-FUTURE → not a CURRENT shelf price → pend.
-_FUTURE_AVAIL_TOKENS = ("preorder", "backorder")
+# PreOrder / BackOrder / PreSale / MadeToOrder = buyable-but-FUTURE → not a CURRENT
+# shelf price → pend.
+_FUTURE_AVAIL_TOKENS = ("preorder", "backorder", "presale", "madetoorder")
 _INSTOCK_AVAIL_TOKENS = ("instock", "onlineonly", "limitedavailability", "instoreonly")
 
 
 def _availability_text(raw: Any) -> str:
     """Flatten any schema.org availability shape (str, URL form, None, list, dict)
-    to a lowercased token blob — never raises (the literal-substring check upstream
-    TypeErrors on None/list/dict)."""
+    to a lowercased, NON-ALPHANUMERIC-STRIPPED token blob — never raises (the literal
+    substring check upstream TypeErrors on None/list/dict). Stripping spaces/slashes
+    collapses the display form "Out of Stock" / "Sold Out" and the URL form
+    ".../OutOfStock" to the same compact token the OOS/instock sets match on."""
     if raw is None:
         return ""
     if isinstance(raw, str):
-        return raw.lower()
+        return re.sub(r"[^a-z0-9]", "", raw.lower())
     if isinstance(raw, (list, tuple, set)):
         return " ".join(_availability_text(x) for x in raw)
     if isinstance(raw, dict):
         return " ".join(_availability_text(v) for v in raw.values())
-    return str(raw).lower()
+    return re.sub(r"[^a-z0-9]", "", str(raw).lower())
 
 
 def is_available_state(raw: Any) -> Optional[bool]:
@@ -3150,6 +3243,20 @@ def build_size_aware_price_cache_key(
     the base components, then re-appended once — so name="iPhone 15 256GB" and
     name="iPhone 15"+identity="… 256GB" collapse to one key.
     """
+    # ROLLBACK — with the exact gate OFF, fall back to the LEGACY size-only token +
+    # _SIZE_STRIP_RE base so the cache namespace is byte-identical to b207bfa (a
+    # rollback must not orphan the warmed cache / re-collide EDP↔EDT only on the
+    # selection side). The concentration/qualifier axes are part of the new gate.
+    if not exact_gate_enabled():
+        token = size_variant_token(f"{name} {variant or ''} {identity_text or ''}")
+        if not token:
+            return get_price_cache_key(brand, name, variant, region)
+        base_name = re.sub(r"\s+", " ", _SIZE_STRIP_RE.sub(" ", name or "")).strip()
+        base_variant = (
+            re.sub(r"\s+", " ", _SIZE_STRIP_RE.sub(" ", variant or "")).strip()
+            if variant else variant
+        )
+        return generate_cache_key("price", brand, base_name, base_variant, region, token)
     full_text = f"{name} {variant or ''} {identity_text or ''}"
     token = _identity_cache_token(full_text)
     if not token:
@@ -3619,8 +3726,11 @@ def extract_price_from_shopping(
     )
 
     best.pop("match_score", None)
-    best.pop("title", None)
     best.pop("variant_rank", None)
+    # KEEP `title` (IMPL-SPEC §"identity must survive to the backstop") so the
+    # response chokepoint's is_price_showable(enforce_correctness=True) can re-verify
+    # exactness on the shopping path + the KPI can read the resolved identity. The
+    # FE ignores the extra key.
     return best
 
 
@@ -3876,7 +3986,23 @@ def _page_identity_ok(product_name: str, soup, category: Optional[str]) -> bool:
     signals = [s for s in _page_size_signals(soup) if s and s.strip()]
     if not signals:
         return True
+    # CONSERVATIVE — pend when a page signal exists but NONE match the query. This
+    # is the deliberate weak-signal guard: a store-name-only title shares no tokens
+    # with the query and will pend (a rare false-pend for title-less-product pages),
+    # but that is SAFER than the alternative — "no overlap → keep" cannot distinguish
+    # a store-name title from a COMPLETELY DIFFERENT product (e.g. "Wireless Earbuds
+    # Pro" vs a phone query), which must pend. (Review L2: accepted as-is.)
     return any(_selection_match(product_name, s, category) for s in signals)
+
+
+def _page_identity_name(soup) -> Optional[str]:
+    """The page's identity string (og:title / page <title>) — stamped as `name` on
+    the OG/microdata/Woo fallback prices so the response chokepoint's axis backstop
+    + the KPI can read the resolved identity (those paths carry no structured name)."""
+    for s in _page_size_signals(soup):
+        if s and s.strip():
+            return s.strip()
+    return None
 
 
 def extract_price_from_html(
@@ -3976,6 +4102,8 @@ def extract_price_from_html(
                     result["source_method"] = "converted_usd"
                 # frag-size-capture — size from og:title / page <title>.
                 _stamp_listing_size(result, product_name, soup)
+                # M2 — stamp the page identity so the chokepoint axis backstop runs.
+                result["name"] = _page_identity_name(soup)
                 return result
         except (ValueError, TypeError):
             pass
@@ -3992,6 +4120,7 @@ def extract_price_from_html(
         # frag-size-capture — size from og:title / page <title> (microdata
         # nodes rarely carry a volume; the name signals do).
         _stamp_listing_size(micro, product_name, soup)
+        micro["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
         return micro
 
     # Priority 4: WooCommerce price span. S3-genuine (PDP curl Decision-F):
@@ -4005,6 +4134,7 @@ def extract_price_from_html(
     if wc:
         # frag-size-capture — size from og:title / page <title>.
         _stamp_listing_size(wc, product_name, soup)
+        wc["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
         return wc
 
     return None
@@ -4714,11 +4844,13 @@ def _bolo_jsonld_main_price(
                     continue
                 if amount <= 0:
                     continue
-                availability = offer.get("availability", "") or ""
+                # is_available_state (not the literal substring) — handles SoldOut/
+                # Discontinued + the URL/dict shapes; None(unknown) → in stock.
+                _avail = is_available_state(offer.get("availability"))
                 return {
                     "amount": round(amount, 3),
                     "currency": target,
-                    "in_stock": "OutOfStock" not in availability,
+                    "in_stock": True if _avail is None else _avail,
                     "name": ld_name,
                 }
             return None  # main Product found but no usable offer → no fallback need

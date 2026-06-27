@@ -59,8 +59,10 @@ UNBXD_STORES: Dict[str, Dict[str, Any]] = {
 
 
 def _parse_unbxd_amount(product: Dict[str, Any]) -> Optional[float]:
-    """Selling price (sale) with `price` fallback. Positive only."""
-    for key in ("sellingPrice", "price", "wasPrice"):
+    """CURRENT price only — sellingPrice (sale) then `price`. `wasPrice` is the
+    struck-through pre-sale ORIGINAL (MSRP), NOT the current shelf price, so it is
+    NOT a fallback (it would ship an inflated wrong amount). Positive only."""
+    for key in ("sellingPrice", "price"):
         val = product.get(key)
         if val is None:
             continue

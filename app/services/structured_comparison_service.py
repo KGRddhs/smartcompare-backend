@@ -744,6 +744,8 @@ from app.services.price_service import (
     is_implausible_low_fragrance_price,
     is_price_showable,
     select_best,
+    make_pending_price,
+    _infer_category_from_query,
     shopping_listing_matches,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
@@ -2981,7 +2983,7 @@ class StructuredComparisonService:
                     _price = make_pending_price(currency="BHD", reason="pending_genuine")
                     _best = None
                     _retailer = None
-                elif _price.get("unavailable") is not True and not is_price_showable(_name, _price, pd.get("category"), enforce_correctness=True):
+                elif _price.get("unavailable") is not True and not is_price_showable(_name, _price, pd.get("category") or _infer_category_from_query(_name), enforce_correctness=True):
                     # Non-showable resolved price → pending (don't clobber an
                     # already-pending upstream reason like size_mismatch).
                     _price = make_pending_price(
@@ -4678,6 +4680,13 @@ class StructuredComparisonService:
             # observations and let the cascade keep looking (like the no-genuine case).
             best = select_best(genuine_observed, full_name, category)
             if best is None:
+                # NO-FAB (review H4) — genuine adapter hits EXISTED but every one was
+                # filtered (OOS / non-exact / listing-URL). That is a TRANSIENT gap
+                # (a sold-out exact PDP is back in hours), NOT a structural dead-end:
+                # flag guard_rejected so the downstream negative-cache uses the 24h
+                # transient TTL, never the 30-day structural freeze.
+                nonlocal _guard_rejected_this_request
+                _guard_rejected_this_request = True
                 self._seed_shortcircuit_candidates(
                     full_name, kind="price_dicts", currency=currency,
                     price_dicts=observed,
@@ -6238,12 +6247,27 @@ async def get_regional_prices(
     regional = {}
     best_price = None
     best_region = None
+    # CORRECTNESS — this public endpoint (GET /text/prices/{product}) is a SECOND
+    # response surface; apply the SAME fail-closed exact backstop the compare
+    # chokepoints use, so an OOS / non-PDP-url / non-exact resolved price is PENDED
+    # here too (it must never ship its amount just because it bypassed compare).
+    _category = _infer_category_from_query(search_query)
     for region, result in zip(GCC_REGIONS.keys(), results):
         if isinstance(result, Exception):
             regional[region] = None
             continue
+        if (
+            isinstance(result, dict)
+            and result.get("unavailable") is not True
+            and not is_price_showable(search_query, result, _category, enforce_correctness=True)
+        ):
+            result = make_pending_price(
+                currency=(result.get("currency") if isinstance(result, dict) else None) or "BHD",
+                reason="pending_genuine",
+                size=result.get("size") if isinstance(result, dict) else None,
+            )
         regional[region] = result
-        if result and result.get("amount"):
+        if isinstance(result, dict) and result.get("amount"):
             amount_bhd = _convert_to_bhd(result["amount"], result.get("currency", "BHD"))
             if best_price is None or amount_bhd < best_price:
                 best_price = amount_bhd
