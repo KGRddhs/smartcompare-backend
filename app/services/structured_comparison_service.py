@@ -725,7 +725,7 @@ def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) 
     price carries a TITLE that does NOT match the request. A title-less cached price is
     served (benign — nothing to verify, don't over-invalidate). No-op when the gate is OFF."""
     try:
-        from app.services.price_service import exact_gate_enabled, _selection_match
+        from app.services.price_service import exact_gate_enabled, _backstop_identity_ok
     except Exception:  # noqa: BLE001
         return True
     if not exact_gate_enabled() or not isinstance(cached, dict):
@@ -733,10 +733,12 @@ def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) 
     title = cached.get("title") or cached.get("name")
     if not title:
         return True
-    return _selection_match(
-        f"{brand} {name}".strip(), title, category,
-        candidate_brand=cached.get("brand") or brand,
-    )
+    # Use the AXIS-ONLY backstop (not the full superset _selection_match): a cache READ
+    # should drop a poisoned WRONG-AXIS legacy entry (S24 vs S24 FE, EDP vs EDT, 256 vs
+    # 128 — the documented warm-cache leaks) but NOT over-invalidate a genuine DESCRIPTIVE
+    # title (which the full superset would, re-resolving every cold hit and DEFEATING the
+    # warmer — coverage review HIGH). New writes are already gated by the full should_cache.
+    return _backstop_identity_ok(f"{brand} {name}".strip(), title, category)
 
 
 async def _timed_task(label: str, coro, timings_dict):

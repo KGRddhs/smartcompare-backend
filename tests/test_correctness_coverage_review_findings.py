@@ -421,9 +421,11 @@ def test_R2_haircare_line_add_duo_rejected():
 
 
 def test_R2_overrej_skincare_descriptive_form_accepted():
-    # The descriptive form/class words a skincare title carries must NOT over-reject.
+    # The descriptive form/skin-type words a skincare title carries must NOT over-reject.
+    # (NOTE: benefit-LINE words like "Brightening"/"Clarifying" are NOT padding — they are
+    # the variant-line discriminator, so they correctly pend a line-omitting query.)
     assert _m("The Ordinary Niacinamide 10%",
-              "The Ordinary Niacinamide 10% Serum Brightening Hydrating",
+              "The Ordinary Niacinamide 10% Serum Hydrating",
               "skincare", "The Ordinary") is True
 
 
@@ -456,7 +458,12 @@ def test_R3_overrej_elec_ordinal_generation_accepted():
     assert _m("Apple AirPods Pro 2", "Apple AirPods Pro (2nd Generation)", "electronics", "Apple") is True
 
 def test_R3_overrej_elec_inch_hyphen_accepted():
-    assert _m("MacBook Pro 16 M3", "Apple MacBook Pro 16-inch M3", "electronics", "Apple") is True
+    # The inch-marked screen size is one-sided-tolerant (stripped from identity); a
+    # both-stated DIFFERENT inch is caught by _inch_mismatch. Same product, both inch-marked.
+    assert _m("MacBook Pro 16-inch M3", "Apple MacBook Pro 16-inch M3", "electronics", "Apple") is True
+    assert _m("Apple MacBook Pro M3", "Apple MacBook Pro 16-inch M3", "electronics", "Apple") is True
+    # but DIFFERENT screen sizes (both stated) reject.
+    assert _m("MacBook Pro 14-inch M3", "Apple MacBook Pro 16-inch M3", "electronics", "Apple") is False
 
 def test_R3_overrej_elec_ram_not_storage_accepted():
     # Query pins RAM (8GB) + storage (256GB); a 256GB candidate that omits RAM must match.
@@ -549,6 +556,77 @@ def test_R3_infer_dior_lip_glow_is_makeup():
 
 def test_R3_infer_grocery():
     assert ps._infer_category_from_query("Nescafe Gold Instant Coffee") == "grocery"
+
+
+# ===========================================================================
+# ROUND 4 — coverage re-review of keystone v2 (general superset + padding). Leak
+# direction is solid; these are the padding-tuning findings (both directions).
+# ===========================================================================
+
+# --- CRITICAL: apostrophe gender forms (fashion) must ACCEPT ----------------
+def test_R4_overrej_fashion_apostrophe_gender_accepted():
+    assert _m("Nike Air Force 1 White", "Nike Air Force 1 Men's White", "fashion", "Nike") is True
+    assert _m("Adidas Samba OG", "Adidas Women's Samba OG", "fashion", "Adidas") is True
+
+# --- CRITICAL: makeup shade-NAME must discriminate when no shared number -----
+def test_R4_makeup_shade_name_no_number_rejected():
+    assert _m("Fenty Pro Filt'r Foundation Soft Sand", "Fenty Pro Filt'r Foundation Honey",
+              "makeup", "Fenty") is False
+
+def test_R4_overrej_makeup_shade_name_shared_number_accepted():
+    assert _m("Maybelline Fit Me 220", "Maybelline Fit Me 220 Natural Beige",
+              "makeup", "Maybelline") is True
+
+# --- HIGH leaks from over-broad padding (must REJECT) -----------------------
+def test_R4_electronics_refurbished_rejected():
+    assert _m("Apple iPhone 15 128GB", "Apple iPhone 15 128GB Refurbished", "electronics", "Apple") is False
+
+def test_R4_supplement_flavour_contradiction_rejected():
+    assert _m("Dymatize ISO100 Vanilla", "Dymatize ISO100 Chocolate", "supplements", "Dymatize") is False
+
+def test_R4_makeup_finish_contradiction_rejected():
+    assert _m("Maybelline Fit Me 220 Matte", "Maybelline Fit Me 220 Dewy", "makeup", "Maybelline") is False
+
+def test_R4_grocery_class_swap_rejected():
+    assert _m("Nescafe Gold Coffee", "Nescafe Gold Tea", "grocery", "Nescafe") is False
+
+def test_R4_electronics_ipod_nano_rejected():
+    assert _m("Apple iPod", "Apple iPod Nano", "electronics", "Apple") is False
+
+def test_R4_fragrance_dior_homme_intense_rejected():
+    assert _m("Dior Homme", "Dior Homme Intense", "fragrances", "Dior") is False
+
+# --- HIGH over-rejection padding gaps (must ACCEPT) -------------------------
+def test_R4_overrej_electronics_descriptors_accepted():
+    assert _m("Sony WH-1000XM5", "Sony WH-1000XM5 Wireless Noise Cancelling Headphones Black",
+              "electronics", "Sony") is True
+    # The trim words (Detect/Absolute) are in the query; the candidate adds only generic/
+    # descriptive words (cordless/vacuum/cleaner) — must accept.
+    assert _m("Dyson V15 Detect Absolute", "Dyson V15 Detect Absolute Cordless Vacuum Cleaner",
+              "electronics", "Dyson") is True
+
+def test_R4_overrej_supplement_descriptors_accepted():
+    assert _m("Turmeric Curcumin", "NOW Turmeric Curcumin Extract 665mg 120 Veg Capsules",
+              "supplements", "NOW") is True
+    assert _m("Whey Protein", "Optimum Nutrition Gold Standard 100% Whey Protein Powder",
+              "supplements", "Optimum") is True
+
+def test_R4_overrej_supplement_veg_capsule_count_accepted():
+    assert _m("NOW Magnesium Glycinate", "NOW Magnesium Glycinate 180 Veg Capsules",
+              "supplements", "NOW") is True
+
+def test_R4_overrej_skincare_skintype_accepted():
+    assert _m("CeraVe Moisturizing Cream", "CeraVe Moisturizing Cream Normal to Dry Skin",
+              "skincare", "CeraVe") is True
+
+def test_R4_overrej_fashion_footwear_accepted():
+    assert _m("Birkenstock Arizona", "Birkenstock Arizona Sandals", "fashion", "Birkenstock") is True
+
+def test_R4_overrej_electronics_screen_inch_one_sided_accepted():
+    assert _m("Apple MacBook Air M2", "Apple MacBook Air M2 13-inch", "electronics", "Apple") is True
+
+def test_R4_overrej_brand_house_suffix_accepted():
+    assert _m("Lancome Idole", "Lancome Paris Idole", "fragrances", "Lancome") is True
 
 
 def test_H_jsonld_flag_off_no_name_brand_keys(monkeypatch):

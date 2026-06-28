@@ -79,8 +79,12 @@ class TestUsdFallbackLabeledConverted:
 
     def test_apple_refurb_usd_jsonld_is_converted_not_page_scrape(self):
         from app.services.price_service import extract_price_from_html
+        # Query carries "Refurbished" to MATCH the refurbished candidate — the new
+        # _condition_mismatch axis (coverage review) correctly PENDS a refurbished listing
+        # for a NEW-product query (wrong price tier); this test verifies USD-fallback
+        # LABELING, so the query must be for the same (refurbished) condition.
         result = extract_price_from_html(
-            APPLE_REFURB_HTML, "Apple iPhone 15", "BHD", "apple.com",
+            APPLE_REFURB_HTML, "Apple iPhone 15 Refurbished", "BHD", "apple.com",
             "https://www.apple.com/shop/product/ftly3ll/a/refurbished-iphone-15",
         )
         assert result is not None
