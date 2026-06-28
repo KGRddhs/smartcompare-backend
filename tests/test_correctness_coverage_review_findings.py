@@ -389,6 +389,168 @@ def test_G_spf_spacing_accepted():
 # unconditionally; with the gate OFF they must NOT appear (b207bfa parity).
 # ===========================================================================
 
+# ===========================================================================
+# ROUND 2 — residual leaks the curated-marker / no-superset design still missed
+# (found by the dispatcher's own coverage repro + the re-run coverage review).
+# ===========================================================================
+
+def test_R2_fashion_af1_silhouette_mid_rejected():
+    # Low/Mid/High is a different silhouette SKU (AF1 default Low vs AF1 Mid).
+    assert _m("Nike Air Force 1", "Nike Air Force 1 Mid", "fashion", "Nike") is False
+
+
+def test_R2_fashion_af1_silhouette_high_rejected():
+    assert _m("Nike Air Force 1", "Nike Air Force 1 High", "fashion", "Nike") is False
+
+
+def test_R2_overrej_fashion_same_silhouette_colorway_accepted():
+    # Same Low silhouette + a colourway word (stripped for fashion) must still match.
+    assert _m("Nike Air Force 1 Low", "Nike Air Force 1 Low White", "fashion", "Nike") is True
+
+
+def test_R2_skincare_line_add_copper_peptides_rejected():
+    # A candidate ADDING a distinctive product-line token is a different SKU even though
+    # skincare titles are descriptive — Buffet vs Buffet + Copper Peptides.
+    assert _m("The Ordinary Buffet", "The Ordinary Buffet + Copper Peptides 1%",
+              "skincare", "The Ordinary") is False
+
+
+def test_R2_haircare_line_add_duo_rejected():
+    assert _m("La Roche-Posay Effaclar", "La Roche-Posay Effaclar Duo",
+              "haircare", "La Roche-Posay") is False
+
+
+def test_R2_overrej_skincare_descriptive_form_accepted():
+    # The descriptive form/class words a skincare title carries must NOT over-reject.
+    assert _m("The Ordinary Niacinamide 10%",
+              "The Ordinary Niacinamide 10% Serum Brightening Hydrating",
+              "skincare", "The Ordinary") is True
+
+
+def test_R2_overrej_skincare_size_only_added_accepted():
+    assert _m("CeraVe Moisturizing Cream 340g", "CeraVe Moisturizing Cream 340g Tub",
+              "skincare", "CeraVe") is True
+
+
+# ===========================================================================
+# ROUND 3 — the coverage re-review (49 findings). The curated-marker approach is
+# structurally leaky (sub-line/formulation/flavour tokens are unbounded); the
+# general superset guard + per-category padding is the fix. Both directions.
+# ===========================================================================
+
+# --- electronics sub-line / model-gen leaks (must REJECT) ------------------
+def test_R3_elec_kindle_paperwhite_rejected():
+    assert _m("Kindle", "Kindle Paperwhite", "electronics", "Amazon") is False
+
+def test_R3_elec_surface_laptop_studio_rejected():
+    assert _m("Surface Laptop", "Surface Laptop Studio", "electronics", "Microsoft") is False
+
+def test_R3_elec_mx_master_3s_rejected():
+    assert _m("Logitech MX Master", "Logitech MX Master 3S Wireless Mouse", "electronics", "Logitech") is False
+
+def test_R3_elec_dyson_v8_absolute_rejected():
+    assert _m("Dyson V8", "Dyson V8 Absolute Cordless Vacuum", "electronics", "Dyson") is False
+
+# --- electronics over-rejections (must ACCEPT) -----------------------------
+def test_R3_overrej_elec_ordinal_generation_accepted():
+    assert _m("Apple AirPods Pro 2", "Apple AirPods Pro (2nd Generation)", "electronics", "Apple") is True
+
+def test_R3_overrej_elec_inch_hyphen_accepted():
+    assert _m("MacBook Pro 16 M3", "Apple MacBook Pro 16-inch M3", "electronics", "Apple") is True
+
+def test_R3_overrej_elec_ram_not_storage_accepted():
+    # Query pins RAM (8GB) + storage (256GB); a 256GB candidate that omits RAM must match.
+    assert _m("Galaxy S24 8GB 256GB", "Samsung Galaxy S24 256GB Phantom Black", "electronics", "Samsung") is True
+
+def test_R3_overrej_elec_brand_in_title_accepted():
+    # A genuine title that adds the brand word the (brandless) query omits must match.
+    assert _m("16-inch MacBook Pro M5", "16-inch MacBook Pro Apple M5", "electronics", "") is True
+
+# --- supplement formulation / line leaks (must REJECT) ---------------------
+def test_R3_supp_creatine_monohydrate_rejected():
+    assert _m("Creatine", "Optimum Creatine Monohydrate", "supplements", "Optimum") is False
+
+def test_R3_supp_collagen_type_rejected():
+    assert _m("Collagen Type I", "NOW Collagen Type II", "supplements", "NOW") is False
+
+def test_R3_supp_coq10_ubiquinol_rejected():
+    assert _m("CoQ10", "Doctor's Best CoQ10 Ubiquinol", "supplements", "Doctor's Best") is False
+
+def test_R3_supp_probiotics_once_daily_rejected():
+    assert _m("Garden of Life Probiotics", "Garden of Life Probiotics Once Daily", "supplements", "Garden of Life") is False
+
+def test_R3_supp_size_omit_pends():
+    # Query states 5lb; candidate omits weight -> unverified -> pend (fail-closed, parity
+    # with skincare/grocery + the dose/count omit).
+    assert _m("Whey Protein 5lb", "Optimum Whey Protein", "supplements", "Optimum") is False
+
+# --- supplement over-rejections (must ACCEPT) ------------------------------
+def test_R3_overrej_supp_default_form_one_sided_accepted():
+    assert _m("Vitamin D3 5000 IU Softgels", "NOW Vitamin D3 5000 IU", "supplements", "NOW") is True
+
+def test_R3_overrej_supp_high_absorption_descriptive_accepted():
+    assert _m("Magnesium Glycinate", "Doctor's Best High Absorption Magnesium Glycinate 240 Tablets",
+              "supplements", "Doctor's Best") is True
+
+# --- makeup format leaks (must REJECT) -------------------------------------
+def test_R3_makeup_liquid_blush_rejected():
+    assert _m("NARS Orgasm Blush", "NARS Orgasm Liquid Blush", "makeup", "NARS") is False
+
+def test_R3_makeup_studio_fix_plus_rejected():
+    assert _m("MAC Studio Fix", "MAC Studio Fix Plus", "makeup", "MAC") is False
+
+def test_R3_makeup_waterproof_rejected():
+    assert _m("Maybelline Lash Sensational", "Maybelline Lash Sensational Waterproof", "makeup", "Maybelline") is False
+
+# --- makeup over-rejection (must ACCEPT) -----------------------------------
+def test_R3_overrej_makeup_shade_name_with_matching_number_accepted():
+    assert _m("Fenty Pro Filt'r Foundation 240", "Fenty Pro Filt'r Foundation 240 Soft Sand",
+              "makeup", "Fenty") is True
+
+# --- grocery flavour leaks (must REJECT) -----------------------------------
+def test_R3_grocery_coke_cherry_rejected():
+    assert _m("Coca-Cola", "Coca-Cola Cherry", "grocery", "Coca-Cola") is False
+
+def test_R3_grocery_lays_bbq_rejected():
+    assert _m("Lays", "Lays BBQ", "grocery", "Lays") is False
+
+def test_R3_grocery_redbull_sugarfree_rejected():
+    assert _m("Red Bull 250ml", "Red Bull Sugar Free 250ml", "grocery", "Red Bull") is False
+
+# --- grocery over-rejections (must ACCEPT) ---------------------------------
+def test_R3_overrej_grocery_original_taste_accepted():
+    assert _m("Coca-Cola", "Coca-Cola Original Taste Soft Drink", "grocery", "Coca-Cola") is True
+
+def test_R3_overrej_grocery_instant_coffee_accepted():
+    assert _m("Nescafe Gold", "Nescafe Gold Instant Coffee Jar", "grocery", "Nescafe") is True
+
+# --- fashion over-rejection (retro is a line word, must ACCEPT) ------------
+def test_R3_overrej_fashion_retro_accepted():
+    assert _m("Nike Dunk Low Panda", "Nike Dunk Low Retro Panda", "fashion", "Nike") is True
+
+# --- skincare/haircare over-rejections (spelling, must ACCEPT) -------------
+def test_R3_overrej_skincare_zs_spelling_accepted():
+    assert _m("CeraVe Moisturizing Cream", "CeraVe Moisturising Cream 340g", "skincare", "CeraVe") is True
+
+def test_R3_skincare_niacinamide_zinc_line_add_rejected():
+    # +Zinc is a different SKU (line-add leak) — the descriptive-category superset must catch it.
+    assert _m("The Ordinary Niacinamide", "The Ordinary Niacinamide 10% + Zinc 1%",
+              "skincare", "The Ordinary") is False
+
+def test_R3_overrej_haircare_masque_spelling_accepted():
+    assert _m("Kerastase Nutritive Mask", "Kerastase Nutritive Masque 200ml", "haircare", "Kerastase") is True
+
+# --- category inference (must route correctly) -----------------------------
+def test_R3_infer_vitamin_c_serum_is_skincare():
+    assert ps._infer_category_from_query("Vitamin C 10% Serum") == "skincare"
+
+def test_R3_infer_dior_lip_glow_is_makeup():
+    assert ps._infer_category_from_query("Dior Addict Lip Glow") == "makeup"
+
+def test_R3_infer_grocery():
+    assert ps._infer_category_from_query("Nescafe Gold Instant Coffee") == "grocery"
+
+
 def test_H_jsonld_flag_off_no_name_brand_keys(monkeypatch):
     monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
     html = _jsonld({"@type": "Product", "name": "Dior Sauvage EDT 100ml", "brand": "Dior",

@@ -855,21 +855,24 @@ def _infer_category_from_query(query_name: str) -> Optional[str]:
     relies on identity-equality + the universal concentration/size/count checks)."""
     if not query_name:
         return None
-    if is_supplement_query(query_name):
-        return "supplements"
-    if is_fragrance_query(query_name):
-        return "fragrances"
-    # Cosmetic/fashion detectors (coverage review F) — BEFORE the broad electronics
-    # high-value check so the per-category axes engage on the scrape path. makeup before
-    # skincare (a NARS blush is makeup, not skincare); fashion last of the soft set.
+    # COSMETIC detectors FIRST (coverage review round 2) — a topical form word makes the
+    # product a cosmetic even when a supplement/fragrance token also matches: "Vitamin C
+    # Serum" is skincare (not supplements), "Dior Addict Lip Glow" is makeup (not
+    # fragrances). makeup before skincare (a NARS blush is makeup).
     if is_makeup_query(query_name):
         return "makeup"
     if is_skincare_query(query_name):
         return "skincare"
     if is_haircare_query(query_name):
         return "haircare"
+    if is_supplement_query(query_name):
+        return "supplements"
+    if is_fragrance_query(query_name):
+        return "fragrances"
     if is_fashion_query(query_name):
         return "fashion"
+    if is_grocery_query(query_name):
+        return "grocery"
     if is_high_value_query(query_name):
         return "electronics"
     return None
@@ -1007,7 +1010,27 @@ _MAKEUP_PRODUCT_KEYWORDS = {
     "lipstick", "blush", "mascara", "foundation", "concealer", "eyeshadow",
     "eyeliner", "highlighter", "bronzer", "lip gloss", "lipgloss", "lip liner",
     "setting powder", "setting spray", "contour", "liquid lipstick",
+    "lip glow", "lip oil", "lip tint", "lip color", "lip balm", "lip stain",
+    "rouge", "kohl", "kajal", "compact powder", "blusher",
 }
+_GROCERY_BRAND_KEYWORDS = {
+    "coca-cola", "coca cola", "coke", "pepsi", "nescafe", "lipton", "lays",
+    "doritos", "pringles", "red bull", "heinz", "oreo", "kitkat", "maggi",
+    "quaker", "vimto", "rani", "almarai", "nadec", "fanta", "sprite", "7up",
+}
+_GROCERY_PRODUCT_KEYWORDS = {
+    "instant coffee", "ground coffee", "coffee beans", "green tea", "black tea",
+    "ketchup", "mayonnaise", "cereal", "cornflakes", "potato chips", "crisps",
+    "soft drink", "fizzy drink", "fruit juice", "olive oil", "basmati rice",
+}
+
+
+def is_grocery_query(product_name: str) -> bool:
+    if not product_name:
+        return False
+    nl = product_name.lower()
+    return (any(b in nl for b in _GROCERY_BRAND_KEYWORDS)
+            or any(k in nl for k in _GROCERY_PRODUCT_KEYWORDS))
 _FASHION_BRAND_KEYWORDS = {
     "air jordan", "jordan", "air force", "air max", "dunk", "yeezy", "samba",
     "gazelle", "new balance", "converse", "vans", "timberland", "superstar",
@@ -2919,12 +2942,32 @@ def _fold_identity(s: str) -> str:
     # real product name, so this is safe; " - " is preserved (it is used inside brand-omitted
     # titles like "Daisy - EDT").
     folded = re.split(r"\s*[|»]\s*|\s*::\s*", folded, 1)[0]
+    # British/American spelling folds so a genuine GCC-retailer spelling matches the query
+    # (coverage review: CeraVe Moisturising vs Moisturizing, Kerastase Masque vs Mask) —
+    # before tokenizing so identity sets are equal.
+    folded = re.sub(r"ising\b", "izing", folded)
+    folded = re.sub(r"iser\b", "izer", folded)
+    folded = re.sub(r"isation\b", "ization", folded)
+    folded = folded.replace("colour", "color").replace("masque", "mask")
+    # Nth-generation ORDINAL -> bare digit ("2nd"/"9th" -> "2"/"9") so AirPods Pro 2 ==
+    # "Pro (2nd Generation)", iPad 9 == "9th Gen" (coverage review electronics over-rejection).
+    folded = re.sub(r"\b(\d+)(?:st|nd|rd|th)\b", r"\1", folded)
+    # Screen-inch suffix -> bare number ("16-inch"/'16"' -> "16") so a screen size restated
+    # with the unit matches the bare number (coverage review).
+    folded = re.sub(r"(\d+(?:\.\d+)?)\s*(?:-\s*)?(?:inch(?:es)?|\"|”|''|′)\b", r"\1", folded)
     # Punctuation/gluing normalization so a number-label glued vs spaced tokenizes the
     # SAME ("No.3"=="No. 3"=="#3"; "SPF30"=="SPF 30") — otherwise normalize_words keeps
     # "no.3"/"spf30" as one token and a genuine match false-pends (coverage review G).
     folded = re.sub(r"\bno\.?\s*(\d)", r"no \1", folded)
     folded = re.sub(r"#\s*(\d)", r"no \1", folded)
     folded = re.sub(r"\bspf\s*(\d)", r"spf \1", folded)
+    # Collapse a thousands-separator inside a number ("5,000 IU" -> "5000 IU") so the dose
+    # measure-strip + the dose axis see one number (a comma otherwise leaves "5"/"000"/"iu"
+    # tokens that false-pend a genuine "5000 IU" listing — the iherb 5,000 IU case).
+    folded = re.sub(r"(\d),(\d{3})\b", r"\1\2", folded)
+    # Grocery diet variant written as two words -> one token so it is a distinctive
+    # variant the superset guard rejects ("Sugar Free" -> "sugarfree").
+    folded = re.sub(r"\bsugar\s*free\b", "sugarfree", folded)
     return folded
 
 
@@ -3063,6 +3106,12 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     # Fashion year/colourway re-release suffix ("'07") is noise, NOT the model number.
     if cat == "fashion":
         folded = re.sub(r"'\s*\d{2}\b", " ", folded)
+    # Supplement BARE dose number ("D3 5000" written without IU) — the measure strip only
+    # removes a number WITH a unit ("5000 IU"), so a unit-less dose survives as a false
+    # identity token and over-rejects a genuine "5000 IU" listing. Strip a bare 4+-digit
+    # number (the dose range; a supplement COUNT is <1000) so the dose axis governs it.
+    if cat == "supplements":
+        folded = re.sub(r"\b\d{4,}\b", " ", folded)
     words = normalize_words(folded)
     brand_words = normalize_words(_fold_identity(brand)) if brand else set()
     # Brand-ABBREVIATION fold — when the brand matches a known alias group, drop ALL
@@ -3094,11 +3143,19 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
         #   - fashion: a whitelisted short model qualifier (Samba OG, Dunk Hi/Lo).
         if (len(w) > 2
                 or any(c.isdigit() for c in w)
+                or w in _ROMAN_NUMERAL_TOKENS  # Type II / Mark IV (2+-char roman = identity)
                 or (cat == "makeup" and len(w) >= 1)
                 or (cat == "electronics" and len(w) == 2)
                 or (cat == "fashion" and w in _FASHION_KEPT_QUALIFIERS)):
             out.add(w)
     return out
+
+
+# 2+-char roman numerals kept as identity tokens in EVERY category (Collagen Type II,
+# Canon Mark IV, Civilization VI) — a SKU discriminator the len>2 rule would drop.
+_ROMAN_NUMERAL_TOKENS = frozenset({
+    "ii", "iii", "iv", "vi", "vii", "viii", "ix", "xi", "xii",
+})
 
 
 def _quals_in(text: str, qualset: frozenset) -> set:
@@ -3124,9 +3181,27 @@ def _size_ml_mismatch(q: str, t: str) -> bool:
     return qs != ts
 
 
+def _match_storage_gb(text: str) -> Optional[float]:
+    """The STORAGE capacity (GB) for the matcher — the LARGEST GB/TB token, since on a
+    phone/laptop title that lists BOTH RAM and storage the storage is always the larger
+    (8GB RAM + 256GB storage). extract_storage_gb() returns the MIN (a fairness-side
+    conservative basis) which grabs the RAM value and manufactured a false storage
+    mismatch (coverage review: '8GB 256GB' over-rejected a genuine '256GB')."""
+    vals: List[float] = []
+    for num, unit in _STORAGE_GB_RE.findall(text or ""):
+        try:
+            v = float(num)
+        except (TypeError, ValueError):
+            continue
+        vals.append(v * 1024.0 if unit.lower() == "tb" else v)
+    return max(vals) if vals else None
+
+
 def _storage_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH carry a GB/TB storage size and they DIFFER (256 vs 128)."""
-    qg, tg = extract_storage_gb(q), extract_storage_gb(t)
+    """True iff BOTH carry a GB/TB storage size and they DIFFER (256 vs 128). Uses the
+    LARGEST GB token (storage, not RAM) so a query pinning both RAM+storage does not
+    false-pend a genuine storage-only listing."""
+    qg, tg = _match_storage_gb(q), _match_storage_gb(t)
     if qg is None or tg is None:
         return False
     return qg != tg
@@ -3404,7 +3479,8 @@ def _candidate_missing_query_axis(query_name: str, candidate_title: str,
 
 
 # Categories where a query-stated weight/volume the candidate omits = unverified -> pend.
-_SIZE_OMIT_CATEGORIES = frozenset({"skincare", "makeup", "haircare", "grocery"})
+# Supplements included (coverage review): a Whey 5lb query must not match a no-size listing.
+_SIZE_OMIT_CATEGORIES = frozenset({"skincare", "makeup", "haircare", "grocery", "supplements"})
 
 # Fashion CLOTHING sizes (apparel) — a SKU axis. Standalone size tokens.
 _CLOTHING_SIZE_RE = re.compile(
@@ -3638,102 +3714,136 @@ def _supplement_form_added(query_name: str, candidate_title: str) -> bool:
 
 
 # --- generalized candidate-adds-distinctive-token (SUPERSET) guard ------------
-# Categories whose retailer titles are TERSE/precise enough that a candidate carrying
-# an EXTRA distinctive token (beyond per-category NOISE) is a DIFFERENT SKU — the
-# generalized flanker guard (coverage review A: Canon R6->R6 Mark II, Switch->OLED,
-# Samba OG->Classic, Nescafe Gold->Decaf, Orgasm->Orgasm X). DESCRIPTIVE categories
-# (skincare/haircare/supplements) are NOT here — their titles carry product-name
-# suffixes (Perfector/Treatment/High Absorption) the query omits, so they rely on the
-# explicit axes (%/form/size/strength/count) + curated variant lists instead.
-_SUPERSET_GUARD_CATEGORIES = frozenset({
-    "fragrances", "electronics", "fashion", "grocery", "makeup",
-})
+# THE KEYSTONE (coverage review, round 2): a candidate that carries an EXTRA distinctive
+# IDENTITY token beyond the query — after subtracting a per-category PADDING allowlist —
+# is a DIFFERENT (related) SKU, not just a longer title. This is the fragrance flanker
+# pattern (t_core ⊆ q_core), GENERALIZED to EVERY category. A curated variant-marker
+# allowlist was tried and is structurally leaky — sub-line/formulation/flavour tokens are
+# UNBOUNDED (Kindle->Paperwhite, Creatine->Monohydrate, Coke->Cherry, AF1->AF1 Mid). The
+# robust shape is the inverse: reject ANY extra non-padding token. Over-rejection is
+# controlled by (a) the per-category PADDING (descriptive/marketing/connectivity/form/
+# flavour-noise + major brand words) and (b) the q_core-EMPTY skip (a generic/class query
+# legitimately matches any specific member: "Sony Headphones" -> "Sony WH-CH520").
+# Categories with NO discriminating superset would be the leak family; ALL get it now.
 
-# Per-category VARIANT MARKERS — tokens that, when the candidate ADDS one the query
-# lacks, name a DIFFERENT (related) SKU. Used instead of a blunt "any extra token"
-# superset (which over-rejects brands/store-names/descriptors/generic→specific queries:
-# "Sony Headphones"->"WH-CH520", "16-inch MacBook Pro M5"->"...Apple M5"). Only a KNOWN
-# marker rejects → over-rejection ≈ 0; the COVERAGE sweep finds any missing marker (gap).
-# Fragrances are handled by the terse-title flanker (below), NOT this set.
-_ELECTRONICS_VARIANT_MARKERS = frozenset({
-    "mark", "ii", "iii", "iv", "vi", "vii", "oled", "ti", "super", "signature",
-    "slim", "fold", "flip", "edge", "active", "duo",
-})
-_FASHION_VARIANT_MARKERS = frozenset({
-    "classic", "retro", "anniversary", "reimagined", "next", "essential",
-})
-_GROCERY_VARIANT_MARKERS = frozenset({
-    "decaf", "diet", "zero", "lite", "light", "sugarfree", "unsweetened",
-    "caffeinefree", "intense", "strong", "mild", "max", "original", "instant",
-})
-# Makeup shade-DEPTH words — a different shade SKU ("Pillow Talk" -> "Pillow Talk Medium").
-_MAKEUP_SHADE_MARKERS = frozenset({
-    "fair", "light", "medium", "deep", "dark", "tan", "rich", "nude", "warm",
-    "cool", "neutral", "porcelain", "ivory", "sand", "honey", "caramel", "mocha",
-})
-_VARIANT_MARKERS = {
-    "electronics": _ELECTRONICS_VARIANT_MARKERS,
-    "fashion": _FASHION_VARIANT_MARKERS,
-    "grocery": _GROCERY_VARIANT_MARKERS,
-    "makeup": _MAKEUP_SHADE_MARKERS,
-}
-
-
-def _variant_marker_added(q_distinct: set, t_distinct: set, category: str) -> bool:
-    """True iff the candidate adds a KNOWN variant marker the query lacks (a different
-    SKU): a curated per-category marker word, OR a standalone single-digit generation
-    (electronics/fashion: AirPods Pro -> Pro 2), OR a single/2-char shade code (makeup:
-    NARS Orgasm -> Orgasm X). Curated → never over-rejects a brand/store/descriptor."""
-    extra = t_distinct - q_distinct
-    if not extra:
-        return False
-    if extra & _VARIANT_MARKERS.get(category, frozenset()):
-        return True
-    if category in ("electronics", "fashion"):
-        if any(tok.isdigit() and len(tok) == 1 for tok in extra):
-            return True
-    if category == "makeup":
-        if any(tok.isalpha() and len(tok) <= 2 for tok in extra):
-            return True
-    return False
-
-# Words that are NEVER a SKU discriminator (marketing/packaging/warranty) — stripped
-# before the superset guard so a descriptive genuine title is not over-rejected.
+# Base marketing/packaging/warranty noise (every category).
 _BASE_NOISE_TOKENS = frozenset({
-    "new", "genuine", "original", "authentic", "brand", "official", "sealed",
-    "boxed", "the", "and", "with", "for", "version", "item", "warranty",
-    "year", "years", "month", "months", "yr", "yrs", "imported", "stock",
+    "new", "genuine", "authentic", "brand", "official", "sealed", "boxed", "the",
+    "and", "with", "for", "version", "item", "warranty", "year", "years", "month",
+    "months", "yr", "yrs", "imported", "stock", "edition",
 })
-_ELECTRONICS_NOISE = frozenset({
+# Major MANUFACTURER words — a brand word a genuine title adds that the (brand-omitted)
+# query lacks is never a SKU discriminator. Bounded to common GCC electronics/appliance/
+# fashion houses so the superset never over-rejects a brand-in-title ("16-inch MacBook
+# Pro" -> "...Apple..."). NOT applied to grocery (where "apple"/"orange" are flavours).
+_MANUFACTURER_NOISE = frozenset({
+    "apple", "samsung", "sony", "lg", "dell", "hp", "lenovo", "asus", "acer",
+    "microsoft", "google", "huawei", "xiaomi", "oppo", "vivo", "realme", "nokia",
+    "motorola", "oneplus", "nintendo", "canon", "nikon", "bose", "jbl", "logitech",
+    "razer", "dyson", "anker", "belkin", "sandisk", "seagate", "kingston", "corsair",
+    "msi", "gigabyte", "intel", "amd", "nvidia", "garmin", "fitbit", "gopro", "dji",
+    "amazon", "philips", "panasonic", "tcl", "hisense", "honor", "nothing",
+    "nike", "adidas", "puma", "reebok", "asics", "converse", "vans", "newbalance",
+})
+_ELECTRONICS_PADDING = _MANUFACTURER_NOISE | frozenset({
     "dual", "sim", "5g", "4g", "3g", "lte", "wifi", "gsm", "esim", "nano",
     "unlocked", "international", "global", "factory", "android", "ios", "mobile",
     "cellular", "smartphone", "smartphones", "phone", "phones", "gen", "generation",
-    "tablet", "tablets", "laptop", "console",
-    # Descriptive/connectivity/marketing words a genuine electronics title adds — NOT a
-    # SKU variant (coverage review F over-rejection: "MX Keys" -> "MX Keys Advanced
-    # Wireless Keyboard"). Kept narrow so a real variant (Mark/OLED/Ti/Pro-gen) still rejects.
     "wireless", "advanced", "bluetooth", "portable", "rechargeable", "smart",
-    "official", "warranty", "inch", "display", "screen",
+    "inch", "display", "screen", "ram", "refurbished", "renewed",
 })
-_FASHION_NOISE = frozenset({
+_FASHION_PADDING = frozenset({
     "mens", "womens", "men", "women", "unisex", "kids", "youth", "ladies", "gents",
     "shoe", "shoes", "sneaker", "sneakers", "trainers", "footwear", "originals",
-})
-_GROCERY_NOISE = frozenset({
+    # "retro" is Nike's standard release-line word in genuine same-product titles.
+    "retro", "running", "casual",
+    # MATERIAL / fit descriptors a genuine apparel title adds (not a variant):
+    # "Orangey Dress in Cotton-blend", "Slim Fit Denim Jacket".
+    "cotton", "blend", "cottonblend", "leather", "denim", "wool", "silk", "linen",
+    "polyester", "suede", "canvas", "nylon", "cashmere", "fleece", "jersey", "knit",
+    "woven", "fabric", "material", "slim", "regular", "relaxed", "fit", "in",
+    "dress", "shirt", "jacket", "pant", "pants", "top",
+}) | {b for b in _MANUFACTURER_NOISE if b in {"nike", "adidas", "puma", "reebok",
+                                              "asics", "converse", "vans", "newbalance"}}
+_GROCERY_PADDING = frozenset({
     "jar", "bottle", "can", "bag", "packet", "box", "tin", "carton", "bottles",
+    # canonical-product descriptors (NOT variants): "Coca-Cola Original Taste",
+    # "Nescafe Gold Instant Coffee" (coverage review over-rejection).
+    "original", "instant", "taste", "drink", "soft", "fresh", "premium", "pure",
+    # generic grocery CLASS nouns a descriptive title appends (not a variant).
+    "coffee", "tea", "juice", "water", "soda", "cola", "chips", "crisps", "snack",
+    "cereal", "biscuits", "chocolate", "milk", "sauce",
 })
-_CATEGORY_EXTRA_NOISE = {
-    "electronics": _ELECTRONICS_NOISE,
-    "fashion": _FASHION_NOISE,
-    "grocery": _GROCERY_NOISE,
+# Cosmetic FORM words (skincare/haircare) — stripped from the superset (the form axis
+# _form_mismatch handles them, one-sided-tolerant). NOT padding for makeup, where a
+# format (liquid/oil/stick) IS a distinct SKU.
+_COSMETIC_FORM_PADDING = frozenset({
+    "serum", "toner", "essence", "cleanser", "mask", "foam", "mousse", "ampoule",
+    "peel", "scrub", "shampoo", "conditioner", "wash", "cream", "gel", "oil",
+    "balm", "lotion", "butter", "treatment", "perfector", "bond", "builder",
+    "maintenance", "moisturiser", "drops",
+    # packaging containers (not a SKU variant): "...340g Tub", "...473ml Pump".
+    "tub", "pump", "tube", "dispenser", "sachet", "pot",
+})
+# Chemical-synonym words a supplement title restates (cholecalciferol == D3) — a no-op
+# token whether in the query (bare) or candidate (paren); padding on BOTH sides.
+_SUPPLEMENT_CHEM_SYNONYMS = frozenset({
+    "cholecalciferol", "ergocalciferol", "ascorbic", "acid", "tocopherol",
+    "pyridoxine", "thiamine", "riboflavin", "cyanocobalamin", "methylcobalamin",
+    "pantothenic", "phylloquinone", "menaquinone", "alpha", "lipoic",
+})
+# makeup FINISH words are descriptive (Retro Matte Lipstick); FORMAT words (liquid/oil/
+# stick) + intensifiers (plus/super/waterproof) are NOT padding (different SKU).
+_MAKEUP_PADDING = frozenset({
+    "matte", "satin", "shimmer", "poreless", "velvet", "glossy", "dewy", "luminous",
+    "radiant", "natural", "soft", "sand", "honey", "caramel", "mocha", "ivory",
+    "porcelain", "beige", "warm", "cool", "neutral",  # shade-NAME words (gated by shade-number)
+})
+_SKINCARE_PADDING = _COSMETIC_FORM_PADDING | frozenset({
+    "moisturizing", "moisturizer", "hydrating", "brightening", "smoothing",
+    "nourishing", "repairing", "soothing", "daily", "gentle", "foaming",
+    "deep", "intensive", "face", "body", "skin", "fluid", "dermatologist",
+    "tested", "formula", "care", "renewing", "clarifying", "calming", "purifying",
+})
+_HAIRCARE_PADDING = _SKINCARE_PADDING | frozenset({
+    "hair", "scalp", "shine", "volumizing", "strengthening", "smoothing",
+    "nutritive", "perfector",
+})
+_SUPPLEMENT_PADDING = _SUPPLEMENT_CHEM_SYNONYMS | frozenset({
+    "high", "absorption", "premium", "pure", "natural", "veg", "vegetarian",
+    "vegan", "halal", "kosher", "gmo", "gluten", "free", "non", "serving",
+    "servings", "dietary", "supplement", "supplements", "formula", "foods",
+    "strength", "potency", "grade", "quality", "per", "serving", "servings",
+    "count", "softgel", "vit", "vits",
+    # flavours (a candidate adding a flavour the query lacks is tolerated — flavour is a
+    # weak price driver for supplements, unlike grocery; fail-OPEN here is acceptable).
+    "vanilla", "chocolate", "strawberry", "berry", "citrus", "orange", "lemon",
+    "mint", "cookies", "unflavored", "unflavoured", "plain", "fruit", "punch",
+    # default pill forms (one-sided tolerated; alt forms gummy/liquid handled by the
+    # supplement FORM axis, not here).
+    "softgel", "softgels", "capsule", "capsules", "caplet", "caplets", "tablet",
+    "tablets", "pill", "pills", "vcap", "vcaps", "vegcap", "vegcaps", "powder",
+})
+_CATEGORY_PADDING = {
+    "fragrances": _FRAGRANCE_PADDING_TOKENS,
+    "electronics": _ELECTRONICS_PADDING,
+    "fashion": _FASHION_PADDING,
+    "grocery": _GROCERY_PADDING,
+    "makeup": _MAKEUP_PADDING,
+    "skincare": _SKINCARE_PADDING,
+    "haircare": _HAIRCARE_PADDING,
+    "supplements": _SUPPLEMENT_PADDING,
 }
 # Short (<=2-char) fashion model qualifiers KEPT as identity (Samba OG, Dunk Hi/Lo).
 _FASHION_KEPT_QUALIFIERS = frozenset({"og", "hi", "lo"})
 
 
-def _category_noise(category: Optional[str]) -> frozenset:
+def _category_padding(category: Optional[str]) -> frozenset:
+    """The per-category NON-identity padding (marketing/descriptive/connectivity/form/
+    flavour/brand words) stripped before the superset guard, so a genuine DESCRIPTIVE
+    title is not over-rejected while a real variant token still rejects."""
     cat = (category or "").lower()
-    return _BASE_NOISE_TOKENS | _CATEGORY_EXTRA_NOISE.get(cat, frozenset())
+    return _BASE_NOISE_TOKENS | _CATEGORY_PADDING.get(cat, frozenset())
 
 
 def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str],
@@ -3848,47 +3958,68 @@ def _selection_match(
     # not let a same-brand DIFFERENT product through:
     q_distinct = q_ident - GENERIC_CATEGORY_NOUNS
     t_distinct = t_ident - GENERIC_CATEGORY_NOUNS
-    # (1) the candidate must carry ALL of the query's DISTINCTIVE (non-generic) tokens
-    #     — a missing distinctive token = a different/related product (S24 vs S24 FE,
-    #     WH-1000XM5 vs WF-1000XM5).
-    if not q_distinct.issubset(t_distinct):
-        return False
-    # (2) a generic CLASS SWAP — query and candidate each name a generic class noun
-    #     but share NONE ("Sony Headphones" vs "Sony Speaker") — is a DIFFERENT product
-    #     even though a missing generic noun is otherwise tolerated. (A missing generic
-    #     with the candidate carrying NO generic, e.g. "Sony WH-1000XM5 Headphones" vs
-    #     the terse "Sony WH-1000XM5", is still accepted — t_generic is empty there.)
+    # (1) generic CLASS SWAP — query and candidate each name a generic class noun but
+    #     share NONE ("Sony Headphones" vs "Sony Speaker") — is a DIFFERENT product even
+    #     though a missing generic noun is otherwise tolerated.
     q_generic = q_ident & GENERIC_CATEGORY_NOUNS
     t_generic = t_ident & GENERIC_CATEGORY_NOUNS
     if q_generic and t_generic and not (q_generic & t_generic):
         return False
-    # (3) candidate-adds-distinctive-token guard — the keystone of the coverage-review
-    #     redesign. A candidate that ADDS a variant token beyond the query is a DIFFERENT
-    #     (related) SKU, not just a longer title:
-    #       fragrances  Black Opium -> Black Opium Over Red / Aventus -> Aventus Cologne
-    #       electronics Canon R6 -> R6 Mark II / Switch -> Switch OLED / AirPods Pro -> Pro 2
-    #       fashion     Samba OG -> Samba Classic / Air Jordan 1 -> 4 (subset)
-    #       grocery     Nescafe Gold -> Nescafe Gold Decaf
-    #       makeup      NARS Orgasm -> Orgasm X / Pillow Talk -> Pillow Talk Medium
-    #
-    #     FRAGRANCES use the terse-title FLANKER near-equality (sub-line names ARE identity,
-    #     titles carry only bounded gender/marketing padding). The OTHER terse categories
-    #     use a CURATED VARIANT-MARKER check (a blunt "any extra token" superset over-rejects
-    #     brands-in-title / store-names / descriptive words / generic->specific queries —
-    #     "Sony Headphones"->"WH-CH520", "16-inch MacBook Pro M5"->"...Apple M5"). Curated →
-    #     over-rejection ≈ 0; the COVERAGE sweep finds any missing marker. DESCRIPTIVE
-    #     categories (skincare/haircare/supplements) have NO superset — they rely on the
-    #     explicit axes (%/form/size/strength/count) + curated lists (_supplement_type_added).
+    # (2)+(3) THE KEYSTONE — core-identity match with per-category PADDING tolerance, in
+    #     BOTH directions:
+    #       LEAK direction (q_core ⊆ t_core): the candidate must carry every query
+    #         distinctive non-padding token (S24 vs S24 FE, WH-1000XM5 vs WF-1000XM5).
+    #       VARIANT-ADD direction (t_core ⊆ q_core): the candidate must add NO distinctive
+    #         non-padding token — a candidate that adds one is a DIFFERENT (related) SKU:
+    #           Canon R6 -> R6 Mark II / Kindle -> Paperwhite / Samba -> Samba OG /
+    #           Nescafe Gold -> Decaf / Buffet -> +Copper Peptides / Creatine -> Monohydrate.
+    #     The per-category PADDING (descriptive/marketing/connectivity/form/flavour/brand)
+    #     keeps a genuine DESCRIPTIVE/alias title from over-rejecting. A CURATED marker
+    #     allowlist was tried and is structurally leaky (variant tokens are unbounded) —
+    #     this rejects ANY extra non-padding token instead.
     cat = (category or "").lower()
-    if cat == "fragrances":
-        q_core = q_distinct - _FRAGRANCE_PADDING_TOKENS
-        t_core = t_distinct - _FRAGRANCE_PADDING_TOKENS
-        if not t_core.issubset(q_core):
-            return False
-    elif cat in _VARIANT_MARKERS:
-        if _variant_marker_added(q_distinct, t_distinct, cat):
+    padding = _category_padding(cat)
+    q_core = q_distinct - padding
+    t_core = t_distinct - padding
+    if cat == "makeup":
+        # A spelled-out shade NAME on the candidate is descriptive when BOTH sides carry
+        # the SAME shade NUMBER ("Fit Me 240" -> "Fit Me 240 Soft Sand"); accept.
+        q_nums = {w for w in q_core if w.isdigit()}
+        t_nums = {w for w in t_core if w.isdigit()}
+        if q_nums and t_nums and (q_nums & t_nums):
+            return True
+    # LEAK direction — candidate must carry all of the query's distinctive non-padding
+    # tokens (applies to EVERY category, incl. an unresolved one).
+    if not q_core.issubset(t_core):
+        return False
+    # VARIANT-ADD direction — a candidate that adds a distinctive non-padding token is a
+    # DIFFERENT SKU. Applied ONLY to the KNOWN categories (they have a tuned PADDING list);
+    # an UNRESOLVED category (None/""/"other") has no padding, so the variant-add guard
+    # would over-reject a descriptive title (brand/colour/marketing words it can't strip) —
+    # there we keep the subset-only behaviour (the coverage 'other' leak is a documented
+    # MEDIUM deferral, accepted to avoid mass over-rejection on the category-None scrape path).
+    if cat in _SUPERSET_VARIANT_CATEGORIES and (t_core - q_core):
+        if q_core:
+            return False  # a SPECIFIC query + an extra candidate token = a different SKU
+        # q_core EMPTY (a generic/class query, e.g. brand-only): only categories where a
+        # broad query legitimately matches any specific member (electronics/fashion/
+        # fragrances) skip; for grocery/cosmetics/supplements a base query that picks up an
+        # added variant (Coke -> Coke Cherry) must PEND.
+        if cat not in _GENERIC_QUERY_SKIP_CATEGORIES:
             return False
     return True
+
+
+# The 8 KNOWN categories whose PADDING lists are tuned enough to run the variant-add guard.
+_SUPERSET_VARIANT_CATEGORIES = frozenset({
+    "electronics", "fashion", "grocery", "makeup", "skincare", "haircare",
+    "supplements", "fragrances",
+})
+# Categories where a brand/class query (no distinctive core) legitimately matches any
+# specific member ("Sony Headphones" -> "Sony WH-CH520", "Dior" -> "Dior Sauvage"). For
+# grocery/makeup/skincare/haircare/supplements a base query implies the canonical product,
+# so a candidate that ADDS a variant token is a different SKU and must pend.
+_GENERIC_QUERY_SKIP_CATEGORIES = frozenset({"electronics", "fashion", "fragrances", "other", ""})
 
 
 def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optional[str]) -> bool:

@@ -231,10 +231,14 @@ class TestWooCommerceIdentityGate:
 
     def test_woocommerce_exact_identity_still_returns(self):
         # GREEN — the page product IS the exact queried mask; must still return
-        # the genuine single-product PDP price.
+        # the genuine single-product PDP price. Query carries the product-LINE name
+        # "Masquintense" (the og:title is "...Masquintense Mask 200ml") — a purely
+        # descriptive "Nutritive Mask" query that omits the line name now pends under the
+        # fail-closed superset (it can't confirm Masquintense is the intended mask), which
+        # is the deliberate correctness trade-off the coverage review prescribed.
         res = extract_price_from_html(
             _WOO_EXACT_HTML,
-            "Kerastase Nutritive Mask 200ml",
+            "Kerastase Nutritive Masquintense Mask 200ml",
             "BHD",
             "pharmacy.example",
             "https://pharmacy.example/kerastase-nutritive-masquintense-200ml",

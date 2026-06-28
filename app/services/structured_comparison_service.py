@@ -717,6 +717,28 @@ def _price_cache_bust_enabled() -> bool:
     return os.environ.get("PRICE_CACHE_BUST", "false").lower() == "true"
 
 
+def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) -> bool:
+    """Coverage review D — REVALIDATE a cache READ against the request identity before
+    serving it. A poisoned legacy entry (a wrong variant written under the request key
+    before the gate, or by a raw-write bypass) is otherwise served for the full TTL with
+    no re-check. Returns False (→ caller treats as a miss + re-resolves) when the cached
+    price carries a TITLE that does NOT match the request. A title-less cached price is
+    served (benign — nothing to verify, don't over-invalidate). No-op when the gate is OFF."""
+    try:
+        from app.services.price_service import exact_gate_enabled, _selection_match
+    except Exception:  # noqa: BLE001
+        return True
+    if not exact_gate_enabled() or not isinstance(cached, dict):
+        return True
+    title = cached.get("title") or cached.get("name")
+    if not title:
+        return True
+    return _selection_match(
+        f"{brand} {name}".strip(), title, category,
+        candidate_brand=cached.get("brand") or brand,
+    )
+
+
 async def _timed_task(label: str, coro, timings_dict):
     """Await a coroutine and record its elapsed time into timings_dict[label + '_ms'].
     Safe inside asyncio.gather — each wrapper records its OWN per-task wall (independent
@@ -4130,6 +4152,10 @@ class StructuredComparisonService:
         # warm — they gate on `nocache` in _fetch_product_data, not this flag).
         price_nocache = nocache or _price_cache_bust_enabled()
         cached = get_cached(cache_key) if not price_nocache else None
+        if cached and not _cache_price_identity_ok(cached, brand, name, category):
+            logger.info("[PRICE] cache-read identity revalidation dropped a poisoned "
+                        "entry for %s %s — re-resolving", brand, name)
+            cached = None
         if cached:
             cached["_cached"] = True
             return cached
@@ -4138,6 +4164,8 @@ class StructuredComparisonService:
         if not price_nocache:
             from app.services.product_data_service import get_cached_price
             db_price = await get_cached_price(cache_key, region)
+            if db_price and not _cache_price_identity_ok(db_price, brand, name, category):
+                db_price = None
             if db_price:
                 set_cached(cache_key, db_price, price_cache_ttl(db_price))
                 db_price["_cached"] = True
@@ -4213,8 +4241,12 @@ class StructuredComparisonService:
                 for _zdomain in ZYTE_STORES:
                     _zp = await fetch_zyte_price(_zdomain, full_name, currency, category, brand=brand)
                     if _zp and _zp.get("amount", 0) > 0:
-                        set_cached(cache_key, _zp, price_cache_ttl(_zp))
-                        self._save_price_to_db(cache_key, brand, name, variant, region, _zp)
+                        # Gate the off-clock Zyte write on the fail-closed identity check so an
+                        # unverified/OOS/wrong-concentration luxury render can't poison the shared
+                        # cache (coverage review D — was a raw set_cached bypass).
+                        if should_cache_price(full_name, _zp, category):
+                            set_cached(cache_key, _zp, price_cache_ttl(_zp))
+                            self._save_price_to_db(cache_key, brand, name, variant, region, _zp)
                         _zp["_cached"] = False
                         logger.info(
                             "[PRICE] Zyte render-tier genuine for %s: %.3f BHD via %s",
@@ -5499,7 +5531,12 @@ class StructuredComparisonService:
                 if page_price and page_price.get("amount"):
                     page_price["_cached"] = False
                     _maybe_park_supplement(page_price)
-                    set_cached(cache_key, page_price, price_cache_ttl(page_price))
+                    # Gate the supplement page_scrape write on the fail-closed identity check
+                    # (coverage review D — was the one genuine write that bypassed
+                    # should_cache_price, able to cache an OOS / no-url / wrong-variant price).
+                    # Still RETURN it for display so the chokepoint pends an OOS/unverifiable one.
+                    if should_cache_price(full_name, page_price, category):
+                        set_cached(cache_key, page_price, price_cache_ttl(page_price))
                     return page_price
 
             combined_organic = iherb_organic + bh_organic
