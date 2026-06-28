@@ -1004,7 +1004,9 @@ _SKINCARE_PRODUCT_KEYWORDS = {
 _MAKEUP_BRAND_KEYWORDS = {
     "nars", "charlotte tilbury", "fenty beauty", "rare beauty", "huda beauty",
     "huda", "too faced", "urban decay", "nyx", "rimmel", "benefit cosmetics",
-    "anastasia beverly hills", "mac cosmetics",
+    "anastasia beverly hills", "mac cosmetics", "maybelline", "estee lauder",
+    "revlon", "bobbi brown", "clinique", "fit me", "studio fix", "pro filt",
+    "double wear", "pillow talk", "ruby woo",
 }
 _MAKEUP_PRODUCT_KEYWORDS = {
     "lipstick", "blush", "mascara", "foundation", "concealer", "eyeshadow",
@@ -2945,6 +2947,9 @@ def _fold_identity(s: str) -> str:
     # real product name, so this is safe; " - " is preserved (it is used inside brand-omitted
     # titles like "Daisy - EDT").
     folded = re.split(r"\s*[|»]\s*|\s*::\s*", folded, 1)[0]
+    # Slash-joined colourways/specs ("White/Black", "Cloud White/Core Black") -> each token
+    # is matched individually (coverage review over-rejection); treat '/' like a space.
+    folded = folded.replace("/", " ")
     # British/American spelling folds so a genuine GCC-retailer spelling matches the query
     # (coverage review: CeraVe Moisturising vs Moisturizing, Kerastase Masque vs Mask) —
     # before tokenizing so identity sets are equal.
@@ -3020,8 +3025,13 @@ _COLOR_EDITION_TOKENS = frozenset({
     # add a distinctive token (coverage review A over-rejection). Only for the
     # colour-alias categories (electronics/fashion), like the rest of this set.
     "phantom", "awesome", "cosmic", "prism", "mystic", "aura", "marble", "sierra",
-    "pacific", "alpine", "obsidian", "onyx", "platinum", "graphene", "phantom",
+    "pacific", "alpine", "obsidian", "onyx", "platinum", "graphene",
     "natural", "desert", "stormy",
+    # Sneaker COLOURWAY nicknames + modifiers (coverage review over-rejection) — a
+    # colourway is a cosmetic variant in real fashion titles ("Dunk Low Panda", "Cloud
+    # White/Core Black", "AJ1 Chicago"). Treated like a colour (stripped for fashion).
+    "panda", "chicago", "bred", "sail", "cloud", "core", "gum", "oreo", "university",
+    "wolf", "varsity", "bone", "sesame", "volt", "triple", "shadow", "smoke",
 })
 _COLOR_ALIAS_CATEGORIES = frozenset({"electronics", "fashion"})
 
@@ -3099,6 +3109,7 @@ _BRAND_ALIAS_GROUPS = (
     frozenset({"versace", "gianni"}),
     frozenset({"armani", "giorgio", "emporio"}),
     frozenset({"lancome", "paris"}),
+    frozenset({"montblanc", "mont", "blanc"}),
     # NOTE: deliberately NO {burberry, london} — "Burberry London" is itself a real
     # fragrance line, so folding "london" would cross-match different products.
 )
@@ -3138,6 +3149,11 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
         folded = re.sub(r"\b\d{4,}\b", " ", folded)
     words = normalize_words(folded)
     brand_words = normalize_words(_fold_identity(brand)) if brand else set()
+    # Also strip the HYPHEN-COLLAPSED brand form (in the brand's ORIGINAL word order) so a
+    # hyphen-joined brand-in-title ("Coca-Cola"->"cocacola") is removed for a spaced brand
+    # ("Coca Cola") and vice versa (coverage review).
+    if brand and " " in brand.strip():
+        brand_words = brand_words | {re.sub(r"\s+", "", _fold_identity(brand))}
     # Brand-ABBREVIATION fold — when the brand matches a known alias group, drop ALL
     # forms (abbreviation + spelled-out) from BOTH sides, so "YSL Black Opium" (query)
     # and "Yves Saint Laurent Black Opium" (candidate title) resolve to the same
@@ -3169,7 +3185,9 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
                 or any(c.isdigit() for c in w)
                 or w in _ROMAN_NUMERAL_TOKENS  # Type II / Mark IV (2+-char roman = identity)
                 or (cat == "makeup" and len(w) >= 1)
-                or (cat == "electronics" and len(w) == 2)
+                # electronics keeps single+2-char model letters (Xbox Series S/X, iPhone
+                # XR/XS, Galaxy A/S series) — a trailing model letter is the discriminator.
+                or (cat == "electronics" and len(w) <= 2)
                 # skincare/haircare keep only WHITELISTED 2-char line codes (CeraVe SA,
                 # Skinceuticals AM/PM, CeraVe CF) — NOT every 2-char word ("to" in "Normal
                 # to Dry" must drop, else it over-rejects).
@@ -3456,7 +3474,11 @@ def _form_mismatch(query_name: str, candidate_title: str, category: Optional[str
         return False
     qf = _extract_product_form(query_name, brand)
     tf = _extract_product_form(candidate_title, brand)
-    if cat == "fragrances":
+    # FRAGRANCES + MAKEUP: STRICT — a one-sided form is a different SKU (a deodorant vs
+    # the EDP; a Lip Glow OIL vs the Lip Glow balm — coverage review CRITICAL makeup
+    # format leak). skincare/haircare: one-sided tolerant (a "Serum" PDP for a
+    # form-omitting query is the same product; only two DIFFERENT stated forms reject).
+    if cat in ("fragrances", "makeup"):
         return qf != tf
     return bool(qf and tf and qf != tf)
 
@@ -3596,10 +3618,12 @@ _SUPPLEMENT_TYPE_TOKENS = frozenset({
     "gluconate", "chloride", "sulfate", "sulphate", "carbonate", "picolinate",
     "aspartate", "orotate", "taurate", "ascorbate",
     # Product SUB-LINE / potency suffixes — a different formulation/potency SKU
-    # ("Centrum" -> "Centrum Silver"; "Fish Oil" -> "Triple Strength"; "Creatine" ->
-    # "Micronized"; "Multivitamin" -> "Advanced/Senior/Complete") (coverage review A).
-    "silver", "triple", "micronized", "micronised", "advanced", "senior",
-    "complete", "extra", "double", "mega", "ultra", "platinum",
+    # ("Centrum" -> "Centrum Silver"; "Fish Oil" -> "Triple Strength"; "Multivitamin" ->
+    # "Advanced/Senior/Complete") (coverage review A). Tier words gold/ultimate/platinum
+    # are NOT here — the superset guard catches them (they are not padding). REMOVED:
+    # micronized (processing, same product), extra/double/mega/ultra (ambiguous flavour
+    # "Double Rich Chocolate" / marketing) (coverage review round 4).
+    "silver", "triple", "advanced", "senior", "complete",
 })
 
 
@@ -3784,10 +3808,14 @@ _ELECTRONICS_PADDING = _MANUFACTURER_NOISE | frozenset({
     "noise", "cancelling", "cancellation", "anc", "cordless", "illuminated",
     # NOTE: "detect"/"absolute" are Dyson TRIM/line words (V8 Absolute, V15 Detect are
     # distinct SKUs) — NOT padding; they discriminate.
-    "gaming", "geforce", "radeon", "trio", "ventus", "model", "joycon", "joy", "con",
-    "bank", "powerbank", "charger", "console", "headphones", "headphone", "earbuds",
+    "gaming", "geforce", "radeon", "model", "joycon", "joy", "con",
+    # NOTE: "ventus"/"trio" REMOVED — MSI GPU COOLER-design LINES (RTX 4070 Ventus vs Trio
+    # are distinct SKUs), like Dyson detect/absolute. They discriminate.
+    "charger", "console", "headphones", "headphone", "earbuds",
     "speaker", "performance", "crystal", "uhd", "4k", "8k", "octa", "quad", "core",
-    "over", "ear", "vacuum", "cleaner", "keyboard", "mouse",
+    "over", "ear", "overear", "onear", "inear", "vacuum", "cleaner", "keyboard", "mouse",
+    "power", "bank", "powerbank", "graphics", "card", "gpu", "mic", "microphone",
+    "adapter", "supply", "certified",
     # NOTE: "nano"/"refurbished"/"renewed" REMOVED — nano is a product LINE (iPod Nano);
     # refurbished/renewed is a CONDITION axis (_condition_mismatch), not padding.
 })
@@ -3796,12 +3824,17 @@ _FASHION_PADDING = frozenset({
     "shoe", "shoes", "sneaker", "sneakers", "trainers", "footwear", "originals",
     # "retro" is Nike's standard release-line word in genuine same-product titles.
     "retro", "running", "casual",
-    # MATERIAL / fit descriptors a genuine apparel title adds (not a variant):
-    # "Orangey Dress in Cotton-blend", "Slim Fit Denim Jacket".
+    # MATERIAL descriptors a genuine apparel title adds (one-sided tolerated; a both-
+    # stated DIFFERENT material is caught by _material_mismatch): "Orangey Dress in
+    # Cotton-blend". NOTE: fit/cut words (slim/regular/relaxed) are NOT padding — they are
+    # a denim/apparel SKU axis (Levis 501 vs 501 Slim), kept as identity + _fit_mismatch.
     "cotton", "blend", "cottonblend", "leather", "denim", "wool", "silk", "linen",
     "polyester", "suede", "canvas", "nylon", "cashmere", "fleece", "jersey", "knit",
-    "woven", "fabric", "material", "slim", "regular", "relaxed", "fit", "in",
-    "dress", "shirt", "jacket", "pant", "pants", "top",
+    "woven", "fabric", "material", "fit", "in", "original",
+    # garment CLASS nouns (not a variant) — coverage review over-rejection.
+    "dress", "shirt", "jacket", "pant", "pants", "top", "jeans", "jean", "hoodie",
+    "sweater", "sweatshirt", "blazer", "coat", "skirt", "shorts", "tee", "tshirt",
+    "cardigan", "jumper", "leggings", "polo",
 }) | {b for b in _MANUFACTURER_NOISE if b in {"nike", "adidas", "puma", "reebok",
                                               "asics", "converse", "vans", "newbalance"}}
 _GROCERY_PADDING = frozenset({
@@ -3917,6 +3950,38 @@ def _inch_mismatch(query_name: str, candidate_title: str) -> bool:
     if not qi or not ti:
         return False
     return not (qi & ti)
+
+
+# Fashion CUT/FIT — a different denim/apparel cut is a SKU (Levis 501 vs 501 Slim). Both-
+# stated-different rejects; one-sided is tolerated (the token is also fashion padding).
+_FIT_TOKENS = frozenset({
+    "slim", "skinny", "relaxed", "regular", "straight", "bootcut", "tapered",
+    "loose", "baggy", "oversized", "fitted",
+})
+
+
+def _fit_mismatch(query_name: str, candidate_title: str) -> bool:
+    qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _FIT_TOKENS
+    tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _FIT_TOKENS
+    if not qf or not tf:
+        return False
+    return not (qf & tf)
+
+
+# Grocery PREP / fat / carbonation — a real SKU axis (instant vs ground coffee, whole vs
+# skimmed milk, still vs sparkling water). Both-stated-different rejects; one-sided tolerated.
+_GROCERY_PREP_TOKENS = frozenset({
+    "instant", "ground", "whole", "skimmed", "semi", "still", "sparkling",
+    "smooth", "crunchy", "fine", "coarse",
+})
+
+
+def _grocery_prep_mismatch(query_name: str, candidate_title: str) -> bool:
+    qp = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _GROCERY_PREP_TOKENS
+    tp = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _GROCERY_PREP_TOKENS
+    if not qp or not tp:
+        return False
+    return not (qp & tp)
 # Skin-type / area / product-class descriptors (NEVER a SKU axis — the SKU axes %/size/
 # +active/form are enforced separately). The BENEFIT/effect words (brightening/clarifying/
 # volumizing/...) are DELIBERATELY EXCLUDED — they are the variant LINE discriminator for
@@ -3924,10 +3989,13 @@ def _inch_mismatch(query_name: str, candidate_title: str) -> bool:
 # padding them collapsed different SKUs). A benefit-line query that omits the line PENDS
 # (fail-closed = correct).
 _SKINCARE_PADDING = _COSMETIC_FORM_PADDING | frozenset({
-    "moisturizing", "moisturizer", "hydrating", "daily", "gentle", "foaming",
+    # skin-type / area / class descriptors only (NEVER a SKU axis). The cleanser/cream-TYPE
+    # discriminators (foaming/hydrating/moisturizing/gentle/daily/oily/micellar) are
+    # DELIBERATELY EXCLUDED — they name the mass-market LINE (CeraVe Foaming vs Hydrating
+    # Cleanser are different SKUs), exactly like the benefit words (coverage review CRITICAL).
     "face", "facial", "body", "skin", "fluid", "dermatologist", "tested", "formula",
     "care", "normal", "dry", "oily", "combination", "sensitive", "rough", "bumpy",
-    "all", "types", "water", "micellar", "h2o", "emulsion",
+    "all", "types", "water", "h2o", "emulsion",
 })
 _HAIRCARE_PADDING = _SKINCARE_PADDING | frozenset({
     "hair", "scalp", "anti", "dandruff",
@@ -3937,11 +4005,15 @@ _SUPPLEMENT_PADDING = _SUPPLEMENT_CHEM_SYNONYMS | frozenset({
     "vegan", "halal", "kosher", "gmo", "gluten", "free", "non", "serving",
     "servings", "dietary", "supplement", "supplements", "formula", "foods",
     "strength", "potency", "grade", "quality", "per", "count", "vit", "vits",
-    # marketing / line / descriptor words a terse query omits (coverage review).
-    "extract", "standardized", "chelated", "buffered", "bioflavonoids", "rosehips",
-    "billion", "cfu", "gold", "standard", "ultimate", "double", "rich", "platinum",
-    "signature", "extra", "maximum", "mega", "labs", "health", "naturals", "life",
-    "nutrition", "max", "support",
+    # marketing / descriptor words a terse query omits (coverage review).
+    "extract", "chelated", "buffered", "bioflavonoids", "rosehips",
+    "billion", "cfu", "rich", "labs", "health", "naturals", "life",
+    "nutrition", "support", "micronized", "instantized",
+    # NOTE: tier/LINE words (gold/silver/ultimate/platinum/signature/standardized/max/
+    # double/mega/extra/standard) are DELIBERATELY NOT padding — they name a distinct
+    # product LINE (Centrum Gold vs Silver, ON Gold Standard, Creatine Ultimate), so an
+    # ADDED tier token must reject. A symmetric "Gold Standard Whey" query keeps gold/
+    # standard on BOTH sides and still matches (coverage review round 4).
     # flavours — ONE-SIDED tolerated (padding) so "ISO100" matches "ISO100 Vanilla", but a
     # both-stated DIFFERENT flavour (Vanilla vs Chocolate) is caught by _flavour_mismatch.
     "vanilla", "chocolate", "strawberry", "berry", "citrus", "orange", "lemon", "mint",
@@ -4017,6 +4089,8 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         or (_cat in _FLAVOUR_CATEGORIES and _flavour_mismatch(query_name, candidate_title))
         or (_cat == "makeup" and _finish_mismatch(query_name, candidate_title))
         or (_cat == "fashion" and _material_mismatch(query_name, candidate_title))
+        or (_cat == "fashion" and _fit_mismatch(query_name, candidate_title))
+        or (_cat == "grocery" and _grocery_prep_mismatch(query_name, candidate_title))
         or (_cat == "electronics" and _condition_mismatch(query_name, candidate_title))
         or (_cat == "electronics" and _inch_mismatch(query_name, candidate_title))
     ):
@@ -4126,7 +4200,12 @@ def _selection_match(
         # are NOT padding, so a differing shade name rejects via the superset below.
         q_nums = {w for w in q_core if w.isdigit()}
         t_nums = {w for w in t_core if w.isdigit()}
-        if q_nums and t_nums and (q_nums & t_nums) and not (t_nums - q_nums):
+        # Accept on a shared shade NUMBER only when (a) the candidate adds no EXTRA number
+        # (a second shade number is a different shade) AND (b) the NON-number core is
+        # subset-compatible — so a shared number does NOT bridge two different product
+        # LINES that happen to share a shade code (Fit Me 240 vs Superstay 240) (round 4).
+        if (q_nums and t_nums and (q_nums & t_nums) and not (t_nums - q_nums)
+                and (q_core - q_nums).issubset(t_core - t_nums)):
             return True
     # LEAK direction — candidate must carry all of the query's distinctive non-padding
     # tokens (applies to EVERY category, incl. an unresolved one).
@@ -4162,7 +4241,10 @@ _SUPERSET_VARIANT_CATEGORIES = frozenset({
 # NOTE: "fragrances" is DELIBERATELY EXCLUDED — a fragrance query emptied to a bare brand
 # + gender (Dior Homme: brand Dior + gender 'homme' stripped -> q_core empty) must NOT skip
 # the variant-add guard, or it accepts a flanker (Dior Homme Intense) (coverage review).
-_GENERIC_QUERY_SKIP_CATEGORIES = frozenset({"electronics", "fashion", "other", ""})
+# fashion EXCLUDED too — a fashion query emptied to brand+material+colour (Puma Suede:
+# suede is material-padding) must NOT skip the guard, else it matches any Puma (coverage
+# review). Only electronics (Sony Headphones -> WH-CH520) + unresolved keep the skip.
+_GENERIC_QUERY_SKIP_CATEGORIES = frozenset({"electronics", "other", ""})
 
 
 def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optional[str]) -> bool:

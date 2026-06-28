@@ -74,8 +74,10 @@ def test_A_supplement_fish_oil_vs_triple_strength_rejected():
               "supplements", "Nordic Naturals") is False
 
 
-def test_A_supplement_creatine_vs_micronized_rejected():
-    assert _m("Optimum Creatine", "Optimum Micronized Creatine", "supplements", "Optimum") is False
+def test_A_supplement_creatine_form_variant_rejected():
+    # A different creatine FORM (Monohydrate vs HCl) is a distinct SKU. (NOTE: "Micronized"
+    # is processing of the SAME monohydrate, NOT a variant — round-4 corrected that.)
+    assert _m("Optimum Creatine Monohydrate", "Optimum Creatine HCl", "supplements", "Optimum") is False
 
 
 def test_A_makeup_pillow_talk_vs_medium_rejected():
@@ -425,7 +427,7 @@ def test_R2_overrej_skincare_descriptive_form_accepted():
     # (NOTE: benefit-LINE words like "Brightening"/"Clarifying" are NOT padding — they are
     # the variant-line discriminator, so they correctly pend a line-omitting query.)
     assert _m("The Ordinary Niacinamide 10%",
-              "The Ordinary Niacinamide 10% Serum Hydrating",
+              "The Ordinary Niacinamide 10% Serum",
               "skincare", "The Ordinary") is True
 
 
@@ -608,7 +610,10 @@ def test_R4_overrej_electronics_descriptors_accepted():
 def test_R4_overrej_supplement_descriptors_accepted():
     assert _m("Turmeric Curcumin", "NOW Turmeric Curcumin Extract 665mg 120 Veg Capsules",
               "supplements", "NOW") is True
-    assert _m("Whey Protein", "Optimum Nutrition Gold Standard 100% Whey Protein Powder",
+    # SPECIFIC query carries the "Gold Standard" line; candidate adds only generic/marketing
+    # (nutrition/100%/protein/powder). A LOOSE "Whey Protein" query that omits the line
+    # correctly pends a Gold-Standard listing (a tier is a different SKU — round 4).
+    assert _m("Optimum Gold Standard Whey", "Optimum Nutrition Gold Standard 100% Whey Protein Powder",
               "supplements", "Optimum") is True
 
 def test_R4_overrej_supplement_veg_capsule_count_accepted():
@@ -627,6 +632,70 @@ def test_R4_overrej_electronics_screen_inch_one_sided_accepted():
 
 def test_R4_overrej_brand_house_suffix_accepted():
     assert _m("Lancome Idole", "Lancome Paris Idole", "fragrances", "Lancome") is True
+
+
+# ===========================================================================
+# ROUND 5 — round-4 coverage findings (leaks increasingly niche; convergence).
+# ===========================================================================
+
+# --- leaks (must REJECT) ---------------------------------------------------
+def test_R5_electronics_xbox_series_s_vs_x_rejected():
+    assert _m("Xbox Series S", "Xbox Series X", "electronics", "Microsoft") is False
+
+def test_R5_supplement_centrum_gold_rejected():
+    assert _m("Centrum", "Centrum Gold", "supplements", "Centrum") is False
+
+def test_R5_supplement_creatine_ultimate_rejected():
+    assert _m("Creatine", "Creatine Ultimate", "supplements", "NOW") is False
+
+def test_R5_fashion_puma_suede_vs_rsx_rejected():
+    assert _m("Puma Suede", "Puma RS-X", "fashion", "Puma") is False
+
+def test_R5_makeup_lip_glow_oil_rejected():
+    assert _m("Dior Addict Lip Glow", "Dior Addict Lip Glow Oil", "makeup", "Dior") is False
+
+def test_R5_skincare_foaming_vs_hydrating_cleanser_rejected():
+    assert _m("CeraVe Foaming Cleanser", "CeraVe Hydrating Cleanser", "skincare", "CeraVe") is False
+
+def test_R5_electronics_gpu_cooler_line_rejected():
+    assert _m("RTX 4070 Ventus", "MSI RTX 4070 Gaming X Trio", "electronics", "MSI") is False
+
+def test_R5_fashion_fit_rejected():
+    assert _m("Levis 501", "Levis 501 Slim", "fashion", "Levis") is False
+
+def test_R5_grocery_prep_rejected():
+    assert _m("Nescafe Ground Coffee", "Nescafe Instant Coffee", "grocery", "Nescafe") is False
+
+def test_R5_makeup_shade_number_bridge_rejected():
+    assert _m("Maybelline Fit Me 240", "Maybelline Superstay 240", "makeup", "Maybelline") is False
+
+# --- over-rejections (must ACCEPT) -----------------------------------------
+def test_R5_overrej_fashion_slash_colourway_accepted():
+    assert _m("Nike Air Force 1", "Nike Air Force 1 White/Black", "fashion", "Nike") is True
+
+def test_R5_overrej_fashion_colourway_nickname_accepted():
+    assert _m("Nike Dunk Low", "Nike Dunk Low Panda", "fashion", "Nike") is True
+
+def test_R5_overrej_fashion_garment_noun_accepted():
+    assert _m("Levis 501", "Levis 501 Original Fit Men's Jeans", "fashion", "Levis") is True
+
+def test_R5_overrej_grocery_brand_hyphen_accepted():
+    assert _m("Coca Cola", "Coca-Cola 330ml", "grocery", "Coca Cola") is True
+
+def test_R5_overrej_fragrance_montblanc_spacing_accepted():
+    assert _m("Mont Blanc Legend", "Montblanc Legend EDT", "fragrances", "Mont Blanc") is True
+
+def test_R5_overrej_supplement_gold_standard_symmetric_accepted():
+    assert _m("Optimum Gold Standard Whey", "Optimum Gold Standard 100% Whey Protein",
+              "supplements", "Optimum") is True
+
+def test_R5_overrej_supplement_micronized_accepted():
+    assert _m("Creatine Monohydrate 300g", "Optimum Creatine Monohydrate Micronized 300g",
+              "supplements", "Optimum") is True
+
+def test_R5_overrej_electronics_power_bank_accepted():
+    assert _m("Anker PowerCore 10000", "Anker PowerCore 10000 Portable Charger Power Bank",
+              "electronics", "Anker") is True
 
 
 def test_H_jsonld_flag_off_no_name_brand_keys(monkeypatch):

@@ -544,7 +544,7 @@ def usable_exact_genuine_for_product(
         # which scored a 100%-correct genuine descriptive price 0/N and made the 0.85
         # gate unreachable (coverage review E).
         from app.services.price_service import (
-            _selection_match, extract_storage_gb, extract_size_ml_any,
+            _selection_match, _match_storage_gb, extract_size_ml_any,
             extract_concentration,
         )
         if expected_query and not _selection_match(
@@ -558,7 +558,7 @@ def usable_exact_genuine_for_product(
         # _selection_match; this closes the query-omits-but-expected-states gap.
         expected = truth_entry.get("expected") or {}
         exp_storage = expected.get("storage_gb")
-        if exp_storage is not None and extract_storage_gb(title) not in (None, float(exp_storage)):
+        if exp_storage is not None and _match_storage_gb(title) not in (None, float(exp_storage)):
             return False
         exp_size = expected.get("size_ml")
         if exp_size is not None and extract_size_ml_any(title) not in (None, int(exp_size)):
