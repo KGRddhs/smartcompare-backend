@@ -136,7 +136,8 @@ def test_match_real_nike_fixture_positive_gate():
         (Path(__file__).parent / "fixtures" / "algolia_6thstreet_nike.json")
         .read_text(encoding="utf-8")
     )
-    matched = alg._match_algolia_hit(fx["hits"], "Nike Air Max SC")
+    # prod threads the resolved category (here fashion) so the variant-add guard engages.
+    matched = alg._match_algolia_hit(fx["hits"], "Nike Air Max SC", resolved_category="fashion")
     assert matched is not None
     assert matched.get("brand_name") == "Nike"
     assert alg._parse_algolia_price(matched) == 31.5

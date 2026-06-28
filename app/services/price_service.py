@@ -4406,6 +4406,15 @@ def _selection_match(
         return True
     if not query_name or not candidate_title:
         return True
+    # EXPLICIT "other" is a FREQUENT real LLM output, not just the unresolved fallback (round-8
+    # CRITICAL): re-infer FIRST so every category-dependent step below (axes, identity
+    # colour/qualifier handling, generic scoping, padding) uses the right category, and the
+    # variant-add guard runs (AirPods Pro labelled "other" still rejects Pro 2). A TRULY-None
+    # category (caller passed nothing) is left as-is → subset-only below — on prod paths the
+    # orchestrator category is always threaded (param/ContextVar) so None only occurs in a
+    # direct off-path/unit call, where lenient subset matching avoids mass over-rejection.
+    if (category or "").lower() == "other":
+        category = _infer_category_from_query(query_name) or category
     if _axis_mismatch(query_name, candidate_title, category, candidate_brand):
         return False
     q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
@@ -4435,14 +4444,7 @@ def _selection_match(
     #     keeps a genuine DESCRIPTIVE/alias title from over-rejecting. A CURATED marker
     #     allowlist was tried and is structurally leaky (variant tokens are unbounded) —
     #     this rejects ANY extra non-padding token instead.
-    cat = (category or "").lower()
-    # "other" is a FREQUENT real LLM output, not just the unresolved fallback (coverage review
-    # round 8 CRITICAL). An AirPods Pro the LLM labelled "other" must still get the electronics
-    # variant-add guard, so re-infer the category from the query for "other"/unset — if the
-    # query is genuinely uncategorizable inference returns None and we fall through to the
-    # empty-padding guard below (a token-add still rejects; a brand/class query still skips).
-    if cat in ("", "other"):
-        cat = _infer_category_from_query(query_name) or cat
+    cat = (category or "").lower()  # already re-inferred at the top of _selection_match
     padding = _category_padding(cat)
     q_core = q_distinct - padding
     t_core = t_distinct - padding
@@ -4466,13 +4468,13 @@ def _selection_match(
     if not q_core.issubset(t_core):
         return False
     # VARIANT-ADD direction — a candidate that adds a distinctive non-padding token is a
-    # DIFFERENT SKU. Runs for EVERY category now (coverage review round 8 CRITICAL — "other"
-    # was a frequent real LLM output that bypassed the guard end-to-end). The KNOWN categories
-    # use their tuned PADDING; an unresolved/true-"other" category has empty padding so the
-    # guard rejects a token-ADD (correctness > coverage; an over-rejected descriptive "other"
-    # title is fail-closed-SAFE) while the q_core-EMPTY brand/class skip below still protects a
-    # bare brand query in the skip categories (electronics/other/"").
-    if (t_core - q_core):
+    # DIFFERENT SKU. Runs for the KNOWN categories (tuned PADDING) PLUS explicit "other" (a
+    # FREQUENT real LLM output that bypassed the guard end-to-end — coverage review round 8
+    # CRITICAL; empty padding, so a token-ADD rejects). A TRULY-unresolved "" (None after the
+    # top-of-function re-inference also failed) stays SUBSET-ONLY — on prod paths the
+    # orchestrator-resolved category is always threaded (param/ContextVar) so "" only occurs in
+    # a direct off-path call where the lenient subset behaviour avoids mass over-rejection.
+    if (cat in _SUPERSET_VARIANT_CATEGORIES or cat == "other") and (t_core - q_core):
         if q_core:
             return False  # a SPECIFIC query + an extra candidate token = a different SKU
         # q_core EMPTY. Only skip (accept any specific member) when the query is a true
