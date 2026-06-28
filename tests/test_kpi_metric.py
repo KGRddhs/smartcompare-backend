@@ -92,6 +92,41 @@ def test_count_usable_exact_genuine():
     assert er.count_usable_exact_genuine(_body(GENUINE, GENUINE), [TRUTH, TRUTH]) == (2, 2)
 
 
+def test_kpi_structured_storage_axis_enforced():
+    # coverage review E — a query that OMITS storage but whose truth.expected pins it must
+    # fail a wrong-storage title (independent structured validation, not just truth.query).
+    truth = {"id": "e", "query": "iPhone 15", "category": "electronics",
+             "expected": {"brand": "Apple", "storage_gb": 256}}
+    wrong = {"amount": 50, "source_method": "woo_store_api", "in_stock": True,
+             "title": "Apple iPhone 15 128GB", "url": "https://x.com/p/1"}
+    right = {**wrong, "title": "Apple iPhone 15 256GB"}
+    assert er.usable_exact_genuine_for_product(_body(wrong, GENUINE), 0, truth) is False
+    assert er.usable_exact_genuine_for_product(_body(right, GENUINE), 0, truth) is True
+
+
+def test_kpi_run_mode_wired_aggregates_per_category():
+    # coverage review E — the KPI run-mode is WIRED (was dead code): it loads the truth set,
+    # POSTs each query, and aggregates per category. A transport that echoes the query as the
+    # exact product title makes every entry usable -> per-category share 1.0.
+    import asyncio
+    import httpx
+
+    def handler(request):
+        q = dict(request.url.params).get("q", "")
+        body = {"overview": {"products": [{"price": {
+            "amount": 30.0, "currency": "BHD", "source_method": "woo_store_api",
+            "in_stock": True, "title": q, "url": "https://store.bh/p/x"}}]}}
+        return httpx.Response(200, json=body)
+
+    out = asyncio.run(er.run_usable_exact_genuine_kpi(
+        base_url="http://test", read_cache=False,
+        transport=httpx.MockTransport(handler)))
+    assert out["kpi"] == "usable_exact_genuine"
+    assert out["overall"]["requested"] == 18  # the truth set size
+    assert out["overall"]["share"] == 1.0
+    assert set(out["per_category"]) == {"electronics", "fragrances", "fashion"}
+
+
 def test_count_guard_rejected():
     gr = {"amount": None, "unavailable": True, "reason": "pending_genuine", "guard_rejected": "out_of_stock"}
     pend_plain = {"amount": None, "unavailable": True, "reason": "pending_genuine"}
