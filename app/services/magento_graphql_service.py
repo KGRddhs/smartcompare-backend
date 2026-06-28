@@ -39,6 +39,7 @@ from typing import Optional, Dict, Any, List
 
 from app.services.price_service import (
     strict_title_match,
+    _selection_match,
     numbers_match,
     normalize_words,
     variant_mismatch,
@@ -329,7 +330,7 @@ def _shape_b_price_node(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def _best_match(
-    nodes: List[Dict[str, Any]], product_name: str
+    nodes: List[Dict[str, Any]], product_name: str, resolved_category=None,
 ) -> Optional[Dict[str, Any]]:
     """Best STRICT title match among normalized {name,...} nodes, or None.
 
@@ -356,6 +357,8 @@ def _best_match(
             continue
         if variant_mismatch(product_name, title):
             continue
+        if not _selection_match(product_name, title, resolved_category):
+            continue
         t_words = normalize_words(title)
         score = (len(p_words & t_words) / len(p_words)) if p_words else 0.0
         if score < 0.4:
@@ -375,6 +378,7 @@ def _best_match(
 
 async def fetch_magento_graphql_price(
     domain: str, product_name: str, currency: str = "BHD",
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Genuine-BH / converted-GCC price from a Magento/Adobe-Commerce GraphQL
     storefront (Alshaya Shape-A OR vanilla Shape-B). See module docstring.
@@ -425,7 +429,7 @@ async def fetch_magento_graphql_price(
                 for it in items if isinstance(it, dict)
             ) if n
         ]
-        node = _best_match(nodes, product_name)
+        node = _best_match(nodes, product_name, resolved_category=resolved_category)
         if node:
             base = cfg.get("base_endpoint") or f"https://{host}"
             pdp_url = f"{base.rstrip('/')}/{node.get('url_key', '').lstrip('/')}"
@@ -442,7 +446,7 @@ async def fetch_magento_graphql_price(
         )
         items = _shape_b_items(payload)
         nodes = [n for n in (_shape_b_price_node(it) for it in items if isinstance(it, dict)) if n]
-        node = _best_match(nodes, product_name)
+        node = _best_match(nodes, product_name, resolved_category=resolved_category)
         if node:
             # Shape-B PDP url REQUIRES a .html suffix (klinq bare path 302s away).
             pdp_url = f"https://{host}/{node.get('url_key', '').lstrip('/')}.html"

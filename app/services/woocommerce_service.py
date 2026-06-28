@@ -117,6 +117,7 @@ def _amount_from_prices(prices: Dict[str, Any]) -> Optional[float]:
 
 def _match_woo_product(
     products: List[Dict[str, Any]], product_name: str, currency: str,
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Pick the best strict-matching hit and build the price dict, or None.
 
@@ -125,7 +126,7 @@ def _match_woo_product(
     if not isinstance(products, list):
         return None
 
-    _category = _infer_category_from_query(product_name)
+    _category = (resolved_category or "").lower() or None if resolved_category else _infer_category_from_query(product_name)
     candidates: list = []
 
     for prod in products:
@@ -220,6 +221,7 @@ def _do_get(url: str, params: Dict[str, Any], headers: Dict[str, str]):
 
 async def fetch_woocommerce_store_api_price(
     domain: str, product_name: str, currency: str = "BHD",
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Genuine BH (or converted GCC) price from a WooCommerce Store API store.
 
@@ -267,7 +269,7 @@ async def fetch_woocommerce_store_api_price(
         logger.warning("[PRICE] woo fetch failed for %s (%s): %s", product_name, domain, exc)
         return None
 
-    price = _match_woo_product(payload, product_name, currency)
+    price = _match_woo_product(payload, product_name, currency, resolved_category=resolved_category)
     if not price:
         return None
 

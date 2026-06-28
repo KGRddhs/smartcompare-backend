@@ -873,7 +873,10 @@ def _infer_category_from_query(query_name: str) -> Optional[str]:
         return "fashion"
     if is_grocery_query(query_name):
         return "grocery"
-    if is_high_value_query(query_name):
+    # BROAD electronics (coverage review CRITICAL) — resolves AirPods/Canon R6/Kindle/
+    # headphones etc. so the variant-add guard engages on the scrape paths (was None ->
+    # guard skipped -> AirPods Pro -> Pro 2 shown).
+    if is_electronics_query(query_name):
         return "electronics"
     return None
 
@@ -1036,6 +1039,45 @@ def is_grocery_query(product_name: str) -> bool:
     nl = product_name.lower()
     return (any(b in nl for b in _GROCERY_BRAND_KEYWORDS)
             or any(k in nl for k in _GROCERY_PRODUCT_KEYWORDS))
+
+
+# BROAD electronics detector for _infer_category_from_query (coverage review CRITICAL):
+# is_high_value_query is narrow (phone/laptop/console/GPU for the price floor) and returns
+# None for mainstream electronics (AirPods/Canon R6/Kindle/headphones), which DISABLED the
+# variant-add guard on the Serper-shopping + JSON-LD scrape paths (the runtime supplies the
+# category the coverage tests hard-coded). This broader detector resolves them to electronics
+# so the keystone engages end-to-end.
+_ELECTRONICS_BRAND_KEYWORDS = {
+    "apple", "samsung", "sony", "bose", "jbl", "logitech", "razer", "dyson", "canon",
+    "nikon", "fujifilm", "gopro", "dji", "anker", "belkin", "sandisk", "kindle",
+    "lg", "dell", "hp", "lenovo", "asus", "acer", "msi", "gigabyte", "huawei",
+    "xiaomi", "oppo", "vivo", "realme", "oneplus", "nintendo", "microsoft", "google",
+    "garmin", "fitbit", "sennheiser", "marshall", "beats", "nothing", "tcl", "hisense",
+}
+_ELECTRONICS_DEVICE_NOUNS = {
+    "airpods", "earbuds", "earphones", "headphones", "headset", "headphone",
+    "speaker", "soundbar", "camera", "dslr", "mirrorless", "lens", "laptop",
+    "notebook", "tablet", "console", "monitor", "keyboard", "mouse", "router",
+    "drone", "smartwatch", "powerbank", "graphics card", "gpu", "ssd", "hard drive",
+    "projector", "printer", "webcam", "microphone",
+    # self-identifying device LINES (electronics on their own, even with no model number).
+    "kindle", "ipad", "iphone", "macbook", "playstation", "xbox", "airpod",
+}
+
+
+def is_electronics_query(product_name: str) -> bool:
+    if not product_name:
+        return False
+    if is_high_value_query(product_name):
+        return True
+    nl = product_name.lower()
+    if any(_contains_token(nl, n) if " " not in n else n in nl
+           for n in _ELECTRONICS_DEVICE_NOUNS):
+        return True
+    # an electronics brand + ANY digit (a model number: R6, WH-1000XM5, V15, 4070).
+    if any(_contains_token(nl, b) for b in _ELECTRONICS_BRAND_KEYWORDS) and any(c.isdigit() for c in nl):
+        return True
+    return False
 _FASHION_BRAND_KEYWORDS = {
     "air jordan", "jordan", "air force", "air max", "dunk", "yeezy", "samba",
     "gazelle", "new balance", "converse", "vans", "timberland", "superstar",
@@ -4035,6 +4077,35 @@ def _ram_mismatch(query_name: str, candidate_title: str) -> bool:
     return not (qr & tr)
 
 
+# Apple silicon CHIP-TIER axis — "M3" (base) vs "M3 Pro" vs "M3 Max" vs "M3 Ultra" are
+# distinct chips at very different prices, but the tier word "Pro"/"Max" collapses into the
+# "MacBook Pro" qualifier set (repeated-token set-collapse), so M3 == M3 Pro leaked. Parse
+# the (chip-number, tier) and reject when the SAME chip number carries a DIFFERENT tier.
+_CHIP_TIER_RE = re.compile(r"\bm(\d)\s*(pro|max|ultra)?\b", re.I)
+
+
+def _chip_tier(text: str) -> set:
+    out = set()
+    for num, tier in _CHIP_TIER_RE.findall(_fold_identity(text or "")):
+        out.add((num, tier.lower() or "base"))
+    return out
+
+
+def _chip_tier_mismatch(query_name: str, candidate_title: str) -> bool:
+    """True iff both name an Apple M-series chip with the SAME number but a DIFFERENT tier
+    (M3 base vs M3 Pro). A different chip NUMBER is already caught by identity (m2!=m3)."""
+    qc, tc = _chip_tier(query_name), _chip_tier(candidate_title)
+    q_nums = {n for n, _ in qc}
+    t_nums = {n for n, _ in tc}
+    shared = q_nums & t_nums
+    if not shared:
+        return False
+    for n in shared:
+        if {t for nn, t in qc if nn == n} != {t for nn, t in tc if nn == n}:
+            return True
+    return False
+
+
 # Supplement bare (unit-less) dose — "D3 5000" vs "D3 1000" (the bare 4+-digit number is
 # stripped from identity so the unit-less query matches a "5000 IU" listing, but the dose
 # value must still be compared). One-sided tolerated, both-stated-different rejects.
@@ -4196,6 +4267,7 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         or (_cat == "electronics" and _condition_mismatch(query_name, candidate_title))
         or (_cat == "electronics" and _inch_mismatch(query_name, candidate_title))
         or (_cat == "electronics" and _ram_mismatch(query_name, candidate_title))
+        or (_cat == "electronics" and _chip_tier_mismatch(query_name, candidate_title))
         or (_cat == "supplements" and _supplement_bare_dose_mismatch(query_name, candidate_title))
     ):
         return True
@@ -4926,8 +4998,14 @@ def extract_price_from_shopping(
     shopping_items: List[Dict],
     currency: str,
     shopping_region: Optional[str] = None,
+    category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Extract best matching price from Serper Shopping results.
+
+    `category` (coverage/independent review) — the ORCHESTRATOR-RESOLVED pair
+    category. When supplied it is authoritative so the variant-add guard engages
+    for queries the weak keyword inference would miss (bare "Magnesium" /
+    "Sony WH-1000XM5"). None → fall back to `_infer_category_from_query`.
 
     S3-reopen T2 (honest labels) — `shopping_region` is the gl region the items
     came from (`search_product_prices` returns it as `shopping_region`). When it
@@ -4955,7 +5033,7 @@ def extract_price_from_shopping(
     p_words = normalize_words(product_name)
     is_hv = is_high_value_query(product_name)
     is_lux = is_luxury_brand(product_name)
-    _category = _infer_category_from_query(product_name)
+    _category = (category or "").lower() or None if category else _infer_category_from_query(product_name)
     min_price = 100.0 if is_hv else 0
 
     if is_lux:
@@ -5167,6 +5245,7 @@ def _offer_price_expired(offer: Dict[str, Any]) -> bool:
 
 def extract_jsonld_price(
     html: str, brand: str, expected_currency: str, query_name: str = "",
+    category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Parse JSON-LD Product schema from HTML for price data.
 
@@ -5186,7 +5265,7 @@ def extract_jsonld_price(
         return None
 
     brand_lower = brand.lower()
-    _category = _infer_category_from_query(query_name)
+    _category = (category or "").lower() or None if category else _infer_category_from_query(query_name)
     candidates: List[Dict[str, Any]] = []
 
     for script in ld_scripts:
@@ -5472,7 +5551,8 @@ def _page_identity_name(soup) -> Optional[str]:
 
 
 def extract_price_from_html(
-    html: str, product_name: str, currency: str, domain: str, url: str
+    html: str, product_name: str, currency: str, domain: str, url: str,
+    category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Extract price from HTML using structured data (JSON-LD, OG, microdata).
 
@@ -5483,7 +5563,7 @@ def extract_price_from_html(
     100ml basis (frag-size-capture). Non-fragrance scrapes are unaffected."""
     from bs4 import BeautifulSoup
     brand = product_name.split()[0] if product_name else ""
-    _category = _infer_category_from_query(product_name)
+    _category = (category or "").lower() or None if category else _infer_category_from_query(product_name)
     # Parse once up front — also needed by the size-capture (frag-size-capture)
     # for the JSON-LD branch, which builds its result before the OG path.
     soup = BeautifulSoup(html, 'html.parser')
@@ -5491,9 +5571,9 @@ def extract_price_from_html(
     # Priority 1: JSON-LD (S4 — pass the full query as query_name so a brand-
     # field-only match still requires name-relatedness, no cheapest-unrelated-
     # sibling grab).
-    price_data = extract_jsonld_price(html, brand, currency, query_name=product_name)
+    price_data = extract_jsonld_price(html, brand, currency, query_name=product_name, category=category)
     if not price_data:
-        price_data = extract_jsonld_price(html, brand, "USD", query_name=product_name)
+        price_data = extract_jsonld_price(html, brand, "USD", query_name=product_name, category=category)
         if price_data:
             price_data["_needs_conversion"] = True
 
@@ -6021,6 +6101,7 @@ def _match_shopify_product(
     product_name: str,
     currency: str,
     domain: str,
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Find the best title-matching product in a Shopify `/products.json`
     catalog and return its price dict, or ``None``.
@@ -6094,6 +6175,10 @@ def _match_shopify_product(
         # S3 #1 (discovery-match) — reject a different model-line variant.
         if variant_mismatch(product_name, title):
             continue
+        # Keystone variant-add guard (coverage/independent review) — category-aware
+        # superset/axes beyond variant_mismatch's pro/max set. Flag-safe (True when off).
+        if not _selection_match(product_name, title, resolved_category):
+            continue
 
         t_words = normalize_words(title)
         match_score = len(p_words & t_words) / len(p_words) if p_words else 0.0
@@ -6161,6 +6246,7 @@ def _match_shopify_product(
 
 async def fetch_shopify_price(
     domain: str, product_name: str, currency: str = "BHD",
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Direct-discovery price for a Shopify-platform BH retailer.
 
@@ -6173,7 +6259,7 @@ async def fetch_shopify_price(
     catalog = await _fetch_shopify_catalog(domain)
     if not catalog:
         return None
-    price = _match_shopify_product(catalog, product_name, currency, domain)
+    price = _match_shopify_product(catalog, product_name, currency, domain, resolved_category=resolved_category)
     if not price:
         return None
 

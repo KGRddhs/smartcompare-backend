@@ -24,6 +24,7 @@ from urllib.parse import quote_plus
 
 from app.services.price_service import (
     strict_title_match,
+    _selection_match,
     numbers_match,
     variant_mismatch,
     normalize_words,
@@ -97,7 +98,7 @@ def _parse_unbxd_stock(product: Dict[str, Any]) -> bool:
 
 
 def _match_unbxd_product(
-    products: List[Dict[str, Any]], product_name: str
+    products: List[Dict[str, Any]], product_name: str, resolved_category=None,
 ) -> Optional[Dict[str, Any]]:
     """Best STRICT title match among Unbxd products, or None. Same gates as the
     Algolia/Shopify paths so a fuzzy cross-brand/cross-model hit is REJECTED."""
@@ -127,6 +128,8 @@ def _match_unbxd_product(
         # Pro query (+14% wrong). Every other adapter (woo/salla/occ/magento/shopify)
         # applies this gate; unbxd omitted it.
         if variant_mismatch(product_name, surface):
+            continue
+        if not _selection_match(product_name, surface, resolved_category):
             continue
         t_words = normalize_words(surface)
         score = (len(p_words & t_words) / len(p_words)) if p_words else 0.0
@@ -175,6 +178,7 @@ async def _unbxd_search(store: Dict[str, Any], query: str) -> List[Dict[str, Any
 
 async def fetch_unbxd_price(
     domain: str, product_name: str, category: str = "other",
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Genuine-BHD (or converted-GCC) price for an Unbxd-backed storefront.
 
@@ -194,7 +198,7 @@ async def fetch_unbxd_price(
         return None
 
     products = await _unbxd_search(store, product_name)
-    product = _match_unbxd_product(products, product_name)
+    product = _match_unbxd_product(products, product_name, resolved_category=resolved_category)
     if not product:
         return None
 

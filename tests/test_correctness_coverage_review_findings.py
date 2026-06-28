@@ -741,6 +741,53 @@ def test_R6_overrej_cosmetic_jar_bottle_accepted():
 
 
 # ===========================================================================
+# ROUND 8 — INDEPENDENT external review (2 blockers) + round-7 coverage (the
+# category-inference-None leak class) — fixed via broad electronics inference +
+# threading the orchestrator-resolved category into the extractors/adapters +
+# the chip-tier axis.
+# ===========================================================================
+import asyncio
+
+
+def test_R8_electronics_inference_resolves_mainstream():
+    # The CRITICAL: these inferred None -> variant-add guard skipped on the scrape paths.
+    for q in ("Apple AirPods Pro", "Canon EOS R6", "Kindle", "Sony WH-1000XM5",
+              "Dyson V15", "Logitech MX Master 3S", "Nintendo Switch"):
+        assert ps._infer_category_from_query(q) == "electronics", q
+    # no over-routing of the other categories
+    assert ps._infer_category_from_query("Tom Ford Oud Wood") == "fragrances"
+    assert ps._infer_category_from_query("The Ordinary Niacinamide 10%") == "skincare"
+    assert ps._infer_category_from_query("Optimum Whey 5lb") == "supplements"
+
+
+def test_R8_chip_tier_axis():
+    assert _m("MacBook Pro 14 M3", "Apple MacBook Pro 14 M3 Pro Silver", "electronics", "Apple") is False
+    assert _m("MacBook Pro 14 M3 Pro", "Apple MacBook Pro 14 M3 Pro", "electronics", "Apple") is True
+    assert _m("MacBook Air M2", "Apple MacBook Air M2 Max", "electronics", "Apple") is False
+
+
+def test_R8_extractor_threaded_category_pends_variant_add():
+    # The Serper-shopping extractor with the RESOLVED category threaded engages the
+    # variant-add guard even when keyword inference would say None (bare "Magnesium").
+    items = [{"title": "NOW Magnesium Citrate 200mg 120 Caps", "price": "BHD 5.5",
+              "source": "sporter.com", "link": "https://sporter.com/p/x"}]
+    assert ps.extract_price_from_shopping("Magnesium", items, "BHD", category="supplements") is None
+    # AirPods Pro -> Pro 2 via the extractor (inference now resolves electronics)
+    items2 = [{"title": "Apple AirPods Pro 2 (2nd Gen) USB-C", "price": "BHD 95",
+               "source": "noon.com", "link": "https://noon.com/p/airpods-pro-2"}]
+    assert ps.extract_price_from_shopping("Apple AirPods Pro", items2, "BHD") is None
+
+
+def test_R8_adapter_keystone_engages_with_resolved_category():
+    import app.services.woocommerce_service as woo
+    prods = [{"name": "NOW Magnesium Citrate 200mg 120 Caps",
+              "prices": {"price": "5500", "currency_code": "BHD", "currency_minor_unit": 3},
+              "permalink": "https://x/p", "is_in_stock": True}]
+    # resolved category threaded -> the broad variant-add (Citrate) pends
+    assert woo._match_woo_product(prods, "Magnesium", "BHD", resolved_category="supplements") is None
+
+
+# ===========================================================================
 # ROUND 7 — round-6 coverage findings (20, zero CRITICAL; near convergence).
 # ===========================================================================
 

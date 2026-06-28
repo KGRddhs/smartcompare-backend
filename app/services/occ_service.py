@@ -41,6 +41,7 @@ from app.services.price_service import (
     normalize_words,
     numbers_match,
     strict_title_match,
+    _selection_match,
     variant_mismatch,
 )
 from app.services.exchange_rate_service import FALLBACK_RATES
@@ -110,7 +111,7 @@ def _stock_ok(prod: Dict[str, Any]) -> Optional[bool]:
 
 
 def _select_product(
-    payload: Dict[str, Any], product_name: str
+    payload: Dict[str, Any], product_name: str, resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Best query-matching in-stock product node, or None. PURE."""
     products = payload.get("products")
@@ -139,6 +140,10 @@ def _select_product(
         if not strict_title_match(product_name, name):
             continue
         if variant_mismatch(product_name, name):
+            continue
+        # Keystone variant-add guard (coverage/independent review) — category-aware
+        # superset/axes beyond variant_mismatch's pro/max set. Flag-safe (True when off).
+        if not _selection_match(product_name, name, resolved_category):
             continue
         price = prod.get("price")
         if not isinstance(price, dict):
@@ -218,6 +223,7 @@ def _build_price(
 
 async def fetch_occ_rest_price(
     domain: str, product_name: str, currency: str = "BHD",
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Genuine/converted price for a SAP-Hybris OCC v2 storefront, or None.
 
@@ -269,7 +275,7 @@ async def fetch_occ_rest_price(
     if not isinstance(payload, dict):
         return None
 
-    prod = _select_product(payload, product_name)
+    prod = _select_product(payload, product_name, resolved_category=resolved_category)
     if prod is None:
         return None
 

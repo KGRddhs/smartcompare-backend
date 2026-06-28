@@ -4459,7 +4459,7 @@ class StructuredComparisonService:
                 _prefetched_direct["shopify"] = asyncio.ensure_future(
                     asyncio.gather(
                         *(
-                            fetch_shopify_price(s.domain, full_name, currency)
+                            fetch_shopify_price(s.domain, full_name, currency, resolved_category=category)
                             for s in _shopify_sources_pf
                         ),
                         return_exceptions=True,
@@ -4539,7 +4539,11 @@ class StructuredComparisonService:
                     asyncio.gather(
                         *(
                             _timeout_none(
-                                lambda s=s, fn=_na_fn: fn(s.domain, full_name, currency),
+                                # thread the ORCHESTRATOR-RESOLVED category so the
+                                # variant-add guard engages for queries the weak
+                                # keyword inference would miss (bare "Magnesium")
+                                # (coverage/independent review).
+                                lambda s=s, fn=_na_fn: fn(s.domain, full_name, currency, resolved_category=category),
                                 _ADAPTER_TIMEOUT,
                             )
                             for s in _na_srcs
@@ -4796,7 +4800,8 @@ class StructuredComparisonService:
         converted_fallback = None
 
         price = extract_price_from_shopping(
-            full_name, shopping_items, currency, shopping_region=shopping_region
+            full_name, shopping_items, currency, shopping_region=shopping_region,
+            category=category,
         )
         if price and price.get("amount"):
             if price.get("retailer_score", 0) >= 1.0:
@@ -4930,7 +4935,7 @@ class StructuredComparisonService:
                         shop_results = await asyncio.wait_for(
                             asyncio.gather(
                                 *(
-                                    fetch_shopify_price(s.domain, full_name, currency)
+                                    fetch_shopify_price(s.domain, full_name, currency, resolved_category=category)
                                     for s in shopify_sources
                                 ),
                                 return_exceptions=True,
@@ -5693,6 +5698,7 @@ class StructuredComparisonService:
                 price = extract_price_from_shopping(
                     broader_name, broader_shopping, currency,
                     shopping_region=broader_results.get("shopping_region"),
+                    category=category,
                 )
                 if price and price.get("amount"):
                     price.pop("retailer_score", None)
