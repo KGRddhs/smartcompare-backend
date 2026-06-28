@@ -544,10 +544,25 @@ def usable_exact_genuine_for_product(
     return True
 
 
-def count_usable_exact_genuine(body: Dict[str, Any]) -> tuple[int, int]:
+def count_usable_exact_genuine(
+    body: Dict[str, Any], truth_entries: Optional[Sequence[Dict[str, Any]]] = None,
+) -> tuple[int, int]:
     """(usable, requested) across the pair. requested is always 2 — a missing or
-    pended cell is requested-but-not-usable (the KPI denominator includes pends)."""
-    usable = sum(1 for idx in (0, 1) if usable_exact_genuine_for_product(body, idx))
+    pended cell is requested-but-not-usable (the KPI denominator includes pends).
+
+    External review B3 — pass `truth_entries` (a per-product list aligned to indices
+    0/1) so the metric INDEPENDENTLY validates each resolved price's identity against
+    the expected product (a genuine Libre price does NOT count as exact for a Black
+    Opium request). Without it (legacy callers) the identity check is skipped — the
+    truth-wired eval run-mode always supplies it."""
+    def _t(idx: int) -> Optional[Dict[str, Any]]:
+        if isinstance(truth_entries, (list, tuple)) and idx < len(truth_entries):
+            return truth_entries[idx]
+        return None
+    usable = sum(
+        1 for idx in (0, 1)
+        if usable_exact_genuine_for_product(body, idx, _t(idx))
+    )
     return usable, 2
 
 

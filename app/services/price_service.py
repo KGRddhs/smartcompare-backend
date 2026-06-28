@@ -2930,7 +2930,11 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
         drop = drop | _GENDER_IDENTITY_STRIP
     out = set()
     for w in (words - drop):
-        if len(w) > 2 or (w.isdigit() and len(w) >= 2):
+        # Keep tokens >2 chars, pure 2+-digit numbers, AND short alphanumeric MODEL
+        # designators that carry a digit (m2 / m3 / r6 / a15) — dropping these collapsed
+        # MacBook M2/M3 and Canon R5/R6 to one identity (external review). Single letters
+        # (Vitamin C vs D) are still dropped here and handled by the vitamin-letter axis.
+        if len(w) > 2 or (len(w) >= 2 and any(c.isdigit() for c in w)):
             out.add(w)
     return out
 
@@ -3184,7 +3188,74 @@ def _candidate_missing_query_axis(query_name: str, candidate_title: str,
             return True
         if extract_count(query_name) is not None and extract_count(candidate_title) is None:
             return True
+    elif cat == "electronics":
+        # External review — query states storage (256GB) but the candidate omits it ->
+        # UNVERIFIED -> pend (a terse "Galaxy S24" PDP is not proof it is the 256GB).
+        if extract_storage_gb(query_name) is not None and extract_storage_gb(candidate_title) is None:
+            return True
+    elif cat in _SIZE_OMIT_CATEGORIES:
+        # skincare / makeup / haircare / grocery — query states a weight/volume the
+        # candidate omits -> unverified size -> pend.
+        if _weights_volumes(query_name) and not _weights_volumes(candidate_title):
+            return True
     return False
+
+
+# Categories where a query-stated weight/volume the candidate omits = unverified -> pend.
+_SIZE_OMIT_CATEGORIES = frozenset({"skincare", "makeup", "haircare", "grocery"})
+
+# Fashion CLOTHING sizes (apparel) — a SKU axis. Standalone size tokens.
+_CLOTHING_SIZE_RE = re.compile(
+    r"(?<![a-z0-9])(xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl|small|medium|large)(?![a-z0-9])",
+    re.I,
+)
+# A bare single-letter clothing size (S/M/L) is only a size when it follows "size".
+_SIZED_CLOTHING_RE = re.compile(r"\bsize\s+(xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl)\b", re.I)
+_VITAMIN_LETTER_RE = re.compile(r"\bvitamin\s+([a-k])(?![a-z])", re.I)
+
+
+def _colors_in(text: str) -> set:
+    """The colour/colourway tokens present in `text` (from _COLOR_EDITION_TOKENS)."""
+    toks = set(re.findall(r"[a-z0-9]+", _fold_identity(text or "")))
+    return toks & _COLOR_EDITION_TOKENS
+
+
+def _color_mismatch(query_name: str, candidate_title: str) -> bool:
+    """Fashion colourway contradiction — both state a colour and share NONE (White vs
+    Black). A one-sided / shared colour is not a mismatch."""
+    qc, tc = _colors_in(query_name), _colors_in(candidate_title)
+    if not qc or not tc:
+        return False
+    return not (qc & tc)
+
+
+def _clothing_sizes_in(text: str) -> set:
+    folded = _fold_identity(text or "")
+    out = {m.lower() for m in _SIZED_CLOTHING_RE.findall(folded)}
+    # also accept an explicit XL/XXL/small/medium/large standalone (unambiguous)
+    for m in _CLOTHING_SIZE_RE.findall(folded):
+        ml = m.lower()
+        if ml in ("xs", "xxs", "xl", "xxl", "xxxl", "2xl", "3xl", "small", "medium", "large"):
+            out.add(ml)
+    return out
+
+
+def _clothing_size_mismatch(query_name: str, candidate_title: str) -> bool:
+    """Fashion apparel size contradiction — both state a clothing size and they DIFFER."""
+    qs, ts = _clothing_sizes_in(query_name), _clothing_sizes_in(candidate_title)
+    if not qs or not ts:
+        return False
+    return not (qs & ts)
+
+
+def _vitamin_letter_mismatch(query_name: str, candidate_title: str) -> bool:
+    """Supplement vitamin-letter contradiction — Vitamin C vs Vitamin D (the single
+    letter is dropped from identity tokens, so it is checked as an explicit axis)."""
+    qv = {m.lower() for m in _VITAMIN_LETTER_RE.findall(query_name)}
+    tv = {m.lower() for m in _VITAMIN_LETTER_RE.findall(candidate_title)}
+    if not qv or not tv:
+        return False
+    return not (qv & tv)
 
 
 # Flagship fragrance concentrations — a different, more concentrated JUICE than the
@@ -3208,7 +3279,11 @@ def _flagship_concentration_added(query_name: str, candidate_title: str) -> bool
 # Isolate/Concentrate/Hydrolysate; Vitamin D3 vs D3+K2). A candidate that ADDS one
 # the query lacks is a different SKU.
 _SUPPLEMENT_TYPE_TOKENS = frozenset({
-    "isolate", "concentrate", "hydrolysate", "hydrolyzed", "hydrolysed", "k2",
+    "isolate", "concentrate", "hydrolysate", "hydrolyzed", "hydrolysed",
+    # Combo minerals/vitamins — a candidate that ADDS one the query lacks is a different
+    # formulation ("Vitamin D3" vs "Vitamin D3 with Zinc"; "Calcium" vs "Calcium + Magnesium").
+    "k2", "zinc", "magnesium", "calcium", "iron", "copper", "selenium",
+    "b12", "b6", "folate", "folic", "biotin",
 })
 
 
@@ -3259,14 +3334,18 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         or _weight_or_volume_mismatch(query_name, candidate_title)
     ):
         return True
+    _cat = (category or "").lower()
     if strict_extras and (
         _form_mismatch(query_name, candidate_title, category, brand)
         or _candidate_missing_query_axis(query_name, candidate_title, category)
         or _category_type_added(query_name, candidate_title, category)
-        or (
-            (category or "").lower() in _FRAGRANCE_BEAUTY_CATEGORIES
-            and _gender_mismatch(query_name, candidate_title)
-        )
+        or (_cat in _FRAGRANCE_BEAUTY_CATEGORIES
+            and _gender_mismatch(query_name, candidate_title))
+        or (_cat == "fashion"
+            and (_color_mismatch(query_name, candidate_title)
+                 or _clothing_size_mismatch(query_name, candidate_title)))
+        or (_cat == "supplements"
+            and _vitamin_letter_mismatch(query_name, candidate_title))
     ):
         return True
     return False
@@ -3539,8 +3618,18 @@ def should_cache_price(
         return True
     if not isinstance(price, dict):
         return False
+    # FAIL-CLOSED (external review B6): never cache a price we cannot verify — no
+    # identity, no valid PDP URL, or explicitly OUT OF STOCK. A wrong/unverifiable
+    # price cached under the request key would poison the genuine TTL.
     title = price.get("title") or price.get("name") or ""
-    if not title or not request_name:
+    if not title:
+        return False
+    url = price.get("url")
+    if not url or _is_listing_url(url):
+        return False
+    if price.get("in_stock") is False:
+        return False
+    if not request_name:
         return True
     return _selection_match(
         request_name, title, category, candidate_brand=price.get("brand", ""),
@@ -4230,10 +4319,17 @@ def extract_jsonld_price(
                     for b in ld_brand
                 )
             brand_field_nospace = str(ld_brand or "").lower().replace(" ", "")
-            matched_in_name = brand_nospace in name_nospace
-            matched_in_brand_field = bool(
-                brand_field_nospace and brand_nospace in brand_field_nospace
-            )
+            # External review — match the brand ALIAS forms too (query brand "YSL" vs a
+            # JSON-LD brand "Yves Saint Laurent"), BEFORE this literal substring filter
+            # rejects the candidate (the alias fold in _selection_match ran too late).
+            _brand_forms = {brand_nospace}
+            _bw = set(re.findall(r"[a-z0-9&]+", brand_lower))
+            for _grp in _BRAND_ALIAS_GROUPS:
+                if _bw & _grp:
+                    _brand_forms |= {a.replace(" ", "").replace("&", "") for a in _grp}
+            matched_in_name = any(f and f in name_nospace for f in _brand_forms)
+            matched_in_brand_field = bool(brand_field_nospace and any(
+                f and f in brand_field_nospace for f in _brand_forms))
             if not matched_in_name and not matched_in_brand_field:
                 continue
 
@@ -4305,20 +4401,18 @@ def extract_jsonld_price(
                     explicit = offer.get("price")
                     low = offer.get("lowPrice")
                     high = offer.get("highPrice")
-                    # B4 — on the EXACTNESS path (query known), an AggregateOffer that
-                    # is a genuine RANGE (lowPrice != highPrice, no explicit single
-                    # price) spans multiple variants/sellers, so lowPrice is NOT proof
-                    # of the EXACT SKU's price -> skip (pend). A single-value
-                    # AggregateOffer (low==high or no highPrice) and a plain
-                    # Offer.price are UNCHANGED — preserves I5.8 + pre-S4 no-query callers.
+                    # B4 (external review) — on the EXACTNESS path (query known), an
+                    # AggregateOffer with NO explicit per-SKU `price` (only low/high) is
+                    # the cheapest variant/seller, NOT proof of the EXACT SKU's price ->
+                    # skip (pend), whether or not a high is present. A plain Offer.price
+                    # is unchanged; the pre-S4 no-query callers keep lowPrice (I5.8).
                     _no_explicit = explicit is None or str(explicit).strip() in ("", "0")
+                    _is_aggregate = "AggregateOffer" in str(offer.get("@type") or "")
                     if (
-                        exact_gate_enabled() and query_name and _no_explicit
-                        and low is not None and high is not None
-                        and float(low) != float(high)
+                        exact_gate_enabled() and query_name and _is_aggregate and _no_explicit
                     ):
                         continue
-                    # AggregateOffer carries lowPrice instead of price (I5.8)
+                    # AggregateOffer carries lowPrice instead of price (I5.8, no-query path)
                     price_val = float(explicit or low or 0)
                 except (ValueError, TypeError):
                     continue
@@ -4337,7 +4431,14 @@ def extract_jsonld_price(
                 # non-string availability shapes (None/list/dict) never TypeError.
                 if exact_gate_enabled():
                     avail_state = is_available_state(offer.get("availability"))
-                    in_stock = True if avail_state is None else avail_state
+                    if query_name:
+                        # External review B4 — on the EXACTNESS path UNKNOWN availability
+                        # stays None (do NOT assert in_stock=True with no signal); the KPI
+                        # requires confirmed in-stock, the chokepoint shows None as unknown.
+                        in_stock = avail_state
+                    else:
+                        # Legacy no-query (I5.8) callers keep the old unknown→in_stock=True.
+                        in_stock = True if avail_state is None else avail_state
                 else:
                     in_stock = "OutOfStock" not in str(offer.get("availability") or "")
 
