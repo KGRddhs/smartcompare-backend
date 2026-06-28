@@ -744,6 +744,7 @@ from app.services.price_service import (
     is_implausible_low_fragrance_price,
     is_price_showable,
     select_best,
+    should_cache_price,
     make_pending_price,
     _infer_category_from_query,
     shopping_listing_matches,
@@ -4710,8 +4711,12 @@ class StructuredComparisonService:
                 full_name, kind="price_dicts", currency=currency,
                 price_dicts=observed,
             )
-            set_cached(cache_key, best, price_cache_ttl(best))
-            self._save_price_to_db(cache_key, brand, name, variant, region, best)
+            # B6 — gate the genuine-TTL cache + DB write on the resolved identity
+            # matching the request (the converted/page-scrape `best` does not pass
+            # through select_best on every path).
+            if should_cache_price(full_name, best, category):
+                set_cached(cache_key, best, price_cache_ttl(best))
+                self._save_price_to_db(cache_key, brand, name, variant, region, best)
             best["_cached"] = False
             logger.info(
                 "[PRICE] BH adapter direct hit for %s: %.3f %s via %s "
@@ -5413,7 +5418,10 @@ class StructuredComparisonService:
                         "title": full_name,
                     }]
                 _maybe_park_supplement(iherb_price)
-                set_cached(cache_key, iherb_price, price_cache_ttl(iherb_price))
+                # B6 — only cache under the request key when the resolved iHerb
+                # product's identity matches the request (defense-in-depth).
+                if should_cache_price(full_name, iherb_price, category):
+                    set_cached(cache_key, iherb_price, price_cache_ttl(iherb_price))
                 return iherb_price
 
             iherb_task = search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
@@ -5442,7 +5450,9 @@ class StructuredComparisonService:
             if pharmacy_price:
                 pharmacy_price["_cached"] = False
                 _maybe_park_supplement(pharmacy_price)
-                set_cached(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
+                # B6 — cache under the request key only on a resolved-identity match.
+                if should_cache_price(full_name, pharmacy_price, category):
+                    set_cached(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
                 return pharmacy_price
 
             # --- Stage 3: page-scrape known supplement/pharmacy PDPs (bounded ~3s) ---

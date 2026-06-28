@@ -471,32 +471,76 @@ def count_price_provenance(body: Dict[str, Any]) -> Dict[str, int]:
 # SEPARATELY. Phase-2 gate: >= 0.85 for electronics/fashion/fragrances (WARMED).
 # ---------------------------------------------------------------------------
 
-def usable_exact_genuine_for_product(body: Dict[str, Any], product_idx: int) -> bool:
-    """True iff product idx's resolved price is USABLE-EXACT-GENUINE: non-pending,
-    genuine-BH source_method, in_stock not False, and a valid (non-listing) PDP URL.
-    A missing / pended / converted / estimated / out-of-stock / listing-URL price is
-    NOT usable (counts in the KPI denominator as requested-but-not-usable)."""
+def load_usable_exact_genuine_truth(
+    path: Path | str = REPO_ROOT / "data" / "usable_exact_genuine_truth.json",
+) -> List[Dict[str, Any]]:
+    """Load the NON-CIRCULAR truth set (each entry: id/query/category/region +
+    `expected` identity). Raises FileNotFoundError if absent."""
+    p = Path(path)
+    data = json.loads(p.read_text(encoding="utf-8"))
+    return list(data.get("products", []))
+
+
+def usable_exact_genuine_for_product(
+    body: Dict[str, Any], product_idx: int,
+    truth_entry: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """True iff product idx's resolved price is USABLE-EXACT-GENUINE — INDEPENDENTLY
+    validated (B3: the metric must NOT trust the upstream 'shown == exact' assumption;
+    it re-checks identity itself against the truth entry):
+      (a) non-pending, positive amount,
+      (b) a genuine-BH `source_method`,
+      (c) CONFIRMED in stock (in_stock is True — unknown/None does NOT count),
+      (d) a present, valid (non-listing) PDP URL,
+      (e) when a `truth_entry` is given: the resolved price TITLE is the EXACT
+          expected product (is_exact_match against truth.query + truth.expected.brand).
+    A missing / pended / converted / estimated / out-of-stock / unknown-stock /
+    no-URL / listing-URL / WRONG-identity price is NOT usable (it counts in the KPI
+    denominator as requested-but-not-usable)."""
     products = _products_overview(body)
     if product_idx >= len(products):
         return False
     price = products[product_idx].get("price")
     if not isinstance(price, dict):
         return False
+    # (a) not pending, positive amount
     if price.get("unavailable") is True or price.get("amount") in (None, 0):
         return False
+    # (b) genuine source method
     method = price.get("source_method")
     if not isinstance(method, str) or method not in GENUINE_BH_SOURCE_METHODS:
         return False
-    if price.get("in_stock") is False:
+    # (c) CONFIRMED in stock — unknown (None) / missing does NOT count as usable.
+    if price.get("in_stock") is not True:
         return False
+    # (d) present, valid (non-listing) PDP URL — a missing URL is NOT usable.
     url = price.get("url")
-    if isinstance(url, str) and url.strip():
+    if not isinstance(url, str) or not url.strip():
+        return False
+    try:
+        from app.services.source_router import is_non_pdp_listing_url
+        if is_non_pdp_listing_url(url):
+            return False
+    except Exception:  # noqa: BLE001 — a URL-classifier failure must not crash the eval
+        pass
+    # (e) INDEPENDENT identity validation against the truth entry — the resolved
+    # price title must be the EXACT expected product (kills the "shown == exact"
+    # circularity: a genuine, in-stock, valid-PDP price for the WRONG product fails).
+    if truth_entry is not None:
+        expected_query = truth_entry.get("query") or ""
+        category = truth_entry.get("category")
+        expected_brand = (truth_entry.get("expected") or {}).get("brand", "")
+        title = price.get("title") or price.get("name") or ""
+        if not title:
+            return False
         try:
-            from app.services.source_router import is_non_pdp_listing_url
-            if is_non_pdp_listing_url(url):
+            from app.services.price_service import is_exact_match
+            if expected_query and not is_exact_match(
+                expected_query, title, category, candidate_brand=expected_brand,
+            ):
                 return False
-        except Exception:  # noqa: BLE001 — a URL-classifier failure must not crash the eval
-            pass
+        except Exception:  # noqa: BLE001 — a matcher failure must not crash the eval
+            return False
     return True
 
 
@@ -508,9 +552,16 @@ def count_usable_exact_genuine(body: Dict[str, Any]) -> tuple[int, int]:
 
 
 def count_guard_rejected(body: Dict[str, Any]) -> int:
-    """How many products PENDED due to the NEW correctness gate (price.guard_rejected
-    stamped out_of_stock / non_pdp_url / not_exact). The no-fab measurement (1J): the
-    gate's pends are COUNTED, never a silent coverage drop."""
+    """How many products PENDED due to the correctness gate (out_of_stock /
+    non_pdp_url / no_identity / not_exact). The no-fab measurement (1J): the gate's
+    pends are COUNTED, never a silent coverage drop.
+
+    B7 — the reasons live in metadata.guard_rejected (a list of {product_index,
+    reason}), NOT on the public price object. Falls back to the legacy per-price key
+    for any caller still emitting it (older cached payloads)."""
+    md = body.get("metadata") if isinstance(body, dict) else None
+    if isinstance(md, dict) and isinstance(md.get("guard_rejected"), list):
+        return len(md["guard_rejected"])
     n = 0
     for p in _products_overview(body)[:2]:
         price = p.get("price")

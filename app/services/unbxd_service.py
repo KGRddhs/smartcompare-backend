@@ -61,8 +61,14 @@ UNBXD_STORES: Dict[str, Dict[str, Any]] = {
 def _parse_unbxd_amount(product: Dict[str, Any]) -> Optional[float]:
     """CURRENT price only — sellingPrice (sale) then `price`. `wasPrice` is the
     struck-through pre-sale ORIGINAL (MSRP), NOT the current shelf price, so it is
-    NOT a fallback (it would ship an inflated wrong amount). Positive only."""
-    for key in ("sellingPrice", "price"):
+    NOT a fallback (it would ship an inflated wrong amount). Positive only.
+
+    B8 — the wasPrice removal is gated by the correctness flag so a rollback
+    (ENABLE_EXACT_PRICE_GATE=false) is BYTE-IDENTICAL to b207bfa (wasPrice restored as
+    the last-resort fallback)."""
+    from app.services.price_service import exact_gate_enabled
+    keys = ("sellingPrice", "price") if exact_gate_enabled() else ("sellingPrice", "price", "wasPrice")
+    for key in keys:
         val = product.get(key)
         if val is None:
             continue

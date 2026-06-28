@@ -3361,6 +3361,44 @@ def select_best(
     return eligible[0]
 
 
+def should_cache_price(
+    request_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+) -> bool:
+    """B6 — gate a cache WRITE on the RESOLVED identity matching the request, so a
+    wrong candidate (which a permissive matcher might once have let through) can NEVER
+    be cached under the requested product for the genuine TTL.
+
+    Uses the SAME matcher (`_selection_match`) the selector ran, so it NEVER blocks a
+    legitimately-selected price (defense-in-depth for the non-select_best writes:
+    iHerb / pharmacy / converted). Returns True (allow) when there is nothing to
+    verify against (no title to compare, or no request) — an estimated price has its
+    own honesty + TTL. No-op (True) when the rollback flag is OFF."""
+    if not exact_gate_enabled():
+        return True
+    if not isinstance(price, dict):
+        return False
+    title = price.get("title") or price.get("name") or ""
+    if not title or not request_name:
+        return True
+    return _selection_match(
+        request_name, title, category, candidate_brand=price.get("brand", ""),
+    )
+
+
+def public_price_view(price: Any) -> Any:
+    """B7 — the PUBLIC projection of a price object: strips the internal
+    `guard_rejected` diagnostic (it belongs in metadata, never the user-facing price)
+    and any `_`-prefixed internal key (`_cached`, `_cache_source`, …). Returns a NEW
+    dict (never mutates the input, so the orchestrator's cache-hit metadata that reads
+    `_cached` off the pre-projection price is unaffected). Non-dicts pass through."""
+    if not isinstance(price, dict):
+        return price
+    return {
+        k: v for k, v in price.items()
+        if k != "guard_rejected" and not (isinstance(k, str) and k.startswith("_"))
+    }
+
+
 def _identity_cache_token(text: str) -> str:
     """A stable composite cache token of ALL identity-discriminating axes —
     concentration (EDP/EDT/…) + variant qualifier (FE/Pro/Max/…) + size/storage/

@@ -43,10 +43,33 @@ def test_not_usable_when_listing_url():
     assert er.usable_exact_genuine_for_product(_body(listing, GENUINE), 0) is False
 
 
-def test_usable_when_genuine_no_url_present():
-    # A genuine local_bhd with no url is still usable (missing url is benign).
+def test_not_usable_when_no_url_present():
+    # B3 FIX — a genuine local_bhd with NO url is NOT usable_exact_genuine: with no
+    # PDP we can't confirm the price is current + exact (the prior assertion that a
+    # missing url is "benign" codified the B5 fail-open leak).
     no_url = {"amount": 13.3, "currency": "BHD", "source_method": "local_bhd", "in_stock": True}
-    assert er.usable_exact_genuine_for_product(_body(no_url, GENUINE), 0) is True
+    assert er.usable_exact_genuine_for_product(_body(no_url, GENUINE), 0) is False
+
+
+def test_not_usable_when_stock_unknown():
+    # B3 FIX — UNKNOWN stock (in_stock missing/None) does NOT count as usable; the KPI
+    # requires CONFIRMED in-stock.
+    unknown = {"amount": 13.3, "currency": "BHD", "source_method": "local_bhd",
+               "url": "https://sharafdg.com/p/x"}
+    assert er.usable_exact_genuine_for_product(_body(unknown, GENUINE), 0) is False
+
+
+def test_kpi_rejects_wrong_identity_with_truth_entry():
+    # B3 FIX — with a truth entry, a genuine/in-stock/valid-PDP price for the WRONG
+    # product is NOT usable (independent identity validation, not 'shown==exact').
+    truth = {"id": "kpi-frag-001", "query": "YSL Black Opium EDP 90ml",
+             "category": "fragrances", "expected": {"brand": "Yves Saint Laurent"}}
+    wrong = {"amount": 30.0, "currency": "BHD", "source_method": "local_bhd",
+             "in_stock": True, "title": "YSL Libre EDP 90ml",
+             "url": "https://sharafdg.com/p/libre"}
+    assert er.usable_exact_genuine_for_product(_body(wrong, GENUINE), 0, truth) is False
+    right = {**wrong, "title": "YSL Black Opium Eau de Parfum 90ml"}
+    assert er.usable_exact_genuine_for_product(_body(right, GENUINE), 0, truth) is True
 
 
 def test_count_usable_exact_genuine():
