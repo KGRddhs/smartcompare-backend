@@ -394,23 +394,32 @@ def _m(q, t, cat, brand=""):
     return ps._selection_match(q, t, cat, candidate_brand=brand)
 
 
-def test_rev_gender_flip_flanker_rejected():
-    """Versace Eros (men's) must NOT match Versace Eros Pour Femme (women's) — the
-    French gender form is an official sub-line discriminator, not padding."""
-    assert _m("Versace Eros EDT", "Versace Eros Pour Femme Eau de Toilette 100ml",
+def test_rev_gender_contradiction_rejected():
+    """A gender CONTRADICTION (both sides state a gender and they DIFFER) is a
+    different product — Eros Pour Homme (men's) != Eros Pour Femme (women's)."""
+    assert _m("Versace Eros Pour Homme EDT", "Versace Eros Pour Femme EDT",
               "fragrances", "Versace") is False
-    # contradiction (both state gender, differ)
     assert _m("Armani Code Pour Homme EDT", "Armani Code Pour Femme EDT",
               "fragrances", "Armani") is False
 
 
-def test_rev_gender_descriptive_english_accepted():
-    """A single-gender fragrance whose title adds the ENGLISH 'For Women' descriptor
-    must STILL match (no over-rejection) — and a same-gender French match too."""
+def test_rev_gender_one_sided_accepted():
+    """A ONE-SIDED gender (the canonical 'Pour Homme' the terse query states but the
+    retailer PDP omits, or vice versa) must NOT pend — the dominant GCC genuine case
+    (Bleu de Chanel Pour Homme, Acqua di Gio Pour Homme). Round-2 calibration: gender
+    is a CONTRADICTION axis, not an omission reject."""
+    assert _m("Bleu de Chanel Pour Homme EDP 100ml",
+              "Chanel Bleu de Chanel Eau de Parfum 100ml", "fragrances", "Chanel") is True
+    assert _m("Armani Acqua di Gio Pour Homme EDT 100ml",
+              "Giorgio Armani Acqua di Gio Eau de Toilette 100ml", "fragrances",
+              "Giorgio Armani") is True
+    # candidate ADDS Pour Homme the query omitted → still accepted.
+    assert _m("Bleu de Chanel EDP 100ml",
+              "Chanel Bleu de Chanel Pour Homme Eau de Parfum 100ml", "fragrances",
+              "Chanel") is True
+    # English 'For Women' descriptor on a single-gender fragrance → accepted.
     assert _m("YSL Black Opium EDP 90ml", "YSL Black Opium Eau de Parfum For Women 90ml",
               "fragrances", "YSL") is True
-    assert _m("Versace Eros Pour Homme EDT 100ml",
-              "Versace Eros Pour Homme Eau de Toilette 100ml", "fragrances", "Versace") is True
 
 
 def test_rev_gift_set_rejected():
@@ -454,6 +463,29 @@ def test_rev_supplement_type_added_rejected():
     # same type matches (lb weight no longer leaks into identity).
     assert _m("NOW Whey Protein Isolate 5lb",
               "NOW Whey Protein Isolate Unflavored 5 lb (2270 g)", "supplements", "NOW") is True
+
+
+def test_rev_accessory_narrowing_genuine_products_accepted():
+    """Round-2 calibration: the accessory guard must NOT pend a GENUINE standalone
+    keyboard / headphone / earbuds (they are products, not accessories) nor a
+    skincare/makeup title with 'glass'/'skin' — only a true electronics add-on
+    (case/charger) on a high-value device query is dropped."""
+    def _sb(title, query, cat, brand=""):
+        c = {"amount": 45.0, "title": title, "url": "https://x.com/p/1",
+             "in_stock": True, "source_method": "local_bhd", "brand": brand}
+        return ps.select_best([c], query, cat) is not None
+    # genuine products → accepted
+    assert _sb("Logitech MX Keys Advanced Wireless Keyboard", "Logitech MX Keys",
+               "electronics", "Logitech") is True
+    assert _sb("Sony WH-1000XM5 Wireless Headphone", "Sony WH-1000XM5",
+               "electronics", "Sony") is True
+    assert _sb("Anker Soundcore Liberty 4 Earbuds", "Anker Soundcore Liberty 4",
+               "electronics", "Anker") is True
+    assert _sb("Some Brand Glass Skin Serum 50ml", "Some Brand Glass Skin Serum",
+               "skincare", "Some Brand") is True
+    # true accessories on a device query → still rejected
+    assert _sb("Samsung Galaxy S24 Case", "Samsung Galaxy S24", "electronics", "Samsung") is False
+    assert _sb("Sony WH-1000XM5 Carrying Case", "Sony WH-1000XM5", "electronics", "Sony") is False
 
 
 def test_rev_brand_abbreviation_accepted():

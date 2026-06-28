@@ -653,6 +653,27 @@ def is_accessory(title: str) -> bool:
     return False
 
 
+# Unambiguous electronics ACCESSORY add-ons (a phone CASE, a CHARGER) — used by the
+# shared select_best + is_price_showable gates to reject a cheap accessory matched as
+# the device. DELIBERATELY EXCLUDES class-nouns that are PRODUCTS in their own right
+# (keyboard / mouse / headphone / earbuds / stylus / pen) and category-ambiguous words
+# (skin / glass / film) that appear in genuine skincare/makeup titles — `is_accessory`
+# (used by the per-adapter extractors) keeps the broad list; this narrow set is for the
+# correctness gates so a genuine standalone keyboard / Sony WH-1000XM5 / CeraVe is NOT
+# false-pended. Electronics-scoped at the call site.
+_DEVICE_ACCESSORY_TOKENS = frozenset({
+    "case", "cover", "charger", "charging", "cable", "adapter", "protector",
+    "dock", "cradle", "sleeve", "pouch", "casing", "bumper",
+})
+
+
+def _is_device_accessory(text: str) -> bool:
+    """True iff `text` names an electronics ACCESSORY (case/cover/charger/...). Plain
+    ASCII tokenize (the keywords are all ASCII) so it can be defined before _fold_identity."""
+    toks = set(re.findall(r"[a-z0-9]+", (text or "").lower()))
+    return bool(toks & _DEVICE_ACCESSORY_TOKENS)
+
+
 def _contains_token(name_lower: str, token: str) -> bool:
     """Whole-token (lookaround word-boundary) containment. Unlike `\\b`, the
     lookaround treats digits as part of the token so `d3`/`d-3`/`omega-3` match
@@ -1068,9 +1089,10 @@ def is_price_showable(
             price["guard_rejected"] = "non_pdp_url"
             return False
         identity = title or price.get("name")
-        # An accessory matched as the device itself (the shared backstop, like the
-        # selector, must reject it — defense-in-depth behind the per-adapter checks).
-        if identity and is_accessory(identity) and not is_accessory(product_name):
+        # An electronics accessory matched as the device itself (narrow set + category
+        # gate so a genuine standalone keyboard / headphone / skincare title is not pended).
+        if (identity and (category or "").lower() == "electronics"
+                and _is_device_accessory(identity) and not _is_device_accessory(product_name)):
             price["guard_rejected"] = "accessory"
             return False
         if identity and not _backstop_identity_ok(product_name, identity, category):
@@ -2901,6 +2923,11 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     drop = set(brand_words) | _FORM_NOISE_TOKENS | quals
     if cat in _COLOR_ALIAS_CATEGORIES:
         drop = drop | _COLOR_EDITION_TOKENS
+    if cat in _FRAGRANCE_BEAUTY_CATEGORIES:
+        # Strip gender markers from identity (the _gender_mismatch contradiction axis
+        # handles them) so a one-sided "Pour Homme" the terse query omits never breaks
+        # the subset/flanker check.
+        drop = drop | _GENDER_IDENTITY_STRIP
     out = set()
     for w in (words - drop):
         if len(w) > 2 or (w.isdigit() and len(w) >= 2):
@@ -3041,18 +3068,54 @@ _FRAGRANCE_FLANKER_CATEGORIES = frozenset({"fragrances"})
 # "Elixir", "Over", "Red") stays distinctive and rejects the flanker. Concentration
 # words (eau/de/parfum/toilette/edp/edt) are already stripped as the concentration
 # PHRASE, so they need not appear here.
-# NOTE: the FRENCH gender forms (homme / femme / pour) are DELIBERATELY NOT padding —
-# they are official sub-line name components ("Versace Eros Pour Femme" is a DIFFERENT
-# product than "Versace Eros"), so they must stay distinctive and reject a gender-flip
-# flanker. The English suffixes (for / men / women …) ARE padding — they are usually a
-# generic descriptor on a single-gender fragrance ("Black Opium … For Women").
+# Gender markers are PADDING for the flanker/subset token check (so "Bleu de Chanel
+# Pour Homme" matches a genuine "Bleu de Chanel" PDP that omits the suffix — the common
+# GCC bestseller case). The gender-FLIP flanker (Eros men's vs Eros Pour Femme women's)
+# is caught SEPARATELY by the _gender_mismatch CONTRADICTION axis, which fires only when
+# BOTH sides state a gender and they DIFFER — never on a one-sided omission.
 _FRAGRANCE_PADDING_TOKENS = frozenset({
     "for", "men", "women", "man", "woman", "mens", "womens", "ladies", "gents",
-    "unisex", "him", "her", "natural", "spray", "sprays",
+    "unisex", "homme", "hommes", "femme", "femmes", "pour", "him", "her",
+    "natural", "spray", "sprays",
     "vaporisateur", "vapo", "vaporizer", "atomiser", "atomizer", "new", "gift",
     "perfume", "perfumes", "cologne", "fragrance", "fragrances", "scent", "scented",
     "the", "and", "with", "size", "full", "genuine", "original", "authentic", "brand",
 })
+
+# Gender CONTRADICTION axis — a fragrance is the WRONG product only when the query and
+# the candidate state OPPOSITE genders (Eros Pour Homme vs Eros Pour Femme). A one-sided
+# gender (query states it, candidate omits, or vice versa) is the canonical single-gender
+# title and must NOT reject (the dominant genuine case). Markers are unambiguous gender
+# words only — "her"/"him"/"ladies"/"gents" are excluded (a brand/name like Burberry
+# "Her" must not read as a gender).
+_GENDER_MEN_TOKENS = frozenset({"homme", "hommes", "men", "man", "mens", "uomo", "herren"})
+_GENDER_WOMEN_TOKENS = frozenset({"femme", "femmes", "women", "woman", "womens", "donna", "damen"})
+# Gender markers are STRIPPED from the identity token set (like the concentration
+# phrase) for fragrance/beauty, so the subset/flanker checks ignore a one-sided
+# "Pour Homme"; the _gender_mismatch CONTRADICTION axis does the real discrimination.
+# "her"/"him" are deliberately NOT here (a name like Burberry "Her"/"Him" must stay
+# a distinctive identity token).
+_GENDER_IDENTITY_STRIP = _GENDER_MEN_TOKENS | _GENDER_WOMEN_TOKENS | frozenset({"pour"})
+
+
+def _gender_of(text: str) -> Optional[str]:
+    """'men' / 'women' / None (none or BOTH → ambiguous/unisex) for `text`."""
+    toks = set(re.findall(r"[a-z0-9]+", _fold_identity(text or "")))
+    m = bool(toks & _GENDER_MEN_TOKENS)
+    w = bool(toks & _GENDER_WOMEN_TOKENS)
+    if m and not w:
+        return "men"
+    if w and not m:
+        return "women"
+    return None
+
+
+def _gender_mismatch(query_name: str, candidate_title: str) -> bool:
+    """True iff query and candidate state CONFLICTING genders (a gender-flip flanker).
+    A one-sided gender (the canonical 'Pour Homme' the terse query omits) is NOT a
+    mismatch."""
+    gq, gt = _gender_of(query_name), _gender_of(candidate_title)
+    return bool(gq and gt and gq != gt)
 
 # Form PHRASES that name a different product when present on only one side. Ordered
 # longest-first so "body lotion" wins over a bare "body". The default bottle/jar form
@@ -3200,6 +3263,10 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         _form_mismatch(query_name, candidate_title, category, brand)
         or _candidate_missing_query_axis(query_name, candidate_title, category)
         or _category_type_added(query_name, candidate_title, category)
+        or (
+            (category or "").lower() in _FRAGRANCE_BEAUTY_CATEGORIES
+            and _gender_mismatch(query_name, candidate_title)
+        )
     ):
         return True
     return False
@@ -3424,10 +3491,11 @@ def select_best(
         title = c.get("title") or c.get("name") or ""
         if not title:
             continue
-        # An ACCESSORY (Galaxy S24 *Case* / *Cover* / *Charger*) is not the device —
-        # the per-adapter extractors reject it but the shared authority selector did
-        # not, so a cheap accessory could be selected as the phone.
-        if is_accessory(title) and not is_accessory(query_name):
+        # An electronics ACCESSORY (Galaxy S24 *Case* / *Charger*) is not the device —
+        # the shared authority selector did not reject it. Narrow set + electronics gate
+        # so a genuine standalone keyboard / Sony WH-1000XM5 / earbuds is NOT pended.
+        if ((category or "").lower() == "electronics"
+                and _is_device_accessory(title) and not _is_device_accessory(query_name)):
             continue
         # B5 — require a valid PDP URL (fail-closed on missing url). A listing/search
         # URL is rejected even when require_url is False (it is never a PDP).
@@ -3486,6 +3554,11 @@ def public_price_view(price: Any) -> Any:
     dict (never mutates the input, so the orchestrator's cache-hit metadata that reads
     `_cached` off the pre-projection price is unaffected). Non-dicts pass through."""
     if not isinstance(price, dict):
+        return price
+    # Rollback (B8): b207bfa exposed internal `_cached`/`_cache_source` on the public
+    # price; with the gate OFF, leave the projection byte-identical (guard_rejected is
+    # never stamped flag-OFF anyway, so nothing leaks).
+    if not exact_gate_enabled():
         return price
     return {
         k: v for k, v in price.items()
