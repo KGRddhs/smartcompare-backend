@@ -846,6 +846,40 @@ def is_fragrance_query(product_name: str) -> bool:
     return any(kw in name_lower for kw in FRAGRANCE_PRODUCT_KEYWORDS)
 
 
+# The ORCHESTRATOR-RESOLVED pair category for the in-flight price fetch, set once at the
+# top of scs._get_price. A per-task ContextVar (asyncio sub-tasks inherit a COPY at creation,
+# and the pair's two _get_price tasks have independent contexts → no cross-contamination), so
+# the deep render/page-scrape extractor chain (firecrawl/scrapedo/_fetch_page_price →
+# extract_price_from_html/_jsonld) gets the authoritative category WITHOUT threading it through
+# 5 helper layers. The variant-add KEYSTONE was leaking on those paths because weak keyword
+# inference returned None for bare compounds (Magnesium) / brand-omitted lines (Galaxy Watch 6)
+# (coverage review round 8 CRITICAL + independent review). Resolution order in the extractors:
+# explicit category param > this ContextVar > _infer_category_from_query.
+import contextvars as _contextvars
+_resolved_category_ctx: "_contextvars.ContextVar[Optional[str]]" = _contextvars.ContextVar(
+    "qaren_resolved_price_category", default=None,
+)
+
+
+def set_resolved_price_category(category: Optional[str]) -> None:
+    """scs._get_price sets the in-flight pair category here so every downstream extractor
+    resolves identity on the right axes even on the un-threaded render/page-scrape paths."""
+    _resolved_category_ctx.set((category or "").strip().lower() or None)
+
+
+def _resolve_extractor_category(explicit: Optional[str], query_name: str) -> Optional[str]:
+    """explicit param > the orchestrator-resolved ContextVar > best-effort keyword inference.
+    "other" is treated as unresolved (re-infer) — a frequent LLM label that must not disable
+    the variant-add guard for a genuinely-categorizable product (round-8 CRITICAL)."""
+    cat = (explicit or "").strip().lower()
+    if cat and cat != "other":
+        return cat
+    ctx = (_resolved_category_ctx.get() or "").strip().lower()
+    if ctx and ctx != "other":
+        return ctx
+    return _infer_category_from_query(query_name) or (cat or ctx or None)
+
+
 def _infer_category_from_query(query_name: str) -> Optional[str]:
     """Best-effort category for the exact-identity gate when a caller (jsonld /
     page-scrape extractor) only has the query string, not the resolved category.
@@ -1037,7 +1071,9 @@ def is_grocery_query(product_name: str) -> bool:
     if not product_name:
         return False
     nl = product_name.lower()
-    return (any(b in nl for b in _GROCERY_BRAND_KEYWORDS)
+    # WORD-BOUNDARY brand match (coverage R8): a bare `in` substring let 'lays' match
+    # 'pLAYStation' → PlayStation misrouted to grocery (grocery is checked before electronics).
+    return (any(_contains_token(nl, b) for b in _GROCERY_BRAND_KEYWORDS)
             or any(k in nl for k in _GROCERY_PRODUCT_KEYWORDS))
 
 
@@ -3886,6 +3922,13 @@ _ELECTRONICS_PADDING = _MANUFACTURER_NOISE | frozenset({
     # high-frequency descriptive/marketing words a genuine electronics title adds
     # (coverage review) — NOT a SKU variant for a model-number query.
     "noise", "cancelling", "cancellation", "anc", "cordless", "illuminated",
+    # Apple-Silicon canonical-title descriptors + MagSafe accessory-name word (coverage R8):
+    # "MacBook Air with M2 chip", "AirPods Pro 2 with MagSafe" — descriptive, not a variant.
+    # ("chip" is safe — the M2/M3 tier is the discriminator, caught by _chip_tier_mismatch.)
+    "with", "chip", "magsafe",
+    # Regional / stock descriptors a GCC retailer title appends ("iPhone 15 128GB - Pink
+    # Middle East Version with FaceTime") — same SKU, not a variant (coverage R8 sharafdg).
+    "middle", "east", "version", "facetime", "region", "regional", "warranty", "years",
     # NOTE: "detect"/"absolute" are Dyson TRIM/line words (V8 Absolute, V15 Detect are
     # distinct SKUs) — NOT padding; they discriminate.
     "gaming", "geforce", "radeon", "model", "joycon", "joy", "con",
@@ -3913,7 +3956,11 @@ _FASHION_PADDING = frozenset({
     # one-sided "Kids"/"Youth" add must reject (coverage review round 5).
     "shoe", "shoes", "sneaker", "sneakers", "trainers", "footwear", "originals",
     # "retro" is Nike's standard release-line word in genuine same-product titles.
-    "retro", "running", "casual",
+    # running/runner/performance = shoe-ACTIVITY descriptors (the MODEL name discriminates,
+    # not the activity) — a genuine "Air Max SC Runner Sneakers Performance" listing for an
+    # "Air Max SC" query (coverage R8 6thStreet fashion lever). A real shoe TYPE that IS a
+    # SKU axis (trail vs road) is NOT padded.
+    "retro", "running", "runner", "performance", "casual",
     # MATERIAL descriptors a genuine apparel title adds (one-sided tolerated; a both-
     # stated DIFFERENT material is caught by _material_mismatch): "Orangey Dress in
     # Cotton-blend". NOTE: fit/cut words (slim/regular/relaxed) are NOT padding — they are
@@ -3974,6 +4021,10 @@ _MAKEUP_FINISH_TOKENS = frozenset({
 })
 _MAKEUP_PADDING = _MAKEUP_FINISH_TOKENS | frozenset({
     "longwear", "longlasting", "buildable", "blendable", "lightweight",
+    # "soft" is a FINISH/texture descriptor in makeup (Pro Filt'r Soft Matte, Soft Glow,
+    # Soft Pinch) — padding it recovers the canonical product-line title (coverage R8). A
+    # numbered shade ("Fit Me 240 Soft Sand") is already handled by the shade-NUMBER tolerance.
+    "soft",
 })
 
 
@@ -4120,6 +4171,20 @@ def _supplement_bare_dose_mismatch(query_name: str, candidate_title: str) -> boo
     return not (qd & td)
 
 
+# Trailing "+" upgrade-variant axis (category-INDEPENDENT). A word immediately followed by
+# "+" (Effaclar Duo+, Vitamin C10+, Galaxy S24+) is a DIFFERENT, upgraded SKU — but the
+# tokenizer drops the "+" separator so "Duo+" == "Duo". Compare the set of "+"-marked stems;
+# a differing set (one side carries a + the other lacks) is a different product (coverage R8).
+_PLUS_VARIANT_RE = re.compile(r"([a-z0-9]{2,})\+")
+
+
+def _plus_variant_mismatch(query_name: str, candidate_title: str) -> bool:
+    # raw .lower() (NOT _fold_identity — it strips the "+" as a non-alphanumeric).
+    qp = set(_PLUS_VARIANT_RE.findall((query_name or "").lower()))
+    tp = set(_PLUS_VARIANT_RE.findall((candidate_title or "").lower()))
+    return qp != tp
+
+
 # Fashion CUT/FIT — a different denim/apparel cut is a SKU (Levis 501 vs 501 Slim). Both-
 # stated-different rejects; one-sided is tolerated (the token is also fashion padding).
 _FIT_TOKENS = frozenset({
@@ -4174,6 +4239,10 @@ _SUPPLEMENT_PADDING = _SUPPLEMENT_CHEM_SYNONYMS | frozenset({
     "vegan", "halal", "kosher", "gmo", "gluten", "free", "non", "serving",
     "servings", "dietary", "supplement", "supplements", "formula", "foods",
     "strength", "potency", "grade", "quality", "per", "count", "vit", "vits",
+    # multivitamin class noun + 'adult(s)' descriptor (coverage R8: Centrum Silver Adults
+    # Multivitamin / One A Day mass-over-rejected). NOTE: 'men'/'women' are DELIBERATELY NOT
+    # padding — a gendered SKU (Centrum Men vs Women) is a real variant that must reject.
+    "multivitamin", "multivitamins", "multi", "adult", "adults",
     # marketing / descriptor words a terse query omits (coverage review).
     "extract", "chelated", "buffered", "bioflavonoids", "rosehips", "rose", "hips",
     "billion", "cfu", "rich", "labs", "health", "naturals", "life",
@@ -4248,6 +4317,7 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         # category inferred None on the scrape path (Minoxidil 5% vs 2%) (coverage review R6).
         or _percent_mismatch(query_name, candidate_title)
         or _spf_mismatch(query_name, candidate_title)
+        or _plus_variant_mismatch(query_name, candidate_title)
     ):
         return True
     _cat = (category or "").lower()
@@ -4366,6 +4436,13 @@ def _selection_match(
     #     allowlist was tried and is structurally leaky (variant tokens are unbounded) —
     #     this rejects ANY extra non-padding token instead.
     cat = (category or "").lower()
+    # "other" is a FREQUENT real LLM output, not just the unresolved fallback (coverage review
+    # round 8 CRITICAL). An AirPods Pro the LLM labelled "other" must still get the electronics
+    # variant-add guard, so re-infer the category from the query for "other"/unset — if the
+    # query is genuinely uncategorizable inference returns None and we fall through to the
+    # empty-padding guard below (a token-add still rejects; a brand/class query still skips).
+    if cat in ("", "other"):
+        cat = _infer_category_from_query(query_name) or cat
     padding = _category_padding(cat)
     q_core = q_distinct - padding
     t_core = t_distinct - padding
@@ -4389,12 +4466,13 @@ def _selection_match(
     if not q_core.issubset(t_core):
         return False
     # VARIANT-ADD direction — a candidate that adds a distinctive non-padding token is a
-    # DIFFERENT SKU. Applied ONLY to the KNOWN categories (they have a tuned PADDING list);
-    # an UNRESOLVED category (None/""/"other") has no padding, so the variant-add guard
-    # would over-reject a descriptive title (brand/colour/marketing words it can't strip) —
-    # there we keep the subset-only behaviour (the coverage 'other' leak is a documented
-    # MEDIUM deferral, accepted to avoid mass over-rejection on the category-None scrape path).
-    if cat in _SUPERSET_VARIANT_CATEGORIES and (t_core - q_core):
+    # DIFFERENT SKU. Runs for EVERY category now (coverage review round 8 CRITICAL — "other"
+    # was a frequent real LLM output that bypassed the guard end-to-end). The KNOWN categories
+    # use their tuned PADDING; an unresolved/true-"other" category has empty padding so the
+    # guard rejects a token-ADD (correctness > coverage; an over-rejected descriptive "other"
+    # title is fail-closed-SAFE) while the q_core-EMPTY brand/class skip below still protects a
+    # bare brand query in the skip categories (electronics/other/"").
+    if (t_core - q_core):
         if q_core:
             return False  # a SPECIFIC query + an extra candidate token = a different SKU
         # q_core EMPTY. Only skip (accept any specific member) when the query is a true
@@ -5033,7 +5111,7 @@ def extract_price_from_shopping(
     p_words = normalize_words(product_name)
     is_hv = is_high_value_query(product_name)
     is_lux = is_luxury_brand(product_name)
-    _category = (category or "").lower() or None if category else _infer_category_from_query(product_name)
+    _category = _resolve_extractor_category(category, product_name)
     min_price = 100.0 if is_hv else 0
 
     if is_lux:
@@ -5265,7 +5343,7 @@ def extract_jsonld_price(
         return None
 
     brand_lower = brand.lower()
-    _category = (category or "").lower() or None if category else _infer_category_from_query(query_name)
+    _category = _resolve_extractor_category(category, query_name)
     candidates: List[Dict[str, Any]] = []
 
     for script in ld_scripts:
@@ -5563,7 +5641,7 @@ def extract_price_from_html(
     100ml basis (frag-size-capture). Non-fragrance scrapes are unaffected."""
     from bs4 import BeautifulSoup
     brand = product_name.split()[0] if product_name else ""
-    _category = (category or "").lower() or None if category else _infer_category_from_query(product_name)
+    _category = _resolve_extractor_category(category, product_name)
     # Parse once up front — also needed by the size-capture (frag-size-capture)
     # for the JSON-LD branch, which builds its result before the OG path.
     soup = BeautifulSoup(html, 'html.parser')

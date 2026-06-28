@@ -741,6 +741,69 @@ def test_R6_overrej_cosmetic_jar_bottle_accepted():
 
 
 # ===========================================================================
+# ROUND 9 — round-8 coverage (24 findings, 1 CRIT, 6 HIGH) + the SECOND independent
+# review (algolia adapter CRITICAL). The convergent theme: every genuine-price path
+# must thread/resolve the category, and the variant-add guard must run for "other".
+# ===========================================================================
+def test_R9_other_category_reinfers_and_guards():
+    # "other" is a frequent LLM output — must NOT bypass the variant-add guard.
+    assert _m("Apple AirPods Pro", "Apple AirPods Pro 2", "other", "Apple") is False
+    assert _m("Canon EOS R6", "Canon EOS R6 Mark II", "other", "Canon") is False
+    # a true-"other" token-add rejects; the correct match + a brand-only query still accept.
+    assert _m("Acme Widget", "Acme Widget Pro Max Edition", "other", "Acme") is False
+    assert _m("Acme Widget", "Acme Widget", "other", "Acme") is True
+    assert _m("Sony Headphones", "Sony WH-CH520", "other", "Sony") is True
+
+
+def test_R9_contextvar_threads_category_to_page_scrape_extractor():
+    # _get_price publishes the resolved category; the un-threaded page-scrape extractor
+    # reads it so bare "Magnesium" gets the supplements variant-add guard (R8 CRITICAL).
+    html = ('<script type="application/ld+json">{"@type":"Product","name":"%s","brand":"NOW",'
+            '"offers":{"@type":"Offer","price":"5.5","priceCurrency":"BHD",'
+            '"availability":"InStock","url":"https://x/p"}}</script>')
+    try:
+        ps.set_resolved_price_category("supplements")
+        leak = ps.extract_price_from_html(html % "NOW Magnesium Citrate 200mg", "Magnesium",
+                                          "BHD", "sporter.com", "https://x/p")
+        ok = ps.extract_price_from_html(html % "NOW Magnesium 200mg", "Magnesium",
+                                        "BHD", "sporter.com", "https://x/p")
+    finally:
+        ps.set_resolved_price_category(None)
+    assert leak is None              # Magnesium -> Magnesium Citrate pends
+    assert ok and ok.get("amount")   # Magnesium -> Magnesium matches
+
+
+def test_R9_algolia_adapter_runs_keystone():
+    import app.services.algolia_service as al
+    # the 2nd independent-review CRITICAL: algolia used subset-only strict_title_match.
+    leak = al._match_algolia_hit(
+        [{"name": "Aventus Cologne", "brand_name": "Creed",
+          "price": [{"BHD": {"default": 120.0}}], "url": "u", "in_stock": True}],
+        "Creed Aventus", resolved_category="fragrances")
+    ok = al._match_algolia_hit(
+        [{"name": "Aventus", "brand_name": "Creed",
+          "price": [{"BHD": {"default": 120.0}}], "url": "u", "in_stock": True}],
+        "Creed Aventus", resolved_category="fragrances")
+    assert leak is None
+    assert ok is not None
+
+
+def test_R9_plus_variant_and_grocery_boundary():
+    assert _m("La Roche-Posay Effaclar Duo", "La Roche-Posay Effaclar Duo+", "skincare", "La Roche-Posay") is False
+    assert _m("Samsung Galaxy S24", "Samsung Galaxy S24+", "electronics", "Samsung") is False
+    # 'lays' must NOT substring-match 'PlayStation' -> grocery.
+    assert ps._infer_category_from_query("PlayStation 5") == "electronics"
+
+
+def test_R9_round8_overrejection_recoveries():
+    assert _m("Centrum Silver", "Centrum Silver Adults Multivitamin Tablets", "supplements", "Centrum") is True
+    assert _m("Centrum Silver", "Centrum Silver Women", "supplements", "Centrum") is False   # gender variant
+    assert _m("MacBook Air M2", "Apple MacBook Air with M2 chip", "electronics", "Apple") is True
+    assert _m("MacBook Air M2", "Apple MacBook Air with M2 Pro chip", "electronics", "Apple") is False
+    assert _m("Apple iPhone 15 128GB", "Apple iPhone 15 (128GB) Pink Middle East Version with FaceTime", "electronics", "Apple") is True
+
+
+# ===========================================================================
 # ROUND 8 — INDEPENDENT external review (2 blockers) + round-7 coverage (the
 # category-inference-None leak class) — fixed via broad electronics inference +
 # threading the orchestrator-resolved category into the extractors/adapters +

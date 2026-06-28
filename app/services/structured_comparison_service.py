@@ -772,6 +772,7 @@ from app.services.price_service import (
     public_price_view,
     make_pending_price,
     _infer_category_from_query,
+    set_resolved_price_category,
     shopping_listing_matches,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
@@ -4136,6 +4137,11 @@ class StructuredComparisonService:
         search_query: str, nocache: bool = False, category: str = "other"
     ) -> Dict[str, Any]:
         """Get price with 3-tier strategy."""
+        # Publish the orchestrator-resolved category for THIS task so every downstream
+        # extractor (incl. the un-threaded render/page-scrape chain) resolves identity on the
+        # right axes — closes the bare-compound/brand-omitted-line leak (coverage review R8 +
+        # independent review). Per-task ContextVar → no cross-product contamination.
+        set_resolved_price_category(category)
         if not validate_price_query(brand, name, region):
             return {"amount": 0, "currency": "BHD", "estimated": True, "source_method": "validation_rejected"}
 
