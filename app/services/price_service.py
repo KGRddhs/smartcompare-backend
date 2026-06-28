@@ -3700,12 +3700,14 @@ def _colors_in(text: str) -> set:
 
 
 def _color_mismatch(query_name: str, candidate_title: str) -> bool:
-    """Fashion colourway contradiction — both state a colour and share NONE (White vs
-    Black). A one-sided / shared colour is not a mismatch."""
+    """Fashion colourway contradiction. The query's STATED colours must ALL appear in the
+    candidate (a "White Green" query is NOT the "White Red" colourway just because both carry
+    white — comprehensive-review HIGH dual-colourway leak). A one-sided colour (the query
+    states none, or the candidate adds an extra colour beyond the query's) is tolerated."""
     qc, tc = _colors_in(query_name), _colors_in(candidate_title)
     if not qc or not tc:
         return False
-    return not (qc & tc)
+    return not qc.issubset(tc)
 
 
 def _clothing_sizes_in(text: str) -> set:

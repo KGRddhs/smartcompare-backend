@@ -740,6 +740,14 @@ def test_R6_overrej_cosmetic_jar_bottle_accepted():
     assert _m("CeraVe Moisturizing Cream 340g", "CeraVe Moisturizing Cream 340g Jar", "skincare", "CeraVe") is True
 
 
+def test_R12_dual_colourway_leak():
+    # fix-verification HIGH: a two-colour query must match the FULL colourway, not just a
+    # shared colour (White Green != White Red).
+    assert _m("New Balance 550 White Green", "New Balance 550 White Red", "fashion", "New Balance") is False
+    assert _m("New Balance 550 White", "New Balance 550 White Red Sneakers", "fashion", "New Balance") is True  # one-sided
+    assert _m("Nike Dunk White", "Nike Dunk Black", "fashion", "Nike") is False  # existing share-none
+
+
 def test_R11_redos_long_title_guard():
     # comprehensive review HIGH: a multi-KB digit run must not stall the regexes.
     import time
