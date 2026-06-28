@@ -3062,29 +3062,55 @@ _CATEGORY_VARIANT_QUALIFIERS = {
 # "Perfume" parses as the Parfum concentration); watch/buds/band (accessory CLASSES
 # that DO discriminate). Built from HIGH_VALUE_DEVICE_NOUNS + audio/wearable/apparel/
 # supplement class nouns.
-GENERIC_CATEGORY_NOUNS = frozenset(HIGH_VALUE_DEVICE_NOUNS) | {
+# Generic CLASS nouns are CATEGORY-SCOPED (coverage review round 6): a noun is only
+# "generic" (tolerated-when-omitted / class-swap-checked) for the category it belongs to.
+# A makeup noun ("blush") is a DISTINCTIVE token for a FRAGRANCE ("Good Girl" vs "Good Girl
+# Blush" are different perfumes) — subtracting it cross-category leaks the flanker.
+_GENERIC_BASE_NOUNS = frozenset(HIGH_VALUE_DEVICE_NOUNS) | {
     "headphones", "headphone", "earphones", "earphone", "earbuds", "earbud",
     "speaker", "soundbar", "protein", "supplement", "supplements",
     "vitamin", "vitamins", "vacuum", "cleaner", "sunglasses", "eyewear",
-    "sneakers", "sneaker", "shoes", "shoe",
-    # Electronics device-class nouns a descriptive title appends ("MX Keys Advanced
-    # Wireless Keyboard") — generic CLASS, not a SKU discriminator (coverage review F).
+    # DELIBERATELY EXCLUDED: "whey"/"casein"/"plant" — a protein TYPE is distinctive.
+}
+_GENERIC_ELECTRONICS_NOUNS = frozenset({
     "keyboard", "mouse", "controller", "headset", "monitor", "webcam", "charger",
-    # Cosmetic class nouns (makeup) — "NARS Orgasm Blush" / "MAC Ruby Woo Lipstick";
-    # the shade/name is the discriminator, the class noun is generic.
+})
+_GENERIC_MAKEUP_NOUNS = frozenset({
     "blush", "lipstick", "mascara", "foundation", "concealer", "eyeshadow",
     "eyeliner", "highlighter", "bronzer", "gloss", "lipgloss", "primer", "powder",
-    # Footwear class nouns (coverage review) — a genuine non-sneaker footwear listing
-    # ("Birkenstock Arizona Sandals") is the same class, not a variant.
-    "sandals", "sandal", "boots", "boot", "loafers", "loafer", "pumps", "heels",
-    "slides", "clogs", "mules", "espadrilles", "slippers", "sliders",
-    # Grocery CLASS nouns — moved here from grocery PADDING so a CLASS SWAP (Coffee vs
-    # Tea) rejects via the class-swap guard while a one-sided class noun is tolerated.
+})
+_GENERIC_FASHION_NOUNS = frozenset({
+    "sneakers", "sneaker", "shoes", "shoe", "sandals", "sandal", "boots", "boot",
+    "loafers", "loafer", "pumps", "heels", "slides", "clogs", "mules", "espadrilles",
+    "slippers", "sliders",
+    # garment-class nouns (moved out of _FASHION_PADDING so a CLASS SWAP — Dress vs Skirt —
+    # rejects, while a one-sided class noun is tolerated) (coverage review round 6 HIGH).
+    "dress", "shirt", "tshirt", "tee", "polo", "hoodie", "jacket", "coat", "blazer",
+    "sweater", "sweatshirt", "skirt", "shorts", "pants", "pant", "jeans", "jean",
+    "cardigan", "jumper", "leggings", "top",
+})
+_GENERIC_GROCERY_NOUNS = frozenset({
     "coffee", "tea", "juice", "milk", "cola", "soda", "water", "chocolate", "chips",
-    "crisps", "cereal", "sauce", "snack", "biscuits",
-    # DELIBERATELY EXCLUDED: "whey"/"casein"/"plant" — a protein TYPE is distinctive
-    # (whey powder != casein), so it must stay an identity token, not a generic noun.
+    "crisps", "cereal", "sauce", "snack", "biscuits", "butter", "cheese", "bread",
+})
+_CATEGORY_GENERIC_NOUNS = {
+    "electronics": _GENERIC_ELECTRONICS_NOUNS,
+    "makeup": _GENERIC_MAKEUP_NOUNS,
+    "fashion": _GENERIC_FASHION_NOUNS,
+    "grocery": _GENERIC_GROCERY_NOUNS,
 }
+
+
+def _generic_for(category: Optional[str]) -> frozenset:
+    """The CLASS nouns generic for `category` (base universal + category-specific). Used
+    so a cross-category noun (makeup 'blush' for a fragrance) stays a DISTINCTIVE token."""
+    return _GENERIC_BASE_NOUNS | _CATEGORY_GENERIC_NOUNS.get((category or "").lower(), frozenset())
+
+
+# Backward-compat: the union (used by any external reference / the flag-OFF no-op path).
+GENERIC_CATEGORY_NOUNS = (_GENERIC_BASE_NOUNS | _GENERIC_ELECTRONICS_NOUNS
+                          | _GENERIC_MAKEUP_NOUNS | _GENERIC_FASHION_NOUNS
+                          | _GENERIC_GROCERY_NOUNS)
 
 
 # Fragrance/fashion brand alias groups — each set holds every token form of one
@@ -3828,7 +3854,9 @@ _ELECTRONICS_PADDING = _MANUFACTURER_NOISE | frozenset({
     # GPU factory-tune + camera/laptop spec descriptors (NOT a SKU/chip variant) —
     # 'oc'=overclocked, mirrorless/dslr/body/lens descriptive (coverage review round 5).
     "oc", "mirrorless", "dslr", "body", "lens", "ssd", "hdd", "ryzen", "camera",
-    "kit", "intel", "amd",
+    "intel", "amd",
+    # NOTE: "kit" REMOVED — a camera Kit (body+lens) is a materially pricier SKU than the
+    # body; an added "Kit" must reject a body/base query (coverage review round 6).
     # NOTE: "crystal" REMOVED — Samsung TV LINE (Crystal UHD vs QLED vs Neo QLED). It
     # discriminates. "ventus"/"trio" already removed (MSI cooler lines).
     "over", "ear", "overear", "onear", "inear", "vacuum", "cleaner", "keyboard", "mouse",
@@ -3851,10 +3879,8 @@ _FASHION_PADDING = frozenset({
     "cotton", "blend", "cottonblend", "leather", "denim", "wool", "silk", "linen",
     "polyester", "suede", "canvas", "nylon", "cashmere", "fleece", "jersey", "knit",
     "woven", "fabric", "material", "fit", "in", "original",
-    # garment CLASS nouns (not a variant) — coverage review over-rejection.
-    "dress", "shirt", "jacket", "pant", "pants", "top", "jeans", "jean", "hoodie",
-    "sweater", "sweatshirt", "blazer", "coat", "skirt", "shorts", "tee", "tshirt",
-    "cardigan", "jumper", "leggings", "polo",
+    # NOTE: garment CLASS nouns (dress/shirt/jacket/...) moved to _GENERIC_FASHION_NOUNS so
+    # a CLASS SWAP (Dress vs Skirt) rejects while a one-sided class noun is tolerated.
 }) | {b for b in _MANUFACTURER_NOISE if b in {"nike", "adidas", "puma", "reebok",
                                               "asics", "converse", "vans", "newbalance"}}
 _GROCERY_PADDING = frozenset({
@@ -3991,6 +4017,38 @@ def _spf_mismatch(query_name: str, candidate_title: str) -> bool:
     return not (qs & ts)
 
 
+# Electronics RAM axis — a dual-GB title ("S24 8GB 256GB") pins RAM + storage; the storage
+# axis compares only the max (storage), so the RAM tier (8 vs 16) would leak. RAM = a GB
+# value <= 32 (RAM range; storage is 64/128/256/512/1024). One-sided tolerated, both-differ
+# rejects (coverage review round 6).
+_GB_RE = re.compile(r"(\d+)\s*gb\b", re.I)
+
+
+def _ram_value(text: str) -> set:
+    return {int(m) for m in _GB_RE.findall(text or "") if int(m) <= 32}
+
+
+def _ram_mismatch(query_name: str, candidate_title: str) -> bool:
+    qr, tr = _ram_value(query_name), _ram_value(candidate_title)
+    if not qr or not tr:
+        return False
+    return not (qr & tr)
+
+
+# Supplement bare (unit-less) dose — "D3 5000" vs "D3 1000" (the bare 4+-digit number is
+# stripped from identity so the unit-less query matches a "5000 IU" listing, but the dose
+# value must still be compared). One-sided tolerated, both-stated-different rejects.
+_BARE_DOSE_RE = re.compile(r"(?<![a-z])(\d{4,})(?![a-z])", re.I)
+
+
+def _supplement_bare_dose_mismatch(query_name: str, candidate_title: str) -> bool:
+    qd = {int(m) for m in _BARE_DOSE_RE.findall(_fold_identity(query_name))}
+    td = {int(m) for m in _BARE_DOSE_RE.findall(_fold_identity(candidate_title))}
+    if not qd or not td:
+        return False
+    return not (qd & td)
+
+
 # Fashion CUT/FIT — a different denim/apparel cut is a SKU (Levis 501 vs 501 Slim). Both-
 # stated-different rejects; one-sided is tolerated (the token is also fashion padding).
 _FIT_TOKENS = frozenset({
@@ -4046,7 +4104,7 @@ _SUPPLEMENT_PADDING = _SUPPLEMENT_CHEM_SYNONYMS | frozenset({
     "servings", "dietary", "supplement", "supplements", "formula", "foods",
     "strength", "potency", "grade", "quality", "per", "count", "vit", "vits",
     # marketing / descriptor words a terse query omits (coverage review).
-    "extract", "chelated", "buffered", "bioflavonoids", "rosehips",
+    "extract", "chelated", "buffered", "bioflavonoids", "rosehips", "rose", "hips",
     "billion", "cfu", "rich", "labs", "health", "naturals", "life",
     "nutrition", "support", "micronized", "instantized",
     # NOTE: tier/LINE words (gold/silver/ultimate/platinum/signature/standardized/max/
@@ -4114,6 +4172,11 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         or _count_mismatch(query_name, candidate_title)
         or _strength_mismatch(query_name, candidate_title)
         or _weight_or_volume_mismatch(query_name, candidate_title)
+        # %-strength + SPF are CATEGORY-INDEPENDENT discriminators (a different active
+        # %-strength or SPF is always a different product) — must fire even when the
+        # category inferred None on the scrape path (Minoxidil 5% vs 2%) (coverage review R6).
+        or _percent_mismatch(query_name, candidate_title)
+        or _spf_mismatch(query_name, candidate_title)
     ):
         return True
     _cat = (category or "").lower()
@@ -4121,9 +4184,7 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
     # %-strength (cosmetics only — % is purity not strength for supplements/grocery),
     # shoe size (fashion), pack count (grocery). (coverage review B)
     if (
-        (_cat in _PERCENT_CATEGORIES and _percent_mismatch(query_name, candidate_title))
-        or (_cat in _PERCENT_CATEGORIES and _spf_mismatch(query_name, candidate_title))
-        or (_cat == "fashion" and _shoe_size_mismatch(query_name, candidate_title))
+        (_cat == "fashion" and _shoe_size_mismatch(query_name, candidate_title))
         or (_cat == "grocery" and _pack_mismatch(query_name, candidate_title))
         # contradiction axes (coverage review round 2) — both-stated-different rejects,
         # one-sided is tolerated (the token is also padding).
@@ -4134,6 +4195,8 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         or (_cat == "grocery" and _grocery_prep_mismatch(query_name, candidate_title))
         or (_cat == "electronics" and _condition_mismatch(query_name, candidate_title))
         or (_cat == "electronics" and _inch_mismatch(query_name, candidate_title))
+        or (_cat == "electronics" and _ram_mismatch(query_name, candidate_title))
+        or (_cat == "supplements" and _supplement_bare_dose_mismatch(query_name, candidate_title))
     ):
         return True
     if strict_extras and (
@@ -4206,15 +4269,16 @@ def _selection_match(
     q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
     t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
     # A missing GENERIC category noun (smartphone/headphones/protein the terse listing
-    # omitted) must NOT reject — the brand+model discriminate. But the relaxation must
-    # not let a same-brand DIFFERENT product through:
-    q_distinct = q_ident - GENERIC_CATEGORY_NOUNS
-    t_distinct = t_ident - GENERIC_CATEGORY_NOUNS
+    # omitted) must NOT reject — the brand+model discriminate. The generic set is
+    # CATEGORY-SCOPED (a makeup 'blush' stays distinctive for a fragrance) (coverage review R6).
+    _generic = _generic_for(category)
+    q_distinct = q_ident - _generic
+    t_distinct = t_ident - _generic
     # (1) generic CLASS SWAP — query and candidate each name a generic class noun but
-    #     share NONE ("Sony Headphones" vs "Sony Speaker") — is a DIFFERENT product even
-    #     though a missing generic noun is otherwise tolerated.
-    q_generic = q_ident & GENERIC_CATEGORY_NOUNS
-    t_generic = t_ident & GENERIC_CATEGORY_NOUNS
+    #     share NONE ("Sony Headphones" vs "Sony Speaker"; "Dress" vs "Skirt") — is a
+    #     DIFFERENT product even though a missing generic noun is otherwise tolerated.
+    q_generic = q_ident & _generic
+    t_generic = t_ident & _generic
     if q_generic and t_generic and not (q_generic & t_generic):
         return False
     # (2)+(3) THE KEYSTONE — core-identity match with per-category PADDING tolerance, in

@@ -740,6 +740,49 @@ def test_R6_overrej_cosmetic_jar_bottle_accepted():
     assert _m("CeraVe Moisturizing Cream 340g", "CeraVe Moisturizing Cream 340g Jar", "skincare", "CeraVe") is True
 
 
+# ===========================================================================
+# ROUND 7 — round-6 coverage findings (20, zero CRITICAL; near convergence).
+# ===========================================================================
+
+# --- leaks (must REJECT) ---------------------------------------------------
+def test_R7_electronics_ram_dual_gb_rejected():
+    assert _m("MacBook Air M2 8GB 256GB", "Apple MacBook Air M2 16GB 256GB Midnight",
+              "electronics", "Apple") is False
+    assert _m("Galaxy S24 8GB 256GB", "Galaxy S24 12GB 256GB", "electronics", "Samsung") is False
+
+def test_R7_electronics_camera_kit_rejected():
+    assert _m("Canon EOS R6 Body", "Canon EOS R6 Kit", "electronics", "Canon") is False
+
+def test_R7_fragrance_flanker_generic_noun_rejected():
+    # "blush" is a makeup noun but a DISTINCTIVE token for a fragrance (Good Girl Blush).
+    assert _m("Carolina Herrera Good Girl", "Carolina Herrera Good Girl Blush",
+              "fragrances", "Carolina Herrera") is False
+
+def test_R7_skincare_percent_category_none_rejected():
+    # %-strength is category-INDEPENDENT — a wrong strength rejects even when cat=None.
+    assert _m("Minoxidil 5%", "Minoxidil 2%", None) is False
+
+def test_R7_fashion_garment_class_swap_rejected():
+    assert _m("Zara Dress", "Zara Skirt", "fashion", "Zara") is False
+
+def test_R7_supplement_bare_dose_rejected():
+    assert _m("NOW Vitamin D3 5000", "NOW Vitamin D3 1000 IU", "supplements", "NOW") is False
+
+# --- over-rejections (must ACCEPT) -----------------------------------------
+def test_R7_overrej_electronics_ram_one_sided_accepted():
+    assert _m("MacBook Air M2 256GB", "Apple MacBook Air M2 16GB 256GB", "electronics", "Apple") is True
+
+def test_R7_overrej_fashion_garment_one_sided_accepted():
+    assert _m("Levis 501", "Levis 501 Jeans", "fashion", "Levis") is True
+
+def test_R7_overrej_supplement_bare_dose_unitless_accepted():
+    assert _m("NOW Vitamin D3 5000", "NOW Vitamin D3 5000 IU 120 Softgels", "supplements", "NOW") is True
+
+def test_R7_overrej_supplement_rose_hips_accepted():
+    assert _m("Vitamin C 1000mg", "Vitamin C 1000mg 250 Tablets with Bioflavonoids Rose Hips",
+              "supplements", "NOW") is True
+
+
 def test_H_jsonld_flag_off_no_name_brand_keys(monkeypatch):
     monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
     html = _jsonld({"@type": "Product", "name": "Dior Sauvage EDT 100ml", "brand": "Dior",
