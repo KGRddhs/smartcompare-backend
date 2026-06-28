@@ -1055,19 +1055,25 @@ def is_price_showable(
         if price.get("in_stock") is False:
             price["guard_rejected"] = "out_of_stock"
             return False
-        # B5 — fail-CLOSED on a missing identity: a price with no title/name can't be
-        # verified to the requested product -> pend.
-        identity = title or price.get("name")
-        if not identity:
-            price["guard_rejected"] = "no_identity"
-            return False
-        # B5 — fail-CLOSED on a missing/listing URL: a price with no PDP URL (or behind
-        # a search/category listing) can't be confirmed as the CURRENT exact PDP -> pend.
+        # A listing/search URL is never a PDP -> pend. A MISSING url is NOT pended
+        # HERE: the PDP-URL + identity requirement is enforced at SELECTION
+        # (select_best, where multi-candidate adapters carry title+url) + CACHE-WRITE
+        # (should_cache_price) + the usable_exact_genuine KPI — exactly the directive's
+        # "require title/name + a valid PDP URL BEFORE selection OR cache write". The
+        # display chokepoint must NOT re-pend an already-resolved genuine price merely
+        # for an absent url/title field, or it over-rejects the broad "genuine
+        # source_method + amount = showable" contract (Task C1 + ws5 + timeout-partial).
         url = price.get("url")
-        if not url or _is_listing_url(url):
+        if url and _is_listing_url(url):
             price["guard_rejected"] = "non_pdp_url"
             return False
-        if not _backstop_identity_ok(product_name, identity, category):
+        identity = title or price.get("name")
+        # An accessory matched as the device itself (the shared backstop, like the
+        # selector, must reject it — defense-in-depth behind the per-adapter checks).
+        if identity and is_accessory(identity) and not is_accessory(product_name):
+            price["guard_rejected"] = "accessory"
+            return False
+        if identity and not _backstop_identity_ok(product_name, identity, category):
             price["guard_rejected"] = "not_exact"
             return False
     return True
@@ -2791,7 +2797,7 @@ def _fold_identity(s: str) -> str:
 # axis, never as an identity word. Superset of _SIZE_STRIP_RE + oz/fl-oz + mg/IU.
 _IDENTITY_MEASURE_STRIP_RE = re.compile(
     r"\b\d+(?:\.\d+)?\s*"
-    r"(?:tb|gb|ml|fl\s*oz|oz|l|kg|g|mg|iu|"
+    r"(?:tb|gb|ml|fl\s*oz|oz|lbs?|pounds?|l|kg|g|mg|iu|"
     r"capsules?|caps|tablets?|tabs|softgels?|gummies|gummy|count|ct|pieces?|pcs|sachets?)\b",
     re.I,
 )
@@ -2851,6 +2857,24 @@ GENERIC_CATEGORY_NOUNS = frozenset(HIGH_VALUE_DEVICE_NOUNS) | {
 }
 
 
+# Fragrance/fashion brand alias groups — each set holds every token form of one
+# brand (abbreviation + spelled-out). When the resolved `brand` matches ANY token in a
+# group, all forms are stripped from the identity tokens on both sides so a query that
+# uses the abbreviation matches a candidate title that spells it out (and vice versa).
+# Only triggered when the brand IS one of these houses, so there is no cross-category
+# collateral (a phone brand never matches).
+_BRAND_ALIAS_GROUPS = (
+    frozenset({"ysl", "yves", "saint", "laurent"}),
+    frozenset({"dg", "d&g", "dolce", "gabbana"}),
+    frozenset({"jpg", "jean", "paul", "gaultier"}),
+    frozenset({"ck", "calvin", "klein"}),
+    frozenset({"ch", "carolina", "herrera"}),
+    frozenset({"mj", "marc", "jacobs"}),
+    frozenset({"tf", "tom", "ford"}),
+    frozenset({"vr", "v&r", "viktor", "rolf"}),
+)
+
+
 def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = None) -> set:
     """PRODUCT-IDENTITY token set of `text`: diacritic-folded words, minus the
     brand words, the concentration PHRASE, every measurement token (size/storage/
@@ -2865,6 +2889,13 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     folded = _IDENTITY_MEASURE_STRIP_RE.sub(" ", folded)
     words = normalize_words(folded)
     brand_words = normalize_words(_fold_identity(brand)) if brand else set()
+    # Brand-ABBREVIATION fold — when the brand matches a known alias group, drop ALL
+    # forms (abbreviation + spelled-out) from BOTH sides, so "YSL Black Opium" (query)
+    # and "Yves Saint Laurent Black Opium" (candidate title) resolve to the same
+    # identity {black, opium} instead of false-pending on the unmatched "ysl".
+    for _group in _BRAND_ALIAS_GROUPS:
+        if brand_words & _group:
+            brand_words = brand_words | _group
     cat = (category or "").lower()
     quals = _CATEGORY_VARIANT_QUALIFIERS.get(cat, frozenset())
     drop = set(brand_words) | _FORM_NOISE_TOKENS | quals
@@ -3010,9 +3041,14 @@ _FRAGRANCE_FLANKER_CATEGORIES = frozenset({"fragrances"})
 # "Elixir", "Over", "Red") stays distinctive and rejects the flanker. Concentration
 # words (eau/de/parfum/toilette/edp/edt) are already stripped as the concentration
 # PHRASE, so they need not appear here.
+# NOTE: the FRENCH gender forms (homme / femme / pour) are DELIBERATELY NOT padding —
+# they are official sub-line name components ("Versace Eros Pour Femme" is a DIFFERENT
+# product than "Versace Eros"), so they must stay distinctive and reject a gender-flip
+# flanker. The English suffixes (for / men / women …) ARE padding — they are usually a
+# generic descriptor on a single-gender fragrance ("Black Opium … For Women").
 _FRAGRANCE_PADDING_TOKENS = frozenset({
     "for", "men", "women", "man", "woman", "mens", "womens", "ladies", "gents",
-    "unisex", "homme", "femme", "pour", "him", "her", "natural", "spray", "sprays",
+    "unisex", "him", "her", "natural", "spray", "sprays",
     "vaporisateur", "vapo", "vaporizer", "atomiser", "atomizer", "new", "gift",
     "perfume", "perfumes", "cologne", "fragrance", "fragrances", "scent", "scented",
     "the", "and", "with", "size", "full", "genuine", "original", "authentic", "brand",
@@ -3023,6 +3059,10 @@ _FRAGRANCE_PADDING_TOKENS = frozenset({
 # is None. "spray"/"mist"/"set"/"travel" alone are NOT discriminating (a perfume IS a
 # spray) — only the explicit alternate forms below discriminate.
 _PRODUCT_FORM_PATTERNS: List[Tuple[str, str]] = [
+    # A gift SET / multi-piece BUNDLE is a DIFFERENT SKU than the single bottle/jar
+    # (different contents + price) — discriminating, longest-first.
+    ("gift set", "set"), ("coffret", "set"), ("bundle", "set"),
+    ("collection set", "set"), ("travel set", "set"), ("set", "set"),
     ("body lotion", "lotion"), ("body cream", "cream"), ("body butter", "butter"),
     ("body mist", "bodymist"), ("body spray", "bodyspray"), ("body wash", "wash"),
     ("shower gel", "showergel"), ("hair mist", "hairmist"), ("after shave", "aftershave"),
@@ -3042,6 +3082,10 @@ def _extract_product_form(text: str, brand: str = "") -> Optional[str]:
     if brand:
         for bw in normalize_words(_fold_identity(brand)):
             folded = re.sub(rf"\b{re.escape(bw)}\b", " ", folded)
+    # An explicit multi-PIECE count ("3 Piece", "2 Pcs") is a SET, even without the
+    # word "set" — a different SKU than the single bottle.
+    if re.search(r"\b\d+\s*(?:piece|pieces|pcs|pc)\b", folded):
+        return "set"
     for phrase, canon in _PRODUCT_FORM_PATTERNS:
         if re.search(rf"\b{re.escape(phrase)}\b", folded):
             return canon
@@ -3080,6 +3124,50 @@ def _candidate_missing_query_axis(query_name: str, candidate_title: str,
     return False
 
 
+# Flagship fragrance concentrations — a different, more concentrated JUICE than the
+# default EDP/EDT line. A candidate that ADDS one the query never asked for ("Black
+# Opium" -> "Black Opium Le Parfum", "Sauvage" -> "Sauvage Parfum/Elixir") is a
+# DIFFERENT product. (EDP/EDT/EDC are the standard lines — adding them is just a more
+# specific title, NOT a different juice, so they are excluded here.)
+_FLAGSHIP_CONCENTRATIONS = frozenset({"Extrait", "Parfum", "Parfum Intense"})
+
+
+def _flagship_concentration_added(query_name: str, candidate_title: str) -> bool:
+    """True iff the candidate states a FLAGSHIP concentration (Parfum/Extrait/Parfum
+    Intense) that the query did not state — a different juice, fail-closed."""
+    tc = extract_concentration(candidate_title)
+    if tc not in _FLAGSHIP_CONCENTRATIONS:
+        return False
+    return extract_concentration(query_name) != tc
+
+
+# Supplement product-TYPE tokens that name a DIFFERENT formulation (Whey vs Whey
+# Isolate/Concentrate/Hydrolysate; Vitamin D3 vs D3+K2). A candidate that ADDS one
+# the query lacks is a different SKU.
+_SUPPLEMENT_TYPE_TOKENS = frozenset({
+    "isolate", "concentrate", "hydrolysate", "hydrolyzed", "hydrolysed", "k2",
+})
+
+
+def _supplement_type_added(query_name: str, candidate_title: str) -> bool:
+    """True iff the candidate carries a supplement product-TYPE token (isolate/
+    concentrate/hydrolysate/k2) that the query does not — a different formulation."""
+    qt = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name)))
+    tt = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title)))
+    return bool((tt & _SUPPLEMENT_TYPE_TOKENS) - qt)
+
+
+def _category_type_added(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
+    """A candidate that ADDS a category-specific DISTINCTIVE variant the query never
+    asked for: a flagship fragrance concentration, or a supplement formulation type."""
+    cat = (category or "").lower()
+    if cat == "fragrances":
+        return _flagship_concentration_added(query_name, candidate_title)
+    if cat == "supplements":
+        return _supplement_type_added(query_name, candidate_title)
+    return False
+
+
 def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str],
                    brand: str = "", *, strict_extras: bool = True) -> bool:
     """True iff query and candidate disagree on an EXPLICIT discriminating axis:
@@ -3111,6 +3199,7 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
     if strict_extras and (
         _form_mismatch(query_name, candidate_title, category, brand)
         or _candidate_missing_query_axis(query_name, candidate_title, category)
+        or _category_type_added(query_name, candidate_title, category)
     ):
         return True
     return False
@@ -3334,6 +3423,11 @@ def select_best(
         # B5 — no IDENTITY (title/name) → can't verify the product → fail-closed.
         title = c.get("title") or c.get("name") or ""
         if not title:
+            continue
+        # An ACCESSORY (Galaxy S24 *Case* / *Cover* / *Charger*) is not the device —
+        # the per-adapter extractors reject it but the shared authority selector did
+        # not, so a cheap accessory could be selected as the phone.
+        if is_accessory(title) and not is_accessory(query_name):
             continue
         # B5 — require a valid PDP URL (fail-closed on missing url). A listing/search
         # URL is rejected even when require_url is False (it is never a PDP).
@@ -3966,11 +4060,19 @@ def _is_product_type(item) -> bool:
 _PRICE_VALID_UNTIL_RE = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})")
 
 
+# Google Merchant REQUIRES priceValidUntil, and a large fraction of retailers set it
+# once (year-end) and never refresh it, so a months-old date on a CURRENT in-stock PDP
+# is normal. Only treat the offer as stale when the date is CLEARLY abandoned (> 1 year
+# past) — this still catches the 2020-dated leak without false-pending a current price
+# whose date a careless retailer let lapse a few months ago.
+_PRICE_VALID_UNTIL_GRACE_DAYS = 365
+
+
 def _offer_price_expired(offer: Dict[str, Any]) -> bool:
-    """True iff the offer's `priceValidUntil` is a parseable date STRICTLY in the
-    past — a stale price (the 2020-dated offer the live PDP never refreshed) is not
-    the current shelf price (B4). Absent / unparseable / future → not expired (no
-    false pend). Never raises."""
+    """True iff the offer's `priceValidUntil` is a parseable date more than ~1 year in
+    the past — a clearly-abandoned price (the 2020-dated offer the live PDP never
+    refreshed) is not the current shelf price (B4). Absent / unparseable / future /
+    recently-lapsed → not expired (no false pend on a careless date). Never raises."""
     pvu = offer.get("priceValidUntil")
     if not isinstance(pvu, str):
         return False
@@ -3980,7 +4082,8 @@ def _offer_price_expired(offer: Dict[str, Any]) -> bool:
     try:
         import datetime as _dt
         valid_until = _dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        return valid_until < _dt.date.today()
+        cutoff = _dt.date.today() - _dt.timedelta(days=_PRICE_VALID_UNTIL_GRACE_DAYS)
+        return valid_until < cutoff
     except (ValueError, TypeError):
         return False
 
@@ -4150,18 +4253,25 @@ def extract_jsonld_price(
                     continue
 
                 # Availability policy — COLLECT the offer with its real stock flag.
-                # is_available_state tolerates the non-string shapes the old literal
-                # `"OutOfStock" not in availability` TypeError'd on (None/list/dict).
                 # An out-of-stock offer is NOT dropped here (so an only-OOS PDP still
                 # reports its price flagged in_stock=False, which the chokepoint
                 # pends) — select_best below RANKS in-stock first and only falls back
-                # to OOS when there is no in-stock alternative. None/unknown → in stock.
-                avail_state = is_available_state(offer.get("availability"))
+                # to OOS when there is no in-stock alternative.
+                # B8 — the EXPANDED tri-state (SoldOut/Discontinued/PreOrder/BackOrder →
+                # False) only applies with the gate ON. With the gate OFF, replicate the
+                # b207bfa literal (only the OutOfStock token flips to False) so a
+                # rollback is byte-identical — but keep the str() coercion so the
+                # non-string availability shapes (None/list/dict) never TypeError.
+                if exact_gate_enabled():
+                    avail_state = is_available_state(offer.get("availability"))
+                    in_stock = True if avail_state is None else avail_state
+                else:
+                    in_stock = "OutOfStock" not in str(offer.get("availability") or "")
 
                 candidates.append({
                     "amount": price_val,
                     "currency": expected_currency,
-                    "in_stock": True if avail_state is None else avail_state,
+                    "in_stock": in_stock,
                     # Size-capture (frag-size-capture): carry the matched Product's
                     # NAME so the caller can parse a size (ml/oz) the listing exposes
                     # here rather than in a shopping title — e.g. "...Eau de Parfum

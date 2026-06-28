@@ -1669,6 +1669,12 @@ def build_comparison_response(
         # the response-level category_used as the fallback when the per-product
         # category is missing, so BOTH products key the SAME schema (symmetry).
         pd["category_profile"] = _safe_category_profile(pd, category_used)
+        # B7 — the legacy BC `products` alias ships the raw pd dicts; strip the
+        # internal price diagnostics (guard_rejected + _-keys) here too, not just on
+        # the overview projection. Safe to mutate now: the cache-hit metadata that
+        # reads `_cached` was already computed when `result` was built above.
+        if isinstance(pd.get("price"), dict):
+            pd["price"] = public_price_view(pd["price"])
     result["products"] = product_data
     # WS-A review-gate fix — the BC `comparison` alias ships in the payload and
     # carried the raw winner_reason/key_tradeoff/winner_declaration (a real leak

@@ -384,3 +384,97 @@ def test_b8_flag_off_select_best_is_cheapest(monkeypatch):
         "flag-OFF rollback: select_best returns the cheapest (legacy), got "
         f"{best and best['amount']}"
     )
+
+
+# ===========================================================================
+# Adversarial-review fixes (2026-06-28 round 2) — leaks the first round missed.
+# ===========================================================================
+
+def _m(q, t, cat, brand=""):
+    return ps._selection_match(q, t, cat, candidate_brand=brand)
+
+
+def test_rev_gender_flip_flanker_rejected():
+    """Versace Eros (men's) must NOT match Versace Eros Pour Femme (women's) — the
+    French gender form is an official sub-line discriminator, not padding."""
+    assert _m("Versace Eros EDT", "Versace Eros Pour Femme Eau de Toilette 100ml",
+              "fragrances", "Versace") is False
+    # contradiction (both state gender, differ)
+    assert _m("Armani Code Pour Homme EDT", "Armani Code Pour Femme EDT",
+              "fragrances", "Armani") is False
+
+
+def test_rev_gender_descriptive_english_accepted():
+    """A single-gender fragrance whose title adds the ENGLISH 'For Women' descriptor
+    must STILL match (no over-rejection) — and a same-gender French match too."""
+    assert _m("YSL Black Opium EDP 90ml", "YSL Black Opium Eau de Parfum For Women 90ml",
+              "fragrances", "YSL") is True
+    assert _m("Versace Eros Pour Homme EDT 100ml",
+              "Versace Eros Pour Homme Eau de Toilette 100ml", "fragrances", "Versace") is True
+
+
+def test_rev_gift_set_rejected():
+    """A multi-piece gift SET is a different SKU than the single bottle."""
+    assert _m("Chanel No 5 EDP", "Chanel No 5 EDP Gift Set 3 Piece", "fragrances", "Chanel") is False
+    assert _m("Dior Sauvage EDT 100ml", "Dior Sauvage EDT 100ml 3 Piece", "fragrances", "Dior") is False
+    # a SET query matches a SET candidate (no over-rejection).
+    assert _m("Chanel No 5 Gift Set", "Chanel No 5 EDP Gift Set 3 Piece", "fragrances", "Chanel") is True
+
+
+def test_rev_flagship_concentration_added_rejected():
+    """A candidate that ADDS a flagship concentration (Le Parfum / Parfum / Extrait)
+    the query never asked for is a different juice; adding EDP/EDT is fine."""
+    assert _m("YSL Black Opium", "YSL Black Opium Le Parfum 90ml", "fragrances", "YSL") is False
+    assert _m("Dior Sauvage EDT", "Dior Sauvage Parfum", "fragrances", "Dior") is False
+    # adding the DEFAULT EDP line when the query omits concentration is accepted.
+    assert _m("YSL Black Opium", "YSL Black Opium Eau de Parfum 90ml", "fragrances", "YSL") is True
+
+
+def test_rev_accessory_rejected_by_selector_and_chokepoint():
+    """A phone ACCESSORY (case) must not be selected as the phone, nor pass the
+    is_price_showable backstop."""
+    case = {"amount": 11.9, "title": "Samsung Galaxy S24 Case",
+            "url": "https://x.com/p/case", "in_stock": True, "source_method": "local_bhd"}
+    assert ps.select_best([case], "Samsung Galaxy S24", "electronics") is None
+    # Chokepoint: use a price that PASSES the implausible-low-value guard (so the
+    # accessory backstop is the discriminator, not the price-floor guard).
+    price = {"amount": 250.0, "currency": "BHD", "source_method": "local_bhd",
+             "in_stock": True, "title": "Samsung Galaxy S24 Case",
+             "url": "https://x.com/p/case"}
+    assert ps.is_price_showable("Samsung Galaxy S24", price, "electronics",
+                                enforce_correctness=True) is False
+    assert price.get("guard_rejected") == "accessory"
+
+
+def test_rev_supplement_type_added_rejected():
+    """Whey -> Whey Isolate / D3 -> D3 K2 are different formulations."""
+    assert _m("NOW Foods Whey Protein 5lb", "NOW Foods Whey Protein Isolate 5lb",
+              "supplements", "NOW Foods") is False
+    assert _m("NOW Vitamin D3 5000 IU", "NOW Vitamin D3 K2 5000 IU", "supplements", "NOW") is False
+    # same type matches (lb weight no longer leaks into identity).
+    assert _m("NOW Whey Protein Isolate 5lb",
+              "NOW Whey Protein Isolate Unflavored 5 lb (2270 g)", "supplements", "NOW") is True
+
+
+def test_rev_brand_abbreviation_accepted():
+    """Brand abbreviation vs spelled-out must match the SAME exact product."""
+    assert _m("YSL Black Opium EDP 90ml", "Yves Saint Laurent Black Opium Eau de Parfum 90ml",
+              "fragrances", "Yves Saint Laurent") is True
+    assert _m("D&G Light Blue EDT 100ml", "Dolce & Gabbana Light Blue Eau de Toilette 100ml",
+              "fragrances", "Dolce & Gabbana") is True
+
+
+def test_rev_pricevaliduntil_grace_recent_past_shown():
+    """A genuine CURRENT price whose priceValidUntil lapsed RECENTLY (careless date)
+    must still be shown; only a clearly-abandoned (years-past) date is dropped."""
+    import datetime
+    recent_date = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+    recent = ('<html><head><script type="application/ld+json">'
+              '{"@type":"Product","name":"Dior Sauvage Eau de Toilette 100ml","brand":"Dior",'
+              '"offers":{"@type":"Offer","price":"45.000","priceCurrency":"BHD",'
+              f'"priceValidUntil":"{recent_date}","availability":"https://schema.org/InStock"}}}}'
+              '</script></head><body></body></html>')
+    res = ps.extract_jsonld_price(recent, "Dior", "BHD", "Dior Sauvage EDT 100ml")
+    assert res is not None and abs(res["amount"] - 45.0) < 0.01, (
+        "a recently-lapsed priceValidUntil on a current PDP must NOT pend"
+    )

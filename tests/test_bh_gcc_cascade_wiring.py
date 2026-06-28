@@ -45,10 +45,13 @@ class TestNewAdapterCascadeWiring:
         )
 
         async def fake_woo(domain, product_name, currency="BHD"):
+            # The real woo adapter (_match_woo_product) carries the matched title;
+            # the consume select_best require-title gate (B5) drops a title-less price.
             return {
                 "amount": 21.5, "currency": "BHD", "retailer": "ownperfumes.com",
                 "url": "https://ownperfumes.com/product/x", "in_stock": True,
-                "estimated": False, "source_method": "woo_store_api", "confidence": 0.9,
+                "title": "Creed Aventus", "estimated": False,
+                "source_method": "woo_store_api", "confidence": 0.9,
             }
         monkeypatch.setattr(scs, "fetch_woocommerce_store_api_price", fake_woo)
 

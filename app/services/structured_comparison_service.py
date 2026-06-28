@@ -745,6 +745,7 @@ from app.services.price_service import (
     is_price_showable,
     select_best,
     should_cache_price,
+    public_price_view,
     make_pending_price,
     _infer_category_from_query,
     shopping_listing_matches,
@@ -2995,7 +2996,9 @@ class StructuredComparisonService:
                     _retailer = None
                 prices_payload[key] = {
                     "brand": pd.get("brand"), "name": pd.get("name"),
-                    "price": _price, "best_price": _best,
+                    # B7 — strip internal diagnostics (guard_rejected + _-keys) from the
+                    # SSE price surface too (parity with the sync overview projection).
+                    "price": public_price_view(_price), "best_price": _best,
                     "currency": pd.get("currency"), "retailer": _retailer,
                 }
             yield ("prices", prices_payload)
@@ -4813,8 +4816,8 @@ class StructuredComparisonService:
                     self._seed_shortcircuit_candidates(
                         full_name, kind="tier1_shopping", currency=currency,
                     )
-                    set_cached(cache_key, price, price_cache_ttl(price))
-                    self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                    self._persist_genuine_price(
+                        cache_key, price, brand, name, variant, region, full_name, category)
                     price["_cached"] = False
                     return price
 
@@ -4949,10 +4952,8 @@ class StructuredComparisonService:
                             full_name, kind="price_dicts", currency=currency,
                             price_dicts=shop_results,
                         )
-                        set_cached(cache_key, shop_best, price_cache_ttl(shop_best))
-                        self._save_price_to_db(
-                            cache_key, brand, name, variant, region, shop_best
-                        )
+                        self._persist_genuine_price(
+                            cache_key, shop_best, brand, name, variant, region, full_name, category)
                         shop_best["_cached"] = False
                         logger.info(
                             "[PRICE] Shopify OFFICIAL-domain hit for %s: %.3f %s "
@@ -5040,10 +5041,8 @@ class StructuredComparisonService:
                         full_name, kind="price_dicts", currency=currency,
                         price_dicts=algolia_results,
                     )
-                    set_cached(cache_key, algolia_best, price_cache_ttl(algolia_best))
-                    self._save_price_to_db(
-                        cache_key, brand, name, variant, region, algolia_best
-                    )
+                    self._persist_genuine_price(
+                        cache_key, algolia_best, brand, name, variant, region, full_name, category)
                     algolia_best["_cached"] = False
                     logger.info(
                         "[PRICE] Algolia direct hit for %s: %.3f %s via %s "
@@ -5235,8 +5234,8 @@ class StructuredComparisonService:
                             ),
                         }
                     record_tier15_hit(category, win_domain or None)
-                    set_cached(cache_key, winning_price, price_cache_ttl(winning_price))
-                    self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
+                    self._persist_genuine_price(
+                        cache_key, winning_price, brand, name, variant, region, full_name, category)
                     winning_price["_cached"] = False
                     if fan_result.get("cancelled_count", 0) > 0:
                         logger.info(
@@ -5338,10 +5337,8 @@ class StructuredComparisonService:
                 }
                 record_tier15_attempt(category)
                 record_tier15_hit(category, win_domain or None)
-                set_cached(cache_key, shopify_fallback, price_cache_ttl(shopify_fallback))
-                self._save_price_to_db(
-                    cache_key, brand, name, variant, region, shopify_fallback
-                )
+                self._persist_genuine_price(
+                    cache_key, shopify_fallback, brand, name, variant, region, full_name, category)
                 shopify_fallback["_cached"] = False
                 logger.info(
                     "[PRICE] Shopify reseller FALLBACK used for %s: %.3f %s via %s "
@@ -5636,8 +5633,8 @@ class StructuredComparisonService:
                 # gpt_organic_extract fails is_price_showable and is NEVER parked.
                 if is_supplement:
                     _maybe_park_supplement(price)
-                set_cached(cache_key, price, price_cache_ttl(price))
-                self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                self._persist_genuine_price(
+                    cache_key, price, brand, name, variant, region, full_name, category)
                 price["_cached"] = False
                 return price
 
@@ -5660,8 +5657,8 @@ class StructuredComparisonService:
                 )
                 if price and price.get("amount"):
                     price.pop("retailer_score", None)
-                    set_cached(cache_key, price, price_cache_ttl(price))
-                    self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                    self._persist_genuine_price(
+                        cache_key, price, brand, name, variant, region, full_name, category)
                     price["_cached"] = False
                     return price
 
@@ -5674,8 +5671,8 @@ class StructuredComparisonService:
                 converted_fallback["url"] = build_retailer_url(
                     converted_fallback["retailer"], full_name
                 )
-            set_cached(cache_key, converted_fallback, price_cache_ttl(converted_fallback))
-            self._save_price_to_db(cache_key, brand, name, variant, region, converted_fallback)
+            self._persist_genuine_price(
+                cache_key, converted_fallback, brand, name, variant, region, full_name, category)
             # Task 1.3 — the FULL genuine-BH cascade ran and missed; this is a
             # structural dead-end. Record it so the next call skips the cascade.
             self._record_negative_price_cache(cache_key, converted_fallback)
@@ -5875,6 +5872,18 @@ class StructuredComparisonService:
     # ============================================
     # Cost tracking
     # ============================================
+
+    def _persist_genuine_price(self, cache_key, price_obj, brand, name, variant,
+                               region, full_name, category):
+        """B6 — cache (Redis) + persist (L2 DB) a resolved genuine price under the
+        request key ONLY when its identity matches the request (should_cache_price).
+        A no-op for an already-select_best-selected price (same matcher), so it never
+        blocks a legit price; it blocks a wrong-identity price that bypassed the
+        selector from being cached under the requested product for the genuine TTL."""
+        if not should_cache_price(full_name, price_obj, category):
+            return
+        set_cached(cache_key, price_obj, price_cache_ttl(price_obj))
+        self._save_price_to_db(cache_key, brand, name, variant, region, price_obj)
 
     def _save_price_to_db(self, cache_key: str, brand: str, name: str, variant: Optional[str], region: str, price: Dict):
         """Fire-and-forget save price to L2 DB.
