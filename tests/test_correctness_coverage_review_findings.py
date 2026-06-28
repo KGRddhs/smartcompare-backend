@@ -740,6 +740,33 @@ def test_R6_overrej_cosmetic_jar_bottle_accepted():
     assert _m("CeraVe Moisturizing Cream 340g", "CeraVe Moisturizing Cream 340g Jar", "skincare", "CeraVe") is True
 
 
+def test_R11_redos_long_title_guard():
+    # comprehensive review HIGH: a multi-KB digit run must not stall the regexes.
+    import time
+    t = "iPhone 15 256GB " + ("9" * 16000)
+    s = time.time()
+    _m("iPhone 15 256GB", t, "electronics")
+    assert time.time() - s < 1.0
+
+
+def test_R11_feminine_query_gender_enforced():
+    # comprehensive review MEDIUM leak: a femme flanker query must be confirmed.
+    assert _m("Versace Eros Pour Femme", "Versace Eros", "fragrances", "Versace") is False
+    assert _m("Versace Eros Pour Femme", "Versace Eros Pour Homme", "fragrances", "Versace") is False
+    # ASYMMETRIC: a men's/unisex query still tolerates the unspecified base (R2 preserved).
+    assert _m("Dior Sauvage Pour Homme", "Dior Sauvage", "fragrances", "Dior") is True
+    assert _m("Versace Eros Pour Femme", "Versace Eros Pour Femme EDP", "fragrances", "Versace") is True
+
+
+def test_R11_list_valued_title_no_crash():
+    # comprehensive review LOW crash: schema.org name/title can be a list.
+    out = ps.is_price_showable(
+        "Sony WH-1000XM5",
+        {"amount": 5, "source_method": "local_bhd", "title": ["Sony WH-1000XM5"], "url": "http://x/p"},
+        "electronics", enforce_correctness=True)
+    assert out in (True, False)  # must not raise TypeError
+
+
 def test_R10_plus_spelled_equals_symbol():
     # round-9 HIGH: "+" and spelled "Plus" are the SAME SKU; the base still differs.
     assert _m("Samsung Galaxy S24+", "Samsung Galaxy S24 Plus", "electronics", "Samsung") is True
@@ -901,13 +928,15 @@ def test_R7_overrej_supplement_rose_hips_accepted():
               "supplements", "NOW") is True
 
 
-def test_H_jsonld_flag_off_no_name_brand_keys(monkeypatch):
+def test_H_jsonld_flag_off_carries_name_not_brand(monkeypatch):
     monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
     html = _jsonld({"@type": "Product", "name": "Dior Sauvage EDT 100ml", "brand": "Dior",
                     "offers": {"@type": "Offer", "price": "45.000", "priceCurrency": "BHD",
                                "availability": "https://schema.org/InStock"}})
     res = ps.extract_jsonld_price(html, "Dior", "BHD", "Dior Sauvage EDT 100ml")
     assert res is not None
-    # Flag-OFF must be byte-identical to b207bfa, which did NOT carry name/brand.
-    assert "name" not in res
+    # Flag-OFF must be byte-identical to LEGACY (b207bfa/origin/main), which DID carry the
+    # JSON-LD `name` (the fragrance size-capture depends on it) but NOT `brand` (the NEW
+    # identity addition the exact gate introduced) — comprehensive review HIGH rollback fix.
+    assert res.get("name") == "Dior Sauvage EDT 100ml"
     assert "brand" not in res

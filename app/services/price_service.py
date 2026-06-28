@@ -1183,7 +1183,11 @@ def _is_sample_or_decant_listing(product_name: str, title: Optional[str], amount
     either an explicit token in the title OR a tiny fragrance size (<=10ml)
     carrying a full-bottle-grade price. Returns False for non-fragrance products
     (a small electronics SKU is not a 'decant')."""
-    text = title or ""
+    # schema.org name/title can be a LIST (or other non-str) — coerce so the regex never
+    # TypeErrors and crashes the request instead of failing closed (comprehensive review).
+    if isinstance(title, (list, tuple)):
+        title = " ".join(str(x) for x in title)
+    text = str(title) if title else ""
     if _SAMPLE_LISTING_RE.search(text):
         return True
     # Tiny-size-with-implausible-price only applies to fragrances (a 5ml phone
@@ -1231,6 +1235,16 @@ def is_price_showable(
     if source_method not in _showable_source_methods():
         return False
     title = price.get("title")
+    # schema.org name/title can be a LIST (or other non-str) — coerce ONCE here so every
+    # downstream guard (is_counterfeit_listing/.lower(), the sample-listing regex, the
+    # backstop) never AttributeError/TypeErrors and crashes the request instead of failing
+    # closed (comprehensive review crash). Mutate the dict so the resolved title is consistent.
+    if isinstance(title, (list, tuple)):
+        title = " ".join(str(x) for x in title)
+        price["title"] = title
+    elif title is not None and not isinstance(title, str):
+        title = str(title)
+        price["title"] = title
     # Compose the shipped accuracy guards — a price that fails any is not
     # showable (the guards already encode the "no wrong scrapes" contract).
     if is_implausible_low_fragrance_price(product_name, amount, title=title):
@@ -3227,6 +3241,11 @@ _BRAND_ALIAS_GROUPS = (
 )
 
 
+# Max input length for the identity/axis matchers — a real product name/title is well under
+# this; longer inputs are truncated to bound the numeric-axis regexes (ReDoS guard, review HIGH).
+_MATCH_INPUT_CAP = 512
+
+
 def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = None) -> set:
     """PRODUCT-IDENTITY token set of `text`: diacritic-folded words, minus the
     brand words, the concentration PHRASE, every measurement token (size/storage/
@@ -3236,6 +3255,8 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     "24") which stays as identity (the Zyte len>2 electronics gap). Two listings
     are the SAME product iff their identity sets are EQUAL."""
     cat = (category or "").lower()
+    if text and len(text) > _MATCH_INPUT_CAP:  # ReDoS guard (comprehensive review HIGH)
+        text = text[:_MATCH_INPUT_CAP]
     folded = _fold_identity(text)
     for pat, _label in _CONCENTRATION_PATTERNS:
         folded = pat.sub(" ", folded)
@@ -3526,6 +3547,15 @@ def _gender_mismatch(query_name: str, candidate_title: str) -> bool:
     mismatch."""
     gq, gt = _gender_of(query_name), _gender_of(candidate_title)
     return bool(gq and gt and gq != gt)
+
+
+def _feminine_query_unconfirmed(query_name: str, candidate_title: str) -> bool:
+    """True iff the QUERY states a WOMEN's flanker (Eros Pour Femme) but the candidate does
+    NOT confirm it (Eros / Eros Pour Homme). The unspecified base of a designer fragrance is
+    conventionally the men's/original, so a femme query matching a gender-OMITTING candidate is
+    a WRONG product (comprehensive review MEDIUM leak). ASYMMETRIC by design: a men's/unisex
+    query still tolerates the unspecified base (preserves the 'Pour Homme'-bestseller match)."""
+    return _gender_of(query_name) == "women" and _gender_of(candidate_title) != "women"
 
 # Form PHRASES that name a different product when present on only one side. Ordered
 # longest-first so "body lotion" wins over a bare "body". The default bottle/jar form
@@ -4315,6 +4345,14 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
     candidate-omits enforcement lives on the brand-aware primary gates). Each numeric
     axis is a no-op unless BOTH sides carry it (a fragrance has no storage, a phone
     no dose)."""
+    # ReDoS guard (comprehensive review HIGH): the numeric-axis regexes are polynomial on a
+    # long digit run, so a crafted multi-KB scraped candidate title (a malicious retailer page)
+    # could stall the async worker (8 KB -> ~15 s). A real product name/title is well under
+    # 512 chars — cap before any re.findall. Truncation only affects pathological inputs.
+    if query_name and len(query_name) > _MATCH_INPUT_CAP:
+        query_name = query_name[:_MATCH_INPUT_CAP]
+    if candidate_title and len(candidate_title) > _MATCH_INPUT_CAP:
+        candidate_title = candidate_title[:_MATCH_INPUT_CAP]
     quals = _CATEGORY_VARIANT_QUALIFIERS.get((category or "").lower(), frozenset())
     if quals and _quals_in(query_name, quals) != _quals_in(candidate_title, quals):
         return True
@@ -4359,7 +4397,8 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         or _candidate_missing_query_axis(query_name, candidate_title, category)
         or _category_type_added(query_name, candidate_title, category)
         or ((_cat in _FRAGRANCE_BEAUTY_CATEGORIES or _cat == "fashion")
-            and _gender_mismatch(query_name, candidate_title))
+            and (_gender_mismatch(query_name, candidate_title)
+                 or _feminine_query_unconfirmed(query_name, candidate_title)))
         or (_cat == "fashion"
             and (_color_mismatch(query_name, candidate_title)
                  or _clothing_size_mismatch(query_name, candidate_title)))
@@ -5288,7 +5327,10 @@ def extract_price_from_shopping(
     # KEEP `title` (IMPL-SPEC §"identity must survive to the backstop") so the
     # response chokepoint's is_price_showable(enforce_correctness=True) can re-verify
     # exactness on the shopping path + the KPI can read the resolved identity. The
-    # FE ignores the extra key.
+    # FE ignores the extra key. With the rollback flag OFF, pop it (legacy popped
+    # `title`) so flag-OFF is byte-identical (comprehensive review rollback NIT).
+    if not exact_gate_enabled():
+        best.pop("title", None)
     return best
 
 
@@ -5534,17 +5576,16 @@ def extract_jsonld_price(
                     "currency": expected_currency,
                     "in_stock": in_stock,
                 }
-                # H (coverage review) — the new `name`/`brand` keys are part of the exact
-                # gate (size-capture + select_best identity). With the rollback flag OFF
-                # they must NOT appear, so flag-OFF is byte-identical to b207bfa (which
-                # carried only amount/currency/in_stock). Gated for a true golden rollback.
+                # The JSON-LD Product NAME is carried UNCONDITIONALLY — LEGACY (b207bfa /
+                # origin/main) always returned it and the fragrance size-capture
+                # (_stamp_listing_size, parses ml/oz from this name) depends on it, so a
+                # flag-OFF rollback MUST keep it byte-identical (comprehensive review HIGH —
+                # gating it dropped size-capture on rollback). Only `brand` is the NEW
+                # identity addition the exact gate introduced, so only it is flag-gated.
+                cand["name"] = product_name
                 if exact_gate_enabled():
-                    # Size-capture: carry the matched Product's NAME so the caller can
-                    # parse a size (ml/oz) the listing exposes here; also the identity
-                    # string select_best matches on. Carry the matched brand so
-                    # _selection_match subtracts the FULL brand (brand-FIELD-only match,
-                    # name "Orangey Dress" + ld brand "Jessie and James").
-                    cand["name"] = product_name
+                    # Carry the matched brand so _selection_match subtracts the FULL brand
+                    # (brand-FIELD-only match, name "Orangey Dress" + ld brand "Jessie and James").
                     cand["brand"] = _cand_brand
                 candidates.append(cand)
 
@@ -5741,8 +5782,11 @@ def extract_price_from_html(
                     result["source_method"] = "converted_usd"
                 # frag-size-capture — size from og:title / page <title>.
                 _stamp_listing_size(result, product_name, soup)
-                # M2 — stamp the page identity so the chokepoint axis backstop runs.
-                result["name"] = _page_identity_name(soup)
+                # M2 — stamp the page identity so the chokepoint axis backstop runs. Flag-gated:
+                # legacy never carried `name` on the OG/microdata/WC branches, so a flag-OFF
+                # rollback stays byte-identical (comprehensive review rollback NIT).
+                if exact_gate_enabled():
+                    result["name"] = _page_identity_name(soup)
                 return result
         except (ValueError, TypeError):
             pass
@@ -5759,7 +5803,8 @@ def extract_price_from_html(
         # frag-size-capture — size from og:title / page <title> (microdata
         # nodes rarely carry a volume; the name signals do).
         _stamp_listing_size(micro, product_name, soup)
-        micro["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
+        if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
+            micro["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
         return micro
 
     # Priority 4: WooCommerce price span. S3-genuine (PDP curl Decision-F):
@@ -5773,7 +5818,8 @@ def extract_price_from_html(
     if wc:
         # frag-size-capture — size from og:title / page <title>.
         _stamp_listing_size(wc, product_name, soup)
-        wc["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
+        if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
+            wc["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
         return wc
 
     return None
