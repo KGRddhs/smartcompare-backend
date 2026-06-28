@@ -698,6 +698,48 @@ def test_R5_overrej_electronics_power_bank_accepted():
               "electronics", "Anker") is True
 
 
+# ===========================================================================
+# ROUND 6 — round-5 coverage findings (24, zero CRITICAL; near convergence).
+# ===========================================================================
+
+# --- leaks (must REJECT) ---------------------------------------------------
+def test_R6_supplement_b12_form_rejected():
+    assert _m("Vitamin B12 Methylcobalamin", "Vitamin B12 Cyanocobalamin", "supplements", "NOW") is False
+
+def test_R6_electronics_crystal_uhd_vs_qled_rejected():
+    assert _m("Samsung Crystal UHD", "Samsung QLED", "electronics", "Samsung") is False
+
+def test_R6_skincare_cleanser_vs_cream_rejected():
+    assert _m("CeraVe Cleanser", "CeraVe Cream", "skincare", "CeraVe") is False
+
+def test_R6_grocery_hazelnut_flavour_rejected():
+    # Both-stated DIFFERENT grocery flavour rejects (one-sided grocery flavour is
+    # fail-closed by design — grocery flavour is a distinct SKU, unlike supplements).
+    assert _m("Nesquik Strawberry", "Nesquik Hazelnut", "grocery", "Nesquik") is False
+
+def test_R6_fashion_kids_segment_rejected():
+    assert _m("Nike Air Force 1", "Nike Air Force 1 Kids", "fashion", "Nike") is False
+
+def test_R6_fashion_gender_contradiction_rejected():
+    assert _m("Nike Pegasus Men's", "Nike Pegasus Women's", "fashion", "Nike") is False
+
+def test_R6_skincare_spf_contradiction_rejected():
+    assert _m("La Roche Anthelios SPF30", "La Roche Anthelios SPF50", "skincare", "La Roche") is False
+
+# --- over-rejections (must ACCEPT) -----------------------------------------
+def test_R6_overrej_electronics_gpu_oc_accepted():
+    assert _m("RTX 4070", "Gigabyte GeForce RTX 4070 Gaming OC Graphics Card", "electronics", "Gigabyte") is True
+
+def test_R6_overrej_electronics_quote_inch_accepted():
+    assert _m('MacBook Pro 14" M3', "Apple MacBook Pro 14-inch M3", "electronics", "Apple") is True
+
+def test_R6_overrej_skincare_spf_one_sided_accepted():
+    assert _m("La Roche Anthelios", "La Roche Anthelios SPF50 Sunscreen", "skincare", "La Roche") is True
+
+def test_R6_overrej_cosmetic_jar_bottle_accepted():
+    assert _m("CeraVe Moisturizing Cream 340g", "CeraVe Moisturizing Cream 340g Jar", "skincare", "CeraVe") is True
+
+
 def test_H_jsonld_flag_off_no_name_brand_keys(monkeypatch):
     monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
     html = _jsonld({"@type": "Product", "name": "Dior Sauvage EDT 100ml", "brand": "Dior",
