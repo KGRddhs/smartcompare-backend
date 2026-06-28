@@ -35,6 +35,29 @@ def test_selection_match_is_noop_true():
                                "fragrances", candidate_brand="YSL") is True
 
 
+def test_selection_match_keystone_v2_leaks_are_noop_true_flag_off():
+    # Every keystone-v2 (general-superset) REJECT pair must be permissive (True) flag-OFF —
+    # proves the v2 padding/superset/normalizations are fully bypassed on rollback.
+    cases = [
+        ("Kindle", "Kindle Paperwhite", "electronics", "Amazon"),
+        ("Creatine", "Optimum Creatine Monohydrate", "supplements", "Optimum"),
+        ("Coca-Cola", "Coca-Cola Cherry", "grocery", "Coca-Cola"),
+        ("Nike Air Force 1", "Nike Air Force 1 Mid", "fashion", "Nike"),
+        ("The Ordinary Buffet", "The Ordinary Buffet + Copper Peptides 1%", "skincare", "The Ordinary"),
+        ("NARS Orgasm Blush", "NARS Orgasm Liquid Blush", "makeup", "NARS"),
+    ]
+    for q, t, cat, brand in cases:
+        assert ps._selection_match(q, t, cat, candidate_brand=brand) is True, (q, t)
+
+
+def test_should_cache_price_is_noop_true_flag_off():
+    # Flag-OFF should_cache_price returns True for a missing-identity/OOS price (b207bfa
+    # had no cache-write gate).
+    assert ps.should_cache_price("Samsung Galaxy S24 256GB",
+                                 {"amount": 240, "source_method": "local_bhd"},
+                                 "electronics") is True
+
+
 def test_select_best_is_legacy_cheapest():
     cands = [
         {"amount": 300.0, "title": "Samsung Galaxy S24 256GB", "in_stock": True,
