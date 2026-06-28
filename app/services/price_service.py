@@ -3011,6 +3011,11 @@ def _fold_identity(s: str) -> str:
     if not s:
         return ""
     s = s.replace("™", "").replace("®", "").replace("©", "")
+    # "+" upgrade marker -> the WORD "plus" so the symbol form ("Galaxy S24+", "Effaclar Duo+")
+    # and the spelled form ("Galaxy S24 Plus") produce the SAME identity token (coverage R9
+    # HIGH) — a base query ("S24") still differs (no "plus" token) so the variant-add guard
+    # rejects it; only the symbol-vs-spelled SAME-SKU pair is unified.
+    s = s.replace("+", " plus ")
     # NOTE: parenthetical content is NOT stripped here. normalize_words already strips
     # edge-parens per token, and a blanket paren-strip is ASYMMETRIC — it drops a
     # candidate's "(Cholecalciferol)" while a query that writes the same chemical name
@@ -4178,11 +4183,19 @@ def _supplement_bare_dose_mismatch(query_name: str, candidate_title: str) -> boo
 _PLUS_VARIANT_RE = re.compile(r"([a-z0-9]{2,})\+")
 
 
+_PLUS_SPELLED_RE = re.compile(r"([a-z0-9]{2,})\s+plus\b")
+
+
+def _plus_stems(s: str) -> set:
+    # capture BOTH the symbol form ("S24+") and the SPELLED form ("S24 Plus") into one set so
+    # they compare EQUAL (same SKU) while the base ("S24") still differs (coverage R9 HIGH).
+    s = (s or "").lower()
+    return set(_PLUS_VARIANT_RE.findall(s)) | set(_PLUS_SPELLED_RE.findall(s))
+
+
 def _plus_variant_mismatch(query_name: str, candidate_title: str) -> bool:
     # raw .lower() (NOT _fold_identity — it strips the "+" as a non-alphanumeric).
-    qp = set(_PLUS_VARIANT_RE.findall((query_name or "").lower()))
-    tp = set(_PLUS_VARIANT_RE.findall((candidate_title or "").lower()))
-    return qp != tp
+    return _plus_stems(query_name) != _plus_stems(candidate_title)
 
 
 # Fashion CUT/FIT — a different denim/apparel cut is a SKU (Levis 501 vs 501 Slim). Both-

@@ -740,6 +740,14 @@ def test_R6_overrej_cosmetic_jar_bottle_accepted():
     assert _m("CeraVe Moisturizing Cream 340g", "CeraVe Moisturizing Cream 340g Jar", "skincare", "CeraVe") is True
 
 
+def test_R10_plus_spelled_equals_symbol():
+    # round-9 HIGH: "+" and spelled "Plus" are the SAME SKU; the base still differs.
+    assert _m("Samsung Galaxy S24+", "Samsung Galaxy S24 Plus", "electronics", "Samsung") is True
+    assert _m("Samsung Galaxy S24", "Samsung Galaxy S24+", "electronics", "Samsung") is False
+    assert _m("Samsung Galaxy S24", "Samsung Galaxy S24 Plus", "electronics", "Samsung") is False
+    assert _m("Effaclar Duo+", "La Roche-Posay Effaclar Duo Plus", "skincare", "La Roche-Posay") is True
+
+
 # ===========================================================================
 # ROUND 9 — round-8 coverage (24 findings, 1 CRIT, 6 HIGH) + the SECOND independent
 # review (algolia adapter CRITICAL). The convergent theme: every genuine-price path
