@@ -3187,7 +3187,7 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
                 or (cat == "makeup" and len(w) >= 1)
                 # electronics keeps single+2-char model letters (Xbox Series S/X, iPhone
                 # XR/XS, Galaxy A/S series) — a trailing model letter is the discriminator.
-                or (cat == "electronics" and len(w) <= 2)
+                or (cat == "electronics" and 1 <= len(w) <= 2)
                 # skincare/haircare keep only WHITELISTED 2-char line codes (CeraVe SA,
                 # Skinceuticals AM/PM, CeraVe CF) — NOT every 2-char word ("to" in "Normal
                 # to Dry" must drop, else it over-rejects).
