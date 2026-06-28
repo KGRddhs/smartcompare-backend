@@ -1055,12 +1055,19 @@ def is_price_showable(
         if price.get("in_stock") is False:
             price["guard_rejected"] = "out_of_stock"
             return False
+        # B5 — fail-CLOSED on a missing identity: a price with no title/name can't be
+        # verified to the requested product -> pend.
+        identity = title or price.get("name")
+        if not identity:
+            price["guard_rejected"] = "no_identity"
+            return False
+        # B5 — fail-CLOSED on a missing/listing URL: a price with no PDP URL (or behind
+        # a search/category listing) can't be confirmed as the CURRENT exact PDP -> pend.
         url = price.get("url")
-        if url and _is_listing_url(url):
+        if not url or _is_listing_url(url):
             price["guard_rejected"] = "non_pdp_url"
             return False
-        identity = title or price.get("name")
-        if identity and not _backstop_identity_ok(product_name, identity, category):
+        if not _backstop_identity_ok(product_name, identity, category):
             price["guard_rejected"] = "not_exact"
             return False
     return True
@@ -2919,7 +2926,10 @@ def _doses(text: str) -> set:
     out = set()
     for val, unit in _STRENGTH_RE.findall(text or ""):
         try:
-            out.add((float(val.replace(",", ".")), unit.lower()))
+            # A comma in a dose is a THOUSANDS separator ("5,000 IU" = 5000), never a
+            # decimal — supplement doses are integers; treating it as a decimal point
+            # ("5,000"->5.0) manufactured a false strength mismatch (5000 IU vs 5,000 IU).
+            out.add((float(val.replace(",", "")), unit.lower()))
         except (TypeError, ValueError):
             continue
     return out
@@ -2985,24 +2995,125 @@ def _weight_or_volume_mismatch(q: str, t: str) -> bool:
     return True
 
 
-def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
+# Categories where a PRODUCT FORM (deodorant / candle / lotion / shower gel) names
+# a DIFFERENT product than the default bottle/jar, so a one-sided form must reject.
+_FRAGRANCE_BEAUTY_CATEGORIES = frozenset({
+    "fragrances", "makeup", "skincare", "haircare",
+})
+# Only fragrances get the strict flanker near-equality (sub-line names — "Intense",
+# "Elixir", "Over Red" — ARE the identity; titles carry little non-identity padding).
+_FRAGRANCE_FLANKER_CATEGORIES = frozenset({"fragrances"})
+# Non-identity padding words a genuine fragrance title carries (gender/marketing/
+# atomizer wording) — stripped from BOTH sides before the fragrance flanker
+# near-equality so a descriptive genuine title ("…Spray For Men Natural
+# Vaporisateur") is NOT over-rejected, while a real sub-line marker ("Intense",
+# "Elixir", "Over", "Red") stays distinctive and rejects the flanker. Concentration
+# words (eau/de/parfum/toilette/edp/edt) are already stripped as the concentration
+# PHRASE, so they need not appear here.
+_FRAGRANCE_PADDING_TOKENS = frozenset({
+    "for", "men", "women", "man", "woman", "mens", "womens", "ladies", "gents",
+    "unisex", "homme", "femme", "pour", "him", "her", "natural", "spray", "sprays",
+    "vaporisateur", "vapo", "vaporizer", "atomiser", "atomizer", "new", "gift",
+    "perfume", "perfumes", "cologne", "fragrance", "fragrances", "scent", "scented",
+    "the", "and", "with", "size", "full", "genuine", "original", "authentic", "brand",
+})
+
+# Form PHRASES that name a different product when present on only one side. Ordered
+# longest-first so "body lotion" wins over a bare "body". The default bottle/jar form
+# is None. "spray"/"mist"/"set"/"travel" alone are NOT discriminating (a perfume IS a
+# spray) — only the explicit alternate forms below discriminate.
+_PRODUCT_FORM_PATTERNS: List[Tuple[str, str]] = [
+    ("body lotion", "lotion"), ("body cream", "cream"), ("body butter", "butter"),
+    ("body mist", "bodymist"), ("body spray", "bodyspray"), ("body wash", "wash"),
+    ("shower gel", "showergel"), ("hair mist", "hairmist"), ("after shave", "aftershave"),
+    ("aftershave", "aftershave"), ("roll on", "rollon"), ("roll-on", "rollon"),
+    ("rollon", "rollon"), ("deodorant", "deodorant"), ("antiperspirant", "deodorant"),
+    ("candle", "candle"), ("soap", "soap"), ("scrub", "scrub"), ("shampoo", "shampoo"),
+    ("conditioner", "conditioner"), ("shower", "showergel"), ("lotion", "lotion"),
+    ("refill", "refill"), ("pomade", "pomade"), ("serum", "serum"),
+]
+
+
+def _extract_product_form(text: str, brand: str = "") -> Optional[str]:
+    """The discriminating product FORM in `text` (after removing brand words so a
+    brand like "The Body Shop" / "Old Spice" doesn't manufacture a form), or None
+    for the default bottle/jar. Phrase-matched longest-first."""
+    folded = _fold_identity(text or "")
+    if brand:
+        for bw in normalize_words(_fold_identity(brand)):
+            folded = re.sub(rf"\b{re.escape(bw)}\b", " ", folded)
+    for phrase, canon in _PRODUCT_FORM_PATTERNS:
+        if re.search(rf"\b{re.escape(phrase)}\b", folded):
+            return canon
+    return None
+
+
+def _form_mismatch(query_name: str, candidate_title: str, category: Optional[str],
+                   brand: str = "") -> bool:
+    """True iff (fragrance/beauty) the query and candidate name DIFFERENT product
+    forms — including one-sided (query = the bottle/None, candidate = a Deodorant).
+    A no-op outside fragrance/beauty categories (a phone has no 'form')."""
+    if (category or "").lower() not in _FRAGRANCE_BEAUTY_CATEGORIES:
+        return False
+    return _extract_product_form(query_name, brand) != _extract_product_form(candidate_title, brand)
+
+
+def _candidate_missing_query_axis(query_name: str, candidate_title: str,
+                                  category: Optional[str]) -> bool:
+    """True iff the QUERY states a discriminating axis that the CANDIDATE does NOT —
+    i.e. the candidate is UNVERIFIED on an axis the user pinned, so it must PEND
+    (fail-closed), not auto-accept. Scoped to the axes where a silent omission is a
+    real wrong-variant leak: fragrance concentration + ml size, supplement strength +
+    count. (Electronics storage is DELIBERATELY excluded — terse genuine PDP titles
+    routinely omit it; the qualifier/variant_mismatch axes carry electronics.)"""
+    cat = (category or "").lower()
+    if cat == "fragrances":
+        if extract_concentration(query_name) and not extract_concentration(candidate_title):
+            return True
+        if extract_size_ml_any(query_name) is not None and extract_size_ml_any(candidate_title) is None:
+            return True
+    elif cat == "supplements":
+        if _doses(query_name) and not _doses(candidate_title):
+            return True
+        if extract_count(query_name) is not None and extract_count(candidate_title) is None:
+            return True
+    return False
+
+
+def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str],
+                   brand: str = "", *, strict_extras: bool = True) -> bool:
     """True iff query and candidate disagree on an EXPLICIT discriminating axis:
     a variant qualifier (either direction), concentration, ml/oz size, GB/TB
-    storage, unit count, supplement strength (mg/IU), or weight/volume (g/ml).
-    Brand-independent — the shared core of both the strict `is_exact_match` and the
-    brand-tolerant backstop. Each axis is a no-op unless BOTH sides carry it, so the
-    checks are category-agnostic (a fragrance has no storage, a phone no dose)."""
+    storage, unit count, supplement strength (mg/IU), weight/volume (g/ml), and —
+    when `strict_extras` (the primary brand-aware gates) — a product FORM
+    (deodorant/candle/lotion vs the bottle) OR the candidate OMITting a query-stated
+    axis (fragrance conc/size, supplement strength/count → unverified, fail-closed).
+
+    `brand` is used only to strip the brand before form detection. The shared core
+    of both the strict `is_exact_match` and the brand-tolerant chokepoint backstop;
+    the backstop passes `strict_extras=False` so it keeps its original
+    numeric-axis-only, never-false-pend-a-descriptive-title contract (the form +
+    candidate-omits enforcement lives on the brand-aware primary gates). Each numeric
+    axis is a no-op unless BOTH sides carry it (a fragrance has no storage, a phone
+    no dose)."""
     quals = _CATEGORY_VARIANT_QUALIFIERS.get((category or "").lower(), frozenset())
     if quals and _quals_in(query_name, quals) != _quals_in(candidate_title, quals):
         return True
-    return (
+    if (
         _concentration_mismatch(query_name, candidate_title)
         or _size_ml_mismatch(query_name, candidate_title)
         or _storage_mismatch(query_name, candidate_title)
         or _count_mismatch(query_name, candidate_title)
         or _strength_mismatch(query_name, candidate_title)
         or _weight_or_volume_mismatch(query_name, candidate_title)
-    )
+    ):
+        return True
+    if strict_extras and (
+        _form_mismatch(query_name, candidate_title, category, brand)
+        or _candidate_missing_query_axis(query_name, candidate_title, category)
+    ):
+        return True
+    return False
 
 
 def is_exact_match(
@@ -3025,7 +3136,7 @@ def is_exact_match(
         return True
     if not query_name or not candidate_title:
         return True
-    if _axis_mismatch(query_name, candidate_title, category):
+    if _axis_mismatch(query_name, candidate_title, category, candidate_brand):
         return False
     q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
     t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
@@ -3054,7 +3165,7 @@ def _selection_match(
         return True
     if not query_name or not candidate_title:
         return True
-    if _axis_mismatch(query_name, candidate_title, category):
+    if _axis_mismatch(query_name, candidate_title, category, candidate_brand):
         return False
     q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
     t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
@@ -3077,6 +3188,18 @@ def _selection_match(
     t_generic = t_ident & GENERIC_CATEGORY_NOUNS
     if q_generic and t_generic and not (q_generic & t_generic):
         return False
+    # (3) FRAGRANCE flanker guard — fragrance titles are short + precise, so a
+    #     candidate carrying an EXTRA distinctive token beyond the query (after
+    #     stripping non-identity padding + generic nouns) is a different sub-line/
+    #     flanker ("Black Opium" → "Black Opium Over Red", "La Vie Est Belle" → "…
+    #     Intense"). For fragrances the subset is tightened to near-EQUALITY on the
+    #     distinctive non-padding tokens. (Electronics/fashion keep the subset — their
+    #     descriptive titles legitimately add SIM/colour/packaging words.)
+    if (category or "").lower() in _FRAGRANCE_FLANKER_CATEGORIES:
+        q_core = q_distinct - _FRAGRANCE_PADDING_TOKENS
+        t_core = t_distinct - _FRAGRANCE_PADDING_TOKENS
+        if not t_core.issubset(q_core):
+            return False
     return True
 
 
@@ -3093,7 +3216,7 @@ def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optio
     brand is known."""
     if not candidate_title:
         return True
-    return not _axis_mismatch(query_name, candidate_title, category)
+    return not _axis_mismatch(query_name, candidate_title, category, strict_extras=False)
 
 
 # --- Availability policy (schema.org-complete; never raises) ----------------
@@ -3171,12 +3294,13 @@ def _candidate_authority(cand: Dict[str, Any], category: Optional[str]) -> float
 
 def select_best(
     candidates: List[Dict[str, Any]], query_name: str, category: Optional[str] = None,
-    *, drop_out_of_stock: bool = True,
+    *, drop_out_of_stock: bool = True, require_url: bool = True,
 ) -> Optional[Dict[str, Any]]:
     """Pick the single best price among `candidates` by RETAILER AUTHORITY — NEVER
-    cheapest. Among candidates that are identity-matched (_selection_match) ∧ on a
-    valid PDP URL, rank IN-STOCK first, then authority, then variant precision
-    (closer to the stated size/concentration), then amount as the LAST tiebreak.
+    cheapest. Among candidates that have a verifiable IDENTITY (title/name), are
+    identity-matched (_selection_match), ∧ are on a valid PDP URL, rank IN-STOCK
+    first, then authority, then variant precision (closer to the stated size/
+    concentration), then amount as the LAST tiebreak.
 
     `drop_out_of_stock` (default True — the Tier-2 cross-adapter consume's contract:
     an out-of-stock genuine hit must NOT short-circuit the cascade, so it returns
@@ -3184,6 +3308,12 @@ def select_best(
     False: there an explicitly out-of-stock candidate is RANKED LAST but still
     RETURNED (flagged in_stock=False) when it is the only match, so the existing
     "report OOS" behaviour is preserved and the response chokepoint pends it.
+
+    `require_url` (default True — fail-CLOSED on a candidate with no PDP URL, B5):
+    a price with no verifiable PDP can't be confirmed CURRENT, so it pends. The
+    JSON-LD within-page extractor passes False (its candidates are page-internal —
+    the page URL is stamped onto the result by the caller, so requiring a
+    per-candidate URL there would wrongly drop every JSON-LD match).
 
     Returns None when no candidate qualifies. Rollback: with the gate OFF this
     restores the legacy cheapest-pick (min amount)."""
@@ -3201,12 +3331,19 @@ def select_best(
     for c in cands:
         if drop_out_of_stock and c.get("in_stock") is False:
             continue
+        # B5 — no IDENTITY (title/name) → can't verify the product → fail-closed.
+        title = c.get("title") or c.get("name") or ""
+        if not title:
+            continue
+        # B5 — require a valid PDP URL (fail-closed on missing url). A listing/search
+        # URL is rejected even when require_url is False (it is never a PDP).
         url = c.get("url")
+        if require_url and not url:
+            continue
         if url and _is_listing_url(url):
             continue
-        title = c.get("title") or c.get("name") or ""
         brand = c.get("brand") or ""
-        if title and not _selection_match(query_name, title, category, candidate_brand=brand):
+        if not _selection_match(query_name, title, category, candidate_brand=brand):
             continue
         eligible.append(c)
     if not eligible:
@@ -3788,6 +3925,28 @@ def _is_product_type(item) -> bool:
     return t == "Product"
 
 
+_PRICE_VALID_UNTIL_RE = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})")
+
+
+def _offer_price_expired(offer: Dict[str, Any]) -> bool:
+    """True iff the offer's `priceValidUntil` is a parseable date STRICTLY in the
+    past — a stale price (the 2020-dated offer the live PDP never refreshed) is not
+    the current shelf price (B4). Absent / unparseable / future → not expired (no
+    false pend). Never raises."""
+    pvu = offer.get("priceValidUntil")
+    if not isinstance(pvu, str):
+        return False
+    m = _PRICE_VALID_UNTIL_RE.match(pvu)
+    if not m:
+        return False
+    try:
+        import datetime as _dt
+        valid_until = _dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        return valid_until < _dt.date.today()
+    except (ValueError, TypeError):
+        return False
+
+
 def extract_jsonld_price(
     html: str, brand: str, expected_currency: str, query_name: str = "",
 ) -> Optional[Dict[str, Any]]:
@@ -3924,9 +4083,29 @@ def extract_jsonld_price(
                 currency = offer.get("priceCurrency") or ""
                 if str(currency).upper() != expected_currency.upper():
                     continue
+                # B4 — drop a STALE offer (priceValidUntil already past). No-op when
+                # absent/unparseable/future or when the rollback flag is OFF.
+                if exact_gate_enabled() and _offer_price_expired(offer):
+                    continue
                 try:
+                    explicit = offer.get("price")
+                    low = offer.get("lowPrice")
+                    high = offer.get("highPrice")
+                    # B4 — on the EXACTNESS path (query known), an AggregateOffer that
+                    # is a genuine RANGE (lowPrice != highPrice, no explicit single
+                    # price) spans multiple variants/sellers, so lowPrice is NOT proof
+                    # of the EXACT SKU's price -> skip (pend). A single-value
+                    # AggregateOffer (low==high or no highPrice) and a plain
+                    # Offer.price are UNCHANGED — preserves I5.8 + pre-S4 no-query callers.
+                    _no_explicit = explicit is None or str(explicit).strip() in ("", "0")
+                    if (
+                        exact_gate_enabled() and query_name and _no_explicit
+                        and low is not None and high is not None
+                        and float(low) != float(high)
+                    ):
+                        continue
                     # AggregateOffer carries lowPrice instead of price (I5.8)
-                    price_val = float(offer.get("price") or offer.get("lowPrice") or 0)
+                    price_val = float(explicit or low or 0)
                 except (ValueError, TypeError):
                     continue
                 if price_val <= 0:
@@ -3965,7 +4144,13 @@ def extract_jsonld_price(
     # the query is unknown (pre-S4 callers) there is no identity to gate on → keep
     # the legacy cheapest pick.
     if query_name:
-        return select_best(candidates, query_name, _category, drop_out_of_stock=False)
+        # require_url=False — JSON-LD candidates are page-INTERNAL (the PDP URL is
+        # the page being scraped; the caller stamps it onto the result). Requiring a
+        # per-candidate URL here would drop every JSON-LD match.
+        return select_best(
+            candidates, query_name, _category,
+            drop_out_of_stock=False, require_url=False,
+        )
     return min(candidates, key=lambda c: c["amount"])
 
 
@@ -5543,27 +5728,44 @@ async def fetch_iherb_price(
         if not brand_matches:
             brand_matches = [p for p in products if brand_lower in p["title"].lower()]
 
-        best = None
-        full_matches = []
-        for p in brand_matches:
-            title_words = normalize_words(p["title"])
-            if name_words.issubset(title_words):
-                full_matches.append(p)
-        if full_matches:
-            best = full_matches[0]
+        # CORRECTNESS (B1) — the requested SKU may be ABSENT from the iHerb results
+        # while a same-brand DIFFERENT product is present (Solgar D3 5000IU query ->
+        # only Solgar Magnesium Citrate on the page). The legacy best-overlap fallback
+        # had NO threshold, so it shipped that wrong product's price. Gate brand-matches
+        # through the shared identity gate; a miss returns None (pend), never a
+        # same-brand flanker. No-op when the rollback flag is OFF (legacy pick below).
+        if exact_gate_enabled():
+            exact = [
+                p for p in brand_matches
+                if _selection_match(full_name, p["title"], "supplements",
+                                    candidate_brand=p.get("brand", ""))
+            ]
+            if not exact:
+                return None
+            # Among identity-matched cards prefer a full name-subset match, else the
+            # first (same identity); never a cheaper NON-matching card.
+            best = next(
+                (p for p in exact if name_words.issubset(normalize_words(p["title"]))),
+                exact[0],
+            )
         else:
-            best_score = -1
-            for p in brand_matches:
-                title_words = normalize_words(p["title"])
-                overlap = len(name_words & title_words)
-                if numbers_match(full_name, p["title"]):
-                    overlap += 2
-                if overlap > best_score or (overlap == best_score and best and p["price"] < best["price"]):
-                    best_score = overlap
-                    best = p
-
-        if not best:
-            return None
+            best = None
+            full_matches = [p for p in brand_matches
+                            if name_words.issubset(normalize_words(p["title"]))]
+            if full_matches:
+                best = full_matches[0]
+            else:
+                best_score = -1
+                for p in brand_matches:
+                    title_words = normalize_words(p["title"])
+                    overlap = len(name_words & title_words)
+                    if numbers_match(full_name, p["title"]):
+                        overlap += 2
+                    if overlap > best_score or (overlap == best_score and best and p["price"] < best["price"]):
+                        best_score = overlap
+                        best = p
+            if not best:
+                return None
 
         # S3-genuine (team-lead 2026-06-14) — the regional iHerb storefront
         # ({region_code}.iherb.com) serves its data-ga-discount-price NATIVELY in
@@ -5580,6 +5782,9 @@ async def fetch_iherb_price(
             "currency": currency,
             "retailer": "iHerb",
             "url": best["url"],
+            # B1 — keep the matched product title so the chokepoint + cache-write
+            # guard can re-verify identity (it was stripped before, hiding wrong picks).
+            "title": best.get("title", ""),
             "in_stock": True,
             "confidence": 1.0,
             "estimated": False,
@@ -5613,7 +5818,7 @@ async def fetch_pharmacy_price(
                 pharmacy_urls.append((link, retailer_name))
                 break
 
-    result = await _try_pharmacy_urls(pharmacy_urls, brand, currency)
+    result = await _try_pharmacy_urls(pharmacy_urls, brand, currency, full_name)
     if result:
         return result
 
@@ -5630,7 +5835,7 @@ async def fetch_pharmacy_price(
                 if domain in link:
                     site_urls.append((link, retailer_name))
                     break
-        result = await _try_pharmacy_urls(site_urls, brand, currency)
+        result = await _try_pharmacy_urls(site_urls, brand, currency, full_name)
         if result:
             return result
     except Exception as e:
@@ -5643,8 +5848,13 @@ async def _try_pharmacy_urls(
     pharmacy_urls: List[Tuple[str, str]],
     brand: str,
     currency: str,
+    full_name: str = "",
 ) -> Optional[Dict[str, Any]]:
-    """Try fetching JSON-LD price from a list of pharmacy URLs."""
+    """Try fetching JSON-LD price from a list of pharmacy URLs.
+
+    `full_name` (B1) — the full requested product, threaded into extract_jsonld_price
+    as `query_name` so its identity gate is ARMED: a multi-Product same-brand pharmacy
+    page can NOT attribute the cheapest unrelated same-brand item to the query."""
     if not pharmacy_urls:
         return None
 
@@ -5655,12 +5865,15 @@ async def _try_pharmacy_urls(
                 if resp.status_code != 200:
                     continue
 
-                price_data = extract_jsonld_price(resp.text, brand, currency)
+                price_data = extract_jsonld_price(
+                    resp.text, brand, currency, query_name=full_name,
+                )
                 if price_data:
                     # L2 content safety — pharmacy JSON-LD entry point
                     # (Bundle B, team-lead expansion of spec sec 5.2).
                     from app.services.content_safety_service import get_content_safety_service
-                    _surface = f"{price_data.get('title', '')} {brand} {retailer_name}"
+                    _ld_title = price_data.get("name") or price_data.get("title", "")
+                    _surface = f"{_ld_title} {brand} {retailer_name}"
                     if not get_content_safety_service().is_text_safe(_surface):
                         logger.info("[content_safety] L2 dropped pharmacy candidate for %s", retailer_name)
                         continue
@@ -5670,6 +5883,9 @@ async def _try_pharmacy_urls(
                         "currency": currency,
                         "retailer": retailer_name,
                         "url": url,
+                        # B1 — carry the matched JSON-LD product name so the chokepoint
+                        # + cache-write guard can re-verify identity.
+                        "title": _ld_title,
                         "in_stock": price_data.get("in_stock", True),
                         "confidence": 1.0,
                         "estimated": False,

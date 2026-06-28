@@ -272,15 +272,17 @@ def test_b4_jsonld_rejects_expired_pricevaliduntil():
 def test_b4_jsonld_aggregateoffer_lowprice_not_taken_as_exact():
     """AggregateOffer.lowPrice is the cheapest VARIANT/size, not the exact SKU's
     price — without a per-SKU Offer it must not be attributed to the exact query."""
+    # Name states the exact 100ml EDT (so the candidate-omits-axis check does NOT
+    # reject it) — isolating the AggregateOffer-RANGE behaviour itself.
     html = '''<html><head><script type="application/ld+json">
-    {"@type":"Product","name":"Dior Sauvage Eau de Toilette","brand":"Dior",
+    {"@type":"Product","name":"Dior Sauvage Eau de Toilette 100ml","brand":"Dior",
      "offers":{"@type":"AggregateOffer","lowPrice":"22.000","highPrice":"60.000",
                "priceCurrency":"BHD","availability":"https://schema.org/InStock"}}
     </script></head><body></body></html>'''
     res = ps.extract_jsonld_price(html, "Dior", "BHD", "Dior Sauvage EDT 100ml")
     assert res is None, (
-        "AggregateOffer.lowPrice (cheapest variant) must not be taken as the exact "
-        f"100ml EDT price without per-SKU offer proof, got {res}"
+        "AggregateOffer lowPrice/highPrice RANGE (cheapest variant/seller) must not be "
+        f"taken as the exact 100ml EDT price without per-SKU offer proof, got {res}"
     )
 
 

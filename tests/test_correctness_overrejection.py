@@ -141,15 +141,13 @@ def test_green_accessory_stays_rejected_in_jsonld():
 # Import is_exact_match INSIDE the body so collection never errors.
 # ===========================================================================
 
-def test_red_valid_url_gate_pends_listing_url_but_keeps_missing_url():
-    """# RED (new-helper)
+def test_red_valid_url_gate_pends_listing_url_AND_missing_url():
+    """# CORRECTNESS FIX (2026-06-28, B5)
     is_price_showable must PEND a price whose url is a listing/search surface
-    (https://x.com/search?q=...) even for an otherwise-genuine exact match
-    (valid-PDP-URL gate, IMPL-SPEC 1E). And it must NOT pend a genuine local_bhd
-    with NO url (a missing url is benign for some local_bhd sources). On current
-    code is_price_showable ignores the url entirely -> the listing-url assertion
-    FAILS now = the real red."""
-    # Confirm the new identity primitive exists (RED via ImportError until Wave B).
+    (https://x.com/search?q=...) AND a price with NO url at all — both fail-CLOSED:
+    a price with no verifiable CURRENT PDP can't be confirmed as the exact product.
+    (The prior version of this test wrongly asserted a missing url was 'benign' —
+    that codified the B5 fail-OPEN leak as a passing assertion.)"""
     from app.services.price_service import is_exact_match  # noqa: F401
 
     listing_url_price = {
@@ -166,7 +164,8 @@ def test_red_valid_url_gate_pends_listing_url_but_keeps_missing_url():
         enforce_correctness=True,
     ) is False
 
-    # A genuine local_bhd with NO url must NOT be pended for the missing url.
+    # B5 — a genuine local_bhd with NO url must ALSO pend (fail-closed): no PDP to
+    # verify the price is current and exact.
     no_url_price = {
         "amount": 250.0,
         "currency": "BHD",
@@ -176,6 +175,20 @@ def test_red_valid_url_gate_pends_listing_url_but_keeps_missing_url():
     }
     assert is_price_showable(
         "Samsung Galaxy S24 256GB", no_url_price, category="electronics",
+        enforce_correctness=True,
+    ) is False
+
+    # A genuine exact match on a real PDP url is SHOWABLE (no over-rejection).
+    pdp_price = {
+        "amount": 250.0,
+        "currency": "BHD",
+        "source_method": "local_bhd",
+        "in_stock": True,
+        "title": "Samsung Galaxy S24 256GB",
+        "url": "https://www.sharafdg.com/product/samsung-galaxy-s24-256gb/",
+    }
+    assert is_price_showable(
+        "Samsung Galaxy S24 256GB", pdp_price, category="electronics",
         enforce_correctness=True,
     ) is True
 
