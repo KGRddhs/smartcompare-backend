@@ -4261,12 +4261,12 @@ def _selection_match(
     if cat in _SUPERSET_VARIANT_CATEGORIES and (t_core - q_core):
         if q_core:
             return False  # a SPECIFIC query + an extra candidate token = a different SKU
-        # q_core EMPTY. Only skip (accept any specific member) when the query was GENERIC
-        # even BEFORE padding (q_distinct empty — a true brand/class query like "Sony
-        # Headphones"). If padding EMPTIED a SPECIFIC query (Samsung Crystal UHD ->
-        # {crystal,uhd} both padding), do NOT skip — it would accept a sibling line (QLED)
-        # (coverage review round 5).
-        if q_distinct or cat not in _GENERIC_QUERY_SKIP_CATEGORIES:
+        # q_core EMPTY. Only skip (accept any specific member) when the query is a true
+        # brand/class query — i.e. its distinctive set MINUS brand/manufacturer words is
+        # empty ("Sony Headphones" -> {sony}-manufacturer = {}). If a LINE word emptied a
+        # SPECIFIC query (Samsung Crystal UHD -> {crystal,uhd}, neither is a brand word), do
+        # NOT skip — it would accept a sibling line (QLED) (coverage review round 5).
+        if (q_distinct - _MANUFACTURER_NOISE) or cat not in _GENERIC_QUERY_SKIP_CATEGORIES:
             return False
     return True
 
