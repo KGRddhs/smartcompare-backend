@@ -526,21 +526,30 @@ def usable_exact_genuine_for_product(
     # (e) INDEPENDENT identity validation against the truth entry — the resolved
     # price title must be the EXACT expected product (kills the "shown == exact"
     # circularity: a genuine, in-stock, valid-PDP price for the WRONG product fails).
-    if truth_entry is not None:
-        expected_query = truth_entry.get("query") or ""
-        category = truth_entry.get("category")
-        expected_brand = (truth_entry.get("expected") or {}).get("brand", "")
-        title = price.get("title") or price.get("name") or ""
-        if not title:
+    #
+    # FAIL-CLOSED (coverage review E) — without a truth entry the identity is UNVERIFIED,
+    # so the product is NOT usable (never auto-count). The truth-wired run-mode always
+    # supplies one; a missing truth entry means we cannot prove the SKU.
+    if truth_entry is None:
+        return False
+    expected_query = truth_entry.get("query") or ""
+    category = truth_entry.get("category")
+    expected_brand = (truth_entry.get("expected") or {}).get("brand", "")
+    title = price.get("title") or price.get("name") or ""
+    if not title:
+        return False
+    try:
+        # Use _selection_match — the gate the ORCHESTRATOR actually runs (subset-tolerant
+        # of DESCRIPTIVE retailer titles) — NOT the strict set-equality is_exact_match,
+        # which scored a 100%-correct genuine descriptive price 0/N and made the 0.85
+        # gate unreachable (coverage review E).
+        from app.services.price_service import _selection_match
+        if expected_query and not _selection_match(
+            expected_query, title, category, candidate_brand=expected_brand,
+        ):
             return False
-        try:
-            from app.services.price_service import is_exact_match
-            if expected_query and not is_exact_match(
-                expected_query, title, category, candidate_brand=expected_brand,
-            ):
-                return False
-        except Exception:  # noqa: BLE001 — a matcher failure must not crash the eval
-            return False
+    except Exception:  # noqa: BLE001 — a matcher failure must not crash the eval
+        return False
     return True
 
 

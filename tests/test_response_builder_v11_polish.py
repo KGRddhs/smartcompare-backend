@@ -28,6 +28,8 @@ class TestA72StripPriceNote:
                     "currency": "BHD",
                     "source_method": source_method,
                     "note": note,
+                    "title": "iPhone 16",
+                    "url": "https://store.bh/p/iphone",
                 },
             },
             {
@@ -38,6 +40,8 @@ class TestA72StripPriceNote:
                     "currency": "BHD",
                     "source_method": "local_bhd",
                     "note": "Real retailer price",
+                    "title": "Galaxy S25",
+                    "url": "https://store.bh/p/galaxy",
                 },
             },
         ]

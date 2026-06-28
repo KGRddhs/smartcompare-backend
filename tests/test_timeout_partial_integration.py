@@ -110,6 +110,11 @@ def _partial_product(brand, name, *, source_method, amount):
             "amount": amount,
             "currency": "BHD",
             "retailer": "iHerb" if source_method == "converted_usd" else None,
+            # Real cascade prices carry a resolved title (adapters set it; the partial
+            # path reuses the SAME stashed product_data). A genuine price with NO title
+            # AND NO url pends at the display chokepoint (coverage review F) — so model the
+            # realistic identity-bearing shape.
+            "title": f"{brand} {name}",
             "url": None,
             "source_method": source_method,
             "estimated": source_method == "estimated",

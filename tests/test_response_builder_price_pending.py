@@ -14,6 +14,12 @@ from app.services.response_builder import build_comparison_response
 
 
 def _product(name, category, price):
+    # Real cascade/cache prices ALWAYS carry a resolved title + PDP url (adapters set
+    # them; should_cache_price requires them). Inject them into any PRICED fixture so the
+    # fixture reflects reality — the chokepoint's fail-closed no-identity-AND-no-url gate
+    # (coverage review F) pends only a TRULY-unverifiable price, never these.
+    if isinstance(price, dict) and price.get("amount") is not None:
+        price = {"title": name, "url": f"https://store.bh/p/{name.split()[0].lower()}", **price}
     return {
         "brand": name.split()[0], "name": name, "full_name": name,
         "category": category,

@@ -194,8 +194,10 @@ class TestBuildComparisonResponse:
         firecrawl (genuine-BH) vs converted_usd — the real apples-to-oranges case.
         """
         product_data = [
-            {"brand": "LV", "name": "Bag", "price": {"source_method": "firecrawl", "amount": 250.0, "currency": "BHD"}},
-            {"brand": "Gucci", "name": "Wallet", "price": {"source_method": "converted_usd", "amount": 300.0, "currency": "BHD"}},
+            {"brand": "LV", "name": "Bag", "price": {"source_method": "firecrawl", "amount": 250.0,
+                                                     "currency": "BHD", "title": "LV Bag", "url": "https://store.bh/p/lv"}},
+            {"brand": "Gucci", "name": "Wallet", "price": {"source_method": "converted_usd", "amount": 300.0,
+                                                           "currency": "BHD", "title": "Gucci Wallet", "url": "https://store.bh/p/gucci"}},
         ]
         comparison = {"winner_index": 0}
         scoring_result = {"scores": {}, "winner_index": 0}
