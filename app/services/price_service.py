@@ -4893,8 +4893,18 @@ def should_cache_price(
     title = price.get("title") or price.get("name") or ""
     if not title:
         return False
+    # A genuine-BHD claim must carry a verifiable PDP URL (fail-closed). A CONVERTED
+    # USD->BHD price (converted_usd) is an INDICATIVE estimate, NOT a genuine-BHD claim:
+    # its caching correctness rests on the IDENTITY match below, not a PDP, and it was
+    # cached unconditionally pre-gate (b207bfa). Newly requiring a PDP URL for it orphaned
+    # a converted fallback whose only url is a synthesized `build_retailer_url` search link
+    # — that price is neither positive- NOR negative-cached (should_negative_cache exempts
+    # converted_usd as a live cited price), so the full scrape cascade re-burns on EVERY
+    # repeat request (local review #5). Skip the url gate for converted methods; keep it
+    # strict for the genuine-BHD methods.
+    _indicative = "converted" in (price.get("source_method") or "").lower()
     url = price.get("url")
-    if not url or _is_listing_url(url):
+    if not _indicative and (not url or _is_listing_url(url)):
         return False
     if price.get("in_stock") is False:
         return False
@@ -5695,8 +5705,20 @@ def extract_jsonld_price(
                     # is unchanged; the pre-S4 no-query callers keep lowPrice (I5.8).
                     _no_explicit = explicit is None or str(explicit).strip() in ("", "0")
                     _is_aggregate = "AggregateOffer" in str(offer.get("@type") or "")
+                    # A low==high AggregateOffer is a SINGLE price point = the exact SKU
+                    # price (a single-seller PDP modelled as AggregateOffer), NOT the
+                    # "cheapest variant/seller" ambiguity — accept it (local review #6
+                    # coverage). A genuine low<high RANGE is still skipped (not proof of
+                    # the exact SKU's price).
+                    _low_eq_high = False
+                    if low is not None and high is not None:
+                        try:
+                            _low_eq_high = float(low) == float(high)
+                        except (ValueError, TypeError):
+                            _low_eq_high = False
                     if (
                         exact_gate_enabled() and query_name and _is_aggregate and _no_explicit
+                        and not _low_eq_high
                     ):
                         continue
                     # AggregateOffer carries lowPrice instead of price (I5.8, no-query path)

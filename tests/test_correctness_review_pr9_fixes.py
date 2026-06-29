@@ -24,6 +24,8 @@ from app.services.price_service import (
     _selection_match,
     _size_ml_mismatch,
     _weight_or_volume_mismatch,
+    should_cache_price,
+    extract_jsonld_price,
 )
 
 
@@ -179,3 +181,72 @@ class TestLbToGramConversionRounding:
         # No lb token anywhere → grams compared EXACTLY (no spurious 1% merge).
         assert _weight_or_volume_mismatch("Cream 500g", "Cream 505g") is True
         assert _weight_or_volume_mismatch("Cream 500g", "Cream 500g") is False
+
+
+# ---------------------------------------------------------------------------
+# #5 — converted_usd (indicative) price was un-cacheable when its only url is a
+# synthesized search link → cascade re-burns (neither pos- nor neg-cached).
+# ---------------------------------------------------------------------------
+class TestConvertedPriceCacheable:
+    def test_converted_with_search_url_is_cacheable(self):
+        # A converted (indicative) price with a synthesized search-url + matching identity
+        # must be cacheable (it is not a genuine-BHD claim; correctness is the identity match).
+        price = {
+            "amount": 42.5, "currency": "BHD", "source_method": "converted_usd",
+            "title": "Sony WH-1000XM5 Wireless Headphones", "brand": "Sony",
+            "url": "https://www.noon.com/search?q=sony+wh-1000xm5",
+        }
+        assert should_cache_price("Sony WH-1000XM5", price, "electronics") is True
+
+    # --- GUARDS -------------------------------------------------------------
+    def test_genuine_with_search_url_still_not_cacheable(self):
+        # A GENUINE-BHD claim with a non-PDP (search) url stays fail-closed.
+        price = {
+            "amount": 42.5, "currency": "BHD", "source_method": "page_scrape_jsonld",
+            "title": "Sony WH-1000XM5 Wireless Headphones", "brand": "Sony",
+            "url": "https://www.noon.com/search?q=sony+wh-1000xm5",
+        }
+        assert should_cache_price("Sony WH-1000XM5", price, "electronics") is False
+
+    def test_converted_wrong_identity_still_not_cacheable(self):
+        # Relaxing the url gate must NOT relax the identity gate: a converted price for a
+        # DIFFERENT variant stays uncacheable.
+        price = {
+            "amount": 42.5, "currency": "BHD", "source_method": "converted_usd",
+            "title": "Samsung Galaxy S24 FE 256GB", "brand": "Samsung",
+            "url": "https://www.noon.com/p/galaxy-s24-fe",
+        }
+        assert should_cache_price("Samsung Galaxy S24 256GB", price, "electronics") is False
+
+
+# ---------------------------------------------------------------------------
+# #6 — a low==high AggregateOffer is the exact SKU price (re-coverage), while a
+# low<high range stays skipped (correctness preserved).
+# ---------------------------------------------------------------------------
+def _jsonld_html(low, high):
+    return (
+        '<html><head><script type="application/ld+json">'
+        '{"@context":"https://schema.org","@type":"Product",'
+        '"name":"Sony WH-1000XM5 Wireless Headphones","brand":"Sony",'
+        '"offers":{"@type":"AggregateOffer","priceCurrency":"BHD",'
+        f'"lowPrice":"{low}","highPrice":"{high}",'
+        '"availability":"https://schema.org/InStock"}}'
+        '</script></head><body>Sony WH-1000XM5</body></html>'
+    )
+
+
+class TestAggregateOfferLowEqHigh:
+    def test_low_eq_high_aggregate_is_used(self):
+        price = extract_jsonld_price(
+            _jsonld_html("129.000", "129.000"), "Sony", "BHD",
+            query_name="Sony WH-1000XM5", category="electronics",
+        )
+        assert price is not None
+        assert abs(price["amount"] - 129.0) < 0.01
+
+    def test_low_lt_high_range_still_skipped(self):
+        price = extract_jsonld_price(
+            _jsonld_html("129.000", "159.000"), "Sony", "BHD",
+            query_name="Sony WH-1000XM5", category="electronics",
+        )
+        assert price is None
