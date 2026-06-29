@@ -4134,6 +4134,18 @@ _MAKEUP_PADDING = _MAKEUP_FINISH_TOKENS | frozenset({
     # padding it would strip a real shade token.
     "to", "of", "in", "on", "by",
 })
+# Makeup FORMULA / FINISH-LINE words that, when a candidate ADDS one over a query sharing
+# the same shade NUMBER, mark a DIFFERENT product line reusing the shade code (Pro Filt'r
+# "Soft Matte" 240 vs "Hydrating" 240; Infallible "Matte" 130 vs "Glow" 130; Fit Me 128 vs
+# Fit Me "Dewy + Smooth" 128). These BLOCK the shade-number short-circuit so the variant-add
+# guard rejects the added line token (coverage sweep 3x CRIT/HIGH). Only the NON-padding
+# formula words matter (matte/dewy/satin are already stripped as finish padding); a spelled
+# shade NAME ("Soft Sand") is NOT here, so the legitimate "240 -> 240 Soft Sand" still accepts.
+_MAKEUP_LINE_DISCRIMINATORS = frozenset({
+    "glow", "glowy", "glowing", "hydrating", "hydra", "smooth", "smoothing",
+    "illuminating", "luminizing", "mattifying", "blurring", "moisturizing",
+    "moisturising", "nourishing", "longwear",
+})
 
 
 # --- contradiction axes (coverage review round 2): one-sided tolerated, both-stated-
@@ -4247,6 +4259,11 @@ def _inch_mismatch(query_name: str, candidate_title: str) -> bool:
 
 # SPF (sunscreen rating) — a SKU axis for cosmetics (SPF 30 vs SPF 50). One-sided
 # tolerated (stripped from identity), both-stated-different rejects (coverage review).
+# NOTE (coverage sweep): a one-sided SPF ADD ("Kiehl's Ultra Facial Cream" -> "...SPF 30")
+# is a real but DELIBERATELY-TOLERATED leak — making it asymmetric mass-over-rejects every
+# sunscreen whose query omits the inherent SPF (Anthelios / EltaMD / Supergoop), pinned by
+# test_R6_overrej_skincare_spf_one_sided_accepted. Tokens cannot distinguish an inherent-SPF
+# sunscreen from an SPF variant of a cream, so the tolerate-one-sided decision stands.
 _SPF_RE = re.compile(r"\bspf\s*(\d+)\b", re.I)
 
 
@@ -4634,8 +4651,13 @@ def _selection_match(
         # (a second shade number is a different shade) AND (b) the NON-number core is
         # subset-compatible — so a shared number does NOT bridge two different product
         # LINES that happen to share a shade code (Fit Me 240 vs Superstay 240) (round 4).
+        # A candidate that ADDS a FORMULA/FINISH-LINE word (Hydrating/Glow/Smooth) beyond the
+        # shared shade number names a DIFFERENT product line reusing the shade code — do NOT
+        # short-circuit; fall through to the variant-add guard, which rejects it (coverage sweep).
+        extra_nonnum = (t_core - t_nums) - (q_core - q_nums)
         if (q_nums and t_nums and (q_nums & t_nums) and not (t_nums - q_nums)
-                and (q_core - q_nums).issubset(t_core - t_nums)):
+                and (q_core - q_nums).issubset(t_core - t_nums)
+                and not (extra_nonnum & _MAKEUP_LINE_DISCRIMINATORS)):
             return True
     # LEAK direction — candidate must carry all of the query's distinctive non-padding
     # tokens (applies to EVERY category, incl. an unresolved one).
