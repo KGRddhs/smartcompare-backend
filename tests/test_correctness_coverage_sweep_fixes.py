@@ -164,6 +164,11 @@ def test_held_gender_flanker_accepted_tradeoff():
 
 def test_held_skincare_one_sided_spf_accepted_tradeoff():
     # Asymmetric SPF mass-over-rejects inherent-SPF sunscreens (Anthelios). See R6 pin.
+    # External review #4 RE-CONFIRMED this HELD: an SPF-add fail-close with a sunscreen
+    # carve-out was implemented and reverted — the carve-out cannot cover the unbounded
+    # set of sunscreen names (a coverage sweep over-rejected Vichy Capital Soleil /
+    # Bioderma Photoderm / Banana Boat …), and the leak it prevents (base cream vs SPF
+    # variant) is low-harm. Doing better needs structured variant metadata.
     assert _m("Kiehl's Ultra Facial Cream", "Kiehl's Ultra Facial Cream SPF 30", "skincare", "Kiehl's") is True
 
 
@@ -176,25 +181,38 @@ def test_held_makeup_one_sided_formula_line_accepted_tradeoff():
 
 
 # ===========================================================================
-# HELD — deferred real leaks (xfail asserts the DESIRED behaviour; not yet safely fixable)
+# FIXED — external review #4 fail-closes (were deferred xfails; now enforced).
 # ===========================================================================
-@pytest.mark.xfail(reason="display chokepoint uses the axis-only backstop; full-matcher "
-                          "hardening is a live-path over-rejection risk, deferred to warmer reactivation",
+def test_display_backstop_flagship_flanker_pended():
+    # The display chokepoint adds a bounded flagship-concentration / supplement-type ADD
+    # check (NOT the full superset, which over-rejected correct descriptive titles), so a
+    # FLAGSHIP flanker that bypassed the primary gate ("Dior Sauvage" -> "Dior Sauvage
+    # Parfum") is PENDED at the backstop.
+    assert is_price_showable("Dior Sauvage",
+                             _price("Dior Sauvage Parfum", amount=40.0), "fragrances",
+                             enforce_correctness=True) is False
+
+
+@pytest.mark.xfail(reason="a same-token flanker whose extra token is NOT a flagship "
+                          "concentration ('Sauvage Elixir') needs the full superset at the "
+                          "backstop, which over-rejects correct descriptive titles (coverage "
+                          "sweep); deferred to structured variant metadata",
                    strict=True)
-def test_deferred_display_backstop_flanker():
+def test_deferred_display_backstop_same_token_flanker():
     assert is_price_showable("Dior Sauvage",
                              _price("Dior Sauvage Elixir", amount=40.0), "fragrances",
                              enforce_correctness=True) is False
 
 
-@pytest.mark.xfail(reason="cross-unit g<->ml is density-ambiguous (340g ~= 340ml water-based); "
-                          "a safe tolerance needs more than a token rule",
-                   strict=True)
-def test_deferred_cross_unit_size():
+def test_cross_unit_size_pended():
+    # Cross-unit g<->ml is unverifiable equivalence (density-ambiguous) -> fail-closed PEND.
     assert _m("CeraVe Moisturizing Cream 340g", "CeraVe Moisturizing Cream 177ml",
               "skincare", "CeraVe") is False
 
 
+# ===========================================================================
+# HELD — deferred real leak (xfail asserts the DESIRED behaviour; not yet safely fixable)
+# ===========================================================================
 @pytest.mark.xfail(reason="the 512-char ReDoS cap drops a trailing storage axis; reachability "
                           "is near-zero (real titles < 200 chars)",
                    strict=True)

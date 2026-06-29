@@ -1296,7 +1296,23 @@ def is_price_showable(
                 and _is_device_accessory(identity) and not _is_device_accessory(product_name)):
             price["guard_rejected"] = "accessory"
             return False
-        if identity and not _backstop_identity_ok(product_name, identity, category):
+        # Identity gate at the display chokepoint = the axis-only _backstop_identity_ok
+        # PLUS the FLAGSHIP-concentration / supplement-TYPE flanker check
+        # (_category_type_added). The full superset _selection_match was tried here and an
+        # adversarial coverage sweep CONFIRMED it over-rejects CORRECT products that reach
+        # display via a path that did not pre-run _selection_match (converted_usd /
+        # page-scrape / iHerb), because their genuine DESCRIPTIVE PDP title carries extra
+        # marketing tokens the short query omits ("Niacinamide 10%" -> the real SKU title
+        # "Niacinamide 10% + Zinc 1%"; "Omega-3" -> "...Molecularly Distilled"). So the
+        # superset stays UPSTREAM (brand-aware, where the canonical full_name is known); the
+        # backstop adds only the bounded flagship/type-ADD check, which catches the common
+        # flanker class ("Sauvage" -> "Sauvage Parfum/Extrait", "Whey" -> "Whey Isolate")
+        # with no descriptive-title over-rejection. A same-token flanker whose extra token is
+        # NOT a flagship concentration ("Sauvage Elixir") remains a documented deferred leak.
+        if identity and (
+            not _backstop_identity_ok(product_name, identity, category)
+            or _category_type_added(product_name, identity, category)
+        ):
             price["guard_rejected"] = "not_exact"
             return False
     return True
@@ -3534,7 +3550,13 @@ def _weight_or_volume_mismatch(q: str, t: str) -> bool:
     t_bases = {b for _v, b in twv}
     shared = q_bases & t_bases
     if not shared:
-        return False  # only different bases present — not comparable
+        # CROSS-UNIT (external review #4) — BOTH state a size but in DISJOINT bases
+        # (grams vs millilitres). Weight and volume are not interchangeable (a 340g
+        # cream is not provably a 177ml lotion; density makes g<->ml conversion
+        # ambiguous), so the equivalence is UNVERIFIED -> fail-closed mismatch. (A
+        # one-sided size — the other side omits it — never reaches here: the
+        # qwv/twv-empty guard above returns False.)
+        return True
     _lb_present = bool(_LB_TOKEN_RE.search(q or "")) or bool(_LB_TOKEN_RE.search(t or ""))
     for b in shared:
         qv = [v for v, bb in qwv if bb == b]
@@ -4285,6 +4307,15 @@ def _spf_mismatch(query_name: str, candidate_title: str) -> bool:
     if not qs or not ts:
         return False
     return not (qs & ts)
+
+# NOTE (external review #4): an SPF-ADD axis (candidate states an SPF the query omits ->
+# different SKU) was implemented and then REVERTED. A sunscreen-context carve-out cannot
+# cover the unbounded set of sunscreen names (a coverage sweep over-rejected mainstream
+# sunscreens — Vichy Capital Soleil, Bioderma Photoderm, Banana Boat, Neutrogena Ultra
+# Sheer — whose names carry no sun/UV token), while the leak it prevents is low-harm (a
+# base cream vs its SPF variant are near-identical prices). A one-sided SPF is therefore
+# TOLERATED; only a both-stated DIFFERENT SPF (_spf_mismatch) rejects. Doing better needs
+# structured variant metadata, not a token rule.
 
 
 # Electronics RAM axis — a dual-GB title ("S24 8GB 256GB") pins RAM + storage; the storage

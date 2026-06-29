@@ -1205,6 +1205,11 @@ async def run_eval(
     return aggregate(list(graded))
 
 
+# A single-product COLD price resolution drives the full cascade (curl/render) — allow
+# headroom over the ~25-30s compare wall.
+_KPI_HTTP_TIMEOUT = 90.0
+
+
 async def run_usable_exact_genuine_kpi(
     *, base_url: str, read_cache: bool, concurrency: int = 1,
     transport: Optional[httpx.BaseTransport] = None,
@@ -1225,13 +1230,26 @@ async def run_usable_exact_genuine_kpi(
 
     async with httpx.AsyncClient(**client_kwargs) as client:
         async def _one(entry: Dict[str, Any]) -> tuple:
-            record = {"id": entry.get("id", entry["query"]), "query": entry["query"],
-                      "region": entry.get("region", "bahrain")}
+            # External review #1 — hit the dedicated SINGLE-PRODUCT endpoint
+            # (/api/v1/text/price-kpi). /compare rejects a query resolving to <2 products,
+            # so the prior single-product /compare call only ever "worked" under a mock;
+            # this path runs the REAL parser + price cascade + the is_price_showable
+            # backstop through the ASGI app. COLD = nocache=true; WARMED = --read-cache.
+            params = {
+                "q": entry["query"],
+                "region": entry.get("region", "bahrain"),
+                "nocache": "false" if read_cache else "true",
+            }
             async with semaphore:
-                rr = await run_query(client, record, read_cache=read_cache)
-            body = rr.response or {}
-            # Single-product compare -> the resolved product is index 0. Independent
-            # identity validation against THIS truth entry (not 'shown == exact').
+                try:
+                    resp = await client.get(
+                        "/api/v1/text/price-kpi", params=params, timeout=_KPI_HTTP_TIMEOUT,
+                    )
+                    body = resp.json() if resp.status_code == 200 else {}
+                except Exception:  # noqa: BLE001 — a transport/HTTP error == not usable
+                    body = {}
+            # Single-product body -> the resolved product is index 0. Independent identity
+            # validation against THIS truth entry (not 'shown == exact').
             usable = usable_exact_genuine_for_product(body, 0, entry)
             return (entry.get("category", "other"), bool(usable))
 

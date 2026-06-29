@@ -26,7 +26,17 @@ from app.services.price_service import (
     _weight_or_volume_mismatch,
     should_cache_price,
     extract_jsonld_price,
+    is_price_showable,
 )
+
+
+def _price(title, amount=40.0, **extra):
+    p = {
+        "amount": amount, "currency": "BHD", "source_method": "local_bhd",
+        "in_stock": True, "url": "https://www.example-bh.com/p/item", "title": title,
+    }
+    p.update(extra)
+    return p
 
 
 @pytest.fixture(autouse=True)
@@ -277,6 +287,65 @@ class TestKpiAxisFailClosed:
             _genuine_body("YSL Black Opium"), 0, truth) is False
         assert usable_exact_genuine_for_product(
             _genuine_body("YSL Black Opium Eau de Parfum 90ml"), 0, truth) is True
+
+
+# ---------------------------------------------------------------------------
+# #4 — fail-close the fixable wrong-SKU tradeoffs (gender stays product-approved).
+# ---------------------------------------------------------------------------
+class TestFailClosedCrossUnitSize:
+    def test_g_vs_ml_different_base_rejects(self):
+        # Both state a size in DIFFERENT bases (g vs ml) -> unverifiable equivalence -> pend.
+        assert _weight_or_volume_mismatch(
+            "CeraVe Moisturizing Cream 340g", "CeraVe Moisturizing Cream 177ml") is True
+        assert _selection_match(
+            "CeraVe Moisturizing Cream 340g", "CeraVe Moisturizing Cream 177ml",
+            "skincare", candidate_brand="CeraVe") is False
+
+    def test_guard_same_base_and_one_sided_unaffected(self):
+        # Same base same value still matches; a candidate stating BOTH still matches on g.
+        assert _weight_or_volume_mismatch("Cream 340g", "Cream 340g 177ml") is False
+        # One-sided (candidate omits size) is still tolerated by this axis.
+        assert _weight_or_volume_mismatch("Cream 340g", "Cream") is False
+
+
+class TestSpfAddTolerated:
+    # External review #4 — an SPF-add fail-close was implemented and REVERTED (the
+    # sunscreen carve-out cannot cover the unbounded set of sunscreen names; the leak it
+    # prevents is low-harm). A one-sided SPF is TOLERATED; only a both-stated DIFFERENT SPF
+    # rejects (handled by _spf_mismatch elsewhere).
+    def test_one_sided_spf_add_tolerated(self):
+        assert _selection_match(
+            "Kiehl's Ultra Facial Cream", "Kiehl's Ultra Facial Cream SPF 30",
+            "skincare", candidate_brand="Kiehl's") is True
+
+
+class TestFailClosedBackstopFlanker:
+    def test_flagship_flanker_pended_at_display_backstop(self):
+        # A FLAGSHIP-concentration flanker (Sauvage -> Sauvage Parfum) that reached the
+        # display chokepoint must PEND (the bounded _category_type_added backstop check).
+        assert is_price_showable(
+            "Dior Sauvage", _price("Dior Sauvage Parfum", 40.0), "fragrances",
+            enforce_correctness=True) is False
+
+    def test_guard_exact_genuine_still_shows(self):
+        assert is_price_showable(
+            "Dior Sauvage", _price("Dior Sauvage Eau de Toilette 100ml", 40.0),
+            "fragrances", enforce_correctness=True) is True
+
+    def test_guard_descriptive_genuine_not_over_rejected(self):
+        # The softened backstop must NOT pend a CORRECT product whose genuine descriptive
+        # PDP title adds marketing tokens (the superset-at-backstop over-rejection the
+        # adversarial sweep found). These reach display via converted/page-scrape paths.
+        assert is_price_showable(
+            "The Ordinary Niacinamide 10%",
+            _price("The Ordinary Niacinamide 10% + Zinc 1% 30ml", 6.0,
+                   source_method="converted_usd", brand="The Ordinary"),
+            "skincare", enforce_correctness=True) is True
+        assert is_price_showable(
+            "Now Foods Omega-3",
+            _price("NOW Foods, Omega-3, Molecularly Distilled, 200 Softgels", 12.0,
+                   source_method="page_scrape", brand="NOW Foods"),
+            "supplements", enforce_correctness=True) is True
 
 
 # ---------------------------------------------------------------------------
