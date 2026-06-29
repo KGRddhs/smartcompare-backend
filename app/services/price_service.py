@@ -3354,13 +3354,45 @@ def _concentration_mismatch(q: str, t: str) -> bool:
     return bool(qc and tc and qc != tc)
 
 
-def _size_ml_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH carry an ml/oz size and they DIFFER (100ml vs 30ml; oz snapped
-    to standard bottles first). A side with no size token does not mismatch."""
-    qs, ts = extract_size_ml_any(q), extract_size_ml_any(t)
-    if qs is None or ts is None:
+def _size_ml_raw(text: Optional[str]) -> Optional[float]:
+    """The smallest ml size in `text` with oz converted RAW (oz*_ML_PER_FL_OZ, with
+    NO standard-fragrance-bottle snap). The non-fragrance counterpart to
+    extract_size_ml_any: that primitive snaps an oz value to a luxury bottle size
+    (3.4oz->100) which is correct ONLY for fragrances — for a skincare/grocery
+    product it pushed e.g. 8oz (236.6ml) to 250 and falsely mismatched a genuine
+    '236 ml' listing of the SAME product. Returns None when no ml/oz token present."""
+    if not text:
+        return None
+    vals: List[float] = [float(m) for m in _SIZE_ML_RE.findall(text)]
+    for oz_str in _SIZE_OZ_RE.findall(text):
+        try:
+            vals.append(float(oz_str) * _ML_PER_FL_OZ)
+        except (ValueError, TypeError):
+            continue
+    return min(vals) if vals else None
+
+
+def _size_ml_mismatch(q: str, t: str, category: Optional[str] = None) -> bool:
+    """True iff BOTH carry an ml/oz size and they DIFFER. A side with no size token
+    does not mismatch.
+
+    Category-aware (local review #2): for FRAGRANCES an oz value is snapped to the
+    nearest standard retail bottle size (3.4oz == 100ml) and an EXACT match is
+    required — unchanged, heavily-tested behaviour. For EVERY OTHER category an oz
+    value is converted RAW (no luxury-bottle snap) and sizes within ~5% are the SAME
+    size (absorbs oz<->ml rounding: 8oz == 236.6ml ≈ a '236 ml' / '237 ml' listing),
+    so an oz-labelled skincare/grocery/supplement product is no longer over-rejected
+    against its ml-labelled listing while a real size difference (88ml vs 236ml)
+    still mismatches."""
+    if (category or "").lower() == "fragrances":
+        qs, ts = extract_size_ml_any(q), extract_size_ml_any(t)
+        if qs is None or ts is None:
+            return False
+        return qs != ts
+    qr, tr = _size_ml_raw(q), _size_ml_raw(t)
+    if qr is None or tr is None:
         return False
-    return qs != ts
+    return abs(qr - tr) > 0.05 * max(qr, tr)
 
 
 def _match_storage_gb(text: str) -> Optional[float]:
@@ -3460,12 +3492,26 @@ def _weights_volumes(text: str) -> set:
     return out
 
 
+# lb/pound token presence — the lb->g conversion (×453.592) is the ONLY weight
+# conversion that yields a non-integer gram value, so an lb-labelled side never
+# EXACTLY equals a gram/kg-labelled listing of the same tub (5lb=2267.96g vs a
+# "2270g" / "2.27kg" label). kg->g and L->ml are exact (×1000).
+_LB_TOKEN_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:lbs?|pounds?)\b", re.I)
+
+
 def _weight_or_volume_mismatch(q: str, t: str) -> bool:
     """True iff BOTH carry a SAME-BASE weight/volume (grams or ml) and they share NO
     common value (CeraVe 50g vs 340g). SET-based (like _strength_mismatch) so a
     genuine 908g listing that ALSO lists "30g per serving" still shares 908 and is
     NOT a mismatch — the old min()-extractor manufactured a false 908-vs-30 inequality.
-    Different bases (g vs ml) never mismatch."""
+    Different bases (g vs ml) never mismatch.
+
+    lb->g rounding tolerance (local review #2, weight-axis extension): when EITHER
+    side carries an lb/pound token, two GRAMS values within 1% are treated as the
+    SAME size, so a 5lb (2267.96g) query matches a genuine "2270g" / "2.27kg" listing
+    of the same tub instead of over-rejecting on the conversion rounding. Native
+    g-vs-g and ml-vs-ml stay EXACT (distinct retail sizes are always >>1% apart, so
+    no spurious merge); the tolerance arms ONLY for the lb-conversion case."""
     qwv, twv = _weights_volumes(q), _weights_volumes(t)
     if not qwv or not twv:
         return False
@@ -3474,9 +3520,16 @@ def _weight_or_volume_mismatch(q: str, t: str) -> bool:
     shared = q_bases & t_bases
     if not shared:
         return False  # only different bases present — not comparable
+    _lb_present = bool(_LB_TOKEN_RE.search(q or "")) or bool(_LB_TOKEN_RE.search(t or ""))
     for b in shared:
-        if {v for v, bb in qwv if bb == b} & {v for v, bb in twv if bb == b}:
-            return False  # a common (value, base) exists → not a mismatch
+        qv = {v for v, bb in qwv if bb == b}
+        tv = {v for v, bb in twv if bb == b}
+        if qv & tv:
+            return False  # an exact common (value, base) exists → not a mismatch
+        if _lb_present and b == "g":
+            # lb-conversion rounding only — 1% tolerance on grams.
+            if any(abs(a - c) <= 0.01 * max(a, c) for a in qv for c in tv):
+                return False
     return True
 
 
@@ -3554,7 +3607,16 @@ def _feminine_query_unconfirmed(query_name: str, candidate_title: str) -> bool:
     NOT confirm it (Eros / Eros Pour Homme). The unspecified base of a designer fragrance is
     conventionally the men's/original, so a femme query matching a gender-OMITTING candidate is
     a WRONG product (comprehensive review MEDIUM leak). ASYMMETRIC by design: a men's/unisex
-    query still tolerates the unspecified base (preserves the 'Pour Homme'-bestseller match)."""
+    query still tolerates the unspecified base (preserves the 'Pour Homme'-bestseller match).
+
+    NOTE (local review #1, INTENTIONALLY NOT symmetrized): the inverse — a base/men's query
+    matching a women's CANDIDATE ("Versace Eros" -> "Eros Pour Femme") — is a real but
+    UNFIXABLE-by-tokens leak. A symmetric "reject when exactly one side states women's" rule
+    mass-over-rejects every WOMEN's-BASE fragrance whose candidate merely adds a "For Women"
+    descriptor ("Black Opium" -> "Black Opium For Women" is the SAME product), because gender
+    tokens alone cannot distinguish a flanker-of-a-men's-base from a women's-base descriptor.
+    The asymmetry deliberately trades the narrow Eros-style leak for not pending the far more
+    common women's-base case. See tests/test_correctness_review_pr9_fixes.py."""
     return _gender_of(query_name) == "women" and _gender_of(candidate_title) != "women"
 
 # Form PHRASES that name a different product when present on only one side. Ordered
@@ -4062,6 +4124,15 @@ _MAKEUP_PADDING = _MAKEUP_FINISH_TOKENS | frozenset({
     # Soft Pinch) — padding it recovers the canonical product-line title (coverage R8). A
     # numbered shade ("Fit Me 240 Soft Sand") is already handled by the shade-NUMBER tolerance.
     "soft",
+    # Pure connective stopwords (local review #4). Makeup is the ONLY category that keeps
+    # these 2-char tokens as identity (the `len(w) >= 1` makeup keep-rule in
+    # _identity_tokens_ps; every other category drops them via the len>2 rule), where they
+    # over-reject the canonical "<product> IN <shade>" listing ("NARS Lipstick in Dolce Vita"
+    # vs the query "NARS Lipstick Dolce Vita"). Padding them only here keeps the blast radius
+    # to makeup and never touches another category. Deliberately EXCLUDES the article "a"/"an"
+    # — a single-letter "a" can be a makeup shade code (the keep-rule's MAC-shade-A/B case), so
+    # padding it would strip a real shade token.
+    "to", "of", "in", "on", "by",
 })
 
 
@@ -4072,16 +4143,56 @@ _FLAVOUR_TOKENS = frozenset({
     "cookies", "mango", "banana", "caramel", "cinnamon", "coconut", "grape", "cherry",
     "lime", "apple", "peach", "raspberry", "tropical", "unflavored", "unflavoured",
     "hazelnut", "almond", "pistachio", "honey",
+    # flavour words a candidate ADDS that the prior set missed (coverage sweep CRIT/HIGH:
+    # "Creatine Unflavored" -> "...Fruit Punch"; "...Cookies" -> "...Cream") — without
+    # these the one-sided flavour add slipped past both the contradiction axis and the
+    # padding subtraction (_SUPPLEMENT_PADDING listed 'fruit'/'punch' but they were absent
+    # here, so _flavour_mismatch saw no flavour and the superset stripped them).
+    "fruit", "punch", "cream",
 })
+# "Absence" flavour markers — a candidate ADDING one of these to a flavour-LESS query is
+# the canonical UNFLAVOURED base ("Creatine" -> "Creatine Unflavored" is the SAME SKU), so
+# it must NOT trigger the one-sided add rejection; but an UNFLAVORED query vs a real-flavour
+# candidate DOES still conflict (caught because the real flavour is the add).
+_FLAVOUR_ABSENCE = frozenset({"unflavored", "unflavoured", "plain", "natural"})
 _FLAVOUR_CATEGORIES = frozenset({"supplements", "grocery"})
 
 
-def _flavour_mismatch(query_name: str, candidate_title: str) -> bool:
-    """True iff BOTH sides state a flavour and they share none (Vanilla vs Chocolate)."""
+def _flavour_mismatch(query_name: str, candidate_title: str,
+                      category: Optional[str] = None) -> bool:
+    """CATEGORY-AWARE flavour discriminator (coverage sweep CRIT/HIGH).
+
+    GROCERY is ASYMMETRIC: a candidate flavour the query does not cover is a DIFFERENT
+    SKU ("Cheerios" -> "Cheerios Chocolate"; "Pepsi" -> "Pepsi Mango"). The old
+    both-stated-different rule let this one-sided ADD slip because the added flavour
+    word was also generic/padding and was subtracted before the variant-add guard.
+
+    SUPPLEMENTS keep the both-stated-different rule (one-sided tolerated) — a bare
+    protein/creatine query matching any flavour is INTENDED ("ISO100" -> "ISO100
+    Vanilla" is the same product; see the flavour padding in _SUPPLEMENT_PADDING). Only
+    a CONTRADICTION rejects: "Creatine Unflavored" -> "...Fruit Punch", "...Cookies" ->
+    "...Cream" (both sides state a flavour and they differ). This is now caught because
+    'fruit'/'punch'/'cream' were added to _FLAVOUR_TOKENS.
+
+    A candidate that OMITS the query's flavour (terse listing) is tolerated in BOTH
+    categories; a pure 'unflavored'/'plain' ADD to a flavour-less query is the canonical
+    base (no reject)."""
     qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _FLAVOUR_TOKENS
     tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _FLAVOUR_TOKENS
-    if not qf or not tf:
-        return False
+    if not tf:
+        return False  # candidate states no flavour -> tolerate a terse listing
+    if (category or "").lower() == "grocery":
+        extra = tf - qf
+        if not extra:
+            return False  # candidate flavour subset of query -> same SKU
+        real_q = qf - _FLAVOUR_ABSENCE
+        extra_real = extra - _FLAVOUR_ABSENCE
+        if not real_q and not extra_real:
+            return False  # only 'unflavored'/'plain' added to a flavour-less query
+        return True
+    # supplements (and any other flavour category): both-stated-different only.
+    if not qf:
+        return False  # one-sided candidate flavour tolerated (ISO100 -> ISO100 Vanilla)
     return not (qf & tf)
 
 
@@ -4287,7 +4398,11 @@ _SUPPLEMENT_PADDING = _SUPPLEMENT_CHEM_SYNONYMS | frozenset({
     # multivitamin class noun + 'adult(s)' descriptor (coverage R8: Centrum Silver Adults
     # Multivitamin / One A Day mass-over-rejected). NOTE: 'men'/'women' are DELIBERATELY NOT
     # padding — a gendered SKU (Centrum Men vs Women) is a real variant that must reject.
-    "multivitamin", "multivitamins", "multi", "adult", "adults",
+    # NOTE: bare 'multi' REMOVED (coverage sweep HIGH) — it is the distinctive TYPE word that
+    # separates single-source "Collagen Peptides" from a "Multi Collagen Peptides" blend (a
+    # different, differently-priced SKU). 'multivitamin'/'multivitamins' stay padding (the
+    # Centrum class noun); only the bare 'multi' blend-modifier now rejects when one-sided.
+    "multivitamin", "multivitamins", "adult", "adults",
     # marketing / descriptor words a terse query omits (coverage review).
     "extract", "chelated", "buffered", "bioflavonoids", "rosehips", "rose", "hips",
     "billion", "cfu", "rich", "labs", "health", "naturals", "life",
@@ -4318,7 +4433,12 @@ _CATEGORY_PADDING = {
     "supplements": _SUPPLEMENT_PADDING,
 }
 # Short (<=2-char) fashion model qualifiers KEPT as identity (Samba OG, Dunk Hi/Lo).
-_FASHION_KEPT_QUALIFIERS = frozenset({"og", "hi", "lo"})
+# Short (<=2-char) fashion model qualifiers KEPT as distinctive identity tokens (the
+# len>2 rule would otherwise drop them). "se" = Special Edition — a genuinely distinct,
+# typically pricier SKU (Air Max 90 SE / AF1 SE / Dunk SE); without it "se" was dropped
+# on BOTH sides and an SE listing matched the base shoe (coverage sweep HIGH, both
+# directions). "og"/"hi"/"lo" are Nike/adidas line markers (Samba OG, Dunk Hi/Lo).
+_FASHION_KEPT_QUALIFIERS = frozenset({"og", "hi", "lo", "se"})
 # 2-char skincare/haircare LINE codes kept as identity (CeraVe SA, Skinceuticals AM/PM).
 _SKINCARE_LINE_CODES = frozenset({"sa", "am", "pm", "cf"})
 
@@ -4360,7 +4480,7 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         return True
     if (
         _concentration_mismatch(query_name, candidate_title)
-        or _size_ml_mismatch(query_name, candidate_title)
+        or _size_ml_mismatch(query_name, candidate_title, category)
         or _storage_mismatch(query_name, candidate_title)
         or _count_mismatch(query_name, candidate_title)
         or _strength_mismatch(query_name, candidate_title)
@@ -4382,7 +4502,7 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         or (_cat == "grocery" and _pack_mismatch(query_name, candidate_title))
         # contradiction axes (coverage review round 2) — both-stated-different rejects,
         # one-sided is tolerated (the token is also padding).
-        or (_cat in _FLAVOUR_CATEGORIES and _flavour_mismatch(query_name, candidate_title))
+        or (_cat in _FLAVOUR_CATEGORIES and _flavour_mismatch(query_name, candidate_title, _cat))
         or (_cat == "makeup" and _finish_mismatch(query_name, candidate_title))
         or (_cat == "fashion" and _material_mismatch(query_name, candidate_title))
         or (_cat == "fashion" and _fit_mismatch(query_name, candidate_title))
@@ -4749,6 +4869,14 @@ def should_cache_price(
     if not url or _is_listing_url(url):
         return False
     if price.get("in_stock") is False:
+        return False
+    # An electronics ACCESSORY (charger/adapter/case) lives in _ELECTRONICS_PADDING, so the
+    # shared _selection_match strips it and would accept "Galaxy S24 Charger" as the phone —
+    # caching a cheap charger price under the device query poisons the genuine TTL. select_best
+    # and is_price_showable already reject it via _is_device_accessory; mirror that asymmetry
+    # here so the CACHE-WRITE gate is closed too (coverage sweep HIGH).
+    if ((category or "").lower() == "electronics"
+            and _is_device_accessory(title) and not _is_device_accessory(request_name)):
         return False
     if not request_name:
         return True
